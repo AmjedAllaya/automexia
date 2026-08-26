@@ -144,7 +144,6 @@ PRODUCTIVITY_MARKERS = {
     "completion_adapter",
     "actions.toml",
     "commandproductivity",
-    "command_productivity",
 }
 GRID_INFERENCE_MARKERS = {
     "terminal.grid",
@@ -168,20 +167,95 @@ CP1_ALLOWED_SHELL_FILES = {
     "shell-integration/uninstall-unix.sh",
     "shell-integration/uninstall-windows.ps1",
 }
-CP2_PURE_ACTION_FILES = {
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/validation.rs",
+# ADR 0025 packages these exact editor adapters as inert resources. CP5.6 owns
+# their content and separately proves that no normal shell startup script
+# sources them. They must not be mistaken for active CP0/CP1 registration code.
+CP5_INERT_SHELL_FILES = {
+    "shell-integration/suggestions/bash/automexia-suggestions.bash",
+    "shell-integration/suggestions/zsh/automexia-suggestions.zsh",
+    "shell-integration/suggestions/fish/automexia-suggestions.fish",
+    "shell-integration/suggestions/powershell/automexia-suggestions.ps1",
 }
+CP2_PURE_ACTION_FILES = {
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/imports.rs",
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/packs.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
+}
+CP4_PURE_ACTION_FILES = {
+    "automexia-command-productivity/src/actions/provider.rs",
+}
+CP4_PROVIDER_ACTION_FILES = {
+    "extensions/devops-aws/src/lib.rs",
+    "extensions/devops-azure/src/lib.rs",
+    "extensions/devops-gcp/src/lib.rs",
+    "extensions/devops-kubernetes/src/implementation.rs",
+    "extensions/devops-openshift/src/implementation.rs",
+    "extensions/devops-teleport/src/lib.rs",
+}
+# ADR 0025 authorizes these exact source owners while CP56 policy independently
+# enforces preview nonactivation, bounded authority, and native fallback.
+CP5_SUGGESTION_SOURCE_FILES = {
+    "automexia-command-productivity/src/suggestions/mod.rs",
+    "automexia-ui-model/src/suggestions.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/controller.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/mod.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/platform.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/platform/unix.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/platform/windows.rs",
+    "apps/automexia-terminal/src/automexia/suggestions/service.rs",
+    "apps/automexia-terminal/src/renderer/suggestions.rs",
+    "apps/automexia-terminal/src/screen/suggestions.rs",
+}
+# Accepted ADR 0029 permits these exact nonactivating signed action-pack owners.
+# The independent D7/CP6 checker rejects execution, process/network/PTY authority,
+# capability-bearing packs, downloads, and release activation.
+D7_ACTION_PACK_SOURCE_FILES = {
+    "automexia-ecosystem-runtime/src/action_pack.rs",
+    "apps/automexia-terminal/src/automexia/ecosystem.rs",
+}
+PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
 CP2_PERSISTENCE_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
+}
+CP4_APPLICATION_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
+}
+CP31_PUBLICATION_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
+}
+CP32_PACK_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs",
+}
+CP33_WORKSPACE_FILES = {
+    "apps/automexia-terminal/src/automexia/quick_actions/native_import.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs",
 }
 CP2_PERSISTENCE_WIRING_FILES = {
     "apps/automexia-terminal/src/automexia/mod.rs",
+}
+CP2_ACTIVATION_WIRING_FILES = {
+    "apps/automexia-terminal/src/automexia/connections/library.rs",
+    "apps/automexia-terminal/src/cli.rs",
+    "apps/automexia-terminal/src/lib.rs",
+    "apps/automexia-terminal/src/main.rs",
+    "apps/automexia-terminal/src/renderer/command_palette.rs",
+    "apps/automexia-terminal/src/router/mod.rs",
+    "apps/automexia-terminal/src/screen/mod.rs",
+    "apps/automexia-terminal/src/screen/action_surface.rs",
+    "automexia-ui-model/src/lib.rs",
+    "automexia-ui-model/src/quick_actions.rs",
 }
 CP2_PERSISTENCE_FORBIDDEN_MARKERS = {
     "std::net",
@@ -191,6 +265,21 @@ CP2_PERSISTENCE_FORBIDDEN_MARKERS = {
     "clipboard",
     "launch_broker",
     "shell_integration",
+    "rio_vt::",
+    "teletypewriter::",
+    "reqwest",
+    "ureq::",
+    "hyper::",
+    "tokio::",
+    "async_std::",
+    "terminal.grid",
+    "visible_text",
+    "raw_cursor_line_text",
+}
+CP31_PUBLICATION_FORBIDDEN_MARKERS = {
+    "std::net",
+    "clipboard",
+    "launch_broker",
     "rio_vt::",
     "teletypewriter::",
     "reqwest",
@@ -748,15 +837,15 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
         path.relative_to(root).as_posix()
         for path in runtime_files
         if path.relative_to(root).as_posix().startswith(
-            "automexia-devops/src/actions/"
+            "automexia-command-productivity/src/actions/"
         )
     }
     if not present:
         return set()
-    if present != CP2_PURE_ACTION_FILES:
-        unexpected = sorted(present.symmetric_difference(CP2_PURE_ACTION_FILES))
+    if present != PURE_ACTION_FILES:
+        unexpected = sorted(present.symmetric_difference(PURE_ACTION_FILES))
         raise CommandProductivityError(
-            f"CP2 pure action source set is not the exact reviewed boundary: {unexpected}"
+            f"CP2/CP3/CP4 pure action source set is not the exact reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
         content = read_lower(root / relative)
@@ -766,7 +855,7 @@ def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[s
         )
         if marker is not None:
             raise CommandProductivityError(
-                f"{relative} crosses the capability-free CP2 model boundary: {marker!r}"
+                f"{relative} crosses the capability-free CP2/CP3/CP4 model boundary: {marker!r}"
             )
     return present
 
@@ -781,24 +870,64 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
     }
     if not present:
         return set()
-    if present != CP2_PERSISTENCE_FILES:
-        unexpected = sorted(present.symmetric_difference(CP2_PERSISTENCE_FILES))
+    expected = (
+        CP2_PERSISTENCE_FILES
+        | CP31_PUBLICATION_FILES
+        | CP32_PACK_FILES
+        | CP33_WORKSPACE_FILES
+        | CP4_APPLICATION_FILES
+    )
+    cp31_present = present & CP31_PUBLICATION_FILES
+    cp32_present = present & CP32_PACK_FILES
+    cp33_present = present & CP33_WORKSPACE_FILES
+    cp4_present = present & CP4_APPLICATION_FILES
+    if (
+        not CP2_PERSISTENCE_FILES.issubset(present)
+        or present - expected
+        or (cp31_present and cp31_present != CP31_PUBLICATION_FILES)
+        or (cp32_present and cp32_present != CP32_PACK_FILES)
+        or (cp33_present and cp33_present != CP33_WORKSPACE_FILES)
+        or (cp4_present and cp4_present != CP4_APPLICATION_FILES)
+    ):
+        baseline = CP2_PERSISTENCE_FILES
+        if cp31_present:
+            baseline |= CP31_PUBLICATION_FILES
+        if cp32_present:
+            baseline |= CP32_PACK_FILES
+        if cp33_present:
+            baseline |= CP33_WORKSPACE_FILES
+        if cp4_present:
+            baseline |= CP4_APPLICATION_FILES
+        unexpected = sorted(present.symmetric_difference(baseline))
         raise CommandProductivityError(
-            f"CP2.1 persistence source set is not the exact reviewed boundary: {unexpected}"
+            "CP2.1/CP3.1/CP3.2/CP3.3/CP4 application source set is not the exact "
+            f"reviewed boundary: {unexpected}"
         )
     for relative in sorted(present):
         content = read_rust_code_lower(root / relative)
+        markers = (
+            CP31_PUBLICATION_FORBIDDEN_MARKERS
+            if relative in CP31_PUBLICATION_FILES
+            else CP2_PERSISTENCE_FORBIDDEN_MARKERS
+        )
         marker = next(
-            (
-                item
-                for item in sorted(CP2_PERSISTENCE_FORBIDDEN_MARKERS)
-                if item in content
-            ),
+            (item for item in sorted(markers) if item in content),
             None,
         )
         if marker is not None:
+            phase = (
+                "CP3.1 publication"
+                if relative in CP31_PUBLICATION_FILES
+                else "CP3.2 pack CLI"
+                if relative in CP32_PACK_FILES
+                else "CP3.3 import/workspace"
+                if relative in CP33_WORKSPACE_FILES
+                else "CP4 provider composition"
+                if relative in CP4_APPLICATION_FILES
+                else "CP2.1 persistence"
+            )
             raise CommandProductivityError(
-                f"{relative} crosses the CP2.1 persistence-only capability boundary: {marker!r}"
+                f"{relative} crosses the {phase}-only capability boundary: {marker!r}"
             )
         if "unsafe {" in content and not relative.endswith("/secure_fs.rs"):
             raise CommandProductivityError(
@@ -811,11 +940,11 @@ def validate_persistence_sources(root: Path, runtime_files: list[Path]) -> set[s
         raise CommandProductivityError("CP2.1 persistence module wiring is missing")
     return present
 
-def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
+def validate_shell_pre_activation(root: Path = ROOT) -> int:
     shell_files = source_files(root, "shell-integration")
     for path in shell_files:
         relative = path.relative_to(root).as_posix()
-        if relative in CP1_ALLOWED_SHELL_FILES:
+        if relative in CP1_ALLOWED_SHELL_FILES or relative in CP5_INERT_SHELL_FILES:
             continue
         shell_text = normalized_source(path)
         for hook in sorted(SHELL_PROVIDER_HOOKS):
@@ -823,6 +952,11 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
                 raise CommandProductivityError(
                     f"CP0 shell startup unexpectedly activates provider/completion hook {hook!r}"
                 )
+    return len(shell_files)
+
+
+def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
+    shell_file_count = validate_shell_pre_activation(root)
 
     interactive_roots = [
         "apps/automexia-terminal/src/renderer",
@@ -859,6 +993,10 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         pure_action_files
         | persistence_files
         | CP2_PERSISTENCE_WIRING_FILES
+        | CP2_ACTIVATION_WIRING_FILES
+        | CP4_PROVIDER_ACTION_FILES
+        | CP5_SUGGESTION_SOURCE_FILES
+        | D7_ACTION_PACK_SOURCE_FILES
     )
     for path in runtime_files:
         content = read_lower(path)
@@ -886,9 +1024,13 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
                 f"PowerShell integration regression test no longer rejects {marker!r}"
             )
     return {
-        "shell_files": len(shell_files),
+        "shell_files": shell_file_count,
         "cp1_allowed_shell_files": len(CP1_ALLOWED_SHELL_FILES),
-        "cp2_pure_action_files": len(pure_action_files),
+        "cp2_pure_action_files": len(pure_action_files & CP2_PURE_ACTION_FILES),
+        "cp4_pure_action_files": len(pure_action_files & CP4_PURE_ACTION_FILES),
+        "cp4_provider_action_files": len(CP4_PROVIDER_ACTION_FILES),
+        "cp5_suggestion_source_files": len(CP5_SUGGESTION_SOURCE_FILES),
+        "cp4_application_files": len(persistence_files & CP4_APPLICATION_FILES),
         "cp2_persistence_files": len(persistence_files),
         "interactive_files": len(interactive_files),
         "runtime_files": len(runtime_files),
@@ -951,7 +1093,7 @@ def validate_documents(root: Path = ROOT) -> dict[str, int]:
     require_text(
         root / "docs/STABILIZATION-ROADMAP.md",
         {
-            "#### CP0 implementation ledger",
+            "### CP0 implementation ledger",
             "CP0 result: satisfied",
             "14 hard ceilings",
             "11-case hostile corpus",
@@ -1013,7 +1155,7 @@ def main() -> int:
         print(f"command productivity CP0 validation failed: {error}", file=sys.stderr)
         return 1
     print(
-        "PASS: command productivity CP0 contract is accepted; CP1 activation, the capability-free CP2.0 model, and the CP2.1 persistence-only service are confined to reviewed allowlists "
+        "PASS: command productivity CP0/CP1 and bounded CP2.0-CP4 model/application boundaries are confined to reviewed allowlists "
         f"(shells={counts['shells']}, providers={counts['providers']}, "
         f"discoveries={counts['discoveries']}, "
         f"cases={counts['cases']}, threats={counts['threats']}, "
@@ -1021,6 +1163,10 @@ def main() -> int:
         f"interactive_files={counts['interactive_files']}, "
         f"runtime_files={counts['runtime_files']}, "
         f"cp2_pure_action_files={counts['cp2_pure_action_files']}, "
+        f"cp4_pure_action_files={counts['cp4_pure_action_files']}, "
+        f"cp4_provider_action_files={counts['cp4_provider_action_files']}, "
+        f"cp5_suggestion_source_files={counts['cp5_suggestion_source_files']}, "
+        f"cp4_application_files={counts['cp4_application_files']}, "
         f"cp2_persistence_files={counts['cp2_persistence_files']})"
     )
     return 0

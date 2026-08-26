@@ -1,0 +1,45 @@
+package automexia:ecosystem@1.0.0;
+
+interface public-context {
+    record field {
+        name: string,
+        value: string,
+    }
+    read: func() -> list<field>;
+}
+
+interface selected-input {
+    take: func() -> option<string>;
+}
+
+interface suggestion {
+    enum kind {
+        explanation,
+        suggestion,
+    }
+    record output {
+        kind: kind,
+        text: string,
+    }
+    publish: func(value: output) -> result<_, string>;
+    propose-structured-operation: func(value: string) -> result<_, string>;
+}
+
+interface diagnostic {
+    enum level {
+        info,
+        warning,
+        error,
+    }
+    publish-redacted: func(level: level, message: string) -> result<_, string>;
+}
+
+// Source-level name differs because WIT package items share one namespace.
+// The logical reviewed world remains automexia:ecosystem/suggestion@1.
+world extension {
+    import public-context;
+    import selected-input;
+    import suggestion;
+    import diagnostic;
+    export run: func() -> result<_, string>;
+}

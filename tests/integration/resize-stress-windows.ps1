@@ -5,6 +5,8 @@ param(
     [string]$ResourceReport,
     [string]$FrameCapture,
     [string]$TypographyCapture,
+    [string]$SearchCapture,
+    [string]$ResultCapture,
     [string]$ModalCaptureDirectory,
     [ValidateRange(32, 4096)]
     [int64]$MaximumHandleGrowth = 384,
@@ -170,6 +172,9 @@ public static class AutomexiaResizeDriver {
         public int DominantColorBucket;
         public int LuminanceSpread;
         public int MeanLuminance;
+        public int MeanRed;
+        public int MeanGreen;
+        public int MeanBlue;
         public int BrightSampleCount;
     }
 
@@ -277,6 +282,21 @@ public static class AutomexiaResizeDriver {
         }
     }
 
+    public static FrameStats CapturePhysicalClientRegionStats(
+        IntPtr hWnd, int x, int y, int width, int height) {
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) {
+            throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Could not enter per-monitor DPI awareness for region capture");
+        }
+        try {
+            return CaptureClientRegionStats(hWnd, x, y, width, height);
+        } finally {
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
+
     public static FrameStats CaptureClientRegionStats(
         IntPtr hWnd, int x, int y, int width, int height) {
         Rect rect;
@@ -329,6 +349,9 @@ public static class AutomexiaResizeDriver {
             int maximumLuminance = 0;
             long luminanceTotal = 0;
             int brightSamples = 0;
+            long redTotal = 0;
+            long greenTotal = 0;
+            long blueTotal = 0;
             int samples = 0;
             for (int py = 0; py < clippedHeight; py += 2) {
                 for (int px = 0; px < clippedWidth; px += 2) {
@@ -346,6 +369,9 @@ public static class AutomexiaResizeDriver {
                     if (luminance >= 32) {
                         brightSamples++;
                     }
+                    redTotal += color.R;
+                    greenTotal += color.G;
+                    blueTotal += color.B;
                     samples++;
                 }
             }
@@ -357,6 +383,9 @@ public static class AutomexiaResizeDriver {
                 DominantColorBucket = -1,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
                 MeanLuminance = samples == 0 ? 0 : (int)(luminanceTotal / samples),
+                MeanRed = samples == 0 ? 0 : (int)(redTotal / samples),
+                MeanGreen = samples == 0 ? 0 : (int)(greenTotal / samples),
+                MeanBlue = samples == 0 ? 0 : (int)(blueTotal / samples),
                 BrightSampleCount = brightSamples,
             };
         }
@@ -548,6 +577,7 @@ $configRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
 $previousSnapshot = $env:AUTOMEXIA_RESIZE_SNAPSHOT
 $previousControl = $env:AUTOMEXIA_NATIVE_TEST_CONTROL
 $previousConfigHome = $env:AUTOMEXIA_CONFIG_HOME
+$previousVisualFixture = $env:AUTOMEXIA_VISUAL_TEST_FIXTURE
 $process = $null
 $window = [IntPtr]::Zero
 $lastSnapshot = $null
@@ -671,6 +701,7 @@ $rendererConfig
     $env:AUTOMEXIA_RESIZE_SNAPSHOT = $snapshotPath
     $env:AUTOMEXIA_NATIVE_TEST_CONTROL = $controlPath
     $env:AUTOMEXIA_CONFIG_HOME = $configRoot
+    $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = 's1-standard-v1'
     $process = Start-Process -FilePath $Binary -WorkingDirectory $root -PassThru
 
     # Process.MainWindowHandle can transiently select Winit's internal event
@@ -715,8 +746,16 @@ $rendererConfig
         Write-Host ($initial | ConvertTo-Json -Depth 4)
         throw 'PowerShell did not publish one complete prompt automatically after startup'
     }
+    if ([string]$initial.visual_test_fixture -ne 's1-standard-v1' -or
+        [string]$initial.visual_test_clock -ne '12:34' -or
+        [bool]$initial.visual_test_animations_enabled) {
+        Write-Host ($initial | ConvertTo-Json -Depth 4)
+        throw 'The deterministic S1 visual fixture did not freeze clock and animation state'
+    }
 
     $initialPanel = Get-ActiveAutomexiaPanel $initial
+    $expectedContextSegmentsJson =
+        @($initialPanel.context_segments) | ConvertTo-Json -Compress
     if ($null -eq $initialPanel -or [int]$initial.panel_count -ne 1) {
         throw 'The initial native session snapshot is incomplete'
     }
@@ -908,6 +947,198 @@ $rendererConfig
         throw 'PowerShell did not complete the keyboard-selection probe command'
     }
     $initial = $selectionDone
+    # A surface from an earlier command is not evidence that the current
+    # command was grouped. Exercise representative PowerShell command classes
+    # and require a new semantic result identity, exact owning prompt, output
+    # token, exit state, and painted surface for every case.
+    $resultCommandCases = @(
+        [pscustomobject]@{
+            Name = 'single-success'
+            Command = "Write-Output 'AMX_RESULT_SINGLE_78101'"
+            Tokens = @('AMX_RESULT_SINGLE_78101')
+            HasOutput = $true
+            ExitCode = 0
+        },
+        [pscustomobject]@{
+            Name = 'multiline-success'
+            Command = "Write-Output 'AMX_RESULT_MULTI_A_78102'; Write-Output 'AMX_RESULT_MULTI_B_78102'"
+            Tokens = @('AMX_RESULT_MULTI_A_78102', 'AMX_RESULT_MULTI_B_78102')
+            ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'external-process-success'
+            Command = 'cmd.exe /D /C "echo AMX_RESULT_EXTERNAL_78103"'
+            Tokens = @('AMX_RESULT_EXTERNAL_78103')
+            ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'error-output'
+            Command = "Write-Error 'AMX_RESULT_ERROR_78104'"
+            Tokens = @('AMX_RESULT_ERROR_78104')
+            ExitCode = 1
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'parameter-binding-error-ls-ll'
+            Command = 'ls -ll'
+            Tokens = @('ParameterBindingException')
+            ExitCode = 1
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'provider-pipeline-success'
+            Command = 'Get-Item -LiteralPath Cargo.toml | ForEach-Object { Write-Output ''AMX_RESULT_PROVIDER_78105''; Write-Output $_.Name }'
+            Tokens = @('AMX_RESULT_PROVIDER_78105', 'Cargo.toml')
+            ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'native-stderr-failure'
+            Command = 'cmd.exe /D /C "echo AMX_RESULT_NATIVE_STDERR_78106 1>&2 & exit /b 7"'
+            Tokens = @('AMX_RESULT_NATIVE_STDERR_78106')
+            ExitCode = 7
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'no-output-success'
+            Command = '$null = Get-Item -LiteralPath Cargo.toml'
+            Tokens = @()
+            ExitCode = 0
+            HasOutput = $false
+        }
+    )
+    $viewportRows = [Math]::Max(4, [int]$initial.rows)
+    $overflowHeights = @(
+        [Math]::Max(1, $viewportRows - 2)
+        [Math]::Max(1, $viewportRows - 1)
+        $viewportRows
+        $viewportRows + 1
+        ($viewportRows * 2) - 1
+        $viewportRows * 2
+        ($viewportRows * 2) + 1
+    ) | Select-Object -Unique
+    $overflowIndex = 0
+    foreach ($outputRows in $overflowHeights) {
+        $overflowIndex += 1
+        $marker = "AMX_RESULT_OVERFLOW_$($overflowIndex.ToString('D2'))"
+        $resultCommandCases += [pscustomobject]@{
+            Name = "viewport-overflow-$outputRows"
+            Command = "1..$outputRows | ForEach-Object { Write-Output ('$marker' + '_' + `$_) }"
+            Tokens = @("$marker`_$outputRows")
+            ExitCode = 0
+            HasOutput = $true
+            OutputRows = $outputRows
+            OwnerMustBeOffscreen = $outputRows -ge $viewportRows
+        }
+    }
+    $resultCommandEvidence = @()
+    $resultProbe = $initial
+
+    foreach ($case in $resultCommandCases) {
+        $ownerMustBeOffscreen = $null -ne $case.PSObject.Properties['OwnerMustBeOffscreen'] -and
+            [bool]$case.OwnerMustBeOffscreen
+        $outputRowsEvidence = if ($null -eq $case.PSObject.Properties['OutputRows']) {
+            $null
+        } else {
+            [int]$case.OutputRows
+        }
+        $previousPromptId = [int64]$resultProbe.latest_prompt_id
+        $previousResultKey = if ($null -eq $resultProbe.command_result_key) {
+            -1
+        } else {
+            [int64]$resultProbe.command_result_key
+        }
+        $caseControl = "write-line:result-$($case.Name):$($case.Command)"
+        $script:testStage = "command-result $($case.Name)"
+        Send-AutomexiaTestControl $caseControl
+        $caseReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$resultProbe.sequence)
+        $caseDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        do {
+            $casePanel = Get-ActiveAutomexiaPanel $caseReady
+            $allTokensVisible = $true
+            foreach ($token in $case.Tokens) {
+                if (-not ([string]$casePanel.visible_text).Contains($token)) {
+                    $allTokensVisible = $false
+                    break
+                }
+            }
+            $resultMatches = if ([bool]$case.HasOutput) {
+                $null -ne $caseReady.command_result_key -and
+                    [int64]$caseReady.command_result_key -gt $previousResultKey -and
+                    [int64]$caseReady.command_result_generation -eq $previousPromptId -and
+                    [int]$caseReady.command_result_exit_code -eq [int]$case.ExitCode -and
+                    $null -ne $caseReady.command_result_surface
+            } else {
+                $semanticResult = @($caseReady.semantic_rows | Where-Object {
+                    $_.has_result -and
+                        [int64]$_.generation -eq $previousPromptId -and
+                        [int]$_.result_exit_code -eq [int]$case.ExitCode
+                })
+                # A preceding output group may remain visible by design. The
+                # silent command itself must publish semantic completion but
+                # must not become the selected paintable result.
+                $semanticResult.Count -gt 0 -and
+                    ($null -eq $caseReady.command_result_generation -or
+                        [int64]$caseReady.command_result_generation -ne $previousPromptId)
+            }
+            $caseComplete = (
+                [string]$caseReady.last_control -eq $caseControl -and
+                [int64]$caseReady.latest_prompt_id -gt $previousPromptId -and
+                $resultMatches -and
+                $allTokensVisible)
+            if (-not $caseComplete) {
+                $caseReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$caseReady.sequence)
+            }
+        } while (-not $caseComplete -and [DateTime]::UtcNow -lt $caseDeadline)
+        if (-not $caseComplete) {
+            Write-Host ($caseReady | ConvertTo-Json -Depth 10)
+            throw "Command-result case '$($case.Name)' did not publish fresh, truthful, visible output grouping"
+        }
+        if ($ownerMustBeOffscreen) {
+            $visibleOwner = @($caseReady.semantic_rows | Where-Object {
+                $_.has_result -and [int64]$_.generation -eq $previousPromptId
+            })
+            if ($visibleOwner.Count -ne 0) {
+                throw "Viewport-overflow case '$($case.Name)' did not move its source result owner above the visible snapshot"
+            }
+            $visibleBoundary = @($caseReady.semantic_rows | Where-Object {
+                $null -ne $_.boundary_result_id -and
+                    [int64]$_.boundary_result_id -eq [int64]$caseReady.command_result_key -and
+                    [int64]$_.boundary_source_generation -eq $previousPromptId
+            })
+            if ($visibleBoundary.Count -ne 1) {
+                throw "Viewport-overflow case '$($case.Name)' did not retain exactly one visible terminal-owned result boundary"
+            }
+        }
+        # Report the evidence owned by this command, not the most recent
+        # paintable surface. Silent commands intentionally leave the preceding
+        # output surface visible, so copying the selected surface here would
+        # falsely attribute that older result to the silent completion.
+        $evidenceGeneration = if ([bool]$case.HasOutput) {
+            [int64]$caseReady.command_result_generation
+        } else {
+            $previousPromptId
+        }
+        $evidenceKey = if ([bool]$case.HasOutput) {
+            [int64]$caseReady.command_result_key
+        } else {
+            $null
+        }
+        $resultCommandEvidence += [ordered]@{
+            name = $case.Name
+            generation = $evidenceGeneration
+            key = $evidenceKey
+            exit_code = [int]$case.ExitCode
+            has_output = [bool]$case.HasOutput
+            painted = [bool]$case.HasOutput
+            output_rows = $outputRowsEvidence
+            source_owner_offscreen = $ownerMustBeOffscreen
+        }
+        $resultProbe = $caseReady
+    }
+    $initial = $resultProbe
     $initialPanel = Get-ActiveAutomexiaPanel $initial
     # Prove native PowerShell history navigation remains interactive after a
     # completed command. The recall path uses real window messages below; the
@@ -928,14 +1159,202 @@ $rendererConfig
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
         throw 'The native driver did not observe the history seed control input'
     }
+    $visualAnimationsEnabled = [bool]$historyReady.visual_test_animations_enabled
     $historyDeadline = [DateTime]::UtcNow.AddSeconds(10)
-    while ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -and
+    while (([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -or
+            ($visualAnimationsEnabled -and
+                [int64]$historyReady.command_result_pulse_generation -le
+                    [int64]$initial.command_result_pulse_generation) -or
+            $null -eq $historyReady.command_result_surface) -and
            [DateTime]::UtcNow -lt $historyDeadline) {
         $historyReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
     }
-    if ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id) {
+    if ([int64]$historyReady.latest_prompt_id -le [int64]$initial.latest_prompt_id -or
+        $null -eq $historyReady.command_result_surface) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw 'PowerShell did not complete the history seed command'
+        throw 'PowerShell completion did not publish a new prompt and result surface'
+    }
+    if ($visualAnimationsEnabled -and
+        [int64]$historyReady.command_result_pulse_generation -le
+            [int64]$initial.command_result_pulse_generation) {
+        throw 'PowerShell completion did not publish the one-shot result glow'
+    }
+    if (-not $visualAnimationsEnabled -and
+        [int64]$historyReady.command_result_pulse_generation -ne
+            [int64]$initial.command_result_pulse_generation) {
+        throw 'The deterministic visual fixture unexpectedly published an animation pulse'
+    }
+
+    $resultSurface = @($historyReady.command_result_surface)
+    if ($null -ne $historyReady.command_result_accent) {
+        throw 'Completed output still publishes the removed vertical rail geometry'
+    }
+    $resultDivider = @($historyReady.command_result_divider)
+    if ($resultSurface.Count -ne 4 -or
+        $resultDivider.Count -ne 4) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw 'Completed output did not publish surface and divider geometry'
+    }
+    $resultSurfaceBottom =
+        [double]$resultSurface[1] + [double]$resultSurface[3]
+    $resultGutter = [double]$resultDivider[1] - $resultSurfaceBottom
+    if ([double]$resultSurface[2] -lt 4.0 -or
+        [double]$resultSurface[3] -lt 1.0 -or
+        [double]$resultDivider[2] -lt [double]$resultSurface[2] -or
+        $resultGutter -lt 6.0 -or
+        $resultGutter -gt 12.5) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw "Command-result surface geometry is clipped or lacks its breathing gutter: gutter=$resultGutter"
+    }
+    $resultOpacity = @($historyReady.command_result_opacity)
+    if ($resultOpacity.Count -ne 3 -or
+        [double]$resultOpacity[0] -lt 0.05 -or
+        [double]$resultOpacity[0] -gt 0.10 -or
+        [double]$resultOpacity[1] -lt 0.35 -or
+        [double]$resultOpacity[1] -gt 0.60 -or
+        [double]$resultOpacity[2] -lt 0.10 -or
+        [double]$resultOpacity[2] -gt 0.18) {
+        Write-Host ($historyReady | ConvertTo-Json -Depth 8)
+        throw 'Command-result paint regressed to an imperceptible opacity'
+    }
+    if ([int]$historyReady.command_result_pulse_duration_ms -ne 540) {
+        throw 'Command-result lightening no longer lasts the requested 540 milliseconds'
+    }
+    $resultPulseHold =
+        [double]$historyReady.command_result_pulse_hold_fraction
+    if ($resultPulseHold -lt 0.32 -or $resultPulseHold -gt 0.34) {
+        throw 'Command-result lightening no longer holds before its single fade'
+    }
+
+    $resultFramePath = if ([string]::IsNullOrWhiteSpace($ResultCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($ResultCapture)
+    }
+    if ($null -ne $resultFramePath) {
+        $resultFrameDirectory = [IO.Path]::GetDirectoryName($resultFramePath)
+        if (-not [string]::IsNullOrWhiteSpace($resultFrameDirectory)) {
+            New-Item -ItemType Directory -Force -Path $resultFrameDirectory | Out-Null
+        }
+    }
+    $resultScale = [double]$historyReady.scale_factor
+    $resultRegionX =
+        [int][Math]::Floor([double]$resultSurface[0] * $resultScale)
+    $resultRegionY =
+        [int][Math]::Floor([double]$resultSurface[1] * $resultScale)
+    $resultRegionWidth = [int][Math]::Ceiling(
+        (([double]$resultDivider[0] + [double]$resultDivider[2]) -
+         [double]$resultSurface[0]) * $resultScale)
+    $resultRegionHeight = [int][Math]::Ceiling(
+        (([double]$resultDivider[1] + [double]$resultDivider[3]) -
+         [double]$resultSurface[1]) * $resultScale)
+    if ($resultRegionWidth -lt 8 -or $resultRegionHeight -lt 8) {
+        throw "Command-result painted region is unusable: $resultRegionWidth x $resultRegionHeight"
+    }
+    # Sample output glyphs independently from the divider and status
+    # decoration. This prevents structural paint from masquerading as visible
+    # command text in a native frame.
+    $resultGlyphX = [int][Math]::Floor(
+        ([double]$resultSurface[0] + 4.0) * $resultScale)
+    $resultGlyphY = $resultRegionY
+    $resultGlyphWidth = [int][Math]::Floor(
+        [Math]::Min([double]$resultSurface[2] * 0.55, 560.0) * $resultScale)
+    $resultGlyphHeight = [int][Math]::Ceiling(
+        [double]$resultSurface[3] * $resultScale)
+    if ($resultGlyphWidth -lt 64 -or $resultGlyphHeight -lt 8) {
+        throw 'Command-result glyph sample is too small'
+    }
+    # Compare blank pixels in the resting surface with the adjacent untouched
+    # gutter. Text diversity cannot satisfy this assertion.
+    $resultSampleX = [int][Math]::Floor(
+        ([double]$resultSurface[0] + [double]$resultSurface[2] * 0.60) * $resultScale)
+    $resultSampleWidth = [int][Math]::Floor(
+        [double]$resultSurface[2] * 0.25 * $resultScale)
+    $resultSurfaceSampleY = [int][Math]::Floor(
+        ([double]$resultSurface[1] + [double]$resultSurface[3] * 0.20) * $resultScale)
+    $resultSurfaceSampleHeight = [int][Math]::Max(2, [Math]::Floor(
+        [double]$resultSurface[3] * 0.60 * $resultScale))
+    $resultGutterSampleY = [int][Math]::Ceiling(
+        ($resultSurfaceBottom + $resultGutter * 0.20) * $resultScale)
+    $resultGutterSampleHeight = [int][Math]::Max(2, [Math]::Floor(
+        $resultGutter * 0.60 * $resultScale))
+    if ($resultSampleWidth -lt 32 -or
+        $resultSurfaceSampleHeight -lt 2 -or
+        $resultGutterSampleHeight -lt 2) {
+        throw 'Command-result blank-pixel contrast samples are too small'
+    }
+    $script:testStage = 'command-result composited surface'
+    $resultCaptureDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $resultCaptureAttempts = 0
+    $resultPixelsValid = $false
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for command-result capture (Win32 error $code)"
+    }
+    $resultSurfaceBackground = $null
+    $resultGutterBackground = $null
+    $resultGlyphPixels = $null
+    try {
+        do {
+            $resultCaptureAttempts++
+            Start-Sleep -Milliseconds 50
+            $resultFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $resultFramePath)
+            $resultPixels =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultRegionX,
+                    $resultRegionY,
+                    $resultRegionWidth,
+                    $resultRegionHeight)
+            $resultGlyphPixels =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultGlyphX,
+                    $resultGlyphY,
+                    $resultGlyphWidth,
+                    $resultGlyphHeight)
+            $resultSurfaceBackground =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultSampleX,
+                    $resultSurfaceSampleY,
+                    $resultSampleWidth,
+                    $resultSurfaceSampleHeight)
+            $resultGutterBackground =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window,
+                    $resultSampleX,
+                    $resultGutterSampleY,
+                    $resultSampleWidth,
+                    $resultGutterSampleHeight)
+            $resultPaintDelta =
+                [Math]::Abs([int]$resultSurfaceBackground.MeanRed -
+                    [int]$resultGutterBackground.MeanRed) +
+                [Math]::Abs([int]$resultSurfaceBackground.MeanGreen -
+                    [int]$resultGutterBackground.MeanGreen) +
+                [Math]::Abs([int]$resultSurfaceBackground.MeanBlue -
+                    [int]$resultGutterBackground.MeanBlue)
+            $resultPixelsValid = (
+                $resultFrame.Width -ge 100 -and
+                $resultFrame.Height -ge 100 -and
+                $resultPixels.SampleCount -ge 32 -and
+                $resultGlyphPixels.SampleCount -ge 32 -and
+                $resultGlyphPixels.DistinctColorBuckets -ge 8 -and
+                $resultGlyphPixels.LuminanceSpread -ge 96 -and
+                $resultPixels.DistinctColorBuckets -ge 4 -and
+                $resultPixels.LuminanceSpread -ge 32 -and
+                $resultPaintDelta -ge 16)
+        } while (-not $resultPixelsValid -and
+                 [DateTime]::UtcNow -lt $resultCaptureDeadline)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if (-not $resultPixelsValid) {
+        throw "Command-result pixels did not settle after $resultCaptureAttempts attempts: samples=$($resultPixels.SampleCount), buckets=$($resultPixels.DistinctColorBuckets), spread=$($resultPixels.LuminanceSpread), glyph-buckets=$($resultGlyphPixels.DistinctColorBuckets), glyph-spread=$($resultGlyphPixels.LuminanceSpread), blank-pixel-delta=$resultPaintDelta, surface-rgb=$($resultSurfaceBackground.MeanRed)/$($resultSurfaceBackground.MeanGreen)/$($resultSurfaceBackground.MeanBlue), gutter-rgb=$($resultGutterBackground.MeanRed)/$($resultGutterBackground.MeanGreen)/$($resultGutterBackground.MeanBlue)"
+    }
+    if ($resultPaintDelta -lt 16) {
+        throw "Command-result resting paint is not perceptible against its gutter: RGB delta $resultPaintDelta"
     }
 
     # Establish whether latency is in generic frontend -> PTY delivery or in a
@@ -1256,8 +1675,9 @@ $rendererConfig
             (Get-ActiveAutomexiaPanel $cmdReady).shell_name -ne 'CMD' -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_integration -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_prompt_active -or
-            -not (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) -contains [Environment]::UserName) -or
-            [int]@((Get-ActiveAutomexiaPanel $cmdReady).context_segments).Count -lt 3 -or
+            (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) |
+                ConvertTo-Json -Compress) -ne $expectedContextSegmentsJson -or
+            (Get-ActiveAutomexiaPanel $cmdReady).shell_user -ne [Environment]::UserName -or
             -not [bool]$cmdReady.full_path_visible) -and
            [DateTime]::UtcNow -lt $cmdDeadline) {
         $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdReady.sequence)
@@ -1267,14 +1687,20 @@ $rendererConfig
         $cmdPanel.shell_name -ne 'CMD' -or
         -not [bool]$cmdPanel.shell_integration -or
         -not [bool]$cmdPanel.shell_prompt_active -or
-        -not (@($cmdPanel.context_segments) -contains [Environment]::UserName) -or
-        [int]@($cmdPanel.context_segments).Count -lt 3 -or
+        (@($cmdPanel.context_segments) | ConvertTo-Json -Compress) -ne
+            $expectedContextSegmentsJson -or
         -not [bool]$cmdReady.full_path_visible -or
-        [string]::IsNullOrWhiteSpace([string]$cmdPanel.shell_user) -or
+        $cmdPanel.shell_user -ne [Environment]::UserName -or
         [IO.Path]::GetFileName([string]$cmdPanel.shell_path) -ine 'cmd.exe' -or
         -not ([string]$cmdPanel.cursor_line_text).Contains([char]0x03BB)) {
         Write-Host ($cmdReady | ConvertTo-Json -Depth 10)
         throw 'Interactive CMD did not publish its shell, user, path, prompt, and complete working directory automatically'
+    }
+
+    $cmdPreviousResultKey = if ($null -eq $cmdReady.command_result_key) {
+        -1
+    } else {
+        [int64]$cmdReady.command_result_key
     }
 
     # Prove the display-only DOSKEY helper is active in the real pane and keeps
@@ -1287,7 +1713,13 @@ $rendererConfig
     $cmdListingDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while ((-not ((Get-ActiveAutomexiaPanel $cmdListing).visible_text.Contains("$folderGlyph apps\")) -or
             -not ((Get-ActiveAutomexiaPanel $cmdListing).visible_text.Contains("$rustGlyph Cargo.toml")) -or
-            -not [bool](Get-ActiveAutomexiaPanel $cmdListing).shell_prompt_active) -and
+            -not [bool](Get-ActiveAutomexiaPanel $cmdListing).shell_prompt_active -or
+            $null -eq $cmdListing.command_result_key -or
+            [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
+            $null -ne $cmdListing.command_result_generation -or
+            $null -ne $cmdListing.command_result_exit_code -or
+            $null -eq $cmdListing.command_result_surface -or
+            $null -eq $cmdListing.command_result_divider) -and
            [DateTime]::UtcNow -lt $cmdListingDeadline) {
         $cmdListing = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdListing.sequence)
     }
@@ -1296,6 +1728,15 @@ $rendererConfig
         -not $cmdListingPanel.visible_text.Contains("$rustGlyph Cargo.toml")) {
         Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
         throw 'Interactive CMD ls did not render category and Rust icons immediately beside names'
+    }
+    if ($null -eq $cmdListing.command_result_key -or
+        [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
+        $null -ne $cmdListing.command_result_generation -or
+        $null -ne $cmdListing.command_result_exit_code -or
+        $null -eq $cmdListing.command_result_surface -or
+        $null -eq $cmdListing.command_result_divider) {
+        Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
+        throw 'Interactive CMD output did not publish a fresh neutral result surface'
     }
 
     # Exit must restore the parent metadata on PowerShell's very next prompt;
@@ -1329,14 +1770,16 @@ $rendererConfig
     $cloneDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while (([int]$rightClone.panel_count -ne 2 -or
             $null -eq (Get-ActiveAutomexiaPanel $rightClone).shell_user -or
+            -not [bool](Get-ActiveAutomexiaPanel $rightClone).shell_prompt_active -or
             -not [bool]$rightClone.full_path_visible) -and
            [DateTime]::UtcNow -lt $cloneDeadline) {
         $rightClone = Read-AutomexiaSnapshot -AfterSequence ([int64]$rightClone.sequence)
     }
     $rightPanel = Get-ActiveAutomexiaPanel $rightClone
-    if ([int]$rightClone.panel_count -ne 2 -or $null -eq $rightPanel) {
+    if ([int]$rightClone.panel_count -ne 2 -or $null -eq $rightPanel -or
+        -not [bool]$rightPanel.shell_prompt_active) {
         Write-Host ($rightClone | ConvertTo-Json -Depth 8)
-        throw 'The clone-right action did not create an independent right split'
+        throw 'The clone-right action did not create a prompt-ready independent right split'
     }
     if ([int64]$rightPanel.route_id -eq [int64]$initialPanel.route_id -or
         [int64]$rightPanel.shell_pid -eq [int64]$initialPanel.shell_pid -or
@@ -1978,31 +2421,24 @@ $rendererConfig
     $imageResourceBaseline = Get-AutomexiaResourceSample $process
     $imageLifecycleFinal = $dismissed
     for ($cycle = 1; $cycle -le $ImagePreviewLifecycleCycles; $cycle++) {
-        if (-not [AutomexiaResizeDriver]::MovePointerToClient(
-            $window, $messagePreviewX, $messagePreHoverY) -or
-            -not [AutomexiaResizeDriver]::PostMessage(
-            $window, 0x0200, [IntPtr]::Zero, $preHoverLParam)) {
-            throw "Could not deliver preview lifecycle pre-hover for cycle $cycle"
-        }
-        $cyclePreHover =
-            Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
-        if (-not [AutomexiaResizeDriver]::MovePointerToClient(
-            $window, $messagePreviewX, $messagePreviewY) -or
-            -not [AutomexiaResizeDriver]::PostMessage(
-            $window, 0x0200, [IntPtr]::Zero, $mouseLParam)) {
-            throw "Could not deliver preview lifecycle hover for cycle $cycle"
-        }
+        # The real pointer hover/click/arrow path above proves user input. The
+        # repeated leak soak uses the feature-gated control so Windows cannot
+        # coalesce adjacent WM_MOUSEMOVE pairs and hide a resource result.
+        $cycleControl = "preview-image:${cycle}:$previewAssetSmall"
+        Send-AutomexiaTestControl $cycleControl
         $cycleVisible =
-            Read-AutomexiaSnapshot -AfterSequence ([int64]$cyclePreHover.sequence)
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
         $cycleVisibleDeadline = [DateTime]::UtcNow.AddSeconds(5)
-        while ((-not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
+        while (([string]$cycleVisible.last_control -ne $cycleControl -or
+                -not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
                 [int]$cycleVisible.image_preview.decoded_dimensions[0] -ne 64 -or
                 [int]$cycleVisible.image_preview.decoded_dimensions[1] -ne 64) -and
                [DateTime]::UtcNow -lt $cycleVisibleDeadline) {
             $cycleVisible =
                 Read-AutomexiaSnapshot -AfterSequence ([int64]$cycleVisible.sequence)
         }
-        if (-not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
+        if ([string]$cycleVisible.last_control -ne $cycleControl -or
+            -not (Test-AutomexiaImageResources $cycleVisible $true ([bool]$UseCpuRenderer) $expectedPreviewCacheEntries $expectedPreviewCacheBytes) -or
             [int]$cycleVisible.image_preview.decoded_dimensions[0] -ne 64 -or
             [int]$cycleVisible.image_preview.decoded_dimensions[1] -ne 64) {
             Write-Host ($cycleVisible | ConvertTo-Json -Depth 10)
@@ -2049,6 +2485,221 @@ $rendererConfig
             [int64]$imageResourceLimits[$name]) {
             throw "Repeated image preview resource ceiling exceeded for $name"
         }
+    }
+
+    # Pane and workspace search are one continuous session. Feature-gated
+    # controls exercise the same screen methods as the typed actions while the
+    # Rust binding tests own the physical Ctrl/Cmd chords. The snapshot exposes
+    # only query byte length, semantic status, and announcement generation; it
+    # never serializes the query or terminal contents.
+    $script:testStage = 'continuous scoped search session'
+    $openPaneSearch = 'open-pane-search:scope-session'
+    Send-AutomexiaTestControl $openPaneSearch
+    $paneSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+    $paneSearchDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$paneSearch.last_control -ne $openPaneSearch -or
+            -not [bool]$paneSearch.search_active -or
+            [string]$paneSearch.search_scope -ne 'pane' -or
+            [string]$paneSearch.search_focus -ne 'query') -and
+           [DateTime]::UtcNow -lt $paneSearchDeadline) {
+        $paneSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneSearch.sequence)
+    }
+    if ([string]$paneSearch.last_control -ne $openPaneSearch -or
+        -not [bool]$paneSearch.search_active -or
+        [string]$paneSearch.search_scope -ne 'pane' -or
+        [string]$paneSearch.search_focus -ne 'query' -or
+        [int]$paneSearch.search_query_bytes -ne 0) {
+        Write-Host ($paneSearch | ConvertTo-Json -Depth 8)
+        throw 'Pane search did not open as a focused empty continuous session'
+    }
+
+    $query = 'automexia-scope-retained-42'
+    $queryHex = -join (
+        [Text.Encoding]::UTF8.GetBytes($query) |
+            ForEach-Object { $_.ToString('x2') })
+    $setQueryControl = "set-search-query-hex:scope-query:$queryHex"
+    $cursorColumnBeforeSearch = [int]$paneSearch.cursor_column
+    $cursorRowBeforeSearch = [int]$paneSearch.cursor_row
+    Send-AutomexiaTestControl $setQueryControl
+    $querySearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneSearch.sequence)
+    $queryDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$querySearch.last_control -ne $setQueryControl -or
+            [int]$querySearch.search_query_bytes -ne
+                [Text.Encoding]::UTF8.GetByteCount($query) -or
+            [string]::IsNullOrWhiteSpace(
+                [string]$querySearch.search_result_status)) -and
+           [DateTime]::UtcNow -lt $queryDeadline) {
+        $querySearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$querySearch.sequence)
+    }
+    if ([string]$querySearch.last_control -ne $setQueryControl -or
+        [int]$querySearch.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int]$querySearch.cursor_column -ne $cursorColumnBeforeSearch -or
+        [int]$querySearch.cursor_row -ne $cursorRowBeforeSearch) {
+        Write-Host ($querySearch | ConvertTo-Json -Depth 8)
+        throw 'Search query input was not retained exclusively by the search session'
+    }
+
+    $paneAnnouncementGeneration =
+        [int64]$querySearch.search_announcement_generation
+    $openWorkspaceSearch = 'open-workspace-search:scope-expand'
+    Send-AutomexiaTestControl $openWorkspaceSearch
+    $workspaceSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$querySearch.sequence)
+    $workspaceDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$workspaceSearch.last_control -ne $openWorkspaceSearch -or
+            [string]$workspaceSearch.search_scope -ne 'workspace' -or
+            [string]$workspaceSearch.search_focus -ne 'query' -or
+            [int]$workspaceSearch.search_query_bytes -ne
+                [Text.Encoding]::UTF8.GetByteCount($query)) -and
+           [DateTime]::UtcNow -lt $workspaceDeadline) {
+        $workspaceSearch = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceSearch.sequence)
+    }
+    if ([string]$workspaceSearch.last_control -ne $openWorkspaceSearch -or
+        [string]$workspaceSearch.search_scope -ne 'workspace' -or
+        [string]$workspaceSearch.search_focus -ne 'query' -or
+        [int]$workspaceSearch.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int64]$workspaceSearch.search_announcement_generation -le
+            $paneAnnouncementGeneration -or
+        [string]$workspaceSearch.search_live_announcement -notlike
+            '*all visible panes*') {
+        Write-Host ($workspaceSearch | ConvertTo-Json -Depth 8)
+        throw 'Pane-to-workspace search switching lost query, focus, count, or announcement state'
+    }
+
+    $focusScopeControl = 'focus-search-scope:scope-keyboard'
+    Send-AutomexiaTestControl $focusScopeControl
+    $scopeFocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceSearch.sequence)
+    $focusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$scopeFocused.last_control -ne $focusScopeControl -or
+            [string]$scopeFocused.search_focus -ne 'scope') -and
+           [DateTime]::UtcNow -lt $focusDeadline) {
+        $scopeFocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$scopeFocused.sequence)
+    }
+    if ([string]$scopeFocused.search_focus -ne 'scope') {
+        Write-Host ($scopeFocused | ConvertTo-Json -Depth 8)
+        throw 'Search scope control did not receive keyboard focus'
+    }
+
+    $workspaceGeneration =
+        [int64]$scopeFocused.search_announcement_generation
+    $refocusWorkspace = 'open-workspace-search:scope-refocus'
+    Send-AutomexiaTestControl $refocusWorkspace
+    $workspaceRefocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$scopeFocused.sequence)
+    $refocusDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$workspaceRefocused.last_control -ne $refocusWorkspace -or
+            [string]$workspaceRefocused.search_focus -ne 'query') -and
+           [DateTime]::UtcNow -lt $refocusDeadline) {
+        $workspaceRefocused = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceRefocused.sequence)
+    }
+    if ([string]$workspaceRefocused.search_scope -ne 'workspace' -or
+        [string]$workspaceRefocused.search_focus -ne 'query' -or
+        [int]$workspaceRefocused.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int64]$workspaceRefocused.search_announcement_generation -ne
+            $workspaceGeneration) {
+        Write-Host ($workspaceRefocused | ConvertTo-Json -Depth 8)
+        throw 'The already-active workspace shortcut was not an idempotent query refocus'
+    }
+
+    $returnPaneSearch = 'open-pane-search:scope-contract'
+    Send-AutomexiaTestControl $returnPaneSearch
+    $paneReturned = Read-AutomexiaSnapshot -AfterSequence ([int64]$workspaceRefocused.sequence)
+    $returnDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$paneReturned.last_control -ne $returnPaneSearch -or
+            [string]$paneReturned.search_scope -ne 'pane' -or
+            [string]$paneReturned.search_focus -ne 'query') -and
+           [DateTime]::UtcNow -lt $returnDeadline) {
+        $paneReturned = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneReturned.sequence)
+    }
+    if ([string]$paneReturned.search_scope -ne 'pane' -or
+        [int]$paneReturned.search_query_bytes -ne
+            [Text.Encoding]::UTF8.GetByteCount($query) -or
+        [int64]$paneReturned.search_announcement_generation -le
+            $workspaceGeneration -or
+        [string]$paneReturned.search_live_announcement -notlike
+            '*current pane*') {
+        Write-Host ($paneReturned | ConvertTo-Json -Depth 8)
+        throw 'Workspace-to-pane search switching lost ownership, query, focus, or announcement state'
+    }
+
+    # Capture the real pane-footer composition while this continuous session is
+    # still active. This complements renderer-neutral geometry assertions with
+    # a native compositing check and an optional human-review artifact.
+    $searchFramePath = if ([string]::IsNullOrWhiteSpace($SearchCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($SearchCapture)
+    }
+    if ($null -ne $searchFramePath) {
+        $searchFrameDirectory = [IO.Path]::GetDirectoryName($searchFramePath)
+        if (-not [string]::IsNullOrWhiteSpace($searchFrameDirectory)) {
+            New-Item -ItemType Directory -Force -Path $searchFrameDirectory | Out-Null
+        }
+    }
+    $searchPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneReturned.sequence)
+    $searchRect = @($searchPresented.search_surface)
+    if ($searchRect.Count -ne 4) {
+        Write-Host ($searchPresented | ConvertTo-Json -Depth 8)
+        throw 'Scoped search did not publish its painted surface rectangle'
+    }
+    $searchScale = [double]$searchPresented.scale_factor
+    $searchX = [int][Math]::Floor([double]$searchRect[0] * $searchScale)
+    $searchY = [int][Math]::Floor([double]$searchRect[1] * $searchScale)
+    $searchWidth = [int][Math]::Ceiling([double]$searchRect[2] * $searchScale)
+    $searchHeight = [int][Math]::Ceiling([double]$searchRect[3] * $searchScale)
+    if ($searchWidth -lt 100 -or $searchHeight -lt 20) {
+        throw "Scoped search published an unusable surface: $searchWidth x $searchHeight"
+    }
+
+    $searchFrameDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $searchFrameAttempts = 0
+    $searchFrameValid = $false
+    $searchSurfaceValid = $false
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for scoped-search capture (Win32 error $code)"
+    }
+    try {
+        do {
+            $searchFrameAttempts++
+            Start-Sleep -Milliseconds 100
+            $searchFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $searchFramePath)
+            $searchSurfacePixels =
+                [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                    $window, $searchX, $searchY, $searchWidth, $searchHeight)
+            $searchFrameValid = (
+                $searchFrame.Width -ge 100 -and
+                $searchFrame.Height -ge 100 -and
+                $searchFrame.SampleCount -ge 100 -and
+                $searchFrame.DistinctColorBuckets -ge 8 -and
+                $searchFrame.LuminanceSpread -ge 32)
+            $searchSurfaceValid = (
+                $searchSurfacePixels.SampleCount -ge 32 -and
+                $searchSurfacePixels.DistinctColorBuckets -ge 6 -and
+                $searchSurfacePixels.LuminanceSpread -ge 32)
+        } while ((-not $searchFrameValid -or -not $searchSurfaceValid) -and
+                 [DateTime]::UtcNow -lt $searchFrameDeadline)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if (-not $searchFrameValid -or -not $searchSurfaceValid) {
+        throw "Scoped-search frame did not settle after $searchFrameAttempts attempts: frame=$($searchFrame.Width)x$($searchFrame.Height), frame-buckets=$($searchFrame.DistinctColorBuckets), surface-buckets=$($searchSurfacePixels.DistinctColorBuckets), surface-spread=$($searchSurfacePixels.LuminanceSpread)"
+    }
+
+    $closeSearchControl = 'close-search:scope-session'
+    Send-AutomexiaTestControl $closeSearchControl
+    $searchClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$paneReturned.sequence)
+    $closeSearchDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$searchClosed.last_control -ne $closeSearchControl -or
+            [bool]$searchClosed.search_active) -and
+           [DateTime]::UtcNow -lt $closeSearchDeadline) {
+        $searchClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchClosed.sequence)
+    }
+    if ([bool]$searchClosed.search_active) {
+        Write-Host ($searchClosed | ConvertTo-Json -Depth 8)
+        throw 'Search teardown left an input-owning session active'
     }
 
     # Both command surfaces are true modals: exactly one may be active, the
@@ -2269,6 +2920,57 @@ $rendererConfig
                 settle_milliseconds = $frameStopwatch.ElapsedMilliseconds
                 artifact = if ($null -eq $framePath) { $null } else { [IO.Path]::GetFileName($framePath) }
             }
+            scoped_search_frame = [ordered]@{
+                renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+                width = $searchFrame.Width
+                height = $searchFrame.Height
+                sample_count = $searchFrame.SampleCount
+                distinct_color_buckets = $searchFrame.DistinctColorBuckets
+                luminance_spread = $searchFrame.LuminanceSpread
+                attempts = $searchFrameAttempts
+                surface_sample_count = $searchSurfacePixels.SampleCount
+                surface_distinct_color_buckets = $searchSurfacePixels.DistinctColorBuckets
+                surface_luminance_spread = $searchSurfacePixels.LuminanceSpread
+                artifact = if ($null -eq $searchFramePath) {
+                    $null
+                } else {
+                    [IO.Path]::GetFileName($searchFramePath)
+                }
+            }
+            command_result_surface = [ordered]@{
+                renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+                pulse_generation = [int64]$historyReady.command_result_pulse_generation
+                surface = $resultSurface
+                divider = $resultDivider
+                breathing_gutter = $resultGutter
+                attempts = $resultCaptureAttempts
+                region_size = @($resultRegionWidth, $resultRegionHeight)
+                region_sample_count = $resultPixels.SampleCount
+                region_distinct_color_buckets = $resultPixels.DistinctColorBuckets
+                region_luminance_spread = $resultPixels.LuminanceSpread
+                glyph_sample_count = $resultGlyphPixels.SampleCount
+                glyph_distinct_color_buckets = $resultGlyphPixels.DistinctColorBuckets
+                glyph_luminance_spread = $resultGlyphPixels.LuminanceSpread
+                opacity = $resultOpacity
+                pulse_duration_milliseconds = [int]$historyReady.command_result_pulse_duration_ms
+                pulse_hold_fraction = $resultPulseHold
+                single_cycle = $true
+                blank_surface_mean_rgb = @(
+                    $resultSurfaceBackground.MeanRed,
+                    $resultSurfaceBackground.MeanGreen,
+                    $resultSurfaceBackground.MeanBlue)
+                blank_gutter_mean_rgb = @(
+                    $resultGutterBackground.MeanRed,
+                    $resultGutterBackground.MeanGreen,
+                    $resultGutterBackground.MeanBlue)
+                blank_surface_gutter_rgb_delta = $resultPaintDelta
+                representative_commands = $resultCommandEvidence
+                artifact = if ($null -eq $resultFramePath) {
+                    $null
+                } else {
+                    [IO.Path]::GetFileName($resultFramePath)
+                }
+            }
             modal_composition = [ordered]@{
                 renderer = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
                 palette = [ordered]@{
@@ -2348,6 +3050,11 @@ $rendererConfig
         Remove-Item Env:AUTOMEXIA_CONFIG_HOME -ErrorAction SilentlyContinue
     } else {
         $env:AUTOMEXIA_CONFIG_HOME = $previousConfigHome
+    }
+    if ($null -eq $previousVisualFixture) {
+        Remove-Item Env:AUTOMEXIA_VISUAL_TEST_FIXTURE -ErrorAction SilentlyContinue
+    } else {
+        $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = $previousVisualFixture
     }
     Remove-Item -LiteralPath $snapshotPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $controlPath -Force -ErrorAction SilentlyContinue

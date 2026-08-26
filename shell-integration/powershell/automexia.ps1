@@ -10,6 +10,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     [uint64]$script:AutomexiaPromptGeneration = 0
     $script:AutomexiaCachedPromptPath = $null
     $script:AutomexiaCachedStyledPromptPath = ''
+    $script:AutomexiaWrappedNativeExitCode = $null
 
     $env:COLORTERM = 'truecolor'
     $env:TERM_PROGRAM = 'Automexia'
@@ -43,6 +44,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             $env:AUTOMEXIA_PLAIN_CMD -eq '1' -or
             -not (Test-Path -LiteralPath $script:AutomexiaCmdIntegration)) {
             & $script:AutomexiaCmdExecutable @nativeArguments
+            $script:AutomexiaWrappedNativeExitCode = [int]$global:LASTEXITCODE
             return
         }
 
@@ -51,6 +53,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         $startup = 'chcp 65001>nul & set "AUTOMEXIA_CMD_PROMPT_GLYPH={0}" & call "{1}"' -f
             ([char]0x03BB), $script:AutomexiaCmdIntegration.Replace('"', '""')
         & $script:AutomexiaCmdExecutable /D /K $startup
+        $script:AutomexiaWrappedNativeExitCode = [int]$global:LASTEXITCODE
     }
     Set-Alias -Name cmd -Value Invoke-AutomexiaCmd -Scope Global -Force
     Set-Alias -Name cmd.exe -Value Invoke-AutomexiaCmd -Scope Global -Force
@@ -195,7 +198,14 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
 
     function global:prompt {
         $succeeded = $?
-        $exitCode = if ($succeeded) { 0 } elseif ($null -ne $global:LASTEXITCODE) { $global:LASTEXITCODE } else { 1 }
+        # A PowerShell function call reports its own invocation as successful
+        # even when the wrapped CMD child failed. Consume the exact status
+        # captured by our wrapper; otherwise avoid stale LASTEXITCODE and use
+        # PowerShell's truthful success/failure signal. Never mutate the
+        # user-owned LASTEXITCODE variable.
+        $wrappedNativeExitCode = $script:AutomexiaWrappedNativeExitCode
+        $script:AutomexiaWrappedNativeExitCode = $null
+        $exitCode = if ($null -ne $wrappedNativeExitCode) { $wrappedNativeExitCode } elseif ($succeeded) { 0 } else { 1 }
         Publish-AutomexiaPowerShellIdentity
         $script:AutomexiaPromptGeneration++
         $promptPath = Get-AutomexiaPromptPath
@@ -274,4 +284,398 @@ if ($global:AutomexiaShellIntegrationLoaded) {
         . $automexiaCompletionAdapter
     }
     Remove-Variable automexiaCompletionAdapter -ErrorAction SilentlyContinue
+}
+# CP3.1 persistent aliases. Startup consumes one already-generated immutable
+# generation; it never rewrites source state or invokes a completion provider.
+if (-not $global:AutomexiaAliasLoaderInitialized) {
+    $global:AutomexiaAliasLoaderInitialized = $true
+    $script:AutomexiaAliasState = 'Uninitialized'
+    $script:AutomexiaAliasReason = $null
+    $script:AutomexiaAliasGeneration = $null
+    $script:AutomexiaAliasLoadedPath = $null
+    $script:AutomexiaAliasRecords = [Collections.Generic.List[object]]::new()
+    $script:AutomexiaAliasCollisions = [Collections.Generic.List[string]]::new()
+    $script:AutomexiaAliasConfigRoot = if ($env:AUTOMEXIA_CONFIG_HOME) {
+        $env:AUTOMEXIA_CONFIG_HOME
+    } elseif ($env:LOCALAPPDATA) {
+        Join-Path $env:LOCALAPPDATA 'Automexia\Terminal'
+    } else {
+        $null
+    }
+    $script:AutomexiaAliasRoot = if ($script:AutomexiaAliasConfigRoot) {
+        Join-Path $script:AutomexiaAliasConfigRoot 'generated\aliases'
+    } else {
+        $null
+    }
+    $script:AutomexiaAliasCurrentSid = try {
+        [Security.Principal.WindowsIdentity]::GetCurrent().User
+    } catch {
+        $null
+    }
+
+    function script:Get-AutomexiaAliasSha256([string]$Path) {
+        $stream = [IO.File]::OpenRead($Path)
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $sha.Dispose()
+            $stream.Dispose()
+        }
+    }
+
+    function script:Get-AutomexiaAliasTextSha256([string]$Text) {
+        $sha = [Security.Cryptography.SHA256]::Create()
+        try {
+            $bytes = [Text.Encoding]::UTF8.GetBytes($Text)
+            return ([BitConverter]::ToString($sha.ComputeHash($bytes))).Replace('-', '').ToLowerInvariant()
+        } finally {
+            $sha.Dispose()
+        }
+    }
+
+    function script:Test-AutomexiaAliasPrivateItem(
+        [string]$Path,
+        [bool]$Directory,
+        [long]$Maximum = 0
+    ) {
+        if (-not (Test-Path -LiteralPath $Path)) { return $false }
+        try {
+            $item = Get-Item -LiteralPath $Path -Force -ErrorAction Stop
+            if ($item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -or
+                $item.PSIsContainer -ne $Directory) {
+                return $false
+            }
+            if (-not $Directory -and $item.Length -gt $Maximum) { return $false }
+            if (-not $script:AutomexiaAliasCurrentSid) { return $false }
+            $acl = [IO.FileSystemAclExtensions]::GetAccessControl($item)
+            if (-not $acl.AreAccessRulesProtected) { return $false }
+            $rules = @($acl.GetAccessRules(
+                $true,
+                $false,
+                [Security.Principal.SecurityIdentifier]
+            ))
+            if ($rules.Count -ne 1) { return $false }
+            return $rules[0].IdentityReference -eq $script:AutomexiaAliasCurrentSid -and
+                $rules[0].AccessControlType -eq [Security.AccessControl.AccessControlType]::Allow
+        } catch {
+            return $false
+        }
+    }
+
+    function script:Get-AutomexiaAliasDefinitionDigest(
+        [ValidateSet('Alias','Function')][string]$Kind,
+        [string]$Name
+    ) {
+        try {
+            if ($Kind -eq 'Alias') {
+                $alias = Get-Alias -Name $Name -ErrorAction Stop
+                return Get-AutomexiaAliasTextSha256 "Alias|$($alias.Name)|$($alias.Definition)"
+            }
+            $function = Get-Item -LiteralPath "Function:\global:$Name" -ErrorAction Stop
+            return Get-AutomexiaAliasTextSha256 "Function|$Name|$($function.ScriptBlock.ToString())"
+        } catch {
+            return $null
+        }
+    }
+
+    function script:Test-AutomexiaAliasOwnedPublic([string]$Name) {
+        $record = @($script:AutomexiaAliasRecords | Where-Object {
+            $_.Kind -eq 'Alias' -and $_.Name -eq $Name
+        } | Select-Object -First 1)
+        if ($record.Count -ne 1) { return $false }
+        return (Get-AutomexiaAliasDefinitionDigest Alias $Name) -eq $record[0].Digest
+    }
+
+    function script:Get-AutomexiaAliasRuntimeOwnerFingerprint([string]$Name) {
+        $reserved = @(
+            'begin','break','catch','class','continue','data','do','else','elseif',
+            'end','exit','filter','finally','for','foreach','from','function','hidden',
+            'if','in','param','process','return','static','switch','throw','trap','try',
+            'until','using','var','while','workflow'
+        )
+        if ($reserved -contains $Name) {
+            return Get-AutomexiaAliasTextSha256 "powershell|Builtin|$Name|shell-builtin"
+        }
+        $application = @(Get-Command -Name $Name -CommandType Application -All -ErrorAction SilentlyContinue |
+            Select-Object -First 1)
+        if ($application.Count -eq 1 -and
+            (Test-Path -LiteralPath $application[0].Source -PathType Leaf)) {
+            $item = Get-Item -LiteralPath $application[0].Source -Force
+            if (-not $item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -and
+                $item.Length -le 512MB) {
+                return Get-AutomexiaAliasSha256 $application[0].Source
+            }
+        }
+        return $null
+    }
+
+    function script:Test-AutomexiaAliasNameExists([string]$Name) {
+        if (Test-Path -LiteralPath "Alias:\$Name") { return $true }
+        if (Test-Path -LiteralPath "Function:\$Name") { return $true }
+        $reserved = @(
+            'begin','break','catch','class','continue','data','do','else','elseif',
+            'end','exit','filter','finally','for','foreach','from','function','hidden',
+            'if','in','param','process','return','static','switch','throw','trap','try',
+            'until','using','var','while','workflow'
+        )
+        if ($reserved -contains $Name) { return $true }
+        return $null -ne (Get-Command -Name $Name -ErrorAction SilentlyContinue |
+            Select-Object -First 1)
+    }
+
+    function script:Read-AutomexiaAliasCandidate {
+        $script:AutomexiaAliasReason = $null
+        $script:AutomexiaAliasCollisions.Clear()
+        $script:AutomexiaAliasCandidateGeneration = $null
+        $script:AutomexiaAliasCandidatePath = $null
+        $script:AutomexiaAliasCandidateNames = @()
+        $script:AutomexiaAliasCandidateOverrides = @{}
+
+        if (-not $script:AutomexiaAliasConfigRoot -or
+            $script:AutomexiaAliasConfigRoot -notmatch '^[A-Za-z]:[\\/]' -or
+            [Text.Encoding]::UTF8.GetByteCount($script:AutomexiaAliasConfigRoot) -gt 4096) {
+            $script:AutomexiaAliasState = 'UnsafePath'
+            $script:AutomexiaAliasReason = 'config-root'
+            return $false
+        }
+        foreach ($directory in @(
+            (Join-Path $script:AutomexiaAliasConfigRoot 'generated'),
+            $script:AutomexiaAliasRoot,
+            (Join-Path $script:AutomexiaAliasRoot 'generations')
+        )) {
+            if (-not (Test-AutomexiaAliasPrivateItem $directory $true)) {
+                $script:AutomexiaAliasState = 'UnsafePermissions'
+                $script:AutomexiaAliasReason = 'directory'
+                return $false
+            }
+        }
+
+        $pointer = Join-Path $script:AutomexiaAliasRoot 'current'
+        if (-not (Test-AutomexiaAliasPrivateItem $pointer $false 80)) {
+            $script:AutomexiaAliasState = 'Uninitialized'
+            $script:AutomexiaAliasReason = 'current'
+            return $false
+        }
+        $pointerText = [IO.File]::ReadAllText($pointer)
+        if (-not $pointerText.EndsWith("`n") -or $pointerText.Contains("`r")) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'current-lines'
+            return $false
+        }
+        $generation = $pointerText.Substring(0, $pointerText.Length - 1)
+        if ($generation -eq 'disabled') {
+            $script:AutomexiaAliasState = 'Disabled'
+            return $false
+        }
+        if ($generation -notmatch '^[0-9a-f]{64}$') {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'current-format'
+            return $false
+        }
+
+        $generationDirectory = Join-Path $script:AutomexiaAliasRoot "generations\$generation"
+        if (-not (Test-AutomexiaAliasPrivateItem $generationDirectory $true)) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'generation-directory'
+            return $false
+        }
+        $manifest = Join-Path $generationDirectory 'generation.manifest'
+        if (-not (Test-AutomexiaAliasPrivateItem $manifest $false 65536) -or
+            (Get-AutomexiaAliasSha256 $manifest) -ne $generation) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'manifest-digest'
+            return $false
+        }
+        $manifestText = [IO.File]::ReadAllText($manifest)
+        $lines = @([IO.File]::ReadAllLines($manifest))
+        if (-not $manifestText.EndsWith("`n") -or $manifestText.Contains("`r") -or
+
+            $lines.Count -ne 10 -or
+            $lines[0] -ne 'automexia-alias-generation-v1' -or
+            $lines[1] -ne 'schema=1' -or
+            $lines[2] -notmatch '^source-revision=(0|[1-9][0-9]*)$' -or
+            $lines[3] -notmatch '^source-digest=[0-9a-f]{64}$' -or
+            $lines[4] -ne 'generator=automexia-devops/0.4.0' -or
+            $lines[5] -notmatch '^shell=powershell\|' -or
+            $lines[6] -notmatch '^shell=bash\|' -or
+            $lines[7] -notmatch '^shell=zsh\|' -or
+            $lines[8] -notmatch '^shell=fish\|' -or
+            $lines[9] -notmatch '^shell=cmd\|') {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'manifest-header'
+            return $false
+        }
+        $shellLines = @($lines | Where-Object { $_.StartsWith('shell=powershell|') })
+        if ($shellLines.Count -ne 1) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'manifest-shell'
+            return $false
+        }
+        $fields = $shellLines[0].Split('|')
+        if ($fields.Count -ne 8 -or
+            $fields[0] -ne 'shell=powershell' -or
+            $fields[1] -ne 'automexia-aliases.ps1' -or
+            $fields[2] -notmatch '^[0-9a-f]{64}$' -or
+            $fields[3] -notmatch '^[0-9a-f]{64}$' -or
+            $fields[4] -notmatch '^[0-9]+$' -or
+            $fields[5] -notmatch '^[0-9]+$') {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'manifest-shell'
+            return $false
+        }
+        $names = if ($fields[6]) { @($fields[6].Split(',')) } else { @() }
+        if ($names.Count -ne [int]$fields[4] -or
+            @($names | Where-Object { $_ -notmatch '^[a-z][a-z0-9-]{1,31}$' }).Count -ne 0) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'binding-count'
+            return $false
+        }
+        if ($fields[7]) {
+            foreach ($entry in $fields[7].Split(',')) {
+                $parts = $entry.Split(':')
+                if ($parts.Count -ne 2 -or $parts[0] -notmatch '^[a-z][a-z0-9-]{1,31}$' -or
+                    $parts[1] -notmatch '^[0-9a-f]{64}$' -or $names -notcontains $parts[0] -or
+                    $script:AutomexiaAliasCandidateOverrides.ContainsKey($parts[0])) {
+                    $script:AutomexiaAliasState = 'Tampered'
+                    $script:AutomexiaAliasReason = 'override'
+                    return $false
+                }
+                $script:AutomexiaAliasCandidateOverrides[$parts[0]] = $parts[1]
+            }
+        }
+
+        $shellDirectory = Join-Path $generationDirectory 'powershell'
+        if (-not (Test-AutomexiaAliasPrivateItem $shellDirectory $true)) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'shell-directory'
+            return $false
+        }
+        $artifact = Join-Path $shellDirectory $fields[1]
+        if (-not (Test-AutomexiaAliasPrivateItem $artifact $false 1114112) -or
+            (Get-AutomexiaAliasSha256 $artifact) -ne $fields[2]) {
+            $script:AutomexiaAliasState = 'Tampered'
+            $script:AutomexiaAliasReason = 'artifact-digest'
+            return $false
+        }
+
+        foreach ($name in $names) {
+            if ((Test-AutomexiaAliasNameExists $name) -and
+                -not (Test-AutomexiaAliasOwnedPublic $name)) {
+                $actual = Get-AutomexiaAliasRuntimeOwnerFingerprint $name
+                if (-not $script:AutomexiaAliasCandidateOverrides.ContainsKey($name) -or
+                    -not $actual -or
+                    $actual -ne $script:AutomexiaAliasCandidateOverrides[$name]) {
+                    $script:AutomexiaAliasCollisions.Add($name)
+                }
+            }
+        }
+        if ($script:AutomexiaAliasCollisions.Count -ne 0) {
+            $script:AutomexiaAliasState = 'Collision'
+            $script:AutomexiaAliasReason = 'native-wins'
+            return $false
+        }
+
+        $script:AutomexiaAliasCandidateGeneration = $generation
+        $script:AutomexiaAliasCandidatePath = $artifact
+        $script:AutomexiaAliasCandidateNames = $names
+        return $true
+    }
+
+    function script:Enable-AutomexiaAliasCandidate {
+        try {
+            & {
+                $ErrorActionPreference = 'Stop'
+                . $script:AutomexiaAliasCandidatePath
+            }
+            $records = [Collections.Generic.List[object]]::new()
+            foreach ($name in $script:AutomexiaAliasCandidateNames) {
+                $alias = Get-Alias -Name $name -ErrorAction Stop
+                $digest = Get-AutomexiaAliasDefinitionDigest Alias $name
+                if (-not $digest) { throw "Alias activation did not create $name" }
+                $records.Add([pscustomobject]@{
+                    Kind = 'Alias'; Name = $name; Digest = $digest
+                })
+                if ($alias.Definition -match '^__AutomexiaCp3[0-9a-f]{16}$' -and
+                    (Test-Path -LiteralPath "Function:\global:$($alias.Definition)")) {
+                    $functionDigest = Get-AutomexiaAliasDefinitionDigest Function $alias.Definition
+                    if (-not $functionDigest) { throw "Wrapper activation failed for $name" }
+                    $records.Add([pscustomobject]@{
+                        Kind = 'Function'; Name = $alias.Definition; Digest = $functionDigest
+                    })
+                }
+            }
+            $script:AutomexiaAliasRecords = $records
+            $script:AutomexiaAliasGeneration = $script:AutomexiaAliasCandidateGeneration
+            $script:AutomexiaAliasLoadedPath = $script:AutomexiaAliasCandidatePath
+            $script:AutomexiaAliasState = 'Ready'
+            $script:AutomexiaAliasReason = $null
+            return $true
+        } catch {
+            $script:AutomexiaAliasReason = 'source'
+            return $false
+        }
+    }
+
+    function global:Reload-AutomexiaAliases {
+        [CmdletBinding()]
+        param()
+        $oldGeneration = $script:AutomexiaAliasGeneration
+        $oldPath = $script:AutomexiaAliasLoadedPath
+        $oldRecords = $script:AutomexiaAliasRecords
+
+        if (-not (Read-AutomexiaAliasCandidate)) {
+            if ($oldGeneration) {
+                $script:AutomexiaAliasReason = "reload-$($script:AutomexiaAliasState)-lkg"
+            }
+            return $false
+        }
+        if ($script:AutomexiaAliasCandidateGeneration -eq $oldGeneration) {
+            $script:AutomexiaAliasState = 'Ready'
+            return $true
+        }
+        foreach ($record in $oldRecords) {
+            if ((Get-AutomexiaAliasDefinitionDigest $record.Kind $record.Name) -ne $record.Digest) {
+                $script:AutomexiaAliasState = 'ReloadConflict'
+                $script:AutomexiaAliasReason = 'definition-changed'
+                return $false
+            }
+        }
+        foreach ($record in $oldRecords) {
+            if ($record.Kind -eq 'Alias') {
+                Remove-Item -LiteralPath "Alias:\$($record.Name)" -Force
+            } else {
+                Remove-Item -LiteralPath "Function:\global:$($record.Name)" -Force
+            }
+        }
+        if (Enable-AutomexiaAliasCandidate) { return $true }
+
+        if ($oldPath -and (Test-AutomexiaAliasPrivateItem $oldPath $false 1114112)) {
+            try { . $oldPath } catch {}
+        }
+        $script:AutomexiaAliasGeneration = $oldGeneration
+        $script:AutomexiaAliasLoadedPath = $oldPath
+        $script:AutomexiaAliasRecords = $oldRecords
+        $script:AutomexiaAliasState = 'ReloadFailedLkg'
+        $script:AutomexiaAliasReason = 'activation'
+        return $false
+    }
+
+    function global:Get-AutomexiaAliasHealth {
+        [CmdletBinding()]
+        param()
+        [pscustomobject]@{
+            Shell = 'PowerShell'
+            State = $script:AutomexiaAliasState
+            Generation = $script:AutomexiaAliasGeneration
+            Collisions = @($script:AutomexiaAliasCollisions)
+            Reason = $script:AutomexiaAliasReason
+        }
+    }
+
+    if (Read-AutomexiaAliasCandidate) {
+        if (-not (Enable-AutomexiaAliasCandidate)) {
+            $script:AutomexiaAliasState = 'ActivationFailed'
+        }
+    }
 }

@@ -5,10 +5,16 @@
 
 use std::collections::BTreeSet;
 
+pub use automexia_extension_api::{compact_label, compact_middle};
 use automexia_extension_api::{
     ContextContribution, DetailsAction, Freshness, IconKind, SegmentRole, SessionFacts,
 };
 use unicode_segmentation::UnicodeSegmentation;
+
+pub mod connection_hub;
+pub mod quick_actions;
+
+pub mod suggestions;
 
 pub const MIN_TEXT_CONTRAST: f32 = 4.55;
 /// Context tags use a restrained semantic tint so they read as passive
@@ -201,37 +207,6 @@ pub fn accessibility_summary(segments: &[Segment]) -> String {
         })
         .collect::<Vec<_>>()
         .join("; ")
-}
-
-pub fn compact_label(value: &str, max_graphemes: usize) -> String {
-    let value = value.trim();
-    let graphemes = value.graphemes(true).collect::<Vec<_>>();
-    if graphemes.len() <= max_graphemes {
-        return value.to_string();
-    }
-    if max_graphemes == 0 {
-        return String::new();
-    }
-    let keep = max_graphemes.saturating_sub(1);
-    format!("{}…", graphemes[..keep].concat())
-}
-
-pub fn compact_middle(value: &str, max_graphemes: usize) -> String {
-    let value = value.trim();
-    let graphemes = value.graphemes(true).collect::<Vec<_>>();
-    if graphemes.len() <= max_graphemes {
-        return value.to_string();
-    }
-    if max_graphemes < 5 {
-        return compact_label(value, max_graphemes);
-    }
-    let left = (max_graphemes - 1) / 2;
-    let right = max_graphemes - left - 1;
-    format!(
-        "{}…{}",
-        graphemes[..left].concat(),
-        graphemes[graphemes.len() - right..].concat()
-    )
 }
 
 pub fn segment_anchor_rgb(role: SegmentRole) -> [u8; 3] {

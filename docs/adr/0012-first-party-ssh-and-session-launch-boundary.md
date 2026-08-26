@@ -1,6 +1,6 @@
 # ADR 0012: First-party SSH and scoped session-launch boundary
 
-- Status: Proposed; acceptance is required before process-capable code is enabled
+- Status: Accepted by the project owner on 2026-08-22; production activation remains blocked by ADR 0003's two independent exact-head approvals and the evidence below
 - Date: 2026-08-13
 - Replaces: ADR 0003 only for the narrowly scoped first-party capability below
 
@@ -96,24 +96,109 @@ are exposed.
 
 ## Non-activated implementation evidence
 
-As of 2026-08-15, the typed capability identity, fixed-location executable
-resolver with fail-closed configured overrides, native file-identity
-revalidation, exact one-destination SSH grammar, bounded core-owned
-environment/cwd validation, expiring exact-scope decisions, active
-session/capsule registration, monotonic replay-resistant operation leases,
-bounded lifecycle state, revocation, and redacted authorization audit model
-exist only in a `#[cfg(test)]` frontend module. Architecture verification
-enforces that gate and the absence of process or PTY creation in the broker.
+As of 2026-08-22, the active local D0/D3/M5 contract is
+`tests/fixtures/session-launch/d0-d3-contract-v5.json`; schemas 1-4 remain
+byte-for-byte hash-checked history. Schema 5 retains their manual/fixture,
+package/grant/audit/trust-boundary, and four-platform rules and adds the exact
+M5 tunnel/lifecycle plus 23-scenario source/build/fixture/security/resource
+native-evidence ratchet.
 
-This evidence does not accept this ADR and does not enable the capability. The
-remaining acceptance evidence includes the real package digest/signature,
-compatibility, and revocation proof; visible decision/grant policy; atomic
-native check-to-spawn; application-owned process/PTY/route binding; real native
-spawn/cancel/teardown on Windows/Linux/macOS; D4 SSH security behavior;
-redaction across every listed surface; and controlled 1/10/50-session process,
-PTY, renderer, performance, and leak results. The current exact limits and
-commands are in the
-[broker contract](../SESSION-LAUNCH-BROKER.md).
+It also records nine trust boundaries with accepted/returned data, limits,
+cancellation, logging, and failure ownership plus a hermetic fixture protocol:
+loopback-only server, isolated disposable authentication state, bounded probes
+and lifecycle timeouts, DNS/connect/auth cancellation, hostile argument corpus,
+platform activation semantics, cleanup invariants, evidence metadata, private
+artifact policy, and nine redaction surfaces. Dedicated checks reject drift.
+
+The production-compiled broker remains a compile-time hard denial. Its review
+harness binds a verified principal to an exact reviewed package policy including
+digest, version, contract version, and repository-reviewed or first-party-signed
+proof. It separates Windows, macOS, Linux, and disabled WSL resolution, retains
+native file-identity revalidation, and keeps exact argv, bounded environment/cwd,
+expiring decision, session/capsule, replay, revocation, lifecycle, and
+redacted-audit controls. The linked first-party candidate is deliberately
+unverified until a real loader supplies attestation and revocation evidence.
+
+As of 2026-08-22, one application-owned ExternalToolRunner is shared by every
+window. It caps active operations at 50, retains 256 redacted audit records,
+binds route ID to session ID, rejects completion before publication, and
+reconciles cancellation on route/application shutdown. ContextManager alone
+consumes the guarded executable, creates the exact platform PTY, inserts the new
+route before marking the lease published, and reconciles natural completion.
+The protected activation constant remains false, so this production code cannot
+resolve OpenSSH or create a managed child.
+
+As of 2026-08-22, schema 5 retains immutable schemas 1-4 and adds M5 to
+the nonactivated M3/M4 source ratchet. Direct argv uses 17 fixed defensive options plus optional exact `-l`/`-p`
+values and one host; config-routed argv uses the 15-option subset plus one
+canonical bounded `-J` chain and one alias. Both are bound to a fresh full-review
+equality check and current native executable identity. The broker
+rejects option/order/count or file-identity drift. ContextManager remains the
+only PTY/route owner, application child exit supplies the real result, and
+route close no longer implies success. Fixed redacted notifications and a
+private atomic 256-record/2-MiB receipt store cover success, failure, unavailable
+status, cancel, revoke, close, and shutdown. The connection-owned private-filesystem
+adapter keeps D5.2 independent from Quick Actions while enforcing no-follow opens,
+stable Windows handle identity, link/reparse rejection, private Windows DACL or
+Unix mode checks, bounded snapshots, atomic replacement, and directory
+synchronization. Opaque reconnect identity must match current D4 source and always returns to
+fresh review and approval. M4 binds complete public host-key algorithm/SHA-256
+and public identity evidence; changed keys cannot bind, `known_hosts` is never
+mutated, the `C` copy handoff cannot execute or add Enter, and the exact bounded
+`ssh-add -l -E sha256` request/parser remains nonactivated with no secret custody.
+
+M5 retains those M3/M4 grammars and adds a distinct reviewed typed-tunnel
+grammar. Tunnel requests load no configuration (`-F none`), use exact
+`-L`/`-R`/`-D` arguments, default local/dynamic binds to
+`127.0.0.1`, and reject config aliases or jump routes. Remote, non-loopback, or
+production forwarding requires a fresh Allow-once decision; session grants are
+disabled. OpenSSH remains the only prospective listener owner. A bounded
+session/generation/tunnel lifecycle rejects stale owner events and terminal
+reversal and closes every nonterminal state with its route lease. Active schema
+5 preserves immutable schemas 1-4 and binds these rules plus the exact redacted
+native-manifest contract. Synthetic fixtures test the validator but cannot
+satisfy release evidence; controlled real Windows/macOS/Linux runs remain
+external.
+
+Automexia deliberately leaves OpenSSH key-exchange defaults and weak-crypto
+warnings untouched. User configuration may execute OpenSSH-owned helpers during
+launch, so real descendant-tree cleanup and native resource evidence remain
+activation gates. The source implementation does not satisfy package
+attestation, protected approval, or native execution requirements.
+The F2/D5.0 capability-free baseline is also implemented as of 2026-08-17.
+`automexia-devops::connections` contains bounded public-only records, strict
+validation, exhaustive state reducers, canonical approval fingerprints, and a
+deterministic dry-run planner. `automexia-ui-model::connection_hub` contains
+pure responsive Hub/review/planner and accessibility projections. Frozen
+all-provider/all-auth fixtures, hostile/property/mutation tests, fuzz ownership,
+and a 64-step benchmark are registered. Every process, network, provider,
+credential, PTY, listener, renderer, and GPU authority remains absent or false.
+As of 2026-08-22, M3/M4 also have a production-reachable but nonactivated
+preparation route. The application maps a current D4 direct/config-jump record
+or transient typed host/user/port into a stable public profile and canonical
+pending F2 plan. Inventory generation and
+metadata revision bind the preparation; session.launch is the only requested
+capability; no current executable identity exists yet; every resolved-plan
+authority remains false. The Connection Hub projects bounded public decisions into
+responsive Connection/Safety/Launch groups. Its deny, allow-once, and
+allow-session approval actions are pointer- and mnemonic-accessible, but
+execution remains false and every attempt stops at the protected broker denial.
+Exact aliases, opaque references, executable digests, and fingerprints do not
+enter presentation state. Selection, route, runtime-state, generation, catalog, and
+metadata changes discard or rebuild the preparation. The existing
+identity-bound pure review remains the later consumer of M2-provided current
+executable, identity-observation, and host-trust evidence. No process, PTY, network, credential, listener, host-trust mutation, or secret
+authority is reachable while the activation gate is false.
+
+The project owner's acceptance of this ADR records the architectural decision;
+it does not enable the capability or satisfy ADR 0003's protected-path rule.
+Remaining activation evidence includes two independent exact-head approvals;
+green hosted S0/release/CodeQL gates; real package-loader
+attestation/revocation; current executable and identity observation; execution
+of the native matrix on Windows/Linux/macOS/WSL; redaction across every listed
+surface; and controlled 1/10/50-session process, PTY, renderer, performance, and
+leak results. Exact limits and commands are in
+the [broker contract](../SESSION-LAUNCH-BROKER.md).
 
 ## Consequences
 
@@ -132,5 +217,15 @@ through explicit later ADRs and the gates in the
 The application-owned approval and user-journey consequences of this boundary
 are specified in [Connection Hub](../CONNECTION-HUB.md). Its renderer-neutral
 review/state model, externally owned credential recovery warning, and native
-evidence are required acceptance work; the document does not activate this
-proposed ADR or broaden its authority.
+evidence are required activation work; this document does not by itself enable managed
+launch or broaden its authority.
+
+## 2026-08-26 ownership amendment
+
+The active contract is now
+`tests/fixtures/session-launch/d0-d3-contract-v6.json`. Schema 6 ratchets the
+exact schema-5 digest and changes only current source/evidence ownership paths
+from the former mixed DevOps package to `automexia-connectivity`. It does not
+change launch grammar, trust decisions, tunnel lifecycle, activation, authority,
+or native release requirements. Schemas 1-5 remain byte-for-byte hash-checked
+history. ADR 0035 owns the placement decision.

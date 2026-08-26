@@ -437,10 +437,7 @@ pub struct Surface {
     #[cfg(all(feature = "pty", not(target_os = "windows")))]
     main_fd: std::os::fd::RawFd,
     #[cfg(feature = "pty")]
-    _io_thread: std::thread::JoinHandle<(
-        Machine<teletypewriter::Pty, Listener>,
-        rio_vt::performer::State,
-    )>,
+    _io_thread: Option<rio_vt::performer::PtyWorkerHandle<()>>,
 }
 
 /// Encode one mouse report. SGR (`CSI < b ; x ; y M`) when the program
@@ -606,7 +603,7 @@ impl Surface {
                 shell_pid,
                 #[cfg(not(target_os = "windows"))]
                 main_fd,
-                _io_thread: io_thread,
+                _io_thread: Some(io_thread),
             })
         }
     }
@@ -1232,6 +1229,14 @@ impl Drop for Surface {
         let _ = self.channel.send(Msg::Shutdown);
         #[cfg(not(target_os = "windows"))]
         teletypewriter::kill_pid(self.shell_pid as i32);
+        if let Some(mut worker) = self._io_thread.take() {
+            if !worker.join_timeout(std::time::Duration::from_secs(10)) {
+                tracing::warn!(
+                    surface_id = self.id,
+                    "PTY worker did not join within the bounded shutdown budget"
+                );
+            }
+        }
     }
 }
 

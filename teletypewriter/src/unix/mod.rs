@@ -6,7 +6,10 @@ mod signals;
 
 extern crate libc;
 
-use crate::{ChildEvent, EventedPty, ProcessReadWrite, Winsize, WinsizeBuilder};
+use crate::{
+    ChildEvent, EventedPty, ExactExecutable, ManagedPtyShutdown, ProcessReadWrite,
+    Winsize, WinsizeBuilder,
+};
 use corcovado::unix::EventedFd;
 #[cfg(target_os = "macos")]
 use macos::*;
@@ -20,11 +23,13 @@ use std::mem::MaybeUninit;
 use std::ops::Deref;
 use std::os::fd::OwnedFd;
 use std::os::fd::{AsRawFd, FromRawFd, RawFd};
+use std::os::unix::ffi::OsStrExt;
 use std::os::unix::process::CommandExt;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::ptr;
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 #[cfg(all(target_os = "linux", not(target_env = "musl")))]
 const TIOCSWINSZ: libc::c_ulong = 0x5414;
@@ -125,6 +130,9 @@ pub struct Pty {
     token: corcovado::Token,
     signals_token: corcovado::Token,
     signals: Signals,
+    managed_owned_tree: bool,
+    managed_leader_reaped: bool,
+    managed_reconciled: bool,
 }
 
 impl Deref for Pty {
@@ -489,6 +497,138 @@ pub fn create_pty_with_spawn(
     width: u16,
     height: u16,
 ) -> Result<Pty, Error> {
+    create_pty_with_spawn_inner(
+        None,
+        shell,
+        args,
+        working_directory,
+        env,
+        columns,
+        rows,
+        width,
+        height,
+    )
+}
+
+/// Create a managed Unix PTY from an opened, identity-bound executable.
+///
+/// The child executes the reviewed descriptor with fexecve, so replacing the
+/// pathname after review cannot redirect execution. Only the supplied
+/// application-owned environment is visible to the child.
+#[allow(clippy::too_many_arguments)]
+pub fn create_exact_pty(
+    executable: ExactExecutable,
+    args: Vec<String>,
+    working_directory: &Option<String>,
+    environment: Vec<(String, String)>,
+    columns: u16,
+    rows: u16,
+    width: u16,
+    height: u16,
+) -> Result<Pty, Error> {
+    let program = executable
+        .path()
+        .to_str()
+        .ok_or_else(|| {
+            Error::new(
+                io::ErrorKind::InvalidInput,
+                "the exact executable path is not valid Unicode",
+            )
+        })?
+        .to_owned();
+    create_pty_with_spawn_inner(
+        Some(executable),
+        Some(&program),
+        args,
+        working_directory,
+        Some(environment),
+        columns,
+        rows,
+        width,
+        height,
+    )
+}
+
+struct ExactExecData {
+    executable: ExactExecutable,
+    _arguments: Vec<CString>,
+    argument_pointers: Vec<usize>,
+    _environment: Vec<CString>,
+    environment_pointers: Vec<usize>,
+    #[cfg(target_os = "macos")]
+    descriptor_path: CString,
+}
+
+impl ExactExecData {
+    fn new(
+        executable: ExactExecutable,
+        args: &[String],
+        environment: &[(String, String)],
+    ) -> Result<Self, Error> {
+        let mut arguments = Vec::with_capacity(args.len() + 1);
+        arguments.push(
+            CString::new(executable.path().as_os_str().as_bytes()).map_err(|_| {
+                Error::new(io::ErrorKind::InvalidInput, "invalid executable path")
+            })?,
+        );
+        for argument in args {
+            arguments.push(CString::new(argument.as_bytes()).map_err(|_| {
+                Error::new(io::ErrorKind::InvalidInput, "invalid argument")
+            })?);
+        }
+        let mut argument_pointers = arguments
+            .iter()
+            .map(|argument| argument.as_ptr() as usize)
+            .collect::<Vec<_>>();
+        argument_pointers.push(0);
+
+        let mut environment_values = Vec::with_capacity(environment.len());
+        for (name, value) in environment {
+            if name.is_empty() || name.contains('=') {
+                return Err(Error::new(
+                    io::ErrorKind::InvalidInput,
+                    "invalid environment name",
+                ));
+            }
+            environment_values.push(CString::new(format!("{name}={value}")).map_err(
+                |_| Error::new(io::ErrorKind::InvalidInput, "invalid environment"),
+            )?);
+        }
+        let mut environment_pointers = environment_values
+            .iter()
+            .map(|entry| entry.as_ptr() as usize)
+            .collect::<Vec<_>>();
+        environment_pointers.push(0);
+
+        #[cfg(target_os = "macos")]
+        let descriptor_path =
+            CString::new(format!("/dev/fd/{}", executable.file.as_raw_fd()))
+                .expect("a numeric file descriptor cannot contain NUL");
+
+        Ok(Self {
+            executable,
+            _arguments: arguments,
+            argument_pointers,
+            _environment: environment_values,
+            environment_pointers,
+            #[cfg(target_os = "macos")]
+            descriptor_path,
+        })
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn create_pty_with_spawn_inner(
+    exact_executable: Option<ExactExecutable>,
+    shell: Option<&str>,
+    args: Vec<String>,
+    working_directory: &Option<String>,
+    env: Option<Vec<(String, String)>>,
+    columns: u16,
+    rows: u16,
+    width: u16,
+    height: u16,
+) -> Result<Pty, Error> {
     #[cfg(not(any(target_os = "macos", target_os = "freebsd")))]
     let mut is_controling_terminal = true;
 
@@ -548,12 +688,23 @@ pub fn create_pty_with_spawn(
     let uses_default_shell = shell.is_none();
     let shell_program = shell.unwrap_or(&user.shell);
 
-    tracing::info!("spawn {:?} {:?}", shell_program, args);
+    tracing::info!(
+        "spawn exact={} argument_count={}",
+        exact_executable.is_some(),
+        args.len()
+    );
+
+    let exact_exec = exact_executable
+        .map(|executable| {
+            ExactExecData::new(executable, &args, env.as_deref().unwrap_or_default())
+        })
+        .transpose()?;
+    let exact_launch = exact_exec.is_some();
 
     let mut builder = {
         #[cfg(target_os = "macos")]
         {
-            if uses_default_shell {
+            if uses_default_shell && !exact_launch {
                 // On macOS, use /usr/bin/login to ensure proper login shell environment
                 // This ensures PATH includes directories like /usr/local/bin
                 let hushlogin =
@@ -582,7 +733,7 @@ pub fn create_pty_with_spawn(
     {
         // If running inside a flatpak sandbox.
         // Must retrieve $SHELL from outside the sandbox, so ask the host.
-        if std::path::PathBuf::from("/.flatpak-info").exists() {
+        if !exact_launch && std::path::PathBuf::from("/.flatpak-info").exists() {
             builder = Command::new("flatpak-spawn");
 
             let mut with_args = vec![
@@ -623,10 +774,14 @@ pub fn create_pty_with_spawn(
     builder.stderr(owned_child.try_clone()?);
     builder.stdout(owned_child);
 
-    builder.env("USER", user.user);
-    builder.env("HOME", user.home);
-    if let Some(env) = env {
-        builder.envs(env);
+    if exact_launch {
+        builder.env_clear();
+    } else {
+        builder.env("USER", user.user);
+        builder.env("HOME", user.home);
+        if let Some(env) = env {
+            builder.envs(env);
+        }
     }
 
     unsafe {
@@ -659,6 +814,25 @@ pub fn create_pty_with_spawn(
             libc::sigemptyset(&mut set);
             libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
 
+            if let Some(exact) = exact_exec.as_ref() {
+                // Keep the replacement guard live on every platform even when
+                // the descriptor number is embedded in a macOS /dev/fd path.
+                let _replacement_guard = &exact.executable;
+                #[cfg(target_os = "macos")]
+                libc::execve(
+                    exact.descriptor_path.as_ptr(),
+                    exact.argument_pointers.as_ptr() as *const *const libc::c_char,
+                    exact.environment_pointers.as_ptr() as *const *const libc::c_char,
+                );
+                #[cfg(not(target_os = "macos"))]
+                libc::fexecve(
+                    exact.executable.file.as_raw_fd(),
+                    exact.argument_pointers.as_ptr() as *const *const libc::c_char,
+                    exact.environment_pointers.as_ptr() as *const *const libc::c_char,
+                );
+                return Err(Error::last_os_error());
+            }
+
             Ok(())
         });
     }
@@ -689,6 +863,9 @@ pub fn create_pty_with_spawn(
             Ok(Pty {
                 child: child_unix,
                 file: unsafe { File::from_raw_fd(main) },
+                managed_owned_tree: exact_launch,
+                managed_leader_reaped: false,
+                managed_reconciled: false,
                 token: corcovado::Token::from(0),
                 signals,
                 signals_token: corcovado::Token::from(0),
@@ -782,6 +959,9 @@ pub fn create_pty_with_fork(
                 child,
                 signals,
                 file: unsafe { File::from_raw_fd(main) },
+                managed_owned_tree: false,
+                managed_leader_reaped: false,
+                managed_reconciled: false,
                 token: corcovado::Token(0),
                 signals_token: corcovado::Token(0),
             })
@@ -871,6 +1051,82 @@ impl Child {
 
         Ok(Some(status))
     }
+
+    fn exited_without_reaping(&self) -> io::Result<bool> {
+        let mut info = MaybeUninit::<libc::siginfo_t>::zeroed();
+        let result = unsafe {
+            libc::waitid(
+                libc::P_PID,
+                *self.pid as libc::id_t,
+                info.as_mut_ptr(),
+                libc::WEXITED | libc::WNOHANG | libc::WNOWAIT,
+            )
+        };
+        if result == -1 {
+            return Err(io::Error::last_os_error());
+        }
+        let info = unsafe { info.assume_init() };
+        Ok(unsafe { info.si_pid() } == *self.pid)
+    }
+
+    fn signal_owned_group(&self, signal: libc::c_int) -> io::Result<bool> {
+        let pid = *self.pid;
+        if pid <= 1 {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "refusing to signal an invalid managed process group",
+            ));
+        }
+        if unsafe { libc::kill(-pid, signal) } == 0 {
+            Ok(true)
+        } else {
+            let error = io::Error::last_os_error();
+            if error.raw_os_error() == Some(libc::ESRCH) {
+                Ok(false)
+            } else {
+                Err(error)
+            }
+        }
+    }
+
+    fn wait_without_reaping(&self, timeout: Duration) -> io::Result<bool> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if self.exited_without_reaping()? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    fn owned_group_exists(&self) -> io::Result<bool> {
+        let pid = *self.pid;
+        if unsafe { libc::kill(-pid, 0) } == 0 {
+            return Ok(true);
+        }
+        let error = io::Error::last_os_error();
+        match error.raw_os_error() {
+            Some(libc::ESRCH) => Ok(false),
+            Some(libc::EPERM) => Ok(true),
+            _ => Err(error),
+        }
+    }
+
+    fn wait_group_gone(&self, timeout: Duration) -> io::Result<bool> {
+        let deadline = Instant::now() + timeout;
+        loop {
+            if !self.owned_group_exists()? {
+                return Ok(true);
+            }
+            if Instant::now() >= deadline {
+                return Ok(false);
+            }
+            std::thread::sleep(Duration::from_millis(5));
+        }
+    }
 }
 
 pub fn kill_pid(pid: i32) {
@@ -883,14 +1139,6 @@ impl Deref for Child {
     type Target = libc::c_int;
     fn deref(&self) -> &libc::c_int {
         &self.id
-    }
-}
-
-impl Drop for Child {
-    fn drop(&mut self) {
-        unsafe {
-            libc::kill(*self.pid, libc::SIGHUP);
-        }
     }
 }
 
@@ -917,13 +1165,29 @@ impl EventedPty for Pty {
                 return None;
             }
 
+            if self.managed_owned_tree
+                && self.child.exited_without_reaping().ok() == Some(true)
+            {
+                // Keep the unreaped leader identity reserved until every
+                // helper in this exact-launch session is force-closed.
+                let _ = self.child.signal_owned_group(libc::SIGKILL);
+            }
             match self.child.waitpid() {
                 Err(_e) => {
                     // std::process::exit(1);
                     None
                 }
                 Ok(None) => None,
-                Ok(Some(status)) => Some(ChildEvent::Exited(Some(status))),
+                Ok(Some(status)) => {
+                    if self.managed_owned_tree {
+                        self.managed_leader_reaped = true;
+                        self.managed_reconciled = self
+                            .child
+                            .wait_group_gone(Duration::from_secs(3))
+                            .unwrap_or(false);
+                    }
+                    Some(ChildEvent::Exited(Some(status)))
+                }
             }
         })
     }
@@ -931,6 +1195,59 @@ impl EventedPty for Pty {
     #[inline]
     fn child_event_token(&self) -> corcovado::Token {
         self.signals_token
+    }
+
+    fn shutdown_owned_process_tree(&mut self) -> io::Result<ManagedPtyShutdown> {
+        if !self.managed_owned_tree {
+            return Ok(ManagedPtyShutdown::NotManaged);
+        }
+        if self.managed_reconciled {
+            return Ok(ManagedPtyShutdown::Graceful);
+        }
+        if self.managed_leader_reaped {
+            if self.child.wait_group_gone(Duration::from_secs(3))? {
+                self.managed_reconciled = true;
+                return Ok(ManagedPtyShutdown::Forced);
+            }
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the reaped managed Unix process group did not empty within the force budget",
+            ));
+        }
+        let _ = self.child.signal_owned_group(libc::SIGHUP)?;
+        let graceful = self.child.wait_without_reaping(Duration::from_secs(2))?;
+        let forced = !graceful;
+        // Even when the leader exited during grace, retain its unreaped PID
+        // while killing helpers. No destructive signal occurs after reaping.
+        let _ = self.child.signal_owned_group(libc::SIGKILL)?;
+        if !self.child.wait_without_reaping(Duration::from_secs(3))? {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the managed Unix process leader did not terminate within the force budget",
+            ));
+        }
+        let _ = self.child.waitpid();
+        self.managed_leader_reaped = true;
+        if !self.child.wait_group_gone(Duration::from_secs(3))? {
+            return Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the managed Unix process group did not empty within the force budget",
+            ));
+        }
+        self.managed_reconciled = true;
+        Ok(if !forced {
+            ManagedPtyShutdown::Graceful
+        } else {
+            ManagedPtyShutdown::Forced
+        })
+    }
+}
+
+impl Drop for Pty {
+    fn drop(&mut self) {
+        if self.managed_owned_tree && !self.managed_reconciled {
+            let _ = self.shutdown_owned_process_tree();
+        }
     }
 }
 

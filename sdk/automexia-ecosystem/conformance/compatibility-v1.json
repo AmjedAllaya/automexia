@@ -1,0 +1,20 @@
+{
+  "schema_version": 1,
+  "sdk_major": 1,
+  "supported_minor_minimum": 0,
+  "supported_minor_maximum": 0,
+  "world": "automexia:ecosystem/suggestion@1",
+  "default_wasi": "none",
+  "runtime_activation": false,
+  "public_distribution": false,
+  "required_suites": [
+    "strict-manifest",
+    "exact-import-inventory",
+    "fuel-epoch-memory-table-instance-limits",
+    "typed-grant-revalidation",
+    "stale-generation-rejection",
+    "joined-cancel-shutdown",
+    "no-pty-process-network-filesystem-clipboard-credentials",
+    "kill-disable-uninstall-fallback"
+  ]
+}

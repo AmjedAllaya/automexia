@@ -138,6 +138,96 @@ args = ["--distribution", "$tomlDistro", "--cd", "$tomlRoot", "--exec", "bash", 
         throw 'Initial WSL distro/user/shell/cwd metadata is incomplete'
     }
 
+    # Shell-source tests prove emitted OSC bytes, but not the ConPTY/grid/
+    # renderer path. Exercise real Bash commands in this native WSL pane and
+    # require every output-producing command to own a fresh painted result.
+    # Silent commands must complete semantically without creating an empty
+    # surface. The cases are command-class fixtures, not a command allowlist.
+    $resultCases = @(
+        [pscustomobject]@{
+            Name = 'stdout'
+            Command = "printf '%s\n' AMX_WSL_STDOUT_84201"
+            Tokens = @('AMX_WSL_STDOUT_84201')
+            ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'pipeline-multiline'
+            Command = "printf '%s\n' amx_wsl_pipe_a_84202 amx_wsl_pipe_b_84202 | tr '[:lower:]' '[:upper:]'"
+            Tokens = @('AMX_WSL_PIPE_A_84202', 'AMX_WSL_PIPE_B_84202')
+            ExitCode = 0
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'stderr-failure'
+            Command = "sh -c 'printf `"%s\n`" AMX_WSL_STDERR_84203 >&2; exit 7'"
+            Tokens = @('AMX_WSL_STDERR_84203')
+            ExitCode = 7
+            HasOutput = $true
+        },
+        [pscustomobject]@{
+            Name = 'silent-success'
+            Command = 'true'
+            Tokens = @()
+            ExitCode = 0
+            HasOutput = $false
+        }
+    )
+    $resultProbe = $initial
+    foreach ($case in $resultCases) {
+        $previousPromptId = [int64]$resultProbe.latest_prompt_id
+        $previousResultKey = if ($null -eq $resultProbe.command_result_key) {
+            -1
+        } else {
+            [int64]$resultProbe.command_result_key
+        }
+        $control = "write-line:wsl-result-$($case.Name):$($case.Command)"
+        Send-AutomexiaTestControl $control
+        $resultReady = Read-Snapshot -After ([int64]$resultProbe.sequence)
+        $resultDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $panel = Active-Panel $resultReady
+            $tokensVisible = $true
+            foreach ($token in $case.Tokens) {
+                if (-not ([string]$panel.visible_text).Contains($token)) {
+                    $tokensVisible = $false
+                    break
+                }
+            }
+            if ([bool]$case.HasOutput) {
+                $resultMatches =
+                    $null -ne $resultReady.command_result_key -and
+                    [int64]$resultReady.command_result_key -gt $previousResultKey -and
+                    [int64]$resultReady.command_result_generation -eq $previousPromptId -and
+                    [int]$resultReady.command_result_exit_code -eq [int]$case.ExitCode -and
+                    $null -ne $resultReady.command_result_surface -and
+                    $null -ne $resultReady.command_result_divider
+            } else {
+                $semanticResult = @($resultReady.semantic_rows | Where-Object {
+                    $_.has_result -and
+                        [int64]$_.generation -eq $previousPromptId -and
+                        [int]$_.result_exit_code -eq [int]$case.ExitCode
+                })
+                $resultMatches = $semanticResult.Count -gt 0 -and
+                    ($null -eq $resultReady.command_result_generation -or
+                        [int64]$resultReady.command_result_generation -ne $previousPromptId)
+            }
+            $complete = [string]$resultReady.last_control -eq $control -and
+                [int64]$resultReady.latest_prompt_id -gt $previousPromptId -and
+                $tokensVisible -and $resultMatches
+            if (-not $complete) {
+                $resultReady = Read-Snapshot -After ([int64]$resultReady.sequence)
+            }
+        } while (-not $complete -and [DateTime]::UtcNow -lt $resultDeadline)
+        if (-not $complete) {
+            Write-Host ($resultReady | ConvertTo-Json -Depth 10)
+            throw "Native WSL command-result case '$($case.Name)' did not publish truthful visible grouping"
+        }
+        $resultProbe = $resultReady
+    }
+    $initial = $resultProbe
+    $source = Active-Panel $initial
+
     Send-AutomexiaTestControl 'clone-right:1'
     $cloneSnapshot = Read-Snapshot -After ([int64]$initial.sequence)
     $cloneDeadline = [DateTime]::UtcNow.AddSeconds(20)

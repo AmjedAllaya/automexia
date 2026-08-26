@@ -6,6 +6,9 @@
 use crate::automexia::marketplace::MarketItem;
 use crate::renderer::responsive::{elide_end, elide_start, Viewport};
 use crate::renderer::scrollbar;
+use automexia_ui_model::quick_actions::{
+    QuickActionListItem, QuickActionReviewView, QuickActionRisk,
+};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 use std::time::Instant;
@@ -40,6 +43,7 @@ const RESULT_FONT_SIZE: f32 = 14.5;
 const RESULT_ICON_SIZE: f32 = 22.0;
 const SHORTCUT_FONT_SIZE: f32 = 10.0;
 const MAX_VISIBLE_RESULTS: usize = 10;
+const MAX_PALETTE_QUERY_BYTES: usize = 4 * 1024;
 
 // Copy icon (two overlapping page outlines with rounded corners,
 // drawn by layering filled + cutout rounded rects). Sized to fit
@@ -79,6 +83,10 @@ const BRAND_LIME: [f32; 4] = [0.52, 0.94, 0.36, 1.0];
 const BRAND_AMBER: [f32; 4] = [1.0, 0.69, 0.18, 1.0];
 const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
+fn quick_action_metadata_max_width(input_width: f32) -> f32 {
+    (input_width * 0.42).clamp(72.0, 220.0)
+}
+
 // Depth / order
 const DEPTH_BACKDROP: f32 = 0.0;
 const DEPTH_BG: f32 = 0.1;
@@ -94,13 +102,17 @@ const SHORTCUT_NEW_LOCAL_TAB: &str = "Cmd+Shift+T";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_NEW_LOCAL_TAB: &str = "Ctrl+Shift+T";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLOSE_TAB: &str = "Cmd+W";
+const SHORTCUT_CLOSE_TAB: &str = "Cmd+Shift+W";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLOSE_TAB: &str = "Ctrl+Shift+W";
+const SHORTCUT_CLOSE_TAB: &str = "Ctrl+F4";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLOSE_OTHER_TABS: &str = "Cmd+Alt+W";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLOSE_OTHER_TABS: &str = "Ctrl+Shift+F4";
 #[cfg(target_os = "macos")]
 const SHORTCUT_CLOSE_SURFACE: &str = "Cmd+W";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLOSE_SURFACE: &str = "";
+const SHORTCUT_CLOSE_SURFACE: &str = "Ctrl+Shift+W";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
 #[cfg(not(target_os = "macos"))]
@@ -162,7 +174,19 @@ const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH: &str = "Cmd+F";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SEARCH: &str = "Ctrl+Shift+F";
+const SHORTCUT_SEARCH: &str = "Ctrl+F";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH_BACKWARD: &str = "Cmd+B";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SEARCH_BACKWARD: &str = "Shift+Enter";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH_GLOBAL: &str = "Cmd+Shift+F";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SEARCH_GLOBAL: &str = "Ctrl+Shift+F";
+#[cfg(target_os = "macos")]
+const SHORTCUT_SEARCH_GLOBAL_BACKWARD: &str = "Cmd+Shift+B";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_SEARCH_GLOBAL_BACKWARD: &str = "Ctrl+Shift+B";
 #[cfg(target_os = "macos")]
 const SHORTCUT_FONT_UP: &str = "Cmd++";
 #[cfg(not(target_os = "macos"))]
@@ -184,9 +208,25 @@ const SHORTCUT_FULLSCREEN: &str = "Ctrl+Cmd+F";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_FULLSCREEN: &str = "F11";
 #[cfg(target_os = "macos")]
-const SHORTCUT_APPEARANCE: &str = "";
+const SHORTCUT_APPEARANCE: &str = "Cmd+Alt+Shift+T";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_APPEARANCE: &str = "Alt+Shift+T";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CONNECTION_HUB: &str = "Cmd+Shift+H";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CONNECTION_HUB: &str = "Ctrl+Shift+H";
+#[cfg(target_os = "macos")]
+const SHORTCUT_QUICK_ACTIONS: &str = "Cmd+Shift+O";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_QUICK_ACTIONS: &str = "Ctrl+Shift+O";
+#[cfg(target_os = "macos")]
+const SHORTCUT_EXTENSIONS: &str = "Cmd+Shift+M";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_EXTENSIONS: &str = "Ctrl+Shift+M";
+#[cfg(target_os = "macos")]
+const SHORTCUT_FONT_BROWSER: &str = "Cmd+Shift+L";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_FONT_BROWSER: &str = "Ctrl+Shift+L";
 #[cfg(target_os = "macos")]
 const SHORTCUT_PREVIEW_IMAGE: &str = "Cmd+Alt+I";
 #[cfg(not(target_os = "macos"))]
@@ -233,10 +273,18 @@ pub enum PaletteAction {
     Paste,
     SearchForward,
     SearchBackward,
+    SearchGlobalForward,
+    SearchGlobalBackward,
     PreviewSelectedImage,
     ClearScreen,
     CloseCurrentSplitOrTab,
     OpenMarket,
+    /// Open the application-owned, read-only Connection Hub. This action
+    /// grants no filesystem, network, process, authentication, or PTY access.
+    OpenConnections,
+    /// Search typed Quick Actions. Selection enters a separate review step;
+    /// this action never writes to the PTY itself.
+    OpenActions,
     /// Browse the family names of every registered font. Does NOT
     /// execute a one-shot action — the palette stays open with the
     /// font list as its contents. Handled by `router`, not
@@ -273,6 +321,7 @@ enum CommandIcon {
     Search,
     Image,
     History,
+    Connections,
     Extension,
     Font,
     Power,
@@ -403,6 +452,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_BLUE,
         },
+        SearchGlobalForward | SearchGlobalBackward => RowPresentation {
+            icon: CommandIcon::Search,
+            accent: BRAND_PURPLE,
+        },
         PreviewSelectedImage => RowPresentation {
             icon: CommandIcon::Image,
             accent: BRAND_CYAN,
@@ -415,6 +468,14 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::Extension,
             accent: BRAND_LIME,
         },
+        OpenConnections => RowPresentation {
+            icon: CommandIcon::Connections,
+            accent: BRAND_BLUE,
+        },
+        OpenActions => RowPresentation {
+            icon: CommandIcon::Code,
+            accent: BRAND_CYAN,
+        },
         Quit => RowPresentation {
             icon: CommandIcon::Power,
             accent: BRAND_CORAL,
@@ -426,6 +487,66 @@ struct Command {
     title: &'static str,
     shortcut: &'static str,
     action: PaletteAction,
+}
+
+fn palette_binding_target(
+    action: PaletteAction,
+) -> Option<(&'static str, Option<&'static str>)> {
+    use PaletteAction::*;
+    match action {
+        TabCreate => Some(("new_tab", None)),
+        TabClose => Some(("close_tab", Some("this"))),
+        SelectNextTab => Some(("next_tab", None)),
+        SelectPrevTab => Some(("previous_tab", None)),
+        SplitRight => Some(("new_split", Some("right"))),
+        SplitDown => Some(("new_split", Some("down"))),
+        SelectNextSplit => Some(("goto_split", Some("next"))),
+        SelectPrevSplit => Some(("goto_split", Some("previous"))),
+        SelectPaneLeft => Some(("goto_split", Some("left"))),
+        SelectPaneRight => Some(("goto_split", Some("right"))),
+        SelectPaneUp => Some(("goto_split", Some("up"))),
+        SelectPaneDown => Some(("goto_split", Some("down"))),
+        ConfigEditor => Some(("open_config", None)),
+        WindowCreateNew => Some(("new_window", None)),
+        IncreaseFontSize => Some(("increase_font_size", Some("1"))),
+        DecreaseFontSize => Some(("decrease_font_size", Some("1"))),
+        ResetFontSize => Some(("reset_font_size", None)),
+        ToggleFullscreen => Some(("toggle_fullscreen", None)),
+        Copy => Some(("copy_to_clipboard", None)),
+        Paste => Some(("paste_from_clipboard", None)),
+        SearchForward => Some(("start_search", Some("pane"))),
+        SearchBackward => Some(("start_search", Some("pane"))),
+        SearchGlobalForward => Some(("start_search", Some("visible_panes"))),
+        SearchGlobalBackward => Some(("start_search", Some("visible_panes"))),
+        ClearScreen => Some(("clear_screen", None)),
+        CloseCurrentSplitOrTab => Some(("close_surface", None)),
+        Quit => Some(("quit", None)),
+        LocalTabCreate
+        | TabCloseUnfocused
+        | SelectNextLocalTab
+        | SelectPrevLocalTab
+        | CloneSplitRight
+        | CloneSplitDown
+        | ToggleViMode
+        | ToggleAppearanceTheme
+        | PreviewSelectedImage
+        | OpenMarket
+        | OpenConnections
+        | OpenActions
+        | ListFonts => None,
+    }
+}
+
+fn binding_origin_label(origin: automexia_keybindings::BindingOrigin) -> &'static str {
+    use automexia_keybindings::BindingOrigin::*;
+    match origin {
+        BuiltIn => "Built-in",
+        Profile => "Profile",
+        WindowsAdaptation => "Windows",
+        Imported => "Imported",
+        LegacyUser => "Legacy",
+        User => "User",
+    }
 }
 
 const COMMANDS: &[Command] = &[
@@ -446,7 +567,7 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Close Other Tabs",
-        shortcut: "",
+        shortcut: SHORTCUT_CLOSE_OTHER_TABS,
         action: PaletteAction::TabCloseUnfocused,
     },
     Command {
@@ -575,14 +696,24 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::Paste,
     },
     Command {
-        title: "Search Forward",
+        title: "Find in Pane",
         shortcut: SHORTCUT_SEARCH,
         action: PaletteAction::SearchForward,
     },
     Command {
-        title: "Search Backward",
-        shortcut: "",
+        title: "Find Previous in Pane",
+        shortcut: SHORTCUT_SEARCH_BACKWARD,
         action: PaletteAction::SearchBackward,
+    },
+    Command {
+        title: "Search All Visible Panes",
+        shortcut: SHORTCUT_SEARCH_GLOBAL,
+        action: PaletteAction::SearchGlobalForward,
+    },
+    Command {
+        title: "Search All Visible Panes Backward",
+        shortcut: SHORTCUT_SEARCH_GLOBAL_BACKWARD,
+        action: PaletteAction::SearchGlobalBackward,
     },
     Command {
         title: "Preview Selected Image",
@@ -595,13 +726,23 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::ClearScreen,
     },
     Command {
-        title: "market",
-        shortcut: "",
+        title: "Connection Hub (read-only)",
+        shortcut: SHORTCUT_CONNECTION_HUB,
+        action: PaletteAction::OpenConnections,
+    },
+    Command {
+        title: "Quick Actions",
+        shortcut: SHORTCUT_QUICK_ACTIONS,
+        action: PaletteAction::OpenActions,
+    },
+    Command {
+        title: "Extensions",
+        shortcut: SHORTCUT_EXTENSIONS,
         action: PaletteAction::OpenMarket,
     },
     Command {
         title: "List Fonts",
-        shortcut: "",
+        shortcut: SHORTCUT_FONT_BROWSER,
         action: PaletteAction::ListFonts,
     },
     Command {
@@ -625,6 +766,20 @@ enum PaletteMode {
     Commands,
     Fonts(Vec<String>),
     Market(Vec<MarketItem>),
+    QuickActions {
+        items: Vec<QuickActionListItem>,
+        notice: String,
+    },
+    QuickActionPlaceholder {
+        prompt: String,
+    },
+    QuickActionReview(QuickActionReviewView),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum QuickActionReviewChoice {
+    Insert,
+    Copy,
 }
 
 /// One row in the filtered result list. Variants carry exactly the
@@ -644,6 +799,24 @@ enum PaletteRow<'a> {
         name: &'a str,
         installed: bool,
     },
+    QuickAction {
+        item: &'a QuickActionListItem,
+    },
+    QuickActionNotice {
+        message: &'a str,
+    },
+    PlaceholderContinue,
+    ReviewCommand {
+        command: &'a str,
+        context: &'a str,
+    },
+    ReviewInsert {
+        label: &'a str,
+        risk: QuickActionRisk,
+    },
+    ReviewCopy {
+        risk: QuickActionRisk,
+    },
 }
 
 impl<'a> PaletteRow<'a> {
@@ -652,6 +825,12 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Command { title, .. } => title,
             PaletteRow::Font { family } => family,
             PaletteRow::Market { name, .. } => name,
+            PaletteRow::QuickAction { item } => &item.name,
+            PaletteRow::QuickActionNotice { message } => message,
+            PaletteRow::PlaceholderContinue => "Continue to review",
+            PaletteRow::ReviewCommand { command, .. } => command,
+            PaletteRow::ReviewInsert { label, .. } => label,
+            PaletteRow::ReviewCopy { .. } => "Copy command",
         }
     }
 
@@ -665,13 +844,27 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Market {
                 installed: false, ..
             } => "Install",
+            PaletteRow::QuickAction { item } => item.metadata_label.as_str(),
+            PaletteRow::QuickActionNotice { .. } => "",
+            PaletteRow::PlaceholderContinue => "Enter",
+            PaletteRow::ReviewCommand { context, .. } => context,
+            PaletteRow::ReviewInsert { risk, .. } | PaletteRow::ReviewCopy { risk } => {
+                risk_label(risk)
+            }
         }
     }
 
     fn action(&self) -> Option<PaletteAction> {
         match *self {
             PaletteRow::Command { action, .. } => Some(action),
-            PaletteRow::Font { .. } | PaletteRow::Market { .. } => None,
+            PaletteRow::Font { .. }
+            | PaletteRow::Market { .. }
+            | PaletteRow::QuickAction { .. }
+            | PaletteRow::QuickActionNotice { .. }
+            | PaletteRow::PlaceholderContinue
+            | PaletteRow::ReviewCommand { .. }
+            | PaletteRow::ReviewInsert { .. }
+            | PaletteRow::ReviewCopy { .. } => None,
         }
     }
 
@@ -694,7 +887,54 @@ impl<'a> PaletteRow<'a> {
                 icon: CommandIcon::Extension,
                 accent: BRAND_CYAN,
             },
+            PaletteRow::QuickAction { item } if item.provider_context => {
+                RowPresentation {
+                    icon: CommandIcon::Connections,
+                    accent: BRAND_CYAN,
+                }
+            }
+            PaletteRow::QuickAction { item } => RowPresentation {
+                icon: CommandIcon::Code,
+                accent: risk_accent(item.risk),
+            },
+            PaletteRow::QuickActionNotice { .. } => RowPresentation {
+                icon: CommandIcon::History,
+                accent: BRAND_BLUE,
+            },
+            PaletteRow::PlaceholderContinue => RowPresentation {
+                icon: CommandIcon::TabNext,
+                accent: BRAND_CYAN,
+            },
+            PaletteRow::ReviewCommand { .. } => RowPresentation {
+                icon: CommandIcon::Code,
+                accent: BRAND_BLUE,
+            },
+            PaletteRow::ReviewInsert { risk, .. } => RowPresentation {
+                icon: CommandIcon::Paste,
+                accent: risk_accent(risk),
+            },
+            PaletteRow::ReviewCopy { risk } => RowPresentation {
+                icon: CommandIcon::Copy,
+                accent: risk_accent(risk),
+            },
         }
+    }
+}
+
+const fn risk_label(risk: QuickActionRisk) -> &'static str {
+    match risk {
+        QuickActionRisk::ReadOnly => "Read-only",
+        QuickActionRisk::Mutating => "Mutating",
+        QuickActionRisk::Destructive => "Destructive",
+        QuickActionRisk::Privileged => "Privileged",
+    }
+}
+
+const fn risk_accent(risk: QuickActionRisk) -> [f32; 4] {
+    match risk {
+        QuickActionRisk::ReadOnly => BRAND_LIME,
+        QuickActionRisk::Mutating => BRAND_AMBER,
+        QuickActionRisk::Destructive | QuickActionRisk::Privileged => BRAND_CORAL,
     }
 }
 
@@ -1055,6 +1295,15 @@ fn draw_command_icon(
             canvas.line(11.0, 11.0, 15.0, 13.5);
             canvas.chevron_left(2.5, 6.0, 2.0);
         }
+        CommandIcon::Connections => {
+            canvas.outline(2.0, 3.0, 18.0, 6.0, 2.5);
+            canvas.dot(5.0, 5.0, 2.0);
+            canvas.line(9.0, 6.0, 17.0, 6.0);
+            canvas.outline(2.0, 13.0, 18.0, 6.0, 2.5);
+            canvas.dot(5.0, 15.0, 2.0);
+            canvas.line(9.0, 16.0, 17.0, 16.0);
+            canvas.line(11.0, 9.0, 11.0, 13.0);
+        }
         CommandIcon::Extension => {
             canvas.outline(5.0, 5.0, 12.0, 12.0, 3.0);
             canvas.line(8.0, 2.0, 8.0, 5.0);
@@ -1126,6 +1375,10 @@ pub struct CommandPalette {
     pub selected_index: usize,
     scroll_offset: usize,
     pub has_adaptive_theme: bool,
+    /// Profile-aware labels generated from the immutable binding registry.
+    /// The classic constants remain the fallback only for the implicit
+    /// Automexia profile while its legacy adapter is active.
+    registry_shortcuts: Vec<(PaletteAction, String)>,
     /// Which list the palette is showing (commands or fonts).
     mode: PaletteMode,
     /// Timestamp for caret blinking
@@ -1148,6 +1401,7 @@ impl Default for CommandPalette {
             selected_index: 0,
             scroll_offset: 0,
             has_adaptive_theme: false,
+            registry_shortcuts: Vec::new(),
             mode: PaletteMode::Commands,
             caret_blink_start: Instant::now(),
             last_scroll_time: None,
@@ -1163,6 +1417,71 @@ impl CommandPalette {
 
     pub fn is_enabled(&self) -> bool {
         self.enabled
+    }
+
+    pub fn set_binding_registry(
+        &mut self,
+        registry: Option<&automexia_keybindings::CompiledRegistry>,
+        profile: automexia_keybindings::ProfileId,
+        legacy_unbinds: &[String],
+    ) {
+        self.registry_shortcuts.clear();
+        let Some(registry) = registry else {
+            return;
+        };
+        let strict_profile = profile != automexia_keybindings::ProfileId::Automexia;
+        for command in COMMANDS {
+            let binding =
+                palette_binding_target(command.action).and_then(|(id, parameter)| {
+                    registry.bindings_for_action(id).find(|binding| {
+                        binding.table == "default"
+                            && binding.sequence.len() == 1
+                            && parameter.is_none_or(|expected| {
+                                binding.actions.iter().any(|action| {
+                                    action.id.as_str() == id
+                                        && action.parameter.as_deref() == Some(expected)
+                                })
+                            })
+                    })
+                });
+            let label = if let Some(binding) = binding {
+                let support = binding
+                    .actions
+                    .first()
+                    .and_then(|action| {
+                        automexia_keybindings::resolve_action(action.id.as_str())
+                    })
+                    .map(|schema| schema.support);
+                format!(
+                    "{} · {}{}",
+                    binding.trigger_label(),
+                    binding_origin_label(binding.origin),
+                    if support == Some(automexia_keybindings::SupportLevel::Adapted) {
+                        " ↪"
+                    } else {
+                        ""
+                    }
+                )
+            } else if strict_profile
+                || legacy_unbinds
+                    .iter()
+                    .any(|trigger| trigger.eq_ignore_ascii_case(command.shortcut))
+            {
+                "Unbound".to_string()
+            } else {
+                continue;
+            };
+            self.registry_shortcuts.push((command.action, label));
+        }
+    }
+
+    fn command_shortcut<'a>(&'a self, command: &'a Command) -> &'a str {
+        self.registry_shortcuts
+            .iter()
+            .find_map(|(action, shortcut)| {
+                (*action == command.action).then_some(shortcut.as_str())
+            })
+            .unwrap_or(command.shortcut)
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
@@ -1205,7 +1524,73 @@ impl CommandPalette {
         self.last_scroll_time = None;
     }
 
+    pub fn enter_action_search(
+        &mut self,
+        items: Vec<QuickActionListItem>,
+        query: String,
+    ) {
+        self.mode = PaletteMode::QuickActions {
+            items,
+            notice: "Loading Quick Actions…".into(),
+        };
+        self.query = query;
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+        self.caret_blink_start = Instant::now();
+        self.last_scroll_time = None;
+    }
+
+    pub fn update_action_items(
+        &mut self,
+        items: Vec<QuickActionListItem>,
+        notice: String,
+    ) {
+        if matches!(self.mode, PaletteMode::QuickActions { .. }) {
+            self.mode = PaletteMode::QuickActions { items, notice };
+            self.selected_index = self
+                .selected_index
+                .min(self.filtered_rows().len().saturating_sub(1));
+            self.scroll_offset = self.scroll_offset.min(self.selected_index);
+        }
+    }
+
+    pub fn enter_action_placeholder(&mut self, prompt: String) {
+        self.mode = PaletteMode::QuickActionPlaceholder { prompt };
+        self.query.clear();
+        self.selected_index = 0;
+        self.scroll_offset = 0;
+        self.caret_blink_start = Instant::now();
+        self.last_scroll_time = None;
+    }
+
+    pub fn enter_action_review(&mut self, view: QuickActionReviewView) {
+        let has_operation = view.copy_allowed;
+        self.mode = PaletteMode::QuickActionReview(view);
+        self.query.clear();
+        // Row zero is the exact, non-actionable command preview. Focus the
+        // primary insert/copy operation while keeping the preview reachable.
+        self.selected_index = usize::from(has_operation);
+        self.scroll_offset = 0;
+        self.caret_blink_start = Instant::now();
+        self.last_scroll_time = None;
+    }
+
+    pub fn is_action_search(&self) -> bool {
+        matches!(self.mode, PaletteMode::QuickActions { .. })
+    }
+
+    pub fn is_action_placeholder(&self) -> bool {
+        matches!(self.mode, PaletteMode::QuickActionPlaceholder { .. })
+    }
+
+    pub fn is_action_review(&self) -> bool {
+        matches!(self.mode, PaletteMode::QuickActionReview(_))
+    }
+
     pub fn set_query(&mut self, query: String) {
+        if query.len() > MAX_PALETTE_QUERY_BYTES || query.chars().any(char::is_control) {
+            return;
+        }
         self.query = query;
         self.selected_index = 0;
         self.scroll_offset = 0;
@@ -1251,7 +1636,14 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Font { family } => Some((*family).to_owned()),
-                PaletteRow::Command { .. } | PaletteRow::Market { .. } => None,
+                PaletteRow::Command { .. }
+                | PaletteRow::Market { .. }
+                | PaletteRow::QuickAction { .. }
+                | PaletteRow::QuickActionNotice { .. }
+                | PaletteRow::PlaceholderContinue
+                | PaletteRow::ReviewCommand { .. }
+                | PaletteRow::ReviewInsert { .. }
+                | PaletteRow::ReviewCopy { .. } => None,
             })
     }
 
@@ -1260,7 +1652,33 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Market { id, .. } => Some((*id).to_owned()),
-                PaletteRow::Command { .. } | PaletteRow::Font { .. } => None,
+                PaletteRow::Command { .. }
+                | PaletteRow::Font { .. }
+                | PaletteRow::QuickAction { .. }
+                | PaletteRow::QuickActionNotice { .. }
+                | PaletteRow::PlaceholderContinue
+                | PaletteRow::ReviewCommand { .. }
+                | PaletteRow::ReviewInsert { .. }
+                | PaletteRow::ReviewCopy { .. } => None,
+            })
+    }
+
+    pub fn get_selected_action_item_id(&self) -> Option<String> {
+        self.filtered_rows()
+            .get(self.selected_index)
+            .and_then(|(_, row)| match row {
+                PaletteRow::QuickAction { item } => Some(item.id.clone()),
+                _ => None,
+            })
+    }
+
+    pub fn get_review_choice(&self) -> Option<QuickActionReviewChoice> {
+        self.filtered_rows()
+            .get(self.selected_index)
+            .and_then(|(_, row)| match row {
+                PaletteRow::ReviewInsert { .. } => Some(QuickActionReviewChoice::Insert),
+                PaletteRow::ReviewCopy { .. } => Some(QuickActionReviewChoice::Copy),
+                _ => None,
             })
     }
 
@@ -1285,7 +1703,7 @@ impl CommandPalette {
                             score,
                             PaletteRow::Command {
                                 title: cmd.title,
-                                shortcut: cmd.shortcut,
+                                shortcut: self.command_shortcut(cmd),
                                 action: cmd.action,
                             },
                         ))
@@ -1320,6 +1738,50 @@ impl CommandPalette {
                     ))
                 })
                 .collect(),
+            PaletteMode::QuickActions { items, notice } => {
+                if items.is_empty() {
+                    vec![(1, PaletteRow::QuickActionNotice { message: notice })]
+                } else {
+                    items
+                        .iter()
+                        .enumerate()
+                        .map(|(index, item)| {
+                            (
+                                i32::try_from(items.len().saturating_sub(index))
+                                    .unwrap_or(i32::MAX),
+                                PaletteRow::QuickAction { item },
+                            )
+                        })
+                        .collect()
+                }
+            }
+            PaletteMode::QuickActionPlaceholder { .. } => {
+                vec![(1, PaletteRow::PlaceholderContinue)]
+            }
+            PaletteMode::QuickActionReview(view) => {
+                let mut rows = vec![(
+                    3,
+                    PaletteRow::ReviewCommand {
+                        command: &view.command_preview,
+                        context: &view.command_context_label,
+                    },
+                )];
+                if view.copy_allowed {
+                    if view.primary_label == "Copy command" {
+                        rows.push((2, PaletteRow::ReviewCopy { risk: view.risk }));
+                    } else {
+                        rows.push((
+                            2,
+                            PaletteRow::ReviewInsert {
+                                label: view.primary_label,
+                                risk: view.risk,
+                            },
+                        ));
+                        rows.push((1, PaletteRow::ReviewCopy { risk: view.risk }));
+                    }
+                }
+                rows
+            }
         };
 
         results.sort_by_key(|r| std::cmp::Reverse(r.0));
@@ -1524,6 +1986,9 @@ impl CommandPalette {
             PaletteMode::Commands => "Type a command...",
             PaletteMode::Fonts(_) => "Type a font name...",
             PaletteMode::Market(_) => "Search extensions...",
+            PaletteMode::QuickActions { .. } => "Search Quick Actions...",
+            PaletteMode::QuickActionPlaceholder { ref prompt } => prompt,
+            PaletteMode::QuickActionReview(_) => "Review; command is never executed",
         };
         let input_text_width = (input_width
             - INPUT_PADDING_X * 2.0
@@ -1666,6 +2131,17 @@ impl CommandPalette {
             let row_text_x = icon_x + RESULT_ICON_SIZE + 14.0;
             let row_text_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_FONT_SIZE) / 2.0 - 1.0;
             let shortcut = row.shortcut();
+            let shortcut_display: std::borrow::Cow<'_, str> =
+                if matches!(row, PaletteRow::QuickAction { .. }) {
+                    elide_end(
+                        sugarloaf,
+                        shortcut,
+                        quick_action_metadata_max_width(input_width),
+                        SHORTCUT_FONT_SIZE,
+                    )
+                } else {
+                    std::borrow::Cow::Borrowed(shortcut)
+                };
             let is_font_row = matches!(row, PaletteRow::Font { .. });
             let trailing_width = if !shortcut.is_empty() {
                 let shortcut_opts = DrawOpts {
@@ -1673,7 +2149,10 @@ impl CommandPalette {
                     color: color_u8(SHORTCUT_TEXT_COLOR),
                     ..DrawOpts::default()
                 };
-                sugarloaf.text_mut().measure(shortcut, &shortcut_opts) + 30.0
+                sugarloaf
+                    .text_mut()
+                    .measure(&shortcut_display, &shortcut_opts)
+                    + 30.0
             } else if is_font_row {
                 COPY_ICON_W + 24.0
             } else {
@@ -1699,8 +2178,9 @@ impl CommandPalette {
                     }),
                     ..DrawOpts::default()
                 };
-                let shortcut_width =
-                    sugarloaf.text_mut().measure(shortcut, &shortcut_opts);
+                let shortcut_width = sugarloaf
+                    .text_mut()
+                    .measure(&shortcut_display, &shortcut_opts);
                 let keycap_width = shortcut_width + 18.0;
                 let shortcut_x = input_x + input_width - 10.0 - keycap_width;
                 let shortcut_y = item_y + 10.0;
@@ -1720,7 +2200,7 @@ impl CommandPalette {
                 sugarloaf.text_mut().draw(
                     shortcut_x + 9.0,
                     shortcut_y + 6.0,
-                    shortcut,
+                    &shortcut_display,
                     &shortcut_opts,
                 );
             }
@@ -1857,8 +2337,7 @@ mod tests {
         let mut palette = CommandPalette::new();
         palette.query = "QUIT".to_string();
         let filtered = palette.filtered_rows();
-        assert_eq!(filtered.len(), 1);
-        assert_eq!(filtered[0].1.title(), "Quit");
+        assert!(filtered.iter().any(|(_, row)| row.title() == "Quit"));
     }
 
     #[test]
@@ -1867,7 +2346,7 @@ mod tests {
             .iter()
             .find(|command| command.action == PaletteAction::OpenMarket)
             .expect("market command");
-        assert_eq!(market.title, "market");
+        assert_eq!(market.title, "Extensions");
         assert!(!market.title.starts_with('/'));
     }
 
@@ -1906,6 +2385,7 @@ mod tests {
             PaletteAction::WindowCreateNew,
             PaletteAction::ToggleFullscreen,
             PaletteAction::ToggleAppearanceTheme,
+            PaletteAction::OpenConnections,
             PaletteAction::OpenMarket,
             PaletteAction::Quit,
         ]
@@ -2088,12 +2568,59 @@ mod tests {
         );
     }
     #[test]
-    fn visible_palette_shortcuts_are_unique() {
-        let mut shortcuts = std::collections::HashMap::new();
-        for command in COMMANDS
+    fn strict_profile_palette_labels_come_from_the_compiled_registry() {
+        let bindings = automexia_keybindings::bundled_profile(
+            automexia_keybindings::ProfileId::Ghostty13,
+            automexia_keybindings::PlatformFamily::LinuxBsd,
+        )
+        .unwrap();
+        let registry = automexia_keybindings::compile(&bindings).registry.unwrap();
+        let mut palette = CommandPalette::new();
+        palette.set_binding_registry(
+            Some(&registry),
+            automexia_keybindings::ProfileId::Ghostty13,
+            &[],
+        );
+        let shortcut = |action| {
+            let command = COMMANDS
+                .iter()
+                .find(|command| command.action == action)
+                .unwrap();
+            palette.command_shortcut(command).to_string()
+        };
+        assert_eq!(shortcut(PaletteAction::TabCreate), "ctrl+shift+t · Profile");
+        assert_eq!(
+            shortcut(PaletteAction::SplitRight),
+            "ctrl+shift+o · Profile"
+        );
+        assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Unbound");
+    }
+
+    #[test]
+    fn automexia_typed_unbind_is_visible_as_unbound() {
+        let registry = automexia_keybindings::compile(&[]).registry.unwrap();
+        let mut palette = CommandPalette::new();
+        palette.set_binding_registry(
+            Some(&registry),
+            automexia_keybindings::ProfileId::Automexia,
+            &["ctrl+t".into()],
+        );
+        let command = COMMANDS
             .iter()
-            .filter(|command| !command.shortcut.is_empty())
-        {
+            .find(|command| command.action == PaletteAction::TabCreate)
+            .unwrap();
+        assert_eq!(palette.command_shortcut(command), "Unbound");
+    }
+
+    #[test]
+    fn palette_shortcuts_are_complete_and_unique() {
+        let mut shortcuts = std::collections::HashMap::new();
+        for command in COMMANDS {
+            assert!(
+                !command.shortcut.is_empty(),
+                "missing palette shortcut for {}",
+                command.title
+            );
             assert!(
                 shortcuts.insert(command.shortcut, command.title).is_none(),
                 "duplicate palette shortcut {}",
@@ -2385,5 +2912,155 @@ mod tests {
             palette.get_selected_action(),
             Some(PaletteAction::ListFonts)
         );
+    }
+
+    #[test]
+    fn quick_action_results_keep_worker_order_and_stable_ids() {
+        let mut palette = CommandPalette::new();
+        palette.enter_action_search(
+            vec![
+                QuickActionListItem::new(
+                    "git.status".into(),
+                    "Git status".into(),
+                    "Inspect worktree".into(),
+                    "Session".into(),
+                    QuickActionRisk::ReadOnly,
+                    0,
+                ),
+                QuickActionListItem::new(
+                    "cluster.delete".into(),
+                    "Delete pod".into(),
+                    "Destructive operation".into(),
+                    "User".into(),
+                    QuickActionRisk::Destructive,
+                    1,
+                ),
+            ],
+            "git".into(),
+        );
+        assert_eq!(
+            palette.get_selected_action_item_id().as_deref(),
+            Some("git.status")
+        );
+        assert_eq!(
+            palette.filtered_rows()[0].1.shortcut(),
+            "Read-only · Session"
+        );
+        palette.move_selection_down();
+        assert_eq!(
+            palette.get_selected_action_item_id().as_deref(),
+            Some("cluster.delete")
+        );
+    }
+
+    #[test]
+    fn provider_actions_use_connection_visuals_and_show_context_in_review() {
+        let mut ordinary = CommandPalette::new();
+        ordinary.enter_action_review(QuickActionReviewView::new(
+            "ordinary.action".into(),
+            "Ordinary action".into(),
+            "git status".into(),
+            QuickActionRisk::ReadOnly,
+            automexia_ui_model::quick_actions::QuickActionMode::Insert,
+        ));
+        assert_eq!(ordinary.filtered_rows()[0].1.shortcut(), "Exact command");
+
+        let item = QuickActionListItem::new(
+            "provider.aws.identity".into(),
+            "Show AWS identity".into(),
+            "Inspect identity".into(),
+            "Environment capsule".into(),
+            QuickActionRisk::ReadOnly,
+            0,
+        )
+        .with_provider_context(
+            "AWS · Account 123456789012 · Current · Production".into(),
+        );
+        let row = PaletteRow::QuickAction { item: &item };
+        assert_eq!(row.presentation().icon, CommandIcon::Connections);
+        assert_eq!(row.presentation().accent, BRAND_CYAN);
+        assert_eq!(row.shortcut(), item.metadata_label);
+
+        let mut palette = CommandPalette::new();
+        palette.enter_action_review(
+            QuickActionReviewView::new(
+                item.id,
+                item.name,
+                "aws 'sts' 'get-caller-identity'".into(),
+                QuickActionRisk::ReadOnly,
+                automexia_ui_model::quick_actions::QuickActionMode::Insert,
+            )
+            .with_provider_context(item.metadata_label.clone(), true),
+        );
+        assert_eq!(palette.filtered_rows()[0].1.shortcut(), item.metadata_label);
+    }
+
+    #[test]
+    fn quick_action_loading_and_empty_notices_are_visible_but_not_actionable() {
+        let mut palette = CommandPalette::new();
+        palette.enter_action_search(Vec::new(), String::new());
+        assert_eq!(
+            palette.filtered_rows()[0].1.title(),
+            "Loading Quick Actions…"
+        );
+        assert!(palette.get_selected_action_item_id().is_none());
+        assert!(palette.get_selected_action().is_none());
+
+        palette.update_action_items(Vec::new(), "No matching Quick Actions".into());
+        assert_eq!(
+            palette.filtered_rows()[0].1.title(),
+            "No matching Quick Actions"
+        );
+        assert!(palette.get_selected_action_item_id().is_none());
+    }
+
+    #[test]
+    fn quick_action_metadata_budget_is_proportional_and_bounded() {
+        assert_eq!(quick_action_metadata_max_width(100.0), 72.0);
+        assert!((quick_action_metadata_max_width(300.0) - 126.0).abs() < 0.001);
+        assert_eq!(quick_action_metadata_max_width(1_000.0), 220.0);
+    }
+
+    #[test]
+    fn review_requires_an_explicit_operation_and_keeps_exact_command_visible() {
+        let mut palette = CommandPalette::new();
+        palette.enter_action_review(QuickActionReviewView::new(
+            "git.status".into(),
+            "Git status".into(),
+            "git 'status'".into(),
+            QuickActionRisk::ReadOnly,
+            automexia_ui_model::quick_actions::QuickActionMode::Insert,
+        ));
+        assert_eq!(
+            palette.get_review_choice(),
+            Some(QuickActionReviewChoice::Insert)
+        );
+        palette.move_selection_up();
+        assert!(palette.get_review_choice().is_none());
+        assert_eq!(palette.filtered_rows()[0].1.title(), "git 'status'");
+    }
+
+    #[test]
+    fn unavailable_review_has_no_insert_or_copy_choice() {
+        let mut palette = CommandPalette::new();
+        palette.enter_action_review(QuickActionReviewView::new(
+            "blocked".into(),
+            "Blocked".into(),
+            "exact launch remains disabled".into(),
+            QuickActionRisk::Privileged,
+            automexia_ui_model::quick_actions::QuickActionMode::Unavailable,
+        ));
+        assert_eq!(palette.filtered_rows().len(), 1);
+        assert!(palette.get_review_choice().is_none());
+    }
+
+    #[test]
+    fn palette_query_is_bounded_and_rejects_controls() {
+        let mut palette = CommandPalette::new();
+        palette.set_query("safe".into());
+        palette.set_query("x".repeat(MAX_PALETTE_QUERY_BYTES + 1));
+        assert_eq!(palette.query, "safe");
+        palette.set_query("unsafe\nquery".into());
+        assert_eq!(palette.query, "safe");
     }
 }

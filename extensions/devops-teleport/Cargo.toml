@@ -1,0 +1,27 @@
+[package]
+name = "automexia-devops-teleport"
+description = "Bounded Teleport public status and exact reviewed tsh intents for Automexia."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+automexia-connectivity = { workspace = true }
+automexia-command-productivity = { workspace = true }
+automexia-extension-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+time = { workspace = true }
+url = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "status"
+harness = false

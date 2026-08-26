@@ -207,9 +207,20 @@ add and mutation-test these additional boundaries:
   latest queued generation per pane, explicit cached-provider refresh, fixed
   limits/deadlines, and repeated lifecycle/resource tests.
 
-This checklist is not activation authority. CP5 remains forbidden until each
-item has a stable ID, control set, hostile mutation, verification owner, and
-residual-risk entry in the next machine contract.
+This checklist is not activation authority. CP5-T17 through CP5-T22 in schema 1
+of
+[`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json)
+freeze every required control and hostile mutation, name PR/native/release
+verification owners, record residual risk, and are mutation-tested by
+`tools/ci/test_command_productivity_cp51.py`.
+
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) and the
+exact contract are accepted for source implementation. The contract records
+`accepted: true` and `runtime_activation: false`. Source mutation policy also
+forbids remote transports, per-key processes, implicit Enter, default adapter
+sourcing, missing preview guards, and false shell-bridge completion claims.
+Native insertion, preview, and stable activation still have no authority until
+the documented CP5.5/CP5.6 gates pass.
 
 ## Security invariants
 
@@ -265,8 +276,15 @@ residual-risk entry in the next machine contract.
   outside Automexia's ability to repair. Identity checks and explicit activation
   reduce but do not eliminate local compromise.
 - CMD cannot provide feature parity with programmable shell editors.
-- Remote marketplace packs, automatic cloud sync, AI command generation, and
-  direct provider APIs remain outside CP0-CP4 and require new threat review.
+- Remote marketplace packs, automatic cloud sync, selected-input model command
+  suggestions, and direct provider APIs remain outside CP0-CP4. The proposal-
+  only D7/CP6 threat inventory is frozen separately by
+  [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) and its
+  [machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json);
+  it permits neither tools nor workflows, and runtime still requires acceptance
+  and protected implementation. Optional cross-extension LLM workflow
+  orchestration is a later independent LO0-LO5 boundary under proposed
+  [ADR 0033](adr/0033-optional-llm-orchestration-extension.md).
 
 ## Mandatory review triggers
 
@@ -275,3 +293,60 @@ profile root; new shell/provider/plugin/generator; network/process/secret/
 clipboard/history capability; rich completion/editor bridge; remote install or
 sync; third-party pack distribution; telemetry/crash payload change; exact-launch
 activation; or a security incident affecting any boundary above.
+
+## CP3.2 implemented controls
+
+The CP3.2 static pack registry adds no provider, filesystem, environment,
+credential, network, shell-profile, or execution capability. All 33 built-ins
+are disabled, unaliased, insert-only typed argv. Health evaluates only bounded
+caller observations and reports Unobserved/Missing/UnsupportedVersion/
+CompletionUnavailable/Ready without probing a tool. A reviewed digest freezes
+the entire serialized 11-pack/33-action registry and is asserted during
+initialization, so command argv, version, URL, completion, effect/risk, or
+provenance drift fails closed.
+
+Pack enablement is dry-run first and exposes exact argv, effect, risk,
+documentation, alias eligibility, registry digest, and CAS revision. A stale
+revision fails before store creation; apply refuses overwrite and never enables
+an alias. Canonical manifest revalidation denies alias projection for context
+changes, authentication, destructive operations, privileged operations,
+provenance drift, and payload drift. Update planning rejects version regression
+and stale overlay digests while preserving valid user overlays and distinguishing
+version-only provenance changes from functional updates. Contract mutations,
+hostile version/manifest tests, fuzzing, and nightly gates keep these denials
+fail-closed.
+## CP3.3 implemented controls
+
+CP3.3 treats native inventories and repository task configuration as attacker-
+controlled input. Automexia never creates an inventory or starts a shell, Git,
+task runner, provider, network, authentication, or credential operation during
+import, search, review, doctor, or trust verification.
+
+- Bounded capability-free parsers reject invalid UTF-8/control/bidirectional
+  text, duplicates, likely secrets, machine paths, substitutions, pipelines,
+  redirections, shell metacharacters, Git shell aliases, and unsupported native
+  kinds. Only explicit unique selections can become Mutating, Insert, Imported
+  actions, and no imported alias projection is created.
+- Inventory reads are bounded regular no-follow reads. Preview exposes selected
+  actions and conflicts; apply requires exact store revision CAS and explicit
+  replacement. Native files remain untouched, so removal affects only the
+  independent Automexia action.
+- Task bridges accept only one safe explicit task identifier and construct exact
+  just/Task/mise argv. They are TrustedWorkspace, WorkspaceRoot, Mutating,
+  Insert, WorkspaceTask provenance with no alias or exact-launch path. Recipe
+  bodies and task discovery/listing are never parsed or invoked.
+- Workspace and trust state use bounded no-follow files, nonblocking locks,
+  staged atomic persistence, and revision CAS. The private trust receipt omits
+  workspace paths and binds stable identity, canonical digest, and exact source
+  revision. Source change, duplicate/malformed receipt, symlink/special-file
+  topology, revocation, and revision/digest/identity mismatch fail closed.
+- Read-only trust lookup has no create/write path. The worker bounds ancestor
+  walking to 64, cache entries to 32, reconciliation to 250 ms, and route
+  authorization to 30 seconds. Review and insertion/copy recheck path and
+  identity; stale state removes confirmation and shows a textual unavailable
+  refresh-and-review result.
+
+The CP3.3 contract and mutation suite freeze all of these denials plus the
+source boundary, named regressions, benchmark, fuzz target, nightly registration,
+CI/xtask wiring, and synchronized security documentation. WSL guest-only paths
+that cannot be authenticated through the host filesystem fail closed.

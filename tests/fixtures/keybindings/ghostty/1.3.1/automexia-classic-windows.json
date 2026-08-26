@@ -1,0 +1,1648 @@
+{
+  "bindings": [
+    {
+      "action": "Copy",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Copy), location: Standard }"
+    },
+    {
+      "action": "ClearSelection",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Copy), location: Standard }"
+    },
+    {
+      "action": "Paste",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Paste), location: Standard }"
+    },
+    {
+      "action": "ExtendSelection(Left)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "ExtendSelection(Right)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "ExtendSelection(Up)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "ExtendSelection(Down)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "ExtendSelection(WordLeft)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "ExtendSelection(WordRight)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "ClearLogNotice",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"l\"), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{c}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"l\"), location: Standard }"
+    },
+    {
+      "action": "ScrollToTop",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(Home), location: Standard }"
+    },
+    {
+      "action": "ScrollToBottom",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(End), location: Standard }"
+    },
+    {
+      "action": "ScrollPageUp",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(PageUp), location: Standard }"
+    },
+    {
+      "action": "ScrollPageDown",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(PageDown), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OH\")",
+      "effective": true,
+      "mode": "BindingMode(APP_CURSOR)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Home), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OF\")",
+      "effective": true,
+      "mode": "BindingMode(APP_CURSOR)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(End), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OA\")",
+      "effective": true,
+      "mode": "BindingMode(APP_CURSOR)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OB\")",
+      "effective": true,
+      "mode": "BindingMode(APP_CURSOR)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OC\")",
+      "effective": true,
+      "mode": "BindingMode(APP_CURSOR)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OD\")",
+      "effective": true,
+      "mode": "BindingMode(APP_CURSOR)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "ToggleViMode",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(Space), location: Standard }"
+    },
+    {
+      "action": "SearchForward",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"/\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchFocusNext)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"n\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchFocusPrevious)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"n\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchFocusNext)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Enter), location: Standard }"
+    },
+    {
+      "action": "Search(SearchConfirm)",
+      "effective": true,
+      "mode": "BindingMode(VI | SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Enter), location: Standard }"
+    },
+    {
+      "action": "Search(SearchCancel)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Escape), location: Standard }"
+    },
+    {
+      "action": "Search(SearchFocusPrevious)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(Enter), location: Standard }"
+    },
+    {
+      "action": "ToggleViMode",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"i\"), location: Standard }"
+    },
+    {
+      "action": "ToggleViMode",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"c\"), location: Standard }"
+    },
+    {
+      "action": "ClearSelection",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Escape), location: Standard }"
+    },
+    {
+      "action": "ScrollToBottom",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"i\"), location: Standard }"
+    },
+    {
+      "action": "ScrollToTop",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"g\"), location: Standard }"
+    },
+    {
+      "action": "ScrollToBottom",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"g\"), location: Standard }"
+    },
+    {
+      "action": "ScrollPageUp",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"b\"), location: Standard }"
+    },
+    {
+      "action": "ScrollPageDown",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"f\"), location: Standard }"
+    },
+    {
+      "action": "ScrollHalfPageUp",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"u\"), location: Standard }"
+    },
+    {
+      "action": "ScrollHalfPageDown",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"d\"), location: Standard }"
+    },
+    {
+      "action": "Scroll(1)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"y\"), location: Standard }"
+    },
+    {
+      "action": "Scroll(-1)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"e\"), location: Standard }"
+    },
+    {
+      "action": "Copy",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"y\"), location: Standard }"
+    },
+    {
+      "action": "ClearSelection",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"y\"), location: Standard }"
+    },
+    {
+      "action": "Vi(ToggleNormalSelection)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "Vi(ToggleLineSelection)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "Vi(ToggleBlockSelection)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "Vi(ToggleSemanticSelection)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "Vi(CenterAroundViCursor)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"z\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Up)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"k\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Down)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"j\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Left)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"h\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Right)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"l\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Up)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Down)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Left)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Right)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "None",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SUPER)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "None",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SUPER)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "None",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SUPER)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "None",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SUPER)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "ViMotion(First)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"0\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Last)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"4\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(FirstOccupied)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"6\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(High)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"h\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Middle)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"m\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Low)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"l\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(SemanticLeft)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"b\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(SemanticRight)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"w\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(SemanticRightEnd)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Character(\"e\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(WordLeft)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"b\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(WordRight)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"w\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(WordRightEnd)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"e\"), location: Standard }"
+    },
+    {
+      "action": "ViMotion(Bracket)",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Character(\"5\"), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[A\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(APP_CURSOR | VI | SEARCH | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[B\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(APP_CURSOR | VI | SEARCH | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[C\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(APP_CURSOR | VI | SEARCH | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[D\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(APP_CURSOR | VI | SEARCH | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[2~\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Insert), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[3~\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Delete), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[5~\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(PageUp), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[6~\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(PageDown), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{7f}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(Backspace), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}\\u{7f}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(Backspace), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{7f}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(Backspace), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OP\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(F1), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OQ\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(F2), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OR\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(F3), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}OS\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(F4), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}[Z\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(Tab), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{1b}\\u{1b}[Z\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH | DISAMBIGUATE_KEYS | ALL_KEYS_AS_ESC)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(Tab), location: Standard }"
+    },
+    {
+      "action": "ConfigEditor",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\",\"), location: Standard }"
+    },
+    {
+      "action": "PasteSelection",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(Insert), location: Standard }"
+    },
+    {
+      "action": "Copy",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"c\"), location: Standard }"
+    },
+    {
+      "action": "ClearSelection",
+      "effective": true,
+      "mode": "BindingMode(VI)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"c\"), location: Standard }"
+    },
+    {
+      "action": "Paste",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "Paste",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"v\"), location: Standard }"
+    },
+    {
+      "action": "ResetFontSize",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"0\"), location: Standard }"
+    },
+    {
+      "action": "IncreaseFontSize",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"=\"), location: Standard }"
+    },
+    {
+      "action": "IncreaseFontSize",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"+\"), location: Standard }"
+    },
+    {
+      "action": "DecreaseFontSize",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"-\"), location: Standard }"
+    },
+    {
+      "action": "WindowCreateNew",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"n\"), location: Standard }"
+    },
+    {
+      "action": "OpenCommandPalette",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"p\"), location: Standard }"
+    },
+    {
+      "action": "OpenConnectionHub",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"h\"), location: Standard }"
+    },
+    {
+      "action": "OpenActionCenter",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"o\"), location: Standard }"
+    },
+    {
+      "action": "OpenExtensionMarketplace",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"m\"), location: Standard }"
+    },
+    {
+      "action": "OpenFontBrowser",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"l\"), location: Standard }"
+    },
+    {
+      "action": "PreviewSelectedImage",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"i\"), location: Standard }"
+    },
+    {
+      "action": "SelectAll",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"a\"), location: Standard }"
+    },
+    {
+      "action": "SearchForward",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"f\"), location: Standard }"
+    },
+    {
+      "action": "SearchGlobalForward",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"f\"), location: Standard }"
+    },
+    {
+      "action": "SearchGlobalBackward",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"b\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchCancel)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"c\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchClear)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"u\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchDeleteWord)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"w\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchHistoryPrevious)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"p\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchHistoryNext)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"n\"), location: Standard }"
+    },
+    {
+      "action": "Search(SearchHistoryPrevious)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "Search(SearchHistoryNext)",
+      "effective": true,
+      "mode": "BindingMode(SEARCH)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "ToggleViMode",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(Space), location: Standard }"
+    },
+    {
+      "action": "ToggleQuake",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Named(Space), location: Standard }"
+    },
+    {
+      "action": "ToggleAppearanceTheme",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"t\"), location: Standard }"
+    },
+    {
+      "action": "ClearHistory",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"k\"), location: Standard }"
+    },
+    {
+      "action": "ToggleFullscreen",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(F11), location: Standard }"
+    },
+    {
+      "action": "ToggleFullscreen",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(Enter), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{17}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(Backspace), location: Standard }"
+    },
+    {
+      "action": "TabCreateNew",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"t\"), location: Standard }"
+    },
+    {
+      "action": "LocalTabCreateNew",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"t\"), location: Standard }"
+    },
+    {
+      "action": "SelectNextTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(Tab), location: Standard }"
+    },
+    {
+      "action": "SelectPrevTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(Tab), location: Standard }"
+    },
+    {
+      "action": "SelectPrevTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(PageUp), location: Standard }"
+    },
+    {
+      "action": "SelectNextTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(PageDown), location: Standard }"
+    },
+    {
+      "action": "SelectPrevLocalTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(PageUp), location: Standard }"
+    },
+    {
+      "action": "SelectNextLocalTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(PageDown), location: Standard }"
+    },
+    {
+      "action": "MoveCurrentTabToPrev",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(PageUp), location: Standard }"
+    },
+    {
+      "action": "MoveCurrentTabToNext",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(PageDown), location: Standard }"
+    },
+    {
+      "action": "CloseCurrentSplitOrTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"w\"), location: Standard }"
+    },
+    {
+      "action": "TabCloseCurrent",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Named(F4), location: Standard }"
+    },
+    {
+      "action": "TabCloseUnfocused",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F4), location: Standard }"
+    },
+    {
+      "action": "SelectTab(0)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"1\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(1)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"2\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(2)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"3\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(3)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"4\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(4)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"5\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(5)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"6\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(6)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"7\"), location: Standard }"
+    },
+    {
+      "action": "SelectTab(7)",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"8\"), location: Standard }"
+    },
+    {
+      "action": "SelectLastTab",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"9\"), location: Standard }"
+    },
+    {
+      "action": "CloneSplitRight",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"r\"), location: Standard }"
+    },
+    {
+      "action": "CloneSplitDown",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"d\"), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{12}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"r\"), location: Standard }"
+    },
+    {
+      "action": "Esc(\"\\u{4}\")",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"d\"), location: Standard }"
+    },
+    {
+      "action": "SplitRight",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"r\"), location: Standard }"
+    },
+    {
+      "action": "SplitDown",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"d\"), location: Standard }"
+    },
+    {
+      "action": "SelectNextSplit",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(0x0)+Keycode { key: Named(F6), location: Standard }"
+    },
+    {
+      "action": "SelectPrevSplit",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT)+Keycode { key: Named(F6), location: Standard }"
+    },
+    {
+      "action": "SelectPaneLeft",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "SelectPaneRight",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "SelectPaneUp",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "SelectPaneDown",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(0x0)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(ALT)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "MoveDividerUp",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "MoveDividerDown",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
+      "action": "MoveDividerLeft",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(ArrowLeft), location: Standard }"
+    },
+    {
+      "action": "MoveDividerRight",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(ArrowRight), location: Standard }"
+    },
+    {
+      "action": "Hint(Hint { regex: Some(\"(?:https?://|mailto:|ftp://|file:|ssh:|git://|ssh://|tel:|magnet:|ipfs://|ipns://|gemini://|gopher://|news:)(?:(?:\\\\[[:0-9a-fA-F]+(?:[:0-9a-fA-F]*)+\\\\](?::[0-9]+)?)|[\\\\w\\\\-.~:/?#@!$&*+,;=%]+(?:[\\\\(\\\\[]\\\\w*[\\\\)\\\\]])?)+(?<![,.])|(?:\\\\.\\\\./|\\\\./|(?<!\\\\w)~/|(?:[\\\\w][\\\\w\\\\-.]*/)*(?<!\\\\w)\\\\$[A-Za-z_]\\\\w*/|\\\\.[\\\\w][\\\\w\\\\-.]*/|(?<![\\\\w~/])/(?!/))(?:(?=[\\\\w\\\\-.~:/?#@!$&*+;=%]*\\\\.)[\\\\w\\\\-.~:/?#@!$&*+;=%]+(?:(?<!:) (?!\\\\w+://)(?!\\\\.{0,2}/)(?!~/)[\\\\w\\\\-.~:/?#@!$&*+;=%]*[/.])*(?<!:)(?: +(?= *$))?|(?![\\\\w\\\\-.~:/?#@!$&*+;=%]*\\\\.)[\\\\w\\\\-.~:/?#@!$&*+;=%]+(?:(?<!:) (?!\\\\w+://)(?!\\\\.{0,2}/)(?!~/)[\\\\w\\\\-.~:/?#@!$&*+;=%]+)*(?<!:)(?: +(?= *$))?)|(?=[\\\\w\\\\-.~:/?#@!$&*+;=%]*\\\\.)(?<!\\\\$\\\\d*)(?<!\\\\w)[\\\\w][\\\\w\\\\-.]*/[\\\\w\\\\-.~:/?#@!$&*+;=%]+(?<!:)(?: +(?= *$))?\"), hyperlinks: true, post_processing: true, persist: false, action: Action { action: Open }, mouse: HintMouse { enabled: true, mods: [\"Alt\"] }, binding: Some(HintBinding { key: \"O\", mods: [\"Control\", \"Alt\"], mode: [] }) })",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"o\"), location: Standard }"
+    }
+  ],
+  "diagnostics": [],
+  "platform": "windows",
+  "profile": "automexia",
+  "schema_version": 1
+}

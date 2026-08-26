@@ -1,0 +1,96 @@
+{
+  "schema": 1,
+  "phase": "F1/D0-D3",
+  "status": "local-contract-complete-protected-approval-pending",
+  "activation": {"production_enabled": false, "required_adr": "0012", "adr_status": "Proposed", "required_protected_approvals": 2},
+  "package_identity": {
+    "extension_id": "automexia.devops-ssh",
+    "publisher": "io.github.AmjedAllaya",
+    "version_source": "workspace-package-version",
+    "digest": "sha256-32-bytes-nonzero",
+    "contract_version": 1,
+    "compatibility": "exact",
+    "allowed_verification": ["repository-reviewed", "first-party-signed"],
+    "unverified_denied": true,
+    "revocation_fail_closed": true
+  },
+  "grant": {
+    "capability": "session.launch",
+    "required_bindings": ["extension_id", "operation_id", "session_id", "capsule_revision", "resource", "decision", "decided_at_ms", "expires_at_ms"],
+    "decisions": ["allow-once", "allow-session", "deny"],
+    "persistent_grants": false,
+    "replay_denied": true,
+    "scope_rebind_denied": true,
+    "future_decisions_denied": true,
+    "expired_decisions_denied": true
+  },
+  "audit": {
+    "allowed": ["extension_id", "extension_version", "publisher", "decision", "operation_kind", "public_connection_id", "operation_id", "session_id", "timestamp_ms", "duration_ms", "result"],
+    "forbidden": ["argv", "environment_values", "cwd", "terminal_content", "username", "secret_reference", "process_id", "executable_path", "package_digest"]
+  },
+  "executable_resolution": {
+    "windows": {"mode": "system-directory", "ssh": "OpenSSH/ssh.exe", "ssh_add": "OpenSSH/ssh-add.exe", "ssh_keygen": "OpenSSH/ssh-keygen.exe"},
+    "macos": {"roots": ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]},
+    "linux": {"roots": ["/usr/bin", "/bin", "/usr/local/bin"]},
+    "wsl": {"production_enabled": false, "future_windows_launcher": "System32/wsl.exe", "future_linux_ssh": "/usr/bin/ssh", "shell": false},
+    "path_lookup": false,
+    "cwd_lookup": false,
+    "relative_paths": false,
+    "fallback_after_configured_override_failure": false,
+    "identity_revalidated_before_spawn": true
+  },
+  "strict_defaults": {
+    "host_key_checking": "strict",
+    "unknown_host": "deny-until-explicit-trust",
+    "changed_host": "deny",
+    "agent_forwarding": false,
+    "tcp_forwarding": false,
+    "forward_listener_scope": "loopback-unless-explicitly-confirmed",
+    "x11_forwarding": false,
+    "remote_command": false,
+    "config_command_execution_during_discovery": false,
+    "environment_inheritance": false,
+    "secret_resolution": false,
+    "shell_interpretation": false
+  },
+  "authority_ceiling": {"process": false, "pty": false, "network": false, "provider": false, "authentication": false, "key_custody": false, "renderer": false},
+  "native_scenarios": [
+    {"id": "direct-alias", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "one-literal-destination-argument"},
+    {"id": "explicit-destination", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "explicit-host-connect-without-shell"},
+    {"id": "user-and-port", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "typed-user-host-port-without-option-confusion"},
+    {"id": "encrypted-key", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "prompt-remains-in-pty-no-secret-capture"},
+    {"id": "agent", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "openssh-agent-authoritative-forwarding-off"},
+    {"id": "certificate", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "openssh-auth-no-private-material-in-core"},
+    {"id": "host-key-new", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "deny-until-explicit-trust"},
+    {"id": "host-key-known", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "strict-known-host-connect"},
+    {"id": "host-key-changed", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "hard-deny-with-safe-explanation"},
+    {"id": "proxy-jump", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "openssh-config-authoritative-no-discovery-exec"},
+    {"id": "local-forward", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "disabled-until-confirmed-loopback-default"},
+    {"id": "remote-forward", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "disabled-until-separately-confirmed"},
+    {"id": "dynamic-forward", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "disabled-until-confirmed-loopback-default"},
+    {"id": "cancellation", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "graceful-then-bounded-force-close"},
+    {"id": "exit-code", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "exact-result-class-and-redacted-audit"},
+    {"id": "hostile-output", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "bounded-parser-no-control-or-secret-leak"},
+    {"id": "offline", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "bounded-failure-without-hidden-retry-loop"},
+    {"id": "shutdown-cleanup", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "zero-owned-child-pty-listener-after-close"},
+    {"id": "one-ten-fifty-sessions", "required": true, "platforms": ["windows", "macos", "linux", "wsl"], "expected": "zero-leak-and-recorded-performance-budget"}
+  ],
+  "evidence": {
+    "source": ["apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/mod.rs", "automexia-extension-api/src/lib.rs"],
+    "checks": ["tools/ci/check_session_launch_d0.py", "tools/ci/test_session_launch_d0.py"],
+    "documents": [
+      "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md",
+      "docs/SESSION-LAUNCH-BROKER.md",
+      "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
+      "docs/ARCHITECTURE.md",
+      "docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md",
+      "docs/TESTING.md",
+      "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+      "docs/ROADMAP.md",
+      "docs/DECISIONS.md",
+      "docs/READINESS-AUDIT.md",
+      "docs/STABILIZATION-ROADMAP.md"
+    ]
+  },
+  "external_prerequisites": ["protected security review", "two protected-path approvals", "native process and PTY evidence in later phases"]
+}

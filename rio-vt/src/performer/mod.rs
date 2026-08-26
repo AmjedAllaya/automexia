@@ -23,7 +23,7 @@ use std::collections::VecDeque;
 #[cfg(feature = "pty")]
 use std::io::{self, ErrorKind, Read, Write};
 #[cfg(feature = "pty")]
-use std::sync::Arc;
+use std::sync::{mpsc, Arc};
 #[cfg(feature = "pty")]
 use std::thread::{Builder, JoinHandle};
 #[cfg(feature = "pty")]
@@ -43,6 +43,29 @@ where
         .name(name.into())
         .spawn(f)
         .expect("thread spawn works")
+}
+
+/// Join ownership for one PTY worker without allowing route teardown to block
+/// forever on a stalled platform primitive.
+#[cfg(feature = "pty")]
+pub struct PtyWorkerHandle<T> {
+    thread: Option<JoinHandle<T>>,
+    completion: mpsc::Receiver<()>,
+}
+
+#[cfg(feature = "pty")]
+impl<T> PtyWorkerHandle<T> {
+    /// Wait at most `timeout` for worker completion, then join the finished
+    /// thread. A timeout leaves the handle joinable for a later shutdown pass.
+    pub fn join_timeout(&mut self, timeout: std::time::Duration) -> bool {
+        match self.completion.recv_timeout(timeout) {
+            Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => self
+                .thread
+                .take()
+                .is_none_or(|thread| thread.join().is_ok()),
+            Err(mpsc::RecvTimeoutError::Timeout) => false,
+        }
+    }
 }
 
 #[cfg(feature = "pty")]
@@ -126,7 +149,13 @@ impl<T: teletypewriter::EventedPty> PtyMessageSink for LivePtyMessageSink<'_, T>
         self.write_list.push_back(input);
     }
 
-    fn shutdown(&mut self) {}
+    fn shutdown(&mut self) {
+        if let Err(error) = self.pty.shutdown_owned_process_tree() {
+            warn!(
+                "managed PTY process-tree shutdown did not confirm completion: {error}"
+            );
+        }
+    }
 }
 
 /// Deliver a coalesced channel batch to the PTY boundary. Keeping this policy
@@ -424,8 +453,9 @@ where
         self.sender.clone()
     }
 
-    pub fn spawn(mut self) -> JoinHandle<(Self, State)> {
-        spawn_named("PTY reader", move || {
+    pub fn spawn(mut self) -> PtyWorkerHandle<()> {
+        let (completion_tx, completion) = mpsc::sync_channel(1);
+        let thread = spawn_named("PTY reader", move || {
             let mut state = State::default();
             let mut buf = [0u8; READ_BUFFER_SIZE];
 
@@ -621,8 +651,13 @@ where
             let _ = self.poll.deregister(&self.receiver.rx);
             let _ = self.pty.deregister(&self.poll);
 
-            (self, state)
-        })
+            drop((self, state));
+            let _ = completion_tx.send(());
+        });
+        PtyWorkerHandle {
+            thread: Some(thread),
+            completion,
+        }
     }
 }
 
@@ -630,6 +665,71 @@ where
 mod tests {
     use super::*;
     use crate::event::WindowSize;
+    use proptest::prelude::*;
+
+    #[derive(Clone, Debug)]
+    enum ResizeQueueModelMessage {
+        Resize(u16, u16),
+        Input(u8),
+        Shutdown,
+    }
+
+    #[derive(Debug, Eq, PartialEq)]
+    enum ResizeQueueModelOutput {
+        Resize(u16, u16),
+        Input(u8),
+        Shutdown,
+    }
+
+    fn reference_resize_queue(
+        messages: &[ResizeQueueModelMessage],
+    ) -> Vec<ResizeQueueModelOutput> {
+        let mut output = Vec::new();
+        let mut pending_resize = None;
+        for message in messages {
+            match *message {
+                ResizeQueueModelMessage::Resize(cols, rows) => {
+                    pending_resize = Some((cols, rows));
+                }
+                ResizeQueueModelMessage::Input(byte) => {
+                    if let Some((cols, rows)) = pending_resize.take() {
+                        output.push(ResizeQueueModelOutput::Resize(cols, rows));
+                    }
+                    output.push(ResizeQueueModelOutput::Input(byte));
+                }
+                ResizeQueueModelMessage::Shutdown => {
+                    if let Some((cols, rows)) = pending_resize.take() {
+                        output.push(ResizeQueueModelOutput::Resize(cols, rows));
+                    }
+                    output.push(ResizeQueueModelOutput::Shutdown);
+                    break;
+                }
+            }
+        }
+        if let Some((cols, rows)) = pending_resize {
+            output.push(ResizeQueueModelOutput::Resize(cols, rows));
+        }
+        output
+    }
+
+    fn run_resize_queue_model(
+        messages: &[ResizeQueueModelMessage],
+    ) -> Vec<ResizeQueueModelOutput> {
+        coalesce_channel_messages(messages.iter().map(|message| match *message {
+            ResizeQueueModelMessage::Resize(cols, rows) => Msg::Resize(size(cols, rows)),
+            ResizeQueueModelMessage::Input(byte) => Msg::Input(Cow::Owned(vec![byte])),
+            ResizeQueueModelMessage::Shutdown => Msg::Shutdown,
+        }))
+        .into_iter()
+        .map(|message| match message {
+            Msg::Resize(window_size) => {
+                ResizeQueueModelOutput::Resize(window_size.cols, window_size.rows)
+            }
+            Msg::Input(input) => ResizeQueueModelOutput::Input(input[0]),
+            Msg::Shutdown => ResizeQueueModelOutput::Shutdown,
+        })
+        .collect()
+    }
 
     #[derive(Debug, PartialEq, Eq)]
     enum RecordedPtyEvent {
@@ -670,6 +770,39 @@ mod tests {
             cols,
             width: cols.saturating_mul(8),
             height: rows.saturating_mul(16),
+        }
+    }
+
+    proptest! {
+        #![proptest_config(ProptestConfig::with_cases(512))]
+
+        #[test]
+        fn resize_queue_model_preserves_barriers_and_latest_resize(
+            messages in proptest::collection::vec(
+                prop_oneof![
+                    (1_u16..=1_000, 1_u16..=1_000)
+                        .prop_map(|(cols, rows)| ResizeQueueModelMessage::Resize(cols, rows)),
+                    any::<u8>().prop_map(ResizeQueueModelMessage::Input),
+                    Just(ResizeQueueModelMessage::Shutdown),
+                ],
+                0..=256,
+            ),
+        ) {
+            let expected = reference_resize_queue(&messages);
+            let actual = run_resize_queue_model(&messages);
+
+            prop_assert_eq!(&actual, &expected);
+            prop_assert!(actual.len() <= messages.len());
+            prop_assert!(actual.windows(2).all(|pair| !matches!(
+                pair,
+                [ResizeQueueModelOutput::Resize(_, _), ResizeQueueModelOutput::Resize(_, _)]
+            )));
+            if let Some(shutdown) = actual
+                .iter()
+                .position(|message| *message == ResizeQueueModelOutput::Shutdown)
+            {
+                prop_assert_eq!(shutdown + 1, actual.len());
+            }
         }
     }
 
@@ -771,5 +904,25 @@ mod tests {
             recording_pty.events,
             vec![RecordedPtyEvent::Resize(requested)]
         );
+    }
+
+    #[test]
+    fn pty_worker_join_is_bounded_and_can_complete_after_readiness() {
+        let (release_tx, release_rx) = std::sync::mpsc::sync_channel(0);
+        let (completion_tx, completion_rx) = std::sync::mpsc::sync_channel(1);
+        let thread = std::thread::spawn(move || {
+            release_rx.recv().unwrap();
+            completion_tx.send(()).unwrap();
+            7_u8
+        });
+        let mut worker = PtyWorkerHandle {
+            thread: Some(thread),
+            completion: completion_rx,
+        };
+
+        assert!(!worker.join_timeout(std::time::Duration::ZERO));
+        release_tx.send(()).unwrap();
+        assert!(worker.join_timeout(std::time::Duration::from_secs(1)));
+        assert!(worker.thread.is_none());
     }
 }

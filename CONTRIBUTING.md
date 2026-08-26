@@ -4,6 +4,11 @@ Thank you for contributing. By submitting a contribution you agree to the
 Developer Certificate of Origin 1.1. Add a sign-off to every commit with
 `git commit -s`; a pull request cannot merge if any commit lacks it.
 
+AI coding agents must also follow the repository-level
+[AI contributor workflow](AGENTS.md). It defines the required audit, research,
+planning, test-driven implementation, evidence, documentation, and safe
+commit/push sequence without replacing this human contributor policy.
+
 ## Start here
 
 1. Install the pinned Rust toolchain and platform dependencies.
@@ -25,11 +30,14 @@ domain checks but never remove the base policy suite.
 - Follow the [documentation contribution guide](docs/DOCUMENTATION.md). Every
   new or materially changed feature must retain guide, reference, and
   explanation/ADR ownership in the machine-checked assurance ledger.
+- Keep public purpose, audience, value, and messaging aligned with the
+  [product vision](docs/PRODUCT-VISION.md) and [brand guide](docs/BRANDING.md).
+  Explain value before mechanism, and never present research as shipped work.
 - Add an ADR for dependency boundaries, persistence, threading,
   security/capabilities, or public-behavior decisions.
 - Include screenshots or renderer-neutral goldens for visible UI changes.
-- Follow `docs/BRANDING.md` for logo changes; never overwrite the canonical
-  source or approve redistribution rights without reviewable evidence.
+- For brand assets, never overwrite the canonical source or approve
+  redistribution rights without reviewable evidence.
 - Engine changes require a focused regression test even when inherited engine
   files are excluded from the untouched changed-line threshold.
 - Do not introduce network access, arbitrary process execution, or new extension
@@ -105,6 +113,17 @@ workflow jobs, documentation categories, and evidence paths. Image decoder,
 preview, renderer, or graphics-protocol changes must additionally
 run `cargo xtask test image-rendering`; Windows rendering/lifecycle changes run
 `cargo xtask test image-rendering --native-gui` before review.
+Every changed feature must also update its entry in
+`tests/assurance/feature-test-reinforcement-v1.json` and the matching section
+in `docs/FEATURE-TEST-REINFORCEMENT.md`. The entry owns scenario boundaries,
+real-path tests, independent oracles, cross-feature interactions, checker
+mutations, native/platform scope, and exit criteria. Run:
+
+```text
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+```
+
 
 ## Reviews and merging
 

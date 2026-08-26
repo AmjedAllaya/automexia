@@ -31,6 +31,21 @@ pub struct Cursor {
     pub is_ime_enabled: bool,
 }
 
+impl Cursor {
+    pub fn from_cursor_config(config_cursor: &CursorConfig) -> Self {
+        let cursor_char: char = config_cursor.shape.into();
+        Self {
+            content: cursor_char,
+            content_ref: cursor_char,
+            state: CursorState {
+                pos: Default::default(),
+                content: config_cursor.shape,
+            },
+            is_ime_enabled: false,
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug)]
 pub struct HintLabel {
     pub position: rio_backend::crosswords::pos::Pos,
@@ -185,14 +200,20 @@ impl RenderableContent {
         }
     }
 
-    pub fn from_cursor_config(config_cursor: &CursorConfig) -> Self {
-        let cursor = Cursor {
-            content: config_cursor.shape.into(),
-            content_ref: config_cursor.shape.into(),
-            state: CursorState::new(config_cursor.shape.into()),
-            is_ime_enabled: false,
-        };
-        Self::new(cursor)
+    /// Apply cursor configuration without discarding the per-panel runtime
+    /// snapshot. Live config reloads must not replace `RenderableContent`: it
+    /// owns selections, shell metadata, image placements, pending damage and
+    /// blink/typing state that are independent of the configured cursor shape.
+    pub fn update_cursor_config(&mut self, config_cursor: &CursorConfig) {
+        let cursor_char: char = config_cursor.shape.into();
+        self.cursor.content_ref = cursor_char;
+        self.cursor.state.content = config_cursor.shape;
+
+        // Preserve IME preedit text while composition is active. The normal
+        // renderer path restores `content` from `content_ref` once IME ends.
+        if !self.cursor.is_ime_enabled {
+            self.cursor.content = cursor_char;
+        }
     }
 
     pub fn session_metadata_seed(&self) -> SessionMetadataSeed {
@@ -218,6 +239,85 @@ impl RenderableContent {
         self.shell_path = seed.shell_path;
         self.shell_integration = seed.shell_integration;
         self.seeded_session_metadata = seed.shell_integration;
+    }
+}
+
+#[cfg(test)]
+mod live_config_tests {
+    use super::*;
+    use rio_backend::ansi::CursorShape;
+    use rio_backend::crosswords::pos::{Column, Line, Pos};
+
+    #[test]
+    fn cursor_config_update_preserves_panel_runtime_state() {
+        let initial = CursorConfig {
+            shape: CursorShape::Block,
+            ..CursorConfig::default()
+        };
+        let mut content = RenderableContent::new(Cursor::from_cursor_config(&initial));
+        content.cursor.state.pos = Pos::new(Line(7), Column(3));
+        content.selection_range = Some(SelectionRange {
+            start: Pos::new(Line(2), Column(1)),
+            end: Pos::new(Line(4), Column(5)),
+            is_block: false,
+        });
+        content.current_directory = Some(PathBuf::from("workspace"));
+        content.terminal_title = "long-running shell".to_string();
+        content.shell_integration = true;
+        content
+            .pending_update
+            .set_terminal_damage(TerminalDamage::Partial);
+
+        let updated = CursorConfig {
+            shape: CursorShape::Beam,
+            ..CursorConfig::default()
+        };
+        content.update_cursor_config(&updated);
+
+        assert_eq!(content.cursor.content_ref, '|');
+        assert_eq!(content.cursor.content, '|');
+        assert_eq!(content.cursor.state.content, CursorShape::Beam);
+        assert_eq!(content.cursor.state.pos, Pos::new(Line(7), Column(3)));
+        assert!(content.selection_range.is_some());
+        assert_eq!(
+            content.current_directory.as_deref(),
+            Some(std::path::Path::new("workspace"))
+        );
+        assert_eq!(content.terminal_title, "long-running shell");
+        assert!(content.shell_integration);
+        assert!(content.pending_update.is_dirty());
+        assert_eq!(
+            content.pending_update.take_terminal_damage(),
+            Some(TerminalDamage::Partial)
+        );
+    }
+
+    #[test]
+    fn initial_hidden_cursor_config_remains_hidden() {
+        let config = CursorConfig {
+            shape: CursorShape::Hidden,
+            ..CursorConfig::default()
+        };
+        let content = RenderableContent::new(Cursor::from_cursor_config(&config));
+        assert_eq!(content.cursor.state.content, CursorShape::Hidden);
+    }
+
+    #[test]
+    fn cursor_config_update_does_not_overwrite_active_ime_preedit() {
+        let mut content =
+            RenderableContent::new(Cursor::from_cursor_config(&CursorConfig::default()));
+        content.cursor.is_ime_enabled = true;
+        content.cursor.content = '文';
+
+        let updated = CursorConfig {
+            shape: CursorShape::Underline,
+            ..CursorConfig::default()
+        };
+        content.update_cursor_config(&updated);
+
+        assert_eq!(content.cursor.content, '文');
+        assert_eq!(content.cursor.content_ref, '_');
+        assert_eq!(content.cursor.state.content, CursorShape::Underline);
     }
 }
 

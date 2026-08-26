@@ -311,8 +311,9 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
     let mut grid = Grid::<Square>::new(3, 8, 8);
     grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(42));
     grid[Line(0)].set_semantic_command_result(SemanticCommandResult {
-        exit_code: 17,
-        elapsed_ms: 1_234,
+        id: 77,
+        exit_code: Some(17),
+        elapsed_ms: Some(1_234),
     });
     grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(42));
     for (column, character) in "12345678".chars().enumerate() {
@@ -329,8 +330,9 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
             && row.semantic_prompt_id == Some(42)
             && row.semantic_command_result
                 == Some(SemanticCommandResult {
-                    exit_code: 17,
-                    elapsed_ms: 1_234,
+                    id: 77,
+                    exit_code: Some(17),
+                    elapsed_ms: Some(1_234),
                 })
     }));
     assert!(rows_after_shrink
@@ -351,8 +353,9 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
             && row.semantic_prompt_id == Some(42)
             && row.semantic_command_result
                 == Some(SemanticCommandResult {
-                    exit_code: 17,
-                    elapsed_ms: 1_234,
+                    id: 77,
+                    exit_code: Some(17),
+                    elapsed_ms: Some(1_234),
                 })
     }));
     assert!(rows_after_grow
@@ -362,6 +365,44 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
             row.semantic_prompt == SemanticPrompt::PromptContinuation
                 && row.semantic_prompt_id == Some(42)
         }));
+}
+
+#[test]
+fn semantic_command_boundary_survives_shrink_and_grow_reflow() {
+    use crate::crosswords::grid::row::{
+        SemanticCommandBoundary, SemanticCommandResult, SemanticPrompt,
+    };
+
+    let result = SemanticCommandResult {
+        id: 91,
+        exit_code: Some(7),
+        elapsed_ms: Some(2_500),
+    };
+    let boundary = SemanticCommandBoundary {
+        source_prompt_id: Some(41),
+        result,
+    };
+    let mut grid = Grid::<Square>::new(3, 8, 8);
+    grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(41));
+    grid[Line(0)].set_semantic_command_result(result);
+    for (column, character) in "output!!".chars().enumerate() {
+        grid[Line(1)][Column(column)] = cell(character);
+    }
+    grid[Line(2)].set_semantic_prompt(SemanticPrompt::Prompt, Some(42));
+    grid[Line(2)].set_semantic_command_boundary(boundary);
+
+    for columns in [4usize, 8] {
+        grid.resize(true, 3, columns);
+        let boundary_rows = grid
+            .raw
+            .rows()
+            .filter(|row| row.semantic_command_boundary.is_some())
+            .collect::<Vec<_>>();
+        assert_eq!(boundary_rows.len(), 1, "columns={columns}");
+        assert_eq!(boundary_rows[0].semantic_prompt, SemanticPrompt::Prompt);
+        assert_eq!(boundary_rows[0].semantic_prompt_id, Some(42));
+        assert_eq!(boundary_rows[0].semantic_command_boundary, Some(boundary));
+    }
 }
 
 #[test]

@@ -1,4 +1,6 @@
 mod completion;
+mod keybindings;
+mod visual_diff;
 
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
@@ -88,6 +90,9 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             completion::dispatch(completion_args)
         }
         [command] if command == "storage" => storage_report(),
+        [command, visual_diff_args @ ..] if command == "visual-diff" => {
+            visual_diff::dispatch(visual_diff_args)
+        }
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
         [command, flag] if command == "qa" && flag == "--full" => qa(false),
@@ -104,6 +109,17 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         }
         [command, scope] if command == "verify" && scope == "provenance" => {
             verify_provenance()
+        }
+        [command, scope] if command == "verify" && scope == "keybindings" => {
+            keybindings::verify()
+        }
+        [command, scope] if command == "test" && scope == "keybindings" => {
+            keybindings::test()
+        }
+        [command, scope, generate_args @ ..]
+            if command == "generate" && scope == "keybindings" =>
+        {
+            keybindings::generate(generate_args)
         }
         [command, scope] if command == "verify" && scope == "all" => verify_all(),
         [command, scope] if command == "test" && scope == "conformance" => {
@@ -168,7 +184,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify all|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn root() -> PathBuf {
@@ -1200,6 +1216,7 @@ fn verify_all() -> TaskResult {
     verify_identity()?;
     verify_provenance()?;
     verify_architecture()?;
+    keybindings::verify()?;
     verify_phase_zero_assurance()?;
     package_check()
 }
@@ -1234,6 +1251,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let ci = read(&root().join(".github/workflows/ci.yml"))?;
     let release_workflow = read(&root().join(".github/workflows/release.yml"))?;
     let nightly_workflow = read(&root().join(".github/workflows/nightly.yml"))?;
+    let s2_workflow = read(&root().join(".github/workflows/s2-assurance.yml"))?;
     require(
         ci.contains("cargo-nextest@0.9.137")
             && ci.contains(
@@ -1246,6 +1264,77 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
         "CI/release workflows do not preserve Linux shader prerequisites, QA self-tests, pinned Nextest/JUnit, Cargo doctests, and Loom coverage",
+    )?;
+
+    let repository_validator = read(&root().join("tools/ci/validate_repository.py"))?;
+    require(
+        qa.contains("feature-test-reinforcement-mutations")
+            && ci.contains("python tools/ci/check_feature_test_reinforcement.py")
+            && ci.contains("python tools/ci/test_feature_test_reinforcement.py")
+            && repository_validator.contains("validate_feature_test_reinforcement")
+            && root()
+                .join("tests/assurance/feature-test-reinforcement-v1.json")
+                .is_file()
+            && root()
+                .join("tools/ci/check_feature_test_reinforcement.py")
+                .is_file()
+            && root()
+                .join("tools/ci/test_feature_test_reinforcement.py")
+                .is_file(),
+        "Feature test reinforcement is not enforced by repository, QA, and hosted CI gates",
+    )?;
+
+    let performance_assurance = read(&root().join("tools/ci/performance_assurance.py"))?;
+    let performance_tests = read(&root().join("tools/ci/test_performance_assurance.py"))?;
+    let performance_policy =
+        read(&root().join("tests/assurance/performance-ratchet-policy-v1.json"))?;
+    let performance_baseline =
+        read(&root().join("tests/fixtures/performance/s2-baseline-v1.json"))?;
+    let visual_diff = read(&root().join("tools/xtask/src/visual_diff.rs"))?;
+    let visual_policy = read(&root().join("tests/assurance/visual-diff-policy-v1.json"))?;
+    require(
+        performance_assurance.contains("EXPECTED_THRESHOLDS")
+            && performance_assurance.contains("EXPECTED_POLICY_SHA256")
+            && performance_assurance.contains("def collect_native_resource(")
+            && performance_assurance.contains("def validate_candidate_context(")
+            && performance_assurance.contains("def validate_active_baseline_context(")
+            && performance_assurance.contains("def _discover_criterion_results(")
+            && performance_assurance.contains("def merge_candidate_evidence(")
+            && performance_assurance.contains("def build_baseline(")
+            && performance_assurance.contains("require_clean_source(")
+            && performance_assurance.contains("validate-baseline")
+            && performance_assurance.contains("--require-active")
+            && performance_tests.contains("test_latency_and_memory_thresholds_fail_above_exact_limits")
+            && performance_tests.contains("test_reviewed_baseline_builder_requires_exact_complete_daily_evidence")
+            && performance_tests.contains("test_candidate_is_fresh_and_bound_to_the_exact_source_commit")
+            && performance_tests.contains("test_criterion_requires_bounded_repeated_samples_and_narrow_confidence")
+            && performance_policy.contains("\"latency_percent\": 5.0")
+            && performance_policy.contains("\"memory_percent\": 10.0")
+            && performance_policy.contains("\"minimum_consecutive_days\": 30")
+            && performance_baseline.contains("\"status\": \"collecting\"")
+            && qa.contains("performance-assurance-mutations")
+            && qa.contains("run_dir / \"benchmark-target\"")
+            && ci.contains("python tools/ci/test_performance_assurance.py")
+            && nightly_workflow.contains("performance-controlled-windows")
+            && nightly_workflow.contains("retention-days: 90")
+            && nightly_workflow.contains("--operator")
+            && nightly_workflow.contains("--expected-commit")
+            && release_workflow.contains("Enforce the active S2 latency and memory ratchet")
+            && release_workflow.contains("--operator")
+            && release_workflow.contains("--expected-commit")
+            && release_workflow.contains("--require-active")
+            && s2_workflow.contains("name: S2 controlled activation")
+            && s2_workflow.contains("environment: stable-release")
+            && s2_workflow.contains("validate-baseline")
+            && s2_workflow.contains("--expected-source-commit")
+            && s2_workflow.contains("retention-days: 90")
+            && visual_diff.contains("MAX_PIXELS: u64 = 40_000_000")
+            && visual_diff.contains("MAX_MASKS: usize = 32")
+            && visual_policy.contains("\"max_channel_delta\": 0")
+            && visual_policy.contains("\"max_changed_pixel_ratio\": 0.0")
+            && visual_policy.contains("\"masks\": []")
+            && visual_diff.contains("repository_policy_rejects_one_changed_channel_in_one_pixel"),
+        "S1/S2 visual, benchmark, source binding, baseline review, waiver, nightly, activation, or fail-closed release assurance drifted",
     )?;
 
     let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;
@@ -1286,7 +1375,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let pty_manifest = read(&root().join("teletypewriter/Cargo.toml"))?;
     require(
         nightly_workflow.contains(
-            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh --no-run --locked",
+            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked",
         )
             && qa.contains("\"benchmark-image\": 7200")
             && qa.contains("\"benchmark-image\"")
@@ -1304,16 +1393,23 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("\"openssh_inventory\"")
             && qa.contains("\"benchmark-quick-actions\": 7200")
             && qa.contains("\"benchmark-quick-actions\"")
-            && qa.contains("\"automexia-devops\"")
+            && qa.contains("\"automexia-command-productivity\"")
             && qa.contains("\"quick_actions\"")
             && root()
-                .join("automexia-devops/benches/quick_actions.rs")
+                .join("automexia-command-productivity/benches/quick_actions.rs")
                 .is_file()
             && qa.contains("\"benchmark-quick-action-store\": 7200")
             && qa.contains("\"benchmark-quick-action-store\"")
             && qa.contains("\"quick_action_store\"")
             && root()
                 .join("apps/automexia-terminal/benches/quick_action_store.rs")
+                .is_file()
+            && qa.contains("\"benchmark-keybindings\": 7200")
+            && qa.contains("\"benchmark-keybindings\"")
+            && qa.contains("\"automexia-keybindings\"")
+            && qa.contains("\"registry\"")
+            && root()
+                .join("automexia-keybindings/benches/registry.rs")
                 .is_file()
             && pty_manifest.contains("name = \"pty_io\"")
             && root().join("teletypewriter/benches/pty_io.rs").is_file(),
@@ -1371,8 +1467,30 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && appverifier.contains("finally")
             && appverifier.contains("-disable '*'")
             && appverifier.contains("-delete settings")
-            && appverifier.contains("automexia.exe"),
-        "Application Verifier wrapper lacks preflight refusal, exact target, or guaranteed cleanup",
+            && appverifier.contains("automexia.exe")
+            && appverifier.contains("'/faults'")
+            && appverifier.contains("MaximumVerifierLogBytes")
+            && appverifier.contains("AUTOMEXIA_S1_BASICS_START")
+            && appverifier.contains("AUTOMEXIA_S1_LOW_RESOURCE_START"),
+        "Application Verifier wrapper lacks preflight refusal, exact target, bounded Basics/low-resource phases, failure detection, or guaranteed cleanup",
+    )?;
+    let visual_hooks =
+        read(&root().join("apps/automexia-terminal/src/automexia/visual_test_hooks.rs"))?;
+    let runtime = read(&root().join("apps/automexia-terminal/src/automexia/runtime.rs"))?;
+    let s1_validator = read(&root().join("tools/ci/s1_assurance.py"))?;
+    let s1_policy = read(&root().join("tests/assurance/s1-assurance-policy-v1.json"))?;
+    let s1_workflow = read(&root().join(".github/workflows/s1-assurance.yml"))?;
+    require(
+        app_manifest.contains("visual-test-hooks = [\"native-gui-test-hooks\"]")
+            && visual_hooks.contains("s1-standard-v1")
+            && visual_hooks.contains("animations_enabled")
+            && runtime.contains("visual_test_snapshot")
+            && s1_validator.contains("require_complete")
+            && s1_validator.contains("current_source_commit")
+            && s1_policy.contains("accessibility-linux-wayland-orca")
+            && s1_workflow.contains("--require-complete")
+            && s1_workflow.contains("--expected-commit $env:GITHUB_SHA"),
+        "S1 assurance lacks deterministic visual fixtures or a complete commit-bound native/visual/resource/accessibility release contract",
     )?;
     let wpr = read(&root().join("tests/integration/wpr-windows.ps1"))?;
     require(
@@ -1781,7 +1899,7 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             "automexia-terminal",
             "--locked",
             "--features",
-            "native-gui-test-hooks",
+            "visual-test-hooks",
         ],
     )?;
     let identity = product_identity()?;
@@ -1814,10 +1932,22 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .as_ref()
         .and_then(|report| report.parent())
         .map(|parent| parent.join("typography-captures"));
+    let result_capture_directory = requested_report_path
+        .as_ref()
+        .and_then(|report| report.parent())
+        .map(|parent| parent.join("result-captures"));
     if let Some(directory) = typography_capture_directory.as_ref() {
         fs::create_dir_all(directory).map_err(|error| {
             format!(
                 "could not create native typography capture directory {}: {error}",
+                directory.display()
+            )
+        })?;
+    }
+    if let Some(directory) = result_capture_directory.as_ref() {
+        fs::create_dir_all(directory).map_err(|error| {
+            format!(
+                "could not create native command-result capture directory {}: {error}",
                 directory.display()
             )
         })?;
@@ -1828,6 +1958,12 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     let cpu_typography_capture = typography_capture_directory
         .as_ref()
         .map(|directory| directory.join("workspace-cpu.png"));
+    let wgpu_result_capture = result_capture_directory
+        .as_ref()
+        .map(|directory| directory.join("command-result-wgpu.png"));
+    let cpu_result_capture = result_capture_directory
+        .as_ref()
+        .map(|directory| directory.join("command-result-cpu.png"));
     let wgpu_report = requested_report_path
         .clone()
         .unwrap_or_else(|| report_directory.path().join("wgpu.json"));
@@ -1851,6 +1987,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     }
     if let Some(capture) = wgpu_typography_capture.as_ref() {
         command.arg("-TypographyCapture").arg(capture);
+    }
+    if let Some(capture) = wgpu_result_capture.as_ref() {
+        command.arg("-ResultCapture").arg(capture);
     }
     run_command(command, "native Windows WGPU GUI resize stress")?;
 
@@ -1879,6 +2018,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     }
     if let Some(capture) = cpu_typography_capture.as_ref() {
         cpu_command.arg("-TypographyCapture").arg(capture);
+    }
+    if let Some(capture) = cpu_result_capture.as_ref() {
+        cpu_command.arg("-ResultCapture").arg(capture);
     }
     run_command(cpu_command, "native Windows CPU GUI resize stress")?;
     verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)
@@ -1979,7 +2121,7 @@ fn test_session_clone(native: Option<&str>) -> TaskResult {
             "automexia-terminal",
             "--locked",
             "--features",
-            "native-gui-test-hooks",
+            "visual-test-hooks",
         ],
     )?;
     let identity = product_identity()?;
@@ -2148,9 +2290,20 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_feature_ownership.py")?;
+    run_python("tools/ci/test_feature_ownership.py")?;
     run_python("tools/ci/check_command_productivity.py")?;
     run_python("tools/ci/check_command_productivity_cp1.py")?;
+    run_python("tools/ci/check_command_productivity_cp22.py")?;
+    run_python("tools/ci/check_command_productivity_cp30.py")?;
+    run_python("tools/ci/check_command_productivity_cp31.py")?;
+    run_python("tools/ci/check_command_productivity_cp32.py")?;
+    run_python("tools/ci/check_command_productivity_cp33.py")?;
+    run_python("tools/ci/check_provider_quick_actions_cp4.py")?;
+    run_python("tools/ci/check_session_launch_d0.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
+    run_python("tools/ci/check_ecosystem_d7_cp6.py")?;
+    run_python("tools/ci/check_ghostty_compatibility.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
     let packages = metadata["packages"]
@@ -2169,23 +2322,48 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 6] = [
-        ("automexia-extension-api", &["serde", "serde_json"]),
+    let private_crates: [(&str, &[&str]); 17] = [
+        (
+            "automexia-keybindings",
+            &["criterion", "proptest", "serde", "serde_json", "sha2"],
+        ),
+        (
+            "automexia-extension-api",
+            &["serde", "serde_json", "unicode-segmentation"],
+        ),
         (
             "automexia-extension-runtime",
             &["automexia-extension-api", "loom"],
         ),
         (
-            "automexia-devops",
+            "automexia-connectivity",
             &[
                 "automexia-extension-api",
-                "automexia-ui-model",
+                "base64",
+                "blake3",
                 "criterion",
-                "dirs",
+                "proptest",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-command-productivity",
+            &[
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "blake3",
+                "criterion",
+                "proptest",
                 "serde",
                 "serde_json",
                 "toml",
+                "unicode-segmentation",
             ],
+        ),
+        (
+            "automexia-devops",
+            &["automexia-extension-api", "dirs", "proptest", "serde_json"],
         ),
         (
             "automexia-devops-ssh",
@@ -2202,10 +2380,123 @@ fn verify_architecture() -> TaskResult {
                 "proptest",
             ],
         ),
+        (
+            "automexia-devops-aws",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "configparser",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-azure",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "criterion",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-gcp",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "configparser",
+                "criterion",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-kubernetes",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "criterion",
+                "libc",
+                "serde",
+                "serde-saphyr",
+                "serde_json",
+                "sha2",
+                "tempfile",
+            ],
+        ),
+        (
+            "automexia-devops-openshift",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-devops-kubernetes",
+                "automexia-extension-api",
+                "serde",
+                "serde_json",
+            ],
+        ),
+        (
+            "automexia-devops-teleport",
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "criterion",
+                "serde",
+                "serde_json",
+                "sha2",
+                "time",
+                "url",
+            ],
+        ),
+        (
+            "automexia-ecosystem",
+            &[
+                "criterion",
+                "proptest",
+                "serde",
+                "serde_json",
+                "sha2",
+                "unicode-normalization",
+            ],
+        ),
+        (
+            "automexia-ecosystem-runtime",
+            &[
+                "automexia-command-productivity",
+                "automexia-ecosystem",
+                "base64",
+                "criterion",
+                "ed25519-dalek",
+                "proptest",
+                "serde",
+                "serde_json",
+                "sha2",
+                "tempfile",
+                "unicode-normalization",
+                "wasmtime",
+                "wat",
+                "windows-sys",
+                "wit-parser",
+                "zip",
+            ],
+        ),
         ("automexia-image", &["image", "libc", "tempfile"]),
         (
             "automexia-ui-model",
-            &["automexia-extension-api", "unicode-segmentation"],
+            &[
+                "automexia-command-productivity",
+                "automexia-connectivity",
+                "automexia-extension-api",
+                "serde",
+                "serde_json",
+                "unicode-segmentation",
+            ],
         ),
     ];
     for (name, allowed_dependencies) in private_crates {
@@ -2429,11 +2720,19 @@ fn verify_architecture() -> TaskResult {
     )?;
 
     let launch_broker = read(&app.join("src/context/launch_broker.rs"))?;
+    let external_tool_runner = read(&app.join("src/context/external_tool_runner.rs"))?;
     require(
-        context.contains("#[cfg(test)]")
-            && context.contains("pub mod launch_broker;")
-            && launch_broker.contains("pub const MANAGED_SESSION_LAUNCH_ENABLED: bool = false")
-            && launch_broker.contains("const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED)")
+        context.matches("pub mod launch_broker;").count() == 1
+            && context
+                .matches("pub mod external_tool_runner;")
+                .count()
+                == 1
+            && !context.contains("#[cfg(test)]\npub mod launch_broker;")
+            && !context.contains("#[cfg(test)]\npub mod external_tool_runner;")
+            && launch_broker
+                .contains("pub const MANAGED_SESSION_LAUNCH_ENABLED: bool = false")
+            && launch_broker
+                .contains("const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED)")
             && launch_broker.contains("Capability::SessionLaunch")
             && launch_broker.contains("Capability::ProcessSpawn")
             && launch_broker.contains("SessionLaunchDescriptor::new")
@@ -2450,14 +2749,37 @@ fn verify_architecture() -> TaskResult {
             && launch_broker.contains("pub fn rebind_session")
             && launch_broker.contains("safe_default_working_directory")
             && !launch_broker.contains("revoked_sessions")
-            && launch_broker.contains("production_broker_is_a_hard_denial_before_resolution")
-            && launch_broker.contains("executable_replacement_is_detected_even_when_size_is_unchanged")
-            && launch_broker.contains("accepted_destination_remains_one_literal_native_argument")
+            && launch_broker
+                .contains("production_broker_is_a_hard_denial_before_resolution")
+            && launch_broker.contains(
+                "executable_replacement_is_detected_even_when_size_is_unchanged",
+            )
+            && launch_broker
+                .contains("accepted_destination_remains_one_literal_native_argument")
             && launch_broker.contains("configured_executable_override_is_fail_closed")
-            && launch_broker.contains("decisions_are_expiring_and_bound_to_registered_capsule_scope")
-            && launch_broker.contains("one_ten_and_fifty_session_cycles_release_all_bounded_state")
+            && launch_broker
+                .contains("decisions_are_expiring_and_bound_to_registered_capsule_scope")
+            && launch_broker
+                .contains("one_ten_and_fifty_session_cycles_release_all_bounded_state")
+            && launch_broker.contains(
+                "linked_candidate_path_stays_fail_closed_and_redacted_without_attestation",
+            )
             && !launch_broker.contains(".spawn()")
             && !launch_broker.contains("create_pty")
+            && external_tool_runner
+                .contains("pub const MAX_CONCURRENT_EXTERNAL_TOOLS: usize = 50")
+            && external_tool_runner
+                .contains("pub const MAX_RUNNER_AUDIT_RECORDS: usize = 256")
+            && external_tool_runner
+                .contains("VerifiedExtension::linked_unverified_candidate()")
+            && external_tool_runner.contains("RunnerErrorCode::SafeDefaultUnavailable")
+            && external_tool_runner.contains("pub fn mark_published")
+            && external_tool_runner.contains("pub fn shutdown_now")
+            && !external_tool_runner.contains("create_exact_pty")
+            && !external_tool_runner.contains("std::process::Command")
+            && context.matches("teletypewriter::create_exact_pty(").count() == 2
+            && context.contains("pub fn publish_managed_context")
+            && context.contains("runner.mark_published(lease, route_id)")
             && api_model.contains("SessionLaunch")
             && api_model.contains("session.launch")
             && api_model.contains("impl CapabilityRequest")
@@ -2466,7 +2788,7 @@ fn verify_architecture() -> TaskResult {
             && api_model.contains(r#"try_from = "CapabilityDecisionWire""#)
             && api_model.contains("expires_at_ms")
             && api_model.contains("capsule_revision"),
-        "non-activated D3 broker lost its test-only gate, exact capsule/decision/replay scope, bounded lifecycle, fail-closed resolver, native identity/argv validation, single launch seam, or typed contracts",
+        "non-activated D3 launch path lost its production hard-deny gate, app-owned bounded runner, exact ContextManager PTY seam, route/session publication order, native identity/argv validation, or typed contracts",
     )?;
 
     let island_renderer = read(&app.join("src/renderer/island.rs"))?;
@@ -2927,6 +3249,87 @@ fn verify_architecture() -> TaskResult {
         "OpenSSH inventory fuzz or benchmark assurance is missing",
     )?;
 
+    let connection_model = [
+        read(&root().join("automexia-connectivity/src/connections/automation.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/documents.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/model.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/planner.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/state.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/validation.rs"))?,
+        read(&root().join("automexia-connectivity/src/connections/workspace.rs"))?,
+    ]
+    .join("\n");
+    let connection_hub = read(&root().join("automexia-ui-model/src/connection_hub.rs"))?;
+    for invariant in [
+        "pub struct ConnectionDefinition",
+        "pub struct ConnectionObservation",
+        "pub struct ConnectionIntent",
+        "pub struct ConnectionReview",
+        "pub struct ConnectionReceipt",
+        "pub struct ConnectionProfileV1",
+        "pub struct AutomationRecipeV1",
+        "pub struct AutomationStepV1",
+        "pub struct TunnelDefinitionV1",
+        "pub struct ResolvedConnectionPlan",
+        "MAX_STEPS_PER_RECIPE: usize = 64",
+        "MAX_TUNNELS_PER_PROFILE: usize = 32",
+        "execution_enabled: false",
+        "AuthorityKind::Process",
+        "AuthorityKind::Network",
+        "AuthorityKind::Credential",
+        "AuthorityKind::Pty",
+        "AuthorityKind::Listener",
+    ] {
+        require(
+            connection_model.contains(invariant),
+            &format!("F2 connection model lost required invariant {invariant}"),
+        )?;
+    }
+    for invariant in [
+        "pub enum HubLayout",
+        "pub enum HubContentState",
+        "background_inert: true",
+        "focus_trapped: true",
+        "execution_enabled: false",
+        "pty_resize_requested: false",
+        "project_connection_review",
+        "project_recipe_planner",
+    ] {
+        require(
+            connection_hub.contains(invariant),
+            &format!("F2 Hub model lost required invariant {invariant}"),
+        )?;
+    }
+    let f2_source = format!("{connection_model}\n{connection_hub}");
+    for forbidden in [
+        "std::process",
+        "Command::new",
+        "std::net",
+        "TcpStream",
+        "TcpListener",
+        "UdpSocket",
+        "std::fs",
+        "tokio::process",
+        "tokio::net",
+        "reqwest",
+        "unsafe {",
+    ] {
+        require(
+            !f2_source.contains(forbidden),
+            &format!("F2 connection model crossed its disabled authority boundary with {forbidden}"),
+        )?;
+    }
+    require(
+        read(&root().join("fuzz/Cargo.toml"))?.contains("connection_planning")
+            && read(&root().join(".github/workflows/nightly.yml"))?
+                .contains("connection_planning")
+            && read(&root().join("tools/ci/qa.py"))?
+                .contains("benchmark-connection-planning")
+            && root()
+                .join("automexia-connectivity/benches/connection_planning.rs")
+                .is_file(),
+        "F2 connection planning fuzz or benchmark assurance is missing",
+    )?;
     for engine in ["rio-vt", "teletypewriter", "sugarloaf", "rio-window"] {
         let package = packages
             .iter()

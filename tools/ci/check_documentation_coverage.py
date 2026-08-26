@@ -46,6 +46,7 @@ CONFIG_STRUCTS = {
 INTERNAL_CONFIG_KEYS = {"adaptive_colors"}
 REQUIRED_PAGES = {
     "docs/index.md",
+    "docs/PRODUCT-VISION.md",
     "docs/GETTING-STARTED.md",
     "docs/FEATURES.md",
     "docs/CONFIGURATION.md",
@@ -133,12 +134,66 @@ def binding_action_names(root: Path = ROOT) -> set[str]:
     return set(re.findall(r'^\s*"([a-z0-9]+)"\s*=>', match.group("body"), re.MULTILINE))
 
 
+def clap_long_flags(body: str) -> set[str]:
+    flags: set[str] = set()
+    pending_attributes: list[str] = []
+    attribute_lines: list[str] = []
+    for line in body.splitlines():
+        stripped = line.strip()
+        if attribute_lines:
+            attribute_lines.append(stripped)
+            if "]" in stripped:
+                pending_attributes.append(" ".join(attribute_lines))
+                attribute_lines.clear()
+            continue
+        if stripped.startswith("#["):
+            if "]" in stripped:
+                pending_attributes.append(stripped)
+            else:
+                attribute_lines.append(stripped)
+            continue
+        field = re.match(r"pub\s+(\w+)\s*:", stripped)
+        if not field:
+            if stripped and not stripped.startswith("///"):
+                pending_attributes.clear()
+            continue
+        attributes = " ".join(pending_attributes)
+        pending_attributes.clear()
+        if "subcommand" in attributes or "flatten" in attributes:
+            continue
+        long_option = re.search(r'\blong(?:\s*=\s*"([^"]+)")?', attributes)
+        if not long_option:
+            continue
+        explicit_name = re.search(r'\bname\s*=\s*"([^"]+)"', attributes)
+        name = (
+            explicit_name.group(1)
+            if explicit_name
+            else long_option.group(1) or field.group(1).replace("_", "-")
+        )
+        flags.add("--" + name)
+    return flags
+
+
 def application_cli_flags(root: Path = ROOT) -> set[str]:
     source = (root / "apps/automexia-terminal/src/cli.rs").read_text(encoding="utf-8")
-    body = struct_body(source, "TerminalOptions")
+    return clap_long_flags(struct_body(source, "Cli")) | clap_long_flags(
+        struct_body(source, "TerminalOptions")
+    )
+
+
+def application_cli_commands(root: Path = ROOT) -> set[str]:
+    source = (root / "apps/automexia-terminal/src/cli.rs").read_text(encoding="utf-8")
+    match = re.search(
+        r"pub\s+enum\s+CliCommand\s*\{(?P<body>.*?)^\}",
+        source,
+        flags=re.DOTALL | re.MULTILINE,
+    )
+    if not match:
+        raise DocumentationCoverageError("could not find application command registry")
+    variants = re.findall(r"^\s*(\w+)\s*\(", match.group("body"), re.MULTILINE)
     return {
-        "--" + field.replace("_", "-")
-        for field in re.findall(r"^\s*pub\s+(\w+)\s*:", body, re.MULTILINE)
+        re.sub(r"(?<!^)(?=[A-Z])", "-", variant).lower()
+        for variant in variants
     }
 
 
@@ -186,6 +241,7 @@ def validate(root: Path = ROOT) -> dict[str, int]:
     config_keys = source_config_keys(root)
     actions = binding_action_names(root)
     flags = application_cli_flags(root)
+    application_commands = application_cli_commands(root)
     commands = xtask_commands(root)
     counts = {
         "pages": validate_canonical_pages(root),
@@ -196,6 +252,11 @@ def validate(root: Path = ROOT) -> dict[str, int]:
             "keyboard reference", actions, keyboard_content
         ),
         "cli_flags": require_tokens("CLI reference", flags, cli_content),
+        "cli_commands": require_tokens(
+            "CLI reference",
+            {f"automexia {command}" for command in application_commands},
+            cli_content,
+        ),
         "xtask_commands": require_tokens(
             "CLI reference", {f"cargo xtask {item}" for item in commands}, cli_content
         ),
@@ -212,6 +273,7 @@ def main() -> int:
         "PASS: public documentation covers source registries "
         f"(pages={counts['pages']}, config_keys={counts['config_keys']}, "
         f"binding_actions={counts['binding_actions']}, cli_flags={counts['cli_flags']}, "
+        f"cli_commands={counts['cli_commands']}, "
         f"xtask_commands={counts['xtask_commands']})"
     )
     return 0

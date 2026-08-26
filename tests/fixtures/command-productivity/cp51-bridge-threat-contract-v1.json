@@ -1,0 +1,184 @@
+{
+  "schema": 1,
+  "phase": "CP5.1-CP5.6",
+  "status": "accepted-source-authorized-preview-disabled",
+  "authority": {
+    "adr": "0025",
+    "accepted": true,
+    "runtime_activation": false,
+    "default_experience": "cp1-shell-native",
+    "fallback": "native-editor",
+    "dependency": "none",
+    "insertion_owner": "native-shell-editor",
+    "execution": "never"
+  },
+  "transport": {
+    "windows": {
+      "kind": "private-named-pipe",
+      "remote_clients": "rejected",
+      "first_instance": true,
+      "acl": "current-user-and-logon-session-only",
+      "peer_checks": ["client-process-id", "client-session-id"]
+    },
+    "unix": {
+      "kind": "filesystem-unix-stream-socket",
+      "directory_mode": "0700",
+      "socket_mode": "0600",
+      "abstract_namespace": false,
+      "peer_checks": ["effective-user-id"]
+    },
+    "forbidden": ["tcp", "udp", "osc", "terminal-output", "terminal-grid-inference", "per-keystroke-process"]
+  },
+  "identity_binding": {
+    "required": ["application-generation", "window", "tab", "pane", "session", "shell", "editor-version", "endpoint-instance", "capability", "prompt-generation", "buffer-generation"],
+    "capability_bytes": 32,
+    "replay_window": 0,
+    "compare": "constant-time",
+    "rotation": ["session-start", "route-rebind", "kill-switch"]
+  },
+  "framing": {
+    "encoding": "utf-8-json",
+    "length_prefix": "u32-little-endian",
+    "schema_negotiation": "exact-major-overlapping-minor",
+    "allocation_rule": "validate-prefix-before-allocation",
+    "unknown_fields": "reject",
+    "compression": "forbidden"
+  },
+  "request": {
+    "required_fields": ["schema", "request_id", "application_generation", "window_id", "tab_id", "pane_id", "session_id", "shell", "editor_version", "endpoint_instance", "capability", "prompt_generation", "buffer_generation", "buffer", "cursor_byte", "cursor_grapheme", "selection", "replacement_span", "quote_context", "token_context", "cwd", "completion_mode", "source_revision", "reason", "cancellation_id"],
+    "persistence": "memory-only-drop-after-response",
+    "logging": "metadata-allowlist-only"
+  },
+  "candidate": {
+    "required_fields": ["request_id", "candidate_id", "insertion", "display", "description", "kind", "source", "freshness", "replacement_span", "quoting", "public_context", "risk"],
+    "id_scope": "request-local-stable",
+    "acceptance": "editor-revalidate-replace-once-no-enter",
+    "display_policy": "plain-text-bidi-contained-grapheme-safe"
+  },
+  "security_threats": [
+    {
+      "id": "CP5-T17-endpoint-impersonation-replay",
+      "asset": "editor buffer, route isolation, and local endpoint identity",
+      "controls": ["private OS-local endpoint with restrictive user/session access", "32-byte random session capability compared in constant time", "peer process/session or effective-uid verification", "exact route and endpoint-instance binding", "strictly increasing buffer generations with zero replay window", "exact endpoint teardown and capability rotation"],
+      "hostile_mutations": ["world-readable endpoint", "remote named-pipe client", "wrong uid, process session, route, capability, or endpoint instance", "duplicate or decreasing generation", "stale endpoint after route close"],
+      "verification_owner": ["protocol unit and mutation tests", "Windows named-pipe native security fixture", "Linux SO_PEERCRED native fixture", "macOS getpeereid native fixture"],
+      "residual_risk": "A process already controlling the same user and logon session may observe or alter that user's shell; the bridge is not a sandbox against a fully compromised account."
+    },
+    {
+      "id": "CP5-T18-buffer-history-privacy",
+      "asset": "command buffer, current directory, selection, and shell history",
+      "controls": ["memory-only request payload dropped immediately after response", "history and frequency are separate opt-ins", "history candidates come from the active shell API and never history files", "metadata allowlists exclude payloads from logs, telemetry, crash reports, diagnostics, clipboard, extensions, and support bundles", "secret and private provider fields never become candidates"],
+      "hostile_mutations": ["buffer or cwd in logs", "history-file read", "unknown diagnostic field passthrough", "cross-pane publication", "secret-looking provider field"],
+      "verification_owner": ["redaction-canary tests", "negative persistence and support-bundle scans", "two-pane and two-session isolation tests", "shell-history opt-in conformance tests"],
+      "residual_risk": "The opted-in active shell already owns its in-memory history and buffer; a compromised shell integration retains that user's shell authority."
+    },
+    {
+      "id": "CP5-T19-stale-overbroad-replacement",
+      "asset": "native editor buffer, selection, cursor, and replacement span",
+      "controls": ["bind prompt and buffer generations, cursor byte and grapheme, selection, quoting, token context, and exact span", "require UTF-8 and grapheme boundaries within the bounded buffer", "retain one latest generation per pane and cancel obsolete work", "native editor revalidates route, generations, buffer, cursor, selection, quoting, and span", "replace exactly once without Enter"],
+      "hostile_mutations": ["stale generation", "cross-pane route", "mid-codepoint or mid-grapheme cursor", "reversed or out-of-buffer span", "selection or quote-context drift", "double acceptance"],
+      "verification_owner": ["protocol property and fuzz tests", "deterministic rapid-typing and cancellation models", "native shell insertion fixtures", "IME and combining-grapheme tests"],
+      "residual_risk": "A third-party native completer may return surprising text; the native editor still shows and inserts it without execution."
+    },
+    {
+      "id": "CP5-T20-candidate-spoofing",
+      "asset": "visible candidate identity, insertion truth, source, freshness, and risk",
+      "controls": ["treat labels as bounded untrusted plain text", "reject or visibly contain control and unsafe format characters", "separate display, insertion, source, freshness, kind, and textual risk", "preserve full accessible insertion value through grapheme-safe truncation", "shell returns the escaped insertion and quoting mode used"],
+      "hostile_mutations": ["bidi override", "control sequence", "markup or icon injection", "hidden suffix after visual truncation", "display and insertion mismatch", "color-only production risk"],
+      "verification_owner": ["hostile Unicode and bidi corpus", "renderer-neutral golden snapshots", "accessible-name assertions", "native quote-and-insert conformance fixtures"],
+      "residual_risk": "Plain text may contain confusable Unicode; source, insertion disclosure, and textual risk reduce ambiguity."
+    },
+    {
+      "id": "CP5-T21-input-capture-occlusion",
+      "asset": "native key bindings, focus, cursor, IME, pane isolation, and modal hierarchy",
+      "controls": ["preserve native Tab and editor bindings by default", "make explicit request shortcut collision-checked, configurable, or unbound", "clip popup to one pane above content and below modals", "avoid cursor, IME, tabs, footer, dialogs, and sibling panes", "dismiss on focus, buffer, generation, pane, prompt, modal, IME, or route invalidation", "Enter dismisses and forwards native submit but never accepts"],
+      "hostile_mutations": ["global Ctrl+Space override", "Fish Ctrl+Space collision", "popup crossing sibling pane", "popup above modal", "stale popup after focus loss or IME start", "Enter accepts or executes"],
+      "verification_owner": ["binding collision tests", "pane geometry and z-order property tests", "tiny-to-8K renderer-neutral goldens", "native focus, IME, and modal automation", "screen-reader assessment"],
+      "residual_risk": "OS IME and assistive-technology overlays vary; controlled native validation remains mandatory before release."
+    },
+    {
+      "id": "CP5-T22-resource-amplification",
+      "asset": "input latency, CPU, memory, sockets, tasks, handles, and provider isolation",
+      "controls": ["one latest queued generation per pane and bounded active routes", "fixed buffer, frame, candidate, batch, row, cache, and deadline ceilings", "application-owned joined worker stays off input, renderer, PTY, resize, and startup hot paths", "no network, authentication, credential access, recursive IO, provider process, plugin process, or per-keystroke process", "cancel late work and reject stale publication", "join workers, close clients, remove endpoints, clear caches, and rotate capabilities on shutdown"],
+      "hostile_mutations": ["oversized length prefix", "candidate storm", "rapid multi-pane generation storm", "hung source", "provider or plugin invocation while typing", "route churn and repeated enable-disable"],
+      "verification_owner": ["parser fuzzing", "deterministic saturation and cancellation models", "Criterion latency and ranking benchmarks", "repeated lifecycle handle-thread-memory tests", "30-day controlled soak"],
+      "residual_risk": "Slow machines may miss targets; deadlines, stale-marked last-known-good state, and the immediate kill switch preserve native editing."
+    }
+  ],
+  "sources": [
+    {"id": "native-shell", "priority": 1, "opt_in": false, "owner": "active-shell-editor", "io": "none"},
+    {"id": "opt-in-shell-history", "priority": 2, "opt_in": true, "owner": "active-shell-editor-api", "io": "none"},
+    {"id": "shell-cwd-and-executables", "priority": 3, "opt_in": false, "owner": "active-shell-editor-api", "io": "shell-local-nonrecursive"},
+    {"id": "opt-in-decayed-frequency", "priority": 4, "opt_in": true, "owner": "automexia-candidate-id-counter", "io": "cached-memory"},
+    {"id": "cached-cp1-cp4-public", "priority": 5, "opt_in": false, "owner": "existing-last-known-good-public-snapshots", "io": "cached-memory"},
+    {"id": "typed-cp2-cp3-actions", "priority": 6, "opt_in": false, "owner": "existing-quick-action-index", "io": "cached-memory"}
+  ],
+  "ranking": {
+    "order": ["exact-prefix", "native-rank", "word-boundary-prefix", "case-insensitive-prefix", "opt-in-frequency", "fuzzy-score"],
+    "tie_breakers": ["source-priority", "normalized-display", "candidate-id"]
+  },
+  "ui": {
+    "owner": "one-pane-immutable-renderer-neutral-snapshot",
+    "semantics": ["listbox", "option", "selected", "position", "set-size"],
+    "dismiss_on": ["focus-loss", "buffer-change", "generation-change", "pane-change", "prompt-end", "modal-open", "ime-start", "route-close"],
+    "enter_behavior": "dismiss-and-forward-native-submit",
+    "shortcut_policy": "collision-checked-configurable-or-unbound"
+  },
+  "shell_matrix": [
+    {"id": "powershell-7", "owner": "PSReadLine", "adapter": "ICommandPredictor-and-editor-owned-acceptance", "minimum": "PowerShell-7.2-and-PSReadLine-2.2.2", "shortcut": "collision-checked-configurable-or-unbound", "verdict": "planned-opt-in"},
+    {"id": "windows-powershell-5.1", "owner": "PSReadLine-or-console-host", "adapter": "none", "minimum": "not-supported", "shortcut": "none", "verdict": "native-fallback-only"},
+    {"id": "bash", "owner": "Readline", "adapter": "session-scoped-completion-widget-and-persistent-helper", "minimum": "Bash-5.x", "shortcut": "collision-checked-configurable-or-unbound", "verdict": "planned-opt-in"},
+    {"id": "zsh", "owner": "ZLE-and-compsys", "adapter": "session-scoped-ZLE-widget-and-persistent-helper", "minimum": "Zsh-5.8", "shortcut": "collision-checked-configurable-or-unbound", "verdict": "planned-opt-in"},
+    {"id": "fish", "owner": "Fish-editor", "adapter": "session-scoped-function-and-persistent-helper", "minimum": "Fish-3.6", "shortcut": "unbound-by-default-ctrl-space-collides", "verdict": "planned-opt-in"},
+    {"id": "cmd", "owner": "Command-Prompt", "adapter": "none", "minimum": "not-supported", "shortcut": "none", "verdict": "native-fallback-only"},
+    {"id": "wsl", "owner": "guest-shell-editor", "adapter": "guest-editor-with-one-session-resident-signed-host-relay", "minimum": "supported-guest-shell-version", "shortcut": "guest-collision-checked-configurable-or-unbound", "verdict": "planned-opt-in-external-native-gate"}
+  ],
+  "limits": {
+    "buffer_bytes": 16384,
+    "frame_bytes": 1048576,
+    "candidate_count": 512,
+    "candidate_bytes": 1024,
+    "batch_bytes": 524288,
+    "visible_rows": 12,
+    "per_pane_queued_requests": 1,
+    "active_routes": 64,
+    "cache_bytes": 8388608,
+    "source_deadline_ms": 250,
+    "warm_local_p95_ms": 50,
+    "render_p95_ms": 8,
+    "cancellation_p95_ms": 50,
+    "announcement_coalesce_ms": 250,
+    "optional_animation_ms": 120
+  },
+  "lifecycle": {
+    "queue": "one-latest-generation-per-pane",
+    "worker": "application-owned-joined-bounded",
+    "last_known_good": "stale-marked-memory-only",
+    "kill_switch": "runtime-immediate-no-restart-no-profile-change",
+    "disable_uninstall": "remove-only-automexia-owned-session-artifacts"
+  },
+  "verification": {
+    "protocol": ["unit", "property", "fuzz", "mutation"],
+    "security": ["peer-auth-native", "replay", "route-isolation", "hostile-display"],
+    "privacy": ["redaction-canary", "negative-persistence", "support-bundle-scan"],
+    "ranking": ["deterministic-golden", "unicode-property", "criterion"],
+    "concurrency": ["latest-generation", "saturation", "shutdown", "multi-pane"],
+    "renderer": ["tiny-to-8k-goldens", "scale-100-to-300", "z-order", "ime"],
+    "accessibility": ["renderer-neutral-tree", "coalesced-announcements", "native-screen-reader"],
+    "shells": ["powershell-7", "bash", "zsh", "fish", "wsl", "fallbacks"],
+    "performance": ["warm-local-p95", "render-p95", "cancel-p95"],
+    "resources": ["1000-enable-disable-cycles", "handle-thread-memory", "30-day-soak"],
+    "rollback": ["preview-flag", "kill-switch", "disable", "uninstall", "cp1-fallback"]
+  },
+  "external_gates": [
+    "accepted by the project owner on 2026-08-25; source work authorized while preview and stable activation remain disabled",
+    "native Windows named-pipe ACL, peer-process, peer-session, replay, teardown, PowerShell 7, and WSL relay evidence",
+    "native Linux filesystem-socket mode, SO_PEERCRED, Bash, Zsh, Fish, IME, and accessibility evidence",
+    "native macOS filesystem-socket mode, getpeereid, Bash, Zsh, Fish, VoiceOver, IME, signing, and notarization evidence",
+    "controlled low-end hardware latency, allocation, handle, thread, CPU, and memory baselines",
+    "tiny through 8K and 100 through 300 percent scale visual review",
+    "controlled NVDA, Narrator, VoiceOver, Orca, IME, keyboard-only, and focus-restoration assessment",
+    "30-day multi-pane lifecycle soak with zero unbounded growth",
+    "signed package install, update, runtime kill, disable, uninstall, rollback, and CP1 fallback evidence"
+  ]
+}

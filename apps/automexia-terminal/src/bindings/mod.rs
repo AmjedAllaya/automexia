@@ -3,6 +3,7 @@
 // which is licensed under Apache 2.0 license.
 
 pub mod kitty_keyboard;
+pub mod registry;
 
 use crate::crosswords::vi_mode::ViMotion;
 use crate::crosswords::Mode;
@@ -238,6 +239,8 @@ impl From<String> for Action {
             }
             "searchforward" => Some(Action::SearchForward),
             "searchbackward" => Some(Action::SearchBackward),
+            "searchglobalforward" => Some(Action::SearchGlobalForward),
+            "searchglobalbackward" => Some(Action::SearchGlobalBackward),
             "searchconfirm" => Some(Action::Search(SearchAction::SearchConfirm)),
             "searchcancel" => Some(Action::Search(SearchAction::SearchCancel)),
             "searchclear" => Some(Action::Search(SearchAction::SearchClear)),
@@ -301,6 +304,10 @@ impl From<String> for Action {
             "toggleappearancetheme" => Some(Action::ToggleAppearanceTheme),
             "togglefullscreen" => Some(Action::ToggleFullscreen),
             "opencommandpalette" => Some(Action::OpenCommandPalette),
+            "openconnectionhub" => Some(Action::OpenConnectionHub),
+            "openactioncenter" => Some(Action::OpenActionCenter),
+            "openextensionmarketplace" => Some(Action::OpenExtensionMarketplace),
+            "openfontbrowser" => Some(Action::OpenFontBrowser),
             "previewselectedimage" => Some(Action::PreviewSelectedImage),
             "none" => Some(Action::None),
             _ => None,
@@ -532,6 +539,18 @@ pub enum Action {
     /// Toggle appearance theme (dark/light).
     ToggleAppearanceTheme,
 
+    /// Open the application-owned, read-only Connection Hub.
+    OpenConnectionHub,
+
+    /// Open the application-owned action search and review surface.
+    OpenActionCenter,
+
+    /// Open the extension marketplace browser.
+    OpenExtensionMarketplace,
+
+    /// Open the registered font-family browser.
+    OpenFontBrowser,
+
     // Tab selections
     SelectTab(usize),
     SelectLastTab,
@@ -540,8 +559,14 @@ pub enum Action {
     /// Start a forward buffer search.
     SearchForward,
 
-    /// Start a backward buffer search.
+    /// Start a backward search in the selected pane.
     SearchBackward,
+
+    /// Start a forward search across every visible pane.
+    SearchGlobalForward,
+
+    /// Start a backward search across every visible pane.
+    SearchGlobalBackward,
 
     /// Split horizontally
     SplitRight,
@@ -707,6 +732,9 @@ pub fn default_mouse_bindings() -> Vec<MouseBinding> {
 }
 
 pub fn default_key_bindings(config: &rio_backend::config::Config) -> Vec<KeyBinding> {
+    if config.keyboard.binding_profile != automexia_keybindings::ProfileId::Automexia {
+        return config_key_bindings(config.bindings.keys.to_owned(), Vec::new());
+    }
     let mut bindings = bindings!(
         KeyBinding;
         Key::Named(Copy);  Action::Copy;
@@ -1229,10 +1257,17 @@ fn automexia_macos_key_bindings(
         "n", ModifiersState::SUPER; Action::WindowCreateNew;
         ",", ModifiersState::SUPER; Action::ConfigEditor;
         "p", ModifiersState::SUPER | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "h", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
+        "o", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
+        "m", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
+        "l", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenFontBrowser;
+        "t", ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ToggleAppearanceTheme;
         "i", ModifiersState::SUPER | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
-        // Search
-        "f", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::SUPER, ~BindingMode::SEARCH; Action::SearchBackward;
+        // Search: local is the familiar Find chord; Shift expands the scope.
+        "f", ModifiersState::SUPER, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::SUPER, ~BindingMode::VI; Action::SearchBackward;
+        "b", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1250,6 +1285,8 @@ fn automexia_macos_key_bindings(
             Key::Named(Tab), ModifiersState::CONTROL; Action::SelectNextTab;
             Key::Named(Tab), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::SelectPrevTab;
             "w", ModifiersState::SUPER; Action::CloseCurrentSplitOrTab;
+            "w", ModifiersState::SUPER | ModifiersState::SHIFT; Action::TabCloseCurrent;
+            "w", ModifiersState::SUPER | ModifiersState::ALT; Action::TabCloseUnfocused;
             "[", ModifiersState::SUPER | ModifiersState::SHIFT; Action::SelectPrevTab;
             "]", ModifiersState::SUPER | ModifiersState::SHIFT; Action::SelectNextTab;
             "[", ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPrevLocalTab;
@@ -1310,6 +1347,7 @@ fn automexia_windows_key_bindings(
         Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Copy;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
+        "v", ModifiersState::CONTROL, ~BindingMode::VI; Action::Paste;
         "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
         "0", ModifiersState::CONTROL; Action::ResetFontSize;
         "=", ModifiersState::CONTROL; Action::IncreaseFontSize;
@@ -1317,11 +1355,16 @@ fn automexia_windows_key_bindings(
         "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "h", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
+        "o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
+        "m", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
+        "l", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenFontBrowser;
         "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
         "a", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::SelectAll;
-        // Search
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
+        // Search: Ctrl+F is pane-local; Shift expands the scope.
+        "f", ModifiersState::CONTROL, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL,  +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1332,7 +1375,7 @@ fn automexia_windows_key_bindings(
 
         Key::Named(Space), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ToggleViMode;
         Key::Named(Space), ModifiersState::CONTROL | ModifiersState::ALT; Action::ToggleQuake;
-        "t", ModifiersState::ALT | ModifiersState::SHIFT; Action::ToggleAppearanceTheme;
+        "t", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ToggleAppearanceTheme;
         "k", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::ClearHistory;
         Key::Named(F11); Action::ToggleFullscreen;
         Key::Named(Enter), ModifiersState::ALT; Action::ToggleFullscreen;
@@ -1353,6 +1396,8 @@ fn automexia_windows_key_bindings(
             Key::Named(PageUp), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToPrev;
             Key::Named(PageDown), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::MoveCurrentTabToNext;
             "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
+            Key::Named(F4), ModifiersState::CONTROL; Action::TabCloseCurrent;
+            Key::Named(F4), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCloseUnfocused;
             "1", ModifiersState::CONTROL; Action::SelectTab(0);
             "2", ModifiersState::CONTROL; Action::SelectTab(1);
             "3", ModifiersState::CONTROL; Action::SelectTab(2);
@@ -1407,10 +1452,17 @@ fn automexia_unix_key_bindings(
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "h", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
+        "o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
+        "m", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
+        "l", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenFontBrowser;
+        "t", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ToggleAppearanceTheme;
         "i", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::PreviewSelectedImage;
 
-        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchForward;
-        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SearchBackward;
+        // Search: Ctrl+F is pane-local; Shift expands the scope.
+        "f", ModifiersState::CONTROL, ~BindingMode::VI; Action::SearchForward;
+        "f", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalForward;
+        "b", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchGlobalBackward;
         "c", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchCancel;
         "u", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchClear;
         "w", ModifiersState::CONTROL, +BindingMode::SEARCH; SearchAction::SearchDeleteWord;
@@ -1432,6 +1484,8 @@ fn automexia_unix_key_bindings(
             Key::Named(PageUp), ModifiersState::ALT; Action::SelectPrevLocalTab;
             Key::Named(PageDown), ModifiersState::ALT; Action::SelectNextLocalTab;
             "w", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::CloseCurrentSplitOrTab;
+            Key::Named(F4), ModifiersState::CONTROL; Action::TabCloseCurrent;
+            Key::Named(F4), ModifiersState::CONTROL | ModifiersState::SHIFT; Action::TabCloseUnfocused;
         ));
     }
 
@@ -1917,6 +1971,73 @@ mod tests {
             Action::from("SelectNextLocalTab".to_string()),
             Action::SelectNextLocalTab
         );
+        assert_eq!(
+            Action::from("SearchGlobalForward".to_string()),
+            Action::SearchGlobalForward
+        );
+        assert_eq!(
+            Action::from("SearchGlobalBackward".to_string()),
+            Action::SearchGlobalBackward
+        );
+    }
+
+    #[test]
+    fn local_and_global_search_defaults_are_memorable_and_scope_safe() {
+        let trigger = BindingKey::Keycode {
+            key: Key::Character("f".into()),
+            location: KeyLocation::Standard,
+        };
+        let assert_search_pair = |bindings: &[KeyBinding], local_mods, global_mods| {
+            let local = bindings
+                .iter()
+                .find(|binding| binding.trigger == trigger && binding.mods == local_mods);
+            let global = bindings.iter().find(|binding| {
+                binding.trigger == trigger && binding.mods == global_mods
+            });
+            assert_eq!(
+                local.map(|binding| &binding.action),
+                Some(&Action::SearchForward)
+            );
+            assert_eq!(
+                global.map(|binding| &binding.action),
+                Some(&Action::SearchGlobalForward)
+            );
+            for binding in [local.unwrap(), global.unwrap()] {
+                assert!(
+                    !binding.notmode.contains(BindingMode::SEARCH),
+                    "search shortcuts must remain active so they can switch scope in place"
+                );
+                assert!(binding.notmode.contains(BindingMode::VI));
+            }
+        };
+
+        assert_search_pair(
+            &automexia_windows_key_bindings(true, true),
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        );
+        assert_search_pair(
+            &automexia_unix_key_bindings(true, true),
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        );
+        assert_search_pair(
+            &automexia_macos_key_bindings(true, true, ConfigKeyboard::default()),
+            ModifiersState::SUPER,
+            ModifiersState::SUPER | ModifiersState::SHIFT,
+        );
+    }
+
+    #[test]
+    fn feature_surface_actions_parse_with_stable_configuration_names() {
+        for (name, action) in [
+            ("OpenConnectionHub", Action::OpenConnectionHub),
+            ("OpenActionCenter", Action::OpenActionCenter),
+            ("OpenExtensionMarketplace", Action::OpenExtensionMarketplace),
+            ("OpenFontBrowser", Action::OpenFontBrowser),
+        ] {
+            assert_eq!(Action::from(name.to_string()), action, "{name}");
+        }
     }
 
     #[test]
@@ -2213,6 +2334,95 @@ mod tests {
         );
     }
 
+    fn assert_feature_launcher_bindings(
+        bindings: &[KeyBinding],
+        primary_modifier: ModifiersState,
+    ) {
+        for (key, action) in [
+            ("h", Action::OpenConnectionHub),
+            ("o", Action::OpenActionCenter),
+            ("m", Action::OpenExtensionMarketplace),
+            ("l", Action::OpenFontBrowser),
+        ] {
+            let modifiers = primary_modifier | ModifiersState::SHIFT;
+            assert_action_binding(
+                bindings,
+                Key::Character(key.into()),
+                modifiers,
+                action.clone(),
+            );
+            assert_terminal_modes_suppress_binding(
+                bindings,
+                Key::Character(key.into()),
+                modifiers,
+                action,
+            );
+        }
+    }
+
+    fn assert_terminal_modes_suppress_binding(
+        bindings: &[KeyBinding],
+        key: Key,
+        modifiers: ModifiersState,
+        action: Action,
+    ) {
+        let trigger = BindingKey::Keycode {
+            key,
+            location: KeyLocation::Standard,
+        };
+        let binding = bindings
+            .iter()
+            .find(|binding| {
+                binding.trigger == trigger
+                    && binding.mods == modifiers
+                    && binding.action == action
+            })
+            .expect("mode-scoped application binding");
+        assert!(binding.notmode.contains(BindingMode::SEARCH));
+        assert!(binding.notmode.contains(BindingMode::VI));
+        assert!(binding.notmode.contains(BindingMode::ALT_SCREEN));
+    }
+
+    #[test]
+    fn windows_ctrl_v_pastes_and_user_can_restore_terminal_input() {
+        let bindings = automexia_windows_key_bindings(true, true);
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        ] {
+            assert_action_binding(
+                &bindings,
+                Key::Character("v".into()),
+                modifiers,
+                Action::Paste,
+            );
+        }
+
+        let overridden = config_key_bindings(
+            vec![ConfigKeyBinding {
+                key: "v".into(),
+                action: "receivechar".into(),
+                with: "control".into(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            bindings,
+        );
+        let ctrl_v_trigger = BindingKey::Keycode {
+            key: Key::Character("v".into()),
+            location: KeyLocation::Standard,
+        };
+        let ctrl_v_bindings: Vec<_> = overridden
+            .iter()
+            .filter(|binding| {
+                binding.trigger == ctrl_v_trigger
+                    && binding.mods == ModifiersState::CONTROL
+            })
+            .collect();
+        assert_eq!(ctrl_v_bindings.len(), 1);
+        assert_eq!(ctrl_v_bindings[0].action, Action::ReceiveChar);
+    }
+
     #[test]
     fn automexia_windows_defaults_restore_the_classic_workflow() {
         let config = rio_backend::config::Config::default();
@@ -2220,6 +2430,7 @@ mod tests {
         let bindings = automexia_windows_key_bindings(true, true);
         assert_no_overlapping_shortcuts("Windows", &bindings);
         assert_no_cross_table_overlaps("Windows", &inherited, &bindings);
+        assert_feature_launcher_bindings(&bindings, ModifiersState::CONTROL);
         assert_action_binding(
             &bindings,
             Key::Character("n".into()),
@@ -2287,6 +2498,24 @@ mod tests {
             ModifiersState::ALT,
             Action::SelectNextLocalTab,
         );
+        assert_action_binding(
+            &bindings,
+            Key::Named(F4),
+            ModifiersState::CONTROL,
+            Action::TabCloseCurrent,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(F4),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::TabCloseUnfocused,
+        );
+        assert_terminal_modes_suppress_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::ALT | ModifiersState::SHIFT,
+            Action::ToggleAppearanceTheme,
+        );
     }
 
     #[test]
@@ -2295,6 +2524,7 @@ mod tests {
         let inherited = default_key_bindings(&config);
         let bindings = automexia_unix_key_bindings(true, true);
         assert_no_cross_table_overlaps("Unix", &inherited, &bindings);
+        assert_feature_launcher_bindings(&bindings, ModifiersState::CONTROL);
         assert_action_binding(
             &bindings,
             Key::Character("i".into()),
@@ -2364,6 +2594,30 @@ mod tests {
             ModifiersState::ALT,
             Action::SelectNextLocalTab,
         );
+        assert_action_binding(
+            &bindings,
+            Key::Named(F4),
+            ModifiersState::CONTROL,
+            Action::TabCloseCurrent,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Named(F4),
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            Action::TabCloseUnfocused,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::ALT | ModifiersState::SHIFT,
+            Action::ToggleAppearanceTheme,
+        );
+        assert_terminal_modes_suppress_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::ALT | ModifiersState::SHIFT,
+            Action::ToggleAppearanceTheme,
+        );
     }
 
     #[test]
@@ -2373,11 +2627,36 @@ mod tests {
         let bindings =
             automexia_macos_key_bindings(true, true, ConfigKeyboard::default());
         assert_no_cross_table_overlaps("macOS", &inherited, &bindings);
+        assert_feature_launcher_bindings(&bindings, ModifiersState::SUPER);
         assert_action_binding(
             &bindings,
             Key::Character("i".into()),
             ModifiersState::SUPER | ModifiersState::ALT,
             Action::PreviewSelectedImage,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("w".into()),
+            ModifiersState::SUPER | ModifiersState::SHIFT,
+            Action::TabCloseCurrent,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("w".into()),
+            ModifiersState::SUPER | ModifiersState::ALT,
+            Action::TabCloseUnfocused,
+        );
+        assert_action_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT,
+            Action::ToggleAppearanceTheme,
+        );
+        assert_terminal_modes_suppress_binding(
+            &bindings,
+            Key::Character("t".into()),
+            ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT,
+            Action::ToggleAppearanceTheme,
         );
         let command_k_actions = bindings
             .iter()

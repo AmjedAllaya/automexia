@@ -1,7 +1,7 @@
-//! Automexia-owned UI contracts shared by extension contributions.
+//! Automexia-owned renderer-neutral UI contracts for core and optional features.
 //!
 //! This module contains renderer-neutral geometry/data only. The terminal engine,
-//! PTY and VT parser must not depend on extension implementations.
+//! PTY and VT parser must not depend on product-domain or extension implementations.
 
 /// One semantic-prompt row geometry that an application contribution may decorate.
 ///
@@ -35,12 +35,27 @@ pub struct PromptAnchor {
 /// renderer-neutral projection and decides how to present it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct CommandResultAnchor {
+    /// Stable semantic prompt identity; preferred across resize/reflow.
+    pub generation: Option<u64>,
+    /// Pane-local monotonic completion identity. This remains stable through
+    /// resize/reflow even for integrations without stable prompt identities.
+    pub key: u64,
     pub x: f32,
     pub y: f32,
     pub width: f32,
     pub height: f32,
-    pub exit_code: i32,
-    pub elapsed_ms: u64,
+    /// First row below the owned editable prompt, when it can be proven from
+    /// semantic metadata. None prevents decorating uncertain terminal text.
+    pub output_top: Option<f32>,
+    /// True when completion is painted on the following prompt's reserved row,
+    /// making that row the visual boundary after the command output. In this
+    /// state y is also the exclusive lower bound of the result region.
+    pub separates_next_prompt: bool,
+    /// Shell-reported exit status. None means the shell proved completion but
+    /// did not expose a status; the renderer must use a neutral treatment.
+    pub exit_code: Option<i32>,
+    /// Terminal-measured execution duration, absent for boundary-only shells.
+    pub elapsed_ms: Option<u64>,
 }
 
 /// Bound historical per-prompt extension UI state. This is intentionally small:

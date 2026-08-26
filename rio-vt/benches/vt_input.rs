@@ -60,6 +60,44 @@ fn ansi_mixed(total: usize) -> Vec<u8> {
     line.repeat(total / line.len() + 1).into_bytes()
 }
 
+fn semantic_result_stream(commands: usize, verified_status: bool) -> Vec<u8> {
+    let mut stream = String::with_capacity(commands.saturating_mul(96));
+    for generation in 1..=commands {
+        if verified_status {
+            stream.push_str(&format!(
+                "\x1b]133;A;aid={generation}\x07> \x1b]133;B\x07echo {generation}\r\n\
+                 \x1b]133;C\x07result-{generation}\r\n\x1b]133;D;0\x07"
+            ));
+        } else {
+            stream.push_str(&format!(
+                "\x1b]133;A\x07> \x1b]133;B\x07dir\r\nresult-{generation}\r\n\x1b]133;D\x07"
+            ));
+        }
+    }
+    stream.into_bytes()
+}
+
+fn semantic_result_term() -> Crosswords<VoidListener> {
+    Crosswords::new(
+        CrosswordsSize::new(COLS, ROWS),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        4_000,
+    )
+}
+
+fn semantic_overflow_result_stream(output_rows: usize) -> Vec<u8> {
+    let mut stream = String::with_capacity(output_rows.saturating_mul(24));
+    stream.push_str("\x1b]133;A;aid=1\x07> \x1b]133;B\x07overflow\r\n\x1b]133;C\x07");
+    for row in 0..output_rows {
+        stream.push_str(&format!("overflow-result-{row}\r\n"));
+    }
+    stream.push_str("\x1b]133;D;0\x07\x1b]133;A;aid=2\x07> ");
+    stream.into_bytes()
+}
+
 /// Same word rhythm, only two styles alternating: isolates SGR parse and
 /// dispatch cost from style-table churn.
 fn ansi_two_styles(total: usize) -> Vec<u8> {
@@ -306,6 +344,47 @@ fn bench(c: &mut Criterion) {
             )
         });
     });
+    // Completion decoration is fed by bounded OSC 133 row metadata. Measure
+    // both the fully timed/status-bearing lifecycle and CMD's boundary-only
+    // lifecycle so compatibility cannot make the PTY output path unbounded.
+    const RESULT_COMMANDS: usize = 256;
+    let verified_results = semantic_result_stream(RESULT_COMMANDS, true);
+    let boundary_only_results = semantic_result_stream(RESULT_COMMANDS, false);
+    let mut result_group = c.benchmark_group("command_result_lifecycle");
+    result_group.sample_size(20);
+    result_group.throughput(Throughput::Elements(RESULT_COMMANDS as u64));
+    for (name, bytes) in [
+        ("verified_status", &verified_results),
+        ("boundary_only", &boundary_only_results),
+    ] {
+        result_group.bench_function(name, |b| {
+            b.iter_batched(
+                || (semantic_result_term(), Processor::default()),
+                |(mut crosswords, mut processor)| {
+                    processor.advance(&mut crosswords, bytes);
+                    std::hint::black_box(crosswords)
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+    }
+    result_group.finish();
+
+    let overflow_result = semantic_overflow_result_stream(512);
+    let mut overflow_group = c.benchmark_group("command_result_viewport_overflow");
+    overflow_group.sample_size(20);
+    overflow_group.throughput(Throughput::Bytes(overflow_result.len() as u64));
+    overflow_group.bench_function("512_output_rows", |b| {
+        b.iter_batched(
+            || (semantic_result_term(), Processor::default()),
+            |(mut crosswords, mut processor)| {
+                processor.advance(&mut crosswords, &overflow_result);
+                std::hint::black_box(crosswords)
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    overflow_group.finish();
 }
 
 criterion_group!(benches, bench);

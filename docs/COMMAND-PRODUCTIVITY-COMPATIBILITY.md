@@ -1,8 +1,11 @@
 # Command Productivity Compatibility Baseline
 
-Status: CP0 baseline and CP1 native completion accepted, 2026-08-16. CP2.0 model
-and CP2.1 internal persistence foundation are implemented; CP2.2 user-facing
-Quick Actions, CP3 aliases, and CP5 Automexia-rendered suggestions are not shipped.
+Status: CP0-CP3.3 are fully implemented at the local/source boundary; stable
+hosted, native accessibility, and longitudinal release evidence is partial.
+CP4 provider-aware actions are product-integrated and nonactivated. ADR 0025 is
+accepted: CP5.1-CP5.4 are fully implemented at their source/local boundaries,
+CP5.5 is complete as an inert helper/adapter source bridge, CP5.6 remains
+partial, and no CP5 preview or product surface is activated.
 
 ## Purpose
 
@@ -16,18 +19,19 @@ machine-readable authority is
 
 | Surface | Current v0.4 state | CP0 classification | Next implementation |
 |---|---|---|---|
-| PowerShell | Idempotent prompt/listing plus explicit-consent, digest-verified cached completers; PSReadLine owns input/history/candidates | CP1 complete | CP2 typed action insertion |
-| Bash/WSL | Native-first fixed-path completion adapter; Readline and existing compspecs remain authoritative | CP1 complete | CP2 typed action insertion |
-| Zsh/WSL/macOS | Native-first fixed-path adapter that never invokes `compinit`; ZLE/compsys remain authoritative | CP1 complete | CP2 typed action insertion |
-| Fish | First-class metadata integration plus native-first completion adapter; Fish owns prompt/editor/history/autosuggestions | CP1 complete | CP2 typed action insertion |
-| CMD | Prompt/listing DOSKEY helpers and truthful native fallback; no programmable-completion parity claim | CP1 complete by explicit fallback | CP2 insert-only action support |
-| DevOps short aliases | None supplied by Automexia | Correct CP0 nonactivation | CP3 opt-in generation only |
-| Persistent Quick Actions | Private bounded atomic/CAS/last-known-good store library exists but is not started or exposed | CP2.1 foundation implemented, non-shipped | CP2.2 UI and insertion |
-| Provider-aware candidates | Existing status context only, not completion | Not implemented and forbidden on input | CP4 after D6 |
+| PowerShell | Idempotent prompt/listing plus explicit-consent, digest-verified cached completers; PSReadLine owns input/history/candidates and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| Bash/WSL | Native-first fixed-path completion adapter; Readline remains authoritative and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| Zsh/WSL/macOS | Native-first adapter never invokes `compinit`; ZLE remains authoritative and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| Fish | Fish owns prompt/editor/history/autosuggestions and receives reviewed action insertion | CP1 complete; CP2.2 local | Hosted native insertion/accessibility evidence |
+| CMD | Prompt/listing DOSKEY helpers, truthful native fallback, and conservative reviewed insertion | CP1 fallback; CP2.2 local | Hosted native insertion/accessibility evidence |
+| DevOps short aliases | Opt-in native-wins five-shell generations with collision review, private atomic publication, reload, rollback, diagnostics, and exact uninstall | CP3.0/CP3.1 implemented locally | Hosted native/macOS/WSL and longitudinal evidence |
+| Persistent Quick Actions | Bounded private store, joined application worker, layered local search, reviewed placeholders, dry-run CLI/import/export, insert/copy, reviewed static packs, native imports, and trusted local workspace task bridges | CP2.2/CP3.2/CP3.3 implemented locally | Hosted native and controlled accessibility/performance evidence |
+| Provider-aware candidates | Explicit immutable cached public capsule snapshot; retained Connection Hub-to-route handoff; no provider work on input | CP4 product-integrated/nonactivated for SSH, AWS, Azure, GCP, Kubernetes, OpenShift, and Teleport | Approved provider refresh/capsule production, exact provider execution, OpenBao, native provider/accessibility/release evidence |
+| Automexia suggestion surface | Source protocol/endpoints, bounded sources/ranking, UI model/controller/renderer, helper target, and four bidirectional shell adapters exist; no reviewed/signed launcher, WSL host relay, live composition, public setting, shortcut, or activated surface | CP5.0 fully done; CP5.1-CP5.4 fully done at source/local boundaries; CP5.5 inert bridge source complete; CP5.6 partial; CP1/native behavior remains authoritative | Complete launcher/signing, interactive native replacement and live composition, then native OS/shell/accessibility/package/resource/rollback gates and 30-day preview evidence before activation |
 
 This audit is deliberately strict: prompt path styling, icon-aware `ls`, command
-palette commands, OpenSSH host inventory, and shell history are not evidence of
-managed autocomplete or persistent aliases.
+palette commands, OpenSSH host inventory, CP3 alias projection, and shell
+history are not evidence of an Automexia-rendered autocomplete surface.
 
 ## Shell and editor ownership
 
@@ -43,7 +47,7 @@ Automexia never recovers the editable command from terminal-grid cells. A future
 custom completion surface requires the CP5 editor bridge and must preserve the
 native editor as a complete disable/failure fallback.
 
-## Planned CP5 bridge and fallback matrix
+## CP5 bridge and fallback matrix
 
 This matrix is a feasibility and activation gate, not a shipped-support claim.
 Each row requires a versioned native adapter and its own disable/uninstall proof.

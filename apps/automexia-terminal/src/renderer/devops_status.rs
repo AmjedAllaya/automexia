@@ -16,9 +16,7 @@ use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, Sessio
 use automexia_ui_model::{self, IconOptics, Segment};
 
 use crate::automexia::runtime;
-use crate::automexia::ui::{
-    CommandResultAnchor, PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY,
-};
+use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
 
 pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
@@ -470,41 +468,6 @@ impl DevOpsStatus {
         }
     }
 
-    /// Draw completion state on the semantic row that owns the command.
-    pub fn render_command_results(
-        &self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
-        anchors: &[CommandResultAnchor],
-    ) {
-        for anchor in anchors {
-            let success = anchor.exit_code == 0;
-            let status = if success { "✓" } else { "×" };
-            let label = format!("{status}  {}", format_duration(anchor.elapsed_ms));
-            let metrics = prompt_tag_metrics(anchor.height);
-            let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
-                anchor.height,
-                metrics.height,
-                true,
-            ) else {
-                continue;
-            };
-            let opts = DrawOpts {
-                font_size: metrics.font_size,
-                color: color_to_u8(if success { colors.green } else { colors.red }),
-                ..DrawOpts::default()
-            };
-            let text_width = sugarloaf.text_mut().measure(&label, &opts);
-            let x = anchor.x + anchor.width - text_width - 10.0;
-            if x <= anchor.x + 24.0 {
-                continue;
-            }
-            let tag_y = anchor.y + top_inset;
-            let y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
-            sugarloaf.text_mut().draw(x, y, &label, &opts);
-        }
-    }
-
     fn request_refresh_if_needed<F>(
         &mut self,
         session: &SessionFacts,
@@ -687,21 +650,6 @@ fn draw_icon_in_slot(
         .text_mut()
         .draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
 }
-
-fn format_duration(elapsed_ms: u64) -> String {
-    if elapsed_ms < 1_000 {
-        format!("{elapsed_ms}ms")
-    } else if elapsed_ms < 60_000 {
-        format!("{:.1}s", elapsed_ms as f64 / 1_000.0)
-    } else {
-        format!(
-            "{}m {:02}s",
-            elapsed_ms / 60_000,
-            (elapsed_ms % 60_000) / 1_000
-        )
-    }
-}
-
 pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
     if refresh_pending {
         100
@@ -903,13 +851,6 @@ mod tests {
                 > (24.0 - comfortable.height) * 0.5
         );
     }
-    #[test]
-    fn command_duration_uses_compact_units() {
-        assert_eq!(format_duration(18), "18ms");
-        assert_eq!(format_duration(1_250), "1.2s");
-        assert_eq!(format_duration(62_000), "1m 02s");
-    }
-
     #[test]
     fn renderer_icon_adapter_uses_shared_glyphs_and_optics() {
         let docker = icon_optics(IconKind::Docker);

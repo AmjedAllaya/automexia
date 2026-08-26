@@ -2,18 +2,15 @@
 //!
 //! Providers inspect bounded local configuration and shell metadata. They have
 //! no network-client dependency and return versioned generic contributions.
-pub mod actions;
-
 mod context;
 mod model;
 mod semantics;
 
 use automexia_extension_api::{
-    Capability, ContextContribution, ContractError, DetailsAction, ExtensionId,
-    ExtensionManifest, Freshness, IconKind, SegmentRole, SessionFacts, SessionId,
-    StatusSegment,
+    compact_label, compact_middle, Capability, ContextContribution, ContractError,
+    DetailsAction, ExtensionId, ExtensionManifest, Freshness, IconKind, SegmentRole,
+    SessionFacts, SessionId, StatusSegment,
 };
-use automexia_ui_model::{compact_label, compact_middle};
 
 pub use context::sanitize_label;
 pub use model::{CloudContext, DevOpsSnapshot, KubernetesContext, WslContext};

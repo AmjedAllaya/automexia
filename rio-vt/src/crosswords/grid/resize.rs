@@ -196,6 +196,16 @@ impl Grid<Square> {
                     .semantic_command_result
                     .or(row.semantic_command_result)
             };
+            last_row.semantic_command_boundary = if last_prompt == SemanticPrompt::Prompt
+            {
+                last_row.semantic_command_boundary
+            } else if row_prompt == SemanticPrompt::Prompt {
+                row.semantic_command_boundary
+            } else {
+                last_row
+                    .semantic_command_boundary
+                    .or(row.semantic_command_boundary)
+            };
             last_row.semantic_prompt_id = if merged_prompt != SemanticPrompt::None {
                 if last_prompt != SemanticPrompt::None {
                     last_row.semantic_prompt_id.or(row.semantic_prompt_id)

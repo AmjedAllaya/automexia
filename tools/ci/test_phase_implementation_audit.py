@@ -21,6 +21,7 @@ class PhaseImplementationAuditTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.text = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
+        cls.roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
         cls.phases = AUDIT.canonical_phase_ids()
 
     def test_repository_audit_passes(self) -> None:
@@ -30,6 +31,7 @@ class PhaseImplementationAuditTests(unittest.TestCase):
         self.assertEqual(
             counts["evidence_dimensions"], len(AUDIT.REQUIRED_EVIDENCE_TERMS)
         )
+        self.assertGreaterEqual(counts["roadmap_statuses"], 25)
 
     def test_missing_phase_heading_is_rejected(self) -> None:
         mutated = self.text.replace("### D4 ", "### removed-D4 ", 1)
@@ -66,6 +68,35 @@ class PhaseImplementationAuditTests(unittest.TestCase):
         mutated = re.sub("code quality", "maintainability", self.text, flags=re.I)
         with self.assertRaisesRegex(AUDIT.PhaseAuditError, "code quality"):
             AUDIT.validate_text(mutated, self.phases)
+
+    def test_roadmap_status_mismatch_is_rejected(self) -> None:
+        mutated = self.roadmap.replace(
+            "| **Fully done** | CP1 |",
+            "| **Partially done** | CP1 |",
+            1,
+        )
+        with self.assertRaisesRegex(AUDIT.PhaseAuditError, "CP1"):
+            AUDIT.validate_roadmap_status_register(self.text, mutated)
+
+    def test_nonstandard_roadmap_status_is_rejected(self) -> None:
+        mutated = self.roadmap.replace(
+            "| **Fully done** | CP1 |",
+            "| **Complete** | CP1 |",
+            1,
+        )
+        with self.assertRaisesRegex(AUDIT.PhaseAuditError, "invalid status label"):
+            AUDIT.validate_roadmap_status_register(self.text, mutated)
+
+    def test_missing_roadmap_feature_status_is_rejected(self) -> None:
+        mutated = re.sub(
+            r"^\| \*\*Fully done\*\* \| CP1 \|.*\n",
+            "",
+            self.roadmap,
+            count=1,
+            flags=re.MULTILINE,
+        )
+        with self.assertRaisesRegex(AUDIT.PhaseAuditError, "do not match"):
+            AUDIT.validate_roadmap_status_register(self.text, mutated)
 
     def test_bad_source_baseline_is_rejected(self) -> None:
         mutated = re.sub(

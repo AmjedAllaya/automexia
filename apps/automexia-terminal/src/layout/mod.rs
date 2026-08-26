@@ -364,6 +364,13 @@ pub struct ContextGrid<T: EventListener> {
     root_node: NodeId,
     border_config: BorderConfig,
     active_border_config: BorderConfig,
+    zoomed: Option<ZoomState>,
+}
+
+#[derive(Clone)]
+struct ZoomState {
+    focused: NodeId,
+    styles: Vec<(NodeId, Style)>,
 }
 
 pub struct ContextGridItem<T: EventListener> {
@@ -715,6 +722,124 @@ mod pane_tab_tests {
         assert_eq!(adjacent_local_tab_index(3, 3, false), None);
     }
 
+    fn two_panel_grid() -> ContextGrid<VoidListener> {
+        let mut grid = ContextGrid::new(
+            dead(11),
+            Margin::default(),
+            [0.0; 4],
+            [0.0; 4],
+            rio_backend::config::layout::Panel::default(),
+        );
+        let second = grid.try_split_right().unwrap();
+        grid.inner.insert(second, ContextGridItem::new(dead(22)));
+        grid.current = second;
+        grid
+    }
+
+    #[test]
+    fn pointer_wheel_target_selects_only_the_exact_pane_under_the_cursor() {
+        let mut grid = two_panel_grid();
+        for item in grid.inner.values_mut() {
+            item.layout_rect = if item.val.route_id == 11 {
+                [0.0, 0.0, 100.0, 100.0]
+            } else {
+                [100.0, 0.0, 100.0, 100.0]
+            };
+        }
+        assert_eq!(grid.current().route_id, 22);
+
+        let mut mouse = Mouse {
+            x: 50.0,
+            y: 50.0,
+            ..Default::default()
+        };
+        assert!(grid.select_current_based_on_pointer(&mouse));
+        assert_eq!(grid.current().route_id, 11);
+        assert!(!grid.select_current_based_on_pointer(&mouse));
+
+        mouse.x = 250.0;
+        assert!(!grid.select_current_based_on_pointer(&mouse));
+        assert_eq!(grid.current().route_id, 11);
+
+        mouse.x = 150.0;
+        assert!(grid.select_current_based_on_pointer(&mouse));
+        assert_eq!(grid.current().route_id, 22);
+    }
+
+    #[test]
+    fn visible_search_routes_are_deterministic_and_select_only_active_panes() {
+        let mut grid = two_panel_grid();
+        for item in grid.inner.values_mut() {
+            item.layout_rect = if item.val.route_id == 11 {
+                [0.0, 0.0, 100.0, 100.0]
+            } else {
+                [100.0, 0.0, 100.0, 100.0]
+            };
+        }
+        assert_eq!(grid.active_route_ids_in_visual_order(), [11, 22]);
+        assert!(grid.select_active_route(11));
+        assert_eq!(grid.current().route_id, 11);
+        assert!(grid.select_active_route(22));
+        assert_eq!(grid.current().route_id, 22);
+        assert!(!grid.select_active_route(9_999));
+        assert_eq!(grid.current().route_id, 22);
+    }
+
+    #[test]
+    fn split_zoom_hides_only_siblings_and_restores_every_exact_style() {
+        let mut grid = two_panel_grid();
+        let before = grid
+            .tree
+            .children(grid.root_node)
+            .unwrap()
+            .into_iter()
+            .flat_map(|node| {
+                std::iter::once(node).chain(grid.tree.children(node).unwrap_or_default())
+            })
+            .map(|node| (node, grid.tree.style(node).unwrap().clone()))
+            .collect::<Vec<_>>();
+        let route_ids = grid.route_ids();
+
+        assert!(grid.begin_split_zoom());
+        assert!(grid.is_zoomed());
+        for (&node, item) in &grid.inner {
+            assert_eq!(
+                grid.tree.style(node).unwrap().display,
+                if node == grid.current {
+                    Display::Flex
+                } else {
+                    Display::None
+                }
+            );
+            assert!(route_ids.contains(&item.val.route_id));
+        }
+
+        assert!(grid.restore_zoom_styles());
+        assert!(!grid.is_zoomed());
+        for (node, style) in before {
+            assert_eq!(grid.tree.style(node).unwrap(), &style);
+        }
+        assert_eq!(grid.route_ids(), route_ids, "zoom never replaces a PTY");
+    }
+
+    #[test]
+    fn equalization_resets_nested_flex_weights_without_losing_topology() {
+        let mut grid = two_panel_grid();
+        let route_ids = grid.route_ids();
+        let nodes = grid.inner.keys().copied().collect::<Vec<_>>();
+        for &node in &nodes {
+            grid.set_panel_size(node, Some(300.0), None).unwrap();
+        }
+        grid.reset_panel_styles_to_flexible();
+        for &node in &nodes {
+            let style = grid.tree.style(node).unwrap();
+            assert_eq!(style.flex_basis, taffy::Dimension::auto());
+            assert_eq!(style.flex_grow, 1.0);
+            assert_eq!(style.flex_shrink, 1.0);
+        }
+        assert_eq!(grid.route_ids(), route_ids);
+    }
+
     #[test]
     fn geometric_pane_navigation_prefers_directional_beam_and_never_wraps() {
         let panes = [
@@ -893,6 +1018,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             root_node,
             border_config,
             active_border_config,
+            zoomed: None,
         };
         grid.calculate_positions();
         grid
@@ -1349,6 +1475,92 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
     /// Reset all panels to flexible sizing so they expand to fill available space
     /// Reset all nodes (panels and containers) to flexible sizing.
+    fn restore_zoom_styles(&mut self) -> bool {
+        let Some(zoomed) = self.zoomed.take() else {
+            return false;
+        };
+        for (node, style) in zoomed.styles {
+            if self.tree.style(node).is_ok() {
+                let _ = self.tree.set_style(node, style);
+            }
+        }
+        true
+    }
+
+    pub fn is_zoomed(&self) -> bool {
+        self.zoomed
+            .as_ref()
+            .is_some_and(|zoomed| zoomed.focused == self.current)
+    }
+
+    /// Apply only the renderer-neutral Taffy transaction. Keeping this pure
+    /// makes exact style restoration testable without a native GPU/window.
+    fn begin_split_zoom(&mut self) -> bool {
+        if self.panel_count() <= 1 || self.zoomed.is_some() {
+            return false;
+        }
+        let mut styles = Vec::new();
+        let mut stack = vec![self.root_node];
+        while let Some(node) = stack.pop() {
+            let Ok(style) = self.tree.style(node).cloned() else {
+                return false;
+            };
+            styles.push((node, style));
+            let Ok(children) = self.tree.children(node) else {
+                return false;
+            };
+            stack.extend(children);
+        }
+        self.zoomed = Some(ZoomState {
+            focused: self.current,
+            styles,
+        });
+        let nodes = self.inner.keys().copied().collect::<Vec<_>>();
+        for node in nodes {
+            if node == self.current {
+                continue;
+            }
+            let result = self.tree.style(node).cloned().and_then(|mut style| {
+                style.display = Display::None;
+                self.tree.set_style(node, style)
+            });
+            if result.is_err() {
+                self.restore_zoom_styles();
+                return false;
+            }
+        }
+        true
+    }
+
+    pub fn toggle_split_zoom(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.panel_count() <= 1 {
+            return false;
+        }
+        if self.restore_zoom_styles() {
+            return self.apply_taffy_layout(sugarloaf);
+        }
+        if !self.begin_split_zoom() {
+            return false;
+        }
+        if self.apply_taffy_layout(sugarloaf) {
+            true
+        } else {
+            self.restore_zoom_styles();
+            let _ = self.apply_taffy_layout(sugarloaf);
+            false
+        }
+    }
+
+    pub fn equalize_splits(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.panel_count() <= 1 {
+            return false;
+        }
+        self.restore_zoom_styles();
+        self.reset_panel_styles_to_flexible();
+        self.apply_taffy_layout(sugarloaf)
+    }
+
+    /// Reset all nodes (panels and containers) to flexible sizing.
     fn reset_panel_styles_to_flexible(&mut self) {
         let mut stack = vec![self.root_node];
         while let Some(node) = stack.pop() {
@@ -1566,7 +1778,12 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         let scale = sugarloaf.ctx.scale();
         let is_multi_panel = self.inner.len() > 1;
 
-        for item in self.inner.values_mut() {
+        for (&node, item) in &mut self.inner {
+            if self.zoomed.is_some() && node != self.current {
+                // Hidden PTYs retain their exact pre-zoom dimensions and keep
+                // running independently; only the focused surface is resized.
+                continue;
+            }
             let [abs_x, abs_y, width, height] = item.layout_rect;
             let local_tab_count = item.tab_count();
 
@@ -1645,9 +1862,34 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             a.1.partial_cmp(&b.1)
                 .unwrap_or(std::cmp::Ordering::Equal)
                 .then(a.2.partial_cmp(&b.2).unwrap_or(std::cmp::Ordering::Equal))
+                .then(u64::from(a.0).cmp(&u64::from(b.0)))
         });
 
         panels.into_iter().map(|(id, _, _)| id).collect()
+    }
+
+    /// Active PTY routes in deterministic visual order. Hidden pane-local and
+    /// top-level tabs are deliberately excluded from workspace search.
+    pub fn active_route_ids_in_visual_order(&self) -> Vec<usize> {
+        self.get_ordered_keys()
+            .into_iter()
+            .filter_map(|key| self.inner.get(&key))
+            .map(|item| item.val.route_id)
+            .collect()
+    }
+
+    /// Select an already-visible pane route without changing local-tab or
+    /// top-level-tab ownership.
+    pub fn select_active_route(&mut self, route_id: usize) -> bool {
+        let Some(key) = self.get_ordered_keys().into_iter().find(|key| {
+            self.inner
+                .get(key)
+                .is_some_and(|item| item.val.route_id == route_id)
+        }) else {
+            return false;
+        };
+        self.current = key;
+        true
     }
 
     #[inline]
@@ -1869,9 +2111,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     #[inline]
-    /// Select panel based on mouse position using Taffy layout.
+    /// Select panel based on pointer position using Taffy layout.
     /// Returns true only when focus actually changed to a different panel.
-    pub fn select_current_based_on_mouse(&mut self, mouse: &Mouse) -> bool {
+    pub fn select_current_based_on_pointer(&mut self, mouse: &Mouse) -> bool {
         if self.inner.len() <= 1 {
             return false;
         }
@@ -2042,6 +2284,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     pub fn remove_current(&mut self, sugarloaf: &mut Sugarloaf) {
+        self.restore_zoom_styles();
         if self.inner.is_empty() {
             tracing::error!("Attempted to remove from empty grid");
             return;
@@ -2166,6 +2409,13 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             .is_some_and(|item| item.remove_route(route_id, sugarloaf))
     }
 
+    pub fn retained_history_lines(&self) -> usize {
+        self.inner
+            .values()
+            .flat_map(ContextGridItem::contexts)
+            .map(|context| context.terminal.lock().history_size())
+            .fold(0usize, usize::saturating_add)
+    }
     pub fn route_ids(&self) -> Vec<usize> {
         self.inner
             .values()
@@ -2174,6 +2424,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     pub fn split_right(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
+        self.restore_zoom_styles();
         if !self.inner.contains_key(&self.current) {
             return;
         }
@@ -2189,6 +2440,7 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
 
     /// Split down - create new panel below using Taffy
     pub fn split_down(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
+        self.restore_zoom_styles();
         if !self.inner.contains_key(&self.current) {
             return;
         }

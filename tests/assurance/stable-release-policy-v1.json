@@ -1,0 +1,85 @@
+{
+  "schema": 1,
+  "repository": "AmjedAllaya/automexia-terminal",
+  "default_branch": "main",
+  "fork_provenance": {
+    "tag": "rio-base-0.5.20-7d595af",
+    "commit": "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2",
+    "require_annotated_tag": true,
+    "require_remote_tag": true
+  },
+  "release_source": {
+    "tag_pattern": "^v[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?$",
+    "require_annotated_tag": true,
+    "require_remote_tag": true,
+    "require_exact_default_branch_head": true,
+    "require_clean_tracked_source": true,
+    "require_complete_history": true,
+    "require_linear_history": true,
+    "require_dco_after_fork": true,
+    "require_author_matching_signoff": true
+  },
+  "hosted_repository": {
+    "require_authenticated_audit": true,
+    "required_result": "pass",
+    "audit_secret": "AUTOMEXIA_REPOSITORY_AUDIT_TOKEN",
+    "protected_environment": "stable-release"
+  },
+  "external_prerequisites": [
+    {
+      "id": "brand-rights-and-final-assets",
+      "owner": "release-owner",
+      "evidence": "assets/brand/ASSET-MANIFEST.toml"
+    },
+    {
+      "id": "private-conduct-contact",
+      "owner": "governance-owner",
+      "evidence": "SECURITY.md"
+    },
+    {
+      "id": "windows-production-signing",
+      "owner": "release-owner",
+      "evidence": "docs/RELEASE-TRUST.md"
+    },
+    {
+      "id": "apple-developer-id-and-notarization",
+      "owner": "release-owner",
+      "evidence": "docs/RELEASE-TRUST.md"
+    },
+    {
+      "id": "github-plan-or-public-visibility",
+      "owner": "repository-owner",
+      "evidence": ".github/BRANCH-PROTECTION.md"
+    },
+    {
+      "id": "independent-reviewer-capacity",
+      "owner": "repository-owner",
+      "evidence": "CODEOWNERS"
+    },
+    {
+      "id": "github-actions-billing",
+      "owner": "repository-owner",
+      "evidence": ".github/BRANCH-PROTECTION.md"
+    },
+    {
+      "id": "github-security-entitlements",
+      "owner": "repository-owner",
+      "evidence": ".github/repository-protection.json"
+    },
+    {
+      "id": "s1-controlled-native-visual-resource-accessibility",
+      "owner": "assurance-owner",
+      "evidence": "tests/assurance/s1-assurance-policy-v1.json"
+    },
+    {
+      "id": "s2-active-thirty-day-baseline",
+      "owner": "performance-owner",
+      "evidence": "tests/assurance/performance-ratchet-policy-v1.json"
+    },
+    {
+      "id": "historical-linearity-and-dco-resolution",
+      "owner": "repository-owner",
+      "evidence": "docs/READINESS-AUDIT.md"
+    }
+  ]
+}

@@ -57,7 +57,12 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
-        self.assertEqual(counts["cp2_pure_action_files"], 3)
+        self.assertEqual(counts["cp2_pure_action_files"], 7)
+        self.assertEqual(counts["cp4_pure_action_files"], 1)
+        self.assertEqual(counts["cp4_provider_action_files"], 6)
+        self.assertEqual(counts["cp5_suggestion_source_files"], 10)
+        self.assertEqual(counts["cp4_application_files"], 1)
+        self.assertEqual(counts["cp2_persistence_files"], 14)
 
     def test_versioned_hostile_mutation_corpus_is_rejected(self) -> None:
         self.assertEqual(set(self.hostile), {"schema", "phase", "cases"})
@@ -164,6 +169,22 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(POLICY.CommandProductivityError, "shell startup"):
                 POLICY.validate_pre_activation(root)
 
+    def test_reviewed_cp5_adapter_is_inert_not_startup_activation(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            adapter = (
+                root
+                / "shell-integration/suggestions/fish/automexia-suggestions.fish"
+            )
+            adapter.parent.mkdir(parents=True)
+            adapter.write_text("complete -C\n", encoding="utf-8")
+            self.assertEqual(POLICY.validate_shell_pre_activation(root), 1)
+
+            active = root / "shell-integration/automexia.fish"
+            active.write_text("complete -c kubectl\n", encoding="utf-8")
+            with self.assertRaisesRegex(POLICY.CommandProductivityError, "shell startup"):
+                POLICY.validate_shell_pre_activation(root)
+
     def test_terminal_grid_command_inference_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -232,7 +253,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             files = []
-            for relative in sorted(POLICY.CP2_PURE_ACTION_FILES):
+            for relative in sorted(POLICY.PURE_ACTION_FILES):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("struct QuickAction;\n", encoding="utf-8")
@@ -257,7 +278,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                         encoding="utf-8",
                     )
                     with self.assertRaisesRegex(
-                        POLICY.CommandProductivityError, "capability-free CP2"
+                        POLICY.CommandProductivityError, "capability-free CP2/CP3/CP4"
                     ):
                         POLICY.validate_pure_action_sources(root, files)
 
@@ -265,12 +286,12 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             files = []
-            for relative in sorted(POLICY.CP2_PURE_ACTION_FILES):
+            for relative in sorted(POLICY.PURE_ACTION_FILES):
                 path = root / relative
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("struct QuickAction;\n", encoding="utf-8")
                 files.append(path)
-            unexpected = root / "automexia-devops/src/actions/runtime.rs"
+            unexpected = root / "automexia-command-productivity/src/actions/runtime.rs"
             unexpected.write_text("struct Runtime;\n", encoding="utf-8")
             files.append(unexpected)
             with self.assertRaisesRegex(
@@ -278,6 +299,37 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             ):
                 POLICY.validate_pure_action_sources(root, files)
 
+    def test_cp4_provider_contributors_are_an_exact_reviewed_set(self) -> None:
+        self.assertEqual(
+            POLICY.CP4_PROVIDER_ACTION_FILES,
+            {
+                "extensions/devops-aws/src/lib.rs",
+                "extensions/devops-azure/src/lib.rs",
+                "extensions/devops-gcp/src/lib.rs",
+                "extensions/devops-kubernetes/src/implementation.rs",
+                "extensions/devops-openshift/src/implementation.rs",
+                "extensions/devops-teleport/src/lib.rs",
+            },
+        )
+
+    def test_cp4_provider_projection_has_a_separate_pure_source_owner(self) -> None:
+        self.assertEqual(
+            POLICY.CP4_PURE_ACTION_FILES,
+            {"automexia-command-productivity/src/actions/provider.rs"},
+        )
+        self.assertTrue(
+            POLICY.CP2_PURE_ACTION_FILES.isdisjoint(
+                POLICY.CP4_PURE_ACTION_FILES
+            )
+        )
+
+    def test_cp4_application_composition_has_one_reviewed_owner(self) -> None:
+        self.assertEqual(
+            POLICY.CP4_APPLICATION_FILES,
+            {
+                "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
+            },
+        )
     def _persistence_fixture(self, root: Path) -> list[Path]:
         files = []
         for relative in sorted(POLICY.CP2_PERSISTENCE_FILES):
@@ -354,6 +406,84 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 POLICY.CommandProductivityError, "exact reviewed boundary"
             ):
                 POLICY.validate_persistence_sources(root, files)
+    def test_persistence_boundary_accepts_exact_reviewed_cp31_expansion(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            for relative in sorted(POLICY.CP31_PUBLICATION_FILES):
+                path = root / relative
+                path.write_text("struct PublicationBoundary;\n", encoding="utf-8")
+                files.append(path)
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES | POLICY.CP31_PUBLICATION_FILES,
+            )
+
+    def test_persistence_boundary_accepts_and_confines_cp32_pack_cli(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            relative = next(iter(POLICY.CP32_PACK_FILES))
+            pack_cli = root / relative
+            pack_cli.write_text("struct PackCliBoundary;\n", encoding="utf-8")
+            files.append(pack_cli)
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES | POLICY.CP32_PACK_FILES,
+            )
+            pack_cli.write_text("use std::process::Command;\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "CP3.2 pack CLI-only"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
+    def test_persistence_boundary_accepts_and_confines_cp33_workspace_files(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            workspace_files = sorted(POLICY.CP33_WORKSPACE_FILES)
+            first = root / workspace_files[0]
+            first.write_text("struct WorkspaceBoundary;\n", encoding="utf-8")
+            files.append(first)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "exact reviewed boundary"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
+            second = root / workspace_files[1]
+            second.write_text("struct WorkspaceBoundary;\n", encoding="utf-8")
+            files.append(second)
+            self.assertEqual(
+                POLICY.validate_persistence_sources(root, files),
+                POLICY.CP2_PERSISTENCE_FILES | POLICY.CP33_WORKSPACE_FILES,
+            )
+            first.write_text("use std::process::Command;\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "CP3.3 import/workspace-only"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
+    def test_persistence_boundary_rejects_partial_or_capability_bearing_cp31(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            files = self._persistence_fixture(root)
+            publication = sorted(POLICY.CP31_PUBLICATION_FILES)
+            first = root / publication[0]
+            first.write_text("struct PublicationBoundary;\n", encoding="utf-8")
+            files.append(first)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "exact reviewed boundary"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
+            second = root / publication[1]
+            second.write_text("use std::net::TcpStream;\n", encoding="utf-8")
+            files.append(second)
+            with self.assertRaisesRegex(
+                POLICY.CommandProductivityError, "CP3.1 publication-only"
+            ):
+                POLICY.validate_persistence_sources(root, files)
+
     def test_scanned_source_size_ceiling_is_enforced_before_read(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "oversized.rs"

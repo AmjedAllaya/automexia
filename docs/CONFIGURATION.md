@@ -304,11 +304,35 @@ handler arguments without shell interpretation.
 
 ## Custom bindings
 
-`[bindings].keys` accepts `key`, `with`, `action`, `esc`, and `mode`. Explicit
-valid bindings replace matching defaults; invalid/unknown actions are reported
-and the default survives. The complete syntax, action names, modes, and active
-platform shortcuts are in [Keyboard and input reference](KEYBOARD.md).
+The classic `[bindings].keys` table remains supported. Typed compatibility
+configuration selects a profile independently and layers exact entries after it:
 
+```toml
+[keyboard]
+binding-profile = "ghostty-1.3"
+binding-strict = true
+
+[bindings]
+keybinds = [
+  "ctrl+shift+t=new_tab:inherit",
+  "ctrl+x>ctrl+s=write_screen_file:copy,plain",
+  "ctrl+u=unbind",
+]
+```
+
+Profiles are `automexia` (the implicit default), `ghostty-1.3` (pinned), and
+`ghostty` (a visible moving alias). Typed lines support logical, physical, and
+named keys; sequences; tables; chains; scopes; performability; consumption; and
+explicit unbinds. Compilation is bounded and atomic. Strict errors reject the
+candidate registry, so reload keeps the complete last-known-good profile,
+shortcuts, palette hints, and OS global hotkeys.
+
+Legacy `[bindings].keys` entries still accept `key`, `with`, `action`, `esc`,
+and `mode`. A valid legacy user entry replaces its exact classic trigger;
+invalid or unknown actions are reported and do not erase a default. Full syntax,
+limits, migration, rollback, and generated inventories are in
+[Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) and
+[Keyboard and input reference](KEYBOARD.md).
 ## Platform-specific overrides
 
 Base settings load first; the active platform table selectively overrides

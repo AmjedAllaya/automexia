@@ -1,5 +1,5 @@
+pub mod external_tool_runner;
 pub mod launch;
-#[cfg(test)]
 pub mod launch_broker;
 pub mod renderable;
 pub mod title;
@@ -15,7 +15,7 @@ use crate::event::{Msg, RioEvent};
 use crate::ime::Ime;
 pub use crate::layout::{ContextDimension, ContextGrid, ContextGridItem};
 use crate::messenger::Messenger;
-use crate::performer::{self, Machine};
+use crate::performer::{Machine, PtyWorkerHandle};
 use launch::{LiveSessionMetadata, SessionLaunchDescriptor};
 use renderable::Cursor;
 use renderable::RenderableContent;
@@ -30,10 +30,10 @@ use rio_backend::event::EventListener;
 use rio_backend::event::WindowId;
 use rio_backend::selection::SelectionRange;
 use rio_backend::sugarloaf::{font::SugarloafFont, Rect, Sugarloaf, SugarloafErrors};
+use std::collections::VecDeque;
 use std::error::Error;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
-use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 // Global atomic counter for generating unique route IDs
@@ -52,6 +52,112 @@ use teletypewriter::create_pty;
 #[cfg(not(target_os = "windows"))]
 use teletypewriter::{create_pty_with_fork, create_pty_with_spawn};
 
+#[allow(
+    dead_code,
+    reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ManagedRouteReservation {
+    route_id: usize,
+    operation_id: OperationId,
+    session_id: SessionId,
+    capsule_revision: u64,
+}
+
+#[allow(
+    dead_code,
+    reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+)]
+impl ManagedRouteReservation {
+    pub const fn operation_id(&self) -> OperationId {
+        self.operation_id
+    }
+
+    pub const fn session_id(&self) -> SessionId {
+        self.session_id
+    }
+
+    pub const fn capsule_revision(&self) -> u64 {
+        self.capsule_revision
+    }
+    #[cfg(test)]
+    pub(crate) fn test(route_id: usize) -> Self {
+        let numeric_id = u64::try_from(route_id).expect("test route fits in u64");
+        Self {
+            route_id,
+            operation_id: OperationId::new(numeric_id),
+            session_id: SessionId::new(numeric_id),
+            capsule_revision: 1,
+        }
+    }
+}
+
+#[allow(
+    dead_code,
+    reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ManagedPublishError {
+    CapacityExceeded,
+    InvalidScope,
+    PtyUnavailable,
+    PublicationFailed,
+}
+
+impl std::fmt::Display for ManagedPublishError {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter.write_str(match self {
+            Self::CapacityExceeded => "the terminal tab limit was reached",
+            Self::InvalidScope => "the reviewed session scope is stale",
+            Self::PtyUnavailable => "the reviewed external tool could not start",
+            Self::PublicationFailed => "the new terminal route could not be published",
+        })
+    }
+}
+
+impl std::error::Error for ManagedPublishError {}
+
+struct ManagedSessionGuard {
+    runner: external_tool_runner::ExternalToolRunner,
+    lease: launch_broker::OperationLease,
+    reconciled: bool,
+}
+
+impl ManagedSessionGuard {
+    fn complete(
+        &mut self,
+        outcome: external_tool_runner::ManagedProcessOutcome,
+    ) -> Option<external_tool_runner::ManagedCompletion> {
+        if self.reconciled {
+            return None;
+        }
+        let completion = self
+            .runner
+            .complete_with_outcome(
+                self.lease,
+                external_tool_runner::current_time_ms(),
+                outcome,
+            )
+            .ok()?;
+        self.reconciled = true;
+        Some(completion)
+    }
+}
+
+impl Drop for ManagedSessionGuard {
+    fn drop(&mut self) {
+        if !self.reconciled {
+            let _ = self
+                .runner
+                .cancel(self.lease, external_tool_runner::current_time_ms());
+        }
+        self.runner.revoke_session(
+            self.lease.session_id(),
+            external_tool_runner::current_time_ms(),
+        );
+    }
+}
+
 pub struct Context<T: EventListener> {
     pub route_id: usize,
     pub terminal: Arc<FairMutex<Crosswords<T>>>,
@@ -69,19 +175,31 @@ pub struct Context<T: EventListener> {
     pub dimension: ContextDimension,
     pub title: ContextTitle,
     pub ime: Ime,
-    _io_thread: Option<JoinHandle<(Machine<teletypewriter::Pty, T>, performer::State)>>,
+    managed_session: Option<ManagedSessionGuard>,
+    _io_thread: Option<PtyWorkerHandle<()>>,
 }
 
 impl<T: rio_backend::event::EventListener> Drop for Context<T> {
     fn drop(&mut self) {
         // Shutdown the terminal's PTY.
         let _ = self.messenger.channel.send(Msg::Shutdown);
+        #[cfg(not(target_os = "windows"))]
+        let managed = self.managed_session.is_some();
 
         // `create_dead_context` uses 1 as a placeholder PID, so guard against
         // signalling init (1) or our own process group (0).
         #[cfg(not(target_os = "windows"))]
-        if self.shell_pid > 1 {
+        if !managed && self.shell_pid > 1 {
             teletypewriter::kill_pid(self.shell_pid as i32);
+        }
+
+        if let Some(mut worker) = self._io_thread.take() {
+            if !worker.join_timeout(Duration::from_secs(10)) {
+                tracing::warn!(
+                    route_id = self.route_id,
+                    "PTY worker did not join within the bounded shutdown budget"
+                );
+            }
         }
     }
 }
@@ -162,6 +280,28 @@ pub struct ContextManagerConfig {
 
 const DEFAULT_CONTEXT_CAPACITY: usize = 28;
 
+const MAX_PARKED_TOPOLOGIES: usize = 8;
+const MAX_PARKED_HISTORY_LINES: usize = 250_000;
+const PARKED_TOPOLOGY_TTL: Duration = Duration::from_secs(5 * 60);
+
+struct ParkedTopLevel<T: EventListener> {
+    grid: ContextGrid<T>,
+    index: usize,
+    parked_at: Instant,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParkedTopologySummary {
+    pub sessions: usize,
+    pub history_lines: usize,
+    pub remaining_seconds: u64,
+}
+
+#[derive(Clone, Copy, Debug)]
+struct RestoredTopLevel {
+    route_id: usize,
+    index: usize,
+}
 pub struct ContextManager<T: EventListener> {
     contexts: SmallVec<[ContextGrid<T>; DEFAULT_CONTEXT_CAPACITY]>,
     current_index: usize,
@@ -175,6 +315,10 @@ pub struct ContextManager<T: EventListener> {
     /// PTYs intentionally removed by UI actions. Their asynchronous shutdown
     /// events are acknowledgements, not requests to close another tab.
     closing_routes: FxHashSet<usize>,
+    /// Closed top-level tabs whose independent PTYs remain parked for a
+    /// bounded undo window. They are isolated per OS-window manager.
+    parked_topologies: VecDeque<ParkedTopLevel<T>>,
+    restored_topologies: VecDeque<RestoredTopLevel>,
 }
 
 pub fn create_dead_context<T: rio_backend::event::EventListener>(
@@ -214,6 +358,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         dimension,
         title: ContextTitle::default(),
         ime: Ime::new(),
+        managed_session: None,
         _io_thread: None,
     }
 }
@@ -248,7 +393,243 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         self.closing_routes.remove(&route_id)
     }
 
+    #[allow(
+        dead_code,
+        reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+    )]
     #[inline]
+    pub fn reserve_managed_route(
+        &self,
+    ) -> Result<ManagedRouteReservation, ManagedPublishError> {
+        if self.contexts.len() >= self.capacity {
+            return Err(ManagedPublishError::CapacityExceeded);
+        }
+        let route_id = ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let numeric_id =
+            u64::try_from(route_id).map_err(|_| ManagedPublishError::InvalidScope)?;
+        if numeric_id == 0 {
+            return Err(ManagedPublishError::InvalidScope);
+        }
+        Ok(ManagedRouteReservation {
+            route_id,
+            operation_id: OperationId::new(numeric_id),
+            session_id: SessionId::new(numeric_id),
+            capsule_revision: 1,
+        })
+    }
+
+    #[allow(
+        dead_code,
+        reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+    )]
+    #[allow(clippy::too_many_arguments)]
+    fn create_managed_context(
+        cursor_state: (&Cursor, bool),
+        event_proxy: T,
+        window_id: WindowId,
+        rich_text_id: usize,
+        dimension: ContextDimension,
+        config: &ContextManagerConfig,
+        reservation: ManagedRouteReservation,
+        guarded: external_tool_runner::GuardedLaunch,
+        runner: external_tool_runner::ExternalToolRunner,
+    ) -> Result<Context<T>, ManagedPublishError> {
+        let (launch_descriptor, executable, lease) = guarded.into_parts();
+        if lease.operation_id() != reservation.operation_id
+            || lease.session_id() != reservation.session_id
+            || lease.capsule_revision() != reservation.capsule_revision
+        {
+            return Err(ManagedPublishError::InvalidScope);
+        }
+        let environment_capsule = launch_descriptor
+            .environment_capsule(reservation.session_id, reservation.capsule_revision)
+            .map_err(|_| ManagedPublishError::InvalidScope)?;
+
+        let cols: u16 = dimension.columns.try_into().unwrap_or(MIN_COLUMNS as u16);
+        let rows: u16 = dimension.lines.try_into().unwrap_or(MIN_LINES as u16);
+        #[cfg(not(target_os = "windows"))]
+        let initial_winsize = crate::renderer::utils::terminal_dimensions(&dimension);
+
+        let mut terminal = Crosswords::new(
+            dimension,
+            cursor_state.0.state.content,
+            event_proxy.clone(),
+            window_id,
+            reservation.route_id,
+            config.scrollback_history_limit,
+        );
+        terminal.blinking_cursor = cursor_state.1;
+        let terminal: Arc<FairMutex<Crosswords<T>>> = Arc::new(FairMutex::new(terminal));
+
+        #[cfg(not(target_os = "windows"))]
+        let pty = teletypewriter::create_exact_pty(
+            executable,
+            launch_descriptor.args().to_vec(),
+            &launch_descriptor
+                .starting_directory()
+                .map(ToOwned::to_owned),
+            launch_descriptor.environment().to_vec(),
+            cols,
+            rows,
+            initial_winsize.width,
+            initial_winsize.height,
+        )
+        .map_err(|_| ManagedPublishError::PtyUnavailable)?;
+
+        #[cfg(target_os = "windows")]
+        let pty = teletypewriter::create_exact_pty(
+            executable,
+            launch_descriptor.args().to_vec(),
+            &launch_descriptor
+                .starting_directory()
+                .map(ToOwned::to_owned),
+            launch_descriptor.environment().to_vec(),
+            cols,
+            rows,
+        )
+        .map_err(|_| ManagedPublishError::PtyUnavailable)?;
+
+        #[cfg(not(target_os = "windows"))]
+        let main_fd = pty.child.id.clone();
+        #[cfg(not(target_os = "windows"))]
+        let shell_pid = *pty.child.pid.clone() as u32;
+        #[cfg(target_os = "windows")]
+        let shell_pid = pty
+            .child_watcher()
+            .pid()
+            .map(std::num::NonZeroU32::get)
+            .unwrap_or(0);
+
+        let machine = Machine::new(
+            Arc::clone(&terminal),
+            pty,
+            event_proxy,
+            window_id,
+            reservation.route_id,
+        )
+        .map_err(|_| ManagedPublishError::PtyUnavailable)?;
+        let messenger = Messenger::new(machine.channel());
+        let io_thread = Some(machine.spawn());
+
+        Ok(Context {
+            route_id: reservation.route_id,
+            #[cfg(not(target_os = "windows"))]
+            main_fd,
+            shell_pid,
+            launch_descriptor,
+            environment_capsule,
+            messenger,
+            terminal,
+            rich_text_id,
+            renderable_content: RenderableContent::new(cursor_state.0.clone()),
+            dimension,
+            title: ContextTitle::default(),
+            ime: Ime::new(),
+            managed_session: Some(ManagedSessionGuard {
+                runner,
+                lease,
+                reconciled: false,
+            }),
+            _io_thread: io_thread,
+        })
+    }
+
+    #[allow(
+        dead_code,
+        reason = "the reviewed M3 route seam remains dormant until managed SSH activation is approved"
+    )]
+    pub fn publish_managed_context(
+        &mut self,
+        reservation: ManagedRouteReservation,
+        guarded: external_tool_runner::GuardedLaunch,
+        runner: external_tool_runner::ExternalToolRunner,
+        rich_text_id: usize,
+    ) -> Result<usize, ManagedPublishError> {
+        if self.contexts.len() >= self.capacity {
+            let lease = guarded.lease();
+            let _ = runner.cancel(lease, external_tool_runner::current_time_ms());
+            runner.revoke_session(
+                lease.session_id(),
+                external_tool_runner::current_time_ms(),
+            );
+            return Err(ManagedPublishError::CapacityExceeded);
+        }
+
+        let lease = guarded.lease();
+        if lease.operation_id() != reservation.operation_id
+            || lease.session_id() != reservation.session_id
+            || lease.capsule_revision() != reservation.capsule_revision
+        {
+            let _ = runner.cancel(lease, external_tool_runner::current_time_ms());
+            runner.revoke_session(
+                lease.session_id(),
+                external_tool_runner::current_time_ms(),
+            );
+            return Err(ManagedPublishError::InvalidScope);
+        }
+
+        let (cursor, blinking, dimension, viewport, scaled_margin) = {
+            let current = self.current();
+            let dimension = if self.current_grid().len() > 1 {
+                self.current_grid().grid_dimension()
+            } else {
+                current.dimension
+            };
+            (
+                current.cursor_from_ref(),
+                current.renderable_content.has_blinking_enabled,
+                dimension,
+                (
+                    self.contexts[self.current_index].width,
+                    self.contexts[self.current_index].height,
+                ),
+                self.contexts[self.current_index].scaled_margin,
+            )
+        };
+
+        let new_context = match Self::create_managed_context(
+            (&cursor, blinking),
+            self.event_proxy.clone(),
+            self.window_id,
+            rich_text_id,
+            dimension,
+            &self.config,
+            reservation,
+            guarded,
+            runner.clone(),
+        ) {
+            Ok(context) => context,
+            Err(error) => {
+                let _ = runner.cancel(lease, external_tool_runner::current_time_ms());
+                runner.revoke_session(
+                    lease.session_id(),
+                    external_tool_runner::current_time_ms(),
+                );
+                return Err(error);
+            }
+        };
+
+        let route_id = new_context.route_id;
+        self.contexts.push(ContextGrid::new_with_viewport(
+            new_context,
+            scaled_margin,
+            self.config.split_color,
+            self.config.split_active_color,
+            self.config.panel,
+            viewport.0,
+            viewport.1,
+        ));
+
+        if runner.mark_published(lease, route_id).is_err() {
+            self.contexts.pop();
+            return Err(ManagedPublishError::PublicationFailed);
+        }
+
+        self.current_index = self.contexts.len() - 1;
+        self.current_route = route_id;
+        Ok(route_id)
+    }
+
     fn create_context(
         cursor_state: (&Cursor, bool),
         event_proxy: T,
@@ -310,7 +691,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
 
         let mut terminal = Crosswords::new(
             dimension,
-            CursorShape::from_char(cursor_state.0.content),
+            cursor_state.0.state.content,
             event_proxy.clone(),
             window_id,
             route_id,
@@ -425,6 +806,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             dimension,
             title: ContextTitle::default(),
             ime: Ime::new(),
+            managed_session: None,
             _io_thread: io_thread,
         })
     }
@@ -489,9 +871,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             }
         }
 
+        let initial_route = initial_context.route_id;
         Ok(ContextManager {
             current_index: 0,
-            current_route: 0,
+            current_route: initial_route,
             contexts: smallvec![ContextGrid::new(
                 initial_context,
                 scaled_margin,
@@ -505,6 +888,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             config: ctx_config,
             last_title_update: None,
             closing_routes: FxHashSet::default(),
+            parked_topologies: VecDeque::new(),
+            restored_topologies: VecDeque::new(),
         })
     }
 
@@ -528,9 +913,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             &config,
         )?;
 
+        let initial_route = initial_context.route_id;
         Ok(ContextManager {
             current_index: 0,
-            current_route: 0,
+            current_route: initial_route,
             contexts: smallvec![ContextGrid::new(
                 initial_context,
                 Margin::default(),
@@ -544,9 +930,25 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             config,
             last_title_update: None,
             closing_routes: FxHashSet::default(),
+            parked_topologies: VecDeque::new(),
+            restored_topologies: VecDeque::new(),
         })
     }
 
+    pub fn reconcile_managed_child_exit(
+        &mut self,
+        route_id: usize,
+        raw_status: Option<i32>,
+    ) -> Option<external_tool_runner::ManagedSessionNotification> {
+        let managed = self
+            .contexts
+            .iter_mut()
+            .find_map(|grid| grid.get_by_route_id(route_id))
+            .and_then(|context| context.managed_session.as_mut())?;
+        managed
+            .complete(managed_process_outcome(raw_status))
+            .and_then(|completion| completion.notification)
+    }
     #[inline]
     pub fn should_close_context_manager(
         &mut self,
@@ -557,6 +959,17 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         // delayed CloseTerminal. Consume that exact route once; never infer a
         // close for whichever tab happens to be active by then.
         if self.acknowledge_intentional_close(route_id) {
+            return false;
+        }
+
+        if let Some(index) = self
+            .parked_topologies
+            .iter()
+            .position(|parked| parked.grid.route_ids().contains(&route_id))
+        {
+            self.parked_topologies.remove(index);
+            self.restored_topologies
+                .retain(|entry| entry.route_id != route_id);
             return false;
         }
 
@@ -703,6 +1116,24 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn select_next_split_no_loop(&mut self) -> bool {
+        if !self.contexts[self.current_index].select_next_split_no_loop() {
+            return false;
+        }
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    #[inline]
+    pub fn select_prev_split_no_loop(&mut self) -> bool {
+        if !self.contexts[self.current_index].select_prev_split_no_loop() {
+            return false;
+        }
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    #[inline]
     pub fn select_split_direction(
         &mut self,
         direction: crate::layout::PaneDirection,
@@ -743,6 +1174,21 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             current_tab.current = last_key;
         }
         self.current_route = self.current().route_id;
+    }
+
+    #[inline]
+    pub fn is_split_zoomed(&self) -> bool {
+        self.contexts[self.current_index].is_zoomed()
+    }
+
+    #[inline]
+    pub fn toggle_split_zoom(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        self.contexts[self.current_index].toggle_split_zoom(sugarloaf)
+    }
+
+    #[inline]
+    pub fn equalize_splits(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        self.contexts[self.current_index].equalize_splits(sugarloaf)
     }
 
     #[inline]
@@ -857,6 +1303,22 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .iter()
             .flat_map(ContextGrid::route_ids)
             .collect()
+    }
+
+    /// Active local-tab routes for every visible pane in the selected
+    /// workspace tab, ordered top-to-bottom then left-to-right.
+    pub fn visible_route_ids_in_search_order(&self) -> Vec<usize> {
+        self.current_grid().active_route_ids_in_visual_order()
+    }
+
+    /// Focus an already-visible pane route. Workspace search never activates a
+    /// hidden top-level or pane-local tab as a side effect.
+    pub fn select_visible_route(&mut self, route_id: usize) -> bool {
+        if !self.current_grid_mut().select_active_route(route_id) {
+            return false;
+        }
+        self.current_route = route_id;
+        true
     }
 
     #[inline]
@@ -1132,25 +1594,182 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             return;
         }
 
+        self.contexts[self.current_index].remove_all_rich_text(sugarloaf);
+        if self.park_current_topology_model() {
+            self.keep_only_active_context_visible(sugarloaf);
+        }
+    }
+
+    /// Move the complete current top-level tab into bounded memory-only
+    /// history without touching renderer state. The public close wrapper owns
+    /// rich-text cleanup and visibility publication.
+    fn park_current_topology_model(&mut self) -> bool {
+        if self.contexts.len() <= 1 {
+            return false;
+        }
+        self.prune_topology_history();
+        self.restored_topologies.clear();
         let index_to_remove = self.current_index;
-        self.closing_routes
-            .extend(self.contexts[index_to_remove].route_ids());
-        let mut should_set_current = false;
-        if index_to_remove > 1 {
-            self.set_current(self.current_index - 1);
-        } else {
-            should_set_current = true;
+        let grid = self.contexts.remove(index_to_remove);
+        self.parked_topologies.push_back(ParkedTopLevel {
+            grid,
+            index: index_to_remove,
+            parked_at: Instant::now(),
+        });
+        self.enforce_topology_history_limits();
+        self.current_index = index_to_remove
+            .saturating_sub(1)
+            .min(self.contexts.len().saturating_sub(1));
+        self.current_route = self.current().route_id;
+        true
+    }
+
+    pub fn can_undo_topology(&self) -> bool {
+        !self.parked_topologies.is_empty()
+    }
+
+    pub fn can_redo_topology(&self) -> bool {
+        !self.restored_topologies.is_empty()
+    }
+
+    /// Return newest-first, redacted lifecycle summaries. Route IDs, titles,
+    /// commands, remote destinations, and terminal contents never leave the
+    /// session owner through this projection.
+    pub fn parked_topology_summaries(&mut self) -> Vec<ParkedTopologySummary> {
+        self.prune_topology_history();
+        self.parked_topologies
+            .iter()
+            .rev()
+            .map(|entry| ParkedTopologySummary {
+                sessions: entry.grid.route_ids().len(),
+                history_lines: entry.grid.retained_history_lines(),
+                remaining_seconds: PARKED_TOPOLOGY_TTL
+                    .saturating_sub(entry.parked_at.elapsed())
+                    .as_secs(),
+            })
+            .collect()
+    }
+
+    /// Explicitly terminate every currently parked topology in this native
+    /// window. Dropping each grid delegates child cleanup to the existing
+    /// Context/PTY owner and also invalidates redo references.
+    pub fn clear_parked_topologies(&mut self) -> usize {
+        self.prune_topology_history();
+        let cleared = self.parked_topologies.len();
+        self.parked_topologies.clear();
+        self.restored_topologies.clear();
+        cleared
+    }
+
+    pub fn invalidate_topology_redo(&mut self) {
+        self.restored_topologies.clear();
+    }
+
+    pub fn undo_topology(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        if !self.undo_topology_model() {
+            return false;
         }
-
-        // Remove all rich text from the grid before removing the context
-        self.contexts[index_to_remove].remove_all_rich_text(sugarloaf);
-        self.contexts.remove(index_to_remove);
-
-        if should_set_current {
-            self.set_current(0);
-        }
-
         self.keep_only_active_context_visible(sugarloaf);
+        true
+    }
+
+    fn undo_topology_model(&mut self) -> bool {
+        self.prune_topology_history();
+        let Some(parked) = self.parked_topologies.pop_back() else {
+            return false;
+        };
+        if self.contexts.len() >= self.capacity {
+            self.parked_topologies.push_back(parked);
+            return false;
+        }
+        let index = parked.index.min(self.contexts.len());
+        let route_id = parked.grid.current().route_id;
+        self.contexts.insert(index, parked.grid);
+        self.current_index = index;
+        self.current_route = route_id;
+        self.restored_topologies
+            .push_back(RestoredTopLevel { route_id, index });
+        while self.restored_topologies.len() > MAX_PARKED_TOPOLOGIES {
+            self.restored_topologies.pop_front();
+        }
+        true
+    }
+
+    pub fn redo_topology(&mut self, sugarloaf: &mut Sugarloaf) -> bool {
+        // Discard renderer-owned overlays before the model moves this exact
+        // grid out of the visible topology. Terminal glyphs remain dynamic.
+        if self.contexts.len() > 1 {
+            let restored_route =
+                self.restored_topologies.back().map(|entry| entry.route_id);
+            if let Some(index) = restored_route.and_then(|route_id| {
+                self.contexts
+                    .iter()
+                    .position(|grid| grid.route_ids().contains(&route_id))
+            }) {
+                self.contexts[index].remove_all_rich_text(sugarloaf);
+            }
+        }
+        if !self.redo_topology_model() {
+            return false;
+        }
+        self.keep_only_active_context_visible(sugarloaf);
+        true
+    }
+
+    fn redo_topology_model(&mut self) -> bool {
+        self.prune_topology_history();
+        let Some(restored) = self.restored_topologies.pop_back() else {
+            return false;
+        };
+        let Some(index) = self
+            .contexts
+            .iter()
+            .position(|grid| grid.route_ids().contains(&restored.route_id))
+        else {
+            return false;
+        };
+        if self.contexts.len() <= 1 {
+            return false;
+        }
+        let grid = self.contexts.remove(index);
+        self.parked_topologies.push_back(ParkedTopLevel {
+            grid,
+            index: restored.index,
+            parked_at: Instant::now(),
+        });
+        self.enforce_topology_history_limits();
+        self.current_index = index
+            .saturating_sub(1)
+            .min(self.contexts.len().saturating_sub(1));
+        self.current_route = self.current().route_id;
+        true
+    }
+    fn prune_topology_history(&mut self) {
+        while self
+            .parked_topologies
+            .front()
+            .is_some_and(|entry| entry.parked_at.elapsed() >= PARKED_TOPOLOGY_TTL)
+        {
+            self.parked_topologies.pop_front();
+        }
+        self.enforce_topology_history_limits();
+    }
+
+    fn enforce_topology_history_limits(&mut self) {
+        while self.parked_topologies.len() > MAX_PARKED_TOPOLOGIES {
+            self.parked_topologies.pop_front();
+        }
+        while self
+            .parked_topologies
+            .iter()
+            .map(|entry| entry.grid.retained_history_lines())
+            .fold(0usize, usize::saturating_add)
+            > MAX_PARKED_HISTORY_LINES
+        {
+            if self.parked_topologies.pop_front().is_none() {
+                break;
+            }
+        }
     }
 
     #[inline]
@@ -1769,6 +2388,36 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 }
 
+fn managed_process_outcome(
+    raw_status: Option<i32>,
+) -> external_tool_runner::ManagedProcessOutcome {
+    let Some(raw_status) = raw_status else {
+        return external_tool_runner::ManagedProcessOutcome::StatusUnavailable;
+    };
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::ExitStatusExt;
+        if std::process::ExitStatus::from_raw(raw_status).success() {
+            external_tool_runner::ManagedProcessOutcome::Succeeded
+        } else {
+            external_tool_runner::ManagedProcessOutcome::Failed
+        }
+    }
+    #[cfg(windows)]
+    {
+        if raw_status == 0 {
+            external_tool_runner::ManagedProcessOutcome::Succeeded
+        } else {
+            external_tool_runner::ManagedProcessOutcome::Failed
+        }
+    }
+    #[cfg(not(any(unix, windows)))]
+    {
+        let _ = raw_status;
+        external_tool_runner::ManagedProcessOutcome::StatusUnavailable
+    }
+}
 pub fn process_open_url(
     mut shell: Shell,
     mut working_dir: Option<String>,
@@ -1805,6 +2454,99 @@ pub mod test {
     use crate::event::VoidListener;
     use std::sync::Mutex;
 
+    #[test]
+    fn initial_route_tracks_the_authoritative_active_context() {
+        let manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, WindowId::from(30))
+                .expect("dead context manager");
+
+        assert_ne!(manager.current_route(), 0);
+        assert_eq!(manager.current_route(), manager.current().route_id);
+    }
+    #[test]
+    fn parked_topology_history_is_count_and_time_bounded() {
+        let window_id = WindowId::from(0);
+        let mut manager =
+            ContextManager::start_with_capacity(16, VoidListener {}, window_id).unwrap();
+        for route_id in 100..110 {
+            let context = create_dead_context(
+                VoidListener {},
+                window_id,
+                route_id,
+                route_id,
+                ContextDimension::default(),
+            );
+            manager.parked_topologies.push_back(ParkedTopLevel {
+                grid: ContextGrid::new(
+                    context,
+                    Margin::default(),
+                    manager.config.split_color,
+                    manager.config.split_active_color,
+                    manager.config.panel,
+                ),
+                index: 0,
+                parked_at: Instant::now(),
+            });
+        }
+        manager.enforce_topology_history_limits();
+        assert_eq!(manager.parked_topologies.len(), MAX_PARKED_TOPOLOGIES);
+
+        manager.parked_topologies.front_mut().unwrap().parked_at =
+            Instant::now() - PARKED_TOPOLOGY_TTL;
+        manager.prune_topology_history();
+        assert_eq!(manager.parked_topologies.len(), MAX_PARKED_TOPOLOGIES - 1);
+    }
+    #[test]
+    fn parked_topology_restores_exact_order_and_route_and_capacity_refuses_safely() {
+        let window_id = WindowId::from(73);
+        let mut manager =
+            ContextManager::start_with_capacity(3, VoidListener {}, window_id).unwrap();
+        manager.add_context(true, 0);
+        let original_routes = manager.route_ids();
+        let closed_route = manager.current().route_id;
+        assert_eq!(manager.current_index(), 1);
+
+        assert!(manager.park_current_topology_model());
+        assert_eq!(manager.len(), 1);
+        assert!(manager.can_undo_topology());
+
+        manager.capacity = 1;
+        assert!(!manager.undo_topology_model());
+        assert_eq!(manager.len(), 1);
+        assert!(manager.can_undo_topology());
+
+        manager.capacity = 3;
+        assert!(manager.undo_topology_model());
+        assert_eq!(manager.route_ids(), original_routes);
+        assert_eq!(manager.current_index(), 1);
+        assert_eq!(manager.current().route_id, closed_route);
+        assert!(manager.can_redo_topology());
+
+        assert!(manager.redo_topology_model());
+        assert_eq!(manager.len(), 1);
+        assert_eq!(manager.parked_topologies.back().unwrap().index, 1);
+        assert!(manager.can_undo_topology());
+        assert!(!manager.can_redo_topology());
+    }
+
+    #[test]
+    fn parked_topology_summary_is_redacted_bounded_and_clear_is_exact() {
+        let window_id = WindowId::from(74);
+        let mut manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, window_id).unwrap();
+        manager.add_context(true, 0);
+        assert!(manager.park_current_topology_model());
+
+        let summaries = manager.parked_topology_summaries();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].sessions, 1);
+        assert!(summaries[0].remaining_seconds <= PARKED_TOPOLOGY_TTL.as_secs());
+        assert_eq!(manager.clear_parked_topologies(), 1);
+        assert!(manager.parked_topology_summaries().is_empty());
+        assert!(!manager.can_undo_topology());
+        assert!(!manager.can_redo_topology());
+        assert_eq!(manager.clear_parked_topologies(), 0);
+    }
     #[derive(Clone, Default)]
     struct RecordingListener {
         renders: Arc<Mutex<Vec<(usize, WindowId)>>>,
@@ -1830,6 +2572,29 @@ pub mod test {
         assert_eq!(*listener.renders.lock().unwrap(), [(912, window_id)]);
     }
 
+    #[test]
+    fn managed_child_status_is_classified_without_guessing_missing_status() {
+        use external_tool_runner::ManagedProcessOutcome;
+
+        assert_eq!(
+            managed_process_outcome(None),
+            ManagedProcessOutcome::StatusUnavailable
+        );
+        assert_eq!(
+            managed_process_outcome(Some(0)),
+            ManagedProcessOutcome::Succeeded
+        );
+        #[cfg(unix)]
+        assert_eq!(
+            managed_process_outcome(Some(1 << 8)),
+            ManagedProcessOutcome::Failed
+        );
+        #[cfg(windows)]
+        assert_eq!(
+            managed_process_outcome(Some(1)),
+            ManagedProcessOutcome::Failed
+        );
+    }
     #[test]
     fn intentional_close_acknowledges_only_the_exact_route_once() {
         let window_id = WindowId::from(74);

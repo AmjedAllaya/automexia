@@ -1,22 +1,29 @@
 use crate::Winsize;
 use std::io::{Error, Result};
-use std::os::windows::io::IntoRawHandle;
+use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle};
 use std::{mem, ptr};
 use tracing::*;
 
 use crate::windows::pipes::{EventedAnonRead, EventedAnonWrite};
 
 use windows_sys::core::{HRESULT, PWSTR};
-use windows_sys::Win32::Foundation::{HANDLE, S_OK};
+use windows_sys::Win32::Foundation::{CloseHandle, HANDLE, S_OK};
 use windows_sys::Win32::System::Console::{
     ClosePseudoConsole, CreatePseudoConsole, ResizePseudoConsole, COORD, HPCON,
+};
+use windows_sys::Win32::System::JobObjects::{
+    AssignProcessToJobObject, CreateJobObjectW, JobObjectBasicAccountingInformation,
+    JobObjectExtendedLimitInformation, QueryInformationJobObject,
+    SetInformationJobObject, TerminateJobObject, JOBOBJECT_BASIC_ACCOUNTING_INFORMATION,
+    JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
 };
 use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows_sys::{s, w};
 
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, InitializeProcThreadAttributeList, UpdateProcThreadAttribute,
-    CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
+    CreateProcessW, InitializeProcThreadAttributeList, ResumeThread, TerminateProcess,
+    UpdateProcThreadAttribute, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
+    EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
     PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTF_USESTDHANDLES, STARTUPINFOEXW,
     STARTUPINFOW,
 };
@@ -90,10 +97,15 @@ impl ConptyApi {
 pub struct Conpty {
     pub handle: HPCON,
     api: ConptyApi,
+    managed_job: Option<OwnedHandle>,
 }
 
 impl Drop for Conpty {
     fn drop(&mut self) {
+        // Kill a managed process tree before closing ConPTY; otherwise
+        // ClosePseudoConsole can block while a descendant still owns conout.
+        drop(self.managed_job.take());
+
         // XXX: This will block until the conout pipe is drained. Will cause a deadlock if the
         // conout pipe has already been dropped by this point.
         //
@@ -108,14 +120,26 @@ unsafe impl Send for Conpty {}
 /// Builds a `CREATE_UNICODE_ENVIRONMENT` block from the current process
 /// environment plus `extra_env` (which overrides inherited variables of the
 /// same name): NUL-terminated `KEY=VALUE` UTF-16 entries, with a trailing NUL.
-fn environment_block(extra_env: Vec<(String, String)>) -> Vec<u16> {
-    let mut vars: Vec<(std::ffi::OsString, std::ffi::OsString)> =
-        std::env::vars_os().collect();
+fn environment_block(
+    extra_env: Vec<(String, String)>,
+    inherit_environment: bool,
+) -> Vec<u16> {
+    let mut vars: Vec<(std::ffi::OsString, std::ffi::OsString)> = if inherit_environment {
+        std::env::vars_os().collect()
+    } else {
+        Vec::new()
+    };
     for (key, value) in extra_env {
         let key = std::ffi::OsString::from(key);
         vars.retain(|(existing, _)| !existing.eq_ignore_ascii_case(&key));
         vars.push((key, value.into()));
     }
+    vars.sort_by(|left, right| {
+        left.0
+            .to_string_lossy()
+            .to_ascii_lowercase()
+            .cmp(&right.0.to_string_lossy().to_ascii_lowercase())
+    });
 
     let mut block = Vec::new();
     for (key, value) in vars {
@@ -128,10 +152,14 @@ fn environment_block(extra_env: Vec<(String, String)>) -> Vec<u16> {
     block
 }
 
+#[allow(clippy::too_many_arguments)]
 pub fn new(
-    shell: Option<&str>,
+    application_name: Option<&str>,
+    command_line: Option<&str>,
     working_directory: &Option<String>,
     env: Option<Vec<(String, String)>>,
+    inherit_environment: bool,
+    managed_tree: bool,
     columns: u16,
     rows: u16,
 ) -> Result<Pty> {
@@ -239,23 +267,38 @@ pub fn new(
         }
     }
 
-    let cmdline = win32_string(&cmdline(shell));
+    let application_name = application_name.map(win32_string);
+    let mut command_line = win32_string(&cmdline(command_line));
     let cwd = working_directory.as_ref().map(win32_string);
-    // With no overrides, leave the environment pointer null so the child
-    // inherits ours, exactly as before.
-    let mut env_block = env.map(environment_block);
+    // Generic terminals preserve their historic inherited environment. Exact
+    // managed launches always receive a complete application-owned block.
+    let mut env_block = match env {
+        Some(environment) => Some(environment_block(environment, inherit_environment)),
+        None if !inherit_environment => Some(environment_block(Vec::new(), false)),
+        None => None,
+    };
+    let managed_job = managed_tree.then(create_managed_job).transpose()?;
 
     let mut proc_info: PROCESS_INFORMATION = unsafe { mem::zeroed() };
     unsafe {
         success = CreateProcessW(
-            ptr::null(),
-            cmdline.as_ptr() as PWSTR,
+            application_name
+                .as_ref()
+                .map_or_else(ptr::null, |value| value.as_ptr()),
+            command_line.as_mut_ptr() as PWSTR,
             ptr::null_mut(),
             ptr::null_mut(),
             false as i32,
             match env_block {
-                Some(_) => EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT,
-                None => EXTENDED_STARTUPINFO_PRESENT,
+                Some(_) => {
+                    EXTENDED_STARTUPINFO_PRESENT
+                        | CREATE_UNICODE_ENVIRONMENT
+                        | if managed_tree { CREATE_SUSPENDED } else { 0 }
+                }
+                None => {
+                    EXTENDED_STARTUPINFO_PRESENT
+                        | if managed_tree { CREATE_SUSPENDED } else { 0 }
+                }
             },
             match env_block.as_mut() {
                 Some(block) => block.as_mut_ptr() as *mut std::ffi::c_void,
@@ -271,22 +314,97 @@ pub fn new(
         }
     }
 
+    if let Some(job) = managed_job.as_ref() {
+        let assigned =
+            unsafe { AssignProcessToJobObject(job.as_raw_handle(), proc_info.hProcess) };
+        if assigned == 0 {
+            let error = Error::last_os_error();
+            unsafe {
+                TerminateProcess(proc_info.hProcess, 1);
+                CloseHandle(proc_info.hThread);
+                CloseHandle(proc_info.hProcess);
+            }
+            return Err(error);
+        }
+        if unsafe { ResumeThread(proc_info.hThread) } == u32::MAX {
+            let error = Error::last_os_error();
+            unsafe {
+                TerminateProcess(proc_info.hProcess, 1);
+                CloseHandle(proc_info.hThread);
+                CloseHandle(proc_info.hProcess);
+            }
+            return Err(error);
+        }
+    }
+    unsafe {
+        CloseHandle(proc_info.hThread);
+    }
+
     let conin = EventedAnonWrite::new(conin);
     let conout = EventedAnonRead::new(conout);
 
-    let child_watcher = ChildExitWatcher::new(proc_info.hProcess)?;
+    let child_watcher = match ChildExitWatcher::new(proc_info.hProcess) {
+        Ok(watcher) => watcher,
+        Err(error) => {
+            unsafe {
+                TerminateProcess(proc_info.hProcess, 1);
+                CloseHandle(proc_info.hProcess);
+            }
+            return Err(error);
+        }
+    };
     let conpty = Conpty {
         handle: pty_handle as HPCON,
         api,
+        managed_job,
     };
+    let managed = conpty.managed_job.is_some();
 
-    Ok(Pty::new(conpty, conout, conin, child_watcher))
+    Ok(Pty::new(conpty, conout, conin, child_watcher, managed))
 }
 
 impl Conpty {
     pub fn on_resize(&mut self, window_size: Winsize) {
         let result = unsafe { (self.api.resize)(self.handle, window_size.into()) };
         assert_eq!(result, S_OK);
+    }
+
+    pub fn terminate_managed_job(&self) -> Result<()> {
+        let job = self.managed_job.as_ref().ok_or_else(|| {
+            Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the PTY has no managed process-tree job",
+            )
+        })?;
+        if unsafe { TerminateJobObject(job.as_raw_handle(), 1) } == 0 {
+            Err(Error::last_os_error())
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn managed_job_is_empty(&self) -> Result<bool> {
+        let job = self.managed_job.as_ref().ok_or_else(|| {
+            Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "the PTY has no managed process-tree job",
+            )
+        })?;
+        let mut accounting = JOBOBJECT_BASIC_ACCOUNTING_INFORMATION::default();
+        let queried = unsafe {
+            QueryInformationJobObject(
+                job.as_raw_handle(),
+                JobObjectBasicAccountingInformation,
+                ptr::from_mut(&mut accounting).cast(),
+                mem::size_of_val(&accounting) as u32,
+                ptr::null_mut(),
+            )
+        };
+        if queried == 0 {
+            Err(Error::last_os_error())
+        } else {
+            Ok(accounting.ActiveProcesses == 0)
+        }
     }
 }
 
@@ -299,4 +417,27 @@ impl From<Winsize> for COORD {
             Y: lines as i16,
         }
     }
+}
+
+fn create_managed_job() -> Result<OwnedHandle> {
+    let handle = unsafe { CreateJobObjectW(ptr::null(), ptr::null()) };
+    if handle.is_null() {
+        return Err(Error::last_os_error());
+    }
+    // SAFETY: CreateJobObjectW returned a unique owned handle.
+    let job = unsafe { OwnedHandle::from_raw_handle(handle) };
+    let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    let configured = unsafe {
+        SetInformationJobObject(
+            job.as_raw_handle(),
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const std::ffi::c_void,
+            mem::size_of_val(&limits) as u32,
+        )
+    };
+    if configured == 0 {
+        return Err(Error::last_os_error());
+    }
+    Ok(job)
 }

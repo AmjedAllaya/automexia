@@ -10,7 +10,13 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 automexia-image = { path = "../automexia-image" }
+automexia-keybindings = { path = "../automexia-keybindings" }
+automexia-terminal = { path = "../apps/automexia-terminal", default-features = false }
 automexia-devops = { path = "../automexia-devops" }
+automexia-connectivity = { path = "../automexia-connectivity" }
+automexia-command-productivity = { path = "../automexia-command-productivity" }
+automexia-ecosystem = { path = "../automexia-ecosystem" }
+automexia-ecosystem-runtime = { path = "../automexia-ecosystem-runtime" }
 automexia-devops-ssh = { path = "../extensions/devops-ssh" }
 rio-backend = { path = "../rio-backend", default-features = false }
 rio-vt = { path = "../rio-vt", default-features = false }
@@ -71,6 +77,68 @@ bench = false
 [[bin]]
 name = "openssh_inventory"
 path = "fuzz_targets/openssh_inventory.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "quick_action_projection"
+path = "fuzz_targets/quick_action_projection.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "quick_action_packs"
+path = "fuzz_targets/quick_action_packs.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "quick_action_imports"
+path = "fuzz_targets/quick_action_imports.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "connection_planning"
+path = "fuzz_targets/connection_planning.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ghostty_keybindings"
+path = "fuzz_targets/ghostty_keybindings.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ghostty_migration"
+path = "fuzz_targets/ghostty_migration.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "provider_quick_actions"
+path = "fuzz_targets/provider_quick_actions.rs"
+test = false
+doc = false
+bench = false
+[[bin]]
+name = "suggestion_bridge"
+path = "fuzz_targets/suggestion_bridge.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ecosystem_bundle"
+path = "fuzz_targets/ecosystem_bundle.rs"
 test = false
 doc = false
 bench = false

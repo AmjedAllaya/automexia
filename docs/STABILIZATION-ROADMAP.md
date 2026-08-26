@@ -35,12 +35,12 @@ skipped external gate is never reported as a pass.
 | Managed remote-session claims | Correctly absent | Documentation and release gates continue to forbid advertising managed remote sessions in v0.4. | v0.5 capability model plus hosted hostile-output and native evidence. |
 | Provider status behavior | Complete locally for the provider-neutral contract | Versioned provider snapshots now carry source revision, observation time, and truthful current/refreshing/stale/disabled/unavailable/error state through the renderer and non-color accessibility labels. Session isolation, bounded cache, periodic refresh, and last-known-good error behavior remain enforced. | Retain controlled provider/CLI latency and failure evidence; no false instantaneous-live claim. |
 | Deterministic test ownership | Partial | Pinned Nextest 0.9.137 profiles, JUnit, no silent flaky success, timeouts, leak policy, a serialized PTY group, separate Cargo doctests, QA-runner self-tests, and accurate QA-required/optional `doctor` classifications are now in PR CI. | Three-host CI evidence must be retained. |
-| Property, state, and concurrency coverage | Partial | 512-case shrinking viewport/DPI properties, a persisted minimized regression, reviewed footer state snapshot, finite channel publish/wake models, and owned runtime models for cancellation, coalescing, exact-route publication, last-known-good preservation, and shutdown are now present. | Add pure resize-queue and atomic snapshot-replacement models; continue expanding only reviewed finite state spaces. |
+| Property, state, and concurrency coverage | Partial | Existing shrinking/layout/Loom/runtime models are preserved. A new 512-case independent resize-queue property model checks latest-resize coalescing, input/shutdown barriers, and bounds; a generation-aware atomic snapshot ledger rejects stale generations, preserves last-known-good after failure, and caps targets. | Longer fuzz/corpus trends, owned branch/region coverage, and reviewed mutation/vet governance remain. |
 | One-command evidence | Missing | `cargo qa` / `cargo xtask qa --full [--bundle]` now self-tests and enforces per-step deadlines, whole-process-tree cleanup, exact 2 MiB logs, 16 MiB files, a 64 MiB bundle, escaped-path/token redaction, allowlisted host identity, atomic JUnit/resource/coverage summaries, and explicit external skips. Private ETL, raw LCOV, and live-terminal PNG captures are excluded. | Run on every controlled release host and retain required evidence. |
 | Windows native resources | Partial | Native GUI stress samples handles, threads, private bytes, working set, descendants, and final painted-frame variation against explicit ceilings; QA retains the existing atomic structured report, while controlled AppVerifier and WPR wrappers guarantee cleanup. | Execute on the elevated GPU runner and review AppVerifier/WPR output. |
-| Benchmark execution | Compile-only | Compile-only coverage remains explicit; a separate named self-hosted job executes Criterion through the QA runner. | Complete and ratify the 30-day baseline before enforcement. |
+| Benchmark execution | Partial; collecting | Compile-only coverage remains explicit. Controlled Linux retains classified latency evidence; the named Windows GPU/benchmark runner composes the existing native memory report with nine Criterion targets under exact runner identity and 90-day retention. | Execute 30 complete consecutive Windows runs, review/accept the baseline, and keep the exact runner available for release. |
 | Accessibility | Partial | The v0.4 inventory, automated baseline, manual matrix, limitations, and v0.5 renderer-independent model ADR are now documented. | Recorded Narrator/NVDA, VoiceOver, and Orca smoke; v0.5 native semantic tree. |
-| Rendered-frame evidence | Partial | Structured renderer-state snapshots are reviewable and CI-checked. The Windows native storm now uses a bounded, temporarily topmost `ClientToScreen`/`BitBlt` capture of the actual composited client region, with a five-second presentation deadline and a painted-readiness gate before custom-window clicks. It rejects blank/single-color final frames, restores z-order in `finally`, retains pixels only with explicit `-FrameCapture`, and excludes live-terminal PNGs from portable QA bundles. | Add pinned offscreen expected/actual/diff goldens plus Linux/macOS native frame evidence across viewport, theme, font, and DPI matrices. |
+| Rendered-frame evidence | Partial | Structured state and native Windows capture remain. `cargo xtask visual-diff` now bounds regular-file input, 8K-equivalent dimensions, 40 million pixels, 32 masks, decoded allocation, reports, and outputs; the reviewed default is a 2-channel delta and 0.1% changed-pixel ratio, with atomic heatmap/JSON artifacts. | Record and approve expected/actual matrices, Linux/macOS native frames, and human visual review across viewport, theme, font, and DPI states. |
 
 ## Completed local correctness work
 
@@ -54,7 +54,7 @@ These items are regressions to preserve, not open implementation tasks.
 | ConPTY mode 9001 input | Complete locally | Native tests inject full Win32 keyboard records with virtual key, scan code, modifiers, Unicode, and key-down/key-up state. |
 | Resize delivery | Complete locally | Duplicate dimensions are discarded, adjacent resizes coalesce, and input/shutdown barriers preserve final-size ordering. |
 | Prompt/path resize recovery | Complete on Windows | Immutable generation snapshots, scalar/ASCII/Unicode `aid` propagation, hard-newline prompt-ownership boundaries, stale repaint removal, final-resize repair without later PTY input, deterministic 2,000-transition storms, and repeated native Windows GUI storms preserve and restore prompt context without claiming later command output. |
-| Stress snapshot publication | Complete locally | Test snapshots are staged and atomically replaced; readers cannot observe a deliberately truncated intermediate file. |
+| Stress snapshot publication | Complete locally | Test snapshots are staged and atomically replaced. A bounded per-path generation ledger prevents a slower stale render from replacing a newer snapshot; failed publication retains the last good generation and remains retryable. |
 | Session cloning and tab isolation | Complete locally | Clones and pane-local tabs own independent PTYs, routes, PIDs, histories, input queues, directories, profiles, and WSL identity; close operations remain isolated. Multi-tab controls are contained inside their owning pane, share one DPI-safe content geometry with the PTY/renderer/input stack, and do not reduce sibling panes. |
 | PowerShell listing icons | Complete locally | Icons are adjacent to names while native `DirectoryInfo`/`FileInfo` values, filtering, sorting, pipelines, Unicode, spaces, and special names are preserved. |
 | Stale shell identity removal | Complete for covered cases | PowerShell and CMD clear stale WSL facts; explicit session metadata, not window-title inference, owns shell identity. |
@@ -85,10 +85,10 @@ These items are regressions to preserve, not open implementation tasks.
 | Build storage | `cargo ready` uses and removes an isolated verification target; `cargo storage` and `cargo purge` are available. | Document that arbitrary direct Cargo invocations own their persistent artifacts. Track target-size budgets and improve shared caches where safe, but do not claim Automexia can automatically clean artifacts created outside its workflow. |
 | Overall performance assurance | History and resize interaction have repeatable Windows measurements, and the shell/frontend latency boundary is now explicit. | Accumulate the required 30-day baseline; afterward require a waiver for regressions above 5% latency or 10% memory. Include startup, sustained PTY throughput, reflow, idle/scrollback memory, context refresh, and optimized PowerShell 7/current-PSReadLine measurements. |
 | Complete security assurance | Dependency policy and focused local protections pass. | Hosted CodeQL, fuzz, sanitizers, Miri, cross-platform jobs, signed artifacts, SBOMs, checksums, and provenance attestations must pass on their declared infrastructure. |
-| Rendered-frame assurance | Renderer-neutral JSON invariants and a topmost, client-region composited Windows capture now prove that a varied WGPU frame is painted after the full resize/clone/history/window lifecycle storm. The retained private frame was reviewed against the same four-pane snapshot. | Add pinned offscreen semantic/raster goldens, focused expected/actual/diff artifacts, and Linux/macOS controlled-runner evidence. The Windows smoke rejects blank frames but does not replace element-level image diffs. |
+| Rendered-frame assurance | Renderer-neutral invariants and topmost Windows capture remain. The bounded repository visual comparator now produces focused expected/actual policy verdicts, heatmaps, and path-free reports without assuming byte-identical output across GPUs. | Approve real golden matrices and retain Linux/macOS controlled frames and human review. Comparator source/tests do not substitute for missing captures. |
 | Test orchestration and evidence | Pinned Nextest local/CI/deep profiles, explicit timeout/leak/flaky policy, serialized PTY ownership, JUnit, separate Cargo doctests, and a self-tested QA runner with subprocess deadlines, process-tree cleanup, privacy/size ceilings, allowlisted host identity, and structured native/coverage evidence are implemented. | Retain successful reports from Windows, Linux, and macOS and investigate every retry as a failure. |
-| Benchmark enforcement | Criterion compilation remains a distinct nightly check, and a gated named-runner job now executes and retains Criterion through `cargo xtask qa --full --bundle`. | Execute it for 30 complete days, approve the baseline, then apply the ratchet below. |
-| Property/concurrency assurance | Fixed-seed storms, shrinking viewport/DPI properties with persisted regressions, reviewed structured footer snapshots, finite channel readiness models, and owned runtime models for cache/worker cancellation, coalescing, exact-route publication, last-known-good preservation, and shutdown cover the first bounded invariants. ASan/TSan/Miri jobs remain hosted. | Add pure resize-queue and atomic snapshot-replacement models, then continue expanding only reviewed finite state spaces. |
+| Benchmark enforcement | Criterion compilation remains distinct. Controlled QA uses a unique benchmark target; nightly normalizes classified Criterion plus native Windows memory, retains 90 days, and reports missing claims while collecting. A strict builder requires 30-90 consecutive complete days, exact runner/metric identity, policy digest, and HTTPS maintainer acceptance. Tagged releases already require an active baseline and exact waiver-bound 5% latency/10% memory enforcement. | Collect and approve the first complete 30-day baseline on the declared Windows GPU/benchmark runner. Until then release preflight fails closed. |
+| Property/concurrency assurance | Existing fixed-seed, viewport/DPI, Loom, cache/worker, route, and shutdown models now include an independent 512-case resize queue model and a generation-aware bounded atomic snapshot publication model. ASan/TSan/Miri jobs remain hosted. | Continue longer persisted campaigns and only reviewed finite-state expansion. |
 | Accessibility | Contrast, keyboard actions, responsive scaling, visible labels, the custom-surface inventory, manual matrix, and v0.5 renderer-independent model ADR are documented and tested where automatable. | Record screen-reader smoke on all supported hosts; the native semantic tree remains a v0.5 gate. |
 | Native resource lifetime | Native Windows stress records handles, threads, private bytes, working set, and descendant processes with ceilings; AppVerifier Basics and WPR wrappers target only staged `automexia.exe`, refuse conflicting state, and clean up in `finally`. | Execute and review these profiles on the elevated controlled GPU runner; retain only bounded/redacted reports and private trace manifests. |
 | Test strength and supply chain | Changed Automexia-owned lines require 80% coverage; cargo-deny, dependency review, CodeQL, SBOMs, and attestations are defined. | Add an owned-code baseline, longer persisted fuzz corpora, then scoped mutation testing and maintainable cargo-vet adoption in v0.5. Do not add redundant advisory scanners without a distinct contract. |
@@ -177,6 +177,10 @@ no desktop hotkey API offers a true atomic transaction.
 - Preserve the final PTY/grid size, prompt generation, context, complete path,
   cursor validity, route isolation, and recovery after the viewport grows.
 
+Current status: **source implementation fully done; external matrix partially
+done.** Deterministic and Windows-native owners are implemented. Linux X11,
+Linux Wayland, and macOS controlled execution remain external.
+
 ### S1 — native resource and hardware evidence
 
 1. Extend the controlled Windows driver to record the process tree, handle
@@ -201,6 +205,11 @@ Exit gate: native lifecycle tests leave no child process or material resource
 growth, Application Verifier reports no enabled-layer failure, and every
 published performance result identifies the hardware/software environment.
 
+Current status: **source implementation fully done; external matrix partially
+done.** The Windows harness, separate bounded verifier phases, WPR wrapper,
+exact hardware/environment schema, and fail-closed validator exist. Named GPU,
+RDP, elevated, Linux, and macOS results must still be collected.
+
 ### S1 — visual acceptance
 
 - Capture an approved screenshot matrix for default dark/light appearances on
@@ -210,6 +219,10 @@ published performance result identifies the hardware/software environment.
 - File objective defects separately from aesthetic preferences. Automated tests
   remain authoritative for geometry, contrast, hit targets, and containment;
   maintainers own the aesthetic release decision.
+
+Current status: **source implementation fully done; review evidence not done.**
+The exact cross-product and review contract is enforced; actual approved native
+captures remain an external human/controlled-host gate.
 
 ### S1 — rendered-frame regression automation
 
@@ -243,6 +256,10 @@ Exit gate: moving, clipping, overlapping, or incorrectly scaling a painted UI
 element produces a focused state or image diff, including the previously
 observed case where a logically valid pane footer was painted above the bottom.
 
+Current status: **source implementation fully done; native matrix partially
+done.** `visual-test-hooks` freezes clock/animation/facts and reuses the actual
+renderer readiness/capture path; non-Windows captures and approval remain.
+
 ### S1 — accessibility baseline
 
 1. Inventory every custom-rendered interactive element and document its label,
@@ -262,6 +279,11 @@ observed case where a logically valid pane footer was painted above the bottom.
 Exit gate for v0.4: all functionality remains keyboard-operable, focus and
 contrast/scaling contracts pass, and known screen-reader limitations are
 published with native smoke evidence. Full accessibility remains a v0.5 gate.
+
+Current status: **v0.4 automated/source boundary fully done; native smoke not
+done.** The release policy requires Narrator, NVDA, VoiceOver, and Orca on X11
+and Wayland with independent review. ADR 0013's complete semantic tree remains
+deliberately deferred to v0.5.
 
 ### S1 — context freshness
 
@@ -287,18 +309,30 @@ published with native smoke evidence. Full accessibility remains a v0.5 gate.
 | Existing `image` crate | v0.4 S1 reused dependency | Decode/capture/difference implementation with exact geometry and controlled tolerance; add no image-diff crate until a measured need survives review. |
 | Windows Application Verifier and WPT/WPR | v0.4 S1 controlled-host tools | Administrator-only native heap/handle/lock/resource/performance profiles with guaranteed cleanup and redacted artifacts. |
 | AccessKit and its winit adapter | v0.5 reviewed runtime dependencies | Renderer-independent roles/text/focus/actions, privacy and update rules, native adapters, and assistive-technology tests. |
+| `clap_complete` and `clap_mangen` | v0.5 CP2/CP3 reviewed generation dependencies | One typed operation grammar generates static native-shell completion and man pages through non-mutating `xtask` generation/check commands; generated artifacts must not drift from CLI help. |
+| `schemars` | v0.5 D/CP typed-model slice | Generate versioned schemas from the same bounded Serde models used for operations, actions, inventory, routes, hooks, workspaces, and policy input; schema diffs and compatibility fixtures are reviewed. |
+| `nucleo` | v0.5 D5/CP3 only after benchmark and dependency review | Bounded cancellable worker, immutable completed snapshots, stable item identity, Unicode corpus, stale-generation rejection, 10k/100k record latency and memory evidence, and deterministic fallback to the current matcher. |
 | `cargo-mutants` | v0.5 pinned weekly tool | Scoped Automexia-owned pure modules, survivor triage, time budgets, and informational rollout before any threshold. |
 | `cargo-vet` | v0.5 pinned governance tool | Named audit owner, imported-audit trust, criteria/exemptions/renewal policy; complements existing dependency controls. |
 | System OpenSSH client | v0.5.0 external runtime dependency for `devops-ssh` | Platform-detected and version-reported; exact-argv PTY launch; Automexia never silently downloads or substitutes an SSH engine. |
 | Mocked deterministic SSH server/fixtures | v0.5.0 test-only infrastructure | Hermetic host-key/auth/jump/tunnel/failure/control-string cases for PRs; controlled native OpenSSH/server evidence remains a release gate. |
 | AWS/Azure/Google/Kubernetes/OpenShift official CLIs | v0.5.1 optional provider runtime dependencies | Detected lazily, invoked visibly or through exact reviewed argv, never installed at terminal startup, and absent tools degrade only their extension. |
-| `keyring-rs`, `secrecy`, and `zeroize` | Deferred until a secret-reference/custody ADR proves a need | Defense in depth only; no dependency may turn Automexia into a plaintext or general-purpose credential vault. |
+| `keyring-core` plus exact platform stores, `secrecy`, and `zeroize` | Deferred until a secret-reference/custody ADR proves a need | Select no broad default backend set; use only for unavoidable custody and defense in depth; no dependency may turn Automexia into a plaintext or general-purpose credential vault. |
 | Cedar or OPA adapter | v0.5.1/v0.6 policy evaluation after ADR | Local typed policy and enterprise integration; provider IAM/RBAC/remote policy remains authoritative. |
+| `rusqlite` plus SQLite FTS | v0.6 bounded session-memory milestone | Public high-cardinality metadata/search only, separate bounded event chunks, quotas, full-disk/crash rebuild, delete/export, redaction, canary, and storage benchmarks; no credentials, clipboard, raw environment, or unrestricted input. |
+| `openssh-sftp-client` | v0.6 isolated structured-transfer milestone | Adopt only after system `sftp`/`scp`; model ambiguous mutation cancellation, atomic finalize, containment, symlinks, hostile filenames, integrity, quotas, cleanup, and real-server evidence. |
+| `serialport` | v0.6 optional transport milestone | Blocking worker per session, bounded buffers and teardown, device removal/reconnect, and real-device Windows/Linux/macOS evidence before a platform support claim. |
+| Wasmtime/WASI Component Model | D7 third-party extension milestone | WIT contracts, no ambient capability, fuel/deadline/memory/output/file/network/concurrency quotas, signatures/revocation, guest-output sanitization, crash isolation, and sandbox escape review. |
+| External local/self-hosted model endpoint | LO2 only after LO0/LO1 acceptance and proof | Keep inference outside the desktop binary initially; pin protocol/version/locality, disclose data and resources, bound requests, cancel/join cleanly, store no prompts by default, and never expose direct action tools. Remote adapters require their own privacy, credential, retention, cost and network review. |
+| External Git, Mosh, Upterm, SOPS/age, task/session and advanced sync tools | Feature-specific optional adapters | All invocations use the central exact-argv runner; tool absence is isolated; authority and credentials stay with the external tool; no automatic directory-open or background network work. |
 
 Every added crate/tool must have a pinned version, license/source/advisory
 review, lockfile or installer provenance, minimal enabled features, documented
 host support, update owner, and `cargo xtask doctor` classification. Do not add
 a tool merely because it is popular; it must close one of the contracts above.
+The canonical core/first-party-extension/external-authority split and complete
+feature placement are in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 
 ### S1 — Nextest, JUnit, and deterministic ownership
 
@@ -455,6 +489,20 @@ regression or correctness failure appears. After the baseline period:
 - native nightly results inform the release gate; deterministic correctness
   tests remain mandatory on pull requests.
 
+Current implementation status: **Fully done; release evidence collecting.** Policy, normalization,
+composition, clean exact-commit and operator binding, repeated-sample and 95%
+confidence quality, 30-day builder, independent acceptance/waiver review,
+mutation tests, 90-day retention, protected activation validation, and
+fail-closed release enforcement are fully implemented in source and automation.
+Evidence reads and writes are bounded, no-follow, identity stable, and linked-
+file rejecting; candidate freshness and baseline review times fail closed. The
+repository baseline deliberately remains `collecting`; it cannot become active
+until 30 consecutive complete same-runner days and an HTTPS-linked independent
+review are supplied through the `stable-release` environment. That elapsed
+controlled evidence is an external gate, not a local source task. The exact
+implementation and activation ledger is in the
+[S2 completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
+
 ## v0.5 assurance maturation
 
 - Move renderer-independent UI, keybinding, queue, cache, and lifecycle state
@@ -482,6 +530,10 @@ multi-cloud work described in the [product roadmap](ROADMAP.md) and the
 to ship useful, production-quality SSH in v0.5.0 rather than waiting for the
 v0.6 public extension platform, while preserving Automexia as a generic
 terminal.
+
+The cross-track dependency order and maintained feature checklists now live in
+the [connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md).
+This page retains the detailed stabilization and delivery contracts.
 
 ### Ordering and parallelism
 
@@ -518,29 +570,33 @@ CP2/CP3 implementation details and exit evidence are canonical in
 |---|---|---|---|
 | CP0 decisions/threats | May run beside D5 design | Accept shell/editor ownership, typed schema, precedence, trust, privacy, ceilings, native support matrix, and terminal-grid-inference prohibition. | ADR accepted; hostile fixtures, precedence/collision matrix, and architecture ratchets reviewed. |
 | CP1 native completion | CP0 | Idempotent PowerShell/Bash/Zsh/Fish/CMD/WSL adapters; read-only doctor health; official provider generator discovery/cache; clean uninstall and disabled-integration behavior. | Native cursor/history/quoting/exit-status/profile, collision, startup, update/uninstall, and shell-disabled tests pass on supported hosts. |
-| CP2 typed Quick Actions | CP0; **CP2.0 pure model and CP2.1 persistence foundation complete**; D3 not required for insert/copy | CP2.2+: worker activation, layered scopes, import/export, placeholder review, accessible search/editor, shell-native insert/copy only. | CP2.0 parser/model hostile and capability gates pass. CP2.1 private atomic/CAS/recovery/watch tests, 26 Windows or 27 Unix unit plus four public integration/property cases, policy mutations, and controlled benchmark ownership pass locally; hosted native matrix remains required. CP2.2 still requires UI/accessibility/insertion and controlled lifecycle evidence. |
-| CP3 aliases and static packs | CP1/CP2 | Reversible opt-in aliases/functions/abbreviations plus Git, Docker, Kubernetes/OpenShift, Helm, Terraform/OpenTofu, AWS, Azure, GCP, and SSH packs; no default short alias. | Native definitions win; projections round-trip/remove cleanly; completion follows aliases; risk and tool/version states are truthful. |
+| CP2 typed Quick Actions | CP0; **CP2.0-CP2.2 implemented locally**; D3 not required for insert/copy | Close hosted native insertion, controlled screen-reader, and longitudinal performance/resource evidence; exact launch stays disabled. | Pure model, private atomic/CAS/recovery/watch storage, joined latest-only worker, deterministic scope/search, bounded transfer/CLI, responsive review, five-shell quoting, and insert/copy gates pass locally. Hosted native matrix and controlled evidence remain required. |
+| CP3.0 pure projection compiler | CP2 typed validation | Fully implemented deterministic PowerShell/Bash/Zsh/Fish/CMD in-memory serializers; recomputed source identity; bounded complete collision/completion/tool inventories; verified same-owner and exact-override fingerprints; UI-visible degraded tool state; structured/body/rollback verification; all-shell fuzzing; mutation gates; and a 256-binding benchmark. Activation is false. | Hosted all-platform syntax/capture and the 30-day benchmark baseline remain release evidence; no profile is touched. |
+| CP3.1 persistent opt-in aliases | CP3.0 plus CP1 lifecycle; **implemented locally** | Private immutable five-shell generations, source/generation CAS, journaled pointer-last publication, native-wins verified startup/reload, dry-run management, rollback, diagnostics, and exact uninstall preserving actions. | Source/local gates pass; hosted native/macOS/WSL and named-hardware 30-day evidence remain release gates. |
+| CP3.2 static packs | CP3.1 | Reviewed static Git/Docker/Kubernetes/OpenShift/Helm/Terraform/OpenTofu/AWS/Azure/Google Cloud/OpenSSH packs; no default alias. | **Fully done locally:** 11 manifests, 33 typed actions, health/update/alias-safety, CLI, tests, fuzz, benchmark, and mutation contract. |
+| CP3.3 trusted imports and task bridges | CP3.2 | Dry-run selected PowerShell/Bash/Zsh/Fish/CMD/Git import and trusted explicit just/Task/mise insertion. | **Fully done locally:** bounded no-follow/CAS import and workspace state, hostile rejection, path-free digest/revision trust, revocation, conflict/rename/export/removal, background authorization and insertion recheck, tests, mutation, fuzz, benchmarks, CLI, ADR, and docs pass; hosted native/accessibility and 30-day evidence remain release gates. |
 | CP4 capsule-aware actions | D3 activation plus D5/D6 | Bind cached public capsule/target context with freshness; explicit refresh; reviewed exact launch only through the broker. | Mixed-pane/session isolation, offline/stale/revocation/cancellation, production-risk, provider-native, audit-redaction, and resource tests pass. |
-| CP5 Shell Completion and Suggestions | CP1 plus a separately reviewed bridge ADR/threat fixture; CP2/CP3 for action candidates; CP4/D6 for provider context | CP5.0 baseline/dependency evaluation; CP5.1 authenticated local buffer/cursor/span/generation bridge; CP5.2 local-only source broker; CP5.3 deterministic bounded ranking; CP5.4 pane-owned accessible UI; CP5.5 per-shell activation; CP5.6 preview/rollback gate. Native completion remains default. | No grid/history-file/remote-output inference, network/auth/secret work, or per-keystroke process. Protocol/fuzz/security, exact insertion, IME/grapheme, accessibility, responsive layout, native shell/OS, cancellation, latency, memory/handle/socket/storage leak, 30-day baseline, disable and uninstall evidence proves a measurable benefit. Not a v0.5.0 blocker. |
-| CP6 ecosystem packs | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in AI tools only through provenance, capability, quota, revocation, and privacy policy. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, or process authority. |
+| CP5 Shell Completion and Suggestions | CP5.0 research fully done with CP1 retained; ADR 0025 accepted; CP2/CP3 action candidates; cached-public CP4/D6 only | CP5.1-CP5.4 are fully done at source/local boundaries. CP5.5 has an inert helper target and four bidirectional adapters with local native evidence. CP5.6 activation/release evidence remains partial or external. | No grid/history-file/remote-output inference, network/auth/secret work, or per-keystroke process. Preview remains disabled until reviewed launcher/signing, WSL relay, live composition, successful native endpoint/shell/IME/accessibility, latency/leak/rollback/30-day evidence, and measurable-benefit proof pass. Not a v0.5.0 blocker. |
+| CP6 ecosystem packs and selected-input model suggestions | v0.6 capability/sandbox/signing gates | Signed third-party packs and separate opt-in selected-input explanation/suggestion only through provenance, capability, quota, revocation and privacy policy; no tool/workflow calls. | Malicious-package/sandbox/supply-chain/data-flow gates pass; no ambient terminal, secret, provider, process or execution authority. |
+| LO0-LO5 optional LLM orchestration | Separate acceptance; LO1 neutral workflow model before any provider/runtime | Optional first-party extension proposes typed plans; application owns registry, policy, review, one-run grants, final revalidation, existing-broker execution and receipts. Domain extensions stay model-free. | Machine contract, provider/privacy/security/resource/accessibility/native/lifecycle evidence pass; no direct tools, silent fallback, required paid API, unattended high-risk work or Studio/video dependency. |
 
-#### CP5 activation ledger (planned)
+### CP5 status and activation ledger
 
 | CP5 checkpoint | Required implementation | Blocking proof |
 |---|---|---|
-| CP5.0 research | Native shell/version baselines and a written adopt/reject report for PSReadLine APIs, Reedline design patterns, Nucleo matching, Carapace, and in-tree alternatives | No new dependency or runtime path before license/advisory/size/startup/latency/privacy comparison is reviewed |
-| CP5.1 bridge | Private Windows named pipe / Unix domain socket, restrictive endpoint, session capability, version negotiation, bounded messages, generation/span validation, memory-only private payloads | Impersonation/replay/cross-session, downgrade, malformed-frame, cleanup, crash-redaction, and native-fallback tests pass |
-| CP5.2 broker | Shell-native, opt-in history/frequency, cwd/executable, cached public provider, and typed-action sources with deterministic precedence | Zero implicit network/provider/auth/secret/history-file/remote-output access; bounded queue/cache and stale cancellation pass |
-| CP5.3 match/insert | Explainable stable ranking, Unicode-safe display, shell-returned insertion values and spans | Property/hostile Unicode, quoting, replacement, rapid typing and Criterion gates meet frozen limits |
-| CP5.4 UI | Renderer-neutral pane-owned listbox projection, source/freshness/risk labels, responsive placement, modal/IME/cursor avoidance | Tiny-to-8K/100–300% goldens, input/cursor stability, screen-reader/high-contrast/reduced-motion tests pass |
-| CP5.5 shells | Version-gated PowerShell, Bash, Zsh, Fish and WSL/remote opt-in; truthful CMD fallback | Native framework/profile/binding preservation, install/update/remove, independent-pane failure and unsupported-version tests pass |
-| CP5.6 release | Preview flag, kill switch, reset/disable UX, last-known-good fallback, rollback and uninstall | Windows/Linux/macOS native CI, controlled NVDA/Narrator/VoiceOver/Orca, fuzz/leak/storm campaigns and 30-day performance baseline are linked |
+| CP5.0 research — **Fully done** | Seven-shell matrix, bounded pure insertion prototype, locked 32/128/512 matcher comparison, PSReadLine/Reedline/Nucleo/Carapace review, zero privacy delta, and retain-CP1/defer-P2 report | Machine contract and mutation tests prevent a new root dependency or runtime path; external Zsh/Fish/accessibility/low-end evidence is explicit |
+| CP5.1 bridge — **Fully done at source boundary / partially done for release** | Authenticated schema-1 request/reply codecs, strict limits, route/capability/generation/span checks, restrictive endpoints, joined latest-only service, bounded application route exchange, cleanup, property/fuzz/native Windows tests | Native Linux `SO_PEERCRED`, macOS `getpeereid`, WSL relay, crash/restart/sleep, and sustained endpoint-churn evidence remain |
+| CP5.2 broker — **Fully done at source boundary / partially done for release** | Six exact sources, independent opt-ins, cached-public LKG/freshness, memory-only frequency IDs, privacy exclusions, deterministic precedence and bounded failures | Activated shell/API and provider fixtures plus sustained multi-pane/offline campaigns remain |
+| CP5.3 match/insert — **Fully done at source boundary / partially done for release** | Explainable stable ranking, Unicode/grapheme-safe display, exact native replacement model, stale/capability revalidation, properties/fuzz, and 32/128/512 plus near-limit frame benchmarks | Named-hardware distributions, allocation/cache accounting, native quote/multiline/selection insertion, and sustained resource evidence remain |
+| CP5.4 UI — **Fully done at source boundary / partially done for release** | Renderer-neutral pane-owned listbox/controller/renderer plus bounded publication mailbox, exact candidate reconstruction, authenticated reply, route/deadline/kill controls, responsive placement and accessibility semantics | Live screen composition, native GPU/high-contrast/IME/pointer/keyboard automation, and controlled screen-reader sessions remain |
+| CP5.5 shells — **Fully done at inert source bridge / partially done for composition** | Helper binary target; bounded bootstrap/transport/session/endpoint; strict response envelope; four bidirectional adapters; local Windows PowerShell and WSL Bash/Zsh/Fish native evidence; truthful CP1/CMD fallback | Reviewed launcher/restricted inheritance, signed/attested artifact, WSL relay, interactive PowerShell insertion, live composition, profile/package rollback, and activation remain |
+| CP5.6 release — **Partially done** | Activation false; broker/mailbox kill/reset/disable/uninstall, LKG, exact route limits, policy mutations, local native shell tests and OS-specific hosted steps | Successful three-OS endpoint/shell CI, controlled NVDA/Narrator/VoiceOver/Orca, signed package/rollback, 1,000 real endpoint cycles, leak/storm campaigns and a 30-day named-hardware baseline remain |
 
 Failure at any checkpoint leaves CP1 native completion unchanged; a visually
 working popup is not evidence that the bridge, privacy, insertion, accessibility,
 or lifecycle gates are satisfied.
 
-#### CP0 implementation ledger
+### CP0 implementation ledger
 
 | CP0 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -549,13 +605,13 @@ or lifecycle gates are satisfied.
 | Threat/privacy model | General security bullets only | Threat model and schema-1 fixture define seven boundaries, 16 threats, assets, controls, verification, residual risks, and review triggers | Each later CP phase adds runtime evidence for activated boundaries |
 | Precedence and ceilings | Defined in prose but not mutation-tested | Exact precedence, native-wins policy, execution modes, 11 compatibility cases, 14 hard ceilings, nested schemas, and canonical fixture fingerprints are machine validated | Changes require ADR/threat/schema review |
 | Architecture nonactivation | Documented but not enforced | Policy uses bounded no-symlink reads, normalizes shell-hook whitespace, scans every runtime workspace crate, rejects all premature command-productivity runtime markers/provider hooks, and retains the terminal-grid inference prohibition | CP1 now narrows activation to its separate exact allowlist |
-| CI and regression ownership | Missing | Repository validation, architecture verification, PR policy, seventeen policy tests with an 11-case hostile corpus, shell contracts, and feature-assurance traceability own CP0 | Hosted CI must pass on pushed commit |
+| CI and regression ownership | Missing | Repository validation, architecture verification, PR policy, seventeen policy tests with an 11-case hostile corpus, repository-protection contract/mutations, shell contracts, and feature-assurance traceability own CP0 | Hosted CI must execute successfully on the exact current protected commit; zero-step billing rejection never counts |
 
 CP0 result: satisfied at the source/policy boundary. It grants no runtime
 capability and does not claim CP1 completion, Fish support, Quick Action
 persistence, generated aliases, provider execution, or a custom completion UI.
 
-#### CP1 implementation ledger
+### CP1 implementation ledger
 
 | CP1 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
@@ -569,37 +625,51 @@ persistence, generated aliases, provider execution, or a custom completion UI.
 CP1 result: implemented at the source and locally available native-host
 boundaries. It intentionally adds no Quick Action store, generated alias,
 provider authentication/network call, custom candidate UI, or exact launch.
-CP2.0 model and CP2.1 persistence-only foundation are complete; CP2.2
-user-facing activation is next. Stable release claims still require the pushed hosted Windows,
+CP2.0-CP2.2 are implemented locally through reviewed insert/copy. Stable release
+claims still require the pushed hosted Windows,
 Linux, and macOS checks plus the existing controlled release gates.
 
-#### CP2.0 implementation ledger
+### CP2.0 implementation ledger
 
 | CP2.0 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
-| Typed model | Machine prose/JSON contract existed; no Rust model | Schema-1 `QuickActionDocument`, typed scopes/shells/templates/argv/placeholders/working-directory/risk/execution/provenance/alias projection, deny-unknown-fields, and validated-only wrapper in `automexia-devops::actions` | Schema changes require fixture, validator, threat, and ADR review |
+| Typed model | Machine prose/JSON contract existed; no Rust model | Schema-1 `QuickActionDocument`, typed scopes/shells/templates/argv/placeholders/working-directory/risk/execution/provenance/alias projection, deny-unknown-fields, and validated-only wrapper in `automexia-command-productivity::actions` | Schema changes require fixture, validator, threat, and ADR review |
 | Bounded validation | Top-level ceilings were frozen but nested tags and mutating acknowledgement were implicit | 1 MiB pre-decode limit; 1,024 actions; 256 enabled aliases; 64 arguments/tags; 32 placeholders; 4 KiB strings; portable IDs; duplicate/reference/shell/mode/risk/secret/raw-insert/control/bidi rejection | CP2.1 reuses the validated-only model before every write/load; schema changes remain review-gated |
 | Hostile evidence | Policy mutation fixture only | Readable valid TOML plus 11 versioned hostile TOML cases with stable failure codes; boundary and round-trip tests cover limits and safe Unicode | Parser fuzz and long-running resource campaigns continue in nightly/release depth |
-| Architecture | CP0 rejected all Quick Action runtime vocabulary | Exact three-file pure-model and five-file persistence allowlists; capability mutations reject filesystem in the model and process/network/environment/UI/PTY/execution/unsafe drift in persistence | CP2.2 UI/worker and later projection/provider/execution authority require separate gates |
-| Status truth | CP2/CP3 documented only as planned | Machine contract says `CP2.1-persistence-library`; feature catalog distinguishes internal foundation from unshipped UI, aliases, and exact launch | CP2.2 is the next implementation phase |
+| Architecture | CP0 rejected all Quick Action runtime vocabulary | Exact seven-file pure model (including nonactivated CP3.0 projection, CP3.2 packs, and CP3.3 imports), 13-file reviewed application boundary, and separate UI adapter allowlist; capability mutations reject filesystem/process/network/secret/grid/execution drift | CP3.1 publication and CP3.2/CP3.3 persistence stay app-owned; CP4 provider context and D3 exact execution require separate gates |
+| Status truth | CP2/CP3 documented only as planned | Machine contracts and the roadmap distinguish the implemented local CP2.0-CP2.2 and CP3.0-CP3.3 boundaries from disabled exact execution and incomplete hosted/native release evidence | Hosted/controlled CP2/CP3 native, accessibility, resource, and longitudinal evidence remains before stable release claims |
 
 CP2.0 result: satisfied at the pure source/model boundary. It adds no filesystem,
 watcher, process, network, secret, UI, PTY, shell-profile, provider, alias, or
 execution capability.
 
-#### CP2.1 implementation ledger
+### CP2.1 implementation ledger
 
 | CP2.1 step | Audit before implementation | Implemented evidence | Remaining gate |
 |---|---|---|---|
 | Private bounded storage | Persistence existed only as prose | Explicit root; 1 MiB no-follow stable regular-file read; 8 MiB cache estimate; private Windows DACL and Unix 0700/0600; same-directory durable primary plus one previous revision | Hosted native permission/link cases on all release hosts |
 | Concurrent atomic writes | No cross-window implementation | Standard-library nonblocking file lock, revision CAS, staged validation, atomic replacement, cleanup only under writer ownership | Controlled crash/power-loss injection remains release-depth evidence |
-| Recovery and publication | No runtime snapshot | Immutable fingerprinted `Arc` snapshot, malformed/oversized last-known-good retention, same-revision tamper and valid rollback rejection, explicit previous recovery, fixed redacted errors | CP2.2 must surface recovery/status accessibly without leaking content or paths |
-| Exact refresh | Watcher was specified only | Nonrecursive parent watch with exact source filtering, bounded 64-event queue/drain, burst coalescing, periodic dropped-event reconciliation, 24 lifecycle and 1,000-event tests | App worker activation remains CP2.2; never renderer/input/VT/PTY |
+| Recovery and publication | No runtime snapshot | Immutable fingerprinted `Arc` snapshot, malformed/oversized last-known-good retention, same-revision tamper and valid rollback rejection, explicit previous recovery, fixed redacted errors; CP2.2 CLI surfaces status/recovery without command content in list output | Controlled crash/power-loss and accessibility evidence remain |
+| Exact refresh | Watcher was specified only | Nonrecursive parent watch with exact source filtering, bounded 64-event queue/drain, burst coalescing, periodic reconciliation, and one joined app worker with route generations/latest-only search | Hosted lifecycle/resource evidence remains; work never enters renderer/input/VT/PTY paths |
 | CRUD and assurance | Pure parser only | Revisioned create/update/delete/replace/recover; 26 Windows / 27 Ubuntu-WSL unit and four public integration/property tests per host; protected Windows DACL and Unix mode assertions; 1,000 load cycles; Unicode/spaced roots; policy allowlists/mutations; nightly-compiled controlled Criterion benchmark | Hosted Windows/Linux/macOS and 30-day named-hardware evidence before release claim |
 
-CP2.1 result: satisfied as an internal persistence library. It is not
-instantiated at startup, rendered, projected into shell profiles, or allowed to
-insert/execute commands. CP2.2 is the next phase.
+CP2.1 result: satisfied as an internal persistence library. CP2.2 consumes it
+without granting provider, profile, network, secret, or exact-execution
+authority.
+
+### CP2.2 implementation ledger
+
+| CP2.2 step | Audit before implementation | Implemented evidence | Remaining gate |
+|---|---|---|---|
+| Worker and publication | CP2.1 was never started | One process-owned, joined worker; immutable LKG snapshots; exact watch/reconciliation; per-route latest-only coalescing; 32-route hard ceiling; fair multi-pane publication; generation isolation and close cleanup | Hosted native lifecycle/resource runs |
+| Scope and search | No activated index | Capability-free deterministic session/capsule/trusted-workspace/shell-user/global-user/built-in merge with distinct precedence, activation-time revalidation, stable IDs, 4 KiB query and 128-result caps; CP3.3 activates only exact digest/revision-trusted workspace sources through a bounded background cache and short route authorization | Workspace aliases, task execution, secrets, and exact launch remain denied |
+| Administration and transfer | Store API only | Versioned CLI list/show/doctor; dry-run put/import/remove/recover; apply plus CAS; digest-checked bounded no-follow import/export; conflict and machine-path consent | Native help/package smoke on pushed artifacts |
+| Review and insertion | No UI | Pane-neutral responsive search/placeholder/review; visible risk/source/conflict and loading/empty/recovered/stale/unavailable states; exact command preview; secret/exact denial before placeholder collection; explicit Insert without Enter or copy; bracketed-paste insertion | Controlled native screen-reader and shell-editor evidence |
+| Assurance | CP2.1 storage benchmark only | Five-shell quoting/Unicode/hostile/optional-value cases, activation revalidation, transfer tamper/scope cases, per-route fairness/capacity/shutdown, palette health/400% layout, dry-run CLI, architecture/mutation gates, 1,024-action search and expansion Criterion targets | 30-day named-hardware latency/resource baseline |
+
+CP2.2 result: implemented locally with a partial release gate. It is not CP3
+alias projection and does not authorize D3 exact launch, provider work, secrets,
+or trusted-workspace activation.
 
 CP0-CP3 may proceed alongside D5 without delaying safe system-OpenSSH work. CP4
 must not precede D6 capsule isolation. CP5 and CP6 cannot be pulled into the
@@ -816,29 +886,35 @@ Exit gate: property and native tests prove command/argument injection is not
 possible, denial and revocation are deterministic, and launch/cancel/teardown
 cannot affect another route or leave a child/listener behind.
 
-#### Phase 2 execution ledger (D3 review boundary, 2026-08-15)
+#### Phase 2 execution ledger (D0/D3 review boundary, 2026-08-17)
 
-ADR 0012 remains proposed, so this ledger separates reviewed source preparation
-from activation. The broker module is reachable only through `#[cfg(test)]`;
-the release binary contains no managed-launch success path.
+ADR 0012 is accepted by the project owner. The broker, one application-owned
+runner, approval surface, guarded PTY seam, and route-publication path now
+compile in production, while `MANAGED_SESSION_LAUNCH_ENABLED` remains false and
+the linked package candidate remains `Unverified`. The release binary therefore
+contains the boundary but no successful managed-launch authorization.
 
 | Obligation | Status | Implemented evidence |
 |---|---|---|
-| D3.1 application capability broker | Complete as a non-activated review model | `LaunchRequest`, `CapabilityRequest`, and expiring `CapabilityDecision` carry matching operation, session, and capsule scope. The application registers exact active capsules, rebind is monotonic, session IDs cannot be reused, and production/pending mode denies before resolution. |
-| D3.2 canonical executable resolver | Complete for path/identity review; native atomic execution pending | Only fixed platform locations or one explicitly configured absolute exact filename are considered; `PATH` and cwd are never searched and a broken configured override fails closed. Windows records volume/file index and Unix records device/inode, with size/time metadata and descriptor-time revalidation. Activation must still eliminate the remaining check-to-spawn race with a reviewed native primitive. |
-| D3.3 exact first-party grant | Partial by design | The review harness matches the exact repository ID/publisher/version tuple and only the reviewed one-argument `ssh` operation; `ssh-add` and `ssh-keygen` stay denied. The real D4 package does not exist yet, so digest/signature/compatibility/revocation verification is not falsely claimed. DevOps manifests declare no session/process/network authority. |
-| D3.4 exact argv | Complete for the pure/native command boundary; real spawn evidence pending | One bounded ordered destination argument is preserved as one native `Command::arg`; leading-dash, whitespace/control, extra arguments, shell executables, unsupported IDs, and oversized input are denied. The code contains no spawn or shell-evaluation call. Native process-level adversarial evidence remains an activation gate. |
-| D3.5 trusted environment | Complete at the restrictive boundary | Extension-selected inherited environment and secret references are denied. Only bounded, duplicate-free, core-owned public overrides enter the prepared descriptor; audit/debug redaction canaries exclude values and destinations. Public extension deltas remain an empty allowlist until separately reviewed. |
-| D3.6 working directory | Complete in the review model | Requested cwd must be absolute and canonical. The canonical core-owned safe default is captured during authorization and cannot be replaced by a conversion caller; relative/invalid input is denied and no shell, remote target, or session fallback occurs. Native directory-identity/handle evidence remains coupled to activation. |
-| D3.7 process/PTY/route/tunnel lifecycle | Partial by design | Registered session/capsule state, monotonic per-session operation IDs, non-wrapping leases, duplicate/replay rejection, exact completion/cancellation, rebind, revocation, stale-lease isolation, sibling preservation, and zero retained state after 1/10/50 pure cycles are tested. No process, PID, PTY, route, or listener exists yet; graceful/forced teardown and native leak evidence require approved activation. |
-| D3.8 redacted audit model | Complete for authorization | Records contain only the approved identity, decision, operation class, optional future public connection ID, operation/session IDs, time/duration, and result class. They contain no argv, cwd/path, environment value, terminal content, username, PID, secret, or agent data. Process completion audit persistence remains coupled to D3.7 activation. |
+| D0.1 manual compatibility | Fully done locally; native regression remains external | Schema 2 preserves PowerShell/CMD/Bash/Zsh/WSL ownership of typed `ssh host`, makes managed launch additive, forbids download/install/substitution during startup or launch, and requires redacted platform guidance for a missing client. |
+| D0.2 trust-boundary ledger | Fully done locally | Nine exact rows cover extension model, broker, PTY/process owner, renderer/VT, OpenSSH child/configuration, external credential owner, remote host, and future provider helper. Each freezes accepted/returned data, limits, cancellation owner, log policy, and fail-safe behavior. |
+| D0.3 native fixture protocol | Fully done as a definition; execution not done externally | Schema 2 fixes loopback-only hermetic setup, isolated disposable authentication state, bounded probes/timeouts, DNS/connect/auth cancellation, hostile argv corpus, conditional hardware-key coverage, per-platform activation semantics, cleanup/resource invariants, evidence metadata, artifact policy, and nine redaction surfaces. |
+| D3.1 application capability broker | Fully done locally; nonactivated | One Router-owned `ExternalToolRunner` constructs `LaunchRequest`, `CapabilityRequest`, and 60-second `CapabilityDecision` values with exact operation/session/capsule scope. The broker denies before resolution while activation is false and the candidate is unverified. |
+| D3.2 canonical executable resolver | Fully done locally; native proof external | Fixed Windows/macOS/Linux roots exclude `PATH` and cwd; WSL has no production candidate. The broker records native identity, opens an exact executable guard, compares it immediately before handoff, and the PTY seam consumes that guard. Real replacement-race execution remains a native gate. |
+| D3.3 exact first-party grant | Partially done | Repository ID, publisher, manifest-derived non-zero digest, workspace version, contract, verification class, exact executable, decision, and revocation rules are bound. The linked candidate intentionally remains `Unverified` until the real loader/build-provenance and protected-review evidence are available. |
+| D3.4 exact argv and publication | Fully done locally; nonactivated | One validated destination becomes one native argument with no shell evaluation or implicit Enter. `ContextManager` alone consumes the guarded executable, creates the PTY, inserts one exact route, then marks it published; every scope/create/publish failure cancels and revokes. |
+| D3.5 trusted environment | Fully done locally | Extension inheritance and secret references are denied. The runner copies only a fixed bounded core allowlist, rejects control/oversized values, excludes `PATH`, and never exposes values through diagnostics, debug, or audit. |
+| D3.6 working directory | Fully done locally; native proof external | The runner captures one trusted process-start cwd, requires it to be absolute, and the broker canonicalizes/revalidates it immediately before descriptor conversion. No shell, remote target, session, or caller fallback exists. |
+| D3.7 process/PTY/route/tunnel lifecycle | Fully done locally; nonactivated, native proof external | Exact completion/cancellation/revocation, stale-lease isolation, route=session publication, failed-publication rollback, route close, and application shutdown are owned. The active ceiling is 50. Windows performs bounded Job Object termination; Unix retains the waitable leader while signalling the owned process group; PTY workers are joined with a deadline. Real OpenSSH descendant/listener and native leak/resource proof remain external. |
+| D3.8 redacted audit model | Fully done locally; durable/native evidence external | The runner keeps a 256-record FIFO with public identity/decision/operation/session/time/duration/result data only. Destinations, argv, cwd/path, environment, terminal content, usernames, PIDs, secrets, and agent data are absent. Durable receipt ownership belongs to F5. |
 
-Phase 2 result: the safe review boundary and its deterministic tests are
-implemented, but D3 is not complete as a product capability. The exit gate
-remains blocked on ADR acceptance, package signature/digest identity,
-capability UI/grant policy, atomic native executable launch, real native
-spawn/cancel/teardown evidence on Windows/Linux/macOS, D4-to-D5 activation
-integration, and controlled 1/10/50-session performance/leak results. See the
+Phase 2 result: D3's source-local application boundary is implemented but
+nonactivated. The exit gate remains blocked on ADR 0003's two independent
+exact-head approvals and server enforcement, real package-loader attestation
+and revocation binding, execution of the Windows/macOS/Linux/WSL fixture matrix,
+native proof of the implemented graceful/forced descendant cleanup,
+D4-to-D5 production activation, and controlled process/PTY/renderer/
+accessibility/resource results. See the
 [exact broker contract](SESSION-LAUNCH-BROKER.md).
 
 ### D4 — safe OpenSSH inventory and persistence
@@ -873,8 +949,9 @@ integration, and controlled 1/10/50-session performance/leak results. See the
    renderer/input/PTY code and never starts a network connection.
 7. Prefer existing `ssh-agent`, OS agents/keychains, FIDO2/PIV/PKCS#11 devices,
    encrypted key files referenced by OpenSSH, and short-lived certificates.
-   `keyring-rs`, `secrecy`, and `zeroize` may enter only after a separate
-   dependency and custody review; none justifies a new Automexia vault.
+   `keyring-core` plus exact stores, `secrecy`, and `zeroize` may enter only
+   after a separate dependency and custody review; none justifies a new
+   Automexia vault or broad default backend set.
 
 Exit gate: malicious, recursive, oversized, changing, and permission-denied
 configuration stays bounded; disabling/removing the extension removes its UI
@@ -893,13 +970,35 @@ and state without touching OpenSSH files or user keys.
 | D4.7 credential custody | Complete as a boundary | Records retain only an opaque identity kind. OpenSSH, agents, keychains, hardware providers, certificates, and encrypted files remain external owners; no vault or secret dependency was added. |
 
 D4 is complete as a nonactivated package boundary. It does not make D3 or D5
-shipped: ADR 0012 is still proposed, no capability UI or managed OpenSSH launch
-exists, and controlled native lifecycle/parallel-session evidence remains
-required before connection activation.
+shipped: ADR 0012 is accepted, but ADR 0003 protected approvals, real package
+attestation, production enablement, and controlled native lifecycle/
+parallel-session evidence remain required. The approval UI and fail-closed
+managed-launch boundary now exist without granting any process authority.
 The re-audit also makes nightly compilation and controlled execution of the
 10,000-alias benchmark mandatory; UI/accessibility remain not applicable until
 D5 connects this package to a product surface.
 
+### D5.0 — Connection Hub and planning-model baseline
+
+Status: **Partially done** overall. ADR 0012 is accepted, while ADR 0003
+protected approvals, attestation, activation, and native evidence remain open.
+Every local F2 implementation row below is **Fully done locally**.
+
+| D5.0 feature | Status | Implemented evidence / remaining gate |
+|---|---|---|
+| Versioned records and fixed ceilings | **Fully done locally** | Provider-neutral definitions, observations, intents, reviews, receipts, profiles, recipes, steps, typed tunnels, documents, and resolved plans are owned by `automexia-connectivity::connections`; validated wrappers are sealed. |
+| Strict validation and policy | **Fully done locally** | Unknown schemas/fields, hostile controls/bidi including plan overrides, option confusion, duplicate review identities, cycles, missing dependencies, oversize, secret-bearing fields, free-form commands, and invalid stage/risk/failure/retry combinations fail closed. |
+| Fingerprints and dry-run resolution | **Fully done locally** | Canonical approval digests cover target, identity, route, executable, tunnel, recipe, capability, source, and plan changes; output explicitly disables execution. |
+| Authentication and result reducers | **Fully done locally** | Exhaustive tables cover every public state, legal/illegal transition, active-operation correlation, late-generation rejection, canonical IDs, stale/expiry, cancellation, terminality, and denied background authentication. |
+| Hub, review, and planner model UX | **Fully done locally** | Pure responsive projections cover modal inertness, stale-selection focus recovery, route-aware tab cycles, live progress, value-redacted human labels, reading order, visual preferences, 100-400% scaling, all content/auth states, and 64-step plan narration. |
+| Fixtures and assurance | **Fully done locally** | Ten-provider/all-auth structured fixtures and responsive/accessibility goldens have 30 required regressions plus validation-bypass, panic, property, hostile, mutation, architecture, fuzz, benchmark, and cross-platform CI owners. |
+| Authority ceiling | **Fully disabled** | No filesystem, process, network, provider, credential, PTY, listener, renderer, GPU, or unsafe path exists in F2. |
+| Protected ADR decision | **Partially done externally** | ADR 0012 is owner-accepted; ADR 0003 exact-head approvals and non-bypassable server enforcement remain before phase closure or activation. |
+
+The local exit is independently testable without an account, network, process,
+PTY, window system, or GPU. This baseline does not connect D4 inventory, persist
+profiles/preferences, render a product dialog, or launch OpenSSH; those remain
+D5.1/D5.2.
 ### D5.1 — production SSH UX and connection lifecycle
 
 The implementation-ready product contract is
@@ -1054,15 +1153,55 @@ AWS, Azure, GCP, Kubernetes, and OpenShift preserve exact identity and capsule
 isolation; expired/offline/slow providers remain truthful and cannot affect
 terminal latency or another pane.
 
-### D7 — deferred ecosystem and AI gates
+### D7 — accepted nonactivating ecosystem and selected-input source boundary
 
-Third-party downloads, a public SDK, direct arbitrary network, a native SSH
-engine, and AI command execution wait for the v0.6 sandbox, signing, revocation,
-quota, migration, and capability UX. AI extensions receive no ambient PTY
-environment, SSH agent, cloud cache, terminal history, capsule, connection, or
-production authority. Every tool call names a structured operation, exact
-environment/session, risk, and capability; read permission never implies
-command permission and destructive work requires policy plus explicit review.
+Status: partially done overall and fully done locally at the accepted,
+nonactivating source boundary. ADR 0029 and the exact schema-1 digest are
+accepted. Private policy/runtime crates, signed local verification, protected
+atomic storage, optional no-WASI Wasmtime conformance, capability/lifecycle
+policy, disabled action-pack mapping, selected-input consent/response models,
+product denial adapters, 17 mutation checks, properties, a fuzz harness, and
+benchmarks are implemented.
+
+Activation, public downloads/SDK publication, provider calls, tools, workflows,
+commands, and process/network/credential/PTY authority remain false. The
+component host is not enabled by the terminal and its public execute path denies
+activation. The initial world has no default WASI, filesystem, network, process,
+PTY, terminal, environment, clipboard, credential, agent, provider-cache,
+capsule-secret, or connection import. CP6 receives only explicitly selected,
+bounded, redacted text after exact per-request consent and returns only a typed
+review/copy/insert suggestion without Enter.
+
+Release still requires ADR 0003 protected approvals for every future
+authority-bearing slice, a separate distribution/network decision, production
+trust and publisher owners, hostile package/component and supply-chain drills,
+native three-platform signed package/sandbox/cleanup, privacy/accessibility/
+performance/resource evidence, exact rollback, 1,000 lifecycle cycles, and the
+30-day soak. Private first-party extensions and CP1-CP3 remain the fallback.
+
+### LO0-LO5 — optional LLM Orchestration gates
+
+Status: LO0 is partially done at the documentation-only proposal boundary;
+LO1-LO5 are not done. The canonical specification, proposed ADR 0033, neutral-
+workflow dependency direction, provisional resource ceilings and future evidence
+ladder exist. There is no workflow-model crate, action registry, orchestrator,
+model/provider adapter, request, plan review, executor, product UI, model
+download, conversation store, MCP mapping, shortcut, setting or runtime authority.
+
+After explicit LO0 acceptance and a strict machine contract, LO1 must first
+prove an I/O-free domain-neutral action/plan/digest/grant/result model. LO2 is
+plan-only with explicit context and provider disclosure. LO3 adds reviewed one-
+run execution only through the app-owned registry and existing domain brokers.
+LO4 adds bounded dependencies/concurrency/replans; LO5 adds independently
+reviewed providers, storage, organization policy or typed MCP mappings. Each
+stage retains final revalidation, cancellation/join, content-minimized receipts,
+disable/uninstall recovery and a complete non-AI fallback.
+
+Models never receive an executor, shell, PTY, filesystem, credential, provider,
+DevOps, Studio, video or MCP handle. Local/self-hosted inference is the first
+direction, no paid API is required, and local-to-remote/provider fallback is
+never silent. LO work is independently releasable from Automation Studio and
+video and must not block either. Third-party delivery also waits for accepted D7.
 
 ## Tooling decisions and non-goals
 
@@ -1091,8 +1230,11 @@ Source completion does not satisfy these external requirements:
    approval;
 2. a private conduct-reporting contact;
 3. Windows Authenticode and Apple Developer ID/notarization credentials;
-4. protected `main`, required reviews/CODEOWNERS, DCO, squash-only merging,
-   administrator applicability, and private vulnerability reporting;
+4. plan-supported no-bypass `main` and release-tag rules, at least three human
+   reviewers, expanded CODEOWNERS, exact-head reviews, public private-
+   vulnerability reporting, and available secret scanning/push protection;
+   squash-only merging, DCO, least-authority Actions, Dependabot, and immutable
+   future releases are already applied and audited;
 5. successful hosted Windows, Linux, macOS, ARM64, CodeQL, dependency-review,
    fuzz, sanitizer, Miri, coverage, packaging, SBOM, checksum, and attestation
    jobs;
@@ -1109,6 +1251,12 @@ for the complete 30-day baseline, the owned-code coverage record, and the
 documented keyboard/focus/contrast/scaling plus screen-reader baseline. A
 compile-only benchmark job or renderer-neutral JSON alone does not satisfy the
 corresponding performance or visual gate.
+
+Provider, credential, managed-SSH, public-extension, CP6 model-suggestion and
+LLM Orchestration activation gates belong after v0.4. They must not be added as
+prerequisites for closing v0.4. Conversely, passing v0.4 terminal release
+evidence does not authorize those later capabilities. The lanes can progress
+concurrently but retain separate acceptance evidence and release decisions.
 
 The S0 source gates pass locally, but stable v0.4 remains blocked until every
 applicable S1, hosted, native, and external release gate is satisfied. S1
@@ -1155,6 +1303,10 @@ their UI/ecosystem capability is included in the release claim.
 - dependency/security policy and hosted assurance jobs pass;
 - signed/notarized artifacts, SBOMs, checksums, and attestations validate;
 - the release commit is reviewed, protected, reproducible, and traceable;
+- the annotated release tag is published at the exact remote `main` head, the
+  annotated remote Rio fork tag resolves to the audited base, downstream
+  history is complete/clean/linear and DCO-signed, and the authenticated
+  repository audit reports only pass results;
 - deterministic renderer state and controlled rendered-frame captures agree,
   visual changes have reviewed expected/actual/diff evidence, and no footer,
   focus border, cursor, prompt, or overlay is misplaced after resize;

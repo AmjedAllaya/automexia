@@ -1,8 +1,19 @@
 # Connection Hub product, security, and delivery specification
 
-Status: planned for D5 (production OpenSSH) and D6 (multi-cloud); no managed
-connection UI or credential custody is shipped in v0.4.
-
+Status: D5.1/F3 is **fully implemented at the source and local Windows
+boundary**. D5.2 remains **partially done overall and nonactivated**, while
+F5.1-F5.3 are source-complete locally: typed host/user/port/endpoints, bounded
+config-jump routes, exact configuration-free tunnels, loopback defaults, strong
+tunnel review, full trust evidence, safe copy, guarded lifecycle, receipts,
+reconnect, and compact tunnel states are local. F5.4's controlled validator and
+manual protected workflow bind real evidence to the exact native host, commit,
+OpenSSH tools, and release artifacts. Activation is false and the
+package unverified, so v0.4 starts no managed child or listener. Protected
+approvals, attestation, actual status/SSH execution, controlled real native
+cleanup/resources/accessibility, and all D6 provider execution remain. The M8-
+M12 cached Providers catalog/review and M11 private transient lifecycle are
+fully implemented locally without activating provider execution; OpenBao remains
+not done pending ADR 0024 acceptance.
 This document is the implementation authority for Automexia's Connection Hub.
 The [roadmap](ROADMAP.md) owns release order, the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#early-devops-and-ssh-delivery-track)
@@ -72,10 +83,11 @@ The implementation adapts to the existing structure:
 
 | Concern | Owner | Forbidden dependencies/authority |
 |---|---|---|
-| Connection, filter, review, authentication-state, and capability-view models | `automexia-ui-model` and provider-neutral `automexia-devops` types | Renderer, PTY, GPU, OpenSSH parser, provider SDK, secret values |
+| Connection, filter, review, authentication-state, and capability-view models | `automexia-ui-model` and provider-neutral `automexia-connectivity` types | Renderer, PTY, GPU, OpenSSH parser, provider SDK, secret values |
 | OpenSSH inventory and public metadata | private `automexia-devops-ssh` extension | Process launch, direct network, raw keys, `ssh -G`, executable config evaluation |
 | Provider inventory and capsule templates | independently enabled D6 provider extensions | Renderer access, ambient environment, another provider's cache |
 | Capability decision and exact launch | application-owned D3 broker | Shell command strings, wildcard executables, extension-owned PTYs |
+| External process execution | one application-owned `ExternalToolRunner` used by every adapter | Provider-specific launchers, ambient environment, unbounded output, render/resize/startup/keystroke invocation |
 | Modal composition, virtualized rows, focus, responsive layout | `apps/automexia-terminal` adapter over renderer-neutral models | Provider-specific business logic or credentials |
 | Authentication and connection process | system OpenSSH or reviewed official CLI in a normal Automexia PTY | Hidden password capture, token parsing, silent fallback |
 
@@ -486,6 +498,16 @@ primary action; organization policy may require reason, ticket, step-up MFA, or
 additional confirmation. Host-key changes and public/non-loopback listeners
 cannot be waived by a generic `Always allow` control.
 
+M5 implements that tunnel review at the nonactivated source boundary. Local,
+remote, and dynamic descriptors expose exact public endpoints and OpenSSH socket
+ownership; local/dynamic binds default to `127.0.0.1`. Remote, non-loopback, or
+production forwarding disables Allow for session and requires a fresh Allow-once
+decision. Compact icon/color/text rows and accessibility nodes distinguish
+planned, starting, ready, collision, failed, cancelled, and closed without
+inferring readiness from terminal text. Config-dependent aliases/jumps with
+tunnels fail closed. Activation remains false, so this projection opens no
+listener.
+
 ## Provider setup journeys
 
 Each journey begins with passive/static discovery, keeps authentication visible,
@@ -658,10 +680,12 @@ manifest/ADR/threat-model review.
 | System OpenSSH | Adopt as D5 transport | Mature config, agents, host keys, hardware, certificates, jumps, and tunnels with no new protocol engine |
 | Official `aws`, `az`, `gcloud`, `kubectl`, and `oc` | Adopt first in D6 | Preserve supported authentication/MFA and minimize provider dependencies in core |
 | AccessKit | Reuse for the renderer-neutral accessibility tree | Already aligned with the project accessibility plan; avoid a second accessibility model |
+| `nucleo` | Adopt for measured large host/action/context lists after the D5 benchmark gate | Concurrent bounded search and immutable completed snapshots without blocking UI; preserve the current matcher as deterministic fallback |
+| `schemars`, `clap_complete`, and `clap_mangen` | Adopt with the typed operation registry | Generate schemas, static native-shell completion, and manuals from one source instead of hand-maintained copies |
 | Existing Automexia bounded worker/cache/runtime | Reuse | Generation cancellation, session isolation, and no UI-thread I/O are already architectural requirements |
 | Teleport `tsh` | Optional built-in external adapter after D5 | Short-lived SSH/Kubernetes identity remains organization-owned |
 | OpenBao `bao` SSH signer | Optional built-in external adapter after D5 | Signs a public key while OpenBao owns tokens/policy and OpenSSH owns the key/connection |
-| `keyring-rs` | Defer until a custody ADR proves a required opaque item cannot stay with an agent/CLI | Cross-platform abstraction is useful, but backend behavior and secret custody expand the trusted boundary; select `keyring-core` plus exact backends rather than broad defaults if adopted |
+| `keyring-core` plus exact platform stores | Defer until a custody ADR proves a required opaque item cannot stay with an agent/CLI | Cross-platform abstraction is useful, but backend behavior and secret custody expand the trusted boundary; never enable a broad default backend set |
 | `secrecy` and `zeroize` | Defense in depth only if a future approved adapter must transiently hold a secret | They reduce accidental formatting/lifetime but do not create secure custody |
 | Rust SSH libraries or embedded Termix/Electron | Reject for D5 | Duplicate protocol/renderer/session behavior and increase credential/web attack surface |
 | Provider Rust SDKs / `kube-rs` | Defer to lazy, out-of-process inventory proven impossible through config/CLI | Avoid core dependency growth, hidden network, auth incompatibility, and cross-provider coupling |
@@ -670,6 +694,68 @@ Search should first reuse the project's deterministic local matcher and measured
 10,000-entry inventory path. A new fuzzy-search crate is accepted only when a
 benchmark, binary-size/license/security review, Unicode corpus, and cancellation
 test demonstrate a material benefit.
+The complete ownership matrix and protected dependency order are in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+
+## M6 workspace catalog and nonexecuting review projections
+
+The product controller now exposes a Workspaces section over the immutable
+library snapshot published by the existing joined Hub worker. The compact
+catalog virtualizes bounded rows, keeps one selected owner, supports exact
+pointer targets plus Up/Down/Home/End/Enter, and projects semantic dialog/status/
+grid/row accessibility nodes. `W` and `C` switch catalog sections only when
+Search and review do not own input. The renderer keeps tabs clear of Close,
+reduces labels at narrow widths, and bounds catalog and review cards from 320 px
+through high-scale 5K geometry.
+
+Workspace restore shows one compact summary and exact current connection rows,
+returns focus to Workspaces, invalidates on library replacement, and states that
+reconnect/resume are off. Its activation control is disabled. Broadcast remains
+CLI/model review: redundant icon/color/text describe disarmed/armed/completed/
+cancelled/expired states, exact transient command appears only in explicit
+review output, production confirmation is separate, and execution/Enter are
+never requested. Debug and audit retain only digest, byte count, target, outcome,
+and stable diagnostics.
+
+The model caps 16 windows, 64 panes, 128 connections, 50 broadcast targets, 8 KiB
+of command text, and 60 seconds of arming; the private document is 16 MiB.
+Controlled native pixels, screen readers, real OpenSSH/process/resource cleanup,
+and managed execution remain external D3/M5 gates. [Accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+owns the boundary.
+
+## M8-M12 cached provider catalog and review
+
+The product controller exposes a **Providers** section alongside Connections and
+Workspaces. Its fixed catalog contains AWS, Azure, Google Cloud, Kubernetes,
+OpenShift, and Teleport. Only a validated, bounded, public M7 capsule can replace
+the immutable catalog; the app performs no passive discovery. A replacement must
+use a new capsule ID, a new session, and a higher revision. Unsupported entries,
+including OpenBao before ADR 0024 acceptance, fail before anything reaches UI.
+
+Rows and review cards show a semantic provider mark plus public identity, bounded
+scope, freshness/authentication, recovery, risk, and an activation blocker.
+`C`, `W`, and `P` switch sections; arrow/Home/End navigation, Enter/Escape,
+pointer rows, focus return, live status text, and 320 px through 5K/high-scale
+layout are renderer-neutral contracts. Every projection explicitly sets process
+execution and PTY input false. A catalog replacement, revoke, or runtime shutdown
+closes stale provider review.
+
+M11's application-owned private transient manager completes the local output
+lifecycle for EKS, AKS, GKE, Kubernetes/OpenShift, and Teleport-related generated
+kubeconfig. It allocates only below its private connection root, limits each file
+to 1 MiB and the active set to 16, validates before publication, exposes an
+opaque capsule/session/generation-bound handle, detects later replacement or
+content drift, and deletes on expiry, revoke, provider disable, session revoke,
+shutdown, and drop. Bounded recovery examines no more than 64 stale roots/files
+older than 24 hours. It never names or merges user kubeconfig and no public error,
+debug value, snapshot, or review exposes the path or private bytes.
+
+This is cached review and lifecycle source, not active provider control. There is
+no login, refresh, connect, cluster action, official CLI process, provider
+network, browser callback, credential-cache read, or PTY. D3 attestation and
+activation, controlled real accounts/tools/clusters, native child cleanup,
+resources, screen readers, packaging, signing, and release fixtures remain
+external. OpenBao remains not done until the separate custody ADR is accepted.
 
 ## Recovery, backup, migration, and export
 
@@ -702,11 +788,13 @@ architecture page.
 
 ## Keyboard, accessibility, and input contract
 
-The first release exposes `Connection Hub: Open` in the application menu and
-command palette. A default global shortcut is assigned only through the typed
-keybinding registry after cross-platform collision testing; user bindings can
-always target the action. This avoids stealing shell/editor or existing pane
-shortcuts merely to match another application.
+The first release exposes `Connection Hub: Open` in the command palette and
+typed keybinding registry. Its collision-tested default is `Ctrl+Shift+H` on
+Windows/Linux/BSD and `Cmd+Shift+H` on macOS; user bindings can target
+`OpenConnectionHub`. The action is inactive while Search, Vi mode, or an
+alternate-screen application owns input. Opening it grants no filesystem,
+network, process, authentication, listener, or PTY authority and never sends
+input to the terminal.
 
 Within the Hub:
 
@@ -788,8 +876,11 @@ Privacy defaults:
 ## Renderer-neutral interaction goldens
 
 Goldens are structured snapshots of model, geometry, semantics, focus, z-order,
-and accessible output. Pixel screenshots supplement them on controlled native
-runners; OCR is not an assertion mechanism.
+and accessible output. The implemented F2 accessibility golden also freezes one
+managed focus row after selection invalidation, live progress semantics while
+loading, and omission of action value contents from planner narration. Pixel
+screenshots supplement them on controlled native runners; OCR is not an
+assertion mechanism.
 
 Required fixture axes:
 
@@ -867,7 +958,7 @@ tests/fixtures/connection-hub/
 
 | Platform | Required D5/D6 evidence |
 |---|---|
-| Windows | Microsoft OpenSSH client, disabled/running agent, encrypted key prompt, Windows paths/Unicode, WAM/device flow, ConPTY cancellation/process-tree cleanup, Narrator/NVDA, AppVerifier/WPR, signed packaged build |
+| Windows | Microsoft OpenSSH client, disabled/running agent, encrypted key prompt, Windows paths/Unicode, WAM/browser/device flow, ConPTY cancellation/process-tree cleanup, Narrator/NVDA, AppVerifier/WPR, signed packaged build |
 | macOS | system/user OpenSSH, agent/keychain/hardware where available, browser callback, universal packaged app, VoiceOver, Instruments/leak/energy, signed/notarized build |
 | Linux | OpenSSH with representative desktop/agent sockets, Bash/Zsh/Fish, X11/Wayland, browser/device flow, AT-SPI/Orca, ASan/TSan/Valgrind-supported suites, DEB/RPM/tar |
 | Providers | Controlled least-privilege development/staging accounts plus explicitly isolated production-policy fixtures; real expiry/MFA/offline/denial without public logs |
@@ -891,55 +982,177 @@ never substitutes for deterministic PR tests.
 
 ### D5.0 - contract, threat model, and UX baseline
 
-- Accept ADR 0012/replacement capability decision.
-- Freeze the records, state machine, discovery tiers, capability/review model,
-  resource ceilings, privacy rules, keyboard/accessibility tree, and goldens.
-- Add synthetic fixtures for all states/providers without enabling process or
-  network authority.
+Status: **Partially done** overall; all local implementation rows are fully done
+and ADR 0003 protected activation evidence remains external.
 
-Exit: architecture, mutation, hostile-fixture, model, layout, and accessibility
-tests pass; no managed process exists in production.
+The 2026-08-17 second-pass audit initially reclassified the schema/validation,
+auth reducer, and renderer-neutral UX rows as **Partially done**. It then sealed
+validated wrappers, added plan-override bidi and review-duplicate rejection,
+bound auth results to operation generations, removed planner panic paths, and
+hardened roving focus, loading progress, modal focus cycles, and value-redacted
+action labels. Those rows are **Fully done locally** again with 30 required
+regressions; authority and protected-ADR status did not change.
 
+- [ ] **Partially done externally:** ADR 0012 is owner-accepted; obtain ADR
+  0003's exact-head approvals/server enforcement, attestation, and native proof
+  before the phase closes or any authority activates.
+- [x] **Fully done locally:** freeze bounded versioned records, state machines,
+  typed action/policy models, deterministic approval fingerprints, resource
+  ceilings, privacy rules, keyboard/focus/reading order, responsive layouts,
+  Connection Review, recipe dry-run planning, and structured goldens.
+- [x] **Fully done locally:** add synthetic fixtures for all ten providers,
+  every authentication state, every Hub content state, all public result states,
+  and 100-400% wide/medium/narrow layouts without enabling process or network
+  authority.
+- [x] **Fully done locally:** enforce hostile/property/record/state/model,
+  accessibility, mutation, architecture, fuzz, and 64-step benchmark evidence.
+- [x] **Fully done locally:** keep filesystem, process, network, provider,
+  credential, PTY, listener, renderer, and GPU authority absent or false.
+
+Implementation owners are `automexia-connectivity/src/connections`,
+`automexia-ui-model/src/connection_hub.rs`, and
+`tests/fixtures/connection-hub`. The pure Hub projection remains the semantic source of truth. D5.1 adapts it
+into the read-only product dialog. D5.2 now owns actionable approval, the
+fail-closed runner, and guarded PTY/route publication; Enter never launches from
+the result list.
+
+Exit status: architecture, mutation, hostile-fixture, model, layout,
+accessibility, fuzz-build, and benchmark-build gates pass locally with no
+production managed process. Overall D5.0 stays **Partially done** until ADR
+0003 protected activation, attestation, and native evidence pass.
 ### D5.1 - read-only Hub and first-run detection
 
-- Connect the completed D4 inventory to the virtualized Hub.
-- Implement passive discovery, explicit local scan, favorites/tags/recent,
-  search/filter/grouping, stale/last-known-good behavior, and platform setup
-  guidance.
-- Keep status/login/connect operations disabled or clearly non-activated.
+- [x] **Fully done** — Connect D4 snapshots through one Router-owned, joined,
+  generation-safe runtime with last-known-good state and explicit shutdown.
+- [x] **Fully done** — Require an explicitly invoked parented native picker,
+  canonical-path review, and confirmation; cancel/reselect revokes memory-only
+  grants and no raw selection path is persisted or logged.
+- [x] **Fully done** — Render bounded search, tag/favorite/recent/source filters,
+  grouping, clear filters, virtualized rows, inspector, setup/loading/error/
+  recovery states, keyboard, pointer, IME, focus restoration, and responsive
+  tiny-to-8K geometry.
+- [x] **Fully done** — Review favorite/tag public diffs and commit only through
+  D4 revision CAS; reload on conflict and keep recent read-only.
+- [x] **Fully done** — Display profile/recipe/preference counts as local,
+  non-executing state and keep Connect, Login, provider refresh, automatic
+  actions, process/network/listener/PTY work visibly disabled.
+- [ ] **Partially done** — Native macOS/Linux picker/permission runs and
+  controlled Narrator/NVDA, VoiceOver, and Orca evidence remain external.
 
-Exit: 10,000-entry, hostile-config, three-platform static discovery, responsive,
-screen-reader-model, privacy, performance, and storage tests pass.
-
+Exit achieved locally: 10 runtime, 6 controller, 4 renderer, 33 D4, 32 UI-model,
+5 library, and 46 palette tests pass on Windows 11; `cargo deny` passes; the
+10,000-record release projection is 7.1790–7.7931 ms against a below-16-ms
+target. This exit does not activate D5.2.
 ### D5.2 - reviewed OpenSSH launch and lifecycle
 
-- Activate the application-owned exact launch broker after its native gate.
-- Add identity/agent/certificate public status, Connection Review, destination
-  choice, cancellation/reconnect, jumps, typed tunnels, host-key explanations,
-  capability approvals, revocation, and local audit.
+- [x] **Fully done locally; nonactivated** - Compose one current D4 record or a
+  bounded transient typed host/user/port into the canonical plan and accessible
+  approval review; focus, IME, pointer, keyboard, redaction, and tiny-to-8K
+  protections cover all three fields.
+- [x] **Fully done locally; nonactivated** - Freeze exact route-specific argv:
+  direct uses 17 defensive options plus optional `-l`/`-p` and one host; a
+  config route uses the 15-option subset plus one canonical `-J` chain and one
+  alias. Fresh full review and broker validation reject all drift.
+- [x] **Fully done locally; nonactivated** - Show complete first-use/known/
+  changed key algorithm and SHA-256 evidence without truncation or `known_hosts`
+  writes; changed keys cannot bind. `C` copies the exact reviewed command with
+  no execution/newline/Enter. The bounded `ssh-add -l -E sha256` public status
+  request/parser is source-complete but not process-connected.
+- [x] **Fully done locally; nonactivated** - Keep ContextManager as the only PTY
+  and route owner. Reconcile the actual child status before close and distinguish
+  success, failure, missing status, cancel, revoke, route close, and shutdown
+  with fixed path/host-free notifications.
+- [x] **Fully done locally; nonactivated** - Persist provider-neutral completion
+  receipts through the bounded connection worker: 256 records, 2 MiB, private
+  atomic primary/previous recovery. Store no destination, terminal content,
+  credential, path, environment, PID, or executable identity. Rebuild reconnect
+  only from current inventory and exact source revision, then require fresh
+  executable/host-trust review and approval.
+- [x] **Fully done locally; nonactivated** - A bounded current-executable worker
+  publishes before wake; the controller rejects stale preparation/generation/
+  freshness state and requires a second explicit approval before guarded spawn.
+- [ ] **Partially done / externally blocked** - ADR 0003 approvals/enforcement,
+  real package attestation/revocation, native OpenSSH prompt/descendant proof,
+  1/10/50
+  resources, controlled accessibility, and production activation remain.
+- [x] **Fully done locally; nonactivated** - F5.3 exact typed local/remote/
+  dynamic tunnels, loopback defaults, strong Allow-once review, bounded owner
+  lifecycle, collision/cleanup behavior, compact state, and accessibility pass.
+- [x] **Fully done locally; real results external** - F5.4's bounded 23-scenario
+  manifest validator, synthetic mutation fixture, native OS/architecture and
+  exact-commit checks, fixed client/server version checks, no-follow binary/
+  package/client hashing, baseline sentinel denial, path-redacted summary, and
+  protected manual runner workflow pass locally.
+- [ ] **External prerequisite** - collect real Windows/macOS/Linux OpenSSH,
+  1/10/50 resources, enable/disable/uninstall, manual-SSH, visual, and
+  accessibility evidence. WSL remains separately denied.
 
-Exit: D5 native/security/performance matrix passes on Windows/macOS/Linux;
-disabled extension and ordinary manual SSH remain unchanged.
+Exit remains unavailable as a shipped connection until the protected and native
+D5 matrix passes on Windows, macOS, Linux, and separately gated WSL; disabled
+managed SSH and ordinary manual SSH must remain unchanged.
 
 ### D6.0 - provider-neutral capsule and authentication framework
 
-- Activate immutable provider capsules, auth observations/state transitions,
-  visible official CLI login, approved browser origins/callbacks, provider
-  isolation, and public status contributions.
+- [x] **Fully done locally** - `automexia-connectivity::connections::provider_auth`
+  owns strict bounded public context, immutable capsule, observation, operation,
+  isolation, browser-policy, review, recovery, receipt, and redacted-audit
+  contracts. The store admits at most 64 capsules and 16 provider contexts per
+  capsule; public documents are capped at 16 MiB.
+- [x] **Fully done locally** - Capsule ID/session/revision/provider/generation
+  are required on every cached read and mutation. A provider-context rebind
+  requires a fresh session, cancels old work, and rejects stale or sibling
+  publication.
+- [x] **Fully done locally** - The Hub projection names available, refreshing,
+  MFA/browser/device waits, ready, expired, offline, denied, unsupported,
+  cancelled, stale, and error states with textual recovery actions. It consumes
+  only caller-supplied cached public observations and performs no process,
+  network, filesystem, credential, or browser work.
+- [x] **Fully done locally** - Official-CLI requests can pass only after exact
+  visible review of operation/session, ordered arguments, exact process/network
+  capabilities, isolation, browser policy/callback, and risk, plus current
+  `AllowOnce` decisions bound to executable, operation, session, capsule
+  revision, process, and applicable network scope. M7 provides no executable
+  adapter and cannot itself start that request.
+- [x] **Fully done locally** - Exact-argument, scoped-public-environment, and
+  private-transient-config isolation are frozen. Global context writers and
+  secret CLI flags fail closed.
+- [x] **Fully done locally** - Refresh, authentication waits, last-known-good,
+  expiry, offline, cancellation, revocation, disable/uninstall, rebind, and
+  shutdown are deterministic and bounded. Initial freshness is preserved, and
+  publication validates the complete candidate before atomically accepting only
+  the capsule-pinned configuration/provider/risk tuple.
 
-Exit: two simultaneous providers cannot cross-contaminate environment, caches,
-operations, status, logs, or UI; all cancellation/offline/expiry states pass.
+Exit is met at the local provider-neutral model boundary by the M7 contract,
+twelve focused tests, mutation/fuzz registration, repeated maximum-capacity
+lifecycle coverage, and a 64-capsule benchmark. No real AWS/Azure/Google Cloud/
+Kubernetes/OpenShift/Teleport/OpenBao CLI, browser/device flow, network,
+credential cache, or provider configuration ran. Provider-specific operation
+builders, product login controls, real-tool native tests, and controlled
+accessibility evidence remain D6.1-D6.5 work.
 
 ### D6.1-D6.5 - provider slices
 
-1. **D6.1 AWS:** IAM Identity Center/STS, profiles, SSM, and EKS.
-2. **D6.2 Azure:** Entra/MFA/workload identity, subscriptions, Bastion, and AKS.
-3. **D6.3 Google Cloud:** named configurations, Workforce/Workload Identity,
-   IAP/OS Login, and GKE.
-4. **D6.4 Kubernetes/OpenShift:** trusted kubeconfig sources, exec allowlists,
-   contexts/namespaces/projects, and visible login.
-5. **D6.5 organization adapters:** Teleport first; OpenBao public-key signing
-   only after its token-output/certificate-file contract passes security review.
+1. **D6.1 AWS — source and cached product review complete locally,
+   execution nonactivated:** bounded public profiles and exact SSO/STS/SSM/EKS
+   contracts publish only validated cached public context; M11 owns private EKS
+   output. D3 activation and controlled real AWS/native evidence remain.
+2. **D6.2 Azure — source and cached product review complete locally,
+   execution nonactivated:** bounded account JSON and exact tenant/account/
+   Bastion/AKS contracts use cached review plus M11 private AKS lifecycle. D3
+   activation and controlled real Azure/native evidence remain.
+3. **D6.3 Google Cloud — source and cached product review complete locally,
+   execution nonactivated:** bounded named configuration and exact auth/project/
+   federation/IAP/GKE contracts use cached review plus M11 private GKE lifecycle.
+   D3 activation and controlled real Google/native evidence remain.
+4. **D6.4 Kubernetes/OpenShift — source, private lifecycle, and cached review
+   complete locally, execution nonactivated:** bounded parse/merge/exec/CLI
+   contracts plus private validate/revalidate/revoke/cleanup and responsive Hub
+   review pass. D3, real clients/clusters/plugins, Unix no-follow, resources,
+   controlled accessibility, and release evidence remain.
+5. **D6.5 Teleport — source and cached product review complete locally,
+   execution nonactivated; OpenBao not done:** exact Teleport plans/status feed a
+   cached review with no agent/cache/browser/process authority. D3/native proof
+   remains. OpenBao is rejected and absent until ADR 0024 is accepted.
 
 Each slice is independently enabled, revoked, tested, and releasable. A provider
 does not wait for or inherit another provider's capability.

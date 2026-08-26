@@ -13,7 +13,9 @@ export AUTOMEXIA_CONFIG_HOME="$fixture_bin/config"
 completion_root="$AUTOMEXIA_CONFIG_HOME/generated/completion/bash"
 mkdir -p "$completion_root"
 printf '%s\n' 'complete -W "managed-candidate" kubectl' >"$completion_root/kubectl.bash"
-sha256sum "$completion_root/kubectl.bash" | awk '{print $1}' >"$completion_root/kubectl.bash.sha256"
+kubectl_digest=$(sha256sum "$completion_root/kubectl.bash" | awk '{print $1}')
+# Simulate an interrupted refresh: the candidate digest may be the second entry.
+printf '%064d\n%s\n' 0 "$kubectl_digest" >"$completion_root/kubectl.bash.sha256"
 printf '%s\n' 'complete -W "must-not-load" docker' >"$completion_root/docker.bash"
 sha256sum "$completion_root/docker.bash" | awk '{print $1}' >"$completion_root/docker.bash.sha256"
 complete -W 'native-candidate' docker
@@ -23,6 +25,11 @@ printf '%s\n' "$*"
 EOF
 chmod +x "$fixture_bin/eza"
 PATH="$fixture_bin:$PATH"
+alias_generation=$(
+  python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
+    --config-root "$AUTOMEXIA_CONFIG_HOME" --alias axt --value first
+)
+[[ $alias_generation =~ ^[0-9a-f]{64}$ ]]
 shopt -s expand_aliases
 # Reproduce Ubuntu's default interactive profile. Defining a same-named shell
 # function while this alias is active used to make Bash reject the integration.
@@ -37,12 +44,15 @@ count=$(grep -o '__automexia_pre_prompt' <<<"$PROMPT_COMMAND" | wc -l)
 [[ $count -eq 1 ]]
 [[ $PROMPT_COMMAND == printf\ user-hook* ]]
 
+failure_marker="$fixture_bin/bash-failure-marker"
 set +e
 false
-__automexia_pre_prompt >/dev/null
+__automexia_pre_prompt >"$failure_marker"
 status=$?
 set -e
 [[ $status -eq 1 ]]
+grep -qF $'\e]133;D;1\a' "$failure_marker"
+grep -qF $'\e]133;A;aid=' "$failure_marker"
 
 grep -qF "AUTOMEXIA_SHELL_INTEGRATION" "$root/shell-integration/bash/automexia.bash"
 grep -qF '\xCE\xBB' "$root/shell-integration/bash/automexia.bash"
@@ -52,6 +62,12 @@ if grep -qF 'PROMPT_DIRTRIM' "$root/shell-integration/bash/automexia.bash"; then
 if grep -qF '__automexia_git_segment' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
 grep -qF '133;A;aid=%s\a \n' "$root/shell-integration/bash/automexia.bash"
 grep -qF '133;P;k=c;aid=%s\a' "$root/shell-integration/bash/automexia.bash"
+grep -qF '133;A;aid=%s\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'fish_preexec' "$root/shell-integration/fish/automexia.fish"
+grep -qF '133;C\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'fish_postexec' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'fish_posterror' "$root/shell-integration/fish/automexia.fish"
+grep -qF '133;D;%s\a' "$root/shell-integration/fish/automexia.fish"
 # shellcheck disable=SC2016 # Search for the literal integration contract.
 grep -qF '__automexia_print_colored_path "$PWD"' "$root/shell-integration/bash/automexia.bash"
 [[ $PS1 != *'PWD'* ]]
@@ -76,6 +92,61 @@ complete -p docker | grep -qF 'native-candidate'
 ! complete -p docker | grep -qF 'must-not-load'
 automexia_completion_health | grep -qF 'loaded=kubectl'
 automexia_completion_health | grep -qF 'collisions=docker'
+automexia_aliases_health | grep -qF 'state=ready'
+[[ $(axt) == first ]]
+
+alias_samples=''
+for iteration in {1..25}; do
+  sample=$(
+    TIMEFORMAT='%R'
+    { time automexia_aliases_reload >/dev/null; } 2>&1
+  )
+  (( iteration > 5 )) && alias_samples+="$sample"$'\n'
+done
+bash_alias_reload_p95=$(printf '%s' "$alias_samples" | sort -n | sed -n '19p')
+awk -v p95="$bash_alias_reload_p95" 'BEGIN { exit !(p95 <= 0.050) }'
+
+second_alias_generation=$(
+  python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
+    --config-root "$AUTOMEXIA_CONFIG_HOME" --alias ayt --value second
+)
+[[ $second_alias_generation != "$alias_generation" ]]
+ayt() { printf '%s' native; }
+if automexia_aliases_reload; then exit 1; fi
+[[ $(axt) == first ]]
+[[ $(ayt) == native ]]
+automexia_aliases_health | grep -qF 'state=collision'
+unset -f ayt
+automexia_aliases_reload
+[[ -z $(type -t axt 2>/dev/null || true) ]]
+[[ $(ayt) == second ]]
+wrong_compiler_generation=$(
+  python3 "$root/tools/ci/create_cp31_alias_fixture.py" \
+    --config-root "$AUTOMEXIA_CONFIG_HOME" --alias azt --value wrong \
+    --generator automexia-devops/999.0.0
+)
+[[ $wrong_compiler_generation != "$second_alias_generation" ]]
+if automexia_aliases_reload; then exit 1; fi
+[[ $(ayt) == second ]]
+[[ -z $(type -t azt 2>/dev/null || true) ]]
+automexia_aliases_health | grep -qF 'state=tampered'
+printf '%s\n' "$second_alias_generation" >"$AUTOMEXIA_CONFIG_HOME/generated/aliases/current"
+chmod 600 "$AUTOMEXIA_CONFIG_HOME/generated/aliases/current"
+
+current_alias_generation=$(<"$AUTOMEXIA_CONFIG_HOME/generated/aliases/current")
+printf '%s\n' '# tampered' >>"$AUTOMEXIA_CONFIG_HOME/generated/aliases/generations/$current_alias_generation/bash/automexia-aliases.bash"
+if automexia_aliases_reload; then exit 1; fi
+[[ $(ayt) == second ]]
+automexia_aliases_health | grep -qF 'state=tampered'
+printf '%s\n' disabled >"$AUTOMEXIA_CONFIG_HOME/generated/aliases/current"
+chmod 600 "$AUTOMEXIA_CONFIG_HOME/generated/aliases/current"
+AUTOMEXIA_TEST_ROOT="$root" bash --noprofile --norc -c '
+  shopt -s expand_aliases
+  source "$AUTOMEXIA_TEST_ROOT/shell-integration/bash/automexia.bash" >/dev/null
+  [[ -z $(type -t ayt 2>/dev/null || true) ]]
+  automexia_aliases_health | grep -qF "state=disabled"
+'
+
 for category_color in \
   '*secret=1;38;5;203' '*config=38;5;214' '*logs=38;5;220' \
   '*src=38;5;81' '*docs=38;5;114' '*tests=38;5;177' \
@@ -137,4 +208,12 @@ export AUTOMEXIA_CONFIG_HOME=relative-config-root
 source "$root/shell-integration/completion/bash/automexia-completion.bash"
 automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
 
-echo "PASS: Bash integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${bash_adapter_p95}s, and readable icon-listing aware"
+# The declared path ceiling must fail before any filesystem probe.
+unset AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED
+printf -v overlong_root '%*s' 4097 ''
+overlong_root=${overlong_root// /x}
+export AUTOMEXIA_CONFIG_HOME="/$overlong_root"
+source "$root/shell-integration/completion/bash/automexia-completion.bash"
+automexia_completion_health | grep -qF 'state=unsafe-path/native-fallback'
+
+echo "PASS: Bash integration is prompt-safe, native-first, digest-verified, linked-parent-safe, disable-safe, idempotent, adapter-p95=${bash_adapter_p95}s, alias-reload-p95=${bash_alias_reload_p95}s, and readable icon-listing aware"

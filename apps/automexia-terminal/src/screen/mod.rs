@@ -6,7 +6,11 @@
 // were retired from https://github.com/alacritty/alacritty/blob/c39c3c97f1a1213418c3629cc59a1d46e34070e0/alacritty/src/input.rs
 // which is licensed under Apache 2.0 license.
 
+pub(crate) mod action_surface;
+mod compatibility;
+mod connection_hub;
 pub mod hint;
+pub(crate) mod suggestions;
 pub mod touch;
 
 use crate::bindings::kitty_keyboard::build_key_sequence;
@@ -15,7 +19,9 @@ use crate::bindings::{
     ViAction,
 };
 use crate::context;
-use crate::context::renderable::{Cursor, RenderableContent};
+use crate::context::renderable::Cursor;
+#[cfg(feature = "native-gui-test-hooks")]
+use crate::context::renderable::RenderableContent;
 use crate::context::{next_rich_text_id, process_open_url, ContextManager};
 use crate::crosswords::{
     grid::{Dimensions, Scroll},
@@ -27,9 +33,12 @@ use crate::hints::HintState;
 use crate::layout::ContextDimension;
 use crate::mouse::{calculate_mouse_position, Mouse};
 use crate::renderer::island::{self, ChromeAction, LocalTabAction, TabStripLayout};
+use crate::renderer::search::{
+    SearchFocusTarget, SearchResultSummary, SearchScope, SearchScopeKind,
+};
 use crate::renderer::session_footer;
 use crate::renderer::{utils::padding_top_from_config, Renderer};
-use crate::screen::hint::HintMatches;
+use crate::screen::hint::{visible_regex_match_iter, HintMatches};
 use crate::selection::{Anchor, Selection, SelectionMotion, SelectionType};
 use core::fmt::Debug;
 use raw_window_handle::{RawDisplayHandle, RawWindowHandle};
@@ -37,7 +46,7 @@ use rio_backend::clipboard::Clipboard;
 use rio_backend::clipboard::ClipboardType;
 use rio_backend::config::layout::Margin;
 use rio_backend::config::renderer::Backend;
-use rio_backend::crosswords::pos::{Boundary, CursorState, Direction, Line};
+use rio_backend::crosswords::pos::{Boundary, Direction, Line};
 use rio_backend::crosswords::search::RegexSearch;
 use rio_backend::error::{RioError, RioErrorLevel, RioErrorType};
 use rio_backend::event::{ClickState, EventProxy, SearchState};
@@ -64,6 +73,96 @@ const MAX_SEARCH_WHILE_TYPING: Option<usize> = Some(1000);
 /// Maximum number of search terms stored in the history.
 const MAX_SEARCH_HISTORY_SIZE: usize = 255;
 
+/// Bound untrusted terminal-search input before compiling a regex.
+const MAX_SEARCH_QUERY_BYTES: usize = 4 * 1024;
+
+fn visible_search_route_order(
+    mut routes: Vec<usize>,
+    current_route: usize,
+) -> Vec<usize> {
+    if let Some(index) = routes.iter().position(|route| *route == current_route) {
+        routes.rotate_left(index);
+    }
+    routes
+}
+
+fn search_match_wrapped(
+    search_match: &rio_backend::crosswords::search::Match,
+    origin: Pos,
+    direction: Direction,
+) -> bool {
+    match direction {
+        Direction::Right => *search_match.start() < origin,
+        Direction::Left => *search_match.end() > origin,
+    }
+}
+
+fn search_query_accepts_char(current_bytes: usize, character: char) -> bool {
+    current_bytes.saturating_add(character.len_utf8()) <= MAX_SEARCH_QUERY_BYTES
+}
+
+const MAX_VISIBLE_SEARCH_RESULT_COUNT: usize = 999;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ActiveSearchScopeTransition {
+    Refocused,
+    Switched(SearchScope),
+}
+
+fn transition_active_search_scope(
+    state: &mut SearchState,
+    current_scope: SearchScope,
+    requested_scope: SearchScope,
+) -> ActiveSearchScopeTransition {
+    if current_scope == requested_scope {
+        return ActiveSearchScopeTransition::Refocused;
+    }
+
+    state.focused_match = None;
+    state.display_offset_delta = 0;
+    ActiveSearchScopeTransition::Switched(requested_scope)
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SearchControlAction {
+    FocusQuery,
+    FocusScope,
+    SelectPreviousScope,
+    SelectNextScope,
+    KeepScope,
+}
+
+fn search_scope_key_action(
+    focus: SearchFocusTarget,
+    key: &Key,
+    mods: ModifiersState,
+) -> Option<SearchControlAction> {
+    if matches!(key, Key::Named(NamedKey::Tab))
+        && (mods.is_empty() || mods == ModifiersState::SHIFT)
+    {
+        return Some(match focus {
+            SearchFocusTarget::Query => SearchControlAction::FocusScope,
+            SearchFocusTarget::Scope => SearchControlAction::FocusQuery,
+        });
+    }
+    if focus != SearchFocusTarget::Scope || !mods.is_empty() {
+        return None;
+    }
+
+    match key {
+        Key::Named(NamedKey::ArrowLeft | NamedKey::ArrowUp) => {
+            Some(SearchControlAction::SelectPreviousScope)
+        }
+        Key::Named(NamedKey::ArrowRight | NamedKey::ArrowDown) => {
+            Some(SearchControlAction::SelectNextScope)
+        }
+        Key::Named(NamedKey::Space | NamedKey::Enter) => {
+            Some(SearchControlAction::KeepScope)
+        }
+        _ => None,
+    }
+}
+
 fn adjacent_preview_index(len: usize, current: Option<usize>, direction: isize) -> usize {
     debug_assert!(len > 0);
     match (current, direction.is_negative()) {
@@ -80,6 +179,19 @@ enum SecondaryClickClipboardAction {
     PasteClipboard,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PointerPaneFocusReason {
+    Click,
+    Wheel,
+}
+
+impl PointerPaneFocusReason {
+    #[inline]
+    fn clears_target_selection(self) -> bool {
+        matches!(self, Self::Click)
+    }
+}
+
 fn secondary_click_clipboard_action(
     has_selection: bool,
 ) -> SecondaryClickClipboardAction {
@@ -87,6 +199,55 @@ fn secondary_click_clipboard_action(
         SecondaryClickClipboardAction::CopySelectionAndClear
     } else {
         SecondaryClickClipboardAction::PasteClipboard
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompatibilityInspectorKeyAction {
+    Consume,
+    Close,
+    CancelClear,
+    RestoreNewest,
+    RequestClear,
+    ConfirmClear,
+}
+
+fn compatibility_inspector_key_action(
+    key: &Key,
+    state: ElementState,
+    modifiers: ModifiersState,
+    clear_confirmation: bool,
+) -> CompatibilityInspectorKeyAction {
+    if state != ElementState::Pressed {
+        return CompatibilityInspectorKeyAction::Consume;
+    }
+    match key {
+        Key::Named(NamedKey::Escape) if clear_confirmation => {
+            CompatibilityInspectorKeyAction::CancelClear
+        }
+        Key::Named(NamedKey::Escape) => CompatibilityInspectorKeyAction::Close,
+        Key::Named(NamedKey::Enter) if clear_confirmation => {
+            CompatibilityInspectorKeyAction::ConfirmClear
+        }
+        Key::Character(character)
+            if !modifiers.intersects(
+                ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER,
+            ) && character.eq_ignore_ascii_case("r") =>
+        {
+            CompatibilityInspectorKeyAction::RestoreNewest
+        }
+        Key::Character(character)
+            if !modifiers.intersects(
+                ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER,
+            ) && character.eq_ignore_ascii_case("c") =>
+        {
+            if clear_confirmation {
+                CompatibilityInspectorKeyAction::ConfirmClear
+            } else {
+                CompatibilityInspectorKeyAction::RequestClear
+            }
+        }
+        _ => CompatibilityInspectorKeyAction::Consume,
     }
 }
 
@@ -260,6 +421,71 @@ fn publish_native_resize_snapshot(
         .map_err(|error| error.error)
 }
 
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+const MAX_NATIVE_SNAPSHOT_PATHS: usize = 32;
+
+/// The native driver may request snapshots from more than one window. Keep the
+/// last committed generation per bounded target so a slower old render can
+/// never replace a newer complete snapshot.
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+#[derive(Default)]
+struct NativeSnapshotPublicationLedger {
+    latest_by_path: std::collections::BTreeMap<std::path::PathBuf, u64>,
+}
+
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
+impl NativeSnapshotPublicationLedger {
+    fn publish_with(
+        &mut self,
+        path: &std::path::Path,
+        generation: u64,
+        publish: impl FnOnce() -> std::io::Result<()>,
+    ) -> std::io::Result<bool> {
+        if generation == 0 {
+            return Err(std::io::Error::new(
+                std::io::ErrorKind::InvalidInput,
+                "native snapshot generation must be positive",
+            ));
+        }
+        if self
+            .latest_by_path
+            .get(path)
+            .is_some_and(|latest| generation <= *latest)
+        {
+            return Ok(false);
+        }
+        if !self.latest_by_path.contains_key(path)
+            && self.latest_by_path.len() >= MAX_NATIVE_SNAPSHOT_PATHS
+        {
+            return Err(std::io::Error::other(
+                "native snapshot target limit reached",
+            ));
+        }
+
+        publish()?;
+        self.latest_by_path.insert(path.to_path_buf(), generation);
+        Ok(true)
+    }
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+fn publish_native_resize_snapshot_generation(
+    path: &std::path::Path,
+    payload: &[u8],
+    generation: u64,
+) -> std::io::Result<bool> {
+    static LEDGER: std::sync::OnceLock<
+        std::sync::Mutex<NativeSnapshotPublicationLedger>,
+    > = std::sync::OnceLock::new();
+    let mut ledger = LEDGER
+        .get_or_init(|| std::sync::Mutex::new(NativeSnapshotPublicationLedger::default()))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    ledger.publish_with(path, generation, || {
+        publish_native_resize_snapshot(path, payload)
+    })
+}
+
 #[cfg(feature = "native-gui-test-hooks")]
 fn native_test_control_checkpoint() -> String {
     std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL")
@@ -300,6 +526,26 @@ struct NativeWindowSnapshot {
     active_tab_profile: Option<String>,
     palette_enabled: bool,
     confirm_quit_active: bool,
+    compatibility_inspector_active: bool,
+    compatibility_inspector_accessibility_summary: Option<String>,
+    compatibility_inspector_clear_confirmation: bool,
+    search_active: bool,
+    search_scope: Option<&'static str>,
+    search_focus: Option<&'static str>,
+    search_query_bytes: Option<usize>,
+    search_result_status: Option<String>,
+    search_live_announcement: Option<String>,
+    search_announcement_generation: Option<u64>,
+    search_surface: Option<[f32; 4]>,
+    command_result_surface: Option<[f32; 4]>,
+    command_result_divider: Option<[f32; 4]>,
+    command_result_opacity: Option<[f32; 3]>,
+    command_result_generation: Option<u64>,
+    command_result_key: Option<u64>,
+    command_result_exit_code: Option<i32>,
+    command_result_pulse_duration_ms: Option<u64>,
+    command_result_pulse_hold_fraction: Option<f32>,
+    command_result_pulse_generation: u64,
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
@@ -346,6 +592,41 @@ fn write_native_resize_snapshot(
         visible_text.push_str(&row_text);
         visible_row_texts.push(row_text);
     }
+    let semantic_rows = content
+        .visible_rows
+        .iter()
+        .enumerate()
+        .filter(|(_, row)| {
+            row.semantic_prompt != SemanticPrompt::None
+                || row.semantic_command_result.is_some()
+                || row.semantic_command_boundary.is_some()
+        })
+        .map(|(index, row)| {
+            let kind = match row.semantic_prompt {
+                SemanticPrompt::None => "none",
+                SemanticPrompt::Prompt => "prompt",
+                SemanticPrompt::PromptContinuation => "continuation",
+            };
+            serde_json::json!({
+                "row": index,
+                "kind": kind,
+                "generation": row.semantic_prompt_id,
+                "result_exit_code": row
+                    .semantic_command_result
+                    .and_then(|result| result.exit_code),
+                "result_elapsed_ms": row
+                    .semantic_command_result
+                    .and_then(|result| result.elapsed_ms),
+                "has_result": row.semantic_command_result.is_some(),
+                "boundary_source_generation": row
+                    .semantic_command_boundary
+                    .and_then(|boundary| boundary.source_prompt_id),
+                "boundary_result_id": row
+                    .semantic_command_boundary
+                    .map(|boundary| boundary.result.id),
+            })
+        })
+        .collect::<Vec<_>>();
 
     let current_directory = content
         .current_directory
@@ -379,7 +660,7 @@ fn write_native_resize_snapshot(
         })?;
         Some(prompt_start.saturating_sub(previous_output + 1))
     });
-    let snapshot = serde_json::json!({
+    let mut snapshot = serde_json::json!({
         "sequence": sequence,
         "columns": content.columns,
         "rows": content.screen_lines,
@@ -431,11 +712,54 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["compatibility_inspector_active"] =
+        serde_json::json!(window.compatibility_inspector_active);
+    snapshot["compatibility_inspector_accessibility_summary"] =
+        serde_json::json!(window.compatibility_inspector_accessibility_summary);
+    snapshot["compatibility_inspector_clear_confirmation"] =
+        serde_json::json!(window.compatibility_inspector_clear_confirmation);
+    snapshot["search_active"] = serde_json::json!(window.search_active);
+    snapshot["search_scope"] = serde_json::json!(window.search_scope);
+    snapshot["search_focus"] = serde_json::json!(window.search_focus);
+    snapshot["search_query_bytes"] = serde_json::json!(window.search_query_bytes);
+    snapshot["search_result_status"] = serde_json::json!(window.search_result_status);
+    snapshot["search_live_announcement"] =
+        serde_json::json!(window.search_live_announcement);
+    snapshot["search_announcement_generation"] =
+        serde_json::json!(window.search_announcement_generation);
+    snapshot["search_surface"] = serde_json::json!(window.search_surface);
+    snapshot["command_result_surface"] = serde_json::json!(window.command_result_surface);
+    snapshot["command_result_divider"] = serde_json::json!(window.command_result_divider);
+    snapshot["command_result_opacity"] = serde_json::json!(window.command_result_opacity);
+    snapshot["command_result_generation"] =
+        serde_json::json!(window.command_result_generation);
+    snapshot["command_result_key"] = serde_json::json!(window.command_result_key);
+    snapshot["command_result_exit_code"] =
+        serde_json::json!(window.command_result_exit_code);
+    snapshot["command_result_pulse_duration_ms"] =
+        serde_json::json!(window.command_result_pulse_duration_ms);
+    snapshot["command_result_pulse_hold_fraction"] =
+        serde_json::json!(window.command_result_pulse_hold_fraction);
+    snapshot["command_result_pulse_generation"] =
+        serde_json::json!(window.command_result_pulse_generation);
+    #[cfg(feature = "visual-test-hooks")]
+    {
+        snapshot["visual_test_fixture"] =
+            serde_json::json!(crate::automexia::visual_test_hooks::fixture_active()
+                .then_some(crate::automexia::visual_test_hooks::FIXTURE_ID));
+        snapshot["visual_test_clock"] =
+            serde_json::json!(crate::automexia::visual_test_hooks::frozen_clock_label());
+        snapshot["visual_test_animations_enabled"] =
+            serde_json::json!(crate::automexia::visual_test_hooks::animations_enabled());
+    }
 
     let payload = snapshot.to_string();
-    if let Err(error) =
-        publish_native_resize_snapshot(std::path::Path::new(&path), payload.as_bytes())
-    {
+    if let Err(error) = publish_native_resize_snapshot_generation(
+        std::path::Path::new(&path),
+        payload.as_bytes(),
+        sequence,
+    ) {
         tracing::warn!("could not write native resize snapshot: {error}");
     }
 }
@@ -483,8 +807,21 @@ impl ConsumedWin32KeyReleases {
     }
 }
 
+pub(crate) struct ScreenServices {
+    pub(crate) action_surface: action_surface::Controller,
+    pub(crate) suggestions: crate::automexia::suggestions::SuggestionService,
+    pub(crate) connection_hub: crate::automexia::connections::ConnectionHubController,
+    pub(crate) external_tool_runner:
+        crate::context::external_tool_runner::ExternalToolRunner,
+}
+
 pub struct Screen<'screen> {
     bindings: crate::bindings::KeyBindings,
+    binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+    binding_states:
+        rustc_hash::FxHashMap<usize, automexia_keybindings::SurfaceBindingState>,
+    last_compatibility_bindings:
+        rustc_hash::FxHashMap<usize, (String, automexia_keybindings::BindingOrigin)>,
     mouse_bindings: Vec<MouseBinding>,
     pub modifiers: Modifiers,
     #[cfg(windows)]
@@ -492,8 +829,16 @@ pub struct Screen<'screen> {
     pub mouse: Mouse,
     pub touchpurpose: TouchPurpose,
     pub search_state: SearchState,
+    search_scope: SearchScope,
+    search_results: SearchResultSummary,
     pub hint_state: HintState,
     image_preview: crate::image_preview::ImagePreview,
+    action_surface: action_surface::Controller,
+    suggestions: crate::automexia::suggestions::SuggestionUiController,
+    connection_hub: crate::automexia::connections::ConnectionHubController,
+    external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
+    connection_hub_review_request: Option<u64>,
+    export_manager: crate::automexia::export::ExportManager,
     pub renderer: Renderer,
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
@@ -548,11 +893,18 @@ impl Screen<'_> {
         event_proxy: EventProxy,
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         open_url: Option<String>,
+        services: ScreenServices,
     ) -> Result<Screen<'screen>, Box<dyn Error>> {
         let size = window_properties.size;
         let scale = window_properties.scale;
         let raw_window_handle = window_properties.raw_window_handle;
         let raw_display_handle = window_properties.raw_display_handle;
+        let ScreenServices {
+            action_surface,
+            suggestions,
+            connection_hub,
+            external_tool_runner,
+        } = services;
         let window_id = window_properties.window_id;
 
         let padding_y_top = padding_top_from_config(
@@ -632,6 +984,17 @@ impl Screen<'_> {
         let mut renderer = Renderer::new(config);
 
         let bindings = crate::bindings::default_key_bindings(config);
+        let binding_registry = crate::bindings::registry::build(config)?;
+        let legacy_unbinds = binding_registry
+            .as_ref()
+            .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
+        renderer.command_palette.set_binding_registry(
+            binding_registry
+                .as_ref()
+                .map(|snapshot| snapshot.registry.as_ref()),
+            config.keyboard.binding_profile,
+            &legacy_unbinds,
+        );
 
         let is_native = config.navigation.is_native();
 
@@ -693,12 +1056,7 @@ impl Screen<'_> {
             margin,
         );
 
-        let cursor = Cursor {
-            content: config.cursor.shape.into(),
-            content_ref: config.cursor.shape.into(),
-            state: CursorState::new(config.cursor.shape.into()),
-            is_ime_enabled: false,
-        };
+        let cursor = Cursor::from_cursor_config(&config.cursor);
 
         let context_manager = context::ContextManager::start(
             // config.cursor.blinking
@@ -729,8 +1087,18 @@ impl Screen<'_> {
 
         Ok(Screen {
             search_state: SearchState::default(),
+            search_scope: SearchScope::Pane { route_id: 0 },
+            search_results: SearchResultSummary::EmptyQuery,
             hint_state: HintState::new(config.hints.alphabet.clone()),
             image_preview: crate::image_preview::ImagePreview::default(),
+            action_surface,
+            suggestions: crate::automexia::suggestions::SuggestionUiController::new(
+                suggestions,
+            ),
+            connection_hub,
+            external_tool_runner,
+            connection_hub_review_request: None,
+            export_manager: crate::automexia::export::ExportManager::new(),
             hints_config: config
                 .hints
                 .rules
@@ -747,6 +1115,9 @@ impl Screen<'_> {
             touchpurpose: TouchPurpose::default(),
             renderer,
             bindings,
+            binding_registry,
+            binding_states: rustc_hash::FxHashMap::default(),
+            last_compatibility_bindings: rustc_hash::FxHashMap::default(),
             last_ime_cursor_pos: None,
             resize_state: None,
             #[cfg(target_os = "macos")]
@@ -1115,22 +1486,40 @@ impl Screen<'_> {
 
     #[inline]
     pub fn reset_mouse(&mut self) {
-        self.mouse.accumulated_scroll = crate::mouse::AccumulatedScroll::default();
+        self.mouse.reset_accumulated_scroll();
     }
 
     #[inline]
     pub fn select_current_based_on_mouse(&mut self) -> bool {
+        self.select_current_based_on_pointer(PointerPaneFocusReason::Click)
+    }
+
+    #[inline]
+    pub fn select_current_based_on_wheel(&mut self) -> bool {
+        self.select_current_based_on_pointer(PointerPaneFocusReason::Wheel)
+    }
+
+    #[inline]
+    fn select_current_based_on_pointer(
+        &mut self,
+        reason: PointerPaneFocusReason,
+    ) -> bool {
         if self
             .context_manager
             .current_grid_mut()
-            .select_current_based_on_mouse(&self.mouse)
+            .select_current_based_on_pointer(&self.mouse)
         {
             self.context_manager.select_route_from_current_grid();
+            self.dismiss_suggestions(
+                crate::automexia::suggestions::SuggestionInvalidation::PaneChanged,
+            );
             self.resize_top_or_bottom_line();
-            // The focusing click never reaches on_left_click, so a
-            // selection left behind in the target panel would
-            // drag-extend from its stale anchor; drop it on switch.
-            self.clear_selection();
+            self.reset_mouse();
+            if reason.clears_target_selection() {
+                // A focusing click never reaches on_left_click, so a stale
+                // target selection would otherwise drag-extend.
+                self.clear_selection();
+            }
             return true;
         }
         false
@@ -1166,6 +1555,8 @@ impl Screen<'_> {
         config: &rio_backend::config::Config,
         font_library: &rio_backend::sugarloaf::font::FontLibrary,
         should_update_font_library: bool,
+        binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+        should_update_bindings: bool,
     ) {
         let window_size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor();
@@ -1195,22 +1586,41 @@ impl Screen<'_> {
         self.sugarloaf
             .update_filters(config.renderer.filters.as_slice());
 
-        // Rebuild bindings so `[bindings]` edits live-reload like the
-        // rest of the config instead of waiting for a new window.
-        self.bindings = crate::bindings::default_key_bindings(config);
-
-        // Preserve existing Island (tab state) and update its colors
-        let old_island = self.renderer.island.take();
-        let was_focused = self.renderer.is_window_focused;
-        self.renderer = Renderer::new(config);
-        self.renderer.is_window_focused = was_focused;
-        if let Some(mut island) = old_island {
-            let automexia_colors =
-                crate::automexia::theme::effective_colors(config.colors);
-            island.update_colors(automexia_colors.tabs, automexia_colors.tabs_active);
-            island.max_tab_width = config.navigation.max_tab_width;
-            self.renderer.island = Some(island);
+        if should_update_bindings {
+            // Prefix state belongs to the registry generation. Flush retained
+            // bytes to each original PTY before the immutable snapshot swap.
+            let mut states = std::mem::take(&mut self.binding_states);
+            for (route_id, state) in &mut states {
+                let bytes = state
+                    .cancel(automexia_keybindings::CancellationReason::RegistryReplaced);
+                if !bytes.is_empty() {
+                    if let Some(context) = self.context_manager.get_by_route_id(*route_id)
+                    {
+                        context.messenger.send_write(bytes);
+                    }
+                }
+            }
+            self.binding_registry = binding_registry;
+            self.last_compatibility_bindings.clear();
+            self.bindings = crate::bindings::default_key_bindings(config);
+            let legacy_unbinds = self
+                .binding_registry
+                .as_ref()
+                .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
+            self.renderer.command_palette.set_binding_registry(
+                self.binding_registry
+                    .as_ref()
+                    .map(|snapshot| snapshot.registry.as_ref()),
+                config.keyboard.binding_profile,
+                &legacy_unbinds,
+            );
         }
+
+        // Apply configuration in-place. Replacing the renderer here used to
+        // discard transient UI state (command palette, search, diagnostics,
+        // quit confirmation, scrollbar animation, VI mode, etc.) whenever the
+        // filesystem watcher reloaded configuration.
+        self.renderer.update_config(config);
 
         let scale = self.sugarloaf.scale_factor();
         for context_grid in self.context_manager.contexts_mut() {
@@ -1241,8 +1651,9 @@ impl Screen<'_> {
             for current_context in context_grid.contexts_mut().values_mut() {
                 let current_context = current_context.context_mut();
                 let mut terminal = current_context.terminal.lock();
-                current_context.renderable_content =
-                    RenderableContent::from_cursor_config(&config.cursor);
+                current_context
+                    .renderable_content
+                    .update_cursor_config(&config.cursor);
                 let shape = config.cursor.shape;
                 terminal.cursor_shape = shape;
                 terminal.default_cursor_shape = shape;
@@ -1453,13 +1864,22 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        if self.process_compatibility_inspector_key(key) {
+            return;
+        }
         if self.handle_image_preview_key(key) {
+            return;
+        }
+        if self.process_suggestion_host_key(key) {
             return;
         }
         if key.state == ElementState::Pressed {
             let _ = self.dismiss_image_preview();
         }
         if self.context_manager.current().ime.preedit().is_some() {
+            self.dismiss_suggestions(
+                crate::automexia::suggestions::SuggestionInvalidation::ImeStarted,
+            );
             return;
         }
 
@@ -1577,6 +1997,19 @@ impl Screen<'_> {
             return;
         }
 
+        if self.handle_search_control_key(key, mods) {
+            return;
+        }
+
+        if self.process_compatibility_key_binding(key, mode, mods, clipboard) {
+            #[cfg(windows)]
+            if mode.contains(Mode::WIN32_INPUT) {
+                self.consumed_win32_key_releases
+                    .record_press(key.physical_key);
+            }
+            return;
+        }
+
         let ignore_chars = self.process_key_bindings(key, &mode, mods, clipboard);
         if ignore_chars {
             #[cfg(windows)]
@@ -1624,23 +2057,37 @@ impl Screen<'_> {
             return;
         }
 
-        // Mask `Alt` modifier from input when we won't send esc.
+        let bytes = self.encode_pressed_key_event(key, text, mode, mods);
+
+        if !bytes.is_empty() {
+            self.scroll_bottom_when_cursor_not_visible();
+            self.clear_selection();
+
+            self.ctx_mut().current_mut().messenger.send_write(bytes);
+        }
+    }
+
+    /// Encode one pressed key exactly as the current PTY would receive it.
+    /// Compatibility sequences retain this representation and never replay a
+    /// normalized or reconstructed substitute.
+    pub(super) fn encode_pressed_key_event(
+        &self,
+        key: &rio_window::event::KeyEvent,
+        text: &str,
+        mode: Mode,
+        mods: ModifiersState,
+    ) -> Vec<u8> {
+        #[cfg(windows)]
+        if mode.contains(Mode::WIN32_INPUT) {
+            return build_win32_key_sequence(key).unwrap_or_default();
+        }
+
         let mods = if self.alt_send_esc(key, text) {
             mods
         } else {
             mods & !ModifiersState::ALT
         };
-
         let build_key_sequence = Self::should_build_sequence(key, text, mode, mods);
-
-        // Legacy ctrl encoding runs before trusting the platform text:
-        // the OS is inconsistent about synthesizing C0 characters for
-        // combos like ctrl+6 or ctrl+/ (macOS reports the plain char,
-        // Windows reports nothing), so the byte is computed from the
-        // kitty C0 table directly. Gated on the exact flag set that
-        // makes `build_key_sequence` produce CSI u (`kitty_seq`), so
-        // kitty-protocol encoding is untouched in every mode where it
-        // applies.
         let kitty_seq = mode.intersects(
             Mode::REPORT_ALL_KEYS_AS_ESC
                 | Mode::DISAMBIGUATE_ESC_CODES
@@ -1652,7 +2099,7 @@ impl Screen<'_> {
             crate::bindings::ctrl_seq(&key.logical_key, text, mods)
         };
 
-        let bytes = if let Some(c0) = ctrl_c0 {
+        if let Some(c0) = ctrl_c0 {
             if mods.alt_key() {
                 vec![b'\x1b', c0]
             } else {
@@ -1665,16 +2112,8 @@ impl Screen<'_> {
             if mods.alt_key() {
                 bytes.push(b'\x1b');
             }
-
             bytes.extend_from_slice(text.as_bytes());
             bytes
-        };
-
-        if !bytes.is_empty() {
-            self.scroll_bottom_when_cursor_not_visible();
-            self.clear_selection();
-
-            self.ctx_mut().current_mut().messenger.send_write(bytes);
         }
     }
 
@@ -1849,6 +2288,16 @@ impl Screen<'_> {
                         self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
+                    Act::SearchGlobalForward => {
+                        self.start_workspace_search(Direction::Right);
+                        self.resize_top_or_bottom_line();
+                        self.mark_dirty();
+                    }
+                    Act::SearchGlobalBackward => {
+                        self.start_workspace_search(Direction::Left);
+                        self.resize_top_or_bottom_line();
+                        self.mark_dirty();
+                    }
                     Act::Search(SearchAction::SearchConfirm) => {
                         self.confirm_search(clipboard);
                         self.resize_top_or_bottom_line();
@@ -1861,8 +2310,9 @@ impl Screen<'_> {
                     }
                     Act::Search(SearchAction::SearchClear) => {
                         let direction = self.search_state.direction;
+                        let scope = self.search_scope;
                         self.cancel_search(clipboard);
-                        self.start_search(direction);
+                        self.start_search_in_scope(direction, scope);
                         self.resize_top_or_bottom_line();
                         self.mark_dirty();
                     }
@@ -2229,6 +2679,10 @@ impl Screen<'_> {
                             self.mark_dirty();
                         }
                     }
+                    Act::OpenConnectionHub => self.open_connection_hub(),
+                    Act::OpenActionCenter => self.open_action_center(),
+                    Act::OpenExtensionMarketplace => self.open_extension_marketplace(),
+                    Act::OpenFontBrowser => self.open_font_browser(),
                     Act::Minimize => {
                         self.context_manager.minimize();
                     }
@@ -2419,6 +2873,7 @@ impl Screen<'_> {
     }
 
     pub fn split_right_with_config(&mut self, config: rio_backend::config::Config) {
+        let previous_len = self.context_manager.current_grid_len();
         // Allocate panel id; position lands on `ContextDimension`
         // through the Taffy layout pass (`apply_taffy_layout`).
         let _ = config.margin.left;
@@ -2429,24 +2884,35 @@ impl Screen<'_> {
             config,
             &mut self.sugarloaf,
         );
+        if self.context_manager.current_grid_len() > previous_len {
+            self.context_manager.invalidate_topology_redo();
+        }
 
         self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
     pub fn split_right(&mut self) {
+        let previous_len = self.context_manager.current_grid_len();
         let rich_text_id = next_rich_text_id();
         self.context_manager
             .split(rich_text_id, false, &mut self.sugarloaf);
+        if self.context_manager.current_grid_len() > previous_len {
+            self.context_manager.invalidate_topology_redo();
+        }
 
         self.resize_top_or_bottom_line();
         self.mark_dirty();
     }
 
     pub fn split_down(&mut self) {
+        let previous_len = self.context_manager.current_grid_len();
         let rich_text_id = next_rich_text_id();
         self.context_manager
             .split(rich_text_id, true, &mut self.sugarloaf);
+        if self.context_manager.current_grid_len() > previous_len {
+            self.context_manager.invalidate_topology_redo();
+        }
 
         self.resize_top_or_bottom_line();
         self.mark_dirty();
@@ -2458,6 +2924,7 @@ impl Screen<'_> {
             .context_manager
             .clone_split(rich_text_id, false, &mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.resize_top_or_bottom_line();
             self.mark_dirty();
         }
@@ -2469,6 +2936,7 @@ impl Screen<'_> {
             .context_manager
             .clone_split(rich_text_id, true, &mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.resize_top_or_bottom_line();
             self.mark_dirty();
         }
@@ -2547,6 +3015,7 @@ impl Screen<'_> {
         if self.context_manager.len() == previous_len {
             return false;
         }
+        self.context_manager.invalidate_topology_redo();
         let new_index = self.context_manager.current_index();
         self.context_manager.switch_context_visibility(
             &mut self.sugarloaf,
@@ -2578,6 +3047,7 @@ impl Screen<'_> {
             .context_manager
             .clone_local_tab(rich_text_id, &mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
@@ -2590,12 +3060,14 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
             self.mark_dirty();
         } else if self.context_manager.current_grid_len() > 1 {
             self.clear_selection();
+            self.context_manager.invalidate_topology_redo();
             self.context_manager
                 .remove_current_grid(&mut self.sugarloaf);
             self.resize_top_or_bottom_line();
@@ -2610,6 +3082,7 @@ impl Screen<'_> {
             .context_manager
             .close_current_local_tab(&mut self.sugarloaf)
         {
+            self.context_manager.invalidate_topology_redo();
             self.relayout_current_grid();
             self.clear_selection();
             self.cancel_search(clipboard);
@@ -2760,7 +3233,10 @@ impl Screen<'_> {
         // around.
         let focused_match = match &self.search_state.focused_match {
             Some(focused_match) => focused_match,
-            None => return,
+            None => {
+                self.search_results = self.recalculate_visible_search_results();
+                return;
+            }
         };
 
         // Set new origin to the left/right of the match, depending on search direction.
@@ -2781,10 +3257,11 @@ impl Screen<'_> {
         terminal.scroll_display(Scroll::Delta(-self.search_state.display_offset_delta));
         drop(terminal);
         self.search_state.origin = new_origin;
+        self.search_results = self.recalculate_visible_search_results();
     }
 
     /// Whether we should send `ESC` due to `Alt` being pressed.
-    fn alt_send_esc(&mut self, key: &rio_window::event::KeyEvent, text: &str) -> bool {
+    fn alt_send_esc(&self, key: &rio_window::event::KeyEvent, text: &str) -> bool {
         #[cfg(not(target_os = "macos"))]
         let alt_send_esc = self.modifiers.state().alt_key();
 
@@ -3480,14 +3957,29 @@ impl Screen<'_> {
             scale_factor,
         ) {
             Ok(Some(index)) => {
-                // Clicked a result row — select and execute
-                if let Some(action) = {
-                    // Temporarily set selected index to the clicked row
-                    self.renderer.command_palette.selected_index = index;
+                self.renderer.command_palette.selected_index = index;
+                if self.renderer.command_palette.is_action_placeholder() {
+                    let value = self.renderer.command_palette.query.clone();
+                    self.submit_action_placeholder(value);
+                } else if let Some(action_id) =
+                    self.renderer.command_palette.get_selected_action_item_id()
+                {
+                    self.begin_action_review(&action_id);
+                } else if let Some(choice) =
+                    self.renderer.command_palette.get_review_choice()
+                {
+                    self.apply_reviewed_action(choice, clipboard);
+                } else if let Some(action) =
                     self.renderer.command_palette.get_selected_action()
-                } {
-                    self.renderer.command_palette.set_enabled(false);
-                    self.execute_palette_action(action, clipboard);
+                {
+                    if action
+                        == crate::renderer::command_palette::PaletteAction::OpenActions
+                    {
+                        self.open_action_center();
+                    } else {
+                        self.renderer.command_palette.set_enabled(false);
+                        self.execute_palette_action(action, clipboard);
+                    }
                 }
                 self.mark_dirty();
                 true
@@ -3512,19 +4004,19 @@ impl Screen<'_> {
         }
 
         let scale_factor = self.sugarloaf.scale_factor();
-        let window_size = self.sugarloaf.window_size();
-        let window_width = window_size.width;
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
-        match self
-            .renderer
-            .search
-            .hit_test(mouse_x, mouse_y, window_width, scale_factor)
-        {
+        match self.renderer.search.hit_test(mouse_x, mouse_y) {
             Ok(Some(action)) => {
                 use crate::renderer::search::SearchOverlayAction;
                 match action {
+                    SearchOverlayAction::SelectScope(kind) => {
+                        self.switch_active_search_scope(
+                            self.search_scope_for_kind(kind),
+                            SearchFocusTarget::Query,
+                        );
+                    }
                     SearchOverlayAction::Next => {
                         self.advance_search_origin(self.search_state.direction);
                     }
@@ -3566,9 +4058,7 @@ impl Screen<'_> {
         match self.renderer.assistant.hit_test(
             mouse_x,
             mouse_y,
-            window_width,
-            window_size.height,
-            scale_factor,
+            (window_width, window_size.height, scale_factor),
         ) {
             Ok(Some(action)) => {
                 use crate::renderer::assistant::AssistantOverlayAction;
@@ -3596,7 +4086,59 @@ impl Screen<'_> {
         }
     }
 
-    fn open_docs_url() {
+    pub fn handle_compatibility_inspector_click(&mut self) -> bool {
+        if !self.renderer.compatibility_inspector.is_active() {
+            return false;
+        }
+
+        let scale = self.sugarloaf.scale_factor();
+        let size = self.sugarloaf.window_size();
+        let dimensions = (size.width, size.height, scale);
+        let mouse_x = self.mouse.x as f32 / scale;
+        let mouse_y = self.mouse.y as f32 / scale;
+        match self
+            .renderer
+            .compatibility_inspector
+            .hit_test(mouse_x, mouse_y, dimensions)
+        {
+            Ok(Some(action)) => {
+                use crate::renderer::compatibility_inspector::CompatibilityInspectorAction;
+                match action {
+                    CompatibilityInspectorAction::Close => {
+                        self.renderer.compatibility_inspector.set_visibility("hide");
+                    }
+                    CompatibilityInspectorAction::RestoreNewest => {
+                        if self.context_manager.undo_topology(&mut self.sugarloaf) {
+                            self.resize_top_or_bottom_line();
+                        }
+                        self.publish_compatibility_inspector();
+                    }
+                    CompatibilityInspectorAction::ClearParked => {
+                        self.renderer
+                            .compatibility_inspector
+                            .request_clear_confirmation();
+                    }
+                    CompatibilityInspectorAction::ConfirmClearParked => {
+                        self.context_manager.clear_parked_topologies();
+                        self.renderer
+                            .compatibility_inspector
+                            .cancel_clear_confirmation();
+                        self.publish_compatibility_inspector();
+                    }
+                }
+                self.mark_dirty();
+                true
+            }
+            Ok(None) => true,
+            Err(()) => {
+                self.renderer.compatibility_inspector.set_visibility("hide");
+                self.mark_dirty();
+                true
+            }
+        }
+    }
+
+    pub(crate) fn open_docs_url() {
         let url = "https://github.com/AmjedAllaya/automexia-terminal/tree/main/docs";
         #[cfg(target_os = "macos")]
         {
@@ -3801,6 +4343,21 @@ impl Screen<'_> {
         self.last_chrome_press.take()
     }
 
+    /// Update search hover using physical pointer coordinates. The first return
+    /// value means the pointer is over the complete search surface and all
+    /// underlying pane/chrome handling must stop; the second reports repaint.
+    pub fn update_search_hover(&mut self, mouse_x: f64, mouse_y: f64) -> (bool, bool) {
+        let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
+        let logical_x = mouse_x as f32 / scale;
+        let logical_y = mouse_y as f32 / scale;
+        let changed = self.renderer.search.hover(logical_x, logical_y);
+        let over_surface = self
+            .renderer
+            .search
+            .pointer_is_over_surface(logical_x, logical_y);
+        (over_surface, changed)
+    }
+
     fn is_close_press_tail(&self, x_unscaled: f32) -> bool {
         const CLOSE_TAIL_SLOP: f32 = 16.0;
         self.last_close_press.is_some_and(|(at, press_x)| {
@@ -3960,6 +4517,32 @@ impl Screen<'_> {
         true
     }
 
+    pub fn handle_tab_appearance_picker_click(&mut self) -> bool {
+        if !self.renderer.navigation.is_enabled() {
+            return false;
+        }
+        let scale = self.sugarloaf.scale_factor();
+        let size = self.sugarloaf.window_size();
+        let num_tabs = self.context_manager.len();
+        let Some(island) = self.renderer.island.as_mut() else {
+            return false;
+        };
+        if !island.is_color_picker_open() {
+            return false;
+        }
+        let consumed = island.handle_color_picker_click(
+            self.mouse.x as f32,
+            self.mouse.y as f32,
+            (size.width, size.height, scale),
+            num_tabs,
+            &mut self.context_manager,
+        );
+        if consumed {
+            self.mark_dirty();
+        }
+        consumed
+    }
+
     pub fn handle_island_click(
         &mut self,
         window: &rio_window::window::Window,
@@ -4037,11 +4620,13 @@ impl Screen<'_> {
                     ChromeAction::OpenPalette => {
                         self.renderer.command_palette.set_enabled(true)
                     }
-                    ChromeAction::Minimize => window.set_minimized(true),
-                    ChromeAction::Maximize => {
-                        window.set_maximized(!window.is_maximized())
+                    ChromeAction::Minimize
+                    | ChromeAction::Maximize
+                    | ChromeAction::CloseWindow => {
+                        if let Some(island) = self.renderer.island.as_mut() {
+                            island.set_chrome_pressed(Some(action));
+                        }
                     }
-                    ChromeAction::CloseWindow => self.context_manager.close_window(),
                 }
                 self.mark_dirty();
                 return true;
@@ -4223,6 +4808,47 @@ impl Screen<'_> {
         true
     }
 
+    pub fn handle_window_control_release(
+        &mut self,
+        window: &rio_window::window::Window,
+    ) -> bool {
+        let Some(pressed) = self
+            .renderer
+            .island
+            .as_mut()
+            .and_then(|island| island.take_chrome_pressed())
+        else {
+            return false;
+        };
+
+        let scale = self.sugarloaf.scale_factor();
+        let size = self.sugarloaf.window_size();
+        let num_tabs = self.context_manager.len();
+        let released_over = self.renderer.island.as_ref().and_then(|island| {
+            island.chrome_action_at(
+                size.width,
+                size.height,
+                scale,
+                num_tabs,
+                self.mouse.x as f32 / scale,
+                self.mouse.y as f32 / scale,
+            )
+        });
+
+        if island::window_control_release_matches(pressed, released_over) {
+            match pressed {
+                ChromeAction::Minimize => window.set_minimized(true),
+                ChromeAction::Maximize => {
+                    window.set_maximized(!window.is_maximized());
+                }
+                ChromeAction::CloseWindow => self.context_manager.close_window(),
+                ChromeAction::NewTab | ChromeAction::OpenPalette => {}
+            }
+        }
+        self.mark_dirty();
+        true
+    }
+
     pub fn handle_tab_drag_move(&mut self, x_unscaled: f32) {
         let num_tabs = self.context_manager.len();
 
@@ -4339,8 +4965,64 @@ impl Screen<'_> {
     }
 
     #[inline]
+    fn search_scope_for_kind(&self, kind: SearchScopeKind) -> SearchScope {
+        match kind {
+            SearchScopeKind::Pane => SearchScope::Pane {
+                route_id: self.context_manager.current_route(),
+            },
+            SearchScopeKind::Workspace => SearchScope::Workspace,
+        }
+    }
+
+    #[inline]
+    fn normalized_search_scope(&self, requested: SearchScope) -> SearchScope {
+        if self.get_mode().contains(Mode::VI) {
+            SearchScope::Pane {
+                route_id: self.context_manager.current_route(),
+            }
+        } else {
+            requested
+        }
+    }
+
+    #[inline]
     fn start_search(&mut self, direction: Direction) {
-        // Only create new history entry if the previous regex wasn't empty.
+        let scope = SearchScope::Pane {
+            route_id: self.context_manager.current_route(),
+        };
+        self.start_search_in_scope(direction, scope);
+    }
+
+    #[inline]
+    fn start_workspace_search(&mut self, direction: Direction) {
+        self.start_search_in_scope(direction, SearchScope::Workspace);
+    }
+
+    fn start_search_in_scope(&mut self, direction: Direction, requested: SearchScope) {
+        let requested = self.normalized_search_scope(requested);
+        if self.search_active() {
+            match transition_active_search_scope(
+                &mut self.search_state,
+                self.search_scope,
+                requested,
+            ) {
+                ActiveSearchScopeTransition::Refocused => {}
+                ActiveSearchScopeTransition::Switched(scope) => {
+                    self.search_scope = scope;
+                    self.search_state.direction = direction;
+                    self.reset_search_origin(direction);
+                    self.update_search();
+                }
+            }
+            self.renderer.search.refocus_query();
+            self.sync_search_overlay();
+            self.mark_dirty();
+            return;
+        }
+
+        self.search_scope = requested;
+
+        // Only create a new history entry if the previous regex wasn't empty.
         if self
             .search_state
             .history
@@ -4354,36 +5036,110 @@ impl Screen<'_> {
         self.search_state.history_index = Some(0);
         self.search_state.direction = direction;
         self.search_state.focused_match = None;
+        self.search_results = SearchResultSummary::EmptyQuery;
+        self.reset_search_origin(direction);
+        self.renderer.search.refocus_query();
+        self.sync_search_overlay();
+        self.mark_dirty();
+    }
 
-        // Store original search position as origin and reset location.
+    fn reset_search_origin(&mut self, direction: Direction) {
         if self.get_mode().contains(Mode::VI) {
             let terminal = self.context_manager.current().terminal.lock();
             self.search_state.origin = terminal.vi_mode_cursor.pos;
             self.search_state.display_offset_delta = 0;
 
-            // Adjust origin for content moving upward on search start.
             if terminal.grid.cursor.pos.row + 1 == terminal.screen_lines() {
                 self.search_state.origin.row -= 1;
             }
             drop(terminal);
-        } else {
-            let terminal = self.context_manager.current().terminal.lock();
-            let viewport_top = Line(-(terminal.grid.display_offset() as i32)) - 1;
-            let viewport_bottom = viewport_top + terminal.bottommost_line();
-            let last_column = terminal.last_column();
-            self.search_state.origin = match direction {
-                Direction::Right => Pos::new(viewport_top, Column(0)),
-                Direction::Left => Pos::new(viewport_bottom, last_column),
-            };
-            drop(terminal);
+            return;
         }
 
-        // Enable IME so we can input into the search bar with it if we were in Vi mode.
-        // self.window().set_ime_allowed(true);
+        let terminal = self.context_manager.current().terminal.lock();
+        let viewport_top = Line(-(terminal.grid.display_offset() as i32)) - 1;
+        let viewport_bottom = viewport_top + terminal.bottommost_line();
+        let last_column = terminal.last_column();
+        self.search_state.origin = match direction {
+            Direction::Right => Pos::new(viewport_top, Column(0)),
+            Direction::Left => Pos::new(viewport_bottom, last_column),
+        };
+        self.search_state.display_offset_delta = 0;
+        drop(terminal);
+    }
 
+    fn switch_active_search_scope(
+        &mut self,
+        requested: SearchScope,
+        focus: SearchFocusTarget,
+    ) {
+        let requested = self.normalized_search_scope(requested);
+        if let ActiveSearchScopeTransition::Switched(scope) =
+            transition_active_search_scope(
+                &mut self.search_state,
+                self.search_scope,
+                requested,
+            )
+        {
+            self.search_scope = scope;
+            self.reset_search_origin(self.search_state.direction);
+            self.update_search();
+        }
+
+        match focus {
+            SearchFocusTarget::Query => self.renderer.search.refocus_query(),
+            SearchFocusTarget::Scope => self.renderer.search.focus_scope(),
+        }
+        self.sync_search_overlay();
         self.mark_dirty();
     }
 
+    fn handle_search_control_key(
+        &mut self,
+        key: &rio_window::event::KeyEvent,
+        mods: ModifiersState,
+    ) -> bool {
+        if !self.search_active() {
+            return false;
+        }
+        let Some(action) = search_scope_key_action(
+            self.renderer.search.focus_target(),
+            &key.logical_key,
+            mods,
+        ) else {
+            return false;
+        };
+
+        match action {
+            SearchControlAction::FocusQuery => self.renderer.search.refocus_query(),
+            SearchControlAction::FocusScope => self.renderer.search.focus_scope(),
+            SearchControlAction::SelectPreviousScope
+            | SearchControlAction::SelectNextScope => {
+                let next = match self.search_scope.kind() {
+                    SearchScopeKind::Pane => SearchScopeKind::Workspace,
+                    SearchScopeKind::Workspace => SearchScopeKind::Pane,
+                };
+                self.renderer.search.focus_scope();
+                self.switch_active_search_scope(
+                    self.search_scope_for_kind(next),
+                    SearchFocusTarget::Scope,
+                );
+            }
+            SearchControlAction::KeepScope => {}
+        }
+        self.mark_dirty();
+        true
+    }
+
+    fn sync_search_overlay(&mut self) {
+        let query = self
+            .search_state
+            .history_index
+            .and_then(|index| self.search_state.history.get(index))
+            .cloned();
+        self.renderer
+            .set_active_search(query, self.search_scope, self.search_results);
+    }
     #[inline]
     fn confirm_search(&mut self, clipboard: &mut Clipboard) {
         // Just cancel search when not in vi mode.
@@ -4426,6 +5182,7 @@ impl Screen<'_> {
         // self.window().set_ime_allowed(!vi_mode);
 
         self.search_state.history_index = None;
+        self.search_results = SearchResultSummary::EmptyQuery;
 
         // Clear focused match.
         self.search_state.focused_match = None;
@@ -4451,8 +5208,14 @@ impl Screen<'_> {
             '\x08' | '\x7f' => {
                 let _ = regex.pop();
             }
-            // Add ascii and unicode text.
-            ' '..='~' | '\u{a0}'..='\u{10ffff}' => regex.push(c),
+            // Add bounded ASCII and Unicode text. Regex compilation treats this
+            // as untrusted input, so oversized queries fail closed.
+            ' '..='~' | '\u{a0}'..='\u{10ffff}'
+                if search_query_accepts_char(regex.len(), c) =>
+            {
+                regex.push(c);
+            }
+            ' '..='~' | '\u{a0}'..='\u{10ffff}' => return,
             // Ignore non-printable characters.
             _ => return,
         }
@@ -4468,24 +5231,75 @@ impl Screen<'_> {
     }
 
     fn update_search(&mut self) {
-        let regex = match self.search_state.regex() {
-            Some(regex) => regex,
-            None => return,
+        let Some(regex) = self.search_state.regex() else {
+            self.search_results = SearchResultSummary::EmptyQuery;
+            return;
         };
 
         if regex.is_empty() {
-            // Stop search if there's nothing to search for.
             self.search_reset_state();
             self.search_state.dfas = None;
-        } else {
-            // Create search dfas for the new regex string.
-            self.search_state.dfas = RegexSearch::new(regex).ok();
-
-            // Update search highlighting.
-            self.goto_match(MAX_SEARCH_WHILE_TYPING);
+            self.search_results = SearchResultSummary::EmptyQuery;
+            return;
         }
+
+        self.search_state.dfas = RegexSearch::new(regex).ok();
+        if self.search_state.dfas.is_none() {
+            self.search_state.focused_match = None;
+            self.search_results = SearchResultSummary::InvalidPattern;
+            return;
+        }
+
+        self.goto_match(MAX_SEARCH_WHILE_TYPING);
+        self.search_results = self.recalculate_visible_search_results();
     }
 
+    fn recalculate_visible_search_results(&mut self) -> SearchResultSummary {
+        let Some(base_dfas) = self.search_state.dfas.as_ref() else {
+            return if self
+                .search_state
+                .regex()
+                .is_some_and(|query| !query.is_empty())
+            {
+                SearchResultSummary::InvalidPattern
+            } else {
+                SearchResultSummary::EmptyQuery
+            };
+        };
+
+        let routes = match self.search_scope {
+            SearchScope::Pane { route_id } => vec![route_id],
+            SearchScope::Workspace => {
+                self.context_manager.visible_route_ids_in_search_order()
+            }
+        };
+        let mut visible = 0_usize;
+        for route_id in routes {
+            let Some(context) = self.context_manager.get_by_route_id(route_id) else {
+                continue;
+            };
+            let terminal = context.terminal.lock();
+            let mut route_dfas = base_dfas.clone();
+            let remaining = MAX_VISIBLE_SEARCH_RESULT_COUNT.saturating_sub(visible);
+            let route_count = visible_regex_match_iter(&terminal, &mut route_dfas)
+                .take(remaining.saturating_add(1))
+                .count();
+            drop(terminal);
+
+            if route_count > remaining {
+                return SearchResultSummary::Matches {
+                    visible: MAX_VISIBLE_SEARCH_RESULT_COUNT,
+                    limited: true,
+                };
+            }
+            visible = visible.saturating_add(route_count);
+        }
+
+        SearchResultSummary::Matches {
+            visible,
+            limited: false,
+        }
+    }
     /// Reset terminal to the state before search was started.
     fn search_reset_state(&mut self) {
         // Unschedule pending timers.
@@ -4516,6 +5330,13 @@ impl Screen<'_> {
 
     /// Jump to the first regex match from the search origin.
     fn goto_match(&mut self, mut limit: Option<usize>) {
+        if self.search_scope == SearchScope::Workspace
+            && !self.get_mode().contains(Mode::VI)
+        {
+            self.goto_workspace_match(limit);
+            return;
+        }
+
         let dfas = match &mut self.search_state.dfas {
             Some(dfas) => dfas,
             None => return,
@@ -4580,6 +5401,100 @@ impl Screen<'_> {
         if should_reset_search_state {
             self.search_reset_state();
         }
+    }
+
+    /// Search the active local tab of every visible pane. The existing terminal
+    /// regex engine remains authoritative; this method only supplies a bounded,
+    /// deterministic route order and publishes the pane containing the result.
+    fn goto_workspace_match(&mut self, limit: Option<usize>) {
+        let current_route = self.context_manager.current_route();
+        let routes = visible_search_route_order(
+            self.context_manager.visible_route_ids_in_search_order(),
+            current_route,
+        );
+        let direction = self.search_state.direction;
+        let current_origin = self.search_state.origin;
+        let mut wrapped_current = None;
+        let mut found = None;
+
+        {
+            let Some(dfas) = self.search_state.dfas.as_mut() else {
+                return;
+            };
+            for route_id in routes {
+                let Some(context) = self.context_manager.get_by_route_id(route_id) else {
+                    continue;
+                };
+                let terminal = context.terminal.lock();
+                let origin = if route_id == current_route {
+                    current_origin.grid_clamp(&*terminal, Boundary::Grid)
+                } else {
+                    match direction {
+                        Direction::Right => Pos::new(terminal.topmost_line(), Column(0)),
+                        Direction::Left => {
+                            Pos::new(terminal.bottommost_line(), terminal.last_column())
+                        }
+                    }
+                };
+                let route_limit = limit.filter(|&value| value <= terminal.total_lines());
+                let result = terminal.search_next(
+                    dfas,
+                    origin,
+                    direction,
+                    Side::Left,
+                    route_limit,
+                );
+                drop(terminal);
+
+                let Some(search_match) = result else {
+                    continue;
+                };
+                if route_id == current_route
+                    && search_match_wrapped(&search_match, origin, direction)
+                {
+                    wrapped_current = Some((route_id, search_match));
+                    continue;
+                }
+                found = Some((route_id, search_match));
+                break;
+            }
+        }
+
+        let Some((route_id, search_match)) = found.or(wrapped_current) else {
+            if limit.is_none() {
+                self.search_reset_state();
+            } else {
+                self.search_state.focused_match = None;
+            }
+            return;
+        };
+
+        if route_id != current_route {
+            let previous = self.context_manager.current_mut();
+            previous.renderable_content.hint_matches = None;
+            previous
+                .renderable_content
+                .pending_update
+                .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+            if !self.context_manager.select_visible_route(route_id) {
+                self.search_state.focused_match = None;
+                return;
+            }
+            self.search_state.display_offset_delta = 0;
+        }
+
+        let mut terminal = self.context_manager.current_mut().terminal.lock();
+        let old_offset = terminal.display_offset() as i32;
+        terminal.scroll_to_pos(*search_match.start());
+        let display_offset = terminal.display_offset();
+        drop(terminal);
+
+        self.search_state.display_offset_delta += old_offset - display_offset as i32;
+        self.search_state.origin = match direction {
+            Direction::Right => *search_match.start(),
+            Direction::Left => *search_match.end(),
+        };
+        self.search_state.focused_match = Some(search_match);
     }
 
     fn sgr_mouse_report(&mut self, pos: Pos, button: u8, state: ElementState) {
@@ -4703,6 +5618,9 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         if !is_focused {
+            self.dismiss_suggestions(
+                crate::automexia::suggestions::SuggestionInvalidation::FocusLost,
+            );
             #[cfg(windows)]
             self.consumed_win32_key_releases.clear();
 
@@ -4714,11 +5632,16 @@ impl Screen<'_> {
             rc.pending_update
                 .set_terminal_damage(rio_backend::event::TerminalDamage::CursorOnly);
 
+            let mut chrome_changed = false;
             if let Some(ref mut island) = self.renderer.island {
                 if island.is_dragging() {
                     island.cancel_drag();
-                    self.mark_dirty();
+                    chrome_changed = true;
                 }
+                chrome_changed |= island.cancel_chrome_press();
+            }
+            if chrome_changed {
+                self.mark_dirty();
             }
             self.mouse.left_button_state = ElementState::Released;
         }
@@ -4888,7 +5811,7 @@ impl Screen<'_> {
     pub(crate) fn render_welcome(&mut self) {
         crate::router::routes::welcome::screen(
             &mut self.sugarloaf,
-            &self.context_manager.current().dimension,
+            &self.renderer.named_colors,
         );
         self.sugarloaf.render();
     }
@@ -5028,6 +5951,12 @@ impl Screen<'_> {
             PaletteAction::SearchBackward => {
                 self.start_search(Direction::Left);
             }
+            PaletteAction::SearchGlobalForward => {
+                self.start_workspace_search(Direction::Right);
+            }
+            PaletteAction::SearchGlobalBackward => {
+                self.start_workspace_search(Direction::Left);
+            }
             PaletteAction::PreviewSelectedImage => {
                 self.preview_selected_image();
             }
@@ -5035,24 +5964,49 @@ impl Screen<'_> {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
                 terminal.clear_screen_and_history();
             }
-            PaletteAction::OpenMarket => {
-                // Handled by the router because it changes palette mode.
+            PaletteAction::OpenMarket => self.open_extension_marketplace(),
+            PaletteAction::OpenActions => self.open_action_center(),
+            PaletteAction::OpenConnections => {
+                self.open_connection_hub();
             }
-            PaletteAction::ListFonts => {
-                // Handled in the router: switches the palette into fonts
-                // mode and keeps it open. If we land here it's either a
-                // bug (router should have intercepted) or an external
-                // caller firing the action directly — do nothing so the
-                // palette just closes without side effects.
-            }
+            PaletteAction::ListFonts => self.open_font_browser(),
             PaletteAction::Quit => {
                 self.context_manager.quit();
             }
         }
     }
 
+    pub fn open_extension_marketplace(&mut self) {
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
+        let items = crate::automexia::runtime::market_items();
+        self.renderer.command_palette.set_enabled(true);
+        self.renderer.command_palette.enter_market_mode(items);
+        self.mark_dirty();
+    }
+
+    pub fn open_font_browser(&mut self) {
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
+        let fonts = self.sugarloaf.font_family_names();
+        self.renderer.command_palette.set_enabled(true);
+        self.renderer.command_palette.enter_fonts_mode(fonts);
+        self.mark_dirty();
+    }
+
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
-        self.update_close_button_hover(self.mouse.x, self.mouse.y);
+        let (over_search, _) = self.update_search_hover(self.mouse.x, self.mouse.y);
+        if over_search {
+            self.clear_close_button_hover();
+            self.clear_chrome_action_hover();
+        } else {
+            self.update_close_button_hover(self.mouse.x, self.mouse.y);
+        }
+        self.sync_action_surface();
+        self.sync_connection_hub();
+        self.sync_suggestions();
 
         let preview_route_id = self.context_manager.current().route_id;
         let completion = self
@@ -5066,15 +6020,28 @@ impl Screen<'_> {
             self.context_manager.schedule_render_on_route(millis);
         }
 
-        let is_search_active = self.search_active();
+        let mut is_search_active = self.search_active();
+        if is_search_active
+            && matches!(
+                self.search_scope,
+                SearchScope::Pane { route_id }
+                    if route_id != self.context_manager.current_route()
+            )
+        {
+            // A pointer focus change ends pane-local search instead of silently
+            // applying the query to a different PTY.
+            self.search_state.dfas = None;
+            self.exit_search();
+            is_search_active = false;
+        }
         if is_search_active {
-            if let Some(history_index) = self.search_state.history_index {
-                self.renderer.set_active_search(
-                    self.search_state.history.get(history_index).cloned(),
-                );
-            }
+            self.sync_search_overlay();
         } else {
-            self.renderer.set_active_search(None);
+            self.renderer.set_active_search(
+                None,
+                self.search_scope,
+                SearchResultSummary::EmptyQuery,
+            );
         }
 
         if is_search_active {
@@ -5101,6 +6068,7 @@ impl Screen<'_> {
             }
         }
 
+        self.publish_compatibility_indicators();
         let (window_update, any_panel_dirty) = self
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
@@ -5139,6 +6107,29 @@ impl Screen<'_> {
                 "mouse_mode": self.mouse_mode(),
                 "preview_pointer_allowed": self.image_preview_pointer_allowed(),
             });
+            let search_accessibility = self.renderer.search.accessibility_snapshot();
+            let search_focus =
+                search_accessibility
+                    .as_ref()
+                    .map(|snapshot| match snapshot.focus {
+                        SearchFocusTarget::Query => "query",
+                        SearchFocusTarget::Scope => "scope",
+                    });
+            let search_result_status = search_accessibility
+                .as_ref()
+                .map(|snapshot| snapshot.result_status.clone());
+            let search_live_announcement = search_accessibility
+                .as_ref()
+                .and_then(|snapshot| snapshot.live_announcement.map(str::to_owned));
+            let search_announcement_generation = search_accessibility
+                .as_ref()
+                .map(|snapshot| snapshot.announcement_generation);
+            let command_result_visual =
+                self.renderer.command_results.native_test_result_visual();
+            let command_result_identity =
+                self.renderer.command_results.native_test_result_identity();
+            let command_result_style =
+                self.renderer.command_results.native_test_result_style();
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
@@ -5156,6 +6147,51 @@ impl Screen<'_> {
                         .tab_profile_identity(self.context_manager.current_index()),
                     palette_enabled: self.renderer.command_palette.is_enabled(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    compatibility_inspector_active: self
+                        .renderer
+                        .compatibility_inspector
+                        .is_active(),
+                    compatibility_inspector_accessibility_summary: self
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                        .then(|| {
+                            self.renderer
+                                .compatibility_inspector
+                                .accessibility_summary()
+                        }),
+                    compatibility_inspector_clear_confirmation: self
+                        .renderer
+                        .compatibility_inspector
+                        .clear_confirmation(),
+                    search_active: self.search_active(),
+                    search_scope: self.search_active().then_some(
+                        match self.search_scope {
+                            SearchScope::Pane { .. } => "pane",
+                            SearchScope::Workspace => "workspace",
+                        },
+                    ),
+                    search_focus,
+                    search_query_bytes: self.renderer.search.active_query().map(str::len),
+                    search_result_status,
+                    search_live_announcement,
+                    search_announcement_generation,
+                    search_surface: self.renderer.search.native_surface_rect(),
+                    command_result_surface: command_result_visual.map(|visual| visual.0),
+                    command_result_generation: command_result_identity
+                        .and_then(|identity| identity.0),
+                    command_result_key: command_result_identity
+                        .map(|identity| identity.1),
+                    command_result_exit_code: command_result_identity
+                        .and_then(|identity| identity.2),
+                    command_result_divider: command_result_visual.map(|visual| visual.1),
+                    command_result_opacity: command_result_style.map(|style| style.0),
+                    command_result_pulse_duration_ms: command_result_style
+                        .map(|style| style.1),
+                    command_result_pulse_hold_fraction: command_result_style
+                        .map(|style| style.2),
+                    command_result_pulse_generation: command_result_visual
+                        .map_or(0, |visual| visual.2),
                 },
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),
@@ -5938,6 +6974,52 @@ impl Screen<'_> {
                 self.renderer.command_palette.set_enabled(true);
                 self.mark_dirty();
             }
+            "open-connection-hub" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.open_connection_hub();
+                self.mark_dirty();
+            }
+            "open-pane-search" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.start_search(Direction::Right);
+                self.mark_dirty();
+            }
+            "open-workspace-search" => {
+                self.renderer.command_palette.set_enabled(false);
+                self.renderer.confirm_quit.set_active(false);
+                self.start_workspace_search(Direction::Right);
+                self.mark_dirty();
+            }
+            "set-search-query-hex" => {
+                let payload = fields.next().unwrap_or_default();
+                if self.search_active()
+                    && payload.len() <= MAX_SEARCH_QUERY_BYTES.saturating_mul(2)
+                {
+                    if let Some(bytes) = decode_native_test_hex(payload) {
+                        if let Ok(query) = std::str::from_utf8(&bytes) {
+                            for character in query.chars() {
+                                self.search_input(character);
+                            }
+                            self.sync_search_overlay();
+                            self.mark_dirty();
+                        }
+                    }
+                }
+            }
+            "focus-search-scope" => {
+                if self.search_active() {
+                    self.renderer.search.focus_scope();
+                    self.mark_dirty();
+                }
+            }
+            "close-search" => {
+                if self.search_active() {
+                    self.search_state.dfas = None;
+                    self.exit_search();
+                }
+            }
             "confirm-quit" => {
                 self.renderer.command_palette.set_enabled(false);
                 self.renderer.confirm_quit.set_active(true);
@@ -6650,6 +7732,173 @@ mod tests {
     }
 
     #[test]
+    fn workspace_search_starts_at_current_route_then_uses_visual_order() {
+        assert_eq!(
+            visible_search_route_order(vec![11, 22, 33, 44], 33),
+            [33, 44, 11, 22]
+        );
+        assert_eq!(visible_search_route_order(vec![11, 22], 9_999), [11, 22]);
+        assert!(visible_search_route_order(Vec::new(), 11).is_empty());
+    }
+    #[test]
+    fn active_search_switches_both_directions_without_replacing_the_query() {
+        let mut state = SearchState::default();
+        state.history.push_front("retained query".to_string());
+        state.history_index = Some(0);
+        state.focused_match =
+            Some(Pos::new(Line(2), Column(3))..=Pos::new(Line(2), Column(8)));
+
+        let to_workspace = transition_active_search_scope(
+            &mut state,
+            SearchScope::Pane { route_id: 11 },
+            SearchScope::Workspace,
+        );
+        assert_eq!(
+            to_workspace,
+            ActiveSearchScopeTransition::Switched(SearchScope::Workspace)
+        );
+        assert_eq!(state.regex().map(String::as_str), Some("retained query"));
+        assert!(state.focused_match.is_none());
+
+        let to_pane = transition_active_search_scope(
+            &mut state,
+            SearchScope::Workspace,
+            SearchScope::Pane { route_id: 42 },
+        );
+        assert_eq!(
+            to_pane,
+            ActiveSearchScopeTransition::Switched(SearchScope::Pane { route_id: 42 })
+        );
+        assert_eq!(state.regex().map(String::as_str), Some("retained query"));
+    }
+
+    #[test]
+    fn active_search_same_scope_only_refocuses_and_keeps_match_state() {
+        let mut state = SearchState::default();
+        state.history.push_front("needle".to_string());
+        state.history_index = Some(0);
+        state.focused_match =
+            Some(Pos::new(Line(2), Column(3))..=Pos::new(Line(2), Column(8)));
+        let scope = SearchScope::Pane { route_id: 7 };
+
+        assert_eq!(
+            transition_active_search_scope(&mut state, scope, scope),
+            ActiveSearchScopeTransition::Refocused
+        );
+        assert_eq!(state.regex().map(String::as_str), Some("needle"));
+        assert!(state.focused_match.is_some());
+    }
+
+    #[test]
+    fn scope_focus_keys_are_consumed_before_pty_input() {
+        for key in [
+            NamedKey::ArrowLeft,
+            NamedKey::ArrowRight,
+            NamedKey::ArrowUp,
+            NamedKey::ArrowDown,
+            NamedKey::Space,
+            NamedKey::Enter,
+        ] {
+            assert!(search_scope_key_action(
+                SearchFocusTarget::Scope,
+                &Key::Named(key),
+                ModifiersState::empty(),
+            )
+            .is_some());
+        }
+        assert_eq!(
+            search_scope_key_action(
+                SearchFocusTarget::Query,
+                &Key::Named(NamedKey::Tab),
+                ModifiersState::empty(),
+            ),
+            Some(SearchControlAction::FocusScope)
+        );
+        assert_eq!(
+            search_scope_key_action(
+                SearchFocusTarget::Scope,
+                &Key::Named(NamedKey::Tab),
+                ModifiersState::SHIFT,
+            ),
+            Some(SearchControlAction::FocusQuery)
+        );
+    }
+
+    #[test]
+    fn global_wrap_detection_defers_current_pane_until_other_panes() {
+        let origin = Pos::new(Line(5), Column(4));
+        let before = Pos::new(Line(2), Column(1))..=Pos::new(Line(2), Column(3));
+        let after = Pos::new(Line(8), Column(1))..=Pos::new(Line(8), Column(3));
+
+        assert!(search_match_wrapped(&before, origin, Direction::Right));
+        assert!(!search_match_wrapped(&after, origin, Direction::Right));
+        assert!(search_match_wrapped(&after, origin, Direction::Left));
+        assert!(!search_match_wrapped(&before, origin, Direction::Left));
+    }
+
+    #[test]
+    fn terminal_search_query_byte_limit_handles_multibyte_boundaries() {
+        assert!(search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 1, 'a'));
+        assert!(!search_query_accepts_char(MAX_SEARCH_QUERY_BYTES, 'a'));
+        assert!(search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 4, '🦀'));
+        assert!(!search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 3, '🦀'));
+    }
+
+    #[test]
+    fn compatibility_inspector_key_policy_is_modal_idempotent_and_confirmed() {
+        let none = ModifiersState::empty();
+        let pressed = ElementState::Pressed;
+        let released = ElementState::Released;
+        let escape = Key::Named(NamedKey::Escape);
+        let enter = Key::Named(NamedKey::Enter);
+        let restore = Key::Character("r".into());
+        let clear = Key::Character("C".into());
+        let ordinary = Key::Character("x".into());
+
+        assert_eq!(
+            compatibility_inspector_key_action(&escape, pressed, none, false),
+            CompatibilityInspectorKeyAction::Close
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&escape, pressed, none, true),
+            CompatibilityInspectorKeyAction::CancelClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&restore, pressed, none, false),
+            CompatibilityInspectorKeyAction::RestoreNewest
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&clear, pressed, none, false),
+            CompatibilityInspectorKeyAction::RequestClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&clear, pressed, none, true),
+            CompatibilityInspectorKeyAction::ConfirmClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&enter, pressed, none, true),
+            CompatibilityInspectorKeyAction::ConfirmClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&ordinary, pressed, none, false),
+            CompatibilityInspectorKeyAction::Consume
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(
+                &restore,
+                pressed,
+                ModifiersState::CONTROL,
+                false,
+            ),
+            CompatibilityInspectorKeyAction::Consume
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&clear, released, none, false),
+            CompatibilityInspectorKeyAction::Consume
+        );
+    }
+
+    #[test]
     fn ctrl_c_copies_only_a_nonempty_selection_and_otherwise_remains_interrupt() {
         let ctrl = ModifiersState::CONTROL;
         let c = Key::Character("c".into());
@@ -6686,6 +7935,12 @@ mod tests {
             secondary_click_clipboard_action(false),
             SecondaryClickClipboardAction::PasteClipboard
         );
+    }
+
+    #[test]
+    fn wheel_focus_preserves_selection_while_click_focus_clears_it() {
+        assert!(PointerPaneFocusReason::Click.clears_target_selection());
+        assert!(!PointerPaneFocusReason::Wheel.clears_target_selection());
     }
 
     #[test]
@@ -6764,6 +8019,43 @@ mod tests {
                 b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"
             );
         }
+    }
+
+    #[test]
+    fn native_snapshot_generation_rejects_stale_and_failed_publications() {
+        let path = std::path::PathBuf::from("renderer.json");
+        let mut ledger = NativeSnapshotPublicationLedger::default();
+
+        assert!(ledger.publish_with(&path, 2, || Ok(())).unwrap());
+        let stale_writer_called = std::cell::Cell::new(false);
+        assert!(!ledger
+            .publish_with(&path, 1, || {
+                stale_writer_called.set(true);
+                Ok(())
+            })
+            .unwrap());
+        assert!(!stale_writer_called.get());
+
+        let injected = ledger.publish_with(&path, 3, || {
+            Err(std::io::Error::other("injected publication failure"))
+        });
+        assert_eq!(injected.unwrap_err().kind(), std::io::ErrorKind::Other);
+        assert!(ledger.publish_with(&path, 3, || Ok(())).unwrap());
+        assert!(!ledger.publish_with(&path, 3, || Ok(())).unwrap());
+    }
+
+    #[test]
+    fn native_snapshot_generation_bounds_distinct_targets() {
+        let mut ledger = NativeSnapshotPublicationLedger::default();
+        for index in 0..MAX_NATIVE_SNAPSHOT_PATHS {
+            let path = std::path::PathBuf::from(format!("snapshot-{index}.json"));
+            assert!(ledger.publish_with(&path, 1, || Ok(())).unwrap());
+        }
+
+        let error = ledger
+            .publish_with(std::path::Path::new("overflow.json"), 1, || Ok(()))
+            .unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
     }
 
     #[cfg(feature = "native-gui-test-hooks")]

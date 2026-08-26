@@ -30,6 +30,8 @@ MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 DEFAULT_STEP_TIMEOUT_SECONDS = 30 * 60
 STEP_TIMEOUT_SECONDS = {
     "qa-runner-self-tests": 120,
+    "s1-assurance-policy": 120,
+    "s1-assurance-mutations": 300,
     "rustfmt": 300,
     "metadata": 300,
     "repository-contracts": 600,
@@ -54,7 +56,9 @@ STEP_TIMEOUT_SECONDS = {
     "benchmark-pty": 7200,
     "benchmark-ssh-inventory": 7200,
     "benchmark-quick-actions": 7200,
+    "benchmark-connection-planning": 7200,
     "benchmark-quick-action-store": 7200,
+    "benchmark-keybindings": 7200,
 }
 TOKEN_PATTERNS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s]+"),
@@ -585,16 +589,138 @@ def main() -> int:
     parser.add_argument("--full", action="store_true", required=True)
     parser.add_argument("--bundle", action="store_true")
     args = parser.parse_args()
-    run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{os.getpid()}"
+    requested_run_id = os.environ.get("AUTOMEXIA_QA_RUN_LABEL", "")
+    if requested_run_id:
+        if len(requested_run_id) > 96 or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._-]*", requested_run_id) is None:
+            parser.error("AUTOMEXIA_QA_RUN_LABEL must be a bounded portable identifier")
+        run_id = requested_run_id
+    else:
+        run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{os.getpid()}"
     run_dir = ROOT / "target" / "qa" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
 
     commands: list[tuple[str, list[str], dict[str, str] | None]] = [
         ("qa-runner-self-tests", [sys.executable, "tools/ci/test_qa.py"], None),
+        (
+            "feature-test-reinforcement-mutations",
+            [sys.executable, "tools/ci/test_feature_test_reinforcement.py"],
+            None,
+        ),
+        (
+            "s1-assurance-policy",
+            [sys.executable, "tools/ci/s1_assurance.py", "check-policy"],
+            None,
+        ),
+        (
+            "s1-assurance-mutations",
+            [sys.executable, "tools/ci/test_s1_assurance.py"],
+            None,
+        ),
+        (
+            "performance-assurance-policy",
+            [sys.executable, "tools/ci/performance_assurance.py", "check-policy"],
+            None,
+        ),
+        (
+            "performance-assurance-mutations",
+            [sys.executable, "tools/ci/test_performance_assurance.py"],
+            None,
+        ),
+        (
+            "stable-release-policy",
+            [sys.executable, "tools/ci/stable_release.py", "check-policy"],
+            None,
+        ),
+        (
+            "stable-release-mutations",
+            [sys.executable, "tools/ci/test_stable_release.py"],
+            None,
+        ),
         ("rustfmt", ["cargo", "fmt", "--all", "--", "--check"], None),
         ("metadata", ["cargo", "metadata", "--locked", "--format-version", "1"], None),
         ("repository-contracts", ["cargo", "xtask", "verify", "all"], None),
         ("repository-formats", [sys.executable, "tools/ci/validate_repository.py"], None),
+        (
+            "repository-protection-mutations",
+            [sys.executable, "tools/ci/test_repository_protection.py"],
+            None,
+        ),
+        (
+            "cp51-proposal-mutations",
+            [sys.executable, "tools/ci/test_command_productivity_cp51.py"],
+            None,
+        ),
+        (
+            "cp56-source-mutations",
+            [sys.executable, "tools/ci/test_command_productivity_cp56.py"],
+            None,
+        ),
+        (
+            "d7-cp6-ecosystem-mutations",
+            [sys.executable, "tools/ci/test_ecosystem_d7_cp6.py"],
+            None,
+        ),
+        (
+            "ghostty-assurance-mutations",
+            [sys.executable, "tools/ci/test_ghostty_compatibility.py"],
+            None,
+        ),
+        (
+            "ghostty-native-evidence-mutations",
+            [sys.executable, "tools/ci/test_ghostty_native_evidence.py"],
+            None,
+        ),
+        (
+            "cp50-research-format",
+            [
+                "cargo",
+                "fmt",
+                "--manifest-path",
+                "tools/research/cp5-matcher-benchmark/Cargo.toml",
+                "--",
+                "--check",
+            ],
+            None,
+        ),
+        (
+            "cp50-research-clippy",
+            [
+                "cargo",
+                "clippy",
+                "--manifest-path",
+                "tools/research/cp5-matcher-benchmark/Cargo.toml",
+                "--all-targets",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ],
+            None,
+        ),
+        (
+            "cp50-research-tests",
+            [
+                "cargo",
+                "test",
+                "--manifest-path",
+                "tools/research/cp5-matcher-benchmark/Cargo.toml",
+                "--locked",
+            ],
+            None,
+        ),
+        (
+            "cp50-research-benchmark",
+            [
+                "cargo",
+                "run",
+                "--release",
+                "--manifest-path",
+                "tools/research/cp5-matcher-benchmark/Cargo.toml",
+                "--locked",
+                "--quiet",
+            ],
+            None,
+        ),
         (
             "clippy",
             ["cargo", "clippy", "--workspace", "--all-targets", "--locked", "--", "-D", "warnings"],
@@ -640,10 +766,42 @@ def main() -> int:
                 None,
             ),
         )
+        commands.insert(
+            5,
+            (
+                "cp5-native-powershell-bridge",
+                [
+                    "pwsh",
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-File",
+                    "tools/ci/test_cp5_native_powershell_bridge.ps1",
+                ],
+                None,
+            ),
+        )
     else:
         commands.insert(
             4, ("shell-contracts", ["bash", "tools/ci/test_shell_sources.sh"], None)
         )
+        commands.insert(
+            5,
+            (
+                "cp5-native-zsh-fish-bridges",
+                [sys.executable, "tools/ci/test_cp5_native_shell_adapters.py"],
+                None,
+            ),
+        )
+        if platform.system() == "Linux":
+            commands.insert(
+                5,
+                (
+                    "cp5-native-bash-bridge",
+                    [sys.executable, "tools/ci/test_cp5_native_shell_bridge.py"],
+                    None,
+                ),
+            )
 
     steps: list[dict[str, object]] = []
     for index, (name, command, env_add) in enumerate(commands, 1):
@@ -651,6 +809,90 @@ def main() -> int:
     steps.append(collect_junit(run_dir))
 
     next_index = len(steps) + 1
+    s1_evidence = os.environ.get("AUTOMEXIA_QA_S1_EVIDENCE", "").strip()
+    if s1_evidence:
+        steps.append(
+            run_step(
+                run_dir,
+                next_index,
+                "s1-release-assurance-evidence",
+                [
+                    sys.executable,
+                    "tools/ci/s1_assurance.py",
+                    "validate",
+                    "--manifest",
+                    s1_evidence,
+                    "--expected-commit",
+                    git_value("rev-parse", "HEAD"),
+                    "--require-complete",
+                    "--output",
+                    str(run_dir / "artifacts" / "s1-assurance.json"),
+                ],
+            )
+        )
+        next_index += 1
+    else:
+        steps.append(
+            skipped(
+                "s1-release-assurance-evidence",
+                "set AUTOMEXIA_QA_S1_EVIDENCE to the private, redacted, complete controlled-runner manifest",
+                external=True,
+            )
+        )
+
+    if os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE"):
+        steps.append(
+            run_step(
+                run_dir,
+                next_index,
+                "native-openssh-release-evidence",
+                [
+                    sys.executable,
+                    "tools/ci/native_openssh_evidence.py",
+                    "--validate-environment",
+                ],
+            )
+        )
+        next_index += 1
+    else:
+        steps.append(
+            skipped(
+                "native-openssh-release-evidence",
+                "set AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE to a private redacted manifest on each controlled native runner",
+                external=True,
+            )
+        )
+
+    ghostty_evidence = os.environ.get("AUTOMEXIA_QA_GHOSTTY_EVIDENCE", "").strip()
+    if ghostty_evidence:
+        steps.append(
+            run_step(
+                run_dir,
+                next_index,
+                "ghostty-native-release-evidence",
+                [
+                    sys.executable,
+                    "tools/ci/ghostty_native_evidence.py",
+                    "--manifest",
+                    ghostty_evidence,
+                    "--expected-commit",
+                    git_value("rev-parse", "HEAD"),
+                    "--require-complete",
+                    "--output",
+                    str(run_dir / "artifacts" / "ghostty-native-evidence.json"),
+                ],
+            )
+        )
+        next_index += 1
+    else:
+        steps.append(
+            skipped(
+                "ghostty-native-release-evidence",
+                "set AUTOMEXIA_QA_GHOSTTY_EVIDENCE to a private, redacted, complete Windows/Linux/macOS manifest",
+                external=True,
+            )
+        )
+
     if truthy("AUTOMEXIA_QA_NATIVE") and os.name == "nt":
         steps.append(
             run_step(
@@ -759,15 +1001,33 @@ def main() -> int:
             ),
             (
                 "benchmark-quick-actions",
-                ["cargo", "bench", "-p", "automexia-devops", "--bench", "quick_actions", "--locked", "--", "--noplot"],
+                ["cargo", "bench", "-p", "automexia-command-productivity", "--bench", "quick_actions", "--locked", "--", "--noplot"],
+            ),
+            (
+                "benchmark-connection-planning",
+                ["cargo", "bench", "-p", "automexia-connectivity", "--bench", "connection_planning", "--locked", "--", "--noplot"],
             ),
             (
                 "benchmark-quick-action-store",
                 ["cargo", "bench", "-p", "automexia-terminal", "--bench", "quick_action_store", "--locked", "--", "--noplot"],
             ),
+            (
+                "benchmark-keybindings",
+                ["cargo", "bench", "-p", "automexia-keybindings", "--bench", "registry", "--locked", "--", "--noplot"],
+            ),
         )
         for name, command in benchmark_commands:
-            steps.append(run_step(run_dir, next_index, name, command))
+            steps.append(
+                run_step(
+                    run_dir,
+                    next_index,
+                    name,
+                    command,
+                    env_add={
+                        "CARGO_TARGET_DIR": str(run_dir / "benchmark-target")
+                    },
+                )
+            )
             next_index += 1
     else:
         steps.append(
@@ -838,20 +1098,6 @@ def main() -> int:
         skipped(
             "30-day-performance-baseline",
             "requires 30 consecutive days of named controlled-runner evidence",
-            external=True,
-        )
-    )
-    steps.append(
-        skipped(
-            "linux-macos-native-gpu-matrix",
-            "requires controlled Linux X11/Wayland and macOS GPU runners",
-            external=True,
-        )
-    )
-    steps.append(
-        skipped(
-            "screen-reader-smoke",
-            "requires manual Narrator/NVDA, VoiceOver, and Orca evidence on controlled hosts",
             external=True,
         )
     )

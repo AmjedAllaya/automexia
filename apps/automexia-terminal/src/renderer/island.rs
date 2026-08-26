@@ -9,6 +9,10 @@
 use crate::context::ContextManager;
 use crate::renderer::helpers::spring::Spring;
 use crate::renderer::responsive::{ChromeMetrics, Viewport};
+use crate::renderer::ui_theme::{
+    color_u8 as theme_color_u8, UiTheme, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN,
+    BRAND_PURPLE,
+};
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{Attributes, Sugarloaf};
@@ -36,20 +40,23 @@ const DRAG_ANIMATION_LENGTH: f32 = 0.15;
 const DRAG_MAX_DT: f32 = 0.05;
 const ISLAND_MARGIN_RIGHT: f32 = 8.0;
 
-/// Color picker constants
-const PICKER_SWATCH_SIZE: f32 = 18.0;
-const PICKER_SWATCH_GAP: f32 = 4.0;
-const PICKER_PADDING: f32 = 6.0;
-const PICKER_INPUT_HEIGHT: f32 = 26.0;
+/// Tab-appearance picker geometry in logical pixels. Interactive targets
+/// satisfy the project's 24×24 minimum without depending on display scale.
+const PICKER_SWATCH_SIZE: f32 = 24.0;
+const PICKER_SWATCH_GAP: f32 = 6.0;
+const PICKER_PADDING: f32 = 10.0;
+const PICKER_LABEL_HEIGHT: f32 = 18.0;
+const PICKER_INPUT_HEIGHT: f32 = 32.0;
 const PICKER_INPUT_FONT_SIZE: f32 = 12.0;
 const PICKER_INPUT_MARGIN_TOP: f32 = 8.0;
-const PICKER_TOP_PADDING: f32 = 4.0;
-const PICKER_HEIGHT: f32 = PICKER_TOP_PADDING
+const PICKER_FOOTER_HEIGHT: f32 = 20.0;
+const PICKER_HEIGHT: f32 = PICKER_PADDING * 2.0
+    + PICKER_LABEL_HEIGHT
     + PICKER_SWATCH_SIZE
-    + PICKER_PADDING * 2.0
     + PICKER_INPUT_MARGIN_TOP
     + PICKER_INPUT_HEIGHT
-    + PICKER_PADDING;
+    + PICKER_FOOTER_HEIGHT;
+const PICKER_MAX_RENAME_BYTES: usize = 256;
 const PICKER_COLORS: [[f32; 4]; 6] = [
     // red
     [0.86, 0.26, 0.27, 1.0],
@@ -64,6 +71,48 @@ const PICKER_COLORS: [[f32; 4]; 6] = [
     // purple
     [0.68, 0.40, 0.80, 1.0],
 ];
+
+#[derive(Clone, Copy)]
+struct PickerRenderContext {
+    tab_x: f32,
+    tab_width: f32,
+    selected_color: Option<[f32; 4]>,
+    header_height: f32,
+    logical_width: f32,
+    configured_background: [f32; 4],
+}
+
+fn picker_width() -> f32 {
+    let slot_count = PICKER_COLORS.len() + 1;
+    slot_count as f32 * PICKER_SWATCH_SIZE
+        + (slot_count - 1) as f32 * PICKER_SWATCH_GAP
+        + PICKER_PADDING * 2.0
+}
+
+fn picker_fits(logical_width: f32, logical_height: f32, header_height: f32) -> bool {
+    logical_width >= picker_width()
+        && logical_height >= header_height + PICKER_HEIGHT + 8.0
+}
+
+fn bounded_rename(value: &str) -> String {
+    let mut result = String::new();
+    for ch in value.chars().filter(|ch| !ch.is_control()) {
+        if result.len() + ch.len_utf8() > PICKER_MAX_RENAME_BYTES {
+            break;
+        }
+        result.push(ch);
+    }
+    result
+}
+
+fn push_bounded_rename(target: &mut String, value: &str) {
+    for ch in value.chars().filter(|ch| !ch.is_control()) {
+        if target.len() + ch.len_utf8() > PICKER_MAX_RENAME_BYTES {
+            break;
+        }
+        target.push(ch);
+    }
+}
 
 /// Left margin on macOS to account for traffic light buttons
 #[cfg(target_os = "macos")]
@@ -84,6 +133,104 @@ pub enum ChromeAction {
     Minimize,
     Maximize,
     CloseWindow,
+}
+
+const WINDOW_CONTROL_BUTTON_INSET_X: f32 = 5.0;
+const WINDOW_CONTROL_BUTTON_INSET_Y: f32 = 6.0;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WindowControlRect {
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct WindowControlVisualLayout {
+    buttons: [WindowControlRect; 3],
+}
+
+#[derive(Clone, Copy)]
+struct WindowControlRenderContext {
+    theme: UiTheme,
+    hover: Option<ChromeAction>,
+    pressed: Option<ChromeAction>,
+    maximized: bool,
+    focused: bool,
+    header_height: f32,
+    controls_x: f32,
+    button_width: f32,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WindowControlGlyph {
+    Minimize,
+    Maximize,
+    Restore,
+    Close,
+}
+
+fn window_control_visual_layout(
+    header_height: f32,
+    controls_x: f32,
+    button_width: f32,
+) -> WindowControlVisualLayout {
+    let buttons = std::array::from_fn(|index| WindowControlRect {
+        x: controls_x + index as f32 * button_width + WINDOW_CONTROL_BUTTON_INSET_X,
+        y: WINDOW_CONTROL_BUTTON_INSET_Y,
+        width: (button_width - WINDOW_CONTROL_BUTTON_INSET_X * 2.0).max(1.0),
+        height: (header_height - WINDOW_CONTROL_BUTTON_INSET_Y * 2.0).max(1.0),
+    });
+    WindowControlVisualLayout { buttons }
+}
+
+fn window_control_accent(action: ChromeAction) -> [f32; 4] {
+    match action {
+        ChromeAction::Minimize => BRAND_CYAN,
+        ChromeAction::Maximize => BRAND_PURPLE,
+        ChromeAction::CloseWindow => BRAND_CORAL,
+        ChromeAction::NewTab | ChromeAction::OpenPalette => BRAND_BLUE,
+    }
+}
+
+fn window_control_glyph(action: ChromeAction, maximized: bool) -> WindowControlGlyph {
+    match action {
+        ChromeAction::Minimize => WindowControlGlyph::Minimize,
+        ChromeAction::Maximize if maximized => WindowControlGlyph::Restore,
+        ChromeAction::Maximize => WindowControlGlyph::Maximize,
+        ChromeAction::CloseWindow => WindowControlGlyph::Close,
+        ChromeAction::NewTab | ChromeAction::OpenPalette => {
+            unreachable!("tab actions are not window caption controls")
+        }
+    }
+}
+
+pub(crate) fn window_control_release_matches(
+    pressed: ChromeAction,
+    released_over: Option<ChromeAction>,
+) -> bool {
+    released_over == Some(pressed)
+}
+
+fn window_control_fill(
+    theme: UiTheme,
+    action: ChromeAction,
+    hovered: bool,
+    pressed: bool,
+    focused: bool,
+) -> [f32; 4] {
+    let alpha = if pressed {
+        0.34
+    } else if hovered {
+        0.22
+    } else if focused {
+        0.055
+    } else {
+        0.025
+    };
+    let accent = window_control_accent(action);
+    over(theme.surface, [accent[0], accent[1], accent[2], alpha])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -576,6 +723,8 @@ pub struct Island {
     /// hover backdrop. Updated on every cursor move by `Screen`.
     close_hover: bool,
     chrome_hover: Option<ChromeAction>,
+    chrome_pressed: Option<ChromeAction>,
+    window_maximized: bool,
     custom_chrome: bool,
 }
 
@@ -608,6 +757,8 @@ impl Island {
             last_anim_frame: Instant::now(),
             close_hover: false,
             chrome_hover: None,
+            chrome_pressed: None,
+            window_maximized: false,
             custom_chrome,
         }
     }
@@ -739,6 +890,33 @@ impl Island {
         changed
     }
 
+    pub fn set_chrome_pressed(&mut self, pressed: Option<ChromeAction>) -> bool {
+        let changed = self.chrome_pressed != pressed;
+        self.chrome_pressed = pressed;
+        changed
+    }
+
+    #[inline]
+    pub fn take_chrome_pressed(&mut self) -> Option<ChromeAction> {
+        self.chrome_pressed.take()
+    }
+
+    pub fn cancel_chrome_press(&mut self) -> bool {
+        self.set_chrome_pressed(None)
+    }
+
+    pub fn set_window_maximized(&mut self, maximized: bool) -> bool {
+        let changed = self.window_maximized != maximized;
+        self.window_maximized = maximized;
+        changed
+    }
+
+    #[cfg(test)]
+    #[inline]
+    fn is_window_maximized(&self) -> bool {
+        self.window_maximized
+    }
+
     pub fn update_colors(
         &mut self,
         inactive_text_color: [f32; 4],
@@ -746,6 +924,35 @@ impl Island {
     ) {
         self.inactive_text_color = inactive_text_color;
         self.active_text_color = active_text_color;
+    }
+
+    /// Apply live-reloadable navigation/window settings without replacing the
+    /// island and losing its runtime tab state (progress, rename input, hover,
+    /// animation state, ...).
+    pub fn update_config(
+        &mut self,
+        inactive_text_color: [f32; 4],
+        active_text_color: [f32; 4],
+        hide_if_single: bool,
+        max_tab_width: f32,
+        custom_chrome: bool,
+    ) {
+        self.update_colors(inactive_text_color, active_text_color);
+        self.hide_if_single = hide_if_single;
+        self.max_tab_width = max_tab_width;
+
+        if self.custom_chrome != custom_chrome {
+            // A drag is expressed in the old chrome geometry. Keeping it
+            // armed across a decorations change can reorder the wrong tab on
+            // the next pointer event, so cancel only this geometry-bound
+            // interaction while preserving the rest of the island state.
+            self.cancel_drag();
+            self.slide_springs.clear();
+            self.chrome_hover = None;
+            self.chrome_pressed = None;
+            self.close_hover = false;
+        }
+        self.custom_chrome = custom_chrome;
     }
 
     /// Update the progress bar state from an OSC 9;4 report.
@@ -1071,6 +1278,7 @@ impl Island {
         dimensions: (f32, f32, f32),
         context_manager: &ContextManager<EventProxy>,
         bg_color: [f32; 4],
+        window_focused: bool,
     ) {
         let (window_width, window_height, scale_factor) = dimensions;
         let num_tabs = context_manager.len();
@@ -1439,14 +1647,23 @@ impl Island {
         }
 
         if self.custom_chrome {
+            let theme = UiTheme::resolve(
+                bg_color,
+                self.active_text_color,
+                self.inactive_text_color,
+            );
             draw_window_controls(
                 sugarloaf,
-                logical_width,
-                self.active_text_color,
-                self.chrome_hover,
-                metrics.header_height,
-                layout.controls_x,
-                layout.window_button_width,
+                WindowControlRenderContext {
+                    theme,
+                    hover: self.chrome_hover,
+                    pressed: self.chrome_pressed,
+                    maximized: self.window_maximized,
+                    focused: window_focused,
+                    header_height: metrics.header_height,
+                    controls_x: layout.controls_x,
+                    button_width: layout.window_button_width,
+                },
             );
         }
 
@@ -1535,18 +1752,26 @@ impl Island {
         if let Some(picker_tab) = self.color_picker_tab {
             let logical_height = window_height / scale_factor.max(f32::EPSILON);
             if picker_tab < num_tabs
-                && logical_height >= metrics.header_height + PICKER_HEIGHT + 8.0
+                && picker_fits(logical_width, logical_height, metrics.header_height)
             {
                 let picker_tab_x = left_margin + picker_tab as f32 * tab_width;
                 let selected = context_manager.custom_color(picker_tab);
                 self.render_color_picker(
                     sugarloaf,
-                    picker_tab_x,
-                    tab_width,
-                    selected,
-                    metrics.header_height,
-                    logical_width,
+                    PickerRenderContext {
+                        tab_x: picker_tab_x,
+                        tab_width,
+                        selected_color: selected,
+                        header_height: metrics.header_height,
+                        logical_width,
+                        configured_background: bg_color,
+                    },
                 );
+            } else {
+                // A picker that cannot fit would become an invisible input
+                // trap. Cancel without committing the pending title.
+                self.color_picker_tab = None;
+                self.rename_input.clear();
             }
         }
 
@@ -1572,10 +1797,10 @@ impl Island {
         } else {
             self.color_picker_tab = Some(tab_index);
             // Initialize rename input with custom title or current displayed title
-            self.rename_input = context_manager
+            let initial_title = context_manager
                 .custom_title(tab_index)
-                .map(str::to_string)
-                .unwrap_or_else(|| current_title.to_string());
+                .unwrap_or(current_title);
+            self.rename_input = bounded_rename(initial_title);
             self.rename_caret_time = Instant::now();
         }
     }
@@ -1642,8 +1867,8 @@ impl Island {
             _ => {
                 if let Some(text) = key_event.text.as_ref() {
                     let s = text.as_str();
-                    if !s.is_empty() && s.chars().all(|c| !c.is_control()) {
-                        self.rename_input.push_str(s);
+                    if !s.is_empty() {
+                        push_bounded_rename(&mut self.rename_input, s);
                         self.rename_caret_time = Instant::now();
                     }
                 }
@@ -1670,6 +1895,16 @@ impl Island {
         let (window_width, window_height, scale_factor) = dimensions;
         let mouse_x_unscaled = mouse_x / scale_factor;
         let mouse_y_unscaled = mouse_y / scale_factor;
+        let logical_width = window_width / scale_factor.max(f32::EPSILON);
+        let logical_height = window_height / scale_factor.max(f32::EPSILON);
+        let metrics = chrome_metrics(window_width, window_height, scale_factor);
+        if picker_tab >= num_tabs
+            || !picker_fits(logical_width, logical_height, metrics.header_height)
+        {
+            self.color_picker_tab = None;
+            self.rename_input.clear();
+            return true;
+        }
 
         // Compute the same tab layout as render()
         let TabStripLayout {
@@ -1684,8 +1919,6 @@ impl Island {
             self.max_tab_width,
         );
         let tab_x = left_margin + picker_tab as f32 * tab_width;
-        let logical_width = window_width / scale_factor.max(f32::EPSILON);
-        let metrics = chrome_metrics(window_width, window_height, scale_factor);
 
         // Picker is rendered just below the island
         let picker_y = metrics.header_height;
@@ -1695,7 +1928,7 @@ impl Island {
             // Click outside picker — apply rename and close
             self.apply_rename(context_manager);
             self.color_picker_tab = None;
-            return false;
+            return true;
         }
 
         // Total picker width — N color swatches + 1 reset swatch
@@ -1708,7 +1941,7 @@ impl Island {
         let picker_start_x = bg_x + PICKER_PADDING;
 
         // Check each swatch
-        let swatch_y = picker_y + PICKER_PADDING + PICKER_TOP_PADDING;
+        let swatch_y = picker_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
         let swatch_y_end = swatch_y + PICKER_SWATCH_SIZE;
         for (i, color) in PICKER_COLORS.iter().enumerate() {
             let swatch_x =
@@ -1747,89 +1980,140 @@ impl Island {
     fn render_color_picker(
         &mut self,
         sugarloaf: &mut Sugarloaf,
-        tab_x: f32,
-        tab_width: f32,
-        selected_color: Option<[f32; 4]>,
-        header_height: f32,
-        logical_width: f32,
+        context: PickerRenderContext,
     ) {
-        let padding = PICKER_PADDING;
-        let bg_y = header_height;
-
-        // Compute total swatches width to derive the consistent inner content width
-        // N color swatches + 1 reset swatch
-        let slot_count = PICKER_COLORS.len() + 1;
-        let total_swatches_width = slot_count as f32 * PICKER_SWATCH_SIZE
-            + (slot_count - 1) as f32 * PICKER_SWATCH_GAP;
-        let inner_width = total_swatches_width;
-        let bg_width = inner_width + padding * 2.0;
+        let PickerRenderContext {
+            tab_x,
+            tab_width,
+            selected_color,
+            header_height,
+            logical_width,
+            configured_background,
+        } = context;
+        let theme = UiTheme::resolve(
+            configured_background,
+            self.active_text_color,
+            self.inactive_text_color,
+        );
+        let bg_width = picker_width();
         let bg_x = (tab_x + (tab_width - bg_width) / 2.0)
             .clamp(0.0, (logical_width - bg_width).max(0.0));
-        let content_x = bg_x + padding;
+        let bg_y = header_height;
+        let content_x = bg_x + PICKER_PADDING;
+        let inner_width = bg_width - PICKER_PADDING * 2.0;
 
-        // Background
+        sugarloaf.begin_modal_layer();
+        sugarloaf.rounded_rect(
+            None,
+            bg_x + 5.0,
+            bg_y + 7.0,
+            bg_width,
+            PICKER_HEIGHT,
+            [0.0, 0.0, 0.0, 0.48],
+            0.0,
+            10.0,
+            10,
+        );
         sugarloaf.rounded_rect(
             None,
             bg_x,
             bg_y,
             bg_width,
             PICKER_HEIGHT,
-            [0.15, 0.15, 0.15, 1.0],
+            BRAND_PURPLE,
             0.0,
-            4.0,
+            10.0,
+            10,
+        );
+        sugarloaf.rounded_rect(
+            None,
+            bg_x + 1.0,
+            bg_y + 1.0,
+            (bg_width - 2.0).max(1.0),
+            (PICKER_HEIGHT - 2.0).max(1.0),
+            theme.background,
+            0.0,
+            9.0,
             10,
         );
 
-        // Swatches — aligned to content_x
-        let swatch_y = bg_y + padding + PICKER_TOP_PADDING;
-        for (i, color) in PICKER_COLORS.iter().enumerate() {
-            let sx = content_x + i as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-            let is_selected = selected_color == Some(*color);
+        let heading = DrawOpts {
+            font_size: 10.5,
+            color: theme_color_u8(BRAND_PURPLE),
+            bold: true,
+            ..DrawOpts::default()
+        };
+        sugarloaf.text_mut().draw(
+            content_x,
+            bg_y + PICKER_PADDING,
+            "◇  TAB APPEARANCE",
+            &heading,
+        );
 
-            // Draw white border behind selected swatch
-            if is_selected {
-                let border = 2.0;
+        let swatch_y = bg_y + PICKER_PADDING + PICKER_LABEL_HEIGHT;
+        for (index, color) in PICKER_COLORS.iter().enumerate() {
+            let x = content_x + index as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
+            let selected = selected_color == Some(*color);
+            if selected {
                 sugarloaf.rounded_rect(
                     None,
-                    sx - border,
-                    swatch_y - border,
-                    PICKER_SWATCH_SIZE + border * 2.0,
-                    PICKER_SWATCH_SIZE + border * 2.0,
-                    [1.0, 1.0, 1.0, 1.0],
+                    x - 2.0,
+                    swatch_y - 2.0,
+                    PICKER_SWATCH_SIZE + 4.0,
+                    PICKER_SWATCH_SIZE + 4.0,
+                    BRAND_CYAN,
                     0.0,
-                    4.0,
+                    7.0,
                     10,
                 );
             }
-
             sugarloaf.rounded_rect(
                 None,
-                sx,
+                x,
                 swatch_y,
                 PICKER_SWATCH_SIZE,
                 PICKER_SWATCH_SIZE,
                 *color,
                 0.0,
-                3.0,
+                5.0,
                 10,
             );
+            if selected {
+                sugarloaf.rounded_rect(
+                    None,
+                    x + 5.0,
+                    swatch_y + 5.0,
+                    14.0,
+                    14.0,
+                    theme.background,
+                    0.0,
+                    7.0,
+                    10,
+                );
+                let check = DrawOpts {
+                    font_size: 10.0,
+                    color: theme_color_u8(theme.text),
+                    bold: true,
+                    ..DrawOpts::default()
+                };
+                sugarloaf
+                    .text_mut()
+                    .draw(x + 7.0, swatch_y + 5.0, "✓", &check);
+            }
         }
 
-        // Reset swatch — neutral box with a diagonal slash, selected when no color is set
         let reset_x = content_x
             + PICKER_COLORS.len() as f32 * (PICKER_SWATCH_SIZE + PICKER_SWATCH_GAP);
-        let reset_selected = selected_color.is_none();
-        if reset_selected {
-            let border = 2.0;
+        if selected_color.is_none() {
             sugarloaf.rounded_rect(
                 None,
-                reset_x - border,
-                swatch_y - border,
-                PICKER_SWATCH_SIZE + border * 2.0,
-                PICKER_SWATCH_SIZE + border * 2.0,
-                [1.0, 1.0, 1.0, 1.0],
+                reset_x - 2.0,
+                swatch_y - 2.0,
+                PICKER_SWATCH_SIZE + 4.0,
+                PICKER_SWATCH_SIZE + 4.0,
+                BRAND_CYAN,
                 0.0,
-                4.0,
+                7.0,
                 10,
             );
         }
@@ -1839,74 +2123,74 @@ impl Island {
             swatch_y,
             PICKER_SWATCH_SIZE,
             PICKER_SWATCH_SIZE,
-            [0.22, 0.22, 0.22, 1.0],
+            theme.raised,
             0.0,
-            3.0,
+            5.0,
             10,
         );
-        let slash_inset = 3.0;
-        sugarloaf.line(
-            reset_x + slash_inset,
-            swatch_y + PICKER_SWATCH_SIZE - slash_inset,
-            reset_x + PICKER_SWATCH_SIZE - slash_inset,
-            swatch_y + slash_inset,
-            1.5,
-            0.0,
-            [0.86, 0.26, 0.27, 1.0],
-            10,
-        );
+        let reset = DrawOpts {
+            font_size: 15.0,
+            color: theme_color_u8(theme.text),
+            bold: true,
+            ..DrawOpts::default()
+        };
+        sugarloaf
+            .text_mut()
+            .draw(reset_x + 7.0, swatch_y + 3.0, "×", &reset);
 
-        // Rename text input — same left/right edge as swatches
         let input_y = swatch_y + PICKER_SWATCH_SIZE + PICKER_INPUT_MARGIN_TOP;
-        let input_x = content_x;
-        let input_width = inner_width;
-
-        // Input background
         sugarloaf.rounded_rect(
             None,
-            input_x,
+            content_x,
             input_y,
-            input_width,
+            inner_width,
             PICKER_INPUT_HEIGHT,
-            [0.10, 0.10, 0.10, 1.0],
+            theme.outline,
             0.0,
-            3.0,
+            7.0,
+            10,
+        );
+        sugarloaf.rounded_rect(
+            None,
+            content_x + 1.0,
+            input_y + 1.0,
+            (inner_width - 2.0).max(1.0),
+            (PICKER_INPUT_HEIGHT - 2.0).max(1.0),
+            theme.surface,
+            0.0,
+            6.0,
             10,
         );
 
-        let text_inset = 6.0;
-        let text_x = input_x + text_inset;
-        let max_text_width = input_width - text_inset * 2.0;
-        let text_y = input_y + (PICKER_INPUT_HEIGHT - PICKER_INPUT_FONT_SIZE) / 2.0;
-
+        let text_inset = 9.0;
+        let text_x = content_x + text_inset;
+        let max_text_width = inner_width - text_inset * 2.0;
+        let text_y = input_y + (PICKER_INPUT_HEIGHT - PICKER_INPUT_FONT_SIZE) * 0.5;
         let text_color = if self.rename_input.is_empty() {
-            [0.45, 0.45, 0.45, 1.0]
+            theme.muted_text
         } else {
-            [0.93, 0.93, 0.93, 1.0]
+            theme.text
         };
         let rename_opts = DrawOpts {
             font_size: PICKER_INPUT_FONT_SIZE,
-            color: color_u8(text_color),
+            color: theme_color_u8(text_color),
             ..DrawOpts::default()
         };
 
-        // Determine visible text: trim from the front if it overflows.
         let display_text: String = if self.rename_input.is_empty() {
-            "Tab title...".to_string()
+            "Tab title".to_string()
         } else {
             let input = self.rename_input.as_str();
             let chars: Vec<char> = input.chars().collect();
             let ui = sugarloaf.text_mut();
             let mut start = 0;
-            let full_width = ui.measure(input, &rename_opts);
-            if full_width > max_text_width {
+            if ui.measure(input, &rename_opts) > max_text_width {
                 let mut lo = 0;
                 let mut hi = chars.len();
                 while lo < hi {
                     let mid = (lo + hi) / 2;
-                    let substr: String = chars[mid..].iter().collect();
-                    let w = ui.measure(&substr, &rename_opts);
-                    if w > max_text_width {
+                    let suffix: String = chars[mid..].iter().collect();
+                    if ui.measure(&suffix, &rename_opts) > max_text_width {
                         lo = mid + 1;
                     } else {
                         hi = mid;
@@ -1926,25 +2210,34 @@ impl Island {
         } else {
             rendered_width
         };
-
-        // Blinking caret
-        let elapsed = self.rename_caret_time.elapsed().as_millis();
-        let show_caret = (elapsed / 500).is_multiple_of(2);
-        if show_caret {
+        if (self.rename_caret_time.elapsed().as_millis() / 500).is_multiple_of(2) {
             let caret_x = text_x + rendered_width;
-            if caret_x <= input_x + input_width {
+            if caret_x <= content_x + inner_width - text_inset {
                 sugarloaf.rect(
                     None,
                     caret_x,
-                    input_y + 4.0,
+                    input_y + 6.0,
                     1.5,
-                    PICKER_INPUT_HEIGHT - 8.0,
-                    [0.93, 0.93, 0.93, 1.0],
+                    PICKER_INPUT_HEIGHT - 12.0,
+                    BRAND_CYAN,
                     0.0,
                     10,
                 );
             }
         }
+
+        let footer = DrawOpts {
+            font_size: 10.0,
+            color: theme_color_u8(theme.muted_text),
+            ..DrawOpts::default()
+        };
+        sugarloaf.text_mut().draw(
+            content_x,
+            input_y + PICKER_INPUT_HEIGHT + 7.0,
+            "Enter apply  ·  Esc cancel",
+            &footer,
+        );
+        sugarloaf.end_modal_layer();
     }
 
     /// Whether the color picker is currently open
@@ -2319,102 +2612,242 @@ fn draw_pane_local_tab_rails(
     }
 }
 
-fn draw_window_controls(
-    sugarloaf: &mut Sugarloaf,
-    _logical_width: f32,
-    text_color: [f32; 4],
-    hover: Option<ChromeAction>,
-    header_height: f32,
-    controls_x: f32,
-    button_width: f32,
-) {
-    let color = muted_alpha(text_color, 0.90);
-    let center_y = header_height / 2.0;
+trait WindowControlCanvas {
+    #[allow(clippy::too_many_arguments)]
+    fn rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: [f32; 4],
+        depth: f32,
+        border_radius: f32,
+        order: u8,
+    );
 
-    for (index, action) in [
+    #[allow(clippy::too_many_arguments)]
+    fn line(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        depth: f32,
+        color: [f32; 4],
+        order: u8,
+    );
+
+    fn close_glyph(
+        &mut self,
+        center_x: f32,
+        color: [f32; 4],
+        hovered: bool,
+        center_y: f32,
+        order: u8,
+    );
+}
+
+impl WindowControlCanvas for Sugarloaf<'_> {
+    fn rounded_rect(
+        &mut self,
+        x: f32,
+        y: f32,
+        width: f32,
+        height: f32,
+        color: [f32; 4],
+        depth: f32,
+        border_radius: f32,
+        order: u8,
+    ) {
+        Sugarloaf::rounded_rect(
+            self,
+            None,
+            x,
+            y,
+            width,
+            height,
+            color,
+            depth,
+            border_radius,
+            order,
+        );
+    }
+
+    fn line(
+        &mut self,
+        x1: f32,
+        y1: f32,
+        x2: f32,
+        y2: f32,
+        width: f32,
+        depth: f32,
+        color: [f32; 4],
+        order: u8,
+    ) {
+        Sugarloaf::line(self, x1, y1, x2, y2, width, depth, color, order);
+    }
+
+    fn close_glyph(
+        &mut self,
+        center_x: f32,
+        color: [f32; 4],
+        hovered: bool,
+        center_y: f32,
+        order: u8,
+    ) {
+        draw_close_button(self, center_x, color, hovered, center_y, order);
+    }
+}
+
+fn draw_window_controls(
+    sugarloaf: &mut impl WindowControlCanvas,
+    context: WindowControlRenderContext,
+) {
+    const ORDER: u8 = 5;
+    let WindowControlRenderContext {
+        theme,
+        hover,
+        pressed,
+        maximized,
+        focused,
+        header_height,
+        controls_x,
+        button_width,
+    } = context;
+    let layout = window_control_visual_layout(header_height, controls_x, button_width);
+
+    let actions = [
         ChromeAction::Minimize,
         ChromeAction::Maximize,
         ChromeAction::CloseWindow,
-    ]
-    .into_iter()
-    .enumerate()
-    {
-        if hover == Some(action) {
-            let fill = if action == ChromeAction::CloseWindow {
-                [0.83, 0.12, 0.18, 0.92]
-            } else {
-                [0.14, 0.20, 0.28, 0.90]
-            };
-            sugarloaf.rect(
-                None,
-                controls_x + index as f32 * button_width,
-                0.0,
-                button_width,
-                header_height - 1.0,
+    ];
+    for (index, action) in actions.into_iter().enumerate() {
+        let button = layout.buttons[index];
+        let hovered = hover == Some(action);
+        let pressed_here = pressed == Some(action) && hovered;
+        let fill = window_control_fill(theme, action, hovered, pressed_here, focused);
+        let accent = window_control_accent(action);
+        if hovered {
+            sugarloaf.rounded_rect(
+                button.x,
+                button.y,
+                button.width,
+                button.height,
+                muted_alpha(accent, if pressed_here { 0.94 } else { 0.72 }),
+                0.03,
+                8.0,
+                ORDER,
+            );
+            sugarloaf.rounded_rect(
+                button.x + 1.0,
+                button.y + 1.0,
+                (button.width - 2.0).max(1.0),
+                (button.height - 2.0).max(1.0),
                 fill,
-                0.04,
-                3,
+                0.03,
+                7.0,
+                ORDER + 1,
+            );
+        } else {
+            sugarloaf.rounded_rect(
+                button.x,
+                button.y,
+                button.width,
+                button.height,
+                fill,
+                0.03,
+                8.0,
+                ORDER,
             );
         }
+
+        let glyph_color = muted_alpha(
+            accent,
+            if focused {
+                if hovered {
+                    1.0
+                } else {
+                    0.84
+                }
+            } else {
+                0.42
+            },
+        );
+        let center_x = button.x + button.width * 0.5;
+        let center_y = button.y + button.height * 0.5 - 1.0;
+        match window_control_glyph(action, maximized) {
+            WindowControlGlyph::Minimize => sugarloaf.line(
+                center_x - 6.0,
+                center_y + 3.0,
+                center_x + 6.0,
+                center_y + 3.0,
+                1.6,
+                0.0,
+                glyph_color,
+                ORDER + 3,
+            ),
+            WindowControlGlyph::Maximize => draw_window_control_box(
+                sugarloaf,
+                center_x - 6.0,
+                center_y - 6.0,
+                12.0,
+                glyph_color,
+                fill,
+                ORDER + 3,
+            ),
+            WindowControlGlyph::Restore => {
+                draw_window_control_box(
+                    sugarloaf,
+                    center_x - 3.0,
+                    center_y - 6.0,
+                    9.0,
+                    glyph_color,
+                    fill,
+                    ORDER + 2,
+                );
+                draw_window_control_box(
+                    sugarloaf,
+                    center_x - 6.0,
+                    center_y - 3.0,
+                    9.0,
+                    glyph_color,
+                    fill,
+                    ORDER + 3,
+                );
+            }
+            WindowControlGlyph::Close => sugarloaf.close_glyph(
+                center_x,
+                glyph_color,
+                hovered || pressed_here,
+                center_y + 1.0,
+                ORDER + 3,
+            ),
+        }
     }
+}
 
-    let minimize_x = controls_x + button_width / 2.0;
-    sugarloaf.line(
-        minimize_x - 7.0,
-        center_y,
-        minimize_x + 7.0,
-        center_y,
-        1.3,
+fn draw_window_control_box(
+    sugarloaf: &mut impl WindowControlCanvas,
+    x: f32,
+    y: f32,
+    size: f32,
+    color: [f32; 4],
+    fill: [f32; 4],
+    order: u8,
+) {
+    sugarloaf.rounded_rect(x, y, size, size, color, 0.0, 3.0, order);
+    sugarloaf.rounded_rect(
+        x + 1.5,
+        y + 1.5,
+        (size - 3.0).max(1.0),
+        (size - 3.0).max(1.0),
+        fill,
         0.0,
-        color,
-        5,
+        1.8,
+        order + 1,
     );
-
-    let maximize_x = controls_x + button_width * 1.5;
-    let half = 6.0;
-    sugarloaf.line(
-        maximize_x - half,
-        center_y - half,
-        maximize_x + half,
-        center_y - half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-    sugarloaf.line(
-        maximize_x + half,
-        center_y - half,
-        maximize_x + half,
-        center_y + half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-    sugarloaf.line(
-        maximize_x + half,
-        center_y + half,
-        maximize_x - half,
-        center_y + half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-    sugarloaf.line(
-        maximize_x - half,
-        center_y + half,
-        maximize_x - half,
-        center_y - half,
-        1.2,
-        0.0,
-        color,
-        5,
-    );
-
-    let close_x = controls_x + button_width * 2.5;
-    draw_close_button(sugarloaf, close_x, text_color, false, center_y, 5);
 }
 
 fn muted_alpha(mut color: [f32; 4], alpha: f32) -> [f32; 4] {
@@ -2435,6 +2868,97 @@ fn color_u8(c: [f32; 4]) -> [u8; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[derive(Debug, PartialEq)]
+    enum RecordedWindowControlOp {
+        RoundedRect {
+            x: f32,
+            y: f32,
+            width: f32,
+            height: f32,
+            border_radius: f32,
+            order: u8,
+        },
+        Line {
+            x1: f32,
+            y1: f32,
+            x2: f32,
+            y2: f32,
+            width: f32,
+            order: u8,
+        },
+        CloseGlyph {
+            center_x: f32,
+            hovered: bool,
+            center_y: f32,
+            order: u8,
+        },
+    }
+
+    #[derive(Default)]
+    struct RecordingWindowControlCanvas {
+        ops: Vec<RecordedWindowControlOp>,
+    }
+
+    impl WindowControlCanvas for RecordingWindowControlCanvas {
+        fn rounded_rect(
+            &mut self,
+            x: f32,
+            y: f32,
+            width: f32,
+            height: f32,
+            _color: [f32; 4],
+            _depth: f32,
+            border_radius: f32,
+            order: u8,
+        ) {
+            self.ops.push(RecordedWindowControlOp::RoundedRect {
+                x,
+                y,
+                width,
+                height,
+                border_radius,
+                order,
+            });
+        }
+
+        fn line(
+            &mut self,
+            x1: f32,
+            y1: f32,
+            x2: f32,
+            y2: f32,
+            width: f32,
+            _depth: f32,
+            _color: [f32; 4],
+            order: u8,
+        ) {
+            self.ops.push(RecordedWindowControlOp::Line {
+                x1,
+                y1,
+                x2,
+                y2,
+                width,
+                order,
+            });
+        }
+
+        fn close_glyph(
+            &mut self,
+            center_x: f32,
+            _color: [f32; 4],
+            hovered: bool,
+            center_y: f32,
+            order: u8,
+        ) {
+            self.ops.push(RecordedWindowControlOp::CloseGlyph {
+                center_x,
+                hovered,
+                center_y,
+                order,
+            });
+        }
+    }
 
     #[test]
     fn island_geometry_invariants() {
@@ -2714,6 +3238,178 @@ mod tests {
     }
 
     #[test]
+    fn branded_window_control_visuals_are_bounded_and_distinct() {
+        let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
+        let mut previous_right = None;
+        for button in layout.buttons {
+            assert!(button.width >= 32.0);
+            assert!(button.height >= 24.0);
+            assert!(button.x >= 1_142.0);
+            assert!(button.y >= 0.0);
+            assert!(button.x + button.width <= 1_280.0);
+            assert!(button.y + button.height <= 48.0);
+            if let Some(previous_right) = previous_right {
+                assert!(button.x > previous_right);
+            }
+            previous_right = Some(button.x + button.width);
+        }
+        assert_ne!(
+            window_control_accent(ChromeAction::Minimize),
+            window_control_accent(ChromeAction::Maximize)
+        );
+        assert_ne!(
+            window_control_accent(ChromeAction::Maximize),
+            window_control_accent(ChromeAction::CloseWindow)
+        );
+
+        let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);
+        let rest = window_control_fill(theme, ChromeAction::Minimize, false, false, true);
+        let hover = window_control_fill(theme, ChromeAction::Minimize, true, false, true);
+        let held = window_control_fill(theme, ChromeAction::Minimize, true, true, true);
+        let inactive =
+            window_control_fill(theme, ChromeAction::Minimize, false, false, false);
+        assert_ne!(rest, hover);
+        assert_ne!(hover, held);
+        assert_ne!(rest, inactive);
+    }
+
+    #[test]
+    fn window_controls_submit_only_cards_and_glyphs_in_every_visual_state() {
+        let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);
+        let pointer_states = [
+            (None, None),
+            (Some(ChromeAction::Minimize), None),
+            (Some(ChromeAction::Minimize), Some(ChromeAction::Minimize)),
+            (Some(ChromeAction::Maximize), None),
+            (Some(ChromeAction::Maximize), Some(ChromeAction::Maximize)),
+            (Some(ChromeAction::CloseWindow), None),
+            (
+                Some(ChromeAction::CloseWindow),
+                Some(ChromeAction::CloseWindow),
+            ),
+        ];
+        for focused in [true, false] {
+            for maximized in [false, true] {
+                for (hover, pressed) in pointer_states {
+                    let mut canvas = RecordingWindowControlCanvas::default();
+                    draw_window_controls(
+                        &mut canvas,
+                        WindowControlRenderContext {
+                            theme,
+                            hover,
+                            pressed,
+                            maximized,
+                            focused,
+                            header_height: 48.0,
+                            controls_x: 1_142.0,
+                            button_width: 46.0,
+                        },
+                    );
+
+                    let decorative_rails: Vec<_> = canvas
+                        .ops
+                        .iter()
+                        .filter(|op| {
+                            matches!(
+                                op,
+                                RecordedWindowControlOp::RoundedRect {
+                                    width,
+                                    height,
+                                    ..
+                                } if *height <= 2.0 && *width >= 8.0
+                            )
+                        })
+                        .collect();
+                    assert!(
+                        decorative_rails.is_empty(),
+                        "caption controls must not paint decorative underline rails: {decorative_rails:#?}"
+                    );
+
+                    let expected_ops =
+                        7 + usize::from(hover.is_some()) + if maximized { 2 } else { 0 };
+                    assert_eq!(
+                        canvas.ops.len(),
+                        expected_ops,
+                        "unexpected layers for hover={hover:?}, pressed={pressed:?}, maximized={maximized}, focused={focused}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn window_controls_render_as_independent_cards_without_a_group_container() {
+        let layout = window_control_visual_layout(48.0, 1_142.0, 46.0);
+
+        insta::assert_debug_snapshot!(layout, @r###"
+        WindowControlVisualLayout {
+            buttons: [
+                WindowControlRect {
+                    x: 1147.0,
+                    y: 6.0,
+                    width: 36.0,
+                    height: 36.0,
+                },
+                WindowControlRect {
+                    x: 1193.0,
+                    y: 6.0,
+                    width: 36.0,
+                    height: 36.0,
+                },
+                WindowControlRect {
+                    x: 1239.0,
+                    y: 6.0,
+                    width: 36.0,
+                    height: 36.0,
+                },
+            ],
+        }
+        "###);
+    }
+
+    #[test]
+    fn maximize_control_switches_to_restore_for_maximized_windows() {
+        assert_eq!(
+            window_control_glyph(ChromeAction::Maximize, false),
+            WindowControlGlyph::Maximize
+        );
+        assert_eq!(
+            window_control_glyph(ChromeAction::Maximize, true),
+            WindowControlGlyph::Restore
+        );
+        let mut island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        assert!(island.set_window_maximized(true));
+        assert!(island.is_window_maximized());
+        assert!(!island.set_window_maximized(true));
+    }
+
+    #[test]
+    fn chrome_release_requires_the_same_control_and_cancels_drag_away() {
+        assert!(window_control_release_matches(
+            ChromeAction::Maximize,
+            Some(ChromeAction::Maximize)
+        ));
+        assert!(!window_control_release_matches(
+            ChromeAction::Maximize,
+            Some(ChromeAction::CloseWindow)
+        ));
+        assert!(!window_control_release_matches(
+            ChromeAction::Maximize,
+            None
+        ));
+    }
+
+    #[test]
+    fn chrome_press_latch_is_explicit_and_cancellable() {
+        let mut island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
+        assert!(island.set_chrome_pressed(Some(ChromeAction::Maximize)));
+        assert_eq!(island.chrome_pressed, Some(ChromeAction::Maximize));
+        assert!(island.cancel_chrome_press());
+        assert_eq!(island.chrome_pressed, None);
+        assert!(!island.cancel_chrome_press());
+    }
+
+    #[test]
     fn space_below_window_header_has_no_workspace_action_hit_targets() {
         let island = Island::new([1.0; 4], [1.0; 4], false, 240.0, true);
         let metrics = chrome_metrics(1_280.0, 760.0, 1.0);
@@ -2782,6 +3478,108 @@ mod tests {
             240.0,
             false,
         )
+    }
+
+    #[test]
+    fn tab_appearance_picker_targets_and_surface_are_bounded() {
+        const {
+            assert!(PICKER_SWATCH_SIZE >= 24.0);
+        }
+        assert_eq!(
+            picker_width(),
+            (PICKER_COLORS.len() + 1) as f32 * PICKER_SWATCH_SIZE
+                + PICKER_COLORS.len() as f32 * PICKER_SWATCH_GAP
+                + PICKER_PADDING * 2.0
+        );
+        assert!(picker_fits(
+            picker_width(),
+            48.0 + PICKER_HEIGHT + 8.0,
+            48.0
+        ));
+        assert!(!picker_fits(picker_width() - 1.0, 600.0, 48.0));
+        assert!(!picker_fits(picker_width(), 48.0 + PICKER_HEIGHT, 48.0));
+    }
+
+    #[test]
+    fn tab_rename_is_utf8_safe_control_free_and_byte_bounded() {
+        let value = format!("{}\nignored", "é".repeat(PICKER_MAX_RENAME_BYTES));
+        let bounded = bounded_rename(&value);
+        assert!(bounded.len() <= PICKER_MAX_RENAME_BYTES);
+        assert!(bounded.is_char_boundary(bounded.len()));
+        assert!(bounded.chars().all(|ch| !ch.is_control()));
+
+        let mut target = "x".repeat(PICKER_MAX_RENAME_BYTES - 1);
+        push_bounded_rename(&mut target, "éoverflow");
+        assert_eq!(target.len(), PICKER_MAX_RENAME_BYTES - 1);
+    }
+
+    #[test]
+    fn live_config_update_preserves_runtime_state() {
+        let mut island = test_island();
+        island.set_progress_report(ProgressReport {
+            state: ProgressState::Set,
+            progress: Some(41),
+        });
+        island.color_picker_tab = Some(2);
+        island.rename_input = "deploy-prod".to_string();
+        island.set_close_hover(true);
+        island.set_chrome_hover(Some(ChromeAction::OpenPalette));
+        let progress_started_at = island.progress_started_at;
+        let progress_last_seen = island.progress_last_seen;
+
+        island.update_config(
+            [0.1, 0.2, 0.3, 1.0],
+            [0.9, 0.8, 0.7, 1.0],
+            true,
+            180.0,
+            false,
+        );
+
+        assert_eq!(island.progress_state, Some(ProgressState::Set));
+        assert_eq!(island.progress_value, Some(41));
+        assert_eq!(island.progress_started_at, progress_started_at);
+        assert_eq!(island.progress_last_seen, progress_last_seen);
+        assert_eq!(island.color_picker_tab, Some(2));
+        assert_eq!(island.rename_input, "deploy-prod");
+        assert!(island.close_hover);
+        assert_eq!(island.chrome_hover, Some(ChromeAction::OpenPalette));
+
+        assert_eq!(island.inactive_text_color, [0.1, 0.2, 0.3, 1.0]);
+        assert_eq!(island.active_text_color, [0.9, 0.8, 0.7, 1.0]);
+        assert!(island.hide_if_single);
+        assert_eq!(island.max_tab_width, 180.0);
+    }
+
+    #[test]
+    fn live_chrome_change_cancels_only_geometry_bound_interactions() {
+        let mut island = test_island();
+        island.set_progress_report(ProgressReport {
+            state: ProgressState::Set,
+            progress: Some(65),
+        });
+        island.color_picker_tab = Some(1);
+        island.rename_input = "keep-me".to_string();
+        island.start_drag(0, 4.0, 32.0);
+        island.set_close_hover(true);
+        island.set_chrome_hover(Some(ChromeAction::Maximize));
+
+        island.update_config(
+            island.inactive_text_color,
+            island.active_text_color,
+            island.hide_if_single,
+            island.max_tab_width,
+            true,
+        );
+
+        assert!(island.drag.is_none());
+        assert!(island.slide_springs.is_empty());
+        assert!(!island.close_hover);
+        assert_eq!(island.chrome_hover, None);
+
+        assert_eq!(island.progress_state, Some(ProgressState::Set));
+        assert_eq!(island.progress_value, Some(65));
+        assert_eq!(island.color_picker_tab, Some(1));
+        assert_eq!(island.rename_input, "keep-me");
     }
 
     #[test]

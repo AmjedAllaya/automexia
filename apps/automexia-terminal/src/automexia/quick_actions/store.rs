@@ -7,10 +7,10 @@ use std::{
     sync::Arc,
 };
 
-use automexia_devops::actions::{
-    validate_quick_actions, ActionProvenance, ActionTemplate, ArgumentToken, QuickAction,
-    QuickActionDocument, ValidatedQuickActions, WorkingDirectoryPolicy, MAX_SOURCE_BYTES,
-    QUICK_ACTION_SCHEMA_VERSION,
+use automexia_command_productivity::actions::{
+    validate_quick_actions, ActionProvenance, ActionScope, ActionTemplate, ArgumentToken,
+    QuickAction, QuickActionDocument, ValidatedQuickActions, WorkingDirectoryPolicy,
+    MAX_SOURCE_BYTES, QUICK_ACTION_SCHEMA_VERSION,
 };
 use tempfile::{Builder, NamedTempFile};
 
@@ -45,6 +45,7 @@ pub enum StoreErrorCode {
     ActionNotFound,
     ActionIdMismatch,
     StateDirectoryLimit,
+    UnsupportedPersistentScope,
 }
 
 impl StoreErrorCode {
@@ -70,6 +71,7 @@ impl StoreErrorCode {
             Self::ActionNotFound => "action-not-found",
             Self::ActionIdMismatch => "action-id-mismatch",
             Self::StateDirectoryLimit => "state-directory-limit",
+            Self::UnsupportedPersistentScope => "unsupported-persistent-scope",
         }
     }
 }
@@ -162,6 +164,10 @@ impl fmt::Debug for QuickActionSnapshot {
 }
 
 impl QuickActionSnapshot {
+    pub(crate) fn empty() -> Result<Self, StoreError> {
+        empty_snapshot()
+    }
+
     pub fn actions(&self) -> &ValidatedQuickActions {
         &self.actions
     }
@@ -218,6 +224,23 @@ impl QuickActionStore {
         Ok(store)
     }
 
+    pub fn open_existing_read_only(
+        root: impl AsRef<Path>,
+    ) -> Result<Option<Self>, StoreError> {
+        let root = root.as_ref();
+        match fs::symlink_metadata(root) {
+            Ok(_) => {}
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(None);
+            }
+            Err(error) => return Err(StoreError::io(error)),
+        }
+        secure_fs::inspect_private_directory(root)?;
+        let root = fs::canonicalize(root).map_err(StoreError::io)?;
+        secure_fs::inspect_private_directory(&root)?;
+        Ok(Some(Self { root }))
+    }
+
     pub fn root(&self) -> &Path {
         &self.root
     }
@@ -252,6 +275,50 @@ impl QuickActionStore {
                 self.load_previous(Some(error.code()))
             }
             Err(error) => Err(error),
+        }
+    }
+
+    pub fn load_read_only(&self) -> Result<LoadResult, StoreError> {
+        secure_fs::inspect_private_directory(&self.root)?;
+        let primary = read_private_optional(&self.source_path(), MAX_SOURCE_BYTES);
+        match primary {
+            Ok(Some(bytes)) => match snapshot_from_bytes(&bytes, LoadOrigin::Primary) {
+                Ok(snapshot) => Ok(LoadResult {
+                    snapshot: Arc::new(snapshot),
+                    rejected_primary: None,
+                }),
+                Err(primary) if primary_is_recoverable(&primary) => {
+                    self.load_previous_read_only(Some(primary.code()))
+                }
+                Err(error) => Err(error),
+            },
+            Ok(None) => self.load_previous_read_only(None),
+            Err(error) if primary_is_recoverable(&error) => {
+                self.load_previous_read_only(Some(error.code()))
+            }
+            Err(error) => Err(error),
+        }
+    }
+
+    fn load_previous_read_only(
+        &self,
+        rejected_primary: Option<StoreErrorCode>,
+    ) -> Result<LoadResult, StoreError> {
+        match read_private_optional(&self.previous_path(), MAX_SOURCE_BYTES)? {
+            Some(bytes) => {
+                let snapshot = snapshot_from_bytes(&bytes, LoadOrigin::PreviousRecovery)?;
+                Ok(LoadResult {
+                    snapshot: Arc::new(snapshot),
+                    rejected_primary,
+                })
+            }
+            None if rejected_primary.is_none() => Ok(LoadResult {
+                snapshot: Arc::new(empty_snapshot()?),
+                rejected_primary: None,
+            }),
+            None => Err(StoreError::new(
+                rejected_primary.unwrap_or(StoreErrorCode::RecoveryRequired),
+            )),
         }
     }
 
@@ -527,6 +594,17 @@ impl QuickActionStore {
     }
 }
 
+fn read_private_optional(
+    path: &Path,
+    maximum: usize,
+) -> Result<Option<Vec<u8>>, StoreError> {
+    let bytes = secure_fs::read_bounded_regular(path, maximum)?;
+    if bytes.is_some() {
+        secure_fs::inspect_private_file(path)?;
+    }
+    Ok(bytes)
+}
+
 fn primary_is_recoverable(error: &StoreError) -> bool {
     matches!(
         error.code(),
@@ -556,7 +634,7 @@ fn snapshot_from_bytes(
 ) -> Result<QuickActionSnapshot, StoreError> {
     let source = std::str::from_utf8(bytes)
         .map_err(|_| StoreError::new(StoreErrorCode::InvalidUtf8))?;
-    let validated = automexia_devops::actions::parse_quick_actions(source)
+    let validated = automexia_command_productivity::actions::parse_quick_actions(source)
         .map_err(|error| StoreError::model(error.code()))?;
     snapshot_from_validated(validated, bytes, origin)
 }
@@ -566,6 +644,7 @@ fn snapshot_from_validated(
     source: &[u8],
     origin: LoadOrigin,
 ) -> Result<QuickActionSnapshot, StoreError> {
+    validate_persistent_actions(validated.document())?;
     let resident_bytes =
         estimated_resident_bytes(validated.document()).saturating_add(source.len());
     if resident_bytes > MAX_CACHED_ACTION_BYTES {
@@ -579,20 +658,35 @@ fn snapshot_from_validated(
     })
 }
 
+fn validate_persistent_actions(document: &QuickActionDocument) -> Result<(), StoreError> {
+    if document.actions.iter().any(|action| {
+        !matches!(
+            action.scope,
+            ActionScope::ShellUser | ActionScope::GlobalUser
+        )
+    }) {
+        return Err(StoreError::new(StoreErrorCode::UnsupportedPersistentScope));
+    }
+    Ok(())
+}
+
 fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
     let mut bytes = mem::size_of::<QuickActionDocument>()
         .saturating_add(document.actions.capacity() * mem::size_of::<QuickAction>());
     for action in &document.actions {
-        bytes = bytes
-            .saturating_add(action.id.capacity())
-            .saturating_add(action.display_name.capacity())
-            .saturating_add(action.description.capacity())
-            .saturating_add(action.tags.capacity() * mem::size_of::<String>())
-            .saturating_add(action.tags.iter().map(String::capacity).sum::<usize>())
-            .saturating_add(
-                action.placeholders.capacity()
-                    * mem::size_of::<automexia_devops::actions::Placeholder>(),
-            );
+        bytes =
+            bytes
+                .saturating_add(action.id.capacity())
+                .saturating_add(action.display_name.capacity())
+                .saturating_add(action.description.capacity())
+                .saturating_add(action.tags.capacity() * mem::size_of::<String>())
+                .saturating_add(action.tags.iter().map(String::capacity).sum::<usize>())
+                .saturating_add(
+                    action.placeholders.capacity()
+                        * mem::size_of::<
+                            automexia_command_productivity::actions::Placeholder,
+                        >(),
+                );
         for placeholder in &action.placeholders {
             bytes = bytes
                 .saturating_add(placeholder.name.capacity())
@@ -632,6 +726,15 @@ fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
             ActionProvenance::Imported { source_digest } => {
                 bytes = bytes.saturating_add(source_digest.capacity());
             }
+            ActionProvenance::WorkspaceTask {
+                task_name,
+                workspace_identity,
+                ..
+            } => {
+                bytes = bytes
+                    .saturating_add(task_name.capacity())
+                    .saturating_add(workspace_identity.capacity());
+            }
             ActionProvenance::User => {}
         }
         if let Some(alias) = &action.alias_projection {
@@ -639,7 +742,9 @@ fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
                 .saturating_add(alias.requested_name.capacity())
                 .saturating_add(
                     alias.shells.capacity()
-                        * mem::size_of::<automexia_devops::actions::ShellKind>(),
+                        * mem::size_of::<
+                            automexia_command_productivity::actions::ShellKind,
+                        >(),
                 );
         }
     }
@@ -672,7 +777,9 @@ fn persist(staged: NamedTempFile, destination: &Path) -> Result<(), StoreError> 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use automexia_devops::actions::{ActionScope, ExecutionMode, RiskClass, ShellKind};
+    use automexia_command_productivity::actions::{
+        ActionScope, ExecutionMode, RiskClass, ShellKind,
+    };
     use std::sync::{Arc as Shared, Barrier};
 
     fn action(id: &str) -> QuickAction {

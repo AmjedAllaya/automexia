@@ -1,9 +1,12 @@
 # SSH access, multi-cloud connections, and automation recipes
 
-Status: implementation specification for D5 production SSH and D6 multi-cloud
-delivery. Automexia v0.4 does not ship managed connections or automatic remote
-actions. Ordinary user-entered `ssh`, `aws`, `az`, `gcloud`, `kubectl`, and
-`oc` commands continue to use the installed system tools.
+Status: D5.1's read-only Hub and nonactivated F5.1-F5.3 SSH source are fully
+implemented locally. M6's accepted review/edit boundary is also complete locally:
+schema-2 preview/CAS management, public workspace CLI, immutable Hub catalog and
+restore review, exact fingerprints, typed lifecycle/no-hooks, narrow remote
+initialization, and armed broadcast all remain execution-disabled. Protected
+D3/M5 activation, native OpenSSH/process/resource/accessibility evidence, and
+provider product execution remain. Ordinary shell commands are unchanged.
 
 This document is the implementation authority for connection profiles and
 connection-scoped automation. The [Connection Hub](CONNECTION-HUB.md) owns the
@@ -42,12 +45,61 @@ The current repository provides:
 - provider-neutral environment and extension contracts;
 - an exact-argument launch validation model that is intentionally disabled;
 - independent PTY, pane, tab, clone, context, and cancellation ownership; and
-- the complete Connection Hub and security specifications.
+- the complete Connection Hub and security specifications; and
+- the F2/D5.0 bounded public-only records, strict validation, authentication/
+  result reducers, deterministic non-executing planner/fingerprints, pure Hub/
+  review/planner projections, fixtures, fuzz, mutation, and benchmark owners;
+- the F3 bounded 10,000-record catalog, local filtering/grouping, source
+  revisions, and renderer-neutral virtualization;
+- the F3 explicit-grant application composition worker with generation
+  supersession, redacted stale last-known-good health, and static platform
+  guidance; and
+- the F3 private transactional Connection Library for validated profiles,
+  recipes, and Hub preferences, with CAS/recovery and redacted fresh-ID
+  transfer; and
+- the M2-M4 OpenSSH boundary: typed direct/config-jump routes, exact
+  `ssh`/`session.launch` argv, full host-key/public-identity evidence, safe copy,
+  revision invalidation, allow-once/session/deny UX, one hard-disabled runner,
+  and ContextManager-owned guarded PTY/route publication.
 
-It does **not** yet provide a production Connection Hub, automatic SSH launch,
-recipe editor, recipe executor, cloud transport adapters, or remote action
-handshake. UI examples and schemas in this page are planned contracts, not
-instructions for a shipped v0.4 feature.
+It now provides the D5.1 rendered read-only Connection Hub in v0.5 source builds.
+M6 adds accepted schema-2 preview/CAS management, a public nonexecuting CLI, and
+a Connection Hub workspace catalog/restore review over immutable current library
+snapshots. No recipe, restore, broadcast, or other remote action can execute.
+Automatic SSH launch, cloud transport adapters, and remote execution remain
+gated; these v0.5 source contracts are not instructions for v0.4.
+
+### F2/D5.0 implementation ledger (2026-08-17)
+
+- **Fully done locally:** strict schema-1 ConnectionDefinition, Observation,
+  Intent, Review, Receipt, Profile, Recipe, Step, Tunnel, document, state, and
+  ResolvedConnectionPlan owners with fixed ceilings, sealed validated wrappers,
+  fallible plan sequencing, and redacted references.
+- **Fully done locally:** hostile controls/bidi, option confusion, duplicates,
+  cycles, missing dependencies, oversize, secret-bearing fields, command-string
+  shapes, and invalid policy/retry combinations fail closed.
+- **Fully done locally:** canonical fingerprints and dry-run resolution cover
+  all material target/identity/route/tunnel/recipe/executable/capability/source
+  changes while returning an all-false authority ceiling.
+- **Fully done locally:** exhaustive authentication/result reducers reject late
+  operation generations, and the pure responsive Hub, Connection Review, and
+  64-step planner projections preserve roving focus, live progress, route-aware
+  modal cycles, and value-redacted human labels. Thirty required regressions and
+  structured provider/auth/layout/accessibility fixtures have property,
+  mutation, architecture, fuzz, and benchmark ownership.
+- **Partially done externally:** ADR 0012 is owner-accepted; ADR 0003 protected
+  exact-head approvals/server enforcement and native evidence remain.
+- **Fully done separately in D5.1:** private transactional profile/recipe/
+  preference persistence, explicit recovery, fault-preserving writes, and
+  redacted fresh-ID transfer.
+- **Fully done separately in D5.1:** catalog, explicit reviewed grants, app-owned
+  joined runtime, read-only modal, and favorite/tag CAS UI are implemented.
+- **Not done in D5.2/D6:** every connection/provider execution path and the full
+  profile/recipe editor remain separately gated.
+
+Therefore F2/D5.0 is **Partially done** overall despite its complete local
+non-executing exit. No account, filesystem, process, network, credential, PTY,
+listener, window, or GPU is required to test this baseline.
 
 ## Non-negotiable principles
 
@@ -125,7 +177,7 @@ must remain the safest and easiest path.
 
 ## Connection profile model
 
-The provider-neutral source model should live in `automexia-devops`; the UI
+The provider-neutral source model lives in `automexia-connectivity`; the UI
 projection belongs in `automexia-ui-model`.
 
 ```text
@@ -183,6 +235,49 @@ after a visible capability decision. Provider versions determine supported
 flags. An unavailable or incompatible official tool produces a truthful
 `Missing` or `Unsupported` state; it never falls back to a different transport.
 
+## M6 review-only implementation
+
+M6 is implemented as a product-visible but execution-disabled review boundary:
+
+- Connection Library schema 2 stores profiles, recipes, workspaces, and
+  preferences under the existing private filenames. Schema 1 loads as an
+  explicit migration preview and changes persist only through reviewed CAS.
+- Editing a recipe advances every dependent profile/workspace revision,
+  recomputes exact fingerprints, and clears approvals. A mismatched, dangling,
+  overflowing, stale, malformed, linked, or oversized document fails closed.
+- Export is redacted and workspace-topology only; importing creates fresh local
+  IDs and requires review before CAS. Rebind imported topology locally.
+- A recipe review preserves the fixed lifecycle order, revalidates typed policy,
+  exposes no authority, and supports `NoHooks` as a reviewed recovery intent.
+  The public `recipe-plan --no-hooks` command reviews this recovery intent but cannot execute it.
+- Remote initialization is a typed POSIX-sh or PowerShell envelope for directory,
+  public environment, user switch, and verification. It contains no arbitrary
+  command/script field; `sudo`/`doas` remains visible and confirms every
+  connection.
+- Workspace restore rebuilds only layout and connection intent into a fresh
+  reviewed generation. It does not restore PTYs, credentials, tunnels, automatic
+  reconnect, or interrupted work.
+- Broadcast requires exact transient command/target preview, explicit time-
+  bounded arming, separate production confirmation, and per-target results. It
+  requests no Enter and audit/debug state contains only a command digest/count.
+- `automexia workspaces` exposes bounded preview-first management and reviews;
+  the joined Hub worker publishes an immutable library snapshot to the
+  Workspaces catalog and restore review. CAS writes, current fingerprint binding,
+  stale-review invalidation, pointer/keyboard focus, and semantic accessibility
+  are application-owned, while every process/PTY/network/Enter flag remains off.
+
+Current limits are 256 workspaces, 16 windows and 64 panes per workspace, 128
+connection bindings, 32 recipe bindings per connection, 50 broadcast targets,
+an 8 KiB broadcast command, a 60-second maximum arm, and the existing 16 MiB
+private library document. These operations are synchronous pure models or
+bounded private-store calls; they do not run on terminal input, PTY, resize,
+renderer, or startup hot paths.
+
+The current recovery path is to cancel/disarm the review, reload the latest
+library revision, resolve a new generation, or retain manual system OpenSSH in
+the terminal. Imported topology must be rebound. No partial migration or stale
+preview is committed. See [accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
+and [M6 testing](TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 ## Automation recipe model
 
 ```text
@@ -662,7 +757,8 @@ record cold/warm state and tool versions.
 
 | Concern | Existing owner |
 |---|---|
-| Profile, recipe, action, result, and provider-neutral state | `automexia-devops` |
+| Profile, recipe, result, and provider-neutral connection state | `automexia-connectivity` |
+| Quick Action and recipe-action policy | `automexia-command-productivity` |
 | Renderer-neutral Hub/editor/focus/accessibility models | `automexia-ui-model` |
 | Capability requests, bounded types, operation/session IDs | `automexia-extension-api` |
 | Cancellation, queues, workers, latest generation, cache | `automexia-extension-runtime` |
@@ -680,52 +776,105 @@ The application remains the only owner allowed to attach a process to a route.
 
 ### D5A - contracts and golden fixtures
 
-- Accept or supersede ADR 0012 through protected review.
-- Freeze bounded profile, recipe, step, state, result, and capability schemas.
-- Implement validation, revisioning, fingerprints, redacted debug, migration,
-  and synthetic all-state fixtures.
-- Add renderer-neutral wide/medium/narrow Connection Hub and recipe-editor
-  models with keyboard/focus/accessibility goldens.
-- Keep all process and network capabilities disabled.
+Status: **Partially done** overall.
 
-Exit gate: hostile/mutation/property/model tests pass and the synthetic product
-slice is reviewable without an account, PTY, network, or GPU.
+- [ ] **Partially done externally:** ADR 0012 is owner-accepted; obtain ADR
+  0003's two independent exact-head approvals and server enforcement.
+- [x] **Fully done locally:** freeze bounded profile, recipe, step, connection,
+  state, result, review, plan, and capability schemas.
+- [x] **Fully done locally:** implement strict validation, revision fields,
+  fingerprints, redacted debug, and synthetic all-state fixtures. Persisted
+  schema migration remains D5B because F2 performs no storage.
+- [x] **Fully done locally:** add renderer-neutral wide/medium/narrow Connection
+  Hub, review, and recipe-planner models with keyboard/focus/accessibility
+  goldens.
+- [x] **Fully done locally:** keep all process, network, provider, credential,
+  PTY, listener, renderer, and GPU authority disabled.
+
+Exit status: hostile/mutation/property/record/state/model/layout/accessibility
+tests pass and the synthetic slice is reviewable without an account, PTY,
+network, window, or GPU. Protected ADR acceptance remains the overall blocker.
 
 ### D5B - read-only Connection Hub
 
-- Connect the current D4 inventory to virtualized search and grouping.
-- Add explicit local scan, favorites, tags, recent use, stale health, source
-  revision, and platform setup guidance.
-- Implement profile and recipe persistence, import/export safety, and
-  last-known-good recovery.
-- Keep Connect and automatic actions visibly disabled.
+Status: **Partially done**.
 
-Exit gate: 10,000-profile search/layout/resource budgets and Windows, macOS,
-and Linux persistence/permission tests pass.
+- [ ] **Partially done:** the bounded catalog and explicit-grant composition
+  service connect public D4 records to pure search/grouping; product
+  state-root/controller and rendered-modal wiring remain.
+- [ ] **Partially done:** explicit scans, metadata-backed favorite/tag/recent
+  values, source revision, stale last-known-good health, and static platform
+  guidance exist; exact file-selection and favorite/tag mutation UI remain,
+  while recent must stay read-only until managed D5.2 success receipts exist.
+- [x] **Fully done locally:** private profile/recipe/preference persistence,
+  strict transfer parsing, canary redaction, fresh local import IDs, revision
+  CAS, concurrent-writer exclusion, atomic previous-generation recovery, and
+  read-only/disk-full preservation pass.
+- [ ] **Partially done:** pure projections expose no execution authority, but
+  the product modal must visibly explain why Connect and automatic actions are
+  disabled.
+
+Exit gate: the 10,000-profile pure search budget and Windows-local Connection
+Library persistence tests pass. Product rendering, application ownership,
+native macOS/Linux permission runs, controlled screen readers, and the
+remaining exact-selection/mutation flows are still required.
 
 ### D5C - recipe editor and dry-run planner
 
-- Add the typed first-party action catalog, variables, dependencies, risk,
-  confirmation, deadlines, failure/retry/reconnect policies, and plan preview.
-- Add deterministic compilation to a non-executing `ResolvedConnectionPlan`.
-- Add changed-fingerprint review and reusable recipe selection.
-- Do not spawn tools or connect.
+Status: **Partially done**; the pure model/planner is done and the product editor
+is not done.
 
-Exit gate: every supported action and hostile parameter has deterministic
-validation, redaction, migration, accessibility, and layout coverage.
+- [x] **Fully done locally:** add the typed first-party action catalog,
+  variables, dependencies, risk, confirmation, deadlines, failure/retry/
+  reconnect policies, and plan projection.
+- [x] **Fully done locally:** add deterministic compilation to a non-executing
+  `ResolvedConnectionPlan` with explicit all-false authority.
+- [ ] **Partially done:** changed-fingerprint review data and reusable recipe
+  references exist; persisted selection and the interactive editor belong to
+  D5B/D5.1 and are not implemented.
+- [x] **Fully done locally:** no tool is spawned and no connection is opened.
+
+Exit status: supported model actions and hostile parameters have deterministic
+validation, redaction, accessibility, and layout coverage. Editor interaction,
+persistence/migration, and native UI evidence remain before D5C is fully done.
 
 ### D5D - managed system OpenSSH
 
-- Activate only the reviewed one-argument OpenSSH alias path first.
-- Add Connection Review, capability lifecycle, executable identity
-  revalidation, independent PTY attachment, host-key passthrough, cancellation,
-  reconnect, route cleanup, and notifications.
-- Add explicit destinations, config-defined jump chains, then typed jumps and
-  tunnels in separately reviewed slices.
+Status: **Partially done overall; F5.1-F5.3 source are fully done and
+nonactivated.**
 
-Exit gate: deterministic mock-server and controlled native OpenSSH evidence
-passes on Windows, macOS, and Linux.
+- [x] **Fully done locally:** one inventory alias or bounded literal host maps
+  to the canonical plan and accessible approval review with hostile rejection,
+  stale invalidation, and private-value redaction.
+- [x] **Fully done locally; nonactivated:** exact direct/routed options, typed
+  host/user/port, and bounded config `-J` bind to fresh full review/current
+  executable identity; the broker rejects route, argv, trust, or identity drift.
+- [x] **Fully done locally; nonactivated:** full first-use/known/changed public
+  key evidence, changed-key denial, no `known_hosts` writes, safe `C` copy, and
+  bounded nonexecuting `ssh-add -l -E sha256` parsing are review-owned.
+- [x] **Fully done locally; nonactivated:** ContextManager-only PTY/route
+  publication, actual child-exit classification, cancellation/revocation/close/
+  shutdown, and fixed redacted notifications have one lifecycle owner.
+- [x] **Fully done locally; nonactivated:** terminal receipts use the private
+  bounded atomic connection worker/store, and opaque inventory reconnect rejects
+  stale source before requiring a new review and approval.
+- [x] **Fully done locally; nonactivated:** bounded current-executable review
+  publishes before wake, rejects stale generations/preparations/freshness, and
+  requires a second explicit decision before guarded spawn.
+- [ ] **Partially done / external:** protected activation, real attestation,
+  native OpenSSH prompt/descendant proof, resources, and controlled
+  accessibility remain.
+- [x] **Fully done locally; nonactivated:** exact local/remote/dynamic tunnel
+  descriptors use a configuration-free typed-direct grammar, loopback defaults,
+  endpoint-bound strong Allow-once review, and a bounded session/generation
+  lifecycle with compact accessible state.
+- [ ] **Partially done / external:** schema 6, synthetic mutations, and the
+  bounded redacted native-manifest validator pass; real Windows/macOS/Linux
+  OpenSSH, 1/10/50 resources, enable/disable/uninstall, manual-SSH, controlled
+  accessibility, and public-status execution evidence remain.
 
+Exit gate: deterministic source tests plus controlled native OpenSSH evidence
+pass on Windows, macOS, Linux, and separately gated WSL.
 ### D5E - safe automatic actions
 
 - Execute local/session actions first.

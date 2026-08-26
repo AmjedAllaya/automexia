@@ -23,12 +23,58 @@ from check_command_productivity import (
 from check_command_productivity_cp1 import (
     validate_repository as validate_command_productivity_cp1,
 )
+from check_command_productivity_cp22 import (
+    validate_repository as validate_command_productivity_cp22,
+)
+from check_command_productivity_cp30 import (
+    validate_repository as validate_command_productivity_cp30,
+)
+from check_command_productivity_cp31 import (
+    validate_repository as validate_command_productivity_cp31,
+)
+from check_command_productivity_cp32 import (
+    validate_repository as validate_command_productivity_cp32,
+)
+from check_command_productivity_cp33 import (
+    validate_repository as validate_command_productivity_cp33,
+)
+from check_command_productivity_cp50 import (
+    validate_repository as validate_command_productivity_cp50,
+)
+from check_command_productivity_cp51 import (
+    validate_repository as validate_command_productivity_cp51,
+)
+from check_command_productivity_cp56 import (
+    validate_repository as validate_command_productivity_cp56,
+)
+from check_ecosystem_d7_cp6 import (
+    validate_repository as validate_ecosystem_d7_cp6,
+)
+from check_session_launch_d0 import validate_repository as validate_session_launch_d0
+from check_provider_auth_m7 import validate_repository as validate_provider_auth_m7
+from check_provider_quick_actions_cp4 import (
+    validate_repository as validate_provider_quick_actions_cp4,
+)
 from check_documentation_coverage import validate as validate_documentation_coverage
+from check_documentation_hygiene import validate as validate_documentation_hygiene
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
+from check_feature_test_reinforcement import (
+    load_and_validate as validate_feature_test_reinforcement,
+)
 from check_phase_implementation_audit import validate as validate_phase_audit
+from check_production_operations_po0 import (
+    validate_repository as validate_production_operations_po0,
+)
+from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
+from repository_protection import validate_repository as validate_repository_protection
 from release_trust import load_policy as validate_release_trust_policy
+from stable_release import (
+    load_policy as load_stable_release_policy,
+    validate_policy as validate_stable_release_policy,
+    validate_release_workflow as validate_stable_release_workflow,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -269,16 +315,30 @@ def validate() -> None:
     counts["desktop"] = len(desktop_files)
 
     counts["Markdown"] = validate_markdown_links()
+    counts["Markdown hygiene"] = validate_documentation_hygiene()
+    counts["aligned documentation pack"] = validate_repository_aligned_docs()
     counts["pinned Actions"] = validate_action_pins()
 
     validate_repository_workflows()
     counts["platform workflow matrix"] = 1
 
+    protection_counts = validate_repository_protection()
+    counts["repository protection rulesets"] = protection_counts["rulesets"]
+    counts["repository protection checks"] = protection_counts["required_checks"]
+
     validate_release_trust_policy()
     counts["release trust policy"] = 1
 
+    stable_release_policy = load_stable_release_policy()
+    validate_stable_release_policy(stable_release_policy)
+    validate_stable_release_workflow(stable_release_policy)
+    counts["stable release policy"] = 1
+
     feature_counts = validate_feature_assurance()
     counts["feature assurance entries"] = feature_counts["features"]
+    reinforcement_counts = validate_feature_test_reinforcement()
+    counts["feature reinforcement entries"] = reinforcement_counts["features"]
+    counts["feature reinforcement scenarios"] = reinforcement_counts["needed_tests"]
 
     documentation_counts = validate_documentation_coverage()
     counts["documented source entries"] = sum(
@@ -294,6 +354,38 @@ def validate() -> None:
     counts["command productivity CP0"] = command_productivity_counts["threats"]
     command_productivity_cp1_counts = validate_command_productivity_cp1()
     counts["command productivity CP1"] = command_productivity_cp1_counts["providers"]
+    command_productivity_cp22_counts = validate_command_productivity_cp22()
+    counts["command productivity CP2.2"] = command_productivity_cp22_counts["tests"]
+    command_productivity_cp30_counts = validate_command_productivity_cp30()
+    counts["command productivity CP3.0"] = command_productivity_cp30_counts["tests"]
+    command_productivity_cp31_counts = validate_command_productivity_cp31()
+    counts["command productivity CP3.1"] = command_productivity_cp31_counts["tests"]
+    command_productivity_cp32_counts = validate_command_productivity_cp32()
+    counts["command productivity CP3.2"] = command_productivity_cp32_counts["tests"]
+    command_productivity_cp33_counts = validate_command_productivity_cp33()
+    counts["command productivity CP3.3"] = command_productivity_cp33_counts["tests"]
+    command_productivity_cp50_counts = validate_command_productivity_cp50()
+    counts["command productivity CP5.0"] = command_productivity_cp50_counts["shells"]
+    command_productivity_cp51_counts = validate_command_productivity_cp51()
+    counts["command productivity CP5.1 accepted contract"] = command_productivity_cp51_counts[
+        "threats"
+    ]
+    command_productivity_cp56_counts = validate_command_productivity_cp56()
+    counts["command productivity CP5.1-CP5.6 source"] = (
+        command_productivity_cp56_counts["source_files"]
+    )
+    ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
+    counts["ecosystem D7/CP6 accepted source"] = ecosystem_d7_cp6_counts["source_files"]
+    production_operations_po0_counts = validate_production_operations_po0()
+    counts["Production Operations PO0 proposal"] = (
+        production_operations_po0_counts["traceability"]
+    )
+    session_launch_d0_counts = validate_session_launch_d0()
+    counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]
+    provider_auth_m7_counts = validate_provider_auth_m7()
+    counts["provider auth M7/D6.0"] = provider_auth_m7_counts["tests"]
+    provider_cp4_counts = validate_provider_quick_actions_cp4()
+    counts["provider Quick Actions M13/CP4"] = provider_cp4_counts["tests"]
 
     alias_spec_counts = validate_devops_alias_spec()
     counts["planned CP2/CP3 alias assurance"] = alias_spec_counts[

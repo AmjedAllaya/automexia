@@ -10,7 +10,7 @@ At comfortable sizes, the persistent application chrome is never part of the
 terminal grid:
 
 - a 48 px profile/tab row with an application mark, draggable tabs, new-tab
-  button, command/profile menu, and native-looking window controls on Windows;
+  button, command/profile menu, and Automexia-styled, native-behaving window controls on Windows;
 - a tab rail inside every pane that owns multiple local tabs. The rail begins
   at that pane's top edge and never floats above or changes the height of a
   sibling pane. A single-tab pane has no empty shelf or workspace-action buttons;
@@ -72,6 +72,16 @@ titles emitted while a profile loads never make the tab flicker through setup
 commands, paths, or a generic product persona. The close mark shared by window,
 top-level-tab, and pane-local-tab chrome is shaped through the text rasterizer
 for consistent antialiasing at every DPI and uses an always-available glyph.
+The three renderer-owned caption actions render as separated rounded cards
+without a shared border or container, keeping the chrome lighter while retaining
+one clear action per target. Cyan minimize, purple maximize/restore, and coral
+close glyphs add brand identity without decorative underline strokes, while
+their distinct shapes retain meaning without color. Rounded hover wells, a held
+state, inactive-window muting, and a
+maximize-to-restore glyph mirror native state. The complete
+40–46 logical-pixel targets remain anchored to the right edge; activation occurs
+only when the primary button is released over the same control, so dragging away
+cancels safely.
 The renderer-owned window close control has window scope, not application
 scope. Closing a window created with `Ctrl+Shift+N` leaves every sibling OS
 window and its independent PTYs running. The native close button, custom
@@ -80,13 +90,30 @@ explicit `Quit` action exits all windows. Last-window confirmation remains
 available without interrupting intermediate window closes.
 
 
-Command palette, search, diagnostic and quit overlays fit to the logical
-viewport. The command palette reduces its visible result count with height,
-long labels are ellipsized on Unicode boundaries, and editable input keeps its
-tail visible. Split containers clamp negative available space and preserve the
-combined adjacent-panel size when a divider reaches a compact limit. These
-rules apply equally at 1× and HiDPI scale factors and do not upscale UI on very
-large displays; the terminal grid simply gains rows and columns.
+First-run, command palette, search, diagnostic, compatibility, tab-appearance,
+and quit surfaces fit to the logical viewport. The static first-run card uses
+the shared Automexia accents, one clear Enter action, a concise
+time/effort/flexibility promise, and no local configuration path. The command palette reduces its
+visible result count with height, long labels are ellipsized on Unicode
+boundaries, and editable input keeps its tail visible. The diagnostic assistant
+and redacted
+compatibility inspector are centered blue-black cards with a semantic status
+chip, visible close control, restrained cyan/blue actions, and an inert scrim.
+The tab appearance card uses 24 logical-pixel swatches, a check or clear icon in
+addition to color, a 256-byte control-free UTF-8 title limit, and visible
+Enter/Escape help. It cancels without applying a pending title if the viewport
+cannot contain the complete card.
+
+Modal input follows the same visual stack: quit confirmation, Connection Hub,
+command palette, assistant, then compatibility inspector. The visible owner
+captures pointer, keyboard, wheel, input-method, file-drop, resize, and terminal
+paths; a hidden lower-priority surface cannot intercept a higher one. Split
+containers clamp negative available space and preserve the combined
+adjacent-panel size when a divider reaches a compact limit. These rules apply
+equally at 1× and HiDPI scale factors and do not upscale UI on very large
+displays; the terminal grid simply gains rows and columns. The complete
+full/partial/external evidence ledger is the
+[UI branding roadmap](UI-BRANDING-ROADMAP.md).
 
 The tab-row command control is a DPI-independent three-line vector mark rather
 than a font-dependent chevron or tile grid. Its quiet blue-black well gains a
@@ -247,18 +274,31 @@ uses the shell's complete path and never abbreviates it to `.../` or duplicates
 Git or infrastructure metadata beside it. Automexia owns the context spacer
 and complete path as durable terminal rows; Readline, ZLE, or PSReadLine owns
 only the lambda, editable command, and cursor row. A delayed SIGWINCH editor
-repaint therefore cannot erase the path or duplicate renderer metadata. Command
-completion includes the actual exit code; Automexia measures between `C` and
-`D` and draws a right-aligned success/failure badge with duration. Prompt
-identity, context, and command results survive scrollback and column
-shrink/grow reflow.
+repaint therefore cannot erase the path or duplicate renderer metadata.
+Command completion includes a truthful shell result status. Bash and Zsh emit
+their numeric shell status; PowerShell preserves an exact native status when
+available and otherwise emits semantic pipeline success/failure without
+changing a stale user-owned `LASTEXITCODE`. Automexia measures between `C` and
+`D`. When semantic prompt ownership proves the output limits and next prompt,
+the renderer applies the same visible but restrained result surface to listing
+and non-listing commands, success and error exits, single- and multiline
+output, and managed input wrapped beyond eight rows. Its persistent tinted
+band, adaptive 6-10 pixel breathing gutter, end rule, and right-aligned known-
+status badge with duration keep the boundary redundant. The newest live result
+holds its lightening for the first third of one 540 millisecond cycle and then
+eases out, with no repeated blink or movement. These renderer-only cues do not
+insert rows or bytes, so selection, copy, search, history, prompt identity,
+context, and command results survive scrollback and column shrink/grow reflow
+unchanged.
 
-CMD reserves the same visible three-row structure and publishes OSC 7 plus
-OSC 133 `A/B`, but stock `cmd.exe` exposes no pre/post-command hook from which
-to generate a monotonic identity, true exit status, or completion timestamp.
-Automexia therefore keeps CMD path/context reflow resilient without fabricating
-success badges or durations. The richer `A/B/C/D` lifecycle above remains
-available whenever the active shell is PowerShell, Bash, or Zsh.
+CMD reserves the same visible three-row structure and publishes OSC 7 plus OSC
+133 boundaries. Before each new prompt, the batch integration closes the
+previous command with a bare `D`; because stock `cmd.exe` exposes no supported
+generic status or timing value, Automexia groups its proven output with neutral
+styling and never fabricates a badge or duration. Fish wraps the existing user-
+owned `fish_prompt` to add an identified `A/B` boundary without replacing its
+body, then publishes `C/D` from preexec/postexec/posterror events. Complete output
+surfaces are available in PowerShell, Bash, Zsh, Fish, and CMD; CMD is neutral.
 
 The complete path uses a restrained hierarchy shared by PowerShell, Bash, and
 Zsh: separators are muted slate, the root or first component is light blue,

@@ -38,8 +38,8 @@ class AliasSpecificationTests(unittest.TestCase):
                 "scopes": 6,
                 "verification_domains": 10,
                 "ux_invariants": 8,
-                "model_files": 3,
-                "persistence_files": 5,
+                "model_files": 7,
+                "persistence_files": 13,
                 "hostile_cases": 11,
                 "wiring": 10,
             },
@@ -51,17 +51,22 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "remain planned"):
             POLICY.validate_contract(changed)
 
-    def test_cp2_persistence_stage_cannot_regress_or_claim_ui(self) -> None:
-        for stage in ("CP2.0-model-only", "CP2.2-action-ui"):
+    def test_cp33_stage_cannot_regress_or_overclaim_later_phases(self) -> None:
+        for stage in (
+            "CP2.2-action-search-review-insert-copy",
+            "CP3.0-pure-projection-compiler-activation-disabled",
+            "CP3.1-persistent-explicit-opt-in-aliases",
+            "CP3.3-context-aware-pack-automation",
+        ):
             with self.subTest(stage=stage):
                 changed = deepcopy(CONTRACT)
                 changed["implemented_stage"] = stage
-                with self.assertRaisesRegex(POLICY.AliasSpecError, "CP2.1 persistence-library"):
+                with self.assertRaisesRegex(POLICY.AliasSpecError, "through reviewed CP3.3"):
                     POLICY.validate_contract(changed)
 
     def test_pure_model_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
-        changed["model_files"].append("automexia-devops/src/actions/runtime.rs")
+        changed["model_files"].append("automexia-command-productivity/src/actions/runtime.rs")
         with self.assertRaisesRegex(POLICY.AliasSpecError, "pure model source"):
             POLICY.validate_contract(changed)
 
@@ -71,10 +76,10 @@ class AliasSpecificationTests(unittest.TestCase):
         with self.assertRaisesRegex(POLICY.AliasSpecError, "hostile fixture authority"):
             POLICY.validate_contract(changed)
 
-    def test_persistence_source_boundary_cannot_expand(self) -> None:
+    def test_cp33_application_source_boundary_cannot_expand(self) -> None:
         changed = deepcopy(CONTRACT)
         changed["activation_files"].append("shell-integration/aliases.sh")
-        with self.assertRaisesRegex(POLICY.AliasSpecError, "persistence source"):
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "application source"):
             POLICY.validate_contract(changed)
 
     def test_missing_shell_is_rejected(self) -> None:
@@ -217,11 +222,11 @@ class AliasSpecificationTests(unittest.TestCase):
     def test_false_shipped_claim_is_rejected(self) -> None:
         text = (ROOT / "docs/DEVOPS-ALIASES.md").read_text(encoding="utf-8")
         changed = text.replace(
-            "Status: planned for CP2",
-            "Status: shipped for CP2",
+            "Status: CP2.0-CP3.3",
+            "Status: shipped CP2.0-CP3.3",
             1,
         )
-        with self.assertRaisesRegex(POLICY.AliasSpecError, "controls missing"):
+        with self.assertRaisesRegex(POLICY.AliasSpecError, "must not overclaim"):
             POLICY.validate_spec_text(changed)
 
     def test_missing_cross_link_is_rejected(self) -> None:

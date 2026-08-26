@@ -1,6 +1,9 @@
 pub mod assistant;
 pub mod command_palette;
+pub mod command_results;
+pub mod compatibility_inspector;
 pub mod confirm_quit;
+pub mod connection_hub;
 pub mod custom_cursor;
 pub mod devops_status;
 pub mod helpers;
@@ -9,7 +12,9 @@ pub mod responsive;
 pub mod scrollbar;
 pub mod search;
 pub mod session_footer;
+pub mod suggestions;
 pub mod trail_cursor;
+pub(crate) mod ui_theme;
 pub mod utils;
 
 use rio_backend::crosswords::grid::row::{Row, SemanticPrompt};
@@ -45,6 +50,23 @@ fn window_bg_alpha(config: &Config) -> f32 {
     } else {
         config.window.opacity.clamp(0.0, 1.0)
     }
+}
+
+#[inline]
+fn dynamic_background_for(
+    config: &Config,
+    named_colors: &Colors,
+) -> ([f32; 4], rio_backend::sugarloaf::Color, bool) {
+    let mut dynamic_background =
+        (named_colors.background.0, named_colors.background.1, false);
+    if config.window.blur.is_glass() || config.window.opacity < 1. {
+        dynamic_background.1.a = window_bg_alpha(config) as f64;
+        dynamic_background.2 = true;
+    } else if config.window.background_image.is_some() {
+        dynamic_background.1 = rio_backend::sugarloaf::Color::TRANSPARENT;
+        dynamic_background.2 = true;
+    }
+    dynamic_background
 }
 
 pub use rio_backend::sugarloaf::{atlas_image_key, kitty_image_key};
@@ -223,21 +245,169 @@ fn sync_optional_metadata(target: &mut Option<String>, source: Option<&String>) 
 /// Renderer-neutral data needed to paint one pane's operational context.
 /// Keeping this snapshot per route prevents the active pane from lending its
 /// Git/cloud/user state to another visible split.
-struct DevOpsPaneRenderState {
+struct SemanticPaneRenderState {
     session: crate::automexia::api::SessionFacts,
     prompt_active: bool,
     historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
     live_anchor: Option<crate::automexia::ui::PromptAnchor>,
     command_results: Vec<crate::automexia::ui::CommandResultAnchor>,
+    allow_result_animation: bool,
     is_active: bool,
 }
 
-fn devops_pane_render_state(
+const MAX_LEGACY_PROMPT_SCAN_ROWS: usize = 8;
+
+#[inline]
+fn result_animation_enabled(requested: bool) -> bool {
+    #[cfg(feature = "visual-test-hooks")]
+    {
+        requested && crate::automexia::visual_test_hooks::animations_enabled()
+    }
+    #[cfg(not(feature = "visual-test-hooks"))]
+    requested
+}
+
+/// Locate the first output row without inspecting terminal text beyond the
+/// narrow legacy lambda fallback. Managed prompts use their semantic identity;
+/// their contiguous block is already bounded by the pane's visible snapshot,
+/// so wrapped or multiline input cannot be mistaken for command output.
+/// Uncertain layouts return None so renderer chrome never claims output.
+fn command_output_top(
+    rows: &[Row<Square>],
+    prompt_index: usize,
+    origin_y: f32,
+    cell_height: f32,
+) -> Option<f32> {
+    let prompt = rows.get(prompt_index)?;
+    let command_index = if let Some(generation) = prompt.semantic_prompt_id {
+        rows.iter()
+            .enumerate()
+            .skip(prompt_index.saturating_add(1))
+            .take_while(|(_, row)| {
+                row.semantic_prompt == SemanticPrompt::PromptContinuation
+                    && row.semantic_prompt_id == Some(generation)
+            })
+            .map(|(index, _)| index)
+            .last()
+            // A managed prompt may fit on its first row, but an empty marker
+            // alone does not prove that the shell-owned command row exists.
+            .or_else(|| (!terminal_row_is_blank(prompt)).then_some(prompt_index))
+    } else {
+        rows.iter()
+            .enumerate()
+            .skip(prompt_index.saturating_add(1))
+            .take(MAX_LEGACY_PROMPT_SCAN_ROWS)
+            .find(|(_, row)| terminal_row_first_character(row) == Some('λ'))
+            .map(|(index, _)| index)
+    }?;
+    Some(origin_y + command_index.saturating_add(1) as f32 * cell_height)
+}
+
+/// Move completion metadata to the first prompt below its command output.
+/// Prompt anchors are pane-local and sorted by visual `y`, so a logarithmic
+/// lookup preserves the renderer hot path even on very tall viewports.
+#[inline]
+fn command_result_boundary(
+    mut result: crate::automexia::ui::CommandResultAnchor,
+    prompt_anchors: &[crate::automexia::ui::PromptAnchor],
+) -> crate::automexia::ui::CommandResultAnchor {
+    let current_row_end = result.y + result.height * 0.5;
+    let next_index = prompt_anchors.partition_point(|anchor| anchor.y <= current_row_end);
+    let Some(next_prompt) = prompt_anchors.get(next_index) else {
+        return result;
+    };
+
+    result.x = next_prompt.x;
+    result.y = next_prompt.y;
+    result.width = next_prompt.width;
+    result.height = next_prompt.height;
+    result.separates_next_prompt = true;
+    result
+}
+
+fn command_result_anchors(
+    rows: &[Row<Square>],
+    origin_x: f32,
+    origin_y: f32,
+    grid_width: f32,
+    cell_height: f32,
+    prompt_anchors: &[crate::automexia::ui::PromptAnchor],
+) -> Vec<crate::automexia::ui::CommandResultAnchor> {
+    let mut anchors = rows
+        .iter()
+        .enumerate()
+        .filter_map(|(row_index, row)| {
+            if row.semantic_prompt != SemanticPrompt::Prompt {
+                return None;
+            }
+            let result = row.semantic_command_result?;
+            let synthetic_index = (row_index..rows.len())
+                .take(MAX_LEGACY_PROMPT_SCAN_ROWS)
+                .find_map(|command_index| {
+                    synthetic_prompt_visual_anchor(rows, command_index)
+                });
+            let visual_index =
+                synthetic_index.or_else(|| prompt_visual_anchor(rows, row_index))?;
+            let anchor = crate::automexia::ui::CommandResultAnchor {
+                generation: row.semantic_prompt_id,
+                key: result.id,
+                x: origin_x,
+                y: origin_y + visual_index as f32 * cell_height,
+                width: grid_width,
+                height: cell_height,
+                output_top: command_output_top(rows, row_index, origin_y, cell_height),
+                separates_next_prompt: false,
+                exit_code: result.exit_code,
+                elapsed_ms: result.elapsed_ms,
+            };
+            Some(command_result_boundary(anchor, prompt_anchors))
+        })
+        .collect::<Vec<_>>();
+
+    // The source prompt can sit just above the viewport while its output tail
+    // and the following prompt remain visible. The terminal attaches one
+    // bounded completion projection to that following prompt; use it only
+    // when the exact source result is absent from this visible snapshot.
+    for (row_index, row) in rows.iter().enumerate() {
+        if row.semantic_prompt != SemanticPrompt::Prompt {
+            continue;
+        }
+        let Some(boundary) = row.semantic_command_boundary else {
+            continue;
+        };
+        if anchors
+            .iter()
+            .any(|anchor| anchor.key == boundary.result.id)
+        {
+            continue;
+        }
+        let Some(visual_index) = prompt_visual_anchor(rows, row_index) else {
+            continue;
+        };
+        anchors.push(crate::automexia::ui::CommandResultAnchor {
+            generation: boundary.source_prompt_id,
+            key: boundary.result.id,
+            x: origin_x,
+            y: origin_y + visual_index as f32 * cell_height,
+            width: grid_width,
+            height: cell_height,
+            output_top: Some(origin_y),
+            separates_next_prompt: true,
+            exit_code: boundary.result.exit_code,
+            elapsed_ms: boundary.result.elapsed_ms,
+        });
+    }
+    anchors
+        .sort_by(|left, right| left.y.total_cmp(&right.y).then(left.key.cmp(&right.key)));
+    anchors
+}
+
+fn semantic_pane_render_state(
     context: &crate::context::Context<EventProxy>,
     margin: rio_backend::config::layout::Margin,
     scale_factor: f32,
     is_active: bool,
-) -> DevOpsPaneRenderState {
+) -> SemanticPaneRenderState {
     let rc = &context.renderable_content;
     let scale = scale_factor.max(f32::EPSILON);
     let cell_height = context.dimension.cell.cell_height as f32 / scale;
@@ -369,31 +539,16 @@ fn devops_pane_render_state(
         } else {
             None
         };
-    let command_results =
-        rc.visible_rows
-            .iter()
-            .enumerate()
-            .filter_map(|(row_index, row)| {
-                let result = row.semantic_command_result?;
-                let synthetic_index = (row_index..rc.visible_rows.len())
-                    .take(8)
-                    .find_map(|command_index| {
-                        synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
-                    });
-                let visual_index = synthetic_index
-                    .or_else(|| prompt_visual_anchor(&rc.visible_rows, row_index))?;
-                Some(crate::automexia::ui::CommandResultAnchor {
-                    x: origin_x,
-                    y: origin_y + visual_index as f32 * cell_height,
-                    width: grid_width,
-                    height: cell_height,
-                    exit_code: result.exit_code,
-                    elapsed_ms: result.elapsed_ms,
-                })
-            })
-            .collect::<Vec<_>>();
+    let command_results = command_result_anchors(
+        &rc.visible_rows,
+        origin_x,
+        origin_y,
+        grid_width,
+        cell_height,
+        &historical_anchors,
+    );
 
-    DevOpsPaneRenderState {
+    SemanticPaneRenderState {
         session: crate::automexia::api::SessionFacts {
             session_id: context.route_id,
             cwd: rc.current_directory.clone(),
@@ -410,6 +565,7 @@ fn devops_pane_render_state(
         historical_anchors,
         live_anchor,
         command_results,
+        allow_result_animation: rc.display_offset == 0 && rc.shell_prompt_active,
         is_active,
     }
 }
@@ -426,6 +582,8 @@ pub struct Renderer {
     pub margin: rio_backend::config::layout::Margin,
     pub island: Option<island::Island>,
     pub command_palette: command_palette::CommandPalette,
+    pub compatibility_inspector: compatibility_inspector::CompatibilityInspector,
+    pub connection_hub: connection_hub::ConnectionHub,
     pub devops_enabled: bool,
     extension_generation: u32,
     /// Operational prompt state for the selected route.
@@ -434,6 +592,11 @@ pub struct Renderer {
     /// single shared status object made those splits disappear and could lend
     /// the selected pane's context to their prompt history.
     devops_statuses: FxHashMap<usize, devops_status::DevOpsStatus>,
+    /// Core command-result state for the selected route; independent of extensions.
+    pub command_results: command_results::CommandResults,
+    /// Isolated core command-result state for every inactive visible route.
+    command_result_states: FxHashMap<usize, command_results::CommandResults>,
+    command_result_route: Option<usize>,
     unfocused_split_opacity: f32,
     unfocused_split_fill: Option<ColorArray>,
     /// Route id of the pane rendered as active last frame. Keyed on
@@ -450,6 +613,7 @@ pub struct Renderer {
     pub config_blinking_interval: u64,
     pub(crate) ignore_selection_fg_color: bool,
     pub search: search::SearchOverlay,
+    pub suggestions: suggestions::SuggestionOverlay,
     pub assistant: assistant::AssistantOverlay,
     pub confirm_quit: confirm_quit::ConfirmQuit,
     pub scrollbar: scrollbar::Scrollbar,
@@ -481,8 +645,6 @@ impl Renderer {
         let named_colors = crate::automexia::theme::effective_colors(config.colors);
         let colors = List::from(&named_colors);
 
-        let mut dynamic_background =
-            (named_colors.background.0, named_colors.background.1, false);
         // Window-bg target alpha. Cached here at init and re-applied
         // to every OSC-11-driven `effective_bg` refresh in
         // `Renderer::run` so a runtime bg change doesn't reset
@@ -492,13 +654,7 @@ impl Renderer {
         // that case, so the glass and `opacity < 1` paths share one
         // assignment.
         let target_bg_alpha = window_bg_alpha(config);
-        if config.window.blur.is_glass() || config.window.opacity < 1. {
-            dynamic_background.1.a = target_bg_alpha as f64;
-            dynamic_background.2 = true;
-        } else if config.window.background_image.is_some() {
-            dynamic_background.1 = rio_backend::sugarloaf::Color::TRANSPARENT;
-            dynamic_background.2 = true;
-        }
+        let dynamic_background = dynamic_background_for(config, &named_colors);
 
         let island = if config.navigation.is_enabled() {
             Some(island::Island::new(
@@ -538,25 +694,111 @@ impl Renderer {
                 palette.has_adaptive_theme = config.adaptive_colors.is_some();
                 palette
             },
+            compatibility_inspector:
+                compatibility_inspector::CompatibilityInspector::default(),
+            connection_hub: connection_hub::ConnectionHub::default(),
             devops_enabled: crate::automexia::runtime::context_status_enabled(),
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
             devops_statuses: FxHashMap::default(),
+            command_results: command_results::CommandResults::default(),
+            command_result_states: FxHashMap::default(),
+            command_result_route: None,
             named_colors,
             dynamic_background,
             opacity_cells: config.window.opacity_cells,
             cell_bg_alpha: (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8,
             window_bg_alpha: target_bg_alpha,
             search: search::SearchOverlay::default(),
+            suggestions: suggestions::SuggestionOverlay::default(),
             assistant: assistant::AssistantOverlay::default(),
             confirm_quit: confirm_quit::ConfirmQuit::default(),
             scrollbar: scrollbar::Scrollbar::new(config.enable_scroll_bar),
-            session_footer: session_footer::SessionFooter,
+            session_footer: session_footer::SessionFooter::default(),
             is_game_mode_enabled: config.renderer.strategy.is_game(),
             custom_mouse_cursor: config.effects.custom_mouse_cursor,
             trail_cursor_enabled: config.effects.trail_cursor,
             trail_cursor: trail_cursor::TrailCursor::new(),
         }
+    }
+
+    /// Apply live configuration without replacing the renderer object.
+    ///
+    /// Renderer replacement is unsafe for runtime UI: it resets the command
+    /// palette, search overlay, assistant diagnostics, quit confirmation,
+    /// DevOps prompt caches, VI presentation state, tab-progress state, and
+    /// animation state. A filesystem notification can arrive at any point, so
+    /// config reload must update only config-owned fields and deliberately
+    /// preserve transient interaction state.
+    pub fn update_config(&mut self, config: &Config) {
+        let named_colors = crate::automexia::theme::effective_colors(config.colors);
+        let colors = List::from(&named_colors);
+        let custom_chrome = matches!(
+            config.window.decorations,
+            rio_backend::config::window::Decorations::Disabled
+        );
+
+        if config.navigation.is_enabled() {
+            match self.island.as_mut() {
+                Some(island) => island.update_config(
+                    named_colors.tabs,
+                    named_colors.tabs_active,
+                    config.navigation.hide_if_single,
+                    config.navigation.max_tab_width,
+                    custom_chrome,
+                ),
+                None => {
+                    self.island = Some(island::Island::new(
+                        named_colors.tabs,
+                        named_colors.tabs_active,
+                        config.navigation.hide_if_single,
+                        config.navigation.max_tab_width,
+                        custom_chrome,
+                    ));
+                }
+            }
+        } else {
+            self.island = None;
+        }
+
+        self.unfocused_split_opacity = config.navigation.unfocused_split_opacity;
+        self.unfocused_split_fill = config.navigation.unfocused_split_fill;
+        self.use_drawable_chars = config.fonts.use_drawable_chars;
+        self.draw_bold_text_with_light_colors = config.draw_bold_text_with_light_colors;
+        self.macos_use_unified_titlebar = config.window.macos_use_unified_titlebar;
+        self.config_blinking_interval = config.cursor.blinking_interval.clamp(350, 1200);
+        self.option_as_alt = config.option_as_alt.to_lowercase();
+        self.config_has_blinking_enabled = config.cursor.blinking;
+        self.ignore_selection_fg_color = config.ignore_selection_fg_color;
+        self.colors = colors;
+        self.navigation = config.navigation.clone();
+        self.margin = config.margin;
+        self.named_colors = named_colors;
+        self.dynamic_background = dynamic_background_for(config, &self.named_colors);
+        self.opacity_cells = config.window.opacity_cells;
+        self.cell_bg_alpha =
+            (config.window.opacity.clamp(0.0, 1.0) * 255.0).round() as u8;
+        self.window_bg_alpha = window_bg_alpha(config);
+        self.command_palette.has_adaptive_theme = config.adaptive_colors.is_some();
+
+        if self.scrollbar.is_enabled() != config.enable_scroll_bar {
+            self.scrollbar = scrollbar::Scrollbar::new(config.enable_scroll_bar);
+        }
+
+        self.is_game_mode_enabled = config.renderer.strategy.is_game();
+        self.custom_mouse_cursor = config.effects.custom_mouse_cursor;
+        if self.trail_cursor_enabled != config.effects.trail_cursor {
+            // Do not resume an old cursor trajectory after the feature has
+            // been toggled through live config.
+            self.trail_cursor = trail_cursor::TrailCursor::new();
+        }
+        self.trail_cursor_enabled = config.effects.trail_cursor;
+
+        // Config changes can alter layout and background semantics. Force the
+        // next frame to refresh active-pane and native-window derived state,
+        // while preserving user interaction state above.
+        self.last_active = None;
+        self.last_window_bg = None;
     }
 
     /// Synchronize the cached extension activation state. The fast path is one
@@ -600,8 +842,13 @@ impl Renderer {
     }
 
     #[inline]
-    pub fn set_active_search(&mut self, active_search: Option<String>) {
-        self.search.set_active_search(active_search);
+    pub fn set_active_search(
+        &mut self,
+        active_search: Option<String>,
+        scope: search::SearchScope,
+        results: search::SearchResultSummary,
+    ) {
+        self.search.set_active_search(active_search, scope, results);
     }
 
     #[inline]
@@ -1172,304 +1419,85 @@ impl Renderer {
                 (window_size.width, window_size.height, scale_factor),
                 context_manager,
                 island_bg,
+                self.is_window_focused,
             );
         }
 
-        self.assistant.render(
-            sugarloaf,
-            (window_size.width, window_size.height, scale_factor),
-        );
+        // Semantic prompt/result geometry is derived for every visible pane.
+        // Core result paint remains available with every extension disabled;
+        // only optional prompt context enters the DevOps activation branch.
+        let (active_pane, inactive_panes) = {
+            let grid = context_manager.current_grid();
+            let (active_context, active_margin) =
+                grid.current_context_with_computed_dimension();
+            let active_pane = semantic_pane_render_state(
+                active_context,
+                active_margin,
+                scale_factor,
+                true,
+            );
+            let active_route = active_pane.session.session_id;
+            let base_margin = grid.get_scaled_margin();
+            let inactive_panes = grid
+                .contexts()
+                .values()
+                .filter(|item| item.context().route_id != active_route)
+                .map(|item| {
+                    let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
+                        item.layout_rect,
+                        scale_factor,
+                        item.tab_count(),
+                    );
+                    let margin = rio_backend::config::layout::Margin {
+                        left: base_margin.left + panel_x,
+                        top: base_margin.top + panel_y,
+                        right: base_margin.right,
+                        bottom: base_margin.bottom,
+                    };
+                    semantic_pane_render_state(
+                        item.context(),
+                        margin,
+                        scale_factor,
+                        false,
+                    )
+                })
+                .collect::<Vec<_>>();
+            (active_pane, inactive_panes)
+        };
 
-        self.search.render(
-            sugarloaf,
-            (window_size.width, window_size.height, scale_factor),
-        );
+        let active_route = active_pane.session.session_id;
+        let visible_inactive_routes = inactive_panes
+            .iter()
+            .map(|pane| pane.session.session_id)
+            .collect::<Vec<_>>();
+        self.devops_statuses
+            .retain(|route, _| visible_inactive_routes.contains(route));
+        self.command_result_states
+            .retain(|route, _| visible_inactive_routes.contains(route));
 
         if self.devops_enabled {
-            let (
-                session,
-                prompt_active,
-                historical_anchors,
-                live_anchor,
-                command_results,
-            ) = {
-                let grid = context_manager.current_grid();
-                let (context, margin) = grid.current_context_with_computed_dimension();
-                let rc = &context.renderable_content;
-                let scale = scale_factor.max(f32::EPSILON);
-                let cell_height = context.dimension.cell.cell_height as f32 / scale;
-                let cell_width = context.dimension.cell.cell_width as f32 / scale;
-                let origin_x = margin.left / scale;
-                let origin_y = margin.top / scale;
-                let grid_width = rc.columns.max(1) as f32 * cell_width;
-                let first_absolute_row = rc.lines_evicted.saturating_add(
-                    rc.history_size.saturating_sub(rc.display_offset) as u64,
-                );
-                let mut historical_anchors = rc
-                    .visible_rows
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(row_index, row)| {
-                        if row.semantic_prompt
-                            != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
-                        {
-                            return None;
-                        }
-                        let blank = terminal_row_is_blank(row);
-                        // A managed `aid` is stronger evidence than physical
-                        // cell contents. Shell editors may repaint attributes
-                        // or a glyph while processing SIGWINCH, but they must
-                        // not make Automexia forget the semantic context row.
-                        if row.semantic_prompt_id.is_none() && !blank {
-                            return None;
-                        }
-                        let visual_index =
-                            prompt_visual_anchor(&rc.visible_rows, row_index)?;
-                        Some(crate::automexia::ui::PromptAnchor {
-                            generation: row.semantic_prompt_id,
-                            key: first_absolute_row.saturating_add(row_index as u64),
-                            x: origin_x,
-                            y: origin_y + visual_index as f32 * cell_height,
-                            width: grid_width,
-                            height: cell_height,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-                // Managed three-row prompts remain recoverable even if a
-                // shell editor drops OSC row metadata while handling resize.
-                // Add only missing visual anchors; semantic anchors stay the
-                // primary source whenever they survived.
-                for command_index in 0..rc.visible_rows.len() {
-                    let Some(visual_index) =
-                        synthetic_prompt_visual_anchor(&rc.visible_rows, command_index)
-                    else {
-                        continue;
-                    };
-                    let y = origin_y + visual_index as f32 * cell_height;
-                    if historical_anchors
-                        .iter()
-                        .any(|anchor| (anchor.y - y).abs() < f32::EPSILON)
-                    {
-                        continue;
-                    }
-                    let generation = rc.visible_rows[visual_index..=command_index]
-                        .iter()
-                        .find_map(|row| row.semantic_prompt_id);
-                    historical_anchors.push(crate::automexia::ui::PromptAnchor {
-                        generation,
-                        key: first_absolute_row.saturating_add(visual_index as u64),
-                        x: origin_x,
-                        y,
-                        width: grid_width,
-                        height: cell_height,
-                    });
-                }
-                historical_anchors.sort_by(|left, right| left.y.total_cmp(&right.y));
-
-                // Resolve the live blank Prompt row from its adjacent complete-
-                // path continuation. The short editable row follows it. Stable
-                // `aid` identity keeps all three attached through reflow.
-                let cursor_row = rc.cursor.state.pos.row.0;
-                let semantic_live_anchor = if cursor_row >= 0 {
-                    let cursor_index = cursor_row as usize;
-                    rc.visible_rows
-                        .iter()
-                        .enumerate()
-                        .rev()
-                        .find_map(|(row_index, row)| {
-                            if row_index == 0
-                                || row_index > cursor_index
-                                || row.semantic_prompt
-                                    != rio_backend::crosswords::grid::row::SemanticPrompt::PromptContinuation
-                            {
-                                return None;
-                            }
-                            let prompt_index = row_index - 1;
-                            let prompt_row = &rc.visible_rows[prompt_index];
-                            if prompt_row.semantic_prompt
-                                != rio_backend::crosswords::grid::row::SemanticPrompt::Prompt
-                            {
-                                return None;
-                            }
-                            let blank = terminal_row_is_blank(prompt_row);
-                            if prompt_row.semantic_prompt_id.is_none() && !blank {
-                                return None;
-                            }
-                            let visual_index = prompt_visual_anchor(
-                                &rc.visible_rows,
-                                prompt_index,
-                            )?;
-                            Some(crate::automexia::ui::PromptAnchor {
-                                    generation: prompt_row.semantic_prompt_id,
-                                    key: first_absolute_row
-                                        .saturating_add(prompt_index as u64),
-                                    x: origin_x,
-                                    y: origin_y + visual_index as f32 * cell_height,
-                                    width: grid_width,
-                                    height: cell_height,
-                            })
-                        })
-                } else {
-                    None
-                };
-                let live_anchor = if rc.shell_integration
-                    && rc.shell_prompt_active
-                    && rc.display_offset == 0
-                {
-                    semantic_live_anchor
-                        .or_else(|| {
-                            let cursor_index = usize::try_from(cursor_row).ok()?;
-                            let visual_index = synthetic_prompt_visual_anchor(
-                                &rc.visible_rows,
-                                cursor_index,
-                            )?;
-                            Some(crate::automexia::ui::PromptAnchor {
-                                generation: rc.visible_rows[visual_index..=cursor_index]
-                                    .iter()
-                                    .find_map(|row| row.semantic_prompt_id),
-                                key: first_absolute_row
-                                    .saturating_add(visual_index as u64),
-                                x: origin_x,
-                                y: origin_y + visual_index as f32 * cell_height,
-                                width: grid_width,
-                                height: cell_height,
-                            })
-                        })
-                        .or_else(|| {
-                            let visual_index = first_paint_prompt_visual_anchor(
-                                &rc.visible_rows,
-                                cursor_row,
-                            )?;
-                            let row = &rc.visible_rows[visual_index];
-                            Some(crate::automexia::ui::PromptAnchor {
-                                generation: row.semantic_prompt_id,
-                                key: first_absolute_row
-                                    .saturating_add(visual_index as u64),
-                                x: origin_x,
-                                y: origin_y + visual_index as f32 * cell_height,
-                                width: grid_width,
-                                height: cell_height,
-                            })
-                        })
-                } else {
-                    None
-                };
-                let command_results = rc
-                    .visible_rows
-                    .iter()
-                    .enumerate()
-                    .filter_map(|(row_index, row)| {
-                        let result = row.semantic_command_result?;
-                        let synthetic_index = (row_index..rc.visible_rows.len())
-                            .take(8)
-                            .find_map(|command_index| {
-                                synthetic_prompt_visual_anchor(
-                                    &rc.visible_rows,
-                                    command_index,
-                                )
-                            });
-                        let visual_index = synthetic_index.or_else(|| {
-                            prompt_visual_anchor(&rc.visible_rows, row_index)
-                        })?;
-                        Some(crate::automexia::ui::CommandResultAnchor {
-                            x: origin_x,
-                            y: origin_y + visual_index as f32 * cell_height,
-                            width: grid_width,
-                            height: cell_height,
-                            exit_code: result.exit_code,
-                            elapsed_ms: result.elapsed_ms,
-                        })
-                    })
-                    .collect::<Vec<_>>();
-
-                (
-                    crate::automexia::api::SessionFacts {
-                        session_id: context.route_id,
-                        cwd: rc.current_directory.clone(),
-                        title: rc.terminal_title.clone(),
-                        distro: rc.shell_distro.clone(),
-                        os_version: rc.shell_os_version.clone(),
-                        shell_name: rc.shell_name.clone(),
-                        shell_user: rc.shell_user.clone(),
-                        shell_path: rc.shell_path.clone(),
-                        shell_integration: rc.shell_integration,
-                        shell_pid: context.shell_pid,
-                    },
-                    rc.shell_prompt_active,
-                    historical_anchors,
-                    live_anchor,
-                    command_results,
-                )
-            };
-            let refresh_pending =
-                self.devops_status.refresh_session_context(&session, || {
-                    context_manager.devops_refresh_completion(session.session_id)
+            let refresh_pending = self
+                .devops_status
+                .refresh_session_context(&active_pane.session, || {
+                    context_manager.devops_refresh_completion(active_route)
                 });
             let new_prompt = self.devops_status.render_prompt_rows(
                 sugarloaf,
                 self.named_colors,
-                &session,
-                prompt_active,
-                &historical_anchors,
-                live_anchor,
+                &active_pane.session,
+                active_pane.prompt_active,
+                &active_pane.historical_anchors,
+                active_pane.live_anchor,
             );
             if new_prompt {
-                self.devops_status.request_prompt_refresh(&session, || {
-                    context_manager.devops_refresh_completion(session.session_id)
-                });
+                self.devops_status
+                    .request_prompt_refresh(&active_pane.session, || {
+                        context_manager.devops_refresh_completion(active_route)
+                    });
             }
-            self.devops_status.render_command_results(
-                sugarloaf,
-                self.named_colors,
-                &command_results,
-            );
-            // Completion directly wakes this route. De-duplicated timers remain
-            // as a fallback for worker pressure and poll changing local
-            // Docker/Kubernetes/Git state without continuous animation.
-            context_manager.schedule_render_on_route(
-                devops_status::next_context_wake_millis(refresh_pending),
-            );
-
-            // Every visible split owns its own prompt context. Build these
-            // snapshots after the selected pane so Git/cloud/environment/user
-            // facts remain visible inside every pane without global chrome.
-            let inactive_panes = {
-                let grid = context_manager.current_grid();
-                let active_route = grid.current().route_id;
-                let base_margin = grid.get_scaled_margin();
-                grid.contexts()
-                    .values()
-                    .filter(|item| item.context().route_id != active_route)
-                    .map(|item| {
-                        let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
-                            item.layout_rect,
-                            scale_factor,
-                            item.tab_count(),
-                        );
-                        let margin = rio_backend::config::layout::Margin {
-                            left: base_margin.left + panel_x,
-                            top: base_margin.top + panel_y,
-                            right: base_margin.right,
-                            bottom: base_margin.bottom,
-                        };
-                        devops_pane_render_state(
-                            item.context(),
-                            margin,
-                            scale_factor,
-                            false,
-                        )
-                    })
-                    .collect::<Vec<_>>()
-            };
-            let visible_inactive_routes = inactive_panes
-                .iter()
-                .map(|pane| pane.session.session_id)
-                .collect::<Vec<_>>();
-            self.devops_statuses
-                .retain(|route, _| visible_inactive_routes.contains(route));
 
             let mut inactive_refresh_pending = false;
-            for pane in inactive_panes {
+            for pane in &inactive_panes {
                 debug_assert!(!pane.is_active);
                 let route = pane.session.session_id;
                 let status = self.devops_statuses.entry(route).or_default();
@@ -1490,33 +1518,102 @@ impl Renderer {
                         context_manager.devops_refresh_completion(route)
                     });
                 }
-                status.render_command_results(
+            }
+
+            context_manager.schedule_render_on_route(
+                devops_status::next_context_wake_millis(
+                    refresh_pending || inactive_refresh_pending,
+                ),
+            );
+        }
+
+        if self.command_result_route != Some(active_route) {
+            // Route changes must never inherit pulse identity from another pane.
+            // Initial observation suppresses replay for already completed output.
+            self.command_results.clear();
+            self.command_result_route = Some(active_route);
+        }
+        let prefer_untagged_results = active_pane
+            .session
+            .shell_name
+            .as_deref()
+            .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
+        self.command_results.render_command_results(
+            sugarloaf,
+            self.named_colors,
+            &active_pane.command_results,
+            result_animation_enabled(active_pane.allow_result_animation),
+            prefer_untagged_results,
+        );
+
+        for pane in inactive_panes {
+            debug_assert!(!pane.is_active);
+            let prefer_untagged_results = pane
+                .session
+                .shell_name
+                .as_deref()
+                .is_some_and(|shell| shell.eq_ignore_ascii_case("cmd"));
+            self.command_result_states
+                .entry(pane.session.session_id)
+                .or_default()
+                .render_command_results(
                     sugarloaf,
                     self.named_colors,
                     &pane.command_results,
+                    result_animation_enabled(pane.allow_result_animation),
+                    prefer_untagged_results,
                 );
-            }
-            if inactive_refresh_pending {
-                context_manager.schedule_render_on_route(
-                    devops_status::next_context_wake_millis(true),
-                );
-            }
         }
-
         // Every visible pane receives its own operational footer. Rendering
         // it after terminal/prompt overlays but before modal overlays keeps it
         // legible without ever entering PTY history or covering grid cells.
+        let suppressed_footer_route = self.search.pane_route();
         self.session_footer.render(
             sugarloaf,
             context_manager,
             self.named_colors.background.0,
+            suppressed_footer_route,
         );
+        let pane_footer = suppressed_footer_route.and_then(|route_id| {
+            session_footer::surface_for_route(context_manager, route_id, scale_factor)
+        });
+        if self.search.is_active() {
+            // Search is interactive chrome, not terminal content. Record it in
+            // the final overlay phase so terminal grids cannot obscure the
+            // footer surface. Later modal producers still paint above it.
+            sugarloaf.begin_modal_layer();
+            self.search.render(
+                sugarloaf,
+                (window_size.width, window_size.height, scale_factor),
+                pane_footer,
+                &self.named_colors,
+            );
+            sugarloaf.end_modal_layer();
+        } else if self.suggestions.is_active() {
+            // Suggestions are pane-owned application chrome. They render above
+            // terminal cells and below every application modal; active search
+            // wins to keep a single keyboard owner.
+            sugarloaf.begin_modal_layer();
+            self.suggestions.render(sugarloaf, &self.named_colors);
+            sugarloaf.end_modal_layer();
+        }
 
         let modal_dimensions = (window_size.width, window_size.height, scale_factor);
         if self.confirm_quit.is_active() {
             self.confirm_quit.render(sugarloaf, modal_dimensions);
-        } else {
+        } else if self.connection_hub.is_active() {
+            self.connection_hub.render(sugarloaf, modal_dimensions);
+        } else if self.command_palette.is_enabled() {
             self.command_palette.render(sugarloaf, modal_dimensions);
+        } else if self.assistant.is_active() {
+            self.assistant
+                .render(sugarloaf, modal_dimensions, &self.named_colors);
+        } else {
+            self.compatibility_inspector.render(
+                sugarloaf,
+                modal_dimensions,
+                &self.named_colors,
+            );
         }
 
         // Render scrollbars for each panel
@@ -1592,6 +1689,17 @@ impl Renderer {
     /// Check if the renderer needs continuous redraw (for animations)
     #[inline]
     pub fn needs_redraw(&mut self) -> bool {
+        if self.search.needs_redraw() {
+            return true;
+        }
+        if self.command_results.needs_redraw()
+            || self
+                .command_result_states
+                .values_mut()
+                .any(command_results::CommandResults::needs_redraw)
+        {
+            return true;
+        }
         if self.trail_cursor_enabled && self.trail_cursor.is_animating() {
             return true;
         }
@@ -1815,6 +1923,9 @@ mod prompt_visual_anchor_tests {
     use super::*;
     use rio_backend::config::colors::ColorRgb;
     use rio_backend::crosswords::pos::Column;
+    use rio_backend::crosswords::{Crosswords, CrosswordsSize};
+    use rio_backend::event::{TerminalDamage, VoidListener, WindowId};
+    use rio_backend::performer::handler::Processor;
 
     fn bg_style(bg: AnsiColor, flags: StyleFlags) -> CellStyle {
         CellStyle {
@@ -1822,6 +1933,43 @@ mod prompt_visual_anchor_tests {
             flags,
             ..CellStyle::default()
         }
+    }
+
+    #[test]
+    fn live_config_update_preserves_transient_renderer_state() {
+        let mut renderer = Renderer::new(&Config::default());
+        renderer.command_palette.set_enabled(true);
+        renderer.command_palette.set_query("git status".to_string());
+        renderer.search.set_active_search(
+            Some("needle".to_string()),
+            search::SearchScope::Pane { route_id: 0 },
+            search::SearchResultSummary::Matches {
+                visible: 1,
+                limited: false,
+            },
+        );
+        renderer.confirm_quit.set_active(true);
+        renderer.is_window_focused = false;
+        renderer.is_vi_mode_enabled = true;
+
+        let mut updated = Config::default();
+        updated.cursor.blinking_interval = 975;
+        updated.draw_bold_text_with_light_colors = true;
+        updated.ignore_selection_fg_color = true;
+        updated.effects.custom_mouse_cursor = true;
+        renderer.update_config(&updated);
+
+        assert!(renderer.command_palette.is_enabled());
+        assert_eq!(renderer.command_palette.query, "git status");
+        assert!(renderer.search.is_active());
+        assert!(renderer.confirm_quit.is_active());
+        assert!(!renderer.is_window_focused);
+        assert!(renderer.is_vi_mode_enabled);
+
+        assert_eq!(renderer.config_blinking_interval, 975);
+        assert!(renderer.draw_bold_text_with_light_colors);
+        assert!(renderer.ignore_selection_fg_color);
+        assert!(renderer.custom_mouse_cursor);
     }
 
     #[test]
@@ -1974,6 +2122,430 @@ mod prompt_visual_anchor_tests {
         rows[0][Column(1)].set_c(':');
         assert_eq!(first_paint_prompt_visual_anchor(&rows, 1), None);
         assert_eq!(first_paint_prompt_visual_anchor(&rows, 0), None);
+    }
+
+    #[test]
+    fn command_output_starts_after_the_owned_editable_prompt_row() {
+        let mut rows = vec![
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+            Row::<Square>::new(12),
+        ];
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[2][Column(0)].set_c('λ');
+        rows[3][Column(0)].set_c('o');
+        rows[4].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(64.0));
+    }
+
+    #[test]
+    fn command_output_starts_after_an_entire_wrapped_managed_prompt() {
+        let mut rows = (0..16).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        for row in &mut rows[1..=12] {
+            row.set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        }
+        rows[12][Column(0)].set_c('λ');
+        rows[13][Column(0)].set_c('o');
+        rows[14].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(264.0));
+    }
+
+    #[test]
+    fn managed_output_bounds_stop_at_the_first_unowned_row() {
+        let mut rows = (0..5).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('λ');
+        rows[2][Column(0)].set_c('o');
+        rows[3].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+
+        assert_eq!(command_output_top(&rows, 0, 0.0, 20.0), Some(40.0));
+    }
+
+    #[test]
+    fn single_row_managed_prompt_starts_output_on_the_following_row() {
+        let mut rows = (0..3).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(17));
+        rows[0][Column(0)].set_c('>');
+        rows[1][Column(0)].set_c('o');
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), Some(24.0));
+    }
+
+    #[test]
+    fn parser_snapshot_keeps_result_surface_when_output_pushes_owner_above_viewport() {
+        const SCREEN_LINES: usize = 8;
+        for output_rows in [4usize, 5, 6, 7, 8, 9, 16] {
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(80, SCREEN_LINES),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                1_024,
+            );
+            let mut processor = Processor::default();
+            let mut stream = Vec::new();
+            stream.extend_from_slice(
+                b"\x1b]133;A;aid=41\x07 \r\n\
+                  \x1b]133;P;k=c;aid=41\x07/work\r\n\
+                  \x1b]133;P;k=c;aid=41\x07lambda command\x1b]133;B\x07\r\n\
+                  \x1b]133;C\x07",
+            );
+            for index in 0..output_rows {
+                stream.extend_from_slice(format!("result-{index}\r\n").as_bytes());
+            }
+            stream.extend_from_slice(
+                b"\x1b]133;D;0\x07\
+                  \x1b]133;A;aid=42\x07 \r\n\
+                  \x1b]133;P;k=c;aid=42\x07/work\r\n\
+                  \x1b]133;P;k=c;aid=42\x07lambda \x1b]133;B\x07",
+            );
+            processor.advance(&mut terminal, &stream);
+
+            let first_absolute_row = terminal
+                .lines_evicted()
+                .saturating_add(terminal.history_size() as u64);
+            let mut visible_rows = Vec::new();
+            let mut styles = Vec::new();
+            let mut extras = rustc_hash::FxHashMap::default();
+            terminal.snapshot_visible(
+                &TerminalDamage::Full,
+                terminal.columns(),
+                &mut visible_rows,
+                &mut styles,
+                &mut extras,
+            );
+            assert!(
+                visible_rows
+                    .iter()
+                    .all(|row| row.semantic_command_result.is_none()),
+                "fixture must move the result owner above the {SCREEN_LINES}-row viewport for output_rows={output_rows}"
+            );
+
+            let prompt_anchors = visible_rows
+                .iter()
+                .enumerate()
+                .filter_map(|(row_index, row)| {
+                    (row.semantic_prompt == SemanticPrompt::Prompt)
+                        .then(|| prompt_visual_anchor(&visible_rows, row_index))
+                        .flatten()
+                        .map(|visual_index| crate::automexia::ui::PromptAnchor {
+                            generation: row.semantic_prompt_id,
+                            key: first_absolute_row.saturating_add(row_index as u64),
+                            x: 4.0,
+                            y: visual_index as f32 * 20.0,
+                            width: 720.0,
+                            height: 20.0,
+                        })
+                })
+                .collect::<Vec<_>>();
+            let results = command_result_anchors(
+                &visible_rows,
+                4.0,
+                0.0,
+                720.0,
+                20.0,
+                &prompt_anchors,
+            );
+
+            assert_eq!(results.len(), 1, "output_rows={output_rows}");
+            assert_eq!(results[0].generation, Some(41));
+            assert_eq!(results[0].output_top, Some(0.0));
+            assert!(results[0].separates_next_prompt);
+            assert_eq!(results[0].exit_code, Some(0));
+            assert!(
+                results[0].output_top.is_some_and(|top| top < results[0].y),
+                "the visible output tail must retain nonempty paint bounds for output_rows={output_rows}"
+            );
+        }
+    }
+
+    #[test]
+    fn result_anchors_cover_success_error_single_and_multiline_output() {
+        for (exit_code, output_row_count) in [(0, 1usize), (7, 3usize)] {
+            let next_prompt_index = 3 + output_row_count;
+            let mut rows = (0..=next_prompt_index)
+                .map(|_| Row::<Square>::new(12))
+                .collect::<Vec<_>>();
+            rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+            rows[0].set_semantic_command_result(
+                rio_backend::crosswords::grid::row::SemanticCommandResult {
+                    id: 10,
+                    exit_code: Some(exit_code),
+                    elapsed_ms: Some(18),
+                },
+            );
+            rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+            rows[1][Column(0)].set_c('/');
+            rows[2].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+            rows[2][Column(0)].set_c('λ');
+            for row in &mut rows[3..next_prompt_index] {
+                row[Column(0)].set_c('o');
+            }
+            rows[next_prompt_index].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+
+            let prompts = [
+                crate::automexia::ui::PromptAnchor {
+                    generation: Some(7),
+                    key: 10,
+                    x: 4.0,
+                    y: 0.0,
+                    width: 720.0,
+                    height: 20.0,
+                },
+                crate::automexia::ui::PromptAnchor {
+                    generation: Some(8),
+                    key: 10 + next_prompt_index as u64,
+                    x: 4.0,
+                    y: next_prompt_index as f32 * 20.0,
+                    width: 720.0,
+                    height: 20.0,
+                },
+            ];
+
+            let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+            assert_eq!(results.len(), 1);
+            assert_eq!(results[0].output_top, Some(60.0));
+            assert_eq!(results[0].y, next_prompt_index as f32 * 20.0);
+            assert_eq!(results[0].exit_code, Some(exit_code));
+            assert!(results[0].separates_next_prompt);
+        }
+    }
+
+    #[test]
+    fn visible_source_and_following_boundary_render_one_result_surface() {
+        let result = rio_backend::crosswords::grid::row::SemanticCommandResult {
+            id: 33,
+            exit_code: Some(0),
+            elapsed_ms: Some(9),
+        };
+        let mut rows = (0..=3).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[0].set_semantic_command_result(result);
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('λ');
+        rows[2][Column(0)].set_c('o');
+        rows[3].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+        rows[3].set_semantic_command_boundary(
+            rio_backend::crosswords::grid::row::SemanticCommandBoundary {
+                source_prompt_id: Some(7),
+                result,
+            },
+        );
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(7),
+                key: 10,
+                x: 4.0,
+                y: 0.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(8),
+                key: 13,
+                x: 4.0,
+                y: 60.0,
+                width: 720.0,
+                height: 20.0,
+            },
+        ];
+
+        let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].key, 33);
+        assert_eq!(results[0].generation, Some(7));
+        assert_eq!(results[0].output_top, Some(40.0));
+        assert_eq!(results[0].y, 60.0);
+        assert!(results[0].separates_next_prompt);
+    }
+    #[test]
+    fn legacy_cmd_result_uses_lambda_and_next_prompt_without_claiming_status() {
+        let mut rows = (0..=5).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        rows[0].set_semantic_command_result(
+            rio_backend::crosswords::grid::row::SemanticCommandResult {
+                id: 10,
+                exit_code: None,
+                elapsed_ms: None,
+            },
+        );
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[1][Column(0)].set_c('/');
+        rows[2].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[2][Column(0)].set_c('λ');
+        rows[3][Column(0)].set_c('o');
+        rows[5].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 10,
+                x: 4.0,
+                y: 0.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 15,
+                x: 4.0,
+                y: 100.0,
+                width: 720.0,
+                height: 20.0,
+            },
+        ];
+
+        let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].generation, None);
+        assert_eq!(results[0].output_top, Some(60.0));
+        assert_eq!(results[0].y, 100.0);
+        assert_eq!(results[0].exit_code, None);
+        assert_eq!(results[0].elapsed_ms, None);
+        assert!(results[0].separates_next_prompt);
+    }
+
+    #[test]
+    fn stale_completion_on_prompt_continuation_is_not_a_result_owner() {
+        let mut rows = (0..=6).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        rows[0].set_semantic_command_result(
+            rio_backend::crosswords::grid::row::SemanticCommandResult {
+                id: 10,
+                exit_code: None,
+                elapsed_ms: None,
+            },
+        );
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[1][Column(0)].set_c('λ');
+        rows[2][Column(0)].set_c('o');
+        rows[3].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[3].set_semantic_command_result(
+            rio_backend::crosswords::grid::row::SemanticCommandResult {
+                id: 10,
+                exit_code: Some(0),
+                elapsed_ms: Some(1),
+            },
+        );
+        rows[4].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
+        rows[4][Column(0)].set_c('λ');
+        rows[5][Column(0)].set_c('x');
+        rows[6].set_semantic_prompt(SemanticPrompt::Prompt, None);
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 10,
+                x: 4.0,
+                y: 0.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: None,
+                key: 16,
+                x: 4.0,
+                y: 120.0,
+                width: 720.0,
+                height: 20.0,
+            },
+        ];
+
+        let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].key, 10);
+        assert_eq!(results[0].exit_code, None);
+    }
+
+    #[test]
+    fn command_output_bounds_fail_closed_without_an_owned_command_row() {
+        let mut rows = vec![Row::<Square>::new(12), Row::<Square>::new(12)];
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[1][Column(0)].set_c('u');
+
+        assert_eq!(command_output_top(&rows, 0, 4.0, 20.0), None);
+    }
+
+    #[test]
+    fn completed_command_result_moves_to_the_following_prompt_boundary() {
+        let result = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(1),
+            key: 2,
+            x: 4.0,
+            y: 40.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(100.0),
+            separates_next_prompt: false,
+            exit_code: Some(0),
+            elapsed_ms: Some(18),
+        };
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(1),
+                key: 2,
+                x: 4.0,
+                y: 40.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(2),
+                key: 8,
+                x: 8.0,
+                y: 160.0,
+                width: 704.0,
+                height: 24.0,
+            },
+        ];
+
+        let boundary = command_result_boundary(result, &prompts);
+
+        assert_eq!(boundary.x, 8.0);
+        assert_eq!(boundary.y, 160.0);
+        assert_eq!(boundary.width, 704.0);
+        assert_eq!(boundary.height, 24.0);
+        assert!(boundary.separates_next_prompt);
+        assert_eq!(boundary.exit_code, Some(0));
+        assert_eq!(boundary.elapsed_ms, Some(18));
+    }
+
+    #[test]
+    fn last_visible_command_result_keeps_its_truthful_origin() {
+        let result = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(2),
+            key: 8,
+            x: 4.0,
+            y: 160.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(180.0),
+            separates_next_prompt: false,
+            exit_code: Some(7),
+            elapsed_ms: Some(1_250),
+        };
+        let prompts = [crate::automexia::ui::PromptAnchor {
+            generation: Some(2),
+            key: 8,
+            x: 4.0,
+            y: 160.0,
+            width: 720.0,
+            height: 20.0,
+        }];
+
+        assert_eq!(command_result_boundary(result, &prompts), result);
     }
 
     #[test]

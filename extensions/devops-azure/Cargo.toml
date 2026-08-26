@@ -1,0 +1,24 @@
+[package]
+name = "automexia-devops-azure"
+description = "Bounded public Azure account metadata and exact official-CLI intents for Automexia."
+publish = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true
+
+[dependencies]
+automexia-connectivity = { workspace = true }
+automexia-command-productivity = { workspace = true }
+automexia-extension-api = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "provider"
+harness = false

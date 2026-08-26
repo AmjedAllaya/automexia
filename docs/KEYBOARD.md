@@ -2,8 +2,8 @@
 
 This page defines Automexia's active v0.4 defaults. Explicit entries under
 `[bindings]` replace matching default triggers. The separate
-[Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) page describes a
-future opt-in profile and is not the active default set.
+[Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) documents the
+explicit opt-in profiles; they never replace the active default implicitly.
 
 `Cmd` means the macOS Command key. Search and Vi-mode bindings apply only while
 their mode is active. A terminal application can own a key when the table says
@@ -19,6 +19,8 @@ the action is mode-sensitive.
 | `Ctrl+T` | Create a window-level tab. |
 | `Ctrl+Shift+T` | Create an independent tab inside the selected pane. |
 | `Ctrl+Shift+W` | Close the selected local tab, split, or window tab—whichever owns focus. |
+| `Ctrl+F4` | Close the current local tab, or the current window-level tab when no extra local tab exists; never remove a split. |
+| `Ctrl+Shift+F4` | Close every other window-level tab. |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
@@ -39,7 +41,9 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | Shortcut | Action |
 |---|---|
 | `Ctrl+C` | Copy a non-empty terminal selection; with no selection, send the shell/application interrupt unchanged. |
-| `Ctrl+Shift+C` / `Ctrl+Shift+V` | Copy / paste. |
+| `Ctrl+Shift+C` | Copy on Windows/Linux/BSD. |
+| `Ctrl+V` / `Ctrl+Shift+V` | Paste with the Automexia Windows profile in local, WSL, SSH, and other sessions. |
+| `Ctrl+Shift+V` | Paste on Linux/BSD. |
 | `Shift+Insert` | Paste the primary selection when the platform provides one. |
 | `Shift+Arrow` | Start at the terminal insertion cursor, then extend/reverse selection by one cell or row. |
 | `Ctrl+Shift+Left/Right` | Extend/reverse selection by a Unicode word boundary. |
@@ -47,16 +51,31 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |
 | `Shift+PageUp/PageDown` | Scroll one page up / down outside the alternate screen. |
-| `Ctrl+Shift+F` / `Ctrl+Shift+B` | Search forward / backward. |
+| `Ctrl+F` | Select or refocus the current-pane scope in the active search session. |
+| `Ctrl+Shift+F` / `Ctrl+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Ctrl+Shift+Space` | Toggle Vi mode on Windows. |
 | `Alt+Shift+Space` | Toggle Vi mode on Linux/BSD and all platforms through the common binding. |
 | `Ctrl+Shift+K` | Clear history on Windows. |
 | `F11` or `Alt+Enter` | Toggle fullscreen on Windows. |
 | `Ctrl+Alt+I` | Preview the selected or pointer-targeted local raster image. |
 | `Ctrl+Shift+P` | Open the command palette. |
+| `Ctrl+Shift+H` | Open the read-only Connection Hub. |
+| `Ctrl+Shift+O` | Open Quick Actions search and review. |
+| `Ctrl+Shift+M` | Open the Extensions marketplace. |
+| `Ctrl+Shift+L` | List registered font families. |
 | `Ctrl+,` (Windows) / `Ctrl+Shift+,` (Linux/BSD) | Open the configuration file in the configured editor. |
 | `Ctrl+Alt+Space` | Toggle the quake window on Windows. |
-| `Alt+Shift+T` | Toggle light/dark appearance on Windows. |
+| `Alt+Shift+T` | Toggle light/dark appearance on Windows and Linux/BSD. |
+
+Automexia's Windows `Ctrl+V` is a host shortcut, so the clipboard reaches the selected
+pane through the same bracketed-paste and control-filtering path for every child
+session without synthesizing an extra Enter. To let a terminal application receive the
+original control character instead, add:
+
+```toml
+[bindings]
+keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
+```
 
 ## macOS defaults
 
@@ -65,6 +84,8 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Cmd+N` | Create an independent OS window. |
 | `Cmd+T` / `Cmd+Shift+T` | Create a window tab / local tab in the selected pane. |
 | `Cmd+W` | Close the selected local tab, split, or window tab. |
+| `Cmd+Shift+W` | Close the current local tab, or the current window-level tab when no extra local tab exists; never remove a split. |
+| `Cmd+Alt+W` | Close every other window-level tab. |
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Cmd+Shift+[` / `Cmd+Shift+]` | Previous / next window-level tab. |
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Previous / next local tab in the selected pane. |
@@ -78,11 +99,17 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Cmd+C` / `Cmd+V` | Copy / paste. `Ctrl+C` remains selection-aware as described above. |
 | `Cmd+A` | Select all. |
 | `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Reset, increase, or decrease font size. |
-| `Cmd+F` / `Cmd+B` | Search forward / backward. |
+| `Cmd+F` / `Cmd+B` | Select or refocus the current-pane scope in the active search session. |
+| `Cmd+Shift+F` / `Cmd+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Cmd+K` | Clear visible screen and then history. |
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
 | `Cmd+Shift+P` | Open command palette. |
+| `Cmd+Shift+H` | Open the read-only Connection Hub. |
+| `Cmd+Shift+O` | Open Quick Actions search and review. |
+| `Cmd+Shift+M` | Open the Extensions marketplace. |
+| `Cmd+Shift+L` | List registered font families. |
+| `Cmd+Alt+Shift+T` | Toggle light/dark appearance. |
 | `Cmd+,` | Open the configuration file. |
 | `Cmd+Q`, `Cmd+H`, `Cmd+Alt+H`, `Cmd+M` | Quit, hide, hide others, minimize. |
 
@@ -92,16 +119,67 @@ the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
 non-empty text/paste/IME input exits selection mode before the input is
 forwarded to the shell. Search and Vi mode retain their own input ownership.
 
-## Search mode
+## Connection Hub controls (v0.5 release-gated)
+
+These shortcuts work only while the read-only Hub or Connection Review owns
+input. They never insert a command or implicit Enter into a terminal PTY.
+Current Allow actions stop at the protected-review diagnostic and start no
+process.
 
 | Shortcut | Result |
 |---|---|
-| `Enter` / `Shift+Enter` | Next / previous result; in Vi search, confirm. |
+| `L` | From Hub results or first-run setup, open the typed host/user/port editor. If Search owns focus, `l` remains search text. |
+| `W` | From the Connections or Providers catalog, open saved Workspaces. If Search or a review owns focus, `w` remains owned by that surface. |
+| `P` | From the Connections or Workspaces catalog, open cached Providers. If Search or a review owns focus, `p` remains owned by that surface. |
+| `C` | From Workspaces or Providers, return to Connections. In Connection Review it copies the exact reviewed SSH command; it never executes or appends a newline. |
+| Up / Down / Home / End | In Workspaces or Providers, move the selected row within the bounded catalog. |
+| `Tab` / `Shift+Tab` | Move through the active modal focus order; Connection Review includes its Allow once action. |
+| `Enter` | Review a valid host or activate the focused editor control; in Connection Review, Allow once only when Review or Allow once owns focus. |
+| `A` | Request Allow once from Connection Review. |
+| `S` | Request Allow for session from Connection Review. For remote, non-loopback, or production tunnels this action is disabled, omitted from focus, and reports that a fresh Allow once decision is required. |
+| `D` | Deny the managed launch and return to results. |
+| `Escape` | Cancel the host editor; return from connection review to results, workspace review to Workspaces, or provider review to Providers. |
+
+While the host editor owns the modal, Tab/Shift+Tab cycles Host, User, Port,
+Review, and Cancel. Its visible Cancel control replaces the redundant top-level
+close icon, keeping focus and pointer targets unambiguous at small scaled
+viewports. Modified approval/copy letters remain available to their existing
+owners.
+
+## Search mode
+
+Pane and workspace search are two scopes of one continuous session. `Ctrl+F` /
+`Cmd+F` immediately selects the current pane; `Ctrl+Shift+F` / `Cmd+Shift+F`
+immediately expands to the active local tab in every visible split. Switching
+keeps the query and query focus, recompiles the match set, and moves the same
+surface between the pane footer and the safe bottom-centered workspace position.
+Repeating the shortcut for the active scope only refocuses the query. Hidden
+pane-local tabs and other window-level tabs remain deliberately excluded.
+
+The `PANE` and `ALL PANES` controls are separate, mutually exclusive choices.
+They are clickable, and `Tab` / `Shift+Tab` moves between the query and scope
+group. With the scope group focused, any arrow key selects the other scope;
+`Space` or `Enter` keeps the selected scope. A pointer selection returns focus
+to the query. `Esc` still closes the session. Moving focus to another pane
+closes a pane-local search instead of silently changing its pane owner.
+
+The result badge reports matches in the visible viewport of the routes in
+scope, capped at `999+`; previous/next navigation still uses the terminal
+search engine beyond the viewport. Invalid patterns receive an explicit status.
+The complete painted surface consumes pointer input, and query/control input is
+limited to 4 KiB of UTF-8 and never reaches the PTY.
+
+| Shortcut | Result |
+|---|---|
+| `Enter` / `Shift+Enter` | Next / previous result when the query is focused; in Vi search, confirm. |
+| `Tab` / `Shift+Tab` | Move focus between the query and scope choices. |
+| Arrow key with scope focused | Switch between `PANE` and `ALL PANES`. |
+| `Space` / `Enter` with scope focused | Keep the selected scope. |
 | `Esc` or `Ctrl+C` | Cancel. |
 | `Ctrl+U` | Clear query. |
 | `Ctrl+W` | Delete the previous query word. |
-| `Ctrl+P` or Up | Previous query from search history. |
-| `Ctrl+N` or Down | Next query from search history. |
+| `Ctrl+P` or Up with query focused | Previous query from search history. |
+| `Ctrl+N` or Down with query focused | Next query from search history. |
 
 ## Mouse input
 
@@ -142,7 +220,7 @@ Stable action names are case-insensitive:
 Paste, Copy, SelectAll,
 ExtendSelectionLeft, ExtendSelectionRight, ExtendSelectionUp,
 ExtendSelectionDown, ExtendSelectionWordLeft, ExtendSelectionWordRight,
-SearchForward, SearchBackward, SearchConfirm, SearchCancel, SearchClear,
+SearchForward, SearchBackward, SearchGlobalForward, SearchGlobalBackward, SearchConfirm, SearchCancel, SearchClear,
 SearchFocusNext, SearchFocusPrevious, SearchDeleteWord, SearchHistoryNext,
 SearchHistoryPrevious, ClearHistory, ClearScreen,
 ResetFontSize, IncreaseFontSize, DecreaseFontSize,
@@ -158,7 +236,9 @@ SelectNextSplit, SelectPrevSplit, SelectPaneLeft, SelectPaneRight,
 SelectPaneUp, SelectPaneDown, SelectNextSplitOrTab,
 SelectPrevSplitOrTab, MoveDividerUp, MoveDividerDown, MoveDividerLeft,
 MoveDividerRight, ToggleViMode, ToggleAppearanceTheme, ToggleFullscreen,
-OpenCommandPalette, PreviewSelectedImage, ReceiveChar, None
+OpenCommandPalette, OpenConnectionHub, OpenActionCenter,
+OpenExtensionMarketplace, OpenFontBrowser, PreviewSelectedImage, ReceiveChar,
+None
 ```
 
 Parameterized actions are `SelectTab(N)`, `Scroll(N)`, and `Run(PROGRAM
@@ -174,3 +254,35 @@ reporting, and the line editor each have scoped ownership. Automexia never
 sends terminal-owned selection motions to the PTY. See
 [Architecture](ARCHITECTURE.md#keyboard-compatibility-boundary) for why one
 global shortcut table is not used across every mode and OS.
+
+The four app-surface launchers are inactive while Search, Vi mode, or an
+alternate-screen terminal application owns input. They only open application
+UI: Connection Hub remains read-only, and Quick Actions still requires its
+normal review/insert step. A published CP4 production-context row adds a second
+confirmation; broker-required or non-current provider rows cannot copy or
+insert. None of these shortcuts writes to or executes in the PTY. The mnemonic
+letters are **H**ub, **O**pen actions, **M**arketplace, and
+**L**ist fonts.
+## Ghostty compatibility profiles
+
+`automexia` remains the implicit profile. Set `keyboard.binding-profile` to
+`ghostty-1.3` for the pinned Ghostty 1.3.1 profile or to `ghostty` for the
+visible moving alias, which currently resolves to `ghostty-1.3`. User entries
+and `unbind` directives are compiled after the selected profile. A failed strict
+compile or reload leaves the previous complete registry active.
+
+Strict Ghostty bindings use window-level tabs and independent-PTY splits. Bare
+`Ctrl+R` and `Ctrl+D` fall through to the terminal. Platform-global entries are
+installed through the OS hotkey owner, while focused, all-surface, sequences,
+tables, chains, `performable`, and `unconsumed` policies stay isolated per
+surface. Unsupported actions remain visibly unavailable; they are never mapped
+to unrelated behavior.
+
+The generated tables are the canonical inventory:
+
+- [Ghostty 1.3 keybindings](generated/ghostty-1.3-keybindings.md)
+- [Ghostty 1.3 actions](generated/ghostty-1.3-actions.md)
+
+See [Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) for
+configuration, migration, provenance, deviations, and current native-evidence
+limits.

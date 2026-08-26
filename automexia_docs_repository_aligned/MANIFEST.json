@@ -1,0 +1,391 @@
+{
+  "schema": 1,
+  "generated_at": "2026-08-26",
+  "pack_status": "repository-aligned research/proposal pack",
+  "project_authority": false,
+  "source_audit_head": "20ff7928ea2d1eac5d26f13c62d0cda9b86bc078",
+  "source_audit_kind": "committed implementation baseline; not moving HEAD",
+  "source_audit_independently_reexecuted_by_this_pack": false,
+  "current_rust": "1.96.1",
+  "current_edition": "2021",
+  "real_project_adr_owners": {
+    "cp5": "0025",
+    "llm_orchestration": "0033",
+    "top_level_parked_tab_history": "0028",
+    "public_ecosystem": "0029"
+  },
+  "ghostty_full_product_parity_goal": false,
+  "video_active_implementation": false,
+  "public_wasmtime_wit_current_architecture": false,
+  "large_llm_required": false,
+  "paid_api_required": false,
+  "blocking_documentation_issues": [],
+  "files": [
+    {
+      "path": "BUNDLE_VALIDATION.md",
+      "bytes": 1197,
+      "sha256": "ff43cea076cbc4c92d193516ebf30d9d1fd296ca22e1889709023a7885bf07dc",
+      "historical": false
+    },
+    {
+      "path": "MIGRATION_MAP.md",
+      "bytes": 2594,
+      "sha256": "4c717c7044d157798e017b525c63b229cf2a1ecfe2c0692ed1d69c5ee96eefaf",
+      "historical": false
+    },
+    {
+      "path": "PROPOSAL_INDEX.md",
+      "bytes": 2750,
+      "sha256": "46e7e0a76d33b059642438f4fac363d78020fee1c50e0114b309fb9be930104e",
+      "historical": false
+    },
+    {
+      "path": "README.md",
+      "bytes": 5558,
+      "sha256": "adb8e83c75ff1e04e073973149d93df7f2b55d3795c64b940b7770e92ae68eae",
+      "historical": false
+    },
+    {
+      "path": "REFERENCE_SOURCES_2026.md",
+      "bytes": 4788,
+      "sha256": "4792070b251e1e21612d59453659f8fe8808533234b2349637b3ce54e0e99968",
+      "historical": false
+    },
+    {
+      "path": "historical/keyboard_first_extensible_terminal_architecture.pre_platform_expansion.md",
+      "bytes": 108322,
+      "sha256": "c66e41dfeb44a3d6d5f62395ee63b4ddb4ec046dff1eafec8fd8641f6db466f2",
+      "historical": true
+    },
+    {
+      "path": "historical/keyboard_first_extensible_terminal_architecture.pre_rust.md",
+      "bytes": 93686,
+      "sha256": "d39b01ceb22a712c37cb22711c779a8dbdd48777159b99947e175850f14e9568",
+      "historical": true
+    },
+    {
+      "path": "historical/video/AUTOMEXIA_PROJECT_SPEC_original.md",
+      "bytes": 67335,
+      "sha256": "913fff0e167d9ded38b71800b55ba2b97b72270dd88b6f5e9d8882c05ae81fc1",
+      "historical": true
+    },
+    {
+      "path": "repository_integration/ACTIVATION_HARDENING_DELTA.md",
+      "bytes": 2739,
+      "sha256": "aabc7238c4641d03835d94d0693663d3f1b8f8963099b33e6ad1d22946d8e788",
+      "historical": false
+    },
+    {
+      "path": "repository_integration/ADR_GOVERNANCE_NOTES.md",
+      "bytes": 978,
+      "sha256": "a3a8ee768b4559d779157c2022c57abe40de68e1a0b0e7f35c1702d4bc483917",
+      "historical": false
+    },
+    {
+      "path": "repository_integration/CP5_ADR_0025_RESEARCH_DELTAS.md",
+      "bytes": 1873,
+      "sha256": "8c64264f60153bfc2cf1f0933ab8c40070cc9ae209405316cad679d4f0d54f02",
+      "historical": false
+    },
+    {
+      "path": "repository_integration/GHOSTTY_ROADMAP_INTEGRATION.md",
+      "bytes": 1875,
+      "sha256": "d20c18bfbdf99865ba554f1e7e68571fe047b961c47361c6a00dfd87e0ccac6a",
+      "historical": false
+    },
+    {
+      "path": "repository_integration/SUPPLY_CHAIN_INTEGRATION.md",
+      "bytes": 965,
+      "sha256": "cb6ba825fa1de9ffd0d484bfd6aa9059f30f9ef0443ed23f10bbc45bc307b14f",
+      "historical": false
+    },
+    {
+      "path": "repository_snapshot/CURRENT_REPOSITORY_STATE_2026-08-23.md",
+      "bytes": 2557,
+      "sha256": "9e10c78c29846fcf672f0ec1bbbfb28c42a62d15c7e53a8006cc4e0347381b44",
+      "historical": false
+    },
+    {
+      "path": "repository_snapshot/SUPPLIED_AGENT_REPOSITORY_AUDIT_2026-08-23.md",
+      "bytes": 25634,
+      "sha256": "d27e353500624c464246b08f77830258c72ede78041ed33e0bd28d1888cca0f4",
+      "historical": true
+    },
+    {
+      "path": "research_proposals/ARCHITECTURE_RESEARCH_AND_TARGET_PRINCIPLES.md",
+      "bytes": 168222,
+      "sha256": "7f168ab65db63b779295db802d111c63895fd8b5822d8aa8570869379c776bfe",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/AUTOMEXIA_CURRENT_VERSION_HARDENING_PLAN.md",
+      "bytes": 100550,
+      "sha256": "2eb59ddf3cbddf8f4396d6b2818e63cfa41fb50b8f37c66cffa5a8b5661feb60",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/README.md",
+      "bytes": 1460,
+      "sha256": "22dba2a375148bb19a91955dfd66b8165f250afddd89e458dcc8fc2e322e3086",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/00_PRODUCT_AND_INTERACTION.md",
+      "bytes": 843,
+      "sha256": "69f99643b078d533b001e8b4feaa3b089840145a14f242a4565fa6b90808def9",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/01_RUST_CORE_ARCHITECTURE.md",
+      "bytes": 822,
+      "sha256": "4f52848994b18d7cfb48c08f0e589c29416e39a24d2d14400434e0166b3d4b1d",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/02_PROCESS_SESSION_IPC.md",
+      "bytes": 870,
+      "sha256": "eaeca41c874240f731c479153f8f5fa1e9ec9a42dc6d0663b8a3643810dff532",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/03_TERMINAL_RUNTIME.md",
+      "bytes": 852,
+      "sha256": "e936277672bd4640edd74de3657a28ec87b41b647c1fc356b892ee45225ac378",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/04_EXTENSION_PLATFORM.md",
+      "bytes": 962,
+      "sha256": "d6164dd7ae6e21186f8eb6f2d27e971fc4c66feb1d94fae4ff198edb6bd0dc48",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/05_SECURITY_MODEL.md",
+      "bytes": 978,
+      "sha256": "6f5529cac7706ecbc64669a7ffa5cd286a33d51e5f9b508af53c9ba693ed9488",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/06_RESOURCE_ACCESS_MODEL.md",
+      "bytes": 696,
+      "sha256": "68f763c4ea119e0e7ee6c48152c1f08c540b903a4411e1ba39e296dbf44a03f5",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/07_CREDENTIAL_BROKER.md",
+      "bytes": 832,
+      "sha256": "96f874dcf9bc293455736a81f9193856cdaf3c92e8cc0c63a4c4cd5ecadadb2a",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/08_DEVOPS_EXTENSION.md",
+      "bytes": 687,
+      "sha256": "ed6251b984d7a0c4d1d0007626b5f4748c28110e2d5b0e2aefb038f3250133b2",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/09_TESTING_RELEASE.md",
+      "bytes": 835,
+      "sha256": "2d4f915451dfaccb87d23067491d113227d163ce5d189f77fc185f19e959b2fe",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/10_ROADMAP_ADRS.md",
+      "bytes": 931,
+      "sha256": "ec0afaf9e471f04816cbcc5de2f77428ee73a229c76d9acf9366a59ca614e7ec",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/11_PLATFORM_CAPABILITIES.md",
+      "bytes": 584,
+      "sha256": "b1f18cd789840a043bfb2e1be2ae4f92dc3cc34da037973547d638fd62bbd297",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/12_AUTOMEXIA_LAB.md",
+      "bytes": 687,
+      "sha256": "c9d01d31e9f4c2882a46aa5cd5cc157392e7ce69ec0468984ee5d3fb5c01e0ff",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/13_EDITOR_SUGGESTION_BRIDGE.md",
+      "bytes": 789,
+      "sha256": "70b675368397783ebda9178f6d886337b29651ad4feddae23cfa6be7ecbc9fb0",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/14_VIDEO_AUTOMATION_EXTENSION.md",
+      "bytes": 962,
+      "sha256": "d7cd9818a33affe2ba8df868ef0fa11d70e7d4017e53de116b253804c55528ae",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/15_VIDEOLAB.md",
+      "bytes": 531,
+      "sha256": "85212223b3666eb5efe23cd99f2f417b0e0a679e40e6637096998cc4ddafadd0",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/16_TECHNOLOGY_BASELINE_2026.md",
+      "bytes": 1205,
+      "sha256": "1d946fa45329b5c82300a33750361840dddd5f0dd6cf570a30524b2174ce94e2",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/17_SUPPLY_CHAIN_AND_DEPENDENCY_POLICY.md",
+      "bytes": 574,
+      "sha256": "5477924f3ffd23a5e1e05959ae48139f425ca4f0c16954a791e798f3e1afed76",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/18_MODERN_TERMINAL_COMPATIBILITY.md",
+      "bytes": 602,
+      "sha256": "01c32e9e4d45eb9e16383249a90c975e47e2c54ebbd5ddd0ab1f9849740d9530",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/19_GHOSTTY_MIGRATION_COMPATIBILITY.md",
+      "bytes": 952,
+      "sha256": "ea1361077ba5103d5bcd57117834108b3d6e12a72f30e585ef1627f6142d2263",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/docs/20_PERSISTENT_SESSION_HISTORY.md",
+      "bytes": 1147,
+      "sha256": "7de6a7e6f70642bd0428336a394918466a6e8f88396f49ef5a1d96228d101e63",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/ghostty/AUTOMEXIA_GHOSTTY_COMPATIBILITY_STRATEGY.md",
+      "bytes": 32742,
+      "sha256": "68acc9d2f8aa8fb48fde72f2c210a06b0122f2ef1710c5393b9b800e2e2df295",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/ghostty/GHOSTTY_IMPLEMENTATION_STATUS_2026-08-23.md",
+      "bytes": 1506,
+      "sha256": "aadb15713ad960199a23708dfb27d3b4f997241a96ac27e909b5071dcc8e6853",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/ghostty/GHOSTTY_ROADMAP_DELTA.md",
+      "bytes": 2211,
+      "sha256": "0e328a833df857101379b7c5e0018eec5116ab342ec18301227f1d30dbfe2c34",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/README.md",
+      "bytes": 642,
+      "sha256": "4d06f08d1769a5c8a3b5152b553643befdb8b958c7747ae70ca201977480e58e",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_ACCESSIBILITY_DELTAS.md",
+      "bytes": 850,
+      "sha256": "42798c14d6a393b68684090fa8306be9aaab6c835810dd6b2c6752fef5ecd534",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_ADR0028_FUTURE_HISTORY_DELTAS.md",
+      "bytes": 822,
+      "sha256": "29faba9ee1acf7c4dce741d6b9b762423f82f9a14f20f2a09f4ce42b487e1f55",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_CP5_RESEARCH_DELTAS.md",
+      "bytes": 2266,
+      "sha256": "1fa50553f743ce0293430c6bec400a060c48f6047d021cf16170d7803f9dc59e",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_CREDENTIAL_CUSTODY.md",
+      "bytes": 485,
+      "sha256": "e046808497cd804e37c0599ca87494319a9d3ce21572d31586921f63e5f26c61",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_FUTURE_EXTENSION_CAPABILITIES.md",
+      "bytes": 1114,
+      "sha256": "30847a9a207b75d1571ccd876f378b9950ae7ba02d9d328d957a35db28071eeb",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_FUTURE_PUBLIC_EXTENSION_RUNTIME.md",
+      "bytes": 556,
+      "sha256": "d85dc4bc192fa97414ac928293ac918075f385a361efb4656e15faa7289d37df",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_HISTORICAL_KEYBOARD_ONLY.md",
+      "bytes": 892,
+      "sha256": "7d7ea30cbca521d7121a87f6836610db3129ace4803018661f085396964a026e",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_POLICY_CONTEXT_SERVICES.md",
+      "bytes": 627,
+      "sha256": "5502fab586361e46435eae352e05607db04d712032e0849b3d2db4792b072bbe",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_RUST_CORE_PRINCIPLES.md",
+      "bytes": 703,
+      "sha256": "be06d07b1dc2e6d4067bf16f83e5934c0248f4604272060bf408dde96c153cba",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_SCENARIO_EVIDENCE_LAYER.md",
+      "bytes": 690,
+      "sha256": "2c203485297ef742a1333727724d303cb9b16e07e539b76e457949a44a0c221c",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_SEMANTIC_OVERLAYS.md",
+      "bytes": 905,
+      "sha256": "2cfacf31f86c19df7a6acf36d4db58441557d62421ecd2b90de1fa770110c57a",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_SESSION_SUPERVISOR_FUTURE_EXPANSION.md",
+      "bytes": 1013,
+      "sha256": "f4718f131259d7cb71144a5b17d284993357f27cd4d50c347fa8489146a451c3",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_TECHNOLOGY_AND_SUPPLY_CHAIN.md",
+      "bytes": 1500,
+      "sha256": "27e1f170bbc6e0019356bf2d247736623f06acabc0b51bca52f69746571be555",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_TERMINAL_GHOSTTY_SCOPE.md",
+      "bytes": 1620,
+      "sha256": "c5549e5502be8dba7cbcaf5c2e24e344908c16b18e59dcfa5a2f8f311dd97752",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/rfds/RFD_VIDEO_AUTOMATION.md",
+      "bytes": 2566,
+      "sha256": "80e4f3eb620d9eb417b0c9b5bde87248fac8fa10663ab89da269053582e09126",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/technology-baseline.toml",
+      "bytes": 1726,
+      "sha256": "d00b358f3b59b413874bf3d9f2febc786556a43b8991790014b01146604f4ed2",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/video/AUTOMEXIA_VIDEO_EXTENSION_SPEC_2026.md",
+      "bytes": 91351,
+      "sha256": "253f280425b2b7bc975a8a7042f7716ce68c962c13629be333079ed22468bb2a",
+      "historical": false
+    },
+    {
+      "path": "research_proposals/video/MODEL_MEDIA_LICENSE_EVIDENCE.md",
+      "bytes": 3249,
+      "sha256": "c97b9e4787639c59c65dd2d7da67863cd7767d76a826c7e9bf2039185e5d2a6d",
+      "historical": false
+    }
+  ]
+}

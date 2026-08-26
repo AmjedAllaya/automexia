@@ -3,7 +3,7 @@
 - Status: consolidated research and proposed target architecture
 - Date: 2026-08-13
 - Applies to: Automexia Terminal after the v0.4 stabilization boundary
-- Current implementation status: not implemented unless explicitly identified
+- Current implementation status: D1/D2 and disabled D4 are implemented; F2/D5.0 non-executing connection/Hub/planner models are complete locally but overall partial pending ADR 0012; later product/execution/provider phases remain unimplemented unless explicitly identified
 
 ## Purpose
 
@@ -19,8 +19,10 @@ The central decision is:
 
 > Automexia core remains a fast, generic terminal. It provides PTYs, rendering,
 > session isolation, generic extension APIs, capability enforcement, and hostile
-> output protection. SSH, Kubernetes, OpenShift, cloud-provider, infrastructure,
-> and AI orchestration behavior is delivered by separately enabled extensions.
+> output protection. SSH, Kubernetes, OpenShift, cloud-provider, and
+> infrastructure behavior is delivered by separately enabled domain extensions.
+> Optional model-assisted orchestration belongs in one separately installed LLM
+> Orchestration extension and never inside the DevOps/SRE pack.
 
 This preserves a small and trustworthy terminal core while allowing Automexia
 to become a particularly effective DevOps workstation when the relevant
@@ -40,7 +42,7 @@ first-party extension pack is installed.
 | Cloud authentication | Official provider CLIs and identity systems | Prefer short-lived federated credentials; never invent another long-lived credential store. |
 | Cloud-native remote access | Provider extensions | Prefer AWS SSM, Azure Bastion, and GCP IAP/OS Login over publicly exposed raw SSH. |
 | Secrets | Provider caches, OS secret store, agents, or hardware | The renderer, logs, telemetry, and general configuration never receive secret values. |
-| AI agents | AI orchestration extensions | Explicit, scoped tools only; they do not inherit a user's cloud or SSH authority. |
+| LLM-assisted workflows | Separate LLM Orchestration extension | The model proposes a typed plan only; core-owned policy, review and brokers invoke exact domain actions without ambient cloud or SSH authority. |
 | Third-party extensions | Future sandboxed extension platform | Deny process, network, secret, and terminal-history access by default. |
 | Termix | Reference or optional companion | Learn from its UX and data model; do not embed its Electron/Node application in the native Rust core. |
 
@@ -128,7 +130,7 @@ Before this document, the repository did not contain a complete strategy for:
 - requesting reviewed process, browser-authentication, secret-reference, or
   network capabilities;
 - signing, sandboxing, and distributing third-party DevOps extensions;
-- protecting cloud access from AI orchestration extensions;
+- protecting cloud access from the separately gated LLM Orchestration extension;
 - measuring multi-cloud discovery latency and resource usage;
 - deciding whether Termix should be embedded, reused, or treated as a reference.
 
@@ -174,6 +176,24 @@ Extensions own domain behavior:
 - explaining stale, expired, unavailable, or conflicting state;
 - implementing domain-specific commands, search, and workflows.
 
+### Shared external-tool boundary
+
+Provider ownership does not permit provider-specific process launch. System
+OpenSSH, official cloud/Kubernetes CLIs, Mosh, Git, Upterm, SOPS/age, and later
+external adapters all pass through one core-owned `ExternalToolRunner`. Its
+request names the extension, operation, session, capsule, reviewed capability,
+canonical executable, exact argv, validated working directory, and bounded
+allowlisted environment. It provides protected/null stdin policy, startup/idle/
+total deadlines, output byte and line caps, generation cancellation, descendant
+termination, version compatibility, and redacted structured events.
+
+Extensions construct typed requests and parse bounded versioned public results.
+They do not call a shell, concatenate command text, spawn independently, retain
+raw provider output without limits, or access an ambient environment. The
+runner never executes on render, resize, terminal startup, or keystroke paths.
+The complete split, technology matrix, and adoption order are in
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+
 ### Why SSH is not core
 
 Raw terminal use already supports the `ssh` executable. Making saved hosts,
@@ -184,8 +204,9 @@ features, but they belong in a separately enabled, first-party SSH extension.
 
 Only the generic machinery required by many extension categories belongs in
 core. `session.launch` is useful for SSH, databases, debuggers, container CLIs,
-AI tools, and future workflows; therefore the capability is generic even when
-`devops-ssh` is its first major user.
+and future reviewed workflow actions; therefore the capability is generic even
+when `devops-ssh` is its first major user. An LLM never receives or invokes this
+capability directly.
 
 ## Extension packaging
 
@@ -205,15 +226,17 @@ DevOps Pack (optional meta-package)
   devops-gcp
   devops-infrastructure
 
-AI Pack (separate, optional)
-  ai-agent-runtime
-  ai-agent-orchestration
-  provider-specific AI tool adapters, each requiring explicit grants
+LLM Orchestration extension (separate, optional)
+  domain-neutral workflow-planning adapter
+  local/self-hosted model adapter first
+  explicit remote-provider adapters later, contained in this extension
 ```
 
 The DevOps Pack is a convenience bundle, not a monolith. Users can install or
 enable only `devops-ssh` and `devops-kubernetes`, for example. Removing every
-DevOps extension leaves a complete, normal terminal.
+DevOps extension leaves a complete, normal terminal. The DevOps Pack neither
+contains nor depends on the LLM Orchestration extension; both remain useful,
+disableable, updateable, and removable on their own.
 
 ### Trust tiers
 
@@ -491,10 +514,11 @@ store or agent, verify success, and discard all Automexia copies. Key material
 must never enter general config, SQLite, logs, crash reports, telemetry,
 renderer snapshots, clipboard history, or AI prompts.
 
-`keyring-rs` can provide a Rust abstraction over OS credential stores, while
-`secrecy` reduces accidental secret exposure and `zeroize` clears supported
-in-memory buffers. These are defense-in-depth tools, not justification for
-long-term in-process custody.
+`keyring-core` plus only the required platform stores can provide a Rust
+abstraction over OS credential stores, while `secrecy` reduces accidental
+secret exposure and `zeroize` clears supported in-memory buffers. These are
+defense-in-depth tools, not justification for long-term in-process custody or a
+broad default backend set.
 
 ### Host-key verification
 
@@ -520,6 +544,13 @@ long-term in-process custody.
   explicitly created a managed background tunnel.
 - Background tunnels have bounded restart policy, clear health state, and an
   explicit stop control; they never survive silently.
+- A future Kubernetes `port-forward` is a PO6 managed diagnostic session, not an
+  SSH tunnel or generic background tunnel. It may reuse shared broker process,
+  listener, cancellation and cleanup primitives, but the Kubernetes provider
+  route owns its exact context, target UID, local/remote ports, authorization,
+  reconnect policy and status. It defaults to loopback, never follows a changed
+  production context automatically, and cannot be detached or made public
+  without a separately reviewed contract.
 
 ### Rust-native SSH engine
 
@@ -606,6 +637,11 @@ namespace. The extension should:
 - keep `ExecCredential` results in memory or the provider's supported cache;
 - align Helm and related tools with the session's selected kubeconfig/context;
 - represent cluster connectivity independently from local configuration state.
+- expose any future port-forward, controlled-probe or workload-debug operation
+  only through the separately activated PO6 managed-diagnostic contract, with an
+  exact target UID, context generation, listener or vantage point, immutable
+  image/profile where applicable, bounded lifetime and traffic, and observable
+  cleanup. Reading context never starts one of these sessions.
 
 A kubeconfig is active content, not harmless data: it may cause execution of a
 credential plugin. Imported or downloaded kubeconfigs must be treated as
@@ -678,7 +714,10 @@ SSH remains essential for generic systems and as a transparent fallback.
 ## Broker-process architecture
 
 Network- and credential-adjacent first-party adapters should run outside the
-renderer/VT process in a small provider broker or extension host. The broker:
+renderer/VT process in a small provider broker or extension host when the
+protected isolation gate requires it. In-process trusted adapters still use the
+same application-owned ExternalToolRunner and receive no direct process
+authority. The broker:
 
 - communicates over a user-scoped named pipe on Windows or Unix-domain socket;
 - never opens a general TCP control port;
@@ -740,6 +779,28 @@ rendering and terminal parser trust boundary.
     compatibility, and revocation status before loading.
 12. Apply memory, CPU, process, file, network, retry, and output quotas.
 
+### Frozen D0/D3 local baseline
+
+The active schema-6 D0/D3/M5 contract makes controls 2, 3, 7, 8, 10,
+and 11 machine-checkable without granting runtime authority; schemas 1-5 remain
+immutable hash-checked evidence. It preserves interactive-shell ownership of
+manual SSH, forbids download/install or substitution during startup and launch,
+and binds `automexia.devops-ssh` to an exact publisher, trusted-loader SHA-256
+identity source/size, workspace version, contract version, and reviewed/signed
+verification. Unverified or mismatched principals fail closed. Capability
+decisions bind exact operation/session/capsule/resource scope and expiry.
+
+Nine boundary rows fix accepted/returned data, limits, cancellation, logging,
+and failure behavior. Windows, macOS, and Linux use fixed system roots, WSL
+remains disabled, and no resolver searches PATH or cwd. The hermetic native
+protocol fixes loopback-only setup, isolated disposable authentication state,
+bounded probes/timeouts, DNS/connect/auth cancellation, cleanup invariants,
+evidence fields, redaction surfaces, and WSL's deny-until-native-gate behavior.
+Strict host trust is preserved; forwarding and remote commands default off.
+Production process, PTY, network, provider, authentication, key-custody, and
+renderer authority remain false until ADR 0003 protected approvals, attestation,
+and the remaining F4/F5 native gates pass.
+
 ### Local and server-side policy
 
 Local policy can prevent dangerous launches, require confirmation, restrict
@@ -752,23 +813,33 @@ cluster, host, and infrastructure permissions remains IAM, Entra, Google Cloud
 IAM, Kubernetes/OpenShift RBAC, SSH CA policy, network controls, and remote
 service policy.
 
-### AI extension isolation
+### LLM Orchestration isolation
 
-An AI extension must not inherit the user's PTY environment, agent socket,
-cloud CLI cache, SSH connection, capsule, or terminal history merely because it
-runs in the same application. Each AI tool call requires:
+The optional LLM Orchestration extension must not inherit the user's PTY
+environment, agent socket, cloud CLI cache, SSH connection, capsule, terminal
+history, provider credential, or DevOps capability merely because it runs in the
+same application. The model receives only a user-approved context manifest and
+public action descriptors, then returns a candidate typed workflow plan.
 
-- an explicit tool definition;
-- a target session or environment selected by the user;
-- the minimum capability for that operation;
-- structured arguments and a preview for destructive operations;
-- production-aware confirmation and organization policy;
-- bounded output with secret redaction;
-- a result audit record that excludes prompt and credential contents.
+The desktop composition root, not the model, must:
 
-Approval to read context is not approval to run commands. Approval to run
-`kubectl get` is not approval to run `kubectl delete`, and approval in staging
-is not approval in production.
+- resolve every step against the current enabled action registry;
+- bind the exact action version, target session/environment and capsule revision;
+- independently classify risk and enforce the minimum capability and policy;
+- show structured effects, production context, cost and recovery before approval;
+- issue only a one-run grant for the exact canonical plan digest;
+- interrupt again before destructive, production, privilege, credential,
+  public-network, irreversible or scope-expanding steps;
+- invoke the existing DevOps broker with structured arguments and bounded output;
+- retain only a redacted content-minimized receipt, never prompt or credential
+  contents.
+
+The LLM extension receives no executor, shell, process, PTY, provider, credential
+or mutable DevOps handle. Model function/tool syntax is only a way to encode a
+candidate plan. Approval to read context is not approval to run commands;
+approval for `kubectl get` is not approval for `kubectl delete`, and approval in
+staging is not approval in production. The complete non-activating boundary is
+in [Optional LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md).
 
 ## Performance model
 
@@ -867,6 +938,57 @@ D6, from bounded cached public capsule data with freshness; opening a palette or
 typing a key never calls a provider, authenticates, reads a credential cache, or
 executes a plugin.
 
+### Planned situation-aware production operations
+
+The PO0-PO8 proposal layers production reasoning on these existing boundaries;
+it does not add another editor, provider cache, process runner, or context owner.
+A route-scoped production passport/lock and separately owned change/provenance,
+resource/scheduling explanation, healthy-comparison, passive network-diagnosis,
+SLO-summary and dependency/impact capabilities may later contribute typed
+assessments to deterministic CP5 candidates. Each candidate carries target UID,
+evidence quality and explicit unknowns, freshness, risk, policy, GitOps/JIT
+state, impact, verification and recovery, while CP5 still owns replacement-only
+insertion and never presses Enter. These capabilities compose through immutable
+records; there is no monolithic mutable operations engine.
+
+Provider adapters refresh explicitly or through bounded off-path list/watch or
+polling. PO2 retains no raw logs, time series or credentials and performs no work
+per keystroke. A separate PO5 controller may own source-separated, memory-only
+live logs with strict backpressure and visible gaps. Production preflight and any
+later operation or diagnostic session remain app-composed; D3 or the exact
+provider broker stays the execution/process owner. Missing or conflicting
+evidence causes diagnosis or refusal, not an invented answer. The canonical boundary is
+[Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
+[The exact proposed PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md)
+owns record, freshness, rule, provider, policy, lifecycle, setting, dependency
+and traceability details without activating an adapter.
+[The UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md)
+defines the exact six-surface contract. The normal path stays inside the pane:
+the existing above-command context becomes the nonfocusing passport; explicit
+completion reuses the CP5 list with at most five current-situation rows; evidence
+detail is on request; mutation opens one cancel-first preflight; activated
+managed execution uses one nonmodal monitor; and Incident workspace is entered
+deliberately. Compact layouts remove secondary evidence before production,
+target, identity, freshness, state, or safe exit.
+
+The architecture must preserve three distinct user promises:
+
+1. native insertion edits only the authenticated shell buffer;
+2. reviewed insertion adds exact preflight context but the native shell still
+   owns any later Enter and result; and
+3. a PO6 managed operation alone receives final revalidation, structured broker
+   execution, observation, stabilization, verification, receipt, cancellation,
+   and recovery. A PO6 port-forward, controlled probe or workload-debug session
+   uses the same one-use review boundary but has its own exact lifetime and
+   cleanup state; it grants no general mutation authority.
+
+Automexia policy can withhold its own mutation candidate or managed route, but
+cannot govern an equivalent command typed directly into an unrestricted shell.
+No UI or receipt may imply otherwise. Adapter refresh must preserve selected
+stable identity and focus; a stale generation owns no visible surface, input
+route, accessibility node, or publication right.
+
+
 ### Per-pane context
 
 The existing per-command context design remains the right UI. Provider
@@ -950,7 +1072,7 @@ credentials part of Automexia core.
 | Project | Recommended use | Boundary/caution |
 |---|---|---|
 | System OpenSSH | Primary SSH execution engine | Launch with exact argv in a PTY; preserve native config and policy. |
-| `keyring-rs` | Optional OS secret-store abstraction | Prefer opaque references and agents; backend behavior varies by platform. |
+| `keyring-core` plus exact stores | Optional OS secret-store abstraction | Prefer opaque references and agents; enable no unused platform/backend surface. |
 | `secrecy` | Reduce accidental secret formatting/logging in Rust | Does not solve storage, access control, or compromise by itself. |
 | `zeroize` | Clear supported in-memory secret buffers | Copies and OS/provider caches still require careful design. |
 | `kube-rs` | Later structured Kubernetes inventory and watches | Use only in a provider extension/broker; CLI/config-first is simpler initially. |
@@ -1053,6 +1175,17 @@ verified.
 - Add strict host-key UX, agent/certificate status, jump hosts, and tunnels.
 - Keep raw key import and direct extension networking out of the first release.
 
+Phase 2 implementation status (2026-08-17): **Partially done**. The disabled D4
+inventory and the complete local F2/D5.0 capability-free baseline now provide
+strict connection/profile/recipe/review/receipt/plan schemas, exhaustive auth
+and result reducers, deterministic dry-run fingerprints, pure responsive Hub/
+review/planner projections, all-provider/state/layout/accessibility fixtures,
+and fuzz/mutation/benchmark ownership. They expose no filesystem, process,
+network, provider, credential, PTY, listener, window, renderer, or GPU authority.
+ADR 0012 is owner-accepted. Capability UX, D5.1 product integration, and the
+nonactivated runner/executable-guard/PTY-route seam are implemented locally.
+Protected exact-head approval, attestation/revocation, fresh current-executable
+review, and D5.2 real OpenSSH lifecycle/native evidence remain.
 Exit criterion for the first recommended DevOps-ready release: security review,
 protected-path approvals, injection tests, cross-platform native SSH tests,
 cancellation, cleanup, secret redaction, and resource limits pass while the
@@ -1088,17 +1221,45 @@ observe or mutate each other's identity, config, caches, or results.
 Exit criterion: API unavailability or saturation has no measurable impact on
 terminal input/render latency and all inventories expose freshness.
 
-### Phase 5: v0.6 third-party ecosystem and AI tools
+### Post-Phase 4: situation-aware production operations
+
+- PO1 adds only a read-only production passport, pane lock and context diff.
+- PO2 adds bounded change/ownership/drift, resource/scheduling explanation,
+  healthy comparison, passive network diagnosis, approved SLO summaries and
+  ownership/dependency/impact graphs.
+- PO3 adds deterministic situation-aware completion over CP5 with CP1 fallback.
+- PO4 adds exact impact, permission, GitOps, JIT, policy and recovery preflight.
+- PO5 adds Incident Mode with hypotheses, trusted/approximate time navigation,
+  optional memory-only source-separated logs, DN handoff and a content-minimized
+  session journal.
+- PO6 waits for independent D3/provider execution activation and performs one
+  reviewed execute-observe-stabilize-verify-recover operation at a time; its
+  Kubernetes port-forward, controlled-probe and safe-debug slices require
+  separate grants and cleanup proof.
+- PO7 waits for the ecosystem decision before declarative signed organization
+  packs; PO8 expands only independently evidenced adapter slices and bounded
+  read-only cross-environment comparison with no authority merging.
+- No phase adds an LLM dependency to the core or DevOps/SRE extension.
+
+Exit criterion: the current environment and evidence are explicit; unsafe,
+stale, unauthorized, policy-denied or contradictory actions fail closed; all
+provider work remains off terminal hot paths; disable/uninstall returns to CP1
+without residue.
+
+### Phase 5: v0.6 third-party ecosystem and optional orchestration boundaries
 
 - Complete signed distribution, revocation, compatibility, sandboxing, quotas,
   and permission UX before a public SDK.
 - Keep process/network/secret access denied by default.
-- Introduce AI tools only through scoped, structured capabilities and
-  environment-specific approval.
+- Keep CP6 limited to selected-input copy/insert suggestions with no tool use.
+- Develop the separate LO0-LO5 LLM Orchestration track only after its neutral
+  workflow contract and protected approvals; model/provider code never enters
+  this DevOps extension.
 - Add organization policy and redacted audit export.
 
-Exit criterion: a malicious or crashed third-party/AI extension cannot obtain
-ambient terminal, credential, process, filesystem, or network authority.
+Exit criterion: a malicious or crashed third-party or LLM extension cannot
+obtain ambient terminal, credential, process, filesystem, network, cloud, SSH or
+DevOps action authority.
 
 ## Testing and acceptance matrix
 
@@ -1106,12 +1267,13 @@ ambient terminal, credential, process, filesystem, or network authority.
 |---|---|
 | Session isolation | Parallel AWS/Azure/GCP/Kubernetes/OpenShift sessions retain exact capsule, environment, routes, caches, and results. |
 | Argument safety | Property tests and platform-native tests prove exact argv with hostile aliases, paths, usernames, and Unicode. |
-| Secret safety | Tests prove secrets are absent from logs, snapshots, crash bundles, telemetry, config, IPC diagnostics, and AI tool inputs. |
+| Secret safety | Tests prove secrets are absent from logs, snapshots, crash bundles, telemetry, config, IPC diagnostics, context manifests, model requests and workflow receipts. |
 | SSH security | First-use, known host, changed key, certificate, agent, hardware key, jump host, and forwarding policies work on every supported OS. |
 | Kubernetes security | Malicious/unknown exec plugins are blocked or confirmed; config sizes and paths are bounded. |
 | Provider authentication | Interactive, expired, cancelled, offline, MFA, multiple-identity, and token-refresh paths are tested without token disclosure. |
 | Capability policy | Deny, allow-once, persisted grant, revocation, publisher change, manifest change, and enterprise override are deterministic. |
 | Command productivity | Native shell completion remains functional with Automexia integration enabled or disabled; typed actions, aliases, scope/precedence, quoting, insertion-without-Enter, secret-negative behavior, and uninstall residue pass on supported shells/OSes. |
+| Situation-aware production operations | Exact route/passport/UID/evidence-quality/policy/editor binding; deterministic refusal/ranking; change/ownership/drift, resource/scheduler, cohort/revision, passive network and SLO oracles; Kubernetes cause/owner matrix; permission/GitOps/JIT/preflight; no Enter or per-key I/O; incident hypothesis/time/log/DN-handoff boundaries; observe/stabilize/verify/recovery; port-forward/probe/debug privilege and cleanup; cross-environment authority isolation; secret-negative journal; native provider/editor/accessibility/resource/disable/uninstall evidence. |
 | Performance | Slow/hung CLIs and APIs do not affect input, rendering, PTY parsing, resize, or unrelated sessions. |
 | Resource lifecycle | Sessions, broker operations, tunnels, processes, handles, sockets, tasks, and caches terminate cleanly. |
 | Output hardening | Remote hostile control-string and graphics corpora obey memory/time caps and deterministic recovery. |
@@ -1120,8 +1282,8 @@ ambient terminal, credential, process, filesystem, or network authority.
 
 ## Architecture rules for review
 
-A proposed SSH, cloud, Kubernetes, OpenShift, infrastructure, or AI feature is
-acceptable only if all of the following remain true:
+A proposed SSH, cloud, Kubernetes, OpenShift, infrastructure, or LLM-assisted
+workflow feature is acceptable only if all of the following remain true:
 
 1. Automexia without extensions is still a complete generic terminal.
 2. Core contains no provider-specific policy or SDK dependency.
@@ -1132,9 +1294,14 @@ acceptable only if all of the following remain true:
 7. Network and executable access is denied by default and narrowly granted.
 8. Provider-native identity and server-side authorization remain authoritative.
 9. Remote output is treated as hostile.
-10. AI agents receive no ambient user authority.
-11. Failures are truthful, cancellable, bounded, and isolated.
-12. Implementation follows a reviewed ADR when it expands current capabilities.
+10. Models receive no ambient user authority and never invoke DevOps actions
+    directly; core validates and grants an exact typed plan.
+11. DevOps remains complete without the orchestrator and has no model/provider
+    dependency, prompt, or conversation state.
+12. Situation-aware recommendations cannot bypass current context, external
+    authorization, GitOps, organization policy, impact review or human control.
+13. Failures are truthful, cancellable, bounded, and isolated.
+14. Implementation follows a reviewed ADR when it expands current capabilities.
 
 If a feature violates one of these rules, it should be redesigned as an
 extension, broker operation, external-system integration, or explicit future
@@ -1150,11 +1317,14 @@ capability rather than added directly to the terminal core.
 - [Roadmap](ROADMAP.md)
 - [Stabilization roadmap](STABILIZATION-ROADMAP.md)
 - [Command Productivity](COMMAND-PRODUCTIVITY.md)
+- [Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md)
+- [Production Operations PO0 contracts](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md)
+- [ADR 0034: proposed situation-aware production operations boundary](adr/0034-situation-aware-production-operations.md)
 - [Security debt](SECURITY-DEBT.md)
 - [ADR 0003: extension capability and threading boundary](adr/0003-extension-capability-and-threading.md)
 - [ADR 0006: prompt-owned context](adr/0006-prompt-context-and-workspace-actions.md)
 - [ADR 0007: pane-local independent sessions](adr/0007-pane-local-session-tabs.md)
-- [ADR 0012: proposed first-party SSH and scoped session launch](adr/0012-first-party-ssh-and-session-launch-boundary.md)
+- [ADR 0012: accepted first-party SSH and gated scoped session launch](adr/0012-first-party-ssh-and-session-launch-boundary.md)
 - [ADR 0015: shell-native completion and typed Quick Actions](adr/0015-shell-native-completion-and-typed-quick-actions.md)
 
 ### SSH and external access

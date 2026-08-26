@@ -2,13 +2,26 @@
 
 ## Status and purpose
 
-This document is the canonical product specification for replacing the useful
-remote-access, inventory, automation, collaboration, and governance workflows
-found in GUI-oriented products such as Termius with a keyboard-first Automexia
-experience.
+This document is the canonical product specification for Automexia's planned
+remote-access, inventory, automation, collaboration, and governance track. It
+explores how useful workflows found in GUI-oriented products such as Termius
+can become a keyboard-first Automexia experience.
+
+Remote operations are one specialized track within the broader [Product
+vision](PRODUCT-VISION.md), not the limit of Automexia's audience or future.
+The same values—less repeated setup, clearer organization, flexibility, and
+visible control—also apply to local, data, automation, and creator workflows.
 
 It is a **planned product contract**, not a claim that these commands ship in
-Automexia v0.4. Current implementation status remains authoritative in the
+Automexia v0.4. F2/D5.0's bounded connection/profile/recipe/review and dry-run
+projection models are implemented locally, but no command, Connection Hub,
+workspace lifecycle, or connection execution is activated by that baseline.
+Later independently gated work now includes the locally complete read-only
+D5.1 Connection Hub, nonexecuting M6 workspace review, CP2-CP4 command
+productivity, D6 cached provider review, and accepted nonactivating D7/CP6
+source boundary. None of that status activates connection/provider execution,
+public ecosystem distribution, or the planned CLI commands below.
+Current implementation status remains authoritative in the
 [feature catalog](FEATURES.md) and
 [phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md). Delivery reuses
 the existing D3-D7 SSH/multi-cloud phases and CP2-CP6 command-productivity
@@ -42,6 +55,15 @@ wins and the product must offer an accessible remapping path. Bare
 `Ctrl+C`, `Ctrl+D`, `Ctrl+R`, `Tab`, shell history, editing, completion, quoting,
 and cursor movement remain owned by the active shell except while an explicit
 Automexia overlay or terminal selection owns focus.
+
+The technology boundary is equally explicit. Core owns the typed registry,
+interaction and review state, generic capabilities, exact-launch policy,
+Capsules, pane/workspace composition, UI semantics, redaction, and resource
+limits. First-party extensions own safe SSH/provider/file/collaboration domain
+adapters. OpenSSH, provider CLIs, agents/vaults, Git, Mosh, Upterm, policy
+services, and model endpoints retain their mature authority and are reached
+only through the core runner. The complete decision matrix is
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
 
 ## Non-goals
 
@@ -176,13 +198,13 @@ workflow does not yet ship.
 
 | GUI-oriented capability | Terminal-first Automexia replacement | Delivery owner | Current status |
 |---|---|---|---|
-| SSH connection | `automexia connect <alias>` plus host picker | D5 | D4 inventory foundation only |
+| SSH connection | `automexia connect <alias>` plus host picker | D5 | D4 inventory plus F2 planning/review model foundations; no connection action |
 | Local terminal | Existing native session/tab/pane actions | v0.4 core | Shipped |
 | Mosh | Typed `connect --transport mosh` adapter | D7 review | Not implemented |
 | Telnet | Explicit insecure `connect --transport telnet` adapter | D7 review | Not implemented |
 | Serial | `automexia serial open` and exact device parameters | D7 review | Not implemented |
-| Recent/favorite hosts | `inventory list --recent`, pin, fuzzy picker | D5.0-D5.1 | Not implemented |
-| Hosts and groups | Declarative records, paths, tags, saved queries | D4-D5 | D4 bounded aliases only |
+| Recent/favorite hosts | `inventory list --recent`, pin, fuzzy picker | D5.0-D5.1 | Read-only D5.1 Hub search, recent/library projections, favorite/tag CAS review, and private inventory are complete locally; the planned CLI and connection execution do not ship |
+| Hosts and groups | Declarative records, paths, tags, saved queries | D4-D5 | D4 static aliases plus D5.1 read-only grouping/filtering are complete locally; generic saved queries and connection execution are not implemented |
 | Inherited group settings | Layered configuration plus `inventory explain` | D5-D6 | Not implemented |
 | Keychain | External identity references and `identity doctor` | D5 | Not implemented |
 | Password storage | OS secret service only when unavoidable | D5 protected slice | Not implemented |
@@ -190,17 +212,17 @@ workflow does not yet ship.
 | SSH ID | Interoperable device/certificate adapters, not proprietary custody | D6-D7 | Not implemented |
 | Post-quantum SSH | System OpenSSH negotiation and truthful public status | D5 native evidence | Not implemented as UI |
 | Known Hosts | `known-host` inspect/verify workflow; OpenSSH remains authority | D5 | Not implemented |
-| Jump hosts/host chains | Reusable typed routes and route explanation | D5 | Not implemented |
+| Jump hosts/host chains | Reusable typed routes and route explanation | D5 | F2 typed route/review model only; launch/lifecycle not implemented |
 | HTTP/SOCKS proxy | Typed route step with visible provenance | D5/D7 by transport | Not implemented |
-| Port forwarding | `tunnel local|remote|socks`, status, owner, stop | D5 | Not implemented |
+| Port forwarding | `tunnel local|remote|socks`, status, owner, stop | D5 | F2 typed tunnel/review model only; listener/lifecycle not implemented |
 | Agent forwarding | Per-connection explicit grant; off by default | D5 | Not implemented |
-| Snippets | Typed persistent Quick Actions | CP2 | Model/store foundation only |
+| Snippets | Typed persistent Quick Actions | CP2 | CP2.0-CP2.2 model, private store, search/review/administration and explicit insert/copy are complete locally; hosted release evidence remains |
 | Shared snippets | Reviewed signed/team action catalogs | CP6/D7 | Not implemented |
-| Startup snippets | Typed connection lifecycle hooks | D5A-D5E | Specification only |
+| Startup snippets | Typed connection lifecycle hooks | D5A-D5E | F2 typed recipe/dry-run model; editor and execution not implemented |
 | Multi-host execution | Bounded target query and result isolation | CP4/D6 | Not implemented |
-| Autocomplete | Native completion first; optional editor bridge later | CP1/CP5 | CP1 shipped, CP5 planned |
-| DevOps aliases | Optional collision-checked projections of actions | CP3 | Not implemented |
-| Workspaces | Declarative session/layout templates and restore | D5 plus core UI | UI primitives shipped; persistence planned |
+| Autocomplete | Native completion first; optional editor bridge later | CP1/CP5 | CP1 is complete locally; CP5.1-CP5.4 and the inert CP5.5 bridge source are complete, while preview/live composition and CP5.6 release evidence remain disabled or partial |
+| DevOps aliases | Optional collision-checked projections of actions | CP3 | CP3.0-CP3.3 five-shell compilation, opt-in persistence, static packs, selected native imports and trusted task bridges are complete locally; hosted release evidence remains |
+| Workspaces | Declarative session/layout templates and restore | D5 plus core UI | M6 schema-2 preview/CAS manager, immutable Hub catalog and restore review are complete locally and nonexecuting; managed execution and native release evidence remain |
 | Focus/split modes | Existing panes/tabs plus workspace focus commands | v0.4/D5 | Primitives shipped |
 | Broadcast input | Explicit reviewed target set and visible armed state | D5/CP4 | Not implemented |
 | SFTP | `files` TUI plus scriptable transfer commands | Post-D5/D7 | Not implemented |
@@ -209,10 +231,11 @@ workflow does not yet ship.
 | Personal/team vaults | Versioned non-secret inventory plus external secret custody | D6-D7 | Not implemented |
 | Roles/permissions | Inspectable policy, grants, revocation, explanations | D5-D7 | Capability foundation partial |
 | Command Palette | Generated action registry and fuzzy command mode | Core/CP2/D5 | Generic palette shipped; operations planned |
-| Cloud integrations | Official CLI/config adapters and Environment Capsules | D6.1-D6.5 | Not implemented |
+| Cloud integrations | Official CLI/config adapters and Environment Capsules | D6.1-D6.5 | D6.0 and AWS/Azure/Google/Kubernetes/OpenShift/Teleport source plus cached Hub review are complete locally and nonactivated; real provider execution/evidence and OpenBao remain gated |
 | API Bridge | Local typed import/reconcile interface, diff before apply | D6-D7 | Not implemented |
 | Ansible integration | Static inventory import/export; reviewed explicit refresh | D6 | Not implemented |
-| AI command generation | Explain/suggest/insert; never ambient execute | CP6/D7 | Not implemented |
+| Selected-input model suggestion | Explain/suggest/insert; no tools or ambient execution | CP6/D7 | Accepted D7/CP6 policy, consent, typed response, review and denial source boundary is complete locally and nonactivated; provider transport, public UX/distribution and release evidence remain gated |
+| LLM workflow orchestration | Optional extension proposes a typed reviewable plan; core policy and brokers execute approved actions | LO0-LO5 | Documentation-only proposal; no runtime |
 | Enterprise SSO/admin | External identity provider plus `admin` policy/audit CLI | D7 | Not implemented |
 | Import/export/backup | Transactional versioned commands with dry run | D5-D7/CP3 | Partial subsystem foundations |
 
@@ -655,9 +678,100 @@ buffer, cursor, replacement span, and generation. It remains inside its pane,
 avoids the cursor/IME/footer/tabs/modals, cancels obsolete generations, and
 falls back completely to the native shell experience.
 
-## AI assistance
+## Planned situation-aware production workflow
 
-AI is a late optional action provider, not a terminal owner:
+PO0-PO8 adds a planned optional layer for teams operating Kubernetes, cloud,
+GitOps, and other production systems. It does not change the ordinary terminal
+or CP1 completion when absent. The full contract is
+[Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
+Exact proposed records, rules, provider profiles, lifecycle, settings and
+dependency choices are in the
+[PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md).
+Exact layouts, wording, keyboard/focus rules, responsive states, journeys, and
+implementation owners are specified in the
+[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+
+The experience uses six surfaces and reveals them only when needed:
+
+1. the existing line above the command becomes a nonfocusing environment
+   passport;
+2. explicit completion opens the existing pane-local CP5 situation list;
+3. evidence detail opens only when requested and returns to the same selection;
+4. a mutation opens one cancel-first preflight;
+5. an activated managed action or diagnostic session uses one nonmodal operation
+   monitor; and
+6. Incident workspace opens only through a deliberate command and restores the
+   prior workspace on exit.
+
+The common read-only journey stays short: type a prefix, request completion,
+scan at most five current-situation rows, move with arrows, insert with Tab or
+Right Arrow, and remain in the native editor. Escape always closes the transient
+surface. Compact and minimal layouts remove secondary evidence before they
+remove production, target, identity, freshness, state, or safe exit. Refreshes
+never steal focus, alter the editor, or move a candidate underneath an active
+review.
+
+Three command ownership paths are intentionally different. Native insertion and reviewed
+insertion only change authenticated editor bytes; the native shell owns any
+later Enter, so Automexia cannot promise policy enforcement, observation, or the
+result. Only a separately activated PO6 managed action is revalidated, executed,
+observed, stabilized, verified, receipted, cancelled, and offered recovery by
+Automexia. A port-forward, probe or debug session uses that managed ownership
+path with its own one-use session scope and cleanup. No surface silently switches
+between these paths.
+
+
+The compact context strip above the command may become a production passport
+showing the exact account, region, cluster, namespace, identity, role/elevation
+expiry, GitOps application, incident, and freshness. A pane-local lock detects
+changes and blocks production mutation review until the operator accepts an
+exact context diff. Production state always has text and an icon, not color
+alone.
+
+When the user requests completion, a separate “Current situation” group may show
+native commands with target, risk, freshness, reason, supporting/contradicting
+evidence, expected effect, verification, and recovery. Evidence quality exposes
+source authority, freshness, coverage and contradiction rather than an opaque
+score. For `kubectl rollout`,
+the feature may prioritize `status`, `history`, `undo`, `restart`, or a
+diagnostic for the real owning controller. It must resolve owner-reference UIDs,
+classify the likely cause, check current permission, policy, GitOps, change
+window, blast radius, and evidence age, and refuse to guess when those checks are
+weak or conflicting. Selection edits the native shell buffer and never presses
+Enter.
+
+A later explicit preflight shows exact executable/arguments, targets, rollout
+strategy, dependencies, authorization, JIT access state, GitOps reconciliation,
+impact, approval, success/stop signals, timeout, and recovery. Before PO6, its
+positive action is `Insert reviewed command`, after which the shell owns any
+later Enter. Only PO6 may add the separate `Execute reviewed action` control
+after final revalidation. Incident Mode may pin context and a bounded evidence
+timeline. A content-minimized session journal
+records public digests and outcomes, not logs, metrics, terminal text,
+credentials, or provider responses.
+
+No provider runs per keystroke. Bounded namespace-scoped adapters refresh
+off-path, publish immutable route-scoped snapshots, cancel stale generations,
+park idle watchers, and retain no raw log/time-series or disk evidence cache by
+default. CP1 remains immediate when evidence is stale, an adapter fails, or the
+feature is disabled.
+
+Execution is a separate PO6 step and remains unavailable until the existing D3
+runner and the relevant provider capability are independently activated. One
+reviewed action may be monitored, verified, and offered recovery; another
+mutation is never launched automatically. Signed organization runbook/policy
+packs are declarative data, not scripts or capability grants.
+
+The first implementation is deterministic and model-free. A later optional
+small local tie-breaker may reorder only already-valid candidates. It cannot
+invent commands, change safety gates, approve, or execute. LLM planning remains
+in the separately installed LLM Orchestration extension below.
+
+## Optional model assistance
+
+### CP6 selected-input suggestions
+
+CP6 is a late optional suggestion provider, not a terminal owner:
 
 ```text
 automexia assist explain --command "kubectl get pods -A"
@@ -665,13 +779,30 @@ automexia assist suggest "show pods using the most memory"
 automexia assist diagnose --from-selection
 ```
 
-The default result is explanation or insertion, never execution. The review
-shows the full suggested command, data provenance, model/locality, target,
-environment, risk, and requested capability. Remote terminal output is
-untrusted data and cannot supply instructions. No AI receives ambient history,
-credentials, agent access, cloud tokens, filesystem, process, network, capsule,
-or production authority. Remote AI is opt-in and receives bounded explicitly
-selected/redacted input only.
+These commands are planned examples, not current CLI. The result is explanation
+or insertion, never execution. The review shows the selected input, redactions,
+model/locality, destination, target, environment and risk. Remote terminal output
+is untrusted data and cannot supply policy or instructions. No model receives
+ambient history, credentials, agent access, cloud tokens, filesystem, process,
+network, capsule or production authority. A remote request is opt-in and receives
+bounded explicitly selected/redacted input only. CP6 has no tool calls, workflow
+planning, MCP passthrough, background requests or automatic execution.
+
+### Separate LLM Orchestration extension
+
+The proposed [LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md) is a
+separate LO0-LO5 track, not an expansion hidden inside CP6 or DevOps/SRE. It may
+turn an explicit goal into a candidate typed plan over actions published by
+enabled domain extensions. The application validates the plan, shows targets,
+effects, risks, data destinations and recovery, grants one exact plan digest,
+and invokes ordinary domain brokers. The model never receives a shell, PTY,
+provider, credential, filesystem, executor or MCP tool handle.
+
+Automexia remains complete without it. Local or self-hosted inference is the
+first direction, no paid API is required, and optional remote adapters stay
+inside the separately installed extension with no silent provider fallback.
+This is documentation-only today; no CLI, registry, workflow executor, model
+adapter or runtime is implemented.
 
 ## Import, export, backup, and recovery
 
@@ -786,7 +917,8 @@ cross-platform release gate.
 Reuse D5 and CP2/CP3 to deliver:
 
 1. The generated operation registry and canonical `automexia` command grammar.
-2. CP2.2 action search/review/insert and CP3 collision-safe optional aliases.
+2. Reuse implemented CP2.2 action search/review/insert and add CP3
+   collision-safe optional aliases after its separate gates pass.
 3. Read-only host/group/tag/recent/favorite inventory over D4.
 4. Connection Review, quick connect, destination selection, independent PTYs,
    cancellation, reconnect, route explanation, jump hosts, and typed tunnels.
@@ -797,7 +929,8 @@ Reuse D5 and CP2/CP3 to deliver:
 7. Native completion for all shipped operation domains.
 
 Exit is the existing D5.0-D5.2/CP2-CP3 gate. SFTP, shared sessions, cloud API
-inventory, proprietary identity, AI execution, and arbitrary remote scripts are
+inventory, proprietary identity, model-assisted workflow execution, and
+arbitrary remote scripts are
 not v0.5.0 blockers and remain disabled.
 
 ### v0.5.1: multi-cloud and context-aware operations
@@ -815,7 +948,21 @@ Reuse D6 and CP4 to deliver:
 Each provider passes its independent native, offline, expiry, MFA, cancellation,
 redaction, isolation, accessibility, and resource gate before release.
 
-### v0.6 and later: files, memory, collaboration, ecosystem, and AI
+### Post-v0.5.1: situation-aware production operations
+
+After the relevant D6 and CP5 read-only foundations, deliver PO1-PO5 in order:
+production passport/lock; bounded change/ownership/drift, resource explanation,
+healthy comparison, passive network diagnosis, SLO summaries and dependency
+graph; deterministic situation-aware completion; impact/GitOps/JIT/policy
+preflight; then Incident Mode with hypotheses, time/log navigation, journal and
+handoff. PO6 execution and managed port-forward/probe/debug sessions wait for
+D3/provider activation; PO7 declarative runbook packs wait for the ecosystem
+capability decision. PO8 expands adapters, read-only cross-environment comparison
+and release evidence. No phase adds per-keystroke provider work,
+implicit Enter, automatic remediation, a core LLM, or an LLM dependency in the
+DevOps/SRE extension.
+
+### v0.6 and later: files, memory, collaboration, ecosystem, and optional orchestration
 
 Deliver independent protected slices rather than one broad entitlement:
 
@@ -827,8 +974,12 @@ Deliver independent protected slices rather than one broad entitlement:
    evaluation; system OpenSSH remains the SSH compatibility authority.
 6. Public/signed extension packs only after sandbox, provenance, revocation,
    quota, compatibility, and migration gates.
-7. CP5 optional completion UI and CP6/D7 AI only after their separate bridge,
-   privacy, capability, performance, and rollback approvals.
+7. CP5 optional completion UI and CP6/D7 selected-input model suggestions only
+   after their separate bridge, privacy, capability, performance, and rollback
+   approvals.
+8. The independent LO0-LO5 LLM Orchestration extension only after its neutral
+   workflow model, plan-review, one-run-grant, privacy, provider, security,
+   resource, native and removal gates; it does not block Studio or video.
 
 ## Acceptance criteria
 
@@ -886,4 +1037,6 @@ feature ledger and evidence gates.
 - [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md)
 - [Exact-argument session launch broker](SESSION-LAUNCH-BROKER.md)
 - [OpenSSH inventory](SSH-INVENTORY.md)
+- [Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md)
 - [ADR 0018](adr/0018-terminal-first-remote-operations.md)
+- [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md)

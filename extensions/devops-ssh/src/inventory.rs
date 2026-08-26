@@ -247,7 +247,7 @@ struct Draft {
     hostname: Option<String>,
     username: Option<String>,
     port: Option<u16>,
-    proxy_jump_configured: bool,
+    proxy_jump: Option<Vec<String>>,
     identity_hint: IdentityHint,
     source: SourceKind,
 }
@@ -312,7 +312,11 @@ fn scan_inventory_inner(
             hostname: draft.hostname,
             username: draft.username,
             port: draft.port,
-            proxy_jump_configured: draft.proxy_jump_configured,
+            proxy_jump_configured: draft
+                .proxy_jump
+                .as_ref()
+                .is_some_and(|route| !route.is_empty()),
+            proxy_jump: draft.proxy_jump.unwrap_or_default(),
             identity_hint: draft.identity_hint,
             source: draft.source,
         })
@@ -500,9 +504,26 @@ impl ScanState {
                     }
                 }
                 "proxyjump" => {
+                    if values.len() != 1 {
+                        return Err(source_error(
+                            grant,
+                            Some(line_number),
+                            "invalid static ProxyJump route",
+                        ));
+                    }
+                    let route = crate::model::parse_proxy_jump_chain(&values[0])
+                        .map_err(|_| {
+                            source_error(
+                                grant,
+                                Some(line_number),
+                                "invalid static ProxyJump route",
+                            )
+                        })?;
                     for alias in &aliases {
                         if let Some(draft) = self.drafts.get_mut(alias) {
-                            draft.proxy_jump_configured = true;
+                            if draft.proxy_jump.is_none() {
+                                draft.proxy_jump = Some(route.clone());
+                            }
                         }
                     }
                 }
@@ -817,11 +838,85 @@ Host staging
         assert_eq!(prod.hostname.as_deref(), Some("first.example"));
         assert_eq!(prod.username.as_deref(), Some("deploy"));
         assert_eq!(prod.port, Some(2222));
+        assert!(prod.proxy_jump.is_empty());
         assert_eq!(prod.identity_hint, IdentityHint::FileReferencePresent);
         assert!(outcome
             .diagnostics
             .iter()
             .any(|diagnostic| diagnostic.message.contains("never evaluates")));
+    }
+
+    #[test]
+    fn proxy_jump_is_a_bounded_canonical_first_value_chain() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        write(
+            &config,
+            "Host routed\n  ProxyJump edge,operator@bastion.example:2222\n  ProxyJump ignored\nHost direct\n  ProxyJump none\n",
+        );
+
+        let outcome = scan_inventory(
+            &[grant(root.path(), &config)],
+            InventoryLimits::default(),
+            1,
+        )
+        .unwrap();
+        let routed = outcome
+            .snapshot
+            .records
+            .iter()
+            .find(|record| record.alias == "routed")
+            .unwrap();
+        assert_eq!(routed.proxy_jump, ["edge", "operator@bastion.example:2222"]);
+        assert!(routed.proxy_jump_configured);
+        let direct = outcome
+            .snapshot
+            .records
+            .iter()
+            .find(|record| record.alias == "direct")
+            .unwrap();
+        assert!(direct.proxy_jump.is_empty());
+        assert!(!direct.proxy_jump_configured);
+    }
+
+    #[test]
+    fn proxy_jump_rejects_executable_ambiguous_and_excessive_routes() {
+        let root = tempfile::tempdir().unwrap();
+        let config = root.path().join("config");
+        for route in [
+            "-oProxyCommand=bad",
+            "ssh://jump.example",
+            "jump;whoami",
+            "jump,$HOME",
+            "jump,,other",
+            "user@@jump",
+            "jump:0",
+            "jump:65536",
+            "2001:db8::1",
+        ] {
+            write(&config, &format!("Host routed\n  ProxyJump {route}\n"));
+            assert!(
+                scan_inventory(
+                    &[grant(root.path(), &config)],
+                    InventoryLimits::default(),
+                    1,
+                )
+                .is_err(),
+                "hostile route unexpectedly passed"
+            );
+        }
+
+        let excessive = (0..=8)
+            .map(|index| format!("jump-{index}"))
+            .collect::<Vec<_>>()
+            .join(",");
+        write(&config, &format!("Host routed\n  ProxyJump {excessive}\n"));
+        assert!(scan_inventory(
+            &[grant(root.path(), &config)],
+            InventoryLimits::default(),
+            1,
+        )
+        .is_err());
     }
 
     #[test]

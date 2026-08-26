@@ -1,0 +1,21 @@
+[
+  {"id":"unknown","auth_state":{"state":"unknown"}},
+  {"id":"checking","auth_state":{"state":"checking","operation_id":"operation-check"}},
+  {"id":"available","auth_state":{"state":"available","evidence_id":"public-context"}},
+  {"id":"refreshing","auth_state":{"state":"refreshing","operation_id":"operation-refresh"}},
+  {"id":"ready","auth_state":{"state":"ready","evidence_id":"evidence-ready","expires_at_ms":2000}},
+  {"id":"locked","auth_state":{"state":"locked","diagnostic_code":"agent-locked"}},
+  {"id":"missing","auth_state":{"state":"missing","diagnostic_code":"identity-missing"}},
+  {"id":"expired","auth_state":{"state":"expired","previous_evidence_id":"evidence-old"}},
+  {"id":"mfa-required","auth_state":{"state":"mfa-required","diagnostic_code":"mfa-required"}},
+  {"id":"mfa-pending","auth_state":{"state":"mfa-pending","operation_id":"operation-login","diagnostic_code":"mfa-provider-owned"}},
+  {"id":"browser-pending","auth_state":{"state":"browser-pending","operation_id":"operation-login"}},
+  {"id":"device-code-pending","auth_state":{"state":"device-code-pending","operation_id":"operation-login"}},
+  {"id":"authenticating","auth_state":{"state":"authenticating","operation_id":"operation-login"}},
+  {"id":"cancelled","auth_state":{"state":"cancelled","diagnostic_code":"user-cancelled"}},
+  {"id":"offline","auth_state":{"state":"offline","diagnostic_code":"network-offline"}},
+  {"id":"denied","auth_state":{"state":"denied","diagnostic_code":"policy-denied"}},
+  {"id":"unsupported","auth_state":{"state":"unsupported","diagnostic_code":"version-unsupported"}},
+  {"id":"stale","auth_state":{"state":"stale","previous":"ready"}},
+  {"id":"error","auth_state":{"state":"error","diagnostic_code":"status-error"}}
+]

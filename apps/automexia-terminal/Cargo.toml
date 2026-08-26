@@ -1,5 +1,6 @@
 [package]
 name = "automexia-terminal"
+default-run = "automexia"
 description = "Automexia Terminal is a hardware-accelerated terminal for modern development workflows."
 publish = false
 version.workspace = true
@@ -28,7 +29,10 @@ icons = [
     "../../assets/brand/png/*.png",
 ]
 resources = ["../../LICENSE", "../../NOTICE.md", "../../THIRD_PARTY_NOTICES.md", "../../README.md", "../../shell-integration"]
-binaries = [{ path = "automexia", main = true }]
+binaries = [
+    { path = "automexia", main = true },
+    { path = "automexia-suggestion-helper" },
+]
 
 [package.metadata.packager.windows]
 allow-downgrades = false
@@ -41,10 +45,17 @@ component-group-refs = ["AutomexiaContextMenuComponents"]
 name = "automexia"
 path = "src/main.rs"
 
+[[bin]]
+name = "automexia-suggestion-helper"
+path = "src/bin/automexia-suggestion-helper.rs"
+
 [dependencies]
+automexia-keybindings = { workspace = true }
 automexia-extension-api = { workspace = true }
 automexia-extension-runtime = { workspace = true }
 automexia-devops = { workspace = true }
+automexia-connectivity = { workspace = true }
+automexia-command-productivity = { workspace = true }
 automexia-image = { workspace = true }
 automexia-ui-model = { workspace = true }
 global-hotkey = "0.8.0"
@@ -61,13 +72,23 @@ insta = { workspace = true }
 proptest = { workspace = true }
 
 [target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+automexia-ecosystem = { workspace = true }
+automexia-ecosystem-runtime = { workspace = true }
 bitflags = { workspace = true }
 futures = { workspace = true }
 corcovado = { workspace = true }
 regex = { workspace = true }
 onig = { workspace = true }
 raw-window-handle = { workspace = true }
+rfd = { workspace = true }
 clap = { version = "4.6.1", features = ["derive"] }
+automexia-devops-ssh = { workspace = true }
+automexia-devops-aws = { workspace = true }
+automexia-devops-azure = { workspace = true }
+automexia-devops-gcp = { workspace = true }
+automexia-devops-kubernetes = { workspace = true }
+automexia-devops-openshift = { workspace = true }
+automexia-devops-teleport = { workspace = true }
 blake3 = "1.8.5"
 dirs = "6.0.0"
 notify = "8.2.0"
@@ -77,11 +98,13 @@ libc = { workspace = true }
 parking_lot = { workspace = true }
 serde = { workspace = true }
 serde_json = "1.0"
+sha2 = "0.11.0"
 toml = "1.1.4"
 tempfile = { workspace = true }
 taffy = { version = "0.13.0", features = ["flexbox","grid"] }
 teletypewriter = { workspace = true }
 unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
 url = { workspace = true }
 smallvec = { workspace = true }
 rio-window = { workspace = true }
@@ -102,6 +125,7 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_Console",
     "Win32_Foundation",
     "Win32_Security",
+    "Win32_Security_Cryptography",
     "Win32_Security_Authorization",
     "Win32_System_LibraryLoader",
     "Win32_System_Memory",
@@ -112,6 +136,8 @@ windows-sys = { version = "0.61.2", features = [
     "Win32_System_IO",
     "Win32_System_SystemInformation",
     "Win32_Storage_FileSystem",
+    "Win32_System_Pipes",
+    "Win32_System_RemoteDesktop",
     "Win32_Graphics_Gdi",
     "Win32_UI_Shell",
     "Win32_UI_Input_KeyboardAndMouse",
@@ -141,6 +167,7 @@ features = ["wgpu"]
 [features]
 default = ["wayland", "x11"]
 native-gui-test-hooks = ["rio-backend/native-gui-test-hooks", "sugarloaf/native-gui-test-hooks"]
+visual-test-hooks = ["native-gui-test-hooks"]
 audio = ["cpal"]
 x11 = [
     "rio-backend/x11",
@@ -163,6 +190,10 @@ harness = false
 
 [[bench]]
 name = "quick_action_store"
+harness = false
+
+[[bench]]
+name = "connection_catalog"
 harness = false
 
 # "rio-window/wayland-csd-adwaita-crossfont",

@@ -2,7 +2,7 @@
   "schema": 1,
   "phase": "CP2-CP3-SPEC",
   "status": "planned",
-  "implemented_stage": "CP2.1-persistence-library",
+  "implemented_stage": "CP3.3-native-imports-trusted-workspace-tasks",
   "authorities": {
     "product": "docs/DEVOPS-ALIASES.md",
     "architecture": "docs/ARCHITECTURE.md",
@@ -76,7 +76,7 @@
     "argument_tokens": ["Literal", "Placeholder"],
     "working_directory_policies": ["Inherit", "WorkspaceRoot", "Fixed"],
     "risk_classes": ["ReadOnly", "Mutating", "Destructive", "Privileged"],
-    "provenance": ["User", "BuiltIn", "Imported"],
+    "provenance": ["User", "BuiltIn", "Imported", "WorkspaceTask"],
     "alias_projection_modes": ["Auto", "CommandAlias", "WrapperFunction", "FishAbbreviation", "DoskeyMacro"],
     "argument_policies": ["None", "ForwardAll", "TypedBindings"],
     "execution_modes": ["Insert", "Copy", "ExactLaunch"],
@@ -177,9 +177,13 @@
     "rollback-and-uninstall"
   ],
   "model_files": [
-    "automexia-devops/src/actions/mod.rs",
-    "automexia-devops/src/actions/model.rs",
-    "automexia-devops/src/actions/validation.rs"
+    "automexia-command-productivity/src/actions/mod.rs",
+    "automexia-command-productivity/src/actions/model.rs",
+    "automexia-command-productivity/src/actions/projection.rs",
+    "automexia-command-productivity/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/activation.rs",
+    "automexia-command-productivity/src/actions/packs.rs",
+    "automexia-command-productivity/src/actions/imports.rs"
   ],
   "hostile_fixture": "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json",
   "activation_files": [
@@ -187,6 +191,14 @@
     "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
-    "apps/automexia-terminal/src/automexia/quick_actions/store.rs"
+    "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/native_import.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs"
   ]
 }

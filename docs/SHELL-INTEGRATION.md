@@ -78,7 +78,10 @@ cargo xtask completion refresh --provider kubernetes --shell powershell --allow-
 Refresh is the only operation that starts a provider. It uses the installed
 official CLI with exact arguments and no stdin, a 750 ms deadline, 1 MiB stdout
 and 256 KiB stderr ceilings, fixed private destinations, SHA-256 sidecars, and
-atomic replacement. Restart the shell after refresh, enable, disable, or remove.
+atomic replacement. Provider processes receive an explicit secret-free
+environment with a local absolute-only helper `PATH`; they do not inherit home,
+provider configuration, proxy, credential, or arbitrary application variables.
+Restart the shell after refresh, enable, disable, or remove.
 `doctor` resolves executable names without executing them and validates each
 bounded artifact, digest, metadata record, provenance
 header, PowerShell consent marker, and managed parent chain. It does not run a
@@ -99,18 +102,38 @@ artifact or managed parent, non-directory path component, oversized file,
 unsupported shell/provider, missing tool, timeout, or malformed output fails
 closed to native shell behavior.
 
+During refresh, a two-digest sidecar temporarily accepts the verified previous
+or candidate artifact, so interruption never requires sourcing unverified text
+and does not discard the last usable cache. The successful steady state contains
+one digest.
+
 `AUTOMEXIA_CONFIG_HOME`, when set, must be absolute. The native defaults are
 `%LOCALAPPDATA%\Automexia\Terminal` on Windows,
 `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` on
 macOS, and `${XDG_CONFIG_HOME:-$HOME/.config}/automexia` on Linux/BSD. Managed
-profile blocks are updated in place when their owned source line becomes stale;
-uninstall validates every exact owned target before changing profiles or files.
+completion state enforces a 4096-byte root ceiling; Windows completion state is
+local-drive-only and rejects UNC roots before any startup filesystem probe.
+Windows installer and PowerShell adapter hashing use the platform SHA-256 API
+directly, so clean install and shell startup do not depend on PowerShell module
+auto-loading.
+Managed profile blocks are updated in place when their owned source line becomes
+stale; uninstall validates every exact owned target before changing profiles or
+files.
 
-Persistent user aliases are not part of the shipped CP1 completion adapter.
-CP2/CP3 will reuse the existing managed integration lifecycle when persistent
-integration is enabled rather than install a second startup hook. Its typed
-source, opt-in generation, shell
-semantics, collision policy, and uninstall contract are specified in
+CP3.1 persistent user aliases reuse the shipped CP1 managed integration block;
+no second profile block or per-alias profile edit is installed. When explicitly
+enabled, PowerShell, Bash, Zsh, Fish, and CMD derive their platform-private
+configuration root, reject linked/reparse or permission-unsafe state, verify the
+exact ordered ten-line `automexia-devops/0.4.0` content-addressed generation
+manifest and shell artifact, recheck late native collisions, and load one bounded
+generated file. A self-consistent manifest from any other compiler is tampered
+state and cannot replace the last-known-good aliases. Fish batches only the
+fixed metadata/digest probes in one constant bounded helper; generated provider
+or action text is never passed to it. PowerShell/Bash/Zsh/Fish support explicit
+last-known-good reload; CMD asks for a new session because safe
+in-process DOSKEY ownership cannot be proven. Uninstall removes only the exact
+validated generated-alias topology and preserves canonical Quick Actions. The
+full typed-source, collision, recovery, and command contract is specified in
 [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
 
 On Windows, detected PowerShell profiles may live below a OneDrive-redirected
@@ -136,6 +159,36 @@ the shell, user, distribution, prompt generation, and lifecycle. The renderer
 owns context/path semantic rows; PSReadLine, Readline, or ZLE owns only the
 lambda, editable input, and cursor. This split is why completed prompts can be
 reflowed during resize without asking a shell editor to reconstruct scrollback.
+
+When a command completes and the following prompt is visible, Automexia groups
+every proven output row into a visible but restrained result surface. The
+semantic path is command-agnostic: it covers listing and non-listing commands,
+success and error exits, single- and multiline output, and managed input wrapped
+beyond eight rows. A persistent tinted band, adaptive 6-10 pixel visual
+breathing gutter, end rule, and compact exit state plus duration when the shell
+can provide them separate the result from the next editable command without
+relying on color alone. A newly completed live result lightens once, holds for
+the first third of its 540 millisecond cycle, and then eases out through
+opacity; it never blinks, moves, repeats, or restarts while viewing scrollback.
+
+| Shell | Lifecycle available to Automexia | Completed-output surface |
+|---|---|---|
+| PowerShell | Monotonic `A/B/C/D`; `D` preserves an exact native exit such as `7` when available, otherwise records semantic pipeline success/failure, and never changes user-owned `LASTEXITCODE` | Available |
+| Bash | Monotonic `A/B/C/D` with the captured shell exit status | Available |
+| Zsh | Monotonic `A/B/C/D` with the captured shell exit status | Available |
+| Fish | `fish_prompt`, `fish_preexec`, `fish_postexec`, and `fish_posterror` provide a monotonic `A/B/C/D` lifecycle with the captured status without replacing the user's prompt body | Available |
+| stock CMD | The next prompt emits a bare `D` before its fresh `A/B`; `cmd.exe` exposes no supported generic status or timing value | Available as a neutral surface; status and duration are not fabricated |
+| unintegrated or unsupported shell | No complete trusted lifecycle | Not drawn |
+
+The renderer applies that treatment only when semantic prompt ownership proves
+both output limits and the following prompt. Uncertain or empty bounds receive
+no output surface; a silent command records semantic completion without
+borrowing the preceding paintable result. No terminal row is inserted, no PTY
+byte is written, and selection, copy, search, history, reflow, shell input, and
+the shell-owned cursor remain unchanged. A final result stays on its original
+prompt when no following boundary exists. Whenever unrelated output rewrites a
+row, the VT clears the row's old prompt/result identity before the renderer can
+select it; an active identified prompt repaint instead claims that row for its
 
 Metadata is advisory and validated. An absolute, control-free OSC 7 directory
 can update a pane's launch descriptor; malformed or relative values cannot.

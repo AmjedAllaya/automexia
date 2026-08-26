@@ -1,8 +1,8 @@
 # OpenSSH inventory and Automexia metadata
 
-This page documents the nonactivated D4 OpenSSH inventory package. It is a
-contributor-facing foundation for the future first-party SSH experience, not a
-claim that Automexia can currently start managed SSH connections.
+This page documents the D4 OpenSSH inventory package. D5.1 activates it only
+through an explicit read-only Connection Hub grant/review flow; it remains
+non-executing and does not claim that Automexia can start managed SSH sessions.
 
 ## Using the inventory package
 
@@ -27,23 +27,31 @@ files and bytes. A WatchPlan can be constructed only from those opaque
 scanner-observed files, optionally plus the exact existing MetadataStore file;
 callers cannot create a plan from arbitrary paths.
 
-The package is disabled by default. It is not linked to the renderer, input
-path, PTY transport, or production launch broker. It has no session-launch,
-process-spawn, network, clipboard, environment, terminal-output, or overlay
-capability.
+The package remains incapable of rendering or launching. The D5.1 application
+service calls it only on a joined background worker after exact file review;
+the Screen and renderer consume immutable public projections. D4 has no session-
+launch, process-spawn, network, clipboard, environment, terminal-output, PTY,
+or overlay capability.
 
 Automexia-owned labels, tags, favorites, and recent-use timestamps are stored
-only in:
+only in the primary and single recovery files:
 
     <Automexia config root>/extensions/devops-ssh/connections.v1.json
+    <Automexia config root>/extensions/devops-ssh/connections.previous.v1.json
 
 MetadataStore creates that exact extension root, validates schema version 1,
-writes a same-directory temporary file, synchronizes it, atomically replaces
-the destination, and applies user-only permissions. JSON serialization itself
-is bounded, so an oversized in-memory document is rejected before a staging
-file or oversized serialization buffer exists. Removing owned state
-deletes only connections.v1.json. It never edits OpenSSH configuration,
-known_hosts, agents, certificates, or keys.
+defaults legacy documents to revision zero, and serializes under the fixed
+8 MiB ceiling before acquiring its private writer lock. Compare-and-swap writes
+require the reviewed revision, advance it without overflow, retain exactly one
+validated previous generation, synchronize same-directory staged files, and
+atomically replace the destination with user-only permissions. A malformed
+primary is never silently overwritten: reads return the validated previous
+generation with explicit recovery origin, while restoration requires the exact
+reviewed previous revision and advances it.
+
+Removing owned state deletes both metadata generations. A zero-value private
+coordination lock may remain and contains no connection data. The store never
+edits OpenSSH configuration, known_hosts, agents, certificates, or keys.
 
 ## Security and resource contract
 
@@ -72,8 +80,11 @@ DACL containing only the current user.
 
 The parser indexes Host, HostName, User, Port, ProxyJump, IdentityFile,
 CertificateFile, PKCS11Provider, and SecurityKeyProvider only as static public
-hints. It never reads key bytes. Wildcard, negated, token-expanded, or
-command-expanded aliases are not connectable records.
+hints. ProxyJump uses OpenSSH first-value behavior and accepts only `none` or a
+canonical comma chain of at most 8 `[user@]host[:port]` hops/2 KiB; bracketed
+IPv6 is allowed, while raw IPv6, URI, option, whitespace/control/bidi, shell,
+and ambiguous/excessive forms fail closed. It never reads key bytes. Wildcard,
+negated, token-expanded, or command-expanded aliases are not connectable records.
 
 Match blocks are excluded. ProxyCommand, LocalCommand, and RemoteCommand are
 reported but never evaluated. Dynamic Include tokens, shell expansion,
@@ -102,13 +113,15 @@ controlled QA contract both fail if this benchmark becomes orphaned.
 The unit/property suite covers immutable maximum ceilings, bounded entry
 grants, race-resistant no-follow reads, active obsolete-generation
 cancellation, scanner-derived watcher provenance, bounded serialization,
-concrete versus wildcard aliases, first-value
-behavior, lexical includes, cycles, out-of-grant and dynamic includes,
-oversized and malformed input, redacted diagnostics, Unix permissions,
-Windows DACL round trips, atomic replacement, interrupted staging, exact
-removal, event filtering, refresh coalescing, stale recovery, and arbitrary
-byte input. Nightly runs the openssh_inventory libFuzzer target with explicit
-time and RSS limits. The benchmark parses the maximum 10,000 concrete aliases.
+concrete versus wildcard aliases, first-value behavior, lexical includes,
+cycles, out-of-grant and dynamic includes, oversized and malformed input,
+redacted diagnostics, Unix permissions, Windows DACL round trips, atomic
+replacement, interrupted staging, revision-zero migration, CAS stale-writer
+rejection, writer contention, single-generation rotation, truthful fallback,
+explicit recovery, exact removal, event filtering, refresh coalescing, stale
+inventory recovery, and arbitrary byte input. Nightly runs the
+openssh_inventory libFuzzer target with explicit time and RSS limits. The
+benchmark parses the maximum 10,000 concrete aliases.
 
 Native Windows, Linux, and macOS workspace jobs compile and execute the same
 portable package. Unix permission behavior is executed on Linux and macOS;
@@ -131,6 +144,8 @@ which remains the execution and precedence authority. This also preserves
 existing agents, keychains, hardware tokens, certificates, host-key behavior,
 and user configuration without creating an Automexia secret vault.
 
-The future launch path remains blocked by proposed ADR 0012, package identity,
-visible grants, atomic check-to-spawn, native lifecycle evidence, and the D5
-release gates. D4 does not bypass any of those decisions.
+ADR 0012 is accepted, and the guarded application launch seam exists locally.
+Production remains blocked by ADR 0003 exact-head approvals/server enforcement,
+loader/build attestation and live revocation, fresh current-executable review,
+native lifecycle/resource/accessibility evidence, and the D5 release gates. D4
+does not bypass any of those decisions.

@@ -170,7 +170,8 @@ or GitHub attestation.
    timestamp, provenance attestation, and release tag.
 3. Inspect the release workflow and dependency/SBOM delta. If provenance is
    missing or a signature differs from the expected publisher, treat the event
-   as a potential security incident and use private vulnerability reporting.
+   as a potential security incident and use the currently available private
+   reporting route in `SECURITY.md`; never disclose it in a public issue.
 4. For a verified public release only, submit that exact artifact to the
    detecting vendor's official false-positive portal. Never upload user files,
    private builds, secrets, dumps, or unrelated logs to multi-vendor services.

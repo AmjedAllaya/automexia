@@ -88,6 +88,20 @@ class QaRunnerTests(unittest.TestCase):
             self.assertNotIn(str(QA.ROOT).replace("\\", "\\\\"), str(result["command"]))
             self.assertIn("log truncated at 2 MiB", payload)
 
+    def test_controlled_run_label_is_bounded_and_portable(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn("AUTOMEXIA_QA_RUN_LABEL", source)
+        self.assertIn("[A-Za-z0-9][A-Za-z0-9._-]*", source)
+        self.assertIn("len(requested_run_id) > 96", source)
+
+    def test_s1_assurance_is_always_tested_and_controlled_evidence_is_optional(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        self.assertIn('"s1-assurance-policy"', source)
+        self.assertIn('"s1-assurance-mutations"', source)
+        self.assertIn('"AUTOMEXIA_QA_S1_EVIDENCE"', source)
+        self.assertIn('"--require-complete"', source)
+        self.assertIn('"s1-release-assurance-evidence"', source)
+
     def test_host_manifest_is_allowlisted_and_path_free(self) -> None:
         manifest = QA.collect_host_manifest()
         expected = {
@@ -149,8 +163,11 @@ class QaRunnerTests(unittest.TestCase):
             '"automexia-devops-ssh"',
             '"openssh_inventory"',
             '"benchmark-quick-actions"',
-            '"automexia-devops"',
+            '"automexia-command-productivity"',
             '"quick_actions"',
+            '"benchmark-connection-planning"',
+            '"automexia-connectivity"',
+            '"connection_planning"',
             '"benchmark-quick-action-store"',
             '"quick_action_store"',
         )
@@ -163,6 +180,9 @@ class QaRunnerTests(unittest.TestCase):
         )
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-quick-actions"], 7200
+        )
+        self.assertEqual(
+            QA.STEP_TIMEOUT_SECONDS["benchmark-connection-planning"], 7200
         )
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-quick-action-store"], 7200

@@ -1,6 +1,12 @@
 use super::api::ExtensionManifest;
 
+pub mod aws;
+pub mod azure;
 pub mod devops;
+pub mod gcp;
+pub mod kubernetes;
+pub mod openshift;
+pub mod teleport;
 
 /// Trusted first-party catalog compiled into the application.
 ///
@@ -8,6 +14,119 @@ pub mod devops;
 /// on concrete extension implementations. A future package registry can replace
 /// this static slice without changing renderer or terminal-engine contracts.
 #[cfg(not(target_arch = "wasm32"))]
-pub const MANIFESTS: &[ExtensionManifest] = &[devops::MANIFEST];
+pub const MANIFESTS: &[ExtensionManifest] = &[
+    aws::MANIFEST,
+    azure::MANIFEST,
+    gcp::MANIFEST,
+    kubernetes::MANIFEST,
+    openshift::MANIFEST,
+    teleport::MANIFEST,
+    devops::MANIFEST,
+];
 #[cfg(target_arch = "wasm32")]
 pub const MANIFESTS: &[ExtensionManifest] = &[];
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn aws_is_independently_registered_and_disabled() {
+        let manifests = std::hint::black_box(MANIFESTS);
+        let aws = manifests
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_aws::ID)
+            .expect("AWS manifest is registered");
+        assert!(!aws.default_enabled);
+        assert_eq!(
+            aws.capabilities,
+            &[
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+
+    #[test]
+    fn azure_is_independently_registered_and_disabled() {
+        let manifests = std::hint::black_box(MANIFESTS);
+        let azure = manifests
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_azure::ID)
+            .expect("Azure manifest is registered");
+        assert!(!azure.default_enabled);
+        assert_eq!(
+            azure.capabilities,
+            &[
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+
+    #[test]
+    fn gcp_is_independently_registered_and_disabled() {
+        let manifests = std::hint::black_box(MANIFESTS);
+        let gcp = manifests
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_gcp::ID)
+            .expect("Google Cloud manifest is registered");
+        assert!(!gcp.default_enabled);
+        assert_eq!(
+            gcp.capabilities,
+            &[
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+    #[test]
+    fn kubernetes_is_independently_registered_and_disabled() {
+        let manifest = MANIFESTS
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_kubernetes::ID)
+            .expect("Kubernetes manifest is registered");
+        assert!(!manifest.default_enabled);
+        assert_eq!(
+            manifest.capabilities,
+            &[
+                automexia_extension_api::Capability::FilesystemRead,
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+
+    #[test]
+    fn openshift_is_independently_registered_and_disabled() {
+        let manifest = MANIFESTS
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_openshift::ID)
+            .expect("OpenShift manifest is registered");
+        assert!(!manifest.default_enabled);
+        assert_eq!(
+            manifest.capabilities,
+            &[
+                automexia_extension_api::Capability::FilesystemRead,
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+
+    #[test]
+    fn teleport_is_independently_registered_and_disabled() {
+        let manifest = MANIFESTS
+            .iter()
+            .find(|manifest| manifest.id == automexia_devops_teleport::ID)
+            .expect("Teleport manifest is registered");
+        assert!(!manifest.default_enabled);
+        assert_eq!(
+            manifest.capabilities,
+            &[
+                automexia_extension_api::Capability::ProcessSpawn,
+                automexia_extension_api::Capability::Network,
+            ]
+        );
+    }
+}

@@ -6,8 +6,8 @@
 
 mod application;
 pub use automexia_terminal::automexia;
+use automexia_terminal::cli;
 mod bindings;
-mod cli;
 mod constants;
 mod context;
 mod global_hotkey;
@@ -145,9 +145,339 @@ fn execute_cli_command(
                 Ok(())
             }
         },
+        CliCommand::Actions(command) => {
+            automexia::quick_actions::execute_actions_command(command)
+        }
+        CliCommand::Aliases(command) => {
+            automexia::quick_actions::execute_aliases_command(command)
+        }
+        CliCommand::Packs(command) => {
+            automexia::quick_actions::execute_packs_command(command)
+        }
+        CliCommand::Migrate(command) => execute_migration_command(command),
+        CliCommand::Workspaces(command) => {
+            automexia::connections::execute_workspaces_command(command)
+        }
     }
 }
 
+fn execute_migration_command(
+    command: &cli::MigrationCommand,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use cli::MigrationSource;
+
+    match &command.source {
+        MigrationSource::Ghostty {
+            input,
+            output,
+            dry_run: _,
+            apply,
+            confirm,
+            json,
+        } => {
+            let source = input
+                .clone()
+                .or_else(automexia::ghostty_migration::default_source_path)
+                .ok_or_else(|| {
+                    std::io::Error::new(
+                        std::io::ErrorKind::NotFound,
+                        "no Ghostty configuration was found; pass --input",
+                    )
+                })?;
+            let mut report = if *apply {
+                let destination = output
+                    .clone()
+                    .unwrap_or_else(rio_backend::config::config_file_path);
+                automexia::ghostty_migration::apply(&source, &destination, *confirm)
+            } else {
+                automexia::ghostty_migration::preview(&source)
+            }
+            .map_err(std::io::Error::other)?;
+            if *json {
+                println!("{}", serde_json::to_string_pretty(&report)?);
+            } else {
+                println!(
+                    "Ghostty keybinding migration: {} exact, {} translated, {} unsupported, {} unsafe",
+                    report.exact,
+                    report.translated,
+                    report.unsupported,
+                    report.unsafe_entries
+                );
+                for entry in &report.entries {
+                    let marker = match entry.classification {
+                        automexia::ghostty_migration::MigrationClassification::Exact => "✓",
+                        automexia::ghostty_migration::MigrationClassification::Translated => "↪",
+                        automexia::ghostty_migration::MigrationClassification::Unsupported => "–",
+                        automexia::ghostty_migration::MigrationClassification::Unsafe => "!",
+                    };
+                    println!(
+                        "{marker} {}:{}  {}{}",
+                        entry.file,
+                        entry.line,
+                        entry.binding,
+                        entry
+                            .diagnostic
+                            .map(|code| format!("  [{code}]"))
+                            .unwrap_or_default()
+                    );
+                    for comment in &entry.comments {
+                        println!("    # {comment}");
+                    }
+                }
+                if report.applied {
+                    println!("Applied to Automexia configuration.");
+                    if let Some(backup) = report.backup.take() {
+                        println!("Recoverable backup: {backup}");
+                    }
+                } else {
+                    println!("Dry run only; no files were changed.");
+                }
+            }
+            Ok(())
+        }
+    }
+}
+
+fn execute_compatibility_list(
+    args: &cli::Cli,
+) -> Option<Result<(), Box<dyn std::error::Error>>> {
+    if !args.list_actions && !args.list_keybinds {
+        return None;
+    }
+    Some(if args.list_actions {
+        list_compatibility_actions(args)
+    } else {
+        list_compatibility_keybinds(args)
+    })
+}
+
+fn list_compatibility_actions(args: &cli::Cli) -> Result<(), Box<dyn std::error::Error>> {
+    use automexia_keybindings::SupportLevel;
+
+    let needle = args.explain.as_deref().map(str::to_ascii_lowercase);
+    let actions = automexia_keybindings::action_schemas()
+        .iter()
+        .filter(|schema| {
+            args.unavailable
+                || !matches!(
+                    schema.support,
+                    SupportLevel::Unavailable | SupportLevel::DeprecatedUnsafe
+                )
+        })
+        .filter(|schema| {
+            needle.as_ref().is_none_or(|needle| {
+                schema.id.contains(needle)
+                    || schema.aliases.iter().any(|alias| alias.contains(needle))
+            })
+        })
+        .map(|schema| {
+            serde_json::json!({
+                "id": schema.id,
+                "aliases": args.aliases.then_some(schema.aliases),
+                "parameter": schema.parameter,
+                "capability": schema.capability,
+                "support": schema.support,
+            })
+        })
+        .collect::<Vec<_>>();
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": automexia_keybindings::SCHEMA_VERSION,
+                "actions": actions,
+            }))?
+        );
+    } else {
+        for action in actions {
+            let id = action["id"].as_str().unwrap_or_default();
+            println!(
+                "{id:<34} {:<19} {}",
+                action["support"].as_str().unwrap_or_default(),
+                action["capability"].as_str().unwrap_or_default()
+            );
+            if args.aliases {
+                let aliases = action["aliases"]
+                    .as_array()
+                    .into_iter()
+                    .flatten()
+                    .filter_map(|alias| alias.as_str())
+                    .collect::<Vec<_>>();
+                if !aliases.is_empty() {
+                    println!("  aliases: {}", aliases.join(", "));
+                }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn list_compatibility_keybinds(
+    args: &cli::Cli,
+) -> Result<(), Box<dyn std::error::Error>> {
+    use automexia_keybindings::{
+        bundled_profile, compile_with_options, parse_binding_lines, BindingOrigin,
+        CompileOptions, ProfileId,
+    };
+
+    let mut config = if args.effective {
+        rio_backend::config::Config::try_load().unwrap_or_default()
+    } else {
+        rio_backend::config::Config::default()
+    };
+    let profile = args
+        .profile
+        .map(Into::into)
+        .unwrap_or(config.keyboard.binding_profile);
+    let platform = args
+        .platform
+        .map(Into::into)
+        .unwrap_or_else(crate::bindings::registry::platform_family);
+    let needle = args.explain.as_deref().map(str::to_ascii_lowercase);
+
+    if profile == ProfileId::Automexia && config.bindings.keybinds.is_empty() {
+        config.keyboard.binding_profile = ProfileId::Automexia;
+        let rows = crate::bindings::default_key_bindings(&config)
+            .into_iter()
+            .filter_map(|binding| {
+                let trigger = format!("{:?}+{:?}", binding.mods, binding.trigger);
+                let action = format!("{:?}", binding.action);
+                if needle.as_ref().is_some_and(|needle| {
+                    !trigger.to_ascii_lowercase().contains(needle)
+                        && !action.to_ascii_lowercase().contains(needle)
+                }) {
+                    return None;
+                }
+                Some(serde_json::json!({
+                    "trigger": trigger,
+                    "action": action,
+                    "mode": format!("{:?}", binding.mode),
+                    "not_mode": format!("{:?}", binding.notmode),
+                    "origin": "built_in_or_legacy_user",
+                    "profile": "automexia",
+                    "platform": format!("{platform:?}"),
+                    "effective": true,
+                }))
+            })
+            .collect::<Vec<_>>();
+        if args.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&serde_json::json!({
+                    "schema_version": automexia_keybindings::SCHEMA_VERSION,
+                    "profile": "automexia",
+                    "platform": platform,
+                    "bindings": rows,
+                    "diagnostics": [],
+                }))?
+            );
+        } else {
+            println!("Profile: automexia · platform: {platform:?}");
+            for row in rows {
+                println!(
+                    "{:<42} {}",
+                    row["trigger"].as_str().unwrap_or_default(),
+                    row["action"].as_str().unwrap_or_default()
+                );
+            }
+        }
+        return Ok(());
+    }
+
+    let mut specs = bundled_profile(profile, platform).map_err(std::io::Error::other)?;
+    let user = parse_binding_lines(
+        config.bindings.keybinds.iter().map(String::as_str),
+        BindingOrigin::User,
+    )
+    .map_err(|error| std::io::Error::other(format!("invalid user binding: {error:?}")))?;
+    specs.extend(user);
+    let report = compile_with_options(
+        &specs,
+        CompileOptions {
+            strict: config.keyboard.binding_strict,
+        },
+    );
+    let registry = report.registry.ok_or_else(|| {
+        std::io::Error::other(format!(
+            "profile compilation failed with {} diagnostic(s)",
+            report.diagnostics.len()
+        ))
+    })?;
+    let origin_filter = args.origin.map(Into::into);
+    let rows = registry
+        .bindings()
+        .filter(|binding| origin_filter.is_none_or(|origin| binding.origin == origin))
+        .filter(|binding| {
+            needle.as_ref().is_none_or(|needle| {
+                binding
+                    .trigger_label()
+                    .to_ascii_lowercase()
+                    .contains(needle)
+                    || binding.action_label().to_ascii_lowercase().contains(needle)
+            })
+        })
+        .map(|binding| {
+            serde_json::json!({
+                "trigger": binding.trigger_label(),
+                "actions": binding.actions,
+                "action_label": binding.action_label(),
+                "table": binding.table,
+                "predicate": binding.predicate,
+                "scope": binding.scope,
+                "origin": binding.origin,
+                "priority": binding.priority,
+                "policy": binding.policy,
+                "effective": true,
+            })
+        })
+        .collect::<Vec<_>>();
+    let resolution = profile.resolve();
+    if args.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "schema_version": automexia_keybindings::SCHEMA_VERSION,
+                "profile": resolution,
+                "platform": platform,
+                "bindings": rows,
+                "diagnostics": args.shadowing.then_some(&report.diagnostics),
+                "stats": registry.stats(),
+            }))?
+        );
+    } else {
+        println!(
+            "Profile: {}{} · platform: {platform:?}",
+            profile,
+            if resolution.moving_alias {
+                " (moving alias → ghostty-1.3)"
+            } else {
+                ""
+            }
+        );
+        for row in rows {
+            println!(
+                "{:<42} {}  [{}/{}]",
+                row["trigger"].as_str().unwrap_or_default(),
+                row["action_label"].as_str().unwrap_or_default(),
+                row["origin"].as_str().unwrap_or_default(),
+                row["scope"].as_str().unwrap_or_default()
+            );
+        }
+        if args.shadowing && !report.diagnostics.is_empty() {
+            println!("Diagnostics: {}", report.diagnostics.len());
+            for diagnostic in report.diagnostics {
+                println!(
+                    "  {:?} entry={} related={:?} fatal={}",
+                    diagnostic.code,
+                    diagnostic.entry,
+                    diagnostic.related_entry,
+                    diagnostic.fatal
+                );
+            }
+        }
+    }
+    Ok(())
+}
 fn setup_logs_by_filter_level(
     log_level: &str,
     log_file: bool,
@@ -206,6 +536,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     // Load command line options.
     let args = cli::Cli::parse();
+
+    if let Some(result) = execute_compatibility_list(&args) {
+        #[cfg(windows)]
+        unsafe {
+            FreeConsole();
+        }
+        return result;
+    }
 
     if let Some(command) = &args.command {
         let result = execute_cli_command(command);

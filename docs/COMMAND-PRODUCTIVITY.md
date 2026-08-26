@@ -1,17 +1,23 @@
 # Command Productivity: Completion and Quick Actions
 
-Status: CP0 architecture baseline and CP1 shell-native completion activation
-accepted; the CP2.0 capability-free model and CP2.1 internal persistence
-foundation are implemented. CP2.2-CP6 user-facing capabilities remain planned
-for v0.5.x and later. CP1 ships managed native completion, not Automexia-
-rendered inline suggestions or a rich candidate popup. A user-facing Quick
-Action surface, generated aliases, provider-aware candidates, and the CP5
-suggestion surface do not currently ship.
+Status: CP0, CP1, CP2.0, and CP2.1 are complete at their defined source
+boundaries. CP2.2 search, placeholder review, dry-run administration,
+import/export, and explicit insert/copy are implemented locally. Its stable
+release gate remains partial until hosted native Windows/Linux/macOS and
+controlled screen-reader/performance evidence pass. Exact launch, trusted
+workspace activation, secret expansion, generated aliases, and provider-aware
+execution remain disabled or planned. CP5 source components exist but its
+suggestion surface and shell bridge remain preview-disabled and unpublished.
 
 The complete command-first product vocabulary that consumes this track is
 specified in [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
 That document does not widen CP authority or turn planned commands into shipped
 behavior.
+
+In this document and ADR 0025, **editor** means the native shell's editable
+command line. It is separate from the proposed
+[Automation Studio](AUTOMATION-STUDIO-ARCHITECTURE.md) file editor; CP5 neither
+implements nor authorizes that document surface.
 
 ## Purpose
 
@@ -54,6 +60,24 @@ security and privacy boundaries are in the
 The complete CP2/CP3 product contract for user-created aliases, first-party
 DevOps packs, persistence, projection compilers, UX, and verification is
 [DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md).
+
+Technology placement follows the canonical
+[build, wrap, and adopt boundary](BUILD-WRAP-ADOPT-ARCHITECTURE.md):
+
+- core owns the operation/action schema, static completion generation,
+  replacement-span/escaping contracts, bounded search service, editor bridge,
+  persistence/projection, collision policy, and insert-versus-execute review;
+- first-party packs contribute immutable typed records and explicit refresh
+  adapters, but receive no shell-editor, renderer, PTY, process, network, or
+  ambient credential authority;
+- PSReadLine, Readline, ZLE, Fish, and CMD retain native editing; Carapace is an
+  optional external compatibility bridge;
+- `clap_complete`, `clap_mangen`, and `schemars` are planned generated-
+  artifact dependencies, while `nucleo` is accepted only after the large-list
+  benchmark, Unicode, cancellation, memory, binary-size, and fallback gate;
+- provider CLIs are never invoked at startup or per keystroke. Explicit refresh
+  runs through the core ExternalToolRunner and publishes a bounded immutable
+  last-known-good snapshot.
 
 ## Terminology
 
@@ -423,7 +447,7 @@ forbidden in the renderer, input, VT, PTY, and extension runtime paths.
 Exit: clean install/update/uninstall, quoting, cursor, history, exit-status,
 startup-time, disabled-integration, and collision tests pass natively.
 
-CP1 status (2026-08-16): implemented. PowerShell, Bash, Zsh, Fish, CMD, and WSL
+CP1 status (2026-08-17): implemented. PowerShell, Bash, Zsh, Fish, CMD, and WSL
 retain their native editors. Managed Bash/Zsh/Fish adapters inventory existing
 definitions before sourcing a fixed, digest-verified artifact; native entries
 win. Because PowerShell exposes no supported read-only argument-completer
@@ -447,17 +471,33 @@ and only for shells their installed CLI supports. Git, AWS, Azure, GCP, and
 OpenSSH remain package/provider-owned. Terraform and OpenTofu profile-mutating
 installers require their own reviewed manual consent and are never invoked by
 Automexia. Refresh resolves one executable, passes exact argv with null stdin,
-terminates at 750 ms, bounds stdout/stderr, validates UTF-8/control bytes, and
-publishes private fixed-name files using same-directory atomic replacement.
+terminates at 750 ms, bounds stdout/stderr, validates UTF-8 plus C0 and
+bidirectional controls, and publishes private fixed-name files using
+same-directory atomic replacement. The child environment is cleared and rebuilt
+from OS process essentials, a local absolute-only `PATH`, deterministic locale/
+color controls, and no home, provider configuration, proxy, credential, or
+arbitrary application variables. Hostile provider diagnostics are bounded and
+terminal-control sanitized.
 Provider commands run inside a POSIX process group or Windows Job Object, so a
 timeout, output overflow, or early leader exit terminates descendants that still
 hold output pipes; the command never leaves detached capture threads or provider
 children behind. The executable is held open and its stable file identity is
 revalidated after version discovery and generation, rejecting replacement races.
 Windows refresh accepts only native `.exe`/`.com` images and never implicitly
-routes a provider through `.cmd`/`.bat` shell parsing. Shell adapters reject a
-linked or non-directory component anywhere in their managed parent chain, and
-all persistence overrides must be absolute. macOS uses
+routes a provider through `.cmd`/`.bat` shell parsing. Windows completion state
+and the canonical provider image must remain on a local drive; UNC roots and
+remote canonical redirects fail before startup or execution I/O. Shell adapters
+reject a linked or non-directory component anywhere in their managed parent
+chain and enforce the 4096-byte configuration-root ceiling.
+Windows installer and completion integrity checks use the platform SHA-256 API
+directly and do not depend on `Microsoft.PowerShell.Utility` auto-loading during
+clean installation or shell startup.
+
+Refresh publishes a bounded two-digest transition before replacing an existing
+artifact, then collapses it to one digest. Bash, Zsh, Fish, and PowerShell can
+therefore verify the previous or candidate artifact at every interruption point
+without sourcing unverified text. All persistence overrides must be absolute.
+macOS uses
 `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal`; Linux
 and BSD use `${XDG_CONFIG_HOME:-~/.config}/automexia`. Installers repair a stale
 owned profile block in place; uninstallers preflight every exact owned target
@@ -470,15 +510,14 @@ The schema-1 CP1 authority is
 [`cp1-contract-v1.json`](../tests/fixtures/command-productivity/cp1-contract-v1.json).
 Its validator keeps the 12-file activation allowlist, provider policy, five
 shell outcomes, six hard resource limits, and zero network/secret/grid/provider-
-startup capability machine-enforced. CP2.0 is complete at the pure model
-boundary and the CP2.1 persistence-only library is complete; CP2.2 is next.
-CP1 does not
-add Quick Actions, generated aliases, provider authentication, a custom popup,
-or exact command launch.
+startup capability machine-enforced. CP2.0 and CP2.1 remain the model and
+persistence foundations; CP2.2 adds only reviewed Quick Action search,
+administration, and insert/copy. CP1 itself does not add Quick Actions,
+generated aliases, provider authentication, a custom popup, or exact launch.
 
 ### CP2 — persistent typed Quick Actions
 
-**CP2.0 complete:** `automexia-devops::actions` now owns the capability-free,
+**CP2.0 complete:** `automexia-command-productivity::actions` now owns the capability-free,
 bounded schema-1 TOML parser, typed model, deterministic validator, validated-
 only wrapper, exact architecture allowlist, and versioned hostile corpus. It has
 no filesystem, watcher, process, network, secret, UI, PTY, shell-profile, alias,
@@ -490,45 +529,164 @@ one previous revision, cross-process nonblocking lock/CAS, immutable fingerprint
 last-known-good snapshots, exact parent-directory watch filtering, bounded burst
 coalescing, periodic reconciliation, CRUD, and explicit recovery. It has no
 provider/process/network/secret/profile/clipboard/PTY/UI or execution authority
-and is not started or shown to users yet.
+and grants no provider, process, network, secret, profile, PTY, UI, or execution
+authority by itself.
 
-**CP2.2 pending:** activate the service through an application worker and build
-the in-memory layered index, explicit import/export, placeholder review,
-palette/search/conflict UI, and shell-native insert/copy modes. Keep exact launch
-disabled until D3 activation is accepted.
+**CP2.2 implemented locally:** one application-owned worker starts the store,
+publishes immutable last-known-good snapshots, coalesces the latest query per
+route, admits at most 32 live routes, publishes every admitted pane fairly, and
+is joined on shutdown. A capability-free layered index revalidates each layer
+and applies distinct deterministic session, capsule, trusted-workspace,
+shell-user, global-user, and built-in precedence. Workspace entries remain
+fail-closed in the CP2.2-only boundary; CP3.3 activates only an exact digest/
+revision-trusted workspace source and rechecks it before insertion. The Command
+Center provides a keyboard-complete responsive search, placeholder, visible
+risk/source/conflict/health, explicit empty and unavailable states,
+exact-command review, and explicit
+**Insert without Enter** or copy flow. Insertion uses the shell-owned editor's bracketed-paste
+path and never synthesizes Enter. Exact launch and secret-reference expansion
+remain unavailable and are rejected before placeholder collection.
 
-Exit for the remaining CP2 work: responsive/accessibility and shell insertion
-evidence, deterministic scope ordering, native Windows/Linux/macOS lifecycle
-CI, controlled leak/performance baselines, and disable/rollback behavior pass.
+The versioned `automexia actions` interface provides read-only `list`, `show`,
+and `doctor`; dry-run-by-default `put`, `actions import`, `remove`, and
+`recover`; and bounded digest-checked `export`. Mutations require `--apply` and
+revision compare-and-swap; import conflicts and machine-specific fixed paths
+require separate explicit consent.
 
-### CP3 — aliases and first-party DevOps packs
+Exit still required for a stable cross-platform claim: the pushed hosted native
+Windows/Linux/macOS matrix, controlled Narrator/NVDA/VoiceOver/Orca interaction,
+native shell insertion evidence, and the named-hardware 30-day latency/resource
+baseline. Renderer-neutral layout/accessibility labels, quoting/Unicode,
+privacy, worker lifecycle, storage/recovery, mutation, and short benchmark gates
+are automated now.
 
-- Generate reversible shell functions/aliases from enabled user choices.
-- Deliver versioned Git, Docker, Kubernetes/OpenShift, Helm,
-  Terraform/OpenTofu, AWS, Azure, GCP, and SSH packs.
-- Add risk labeling, tool/version health, collision resolution, and completion
-  linkage for every enabled alias.
+### CP3 — projection, aliases, and first-party DevOps packs
 
-Exit: no default collision, native aliases win, every projection round-trips,
-and pack actions remain review-before-insert across all supported shells.
+**CP3.0 complete at its pure boundary:** `automexia-command-productivity::actions` compiles
+validated aliases deterministically for PowerShell, Bash, Zsh, Fish, and CMD.
+Portable eligibility, exact user override consent, native ownership, completion
+and tool health, rollback/source/artifact metadata, hard observation/file limits,
+tamper verification, hostile quoting, and typed argument policies are enforced.
+The compiler independently recomputes canonical source identity, requires
+complete collision/completion/tool inventories, and accepts a same-action owner
+only when its deterministic fingerprint matches. Missing and unsupported tool
+details remain in decisions for actionable UI. The compiler returns in-memory
+artifacts with activation disabled and owns no profile, filesystem, process,
+environment, network, secret, or execution capability. Thirteen focused tests,
+native syntax/capture checks, mutation gates, an all-five-shell libFuzzer target,
+and a 256-binding Criterion target own this boundary.
+
+**CP3.1 fully done at the source/local boundary:** explicit opt-in aliases use
+private immutable content-addressed generations, SHA-256 manifests, source and
+generation compare-and-swap, a crash-recovery journal, a pointer-last commit,
+and one verified rollback generation. The existing managed hook validates the
+ordered exact compiler/source/shell manifest and activates one file per shell;
+native definitions win, authenticated exact-owner consent is rechecked, reload
+is last-known-good, and uninstall preserves saved actions. Dry-run-first
+management reports directly reusable CAS values plus full collision/completion/
+tool detail; read-only doctor verifies active/rollback topology and permissions
+and returns stable malformed-source/unsafe-root health. Unique executable and
+completion observations are cached across shells. Native Windows and full local
+WSL Bash/Zsh/Fish lifecycle tests, configured nightly/release WSL gates, a
+256-alias benchmark, fuzz/property coverage, and mutation/contract ratchets own
+the boundary.
+
+**CP3.2 fully done locally:** the capability-free schema-1 registry provides
+Git, Docker/Compose, Kubernetes, OpenShift, Helm, Terraform, OpenTofu, AWS,
+Azure, Google Cloud, and OpenSSH packs: 11 manifests and 33 disabled-by-default
+`TypedArgv` actions. Bounded caller observations drive version/provider-absence/
+completion health without starting tools. Effect/risk floors deny aliases for
+context, authentication, destructive, and privileged actions. A reviewed digest
+freezes the complete registry payload; version-only provenance updates remain
+unchanged while functional metadata changes are reported as updates. Dry-run/CAS
+enablement previews exact argv/effect/risk/documentation and rejects stale
+revisions before store creation. Fourteen pack unit/integration cases, five CLI
+parser/rendering/preflight cases, Criterion, nightly fuzz, an exact-payload
+contract, and eight mutations own CP3.2.
+
+**CP3.3 fully done locally:** capability-free bounded parsers consume only an
+explicitly supplied PowerShell CSV, Bash/Zsh alias, Fish abbreviation,
+CMD/DOSKEY, or Git inventory. They reject controls/bidi, duplicates, likely
+secrets, machine paths, substitutions, pipelines, redirection, metacharacters,
+Git shell aliases, and unsupported kinds. Import requires explicit unique names,
+is dry-run first, supports portable ID rename, previews conflict/replace, and
+applies once through Quick Action revision CAS without editing native sources.
+
+Exact named just, Task, and mise bridges persist in `.automexia/actions.toml` as
+Mutating, Insert, WorkspaceRoot, WorkspaceTask actions with no aliases. Private
+path-free receipts bind workspace identity, canonical source digest, and exact
+revision; trust/revoke/put/remove are bounded, no-follow, staged, lock/CAS
+mutations. Any source/link/malformed/revoked mismatch removes the trusted layer.
+The background worker bounds ancestor walking, cache entries, reconciliation,
+and route authorization; the review and insert/copy boundaries recheck trust and
+show a textual refresh-and-review state when stale. Automexia never discovers/
+lists tasks, parses recipes, starts providers/runners, reads credentials, uses
+the network, executes tasks, synthesizes Enter, or projects workspace aliases.
+
+Fourteen named regressions, Unix no-follow cases, the schema-1 contract and
+mutations, aggregate source ratchets, nightly fuzzing, parser/trust benchmarks,
+CI/xtask wiring, ADR 0021, and synchronized documentation own CP3.3. Hosted
+native/accessibility and named-hardware 30-day measurements remain release
+evidence, not missing CP3.3 source implementation.
 
 ### CP4 — capsule/provider-aware productivity
 
-- After D5/D6, filter and parameterize actions with the selected SSH target,
-  capsule, cluster/context, account/subscription/project, region, and workspace.
-- Use only bounded cached public context; refresh explicitly or through the
-  extension freshness contract, never synchronously from a keystroke.
-- Permit reviewed exact-launch actions through D3 with capability and audit.
+Status: **Fully done locally at the product-integrated nonactivating boundary; partially done overall.**
+The existing Quick Actions surface can consume an explicitly published,
+immutable public capsule snapshot for SSH, AWS, Azure, Google Cloud,
+Kubernetes, OpenShift, and Teleport. OpenBao remains absent pending ADR 0024,
+the Connection Hub-to-Action Center handoff is implemented, and no approved
+provider refresh/capsule producer currently creates these snapshots.
 
-Exit: multi-pane/session isolation, stale-context labeling, production safety,
-revocation, cancellation, offline behavior, and provider-native tests pass.
+The implementation:
+
+- projects exact cached targets plus account/subscription/project, region/zone,
+  cluster/context/namespace, infrastructure, provenance, freshness, state, and
+  environment risk without provider, network, filesystem, credential, startup,
+  renderer, or keystroke-time work;
+- publishes at most 32 route-owned snapshots and 256 actions, with 16 actions
+  per provider, 32 presentation fields, and 128 search results;
+- retains the validated capsule behind a redacted immutable product publication
+  and synchronizes it on Action Center open only to the exactly matching
+  selected route/session/revision; identical generations are idempotent, while
+  mismatch, revocation, or absence clears candidates before cached search;
+- discards stale requests, rejects non-monotonic generations, isolates route,
+  session and capsule revision, removes snapshots on route cleanup, and
+  revalidates the binding immediately before copy or bracketed insertion;
+- gives capsule candidates precedence over same-ID persisted actions without
+  duplicate rows, while preserving deterministic ranking and shadow counts;
+- shows provider, exact target, current/stale/refreshing/expired/offline/
+  unavailable/error/replaced state, provenance-backed context, and development/
+  staging/production risk in compact visible and accessible text;
+- keeps current observation actions insert-without-Enter. Kubernetes,
+  OpenShift, and Teleport operations that need a private environment or D3
+  launch remain visibly broker-required and never fall back to ambient state;
+- requires a second confirmation for production even when the command is
+  read-only, and never treats color as the only production or failure signal.
+
+The versioned CP4 contract, static authority checker, seven mutation cases,
+25 named regressions, hostile-capsule fuzz target, and cached snapshot/search
+benchmark own the local source claim. Exact process execution, OpenBao, real
+provider accounts/CLIs/clusters, native Linux/macOS execution, screen-reader
+inspection, controlled resource baselines, packaging, and release evidence
+remain external gates. Disabling CP4 means clearing the route snapshot or not
+publishing one; persisted CP2/CP3 actions and provider-owned state are unchanged.
+
+Exit is met locally at the nonactivating authority boundary: provider-aware
+discovery does not widen provider, credential, process, or session authority.
+The combined product/release exit remains partial until the external gates above
+actually run.
 
 ### CP5 — Shell Completion and Suggestions
 
-Status: planned after CP1. CP5 is optional, is not a v0.5.0 blocker, and does
-not authorize runtime code until its bridge ADR, threat-model amendment,
-machine-readable contract, and native-shell feasibility evidence are accepted.
-The CP1 native experience remains the default and complete fallback.
+Status: CP5.0 research is fully done. ADR 0025 and the six-threat machine
+contract are accepted. CP5.1 protocol/endpoints, CP5.2 bounded sources, CP5.3
+deterministic ranking, and CP5.4 UI/publication are fully done at their source/
+local model boundaries. CP5.5 has a complete inert helper/adapter source bridge
+but not its reviewed launcher, signed artifact, WSL relay, live composition, or
+activation. CP5.6 assurance remains partial and preview/stable activation is
+false. CP5 remains optional and is not a v0.5.0 blocker; CP1 remains the default
+and complete fallback.
 
 #### CP5.0 — research, baselines, and dependency decision
 
@@ -561,6 +719,47 @@ Exit: a decision report records benchmark inputs/results, adopted/rejected
 components and licenses, shell/version support, binary/startup cost, privacy
 changes, and the native-fallback proof. No runtime dependency is added only
 because it is popular.
+
+##### CP5.0 research decision
+
+CP5.0 is complete. The machine contract
+<code>tests/fixtures/command-productivity/cp50-research-contract-v1.json</code>
+fixes a seven-family native-shell matrix, the bounded replacement-only
+prototype, false runtime capabilities, 32/128/512-candidate benchmark inputs,
+and a reviewed decision to retain CP1 and defer P2. The full evidence and
+reproduction commands are in
+[CP5.0 native autocomplete research](research/CP5-AUTOCOMPLETE-RESEARCH.md).
+
+The existing in-tree matcher is retained. <code>nucleo-matcher 0.3.1</code>
+remains pinned only in a standalone research workspace because it provided no
+measured benefit on the bounded product corpus; it is absent from the root
+manifest, root lockfile, runtime, and release binaries. Reedline remains a UX
+reference, while Carapace remains an explicitly installed external adapter
+candidate. No profile, keybinding, shell process, editor transport, history,
+terminal-grid inference, cache, worker, or product UI was introduced.
+
+##### CP5.1-CP5.6 accepted source decision
+
+[ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) and the
+schema-1
+[`cp51-bridge-threat-contract-v1.json`](../tests/fixtures/command-productivity/cp51-bridge-threat-contract-v1.json)
+are accepted for source implementation. Six stable threats cover endpoint/
+replay, privacy, stale replacement, candidate spoofing, input/occlusion, and
+resource amplification. Contract and source mutation tests prevent authority,
+transport, peer, replay, privacy, span, source, ranking, keyboard, Fish
+`Ctrl+Space`, fallback, limit, lifecycle, activation, and release-gate
+downgrades. The contract records `accepted: true` and
+`runtime_activation: false`.
+
+The [implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md) records
+source owners and exact remaining gates. Authenticated bidirectional codecs,
+platform endpoints, broker, six local sources, deterministic ranking, pane UI,
+publication mailbox, application route exchange, helper binary target, four
+native response/replacement adapters, fuzz, benchmarks, and local native shell
+harnesses exist. Normal shell integration does not source those inert adapters.
+No reviewed launcher, signed/attested artifact, WSL host relay, public setting,
+default shortcut, live screen composition, or activated user-facing suggestion
+surface ships.
 
 #### CP5.1 — versioned editor bridge and ownership
 
@@ -791,12 +990,68 @@ Exit: all machine gates pass, external native accessibility evidence is linked,
 and maintainers record that the Automexia surface improves a measured workflow.
 Otherwise CP1 native completion remains the shipped solution.
 
+#### PO cross-track — situation-aware production candidates
+
+The planned PO track does not widen CP5's accepted source boundary. CP5 remains
+the editor and presentation owner; PO contributes only typed, route-bound,
+already-cached operational candidates after its own future capability, privacy,
+freshness, policy, and resource gates pass. No provider, observability, GitOps,
+identity, policy, or cluster request is triggered by a keystroke.
+
+A PO candidate must preserve CP5's authenticated route/generation/replacement
+span, local privacy, cancellation, candidate/message ceilings, accessibility,
+insert-without-Enter behavior, and CP1 fallback. It additionally binds the
+environment passport, exact resource UID/target, evidence and policy revisions,
+risk, expiry, supporting/contradicting evidence, evidence quality and explicit
+unknowns, impact, verification, and recovery. Final selection still inserts native command text
+only; a separate app-owned preflight and confirmation is required before any
+future execution.
+
+The requested Kubernetes rollout ranking, production context lock, change/
+ownership/drift, resource explanation, healthy and environment comparison,
+network/SLO diagnosis, dependency graph, GitOps/JIT awareness, Incident Mode,
+live-log/time/DN handoff, managed operation/diagnostic sessions, journal, and
+runbook packs are specified in
+[Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
+They are PO1-PO8 planned behavior, not CP5 implementation or current completion
+sources.
+
 ### CP6 — ecosystem integration
 
-- Consider signed third-party action packs only with v0.6's manifest,
-  capability, provenance, revocation, and sandbox policy.
-- AI suggestions remain a separate opt-in capability with explicit data-flow
-  consent and are not treated as completion.
+Status: partially done at the proposal-only policy boundary. Proposed
+[ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md), the
+[schema-1 machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json),
+15 mutation tests, and the
+[D7/CP6 execution audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) are complete.
+No pack or model runtime, public SDK, download, sandbox, provider request, tool
+call, or execution authority exists.
+
+- Signed third-party action packs may map only into existing typed CP2/CP3
+  actions after package digest, publisher, signature/provenance, compatibility,
+  current revocation, and exact capability/data-flow review. A pack never owns
+  execution; preview, collision, stale revision, production confirmation,
+  insert/copy, and final revalidation remain host-owned.
+- The optional CP6 model suggestion is a separate opt-in and per-request consent
+  flow. It may receive only exact selected bounded text after redaction preview
+  and provider/locality/model/destination/purpose/retention/size/risk disclosure.
+  Ambient terminal, history, clipboard, files, environment, credentials, agents,
+  provider caches, capsules, connections, other panes, logs, telemetry, and
+  support data remain unavailable.
+- Its output is a bounded typed explanation or suggestion, independently risk
+  classified and offered as copy/insert without Enter. Tool calls, workflow
+  planning, MCP passthrough, background or typing-triggered requests, and
+  automatic execution are outside CP6.
+- Runtime work requires explicit ADR/contract acceptance followed by the package,
+  custom WIT/Wasmtime, distribution/revocation, privacy, UX, native,
+  accessibility, performance/resource, rollback, and release gates in the
+  execution audit. CP1-CP3 and private first-party extensions remain fallback.
+
+CP6 is not the multi-extension orchestration architecture. The separately
+proposed [LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md) may later
+propose bounded typed workflow plans, but core-owned policy, review, one-run
+grants and ordinary action brokers remain authoritative. Its LO0-LO5 phases,
+ADR 0033 acceptance and machine contract are independent gates; they do not
+weaken or silently replace this CP6 no-tool boundary.
 
 ## Verification matrix
 

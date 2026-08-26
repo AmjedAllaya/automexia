@@ -23,6 +23,7 @@ use rio_window::platform::startup_notify::{
 use rio_window::window::Window;
 use routes::{assistant, RoutePath};
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 // 𜱭𜱭 unicode is not available yet for all OS
@@ -95,10 +96,16 @@ impl Route<'_> {
         config: &RioConfig,
         db: &rio_backend::sugarloaf::font::FontLibrary,
         should_update_font: bool,
+        binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+        should_update_bindings: bool,
     ) {
-        self.window
-            .screen
-            .update_config(config, db, should_update_font);
+        self.window.screen.update_config(
+            config,
+            db,
+            should_update_font,
+            binding_registry,
+            should_update_bindings,
+        );
     }
 
     #[inline]
@@ -148,6 +155,7 @@ impl Route<'_> {
 
     #[inline]
     pub fn quit(&mut self) {
+        self.window.screen.shutdown_connection_hub();
         std::process::exit(0);
     }
 
@@ -178,6 +186,10 @@ impl Route<'_> {
             if key_event.state == ElementState::Pressed {
                 match &key_event.logical_key {
                     Key::Named(NamedKey::Escape) => {
+                        if self.window.screen.leave_action_detail() {
+                            self.request_overlay_redraw();
+                            return true;
+                        }
                         self.window
                             .screen
                             .renderer
@@ -233,7 +245,45 @@ impl Route<'_> {
                             .renderer
                             .command_palette
                             .get_selected_action();
+                        let selected_quick_action = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .get_selected_action_item_id();
+                        let quick_action_review = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .get_review_choice();
+                        let is_quick_action_placeholder = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .is_action_placeholder();
                         use crate::renderer::command_palette::PaletteAction;
+
+                        if is_quick_action_placeholder {
+                            let value =
+                                self.window.screen.renderer.command_palette.query.clone();
+                            self.window.screen.submit_action_placeholder(value);
+                            self.request_overlay_redraw();
+                            return true;
+                        }
+
+                        if let Some(action_id) = selected_quick_action {
+                            self.window.screen.begin_action_review(&action_id);
+                            self.request_overlay_redraw();
+                            return true;
+                        }
+
+                        if let Some(choice) = quick_action_review {
+                            self.window.screen.apply_reviewed_action(choice, clipboard);
+                            self.request_overlay_redraw();
+                            return true;
+                        }
 
                         // Fonts-mode Enter: copy the family name to
                         // the system clipboard and close. The copy
@@ -277,25 +327,17 @@ impl Route<'_> {
 
                         match selected_action {
                             Some(PaletteAction::OpenMarket) => {
-                                let items = crate::automexia::runtime::market_items();
-                                self.window
-                                    .screen
-                                    .renderer
-                                    .command_palette
-                                    .enter_market_mode(items);
+                                self.window.screen.open_extension_marketplace();
+                            }
+                            Some(PaletteAction::OpenActions) => {
+                                self.window.screen.open_action_center();
                             }
                             // `ListFonts` stays inside the palette —
                             // swap the palette's contents from the
                             // command list to the registered font
                             // family names and keep it open.
                             Some(PaletteAction::ListFonts) => {
-                                let fonts =
-                                    self.window.screen.sugarloaf.font_family_names();
-                                self.window
-                                    .screen
-                                    .renderer
-                                    .command_palette
-                                    .enter_fonts_mode(fonts);
+                                self.window.screen.open_font_browser();
                             }
                             // Any other command is a one-shot: close
                             // the palette first, then dispatch.
@@ -326,11 +368,22 @@ impl Route<'_> {
                         if !current_query.is_empty() {
                             let mut chars = current_query.chars().collect::<Vec<_>>();
                             chars.pop();
-                            self.window
+                            let next = chars.into_iter().collect();
+                            if self
+                                .window
                                 .screen
                                 .renderer
                                 .command_palette
-                                .set_query(chars.into_iter().collect());
+                                .is_action_search()
+                            {
+                                self.window.screen.set_action_query(next);
+                            } else {
+                                self.window
+                                    .screen
+                                    .renderer
+                                    .command_palette
+                                    .set_query(next);
+                            }
                             self.request_overlay_redraw();
                         }
                     }
@@ -348,11 +401,22 @@ impl Route<'_> {
                                     .command_palette
                                     .query
                                     .clone();
-                                self.window
+                                let next = format!("{}{}", current_query, text_str);
+                                if self
+                                    .window
                                     .screen
                                     .renderer
                                     .command_palette
-                                    .set_query(format!("{}{}", current_query, text_str));
+                                    .is_action_search()
+                                {
+                                    self.window.screen.set_action_query(next);
+                                } else {
+                                    self.window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .set_query(next);
+                                }
                                 self.request_overlay_redraw();
                             }
                         }
@@ -383,21 +447,59 @@ impl Route<'_> {
             return true;
         }
 
+        if self
+            .window
+            .screen
+            .handle_connection_hub_key(key_event, clipboard)
+        {
+            self.request_overlay_redraw();
+            return true;
+        }
+
+        // Diagnostic dialogs are modal in every route. Consume all keyboard
+        // input so no key can reach a terminal hidden behind the scrim.
+        if self.window.screen.renderer.assistant.is_active() {
+            if key_event.state == rio_window::event::ElementState::Pressed {
+                match &key_event.logical_key {
+                    Key::Named(NamedKey::Escape | NamedKey::Enter) => {
+                        self.assistant.clear();
+                        self.window.screen.renderer.assistant.clear();
+                        self.request_overlay_redraw();
+                    }
+                    Key::Character(c) if c.as_str().eq_ignore_ascii_case("d") => {
+                        Screen::open_docs_url();
+                    }
+                    _ => {}
+                }
+            }
+            return true;
+        }
+
+        if self
+            .window
+            .screen
+            .renderer
+            .compatibility_inspector
+            .is_active()
+        {
+            if key_event.state == rio_window::event::ElementState::Pressed
+                && key_event.logical_key == Key::Named(NamedKey::Escape)
+            {
+                self.window
+                    .screen
+                    .renderer
+                    .compatibility_inspector
+                    .set_visibility("hide");
+                self.request_overlay_redraw();
+            }
+            return true;
+        }
+
         if self.path == RoutePath::Terminal {
             return false;
         }
 
         let is_enter = key_event.logical_key == Key::Named(NamedKey::Enter);
-
-        // Handle assistant overlay dismiss
-        if self.window.screen.renderer.assistant.is_active() {
-            if is_enter {
-                self.assistant.clear();
-                self.window.screen.renderer.assistant.clear();
-                self.request_overlay_redraw();
-            }
-            return true;
-        }
 
         if self.path == RoutePath::Welcome && is_enter {
             rio_backend::config::create_config_file(None);
@@ -416,6 +518,9 @@ pub struct Router<'a> {
     pub quake_window_id: Option<WindowId>,
     pub clipboard: Clipboard,
     current_tab_id: u64,
+    quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
+    connection_hub: crate::automexia::connections::ConnectionHubRuntime,
+    external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
 }
 
 impl Router<'_> {
@@ -435,6 +540,14 @@ impl Router<'_> {
             });
         }
 
+        let connection_hub =
+            crate::automexia::connections::ConnectionHubRuntime::open_default();
+        let external_tool_runner =
+            crate::context::external_tool_runner::ExternalToolRunner::pending_security_review();
+        debug_assert!(
+            external_tool_runner.attach_receipt_sink(Arc::new(connection_hub.clone()))
+        );
+
         Router {
             routes: FxHashMap::default(),
             propagated_report,
@@ -443,12 +556,28 @@ impl Router<'_> {
             font_library: Box::new(font_library),
             clipboard,
             current_tab_id: 0,
+            quick_actions:
+                crate::automexia::quick_actions::QuickActionRuntime::open_default(),
+            connection_hub,
+            external_tool_runner,
         }
     }
 
     #[inline]
     pub fn propagate_error_to_next_route(&mut self, error: RioError) {
         self.propagated_report = Some(error);
+    }
+
+    pub fn shutdown_services(&self) {
+        let cancelled = self.external_tool_runner.shutdown_now();
+        self.connection_hub.shutdown();
+        let audit_count = self.external_tool_runner.recent_audits().len();
+        debug_assert!(self.external_tool_runner.is_idle());
+        tracing::info!(
+            cancelled,
+            audit_count,
+            "managed external-tool runner reconciled during application shutdown"
+        );
     }
 
     #[inline]
@@ -523,6 +652,9 @@ impl Router<'_> {
             None,
             None,
             false,
+            self.quick_actions.clone(),
+            self.connection_hub.clone(),
+            self.external_tool_runner.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         let route = Route::new(Assistant::new(), RoutePath::Terminal, window);
@@ -587,6 +719,9 @@ impl Router<'_> {
             open_url,
             app_id,
             false,
+            self.quick_actions.clone(),
+            self.connection_hub.clone(),
+            self.external_tool_runner.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
 
@@ -623,6 +758,9 @@ impl Router<'_> {
             None,
             None,
             true,
+            self.quick_actions.clone(),
+            self.connection_hub.clone(),
+            self.external_tool_runner.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         self.routes.insert(
@@ -656,6 +794,9 @@ impl Router<'_> {
             open_url,
             None,
             false,
+            self.quick_actions.clone(),
+            self.connection_hub.clone(),
+            self.external_tool_runner.clone(),
         );
         self.routes.insert(
             window.winit_window.id().into(),
@@ -784,6 +925,9 @@ impl<'a> RouteWindow<'a> {
         open_url: Option<String>,
         app_id: Option<&str>,
         quake: bool,
+        quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
+        connection_hub: crate::automexia::connections::ConnectionHubRuntime,
+        external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
     ) -> RouteWindow<'a> {
         #[allow(unused_mut)]
         let mut window_builder =
@@ -816,8 +960,25 @@ impl<'a> RouteWindow<'a> {
             window_id: winit_window.id(),
         };
 
-        let screen = Screen::new(properties, config, event_proxy, font_library, open_url)
-            .expect("Screen not created");
+        let screen = Screen::new(
+            properties,
+            config,
+            event_proxy,
+            font_library,
+            open_url,
+            crate::screen::ScreenServices {
+                action_surface: crate::screen::action_surface::Controller::new(
+                    quick_actions,
+                ),
+                suggestions: crate::automexia::suggestions::SuggestionService::default(),
+                connection_hub:
+                    crate::automexia::connections::ConnectionHubController::new(
+                        connection_hub,
+                    ),
+                external_tool_runner,
+            },
+        )
+        .expect("Screen not created");
 
         #[cfg(target_os = "windows")]
         let fullscreen_display_request =

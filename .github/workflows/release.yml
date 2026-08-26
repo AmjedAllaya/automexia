@@ -33,13 +33,123 @@ jobs:
       - name: Preserve distro, user, shell, directory, and independent PTY state
         shell: pwsh
         run: cargo xtask test session-clone --native-wsl
+      - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
+        shell: pwsh
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {
+            throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'
+          }
+          $workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()
+          if ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {
+            throw 'could not resolve the checked-out workspace inside WSL'
+          }
+          & wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- "$1"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace
+          if ($LASTEXITCODE -ne 0) {
+            throw 'CP3.1 WSL shell lifecycle validation failed'
+          }
+
+  performance-assurance:
+    name: Enforce the active S2 latency and memory ratchet
+    if: vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1'
+    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-benchmark]
+    timeout-minutes: 240
+    env:
+      AUTOMEXIA_QA_BENCHMARKS: '1'
+      AUTOMEXIA_QA_RUN_LABEL: s2-release-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTOMEXIA_NATIVE_RESOURCE_REPORT: ${{ github.workspace }}\target\performance\native-resource.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+        with:
+          tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
+      - name: Execute the exact native and benchmark release workload
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/performance | Out-Null
+          cargo xtask test resize-stress --native-gui
+          if ($LASTEXITCODE -ne 0) { throw 'native resource assurance failed' }
+          cargo xtask qa --full --bundle
+          if ($LASTEXITCODE -ne 0) { throw 'controlled benchmark assurance failed' }
+      - name: Enforce the reviewed 30-day baseline
+        shell: pwsh
+        run: |
+          $measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
+          $toolchain = (& rustc --version).Trim()
+          $runner = @(
+            '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',
+            '--os', 'windows',
+            '--arch', 'x86_64',
+            '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',
+            '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',
+            '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',
+            '--toolchain', $toolchain,
+            '--profile', 'criterion-release-native-gui'
+          )
+          & python tools/ci/performance_assurance.py collect-native-resource `
+            --report target/performance/native-resource.json `
+            --output target/performance/native-memory.json `
+            --commit $env:GITHUB_SHA `
+            --operator $env:GITHUB_ACTOR `
+            --measured-at-utc $measuredAt @runner
+          if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }
+          & python tools/ci/performance_assurance.py collect-criterion `
+            --criterion-root "target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion" `
+            --supplemental target/performance/native-memory.json `
+            --output target/performance/candidate.json `
+            --commit $env:GITHUB_SHA `
+            --operator $env:GITHUB_ACTOR `
+            --measured-at-utc $measuredAt `
+            --require-classified @runner
+          if ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }
+          & python tools/ci/performance_assurance.py evaluate `
+            --candidate target/performance/candidate.json `
+            --expected-commit $env:GITHUB_SHA `
+            --output target/performance/comparison.json `
+            --require-active
+          if ($LASTEXITCODE -ne 0) { throw 'active S2 ratchet rejected this release' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: release-evidence-performance-assurance
+          path: |
+            target/performance/*.json
+            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
+          if-no-files-found: error
+          retention-days: 90
+
+  s1-assurance:
+    name: Enforce complete S1 native, visual, resource, and accessibility evidence
+    if: vars.AUTOMEXIA_S1_ASSURANCE_RUNNER == '1'
+    runs-on: [self-hosted, automexia-assurance]
+    timeout-minutes: 30
+    env:
+      AUTOMEXIA_S1_ASSURANCE_EVIDENCE: ${{ vars.AUTOMEXIA_S1_ASSURANCE_EVIDENCE }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Validate exact, current, complete S1 evidence
+        shell: pwsh
+        run: |
+          python tools/ci/s1_assurance.py check-policy
+          if ($LASTEXITCODE -ne 0) { throw 'S1 policy validation failed' }
+          python tools/ci/test_s1_assurance.py
+          if ($LASTEXITCODE -ne 0) { throw 'S1 mutation tests failed' }
+          python tools/ci/s1_assurance.py validate --manifest $env:AUTOMEXIA_S1_ASSURANCE_EVIDENCE --expected-commit $env:GITHUB_SHA --require-complete --output target/s1-assurance/summary.json
+          if ($LASTEXITCODE -ne 0) { throw 'S1 assurance rejected the release evidence' }
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: release-evidence-s1-assurance
+          path: target/s1-assurance/summary.json
+          if-no-files-found: error
+          retention-days: 90
 
   preflight:
-    needs: [native-gui-resilience, native-wsl-resilience]
-    if: needs.native-gui-resilience.result == 'success' && needs.native-wsl-resilience.result == 'success'
+    needs: [native-gui-resilience, native-wsl-resilience, performance-assurance, s1-assurance]
+    if: needs.native-gui-resilience.result == 'success' && needs.native-wsl-resilience.result == 'success' && needs.performance-assurance.result == 'success' && needs.s1-assurance.result == 'success'
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     environment: stable-release
     env:
+      GH_TOKEN: ${{ secrets.AUTOMEXIA_REPOSITORY_AUDIT_TOKEN }}
       AUTOMEXIA_WINDOWS_SIGNING_BACKEND: ${{ vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND }}
       AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
       AUTOMEXIA_WINDOWS_CERTIFICATE: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE != '' && 'configured' || '' }}
@@ -64,6 +174,13 @@ jobs:
           fetch-depth: 0
       - name: Install Linux build dependencies
         run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev python3-yaml shellcheck zsh
+      - name: Enforce exact source provenance and protected repository state
+        run: |
+          test -n "$GH_TOKEN"
+          python tools/ci/stable_release.py check-policy
+          python tools/ci/test_stable_release.py
+          python tools/ci/stable_release.py validate-source --expected-commit "$GITHUB_SHA" --release-tag "$GITHUB_REF_NAME"
+          python tools/ci/repository_protection.py audit --json
       - name: Protected-main and tag preconditions
         id: version
         run: |
@@ -590,6 +707,7 @@ jobs:
   publish:
     needs: [preflight, reproducibility-linux, package-windows, package-macos, package-linux, hardware-smoke]
     runs-on: ubuntu-latest
+    timeout-minutes: 180
     environment: stable-release
     permissions:
       contents: write

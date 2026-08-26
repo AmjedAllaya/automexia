@@ -1,0 +1,112 @@
+{
+  "schema": 1,
+  "phase": "CP3.1",
+  "status": "active-persistent-explicit-opt-in",
+  "limits": {
+    "enabled_aliases": 256,
+    "generated_file_bytes": 1048576,
+    "manifest_bytes": 65536,
+    "transaction_bytes": 1024,
+    "generation_directory_entries": 16,
+    "retained_previous_generations": 1
+  },
+  "publication": {
+    "canonical_source": "actions/actions.toml",
+    "generated_root": "generated/aliases",
+    "layout": "immutable-content-addressed-generations",
+    "activation_pointer": "current",
+    "rollback_pointer": "previous",
+    "transaction_journal": "transaction.pending",
+    "commit_order": "source-cas-then-pointer",
+    "crash_outcomes": "all-old-or-all-new",
+    "cross_process_lock": ".aliases.lock",
+    "disable_preserves_actions": true
+  },
+  "security": {
+    "private_permissions": true,
+    "nofollow_managed_state": true,
+    "sha256_manifest_and_files": true,
+    "compiler_identity_verified": true,
+    "native_wins": true,
+    "exact_override_same_owner_only": true,
+    "override_revalidated_at_load": true,
+    "doctor_strictly_read_only": true,
+    "startup_provider_execution": false,
+    "startup_network": false,
+    "startup_canonical_rewrite": false,
+    "implicit_action_execution": false
+  },
+  "shell_files": {
+    "powershell": "shell-integration/powershell/automexia.ps1",
+    "bash": "shell-integration/bash/automexia.bash",
+    "zsh": "shell-integration/zsh/automexia.zsh",
+    "fish": "shell-integration/fish/automexia.fish",
+    "cmd": "shell-integration/cmd/automexia.cmd"
+  },
+  "management_commands": [
+    "list",
+    "preview",
+    "test",
+    "enable",
+    "disable",
+    "rename",
+    "regenerate",
+    "disable-all",
+    "rollback",
+    "doctor",
+    "reload"
+  ],
+  "source_files": [
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/store.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/service.rs",
+    "apps/automexia-terminal/src/cli.rs"
+  ],
+  "required_tests": [
+    "publish_is_one_verified_generation_for_all_five_shells",
+    "source_drift_is_truthful_and_regeneration_rotates_one_previous",
+    "stale_writer_cannot_replace_a_newer_generation",
+    "tampered_artifact_is_never_returned_for_activation",
+    "doctor_rejects_tampered_retained_previous_generation",
+    "doctor_rejects_unsafe_artifact_permissions_even_when_digest_matches",
+    "doctor_rejects_unexpected_generation_entry",
+    "compiler_identity_mismatch_is_rejected",
+    "disabled_previous_pointer_fails_before_publication",
+    "disable_changes_only_the_pointer_and_preserves_generation",
+    "rollback_swaps_current_and_previous_generations",
+    "prepared_transition_recovers_all_old_when_source_was_not_saved",
+    "prepared_transition_recovers_all_new_when_source_was_saved",
+    "prepared_transition_activates_under_the_held_lock",
+    "powershell_loader_sources_one_verified_generation",
+    "powershell_loader_keeps_a_late_native_collision",
+    "powershell_loader_rejects_a_tampered_active_artifact",
+    "authenticated_exact_override_survives_regenerate_and_disable_only_for_same_owner",
+    "hostile_generation_manifest_bytes_never_panic",
+    "cross_process_lock_fails_fast_without_partial_state",
+    "linked_managed_parent_is_rejected"
+  ],
+  "native_test_files": [
+    "tools/ci/create_cp31_alias_fixture.py",
+    "tools/ci/test_shell_integration.sh",
+    "tools/ci/test_zsh_integration.zsh",
+    "tools/ci/test_fish_integration.fish",
+    "tools/ci/test_shell_integration.ps1",
+    "tools/ci/test_shell_sources.sh"
+  ],
+  "uninstall_files": [
+    "shell-integration/uninstall-unix.sh",
+    "shell-integration/uninstall-windows.ps1"
+  ],
+  "benchmark": "apps/automexia-terminal/benches/quick_action_store.rs",
+  "documents": [
+    "docs/ARCHITECTURE.md",
+    "docs/COMMAND-PRODUCTIVITY.md",
+    "docs/DEVOPS-ALIASES.md",
+    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+    "docs/ROADMAP.md",
+    "docs/SHELL-INTEGRATION.md",
+    "docs/TESTING.md"
+  ]
+}

@@ -1,4 +1,38 @@
-# Brand asset workflow
+# Automexia brand
+
+## Product message and voice
+
+Automexia's core promise is:
+
+> A flexible terminal that makes complex workflows faster, simpler, and easier to control.
+
+Automexia is for anyone who turns ideas into action through commands. Public
+writing should explain the practical value first: less repeated setup, clearer
+organization, flexible workspaces, and visible user control. The
+[Product vision](PRODUCT-VISION.md) is the authority for the purpose, audience,
+values, and broader direction.
+
+Use a simple, confident, and natural voice:
+
+- speak about people or users unless a passage is specifically for developers;
+- use concrete words such as commands, files, tasks, output, panes, and tools;
+- explain technical details when someone needs them to use, evaluate, build, or
+  trust the product;
+- keep what works today separate from implemented-but-gated, planned, and
+  research work;
+- describe future media, video, orchestration, and ecosystem ideas as planned or
+  research until their own delivery evidence exists;
+- describe Automexia as AI-capable but not AI-dependent when the optional LLM
+  Orchestration extension is relevant.
+
+Do not call Automexia an “AI terminal” or imply that a model, provider account,
+network connection, or paid API is required. Avoid inflated marketing claims,
+vague automation jargon, presenting future ideas as available, or suggesting
+that Automexia replaces the specialist tools a workflow depends on. When the
+optional orchestration proposal is discussed, say plainly that models propose
+reviewable plans while Automexia retains policy, approval, and execution control.
+
+## Visual asset workflow
 
 Automexia packages one canonical application mark across Windows, macOS, and
 Linux. The repository snapshot of the supplied source is

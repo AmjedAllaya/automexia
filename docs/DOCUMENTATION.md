@@ -22,20 +22,130 @@ the claim.
 ## Canonical ownership
 
 - `docs/index.md` owns navigation.
+- `docs/INSTALLATION.md` owns public availability, host preparation, the
+  supported source-build path, first verified launch, source updates, build
+  cleanup, source removal, and the boundary for future signed packages.
+- `docs/GETTING-STARTED.md` owns the first-session tutorial after installation.
+- `docs/EXTENSIONS.md` owns the plain-language user explanation of why
+  extensions exist, the current first-party inventory, public availability,
+  and the planned installation experience. It summarizes rather than replaces
+  the exact ecosystem, provider, architecture, and roadmap authorities.
+- `docs/FAQ.md` owns short onboarding answers and must link to exact authorities
+  instead of creating new feature, platform, security, or release claims.
+- `docs/PRODUCT-VISION.md` owns Automexia's purpose, audience, values,
+  experience principles, and broader direction. It does not define feature
+  availability.
 - `docs/FEATURES.md` owns the human-readable capability catalog.
+- `docs/MANUAL-FEATURE-TESTING.md` owns the end-to-end clean-machine manual
+  acceptance workbook: setup, feature-to-scenario mapping, positive/negative/
+  boundary workflows, expected results, controlled external evidence, and
+  cleanup. It consumes rather than overrides exact references, feature status,
+  machine contracts, specialized testing pages, and release policy.
 - `docs/CONFIGURATION.md`, `docs/KEYBOARD.md`, and
   `docs/CLI-REFERENCE.md` own exact public reference.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.
+- `docs/FEATURE-OWNERSHIP-AUDIT.md` owns the evidence-led map from implemented feature families to core, application, domain-package, UI-model, and extension owners; ADR 0035 owns the durable placement rule.
+- `docs/BUILD-WRAP-ADOPT-ARCHITECTURE.md` owns the planned technology
+  decision matrix and the core/first-party-extension/external-authority split.
+- `docs/AUTOMATION-STUDIO-ARCHITECTURE.md` owns the proposed embedded file-
+  editor, document, workspace-trust, language-tool, DevOps/SRE composition, and
+  typed script-run boundary. `docs/AUTOMATION-STUDIO-TESTING.md` owns its future
+  phase evidence ladder. They do not claim product availability or authorize
+  dependencies, implementation, or activation; proposed ADR 0030 owns the
+  durable decision.
+- `docs/COMMAND-PRODUCTIVITY.md` owns CP0-CP6 sequencing and
+  `docs/DEVOPS-ALIASES.md` owns the CP2/CP3 typed-action, pure projection,
+  collision/completion, metadata, CP3.1 private transaction/publication, native
+  activation/reload, rollback, and uninstall boundaries.
+- `docs/SEMANTIC-DIAGNOSTIC-NAVIGATOR.md` owns the proposed DN0-DN6 user
+  behavior, evidence ledger, terminal/app/renderer ownership, resource and
+  privacy limits, detector policy, lifecycle, accessibility, test ladder, and
+  phase exit criteria. It does not define a shipped action, shortcut, setting,
+  detector, or extension capability; proposed ADR 0032 owns the durable
+  decision.
+- `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md` owns the proposed PO0-PO8
+  product behavior, current evidence ledger, production context, evidence-quality
+  language, change/ownership/drift, resource/scheduling explanation,
+  cohort/revision/environment comparison, network diagnosis, SLO summaries,
+  situation-aware completion and Kubernetes rollout example,
+  impact/GitOps/JIT/policy review, Incident Mode, live-log/time/navigation
+  boundaries, managed operation and diagnostic-session lifecycle, runbooks,
+  resource/privacy limits, delivery order, and non-goals.
+  `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md` owns the exact
+  proposed PO0 serialization/compatibility rules, record envelopes, knowledge
+  and freshness tables, deterministic rule/ranking profiles, provider-specific
+  behavior, policy precedence, action lifecycle, journal fields, planned
+  configuration/actions, dependency decisions, migration and requirement
+  traceability. Its versioned JSON mirror, semantic checker and mutation suite
+  freeze a non-activating proposal; they do not accept ADR 0034 or prove PO1-PO8.
+  `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md` owns the exact six-surface
+  hierarchy, copy, responsive density, keyboard/focus/accessibility contract,
+  investigation views, end-to-end journeys, manual-versus-managed action and
+  diagnostic-session wording, provisional implementation map, phase
+  implementation slices, and UX definition of done.
+  `docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md` owns its future
+  scenario, oracle, provider, evidence-quality, ownership/drift, scheduler,
+  cohort, network-vantage, SLO/log/time, managed-session, security, native,
+  accessibility, resource, lifecycle, and release evidence ladder. These four
+  pages do not
+  claim a setting, UI, provider capability, watcher, log controller, diagnostic
+  session, journal, model, execution path, or release;
+  proposed ADR 0034 owns the durable decision.
+- `docs/ECOSYSTEM-PLATFORM.md` owns the current no-runtime behavior, fixed
+  D7/CP6 package/sandbox/capability/selected-input suggestion boundary, planned
+  review, and recovery/fallback contract. The detailed ordered work and evidence
+  ledger live in `docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md`; detailed
+  evidence commands and the future matrix live in
+  `docs/ECOSYSTEM-PLATFORM-TESTING.md`.
+- `docs/LLM-ORCHESTRATION-EXTENSION.md` owns the proposed LO0-LO5 optional LLM
+  Orchestration product, domain-neutral workflow contracts, provider isolation,
+  consent, privacy, resource, lifecycle, and delivery boundaries.
+  `docs/LLM-ORCHESTRATION-TESTING.md` owns its future evidence ladder. They do
+  not authorize a provider dependency, action registry, workflow executor,
+  extension capability, model download, or runtime activation; proposed ADR
+  0033 owns the durable decision.
+- `docs/UI-BRANDING-ROADMAP.md` owns renderer-surface U0-U10 status and
+  `docs/research/U10-UI-BRANDING-ASSURANCE-AUDIT.md` records its evidence-led
+  source/external reconciliation. The S1 policy remains the exact native,
+  visual, resource, accessibility, and review authority.
 - `docs/TESTING.md` owns evidence levels and commands.
-- `docs/ROADMAP.md` owns release sequencing.
+- `docs/FEATURE-TEST-REINFORCEMENT.md` owns the human per-feature scenario,
+  oracle, interaction, checker, and exit-criteria plan synchronized with
+  `tests/assurance/feature-test-reinforcement-v1.json`; both must change when
+  feature risks or required evidence change.
+- `docs/ROADMAP.md` owns release sequencing and the status-first feature/phase
+  register.
+- `docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md` owns the ordered focused
+  execution checklist for SSH, connectivity, remote workspaces, multi-cloud,
+  Quick Actions, autocomplete, and Production Operations PO0-PO8. It mirrors PO
+  phase status and acceptance from the canonical PO specification/UX/testing
+  set and `docs/ROADMAP.md`; it does not create a competing product contract or
+  replace the main status register or exact shipped-behavior references.
 - `docs/TERMINAL-FIRST-OPERATIONS.md` owns the planned command-first remote
   operations vocabulary and its cross-feature D/CP phase mapping. It does not
   define shipped CLI behavior until the exact reference and feature ledger are
   updated.
 - [Phase implementation audit](PHASE-IMPLEMENTATION-AUDIT.md) owns the
-  evidence-based status reconciliation across the S, D, CP, and G roadmap
-  tracks.
+  evidence-based status reconciliation across the S, D, CP, G, DN, AS, LO, and
+  PO roadmap tracks.
 - root governance/support/security/release files own their named policies.
+- `automexia_docs_repository_aligned/` is a versioned research and proposal
+  pack. Its manifest, snapshots, and RFDs preserve analysis and candidate
+  decisions; they do not override accepted ADRs, canonical pages, source,
+  tests, or release evidence. Integrate an accepted conclusion into its
+  canonical owner and leave a backlink instead of making the pack a second
+  authority.
+
+Reader-oriented pages under [user-guide](user-guide/index.md), [guide](guide/),
+[reference](reference/), [developer](developer/), and [project](project/) may
+summarize or reorganize these detailed owners for a specific audience. They
+must link back, preserve the same current behavior and status, and never
+override a machine-enforced top-level contract.
+
+The complete decision authority is [DECISIONS.md](DECISIONS.md) plus
+[docs/adr](adr/). The older project decision index, project roadmap, and
+path-adapted ADR copies 0001-0023 are retained as navigation and compatibility
+summaries. New decisions live only in the complete ADR tree.
 
 Other pages should link to these sources instead of copying large tables.
 
@@ -50,11 +160,16 @@ Every feature entry in `tests/assurance/feature-matrix.json` declares:
 The repository validator rejects missing files, anchors, non-Markdown targets,
 unsupported documentation keys, empty categories, and feature entries without
 all three forms. A new or materially changed feature must update its docs links,
-quality evidence, platform evidence, tests, and changelog fragment together.
+quality evidence, platform evidence, tests, roadmap status, phase audit, and
+changelog fragment together. Every behavior-affecting code, configuration, or
+test change updates its affected guide/reference/testing text in the same change,
+even when the feature's roadmap status does not change.
 
 ## Writing rules
 
-1. Lead with the outcome and state the supported version/platform scope.
+1. Lead with the user value and outcome before the technical approach, then
+   state the supported version/platform scope. Keep the message consistent with
+   [Product vision](PRODUCT-VISION.md).
 2. Separate current behavior from planned behavior and label external evidence
    honestly.
 3. Give copyable commands, expected results, failure behavior, limits, and a
@@ -73,24 +188,52 @@ quality evidence, platform evidence, tests, and changelog fragment together.
    include meaningful alternative text in web assets.
 10. Keep examples minimal and tested. Prefer a secure default and explain
     opt-outs rather than requiring configuration for normal use.
-11. When a canonical roadmap adds, renames, or removes a phase, update
-    `PHASE-IMPLEMENTATION-AUDIT.md` in the same change. Every phase needs an
-    explicit status, source evidence, remaining work, and honest external
-    validation limits.
+11. When a canonical roadmap adds, renames, removes, or changes a phase, update
+    both the `docs/ROADMAP.md` status-first register and
+    `PHASE-IMPLEMENTATION-AUDIT.md` in the same change. The register uses only
+    **Fully done**, **Partially done**, or **Not done**; every phase also needs
+    source evidence, remaining work, and honest external validation limits.
+12. Documentation is part of implementation, not a later follow-up. Update the
+    affected guide, reference, testing evidence, roadmap/audit status, and
+    changelog together with the behavior they describe.
+13. Research and proposal packs must identify an exact audited committed
+    baseline, distinguish implemented state from desired state, preserve
+    historical inputs explicitly, and avoid duplicate non-historical
+    authorities. Dependency names and imperative architecture language remain
+    candidates until an accepted ADR and implementation evidence say otherwise.
 
 ## Change checklist
 
 - Update the guide, reference, and explanation affected by the change.
+- Confirm every behavior-affecting code, configuration, or test change updates
+  its documentation in the same change.
 - Update `docs/index.md` when adding a canonical page.
 - Update `docs/FEATURES.md` and the feature assurance ledger for a new feature.
-- Update `docs/PHASE-IMPLEMENTATION-AUDIT.md` when roadmap scope or phase
-  status changes.
+- Update the `docs/ROADMAP.md` status-first register and
+  `docs/PHASE-IMPLEMENTATION-AUDIT.md` together when roadmap scope or phase
+  status changes; use only the three canonical roadmap labels.
 - Add or supersede an ADR for a durable boundary decision.
 - Update `SUPPORT.md`, `SECURITY.md`, migration, or release docs when their
   contracts change.
 - Add a `changes/` fragment unless the PR has an allowed docs-only label.
-- Run `python tools/ci/check_phase_implementation_audit.py`,
+- Run `python tools/ci/test_repository_aligned_docs.py` and
+  `python tools/ci/check_repository_aligned_docs.py` when the aligned pack changes.
+- Run `python tools/ci/test_pr_policy.py`,
+  `python tools/ci/check_phase_implementation_audit.py`,
+  `python tools/ci/test_phase_implementation_audit.py`,
   `python tools/ci/validate_repository.py`, and `cargo ready`.
+
+Run the Markdown hygiene regression test and aligned-pack regression test
+whenever documentation tooling or the proposal pack changes:
+
+    python tools/ci/test_documentation_hygiene.py
+    python tools/ci/test_repository_aligned_docs.py
+
+The pull-request policy rejects source, configuration, test, workflow, asset,
+or packaging changes that do not update at least one affected `docs/*.md` file
+in the same pull request. A changelog fragment does not count as documentation;
+documentation-only and changelog-only changes do not create a circular
+requirement.
 
 The policy job also runs an offline Markdown link check. External URLs should
 be primary, authoritative sources and are reviewed for content relevance even
@@ -101,7 +244,17 @@ when CI cannot fetch them.
 Markdown files are intentionally standalone, use a single H1, relative links,
 stable headings, and no repository-specific rendering extensions. A site
 generator can map the four page types into navigation without rewriting
-content. Generate website search and navigation from `docs/index.md`, and use
-the machine-readable feature ledger for capability/evidence views. Source code,
-not a website copy, remains authoritative so offline and online documentation
+content.
+
+The primary public journey is:
+
+1. `README.md` and `docs/index.md` explain the value and route the reader;
+2. `docs/INSTALLATION.md` gets the application running;
+3. `docs/GETTING-STARTED.md` and `docs/user-guide/index.md` teach the workspace;
+4. task guides lead to exact CLI, keyboard, configuration, platform, security,
+   and troubleshooting references.
+
+Generate website search and navigation from `docs/index.md`, and use the
+machine-readable feature ledger for capability/evidence views. Source code, not
+a website copy, remains authoritative so offline and online documentation
 cannot drift.

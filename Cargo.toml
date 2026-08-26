@@ -1,8 +1,19 @@
 [workspace]
 members = [
+    "automexia-keybindings",
     "automexia-extension-api",
     "automexia-extension-runtime",
+    "automexia-ecosystem",
+    "automexia-ecosystem-runtime",
+    "automexia-connectivity",
+    "automexia-command-productivity",
     "automexia-devops",
+    "extensions/devops-aws",
+    "extensions/devops-azure",
+    "extensions/devops-gcp",
+    "extensions/devops-kubernetes",
+    "extensions/devops-openshift",
+    "extensions/devops-teleport",
     "extensions/devops-ssh",
     "automexia-image",
     "automexia-ui-model",
@@ -52,9 +63,20 @@ log-level-environment = "AUTOMEXIA_LOG_LEVEL"
 shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 
 [workspace.dependencies]
+automexia-keybindings = { path = "automexia-keybindings", version = "0.4.0" }
 automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" }
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }
+automexia-ecosystem = { path = "automexia-ecosystem", version = "0.4.0" }
+automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.4.0" }
+automexia-connectivity = { path = "automexia-connectivity", version = "0.4.0" }
+automexia-command-productivity = { path = "automexia-command-productivity", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
+automexia-devops-aws = { path = "extensions/devops-aws", version = "0.4.0" }
+automexia-devops-azure = { path = "extensions/devops-azure", version = "0.4.0" }
+automexia-devops-gcp = { path = "extensions/devops-gcp", version = "0.4.0" }
+automexia-devops-kubernetes = { path = "extensions/devops-kubernetes", version = "0.4.0" }
+automexia-devops-openshift = { path = "extensions/devops-openshift", version = "0.4.0" }
+automexia-devops-teleport = { path = "extensions/devops-teleport", version = "0.4.0" }
 automexia-devops-ssh = { path = "extensions/devops-ssh", version = "0.4.0" }
 automexia-image = { path = "automexia-image", version = "0.4.0" }
 automexia-ui-model = { path = "automexia-ui-model", version = "0.4.0" }
@@ -74,6 +96,7 @@ rio-fonts = { path = "rio-fonts", version = "0.4.0" }
 rio-vt = { path = "rio-vt", version = "0.4.0" }
 
 raw-window-handle = { version = "0.6.2", features = ["std"] }
+rfd = { version = "=0.17.2" }
 parking_lot = { version = "0.12.5", features = [
     "nightly",
     "hardware-lock-elision",
@@ -84,6 +107,7 @@ smallvec = { version = "1.15.2", default-features = false }
 # unicode-width = "0.2.0"
 unicode-width = { package = "unicode-width-16", version = "0.1.0" }
 unicode-segmentation = "1.13.3"
+unicode-normalization = "0.1.25"
 simdutf = "0.7.0"
 base64 = "0.23.0"
 image_rs = { package = "image", version = "0.25.10", default-features = false, features = [
@@ -101,6 +125,8 @@ onig = { version = "6.5.3", default-features = false }
 bytemuck = { version = "1.25.2", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.145"
+serde-saphyr = { version = "=1.1.0", default-features = false, features = ["deserialize"] }
+sha2 = "0.11.0"
 tempfile = "3.23.0"
 glob = "0.3.4"
 notify = "8.2.0"
@@ -126,6 +152,13 @@ loom = "0.7.2"
 proptest = "1.11.0"
 dashmap = "6.2.1"
 flate2 = "1.1.9"
+configparser = { version = "3.2.0", default-features = false }
+time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
+zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
+ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
+wasmtime = { version = "48.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wit-parser = "=0.254.0"
+wat = "=1.254.0"
 
 [profile.release]
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%

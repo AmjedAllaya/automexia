@@ -2,6 +2,20 @@ $script:AutomexiaCloudReparseTagBase = [Convert]::ToUInt32('9000001A', 16)
 $script:AutomexiaCloudReparseTagMask = [Convert]::ToUInt32('FFFF0FFF', 16)
 $script:AutomexiaNameSurrogateReparseTagMask = [Convert]::ToUInt32('20000000', 16)
 
+function Get-AutomexiaFileSha256([string]$Path) {
+    # Keep installer integrity checks independent of PowerShell module
+    # auto-loading. Microsoft.PowerShell.Utility can be unavailable in a
+    # constrained or partially initialized Windows PowerShell 5.1 session.
+    $stream = [IO.File]::OpenRead($Path)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash($stream))).Replace('-', '').ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+        $stream.Dispose()
+    }
+}
+
 function Initialize-AutomexiaReparseInspector {
     if ('Automexia.NativeFileSystem' -as [type]) { return }
 

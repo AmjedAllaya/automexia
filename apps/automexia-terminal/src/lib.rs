@@ -3,3 +3,4 @@
 //! artifact published in v0.4.
 
 pub mod automexia;
+pub mod cli;

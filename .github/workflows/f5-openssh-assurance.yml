@@ -1,0 +1,79 @@
+name: F5 controlled native OpenSSH assurance
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_commit:
+        description: Exact lowercase commit digest already approved for assurance
+        required: true
+        type: string
+      platform:
+        description: Native runner platform
+        required: true
+        type: choice
+        options:
+          - windows
+          - macos
+          - linux
+      architecture:
+        description: Native runner architecture
+        required: true
+        type: choice
+        options:
+          - x86_64
+          - aarch64
+
+permissions:
+  contents: read
+
+concurrency:
+  group: f5-openssh-${{ inputs.source_commit }}-${{ inputs.platform }}-${{ inputs.architecture }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Bind private native evidence to the approved host and artifacts
+    if: vars.AUTOMEXIA_F5_OPENSSH_RUNNER == '1'
+    environment: f5-openssh-release
+    runs-on:
+      group: automexia-openssh
+      labels: automexia-openssh-${{ inputs.platform }}-${{ inputs.architecture }}
+    timeout-minutes: 40
+    env:
+      AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE: ${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY: ${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE: ${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT: ${{ inputs.source_commit }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ inputs.source_commit }}
+          persist-credentials: false
+      - name: Validate the contract and bind the controlled evidence on Windows
+        if: inputs.platform == 'windows'
+        shell: pwsh
+        run: |
+          python3 tools/ci/test_native_openssh_evidence.py
+          if ($LASTEXITCODE -ne 0) { throw 'F5 mutation tests failed' }
+          New-Item -ItemType Directory -Force -Path target/native-openssh | Out-Null
+          $summary = python3 tools/ci/native_openssh_evidence.py --validate-environment
+          if ($LASTEXITCODE -ne 0) { throw 'F5 controlled evidence was rejected' }
+          [IO.File]::WriteAllText(
+            'target/native-openssh/summary.json',
+            "$summary`n",
+            [Text.UTF8Encoding]::new($false)
+          )
+      - name: Validate the contract and bind the controlled evidence on Unix
+        if: inputs.platform != 'windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 tools/ci/test_native_openssh_evidence.py
+          mkdir -p target/native-openssh
+          python3 tools/ci/native_openssh_evidence.py --validate-environment > target/native-openssh/summary.json
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: f5-openssh-${{ inputs.platform }}-${{ inputs.architecture }}-summary
+          path: target/native-openssh/summary.json
+          if-no-files-found: error
+          retention-days: 90

@@ -108,6 +108,97 @@ remove_owned_file() {
   rm -f "$path"
 }
 
+validate_alias_state() {
+  alias_root=$config_root/generated/aliases
+  alias_generations=$alias_root/generations
+  assert_real_directory "$alias_root"
+  assert_real_directory "$alias_generations"
+  [ -d "$alias_root" ] || return 0
+  for entry in "$alias_root"/*; do
+    [ -e "$entry" ] || continue
+    case "${entry##*/}" in
+      current|previous|.aliases.lock|transaction.pending) assert_owned_file "$entry" ;;
+      generations) assert_real_directory "$entry" ;;
+      *)
+        printf 'uninstall-unix.sh: unexpected alias state entry: %s\n' "$entry" >&2
+        exit 1
+        ;;
+    esac
+  done
+  generation_count=0
+  for directory in "$alias_generations"/* "$alias_generations"/.aliases-stage-*; do
+    [ -e "$directory" ] || continue
+    generation_count=$((generation_count + 1))
+    [ "$generation_count" -le 16 ] || {
+      printf 'uninstall-unix.sh: too many alias generations; refusing cleanup\n' >&2
+      exit 1
+    }
+    assert_real_directory "$directory"
+    name=${directory##*/}
+    case "$name" in
+      .aliases-stage-*) ;;
+      *)
+        printf '%s' "$name" | grep -Eq '^[0-9a-f]{64}$' || {
+          printf 'uninstall-unix.sh: invalid alias generation name: %s\n' "$name" >&2
+          exit 1
+        }
+        ;;
+    esac
+    for artifact in "$directory"/*; do
+      [ -e "$artifact" ] || continue
+      shell=${artifact##*/}
+      case "$shell" in
+        generation.manifest)
+          assert_owned_file "$artifact"
+          continue
+          ;;
+        powershell) expected=automexia-aliases.ps1 ;;
+        bash) expected=automexia-aliases.bash ;;
+        zsh) expected=automexia-aliases.zsh ;;
+        fish) expected=automexia-aliases.fish ;;
+        cmd) expected=automexia-aliases.doskey ;;
+        *)
+          printf 'uninstall-unix.sh: unexpected alias generation entry: %s\n' "$artifact" >&2
+          exit 1
+          ;;
+      esac
+      assert_real_directory "$artifact"
+      for shell_artifact in "$artifact"/*; do
+        [ -e "$shell_artifact" ] || continue
+        [ "${shell_artifact##*/}" = "$expected" ] || {
+          printf 'uninstall-unix.sh: unexpected shell alias artifact: %s\n' "$shell_artifact" >&2
+          exit 1
+        }
+        assert_owned_file "$shell_artifact"
+      done
+    done
+  done
+}
+
+remove_alias_state() {
+  alias_root=$config_root/generated/aliases
+  alias_generations=$alias_root/generations
+  [ -d "$alias_root" ] || return 0
+  for directory in "$alias_generations"/* "$alias_generations"/.aliases-stage-*; do
+    [ -e "$directory" ] || continue
+    remove_owned_file "$directory/powershell/automexia-aliases.ps1"
+    remove_owned_file "$directory/bash/automexia-aliases.bash"
+    remove_owned_file "$directory/zsh/automexia-aliases.zsh"
+    remove_owned_file "$directory/fish/automexia-aliases.fish"
+    remove_owned_file "$directory/cmd/automexia-aliases.doskey"
+    for shell in powershell bash zsh fish cmd; do
+      rmdir "$directory/$shell" 2>/dev/null || true
+    done
+    remove_owned_file "$directory/generation.manifest"
+    rmdir "$directory"
+  done
+  remove_owned_file "$alias_root/current"
+  remove_owned_file "$alias_root/previous"
+  remove_owned_file "$alias_root/.aliases.lock"
+  remove_owned_file "$alias_root/transaction.pending"
+  rmdir "$alias_generations" "$alias_root"
+}
+
 assert_real_directory "$config_root"
 assert_real_directory "$fish_conf_root"
 assert_real_directory "$config_root/generated"
@@ -146,6 +237,7 @@ for shell in powershell bash zsh fish cmd; do
   done
 done
 assert_owned_file "$completion_root/.disabled"
+validate_alias_state
 
 # All destructive targets are validated before the first mutation.
 remove_marked_block "$HOME/.bashrc"
@@ -185,5 +277,6 @@ for shell in powershell bash zsh fish cmd; do
   rmdir "$directory" 2>/dev/null || true
 done
 remove_owned_file "$completion_root/.disabled"
+remove_alias_state
 rmdir "$completion_root" "$config_root/generated" "$config_root" "$fish_conf_root" 2>/dev/null || true
 printf '%s\n' 'Automexia shell integration and managed completion files removed. Restart your shells.'

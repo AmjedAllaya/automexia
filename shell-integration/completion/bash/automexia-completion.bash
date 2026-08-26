@@ -1,6 +1,6 @@
 # Automexia CP1 Bash completion adapter. Native definitions always win.
 [[ ${AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED:-0} == 1 ]] && return 0
-export AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED=1
+AUTOMEXIA_COMPLETION_ADAPTER_BASH_LOADED=1
 
 if [[ -n ${AUTOMEXIA_CONFIG_HOME:-} ]]; then
   __automexia_completion_config_root=$AUTOMEXIA_CONFIG_HOME
@@ -16,6 +16,7 @@ __automexia_completion_loaded=''
 __automexia_completion_directory_safe() {
   local generated_dir config_dir shell_dir directory
   [[ $__automexia_completion_config_root == /* ]] || return 1
+  [[ ${#__automexia_completion_config_root} -le 4096 ]] || return 1
   generated_dir=${__automexia_completion_root%/*}
   config_dir=${generated_dir%/*}
   shell_dir="$__automexia_completion_root/bash"
@@ -41,18 +42,30 @@ __automexia_completion_hash() {
 }
 
 __automexia_load_completion() {
-  local target=$1 file expected actual
+  local target=$1 file expected alternate actual digest digest_count
   file="$__automexia_completion_root/bash/$target.bash"
   [[ -f $file && ! -L $file && -f $file.sha256 && ! -L $file.sha256 ]] || return 0
-  [[ $(wc -c <"$file") -le 1114112 && $(wc -c <"$file.sha256") -le 128 ]] || return 0
+  [[ $(wc -c <"$file") -le 1114112 && $(wc -c <"$file.sha256") -le 192 ]] || return 0
   if complete -p "$target" >/dev/null 2>&1; then
     __automexia_completion_collisions="${__automexia_completion_collisions}${__automexia_completion_collisions:+,}$target"
     return 0
   fi
-  IFS= read -r expected <"$file.sha256" || return 0
-  [[ $expected =~ ^[0-9a-f]{64}$ ]] || return 0
+  expected=''
+  alternate=''
+  digest_count=0
+  while IFS= read -r digest; do
+    ((digest_count += 1))
+    ((digest_count <= 2)) || return 0
+    [[ $digest =~ ^[0-9a-f]{64}$ ]] || return 0
+    if ((digest_count == 1)); then
+      expected=$digest
+    else
+      alternate=$digest
+    fi
+  done <"$file.sha256"
+  ((digest_count >= 1)) || return 0
   actual=$(__automexia_completion_hash "$file") || return 0
-  [[ $actual == "$expected" ]] || return 0
+  [[ $actual == "$expected" || $actual == "$alternate" ]] || return 0
   # shellcheck disable=SC1090 # The exact, user-private, digest-verified path is intentional.
   . "$file"
   __automexia_completion_loaded="${__automexia_completion_loaded}${__automexia_completion_loaded:+,}$target"

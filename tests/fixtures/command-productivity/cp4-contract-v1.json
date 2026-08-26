@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "phase": "M13/F13/CP4",
+  "status": "product-integrated-nonactivated",
+  "publication_outcomes": [
+    "published",
+    "unchanged",
+    "cleared"
+  ],
+  "limits": {
+    "provider_actions": 256,
+    "actions_per_provider": 16,
+    "presentation_fields": 32,
+    "published_routes": 32,
+    "search_results": 128
+  },
+  "providers": [
+    "ssh",
+    "aws",
+    "azure",
+    "gcp",
+    "kubernetes",
+    "openshift",
+    "teleport"
+  ],
+  "decisions": [
+    "insert-without-enter",
+    "broker-required",
+    "refreshing",
+    "stale",
+    "expired",
+    "offline",
+    "unavailable",
+    "error",
+    "replaced"
+  ],
+  "authorities": {
+    "provider_refresh": false,
+    "process": false,
+    "network": false,
+    "credential": false,
+    "filesystem": false,
+    "pty": false,
+    "renderer": false,
+    "exact_execution": false,
+    "startup": false,
+    "keystroke_provider_work": false,
+    "persistence": false
+  },
+  "source_files": [
+    "automexia-command-productivity/src/actions/provider.rs",
+    "automexia-command-productivity/src/actions/activation.rs",
+    "extensions/devops-aws/src/lib.rs",
+    "extensions/devops-azure/src/lib.rs",
+    "extensions/devops-gcp/src/lib.rs",
+    "extensions/devops-kubernetes/src/implementation.rs",
+    "extensions/devops-openshift/src/implementation.rs",
+    "extensions/devops-teleport/src/lib.rs",
+    "apps/automexia-terminal/src/automexia/connections/providers.rs",
+    "apps/automexia-terminal/src/automexia/connections/controller.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
+    "automexia-ui-model/src/quick_actions.rs",
+    "apps/automexia-terminal/src/screen/action_surface.rs",
+    "apps/automexia-terminal/src/renderer/command_palette.rs"
+  ],
+  "test_files": [
+    "automexia-command-productivity/tests/provider_quick_actions_cp4.rs",
+    "automexia-command-productivity/tests/quick_action_activation.rs",
+    "extensions/devops-aws/src/lib.rs",
+    "extensions/devops-azure/src/lib.rs",
+    "extensions/devops-gcp/src/lib.rs",
+    "extensions/devops-kubernetes/tests/contracts.rs",
+    "extensions/devops-openshift/tests/contracts.rs",
+    "extensions/devops-teleport/tests/contracts.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/providers.rs",
+    "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
+    "automexia-ui-model/src/quick_actions.rs",
+    "apps/automexia-terminal/src/screen/action_surface.rs",
+    "apps/automexia-terminal/src/renderer/command_palette.rs",
+    "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"
+  ],
+  "fuzz_target": "fuzz/fuzz_targets/provider_quick_actions.rs",
+  "benchmark": "automexia-command-productivity/benches/quick_actions.rs",
+  "documents": [
+    "docs/PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md",
+    "docs/COMMAND-PRODUCTIVITY.md",
+    "docs/SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md",
+    "docs/TESTING.md"
+  ]
+}

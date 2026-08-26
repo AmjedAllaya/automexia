@@ -276,9 +276,15 @@ impl Application<'_> {
     /// global hotkey API, the compositor keybinding + a regular
     /// binding cover it there.
     fn setup_quake_hotkey(&mut self) {
+        let typed_triggers = crate::bindings::registry::build(&self.config)
+            .ok()
+            .flatten()
+            .map(|snapshot| snapshot.global_quake_triggers())
+            .unwrap_or_default();
         match crate::global_hotkey::setup(
             self.event_proxy.clone(),
             &self.config.bindings.keys,
+            &typed_triggers,
         ) {
             Ok(hotkeys) => self.global_hotkey = hotkeys,
             Err(error) => tracing::warn!("{error}"),
@@ -288,15 +294,19 @@ impl Application<'_> {
     fn replace_quake_hotkeys(
         &mut self,
         keys: &[rio_backend::config::bindings::KeyBinding],
+        typed_triggers: &[String],
     ) -> Result<(), String> {
         if let Some(hotkeys) = self.global_hotkey.as_mut() {
-            hotkeys.try_replace(keys)?;
+            hotkeys.try_replace(keys, typed_triggers)?;
             if hotkeys.is_empty() {
                 self.global_hotkey = None;
             }
         } else {
-            self.global_hotkey =
-                crate::global_hotkey::setup(self.event_proxy.clone(), keys)?;
+            self.global_hotkey = crate::global_hotkey::setup(
+                self.event_proxy.clone(),
+                keys,
+                typed_triggers,
+            )?;
         }
         Ok(())
     }
@@ -683,7 +693,33 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 update_colors_based_on_theme(&mut config, theme);
 
                 let has_font_updates = self.config.fonts != config.fonts;
-                let has_binding_updates = self.config.bindings != config.bindings;
+                let has_binding_updates = self.config.bindings != config.bindings
+                    || self.config.keyboard.binding_profile
+                        != config.keyboard.binding_profile
+                    || self.config.keyboard.binding_strict
+                        != config.keyboard.binding_strict;
+                let prepared_binding_registry = if has_binding_updates {
+                    match crate::bindings::registry::build(&config) {
+                        Ok(snapshot) => Some(snapshot),
+                        Err(error) => {
+                            let report = rio_backend::error::RioError {
+                                level: rio_backend::error::RioErrorLevel::Warning,
+                                report: rio_backend::error::RioErrorType::InvalidConfigurationFormat(
+                                    format!(
+                                        "keybinding profile preparation failed: {error}. The last known-good configuration remains active."
+                                    ),
+                                ),
+                            };
+                            for route in self.router.routes.values_mut() {
+                                route.report_error(&report);
+                                route.request_redraw();
+                            }
+                            return;
+                        }
+                    }
+                } else {
+                    None
+                };
 
                 let prepared_font_library = match prepare_runtime_font_reload(
                     has_font_updates,
@@ -707,7 +743,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 };
 
                 if has_binding_updates {
-                    if let Err(error) = self.replace_quake_hotkeys(&config.bindings.keys)
+                    let typed_triggers = prepared_binding_registry
+                        .as_ref()
+                        .and_then(|snapshot| snapshot.as_ref())
+                        .map(|snapshot| snapshot.global_quake_triggers())
+                        .unwrap_or_default();
+                    if let Err(error) =
+                        self.replace_quake_hotkeys(&config.bindings.keys, &typed_triggers)
                     {
                         let report = rio_backend::error::RioError {
                             level: rio_backend::error::RioErrorLevel::Warning,
@@ -735,6 +777,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         &self.config,
                         &self.router.font_library,
                         has_font_updates,
+                        prepared_binding_registry.clone().unwrap_or(None),
+                        has_binding_updates,
                     );
                     route.window.configure_window(&self.config);
                     route.clear_errors();
@@ -788,6 +832,22 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     {
                         context.messenger.send_bytes(resp.into_bytes());
                     }
+                }
+            }
+            RioEventType::Rio(RioEvent::ChildExited(route_id, raw_status)) => {
+                let notification =
+                    self.router.routes.get_mut(&window_id).and_then(|route| {
+                        route
+                            .window
+                            .screen
+                            .context_manager
+                            .reconcile_managed_child_exit(route_id, raw_status)
+                    });
+                if let Some(notification) = notification {
+                    self.handle_desktop_notification(
+                        notification.title,
+                        notification.body,
+                    );
                 }
             }
             RioEventType::Rio(RioEvent::CloseTerminal(route_id)) => {
@@ -1185,6 +1245,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         &self.config,
                         &self.router.font_library,
                         false,
+                        None,
+                        false,
                     );
                     route.window.configure_window(&self.config);
                 }
@@ -1376,6 +1438,113 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
+                if route.window.screen.connection_hub_is_active() {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let scale = route.window.screen.sugarloaf.scale_factor();
+                        let size = route.window.screen.sugarloaf.window_size();
+                        let hit = route.window.screen.renderer.connection_hub.hit_test(
+                            route.window.screen.mouse.x as f32 / scale,
+                            route.window.screen.mouse.y as f32 / scale,
+                            (size.width, size.height, scale),
+                        );
+                        if let Some(hit) = hit {
+                            if hit
+                                == crate::renderer::connection_hub::ConnectionHubHit::ReviewFiles
+                            {
+                                let selected = rfd::FileDialog::new()
+                                    .set_title("Review exact OpenSSH configuration files")
+                                    .set_parent(&route.window.winit_window)
+                                    .pick_files();
+                                if let Some(paths) = selected {
+                                    route.window.screen.review_connection_files(paths);
+                                }
+                            } else {
+                                route.window.screen.handle_connection_hub_hit(hit);
+                            }
+                            route.request_redraw();
+                        }
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
+                if route.window.screen.renderer.assistant.is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    if state == ElementState::Pressed
+                        && button == MouseButton::Left
+                        && route.window.screen.handle_assistant_click()
+                    {
+                        if !route.window.screen.renderer.assistant.is_active() {
+                            route.assistant.clear();
+                        }
+                        route.request_redraw();
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .compatibility_inspector
+                    .is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let _ =
+                            route.window.screen.handle_compatibility_inspector_click();
+                        route.request_redraw();
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
+                let picker_open = route
+                    .window
+                    .screen
+                    .renderer
+                    .island
+                    .as_ref()
+                    .is_some_and(|island| island.is_color_picker_open());
+                if picker_open {
+                    if state == ElementState::Pressed && button == MouseButton::Left {
+                        let _ = route.window.screen.handle_tab_appearance_picker_click();
+                        route.request_redraw();
+                    }
+                    if state == ElementState::Released && button == MouseButton::Left {
+                        route.window.screen.mouse.left_button_state =
+                            ElementState::Released;
+                        route.window.screen.mouse.hint_click_latched = None;
+                        route.window.screen.mouse.image_preview_click_latched = false;
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
+
                 if route.path != RoutePath::Terminal {
                     #[cfg(target_os = "macos")]
                     if state == ElementState::Pressed
@@ -1486,6 +1655,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         let chrome_press = route.window.screen.take_chrome_press();
 
                         if let MouseButton::Left = button {
+                            // Search owns its complete surface before split
+                            // borders, terminal content, or window chrome.
+                            if route
+                                .window
+                                .screen
+                                .handle_search_click(&mut self.router.clipboard)
+                            {
+                                route.request_redraw();
+                                return;
+                            }
+
                             // Check if clicking on a panel border to start resize
                             {
                                 let mx = route.window.screen.mouse.x as f32;
@@ -1516,24 +1696,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 }
                             }
 
-                            if route.window.screen.handle_assistant_click() {
-                                route.request_redraw();
-                                return;
-                            }
-
                             if route
                                 .window
                                 .screen
                                 .handle_palette_click(&mut self.router.clipboard)
-                            {
-                                route.request_redraw();
-                                return;
-                            }
-
-                            if route
-                                .window
-                                .screen
-                                .handle_search_click(&mut self.router.clipboard)
                             {
                                 route.request_redraw();
                                 return;
@@ -1686,6 +1852,16 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             && route
                                 .window
                                 .screen
+                                .handle_window_control_release(&route.window.winit_window)
+                        {
+                            route.request_redraw();
+                            return;
+                        }
+
+                        if button == MouseButton::Left
+                            && route
+                                .window
+                                .screen
                                 .renderer
                                 .island
                                 .as_ref()
@@ -1814,8 +1990,114 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 route.window.screen.mouse.y = y;
                 route.window.screen.mouse.raw_y = position.y;
 
+                if route.window.screen.renderer.confirm_quit.is_active() {
+                    let scale = route.window.screen.sugarloaf.scale_factor();
+                    let size = route.window.screen.sugarloaf.window_size();
+                    let mx = x as f32 / scale;
+                    let my = y as f32 / scale;
+                    if route.window.screen.renderer.confirm_quit.hover(
+                        mx,
+                        my,
+                        (size.width, size.height, scale),
+                    ) {
+                        route.request_overlay_redraw();
+                    }
+                    let cursor = if route
+                        .window
+                        .screen
+                        .renderer
+                        .confirm_quit
+                        .hovered_action()
+                        .is_some()
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    return;
+                }
+
+                if route.window.screen.renderer.assistant.is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    let scale = route.window.screen.sugarloaf.scale_factor();
+                    let win_size = route.window.screen.sugarloaf.window_size();
+                    let mx = x as f32 / scale;
+                    let my = y as f32 / scale;
+                    if route.window.screen.renderer.assistant.hover(
+                        mx,
+                        my,
+                        (win_size.width, win_size.height, scale),
+                    ) {
+                        route.request_overlay_redraw();
+                    }
+                    let cursor = if route
+                        .window
+                        .screen
+                        .renderer
+                        .assistant
+                        .hovered_button()
+                        .is_some()
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    return;
+                }
+
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .compatibility_inspector
+                    .is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
+                    let scale = route.window.screen.sugarloaf.scale_factor();
+                    let size = route.window.screen.sugarloaf.window_size();
+                    let mx = x as f32 / scale;
+                    let my = y as f32 / scale;
+                    if route.window.screen.renderer.compatibility_inspector.hover(
+                        mx,
+                        my,
+                        (size.width, size.height, scale),
+                    ) {
+                        route.request_overlay_redraw();
+                    }
+                    let cursor = if route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .hovered_action()
+                        .is_some()
+                    {
+                        CursorIcon::Pointer
+                    } else {
+                        CursorIcon::Default
+                    };
+                    route.window.winit_window.set_cursor(cursor);
+                    return;
+                }
+
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .island
+                    .as_ref()
+                    .is_some_and(|island| island.is_color_picker_open())
+                {
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
+                    return;
+                }
+
                 if route.path != RoutePath::Terminal
                     || route.window.screen.renderer.confirm_quit.is_active()
+                    || route.window.screen.connection_hub_is_active()
                 {
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
@@ -1838,38 +2120,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
 
-                // Handle assistant overlay hover
-                if route.window.screen.renderer.assistant.is_active() {
-                    let scale = route.window.screen.sugarloaf.scale_factor();
-                    let win_size = route.window.screen.sugarloaf.window_size();
-                    let win_w = win_size.width;
-                    let mx = x as f32 / scale;
-                    let my = y as f32 / scale;
-                    if route.window.screen.renderer.assistant.hover(
-                        mx,
-                        my,
-                        win_w,
-                        win_size.height,
-                        scale,
-                    ) {
-                        route.request_overlay_redraw();
-                    }
-
-                    if route
-                        .window
-                        .screen
-                        .renderer
-                        .assistant
-                        .hovered_button()
-                        .is_some()
-                    {
-                        route.window.winit_window.set_cursor(CursorIcon::Pointer);
-                    } else {
-                        route.window.winit_window.set_cursor(CursorIcon::Default);
-                    }
-                    return;
-                }
-
                 // Handle command palette hover
                 if route.window.screen.renderer.command_palette.is_enabled() {
                     let scale = route.window.screen.sugarloaf.scale_factor();
@@ -1890,38 +2140,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
-                // Handle search overlay hover
-                if route.window.screen.renderer.search.is_active() {
-                    let scale = route.window.screen.sugarloaf.scale_factor();
-                    let win_w = route.window.screen.sugarloaf.window_size().width;
-                    let mx = x as f32 / scale;
-                    let my = y as f32 / scale;
-                    if route
-                        .window
-                        .screen
-                        .renderer
-                        .search
-                        .hover(mx, my, win_w, scale)
-                    {
-                        // UI-only change (hover highlight). `set_dirty`
-                        // passes `Renderer::run`'s per-context gate;
-                        // the inner damage match hits
-                        // `(None, None) => TerminalDamage::Noop` so
-                        // no rows rebuild. The search overlay itself
-                        // is drawn unconditionally after the per-context
-                        // loop in `Renderer::run`.
-                        route
-                            .window
-                            .screen
-                            .ctx_mut()
-                            .current_mut()
-                            .renderable_content
-                            .pending_update
-                            .set_dirty();
-                        route.request_redraw();
-                    }
-                }
-
                 if route.window.screen.mouse.left_button_state == ElementState::Pressed
                     && route
                         .window
@@ -1935,6 +2153,22 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.window.screen.handle_tab_drag_move(x as f32 / scale);
                     route.window.winit_window.set_cursor(CursorIcon::Default);
                     route.request_redraw();
+                    return;
+                }
+
+                let (over_search, search_hover_changed) =
+                    route.window.screen.update_search_hover(x, y);
+                if search_hover_changed {
+                    route.request_redraw();
+                }
+                if over_search {
+                    if route.window.screen.clear_close_button_hover() {
+                        route.request_redraw();
+                    }
+                    if route.window.screen.clear_chrome_action_hover() {
+                        route.request_redraw();
+                    }
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
                     return;
                 }
 
@@ -2175,9 +2409,28 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             WindowEvent::MouseWheel { delta, phase, .. } => {
                 if route.path != RoutePath::Terminal
                     || route.window.screen.renderer.confirm_quit.is_active()
+                    || route.window.screen.connection_hub_is_active()
+                    || route.window.screen.renderer.assistant.is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .island
+                        .as_ref()
+                        .is_some_and(|island| island.is_color_picker_open())
                 {
                     return;
                 }
+                // Focus the pane under the pointer before reading dimensions
+                // or delivering this same wheel event.
+                let _ = route.window.screen.select_current_based_on_wheel();
+
                 let _ = route.window.screen.dismiss_image_preview();
 
                 if self.config.hide_cursor_when_typing {
@@ -2277,7 +2530,37 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::Ime(ime) => {
-                if route.window.screen.renderer.assistant.is_active() {
+                if route.window.screen.renderer.assistant.is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .island
+                        .as_ref()
+                        .is_some_and(|island| island.is_color_picker_open())
+                {
+                    return;
+                }
+
+                if route.window.screen.connection_hub_is_active() {
+                    match ime {
+                        Ime::Commit(text) => {
+                            route.window.screen.connection_hub_ime_commit(&text);
+                        }
+                        Ime::Preedit(text, _) => {
+                            route.window.screen.connection_hub_ime_preedit(
+                                (!text.is_empty()).then_some(text.as_str()),
+                            );
+                        }
+                        Ime::Enabled | Ime::Disabled => {}
+                    }
+                    route.request_redraw();
                     return;
                 }
 
@@ -2327,6 +2610,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             WindowEvent::Touch(touch) => {
+                if route.window.screen.connection_hub_is_active() {
+                    return;
+                }
                 on_touch(route, touch, &mut self.router.clipboard);
             }
 
@@ -2387,13 +2673,29 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     &self.config,
                     &self.router.font_library,
                     false,
+                    None,
+                    false,
                 );
                 route.window.configure_window(&self.config);
                 route.request_redraw();
             }
 
             WindowEvent::DroppedFile(path) => {
-                if route.window.screen.renderer.assistant.is_active() {
+                if route.window.screen.renderer.assistant.is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                    || route
+                        .window
+                        .screen
+                        .renderer
+                        .island
+                        .as_ref()
+                        .is_some_and(|island| island.is_color_picker_open())
+                {
                     return;
                 }
 
@@ -2424,6 +2726,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::RedrawRequested => {
+                let maximized = route.window.winit_window.is_maximized();
+                if let Some(island) = route.window.screen.renderer.island.as_mut() {
+                    island.set_window_maximized(maximized);
+                }
+
                 route.begin_render();
 
                 match route.path {
@@ -2576,6 +2883,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     // This is irreversible - if this event is emitted, it is guaranteed to be the last event that gets emitted.
     // You generally want to treat this as an “do on quit” event.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.router.shutdown_services();
         // Ensure that all the windows are dropped, so the destructors for
         // Renderer and contexts ran.
         self.router.routes.clear();

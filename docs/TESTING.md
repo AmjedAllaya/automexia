@@ -52,11 +52,14 @@ host-provided. The required evidence is:
 | Surface | Required host and checks |
 |---|---|
 | Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| PowerShell, CMD, ConPTY, window ownership, WGPU/CPU rendering, and Windows shell formatting | Native Windows runs `tools/ci/test_powershell.ps1`, `cargo xtask test resize-stress --native-gui`, `cargo xtask test session-clone --native-windows`, and the focused image GUI lifecycle. |
+| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize, clone, WSL, and image gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
 | Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
 | Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
 | WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
 | macOS windows, Metal/WGPU, universal application, signing, and notarization | Native Intel/Apple-Silicon macOS jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
+
+Exact WGPU/CPU, PowerShell, neutral CMD, and native WSL result evidence is in
+[Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md).
 
 The native CI job intentionally enables every Cargo feature on all three host
 families. Platform-specific code must use target configuration, not rely on a
@@ -100,21 +103,36 @@ Run the ledger and workflow mutation contracts directly with:
 ```text
 python tools/ci/check_feature_assurance.py
 python tools/ci/test_feature_assurance.py
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
 python tools/ci/check_documentation_coverage.py
 python tools/ci/test_documentation_coverage.py
 python tools/ci/check_phase_implementation_audit.py
 python tools/ci/test_phase_implementation_audit.py
+python tools/ci/test_pr_policy.py
 python tools/ci/check_platform_coverage.py
 python tools/ci/test_platform_coverage.py
 ```
+Per-feature reinforcement is canonical in
+[Feature test reinforcement](FEATURE-TEST-REINFORCEMENT.md).
 
 The phase-audit contract also compares the implementation audit with every
-canonical roadmap. It requires an explicit status for each declared phase,
+canonical roadmap and the main roadmap's status-first feature register. The
+register permits exactly **Fully done**, **Partially done**, or **Not done** and
+must match every phase and normalized implementation status in the executive
+matrix. The checker also requires an explicit status for each declared phase,
 links to all roadmap sources, a pinned audited source baseline, and the shared
 correctness, security, performance, resource, storage, resilience, retry,
 cross-platform, accessibility, visual, test, benchmark, fuzz, coverage, and
-release evidence vocabulary. Its mutation suite proves that missing phases,
-statuses, sources, or evidence dimensions fail closed.
+release evidence vocabulary. Its mutation suite proves that stale, missing,
+duplicated, or nonstandard roadmap statuses and missing phases, sources, or
+evidence dimensions fail closed.
+
+The pull-request policy separately treats source, configuration, test, workflow,
+asset, and packaging changes as documentation-relevant. It rejects such a pull
+request unless an affected `docs/*.md` file changes in the same diff; a
+changelog fragment alone does not satisfy the rule. Its unit suite covers source,
+test/workflow/configuration, asset/packaging, and documentation-only cases.
 
 The canonical ledger, phase audit, and platform matrix are part of repository
 validation, so `cargo ready`, `cargo ci`, and every pull request fail when a
@@ -122,8 +140,9 @@ workspace member, roadmap phase, required repository surface, quality
 dimension, native host, shell contract, display feature, architecture check,
 package validator, or referenced evidence path/job/heading loses ownership. A
 pull request that adds or materially changes a feature or phase must update the
-ledger and phase audit in the same change; neither document replaces the tests
-it references.
+ledger, affected documentation, main-roadmap status register, phase audit, and
+changelog in the same change; none of those records replaces the tests it
+references.
 
 On Windows, the contributor gate scopes RustSec's Git fetch to Git for
 Windows' `schannel` backend when the caller has not supplied an explicit
@@ -208,31 +227,67 @@ pre-existing verifier state and always removes settings it created. WPR cancels
 a recording it started on failure and can delete the private ETL after hashing
 and recording its size/host manifest.
 
-### Non-activated session-launch review boundary
+### D0/D3 non-activated session-launch review boundary
 
-The proposed D3 broker is compiled only by frontend tests. Run its complete
-contract and the versioned capability constructors with:
+The pull-request policy is part of this fail-closed boundary. It classifies the
+terminal context/process owner, extension API/runtime, SSH extension,
+session-launch fixtures/checkers, security ADRs, workflow, and policy checker as
+protected. Approval normalization rejects the author, bots, case-only
+duplicates, malformed records, and approvals whose reviewed commit does not
+match the exact pull-request head. Review JSON is capped at 4 MiB/10,000
+records, and newline/delimiter injection in logins or 40/64-hex commit IDs is
+rejected before writing the GitHub environment. Run its regression suite with:
+
+```text
+python tools/ci/test_pr_policy.py
+```
+
+This local check is defense in depth. Production activation still requires two
+actual independent human approvals and server-side rules that prevent the
+workflow/checker from weakening itself.
+
+The D3 broker, one application runner, approval UI, and guarded route seam
+compile in production but remain fail-closed. Run their versioned contract,
+mutation, ownership, model, and native-seam checks with:
 
 ```text
 cargo test -p automexia-extension-api --lib --locked
+cargo test -p teletypewriter --locked
+cargo check -p teletypewriter --target x86_64-apple-darwin --locked
+python tools/ci/check_session_launch_d0.py
+python tools/ci/test_session_launch_d0.py
 cargo test -p automexia-terminal --bin automexia --locked context::launch_broker::tests
+cargo test -p automexia-ui-model --locked --test direct_openssh_review
+cargo test -p automexia-terminal --bin automexia --locked connection_review_is_responsive_and_exposes_all_pointer_decisions
+cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_mnemonics_are_focus_aware_and_never_reach_the_pty
 cargo xtask verify architecture
 ```
 
-The native Windows test target exercises volume/file-index replacement
-detection. Native Linux and macOS test jobs exercise device/inode replacement
-detection. The property case proves every accepted destination remains one
-literal native argument. Denial, mismatch, option confusion, environment and
-secret isolation, fail-closed configured resolution, authorization-owned cwd
-fallback, exact decision expiry/scope, registered capsule rebind, operation
-replay, nonce exhaustion, redaction, revocation, stale lease, sibling-scope,
-and zero-retained-state 1/10/50-cycle cases are deterministic.
+The checker locks schema-1/schema-2/schema-3/schema-4/schema-5 immutability and schema-6's
+production-disabled activation, linked unverified principal, trusted digest source/size, exact
+version/contract/verification, manual-shell behavior, grants/audits/defaults,
+nine trust boundaries, four-platform resolution, authority ceiling, 23 native
+scenarios, one production broker/runner owner, runner bounds, one
+ContextManager guarded-PTY owner, and actionable review semantics. Mutation
+tests reject re-gating the production modules under `cfg(test)` or widening
+their authority.
 
-These tests do not spawn OpenSSH and are not evidence that managed SSH is
-available. Real process/PTY/route binding, cancellation/teardown, PID reuse,
-application close, atomic native check-to-spawn, package signature/digest,
-host-key/authentication/tunnel behavior, and 1/10/50-session process/PTY/
-renderer resource results remain external activation gates listed in
+Rust tests cover bounded publish-before-wake executable review, 30-second
+freshness, exact identity/preparation equality, stale/exit invalidation,
+fail-closed package/argv/environment/cwd/lease behavior, 1/10/50 lifecycles,
+route publication, redaction, review input, and responsive accessibility.
+Lifecycle tests cover bounded PTY-worker joining and Windows whole-Job
+termination. Unix retains the waitable leader, signals its owned process group,
+and never signals after reaping; the macOS check is compile evidence only.
+
+These checks deliberately do not start production OpenSSH:
+`MANAGED_SESSION_LAUNCH_ENABLED` remains false and the linked candidate remains
+`Unverified`. ADR 0003 protected exact-head approvals/server enforcement, real
+loader attestation/revocation, native Linux/macOS plus controlled Windows
+OpenSSH host-key/auth/tunnel/hostile-output scenarios, graceful/forced child-tree
+proof for the locally implemented Job Object/process-group cleanup, controlled
+pixels/screen readers, and 1/10/50 process/PTY/renderer
+resource results remain activation gates in
 [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) and the
 [broker contract](SESSION-LAUNCH-BROKER.md).
 
@@ -440,14 +495,10 @@ before running the canonical command:
         Join-Path $PWD 'artifacts\native-gui\wgpu.json'
     cargo xtask test resize-stress --native-gui
 
-The command writes clean four-pane WGPU and CPU workspace PNGs under the
-adjacent typography-captures directory, plus palette and close-confirmation
-PNGs under modal-captures. The report also records each pane's effective font
-size, zoom-reset baseline, scaled size, and line height, and rejects blank
-or low-detail frames. Retained screenshots temporarily enter per-monitor DPI
-awareness so 125%-225% Windows scaling cannot crop the visual evidence. These
-artifacts are local evidence and must not be
-committed.
+The command writes WGPU/CPU workspace, modal, and result PNGs beside the report.
+It records effective font geometry, rejects blank/low-detail frames, and captures
+at per-monitor DPI. Any foreign OS overlay invalidates the frame and requires a
+rerun. These private artifacts must not be committed.
 
 ## Build-artifact lifecycle and storage
 
@@ -556,6 +607,7 @@ Every PR runs policy checks regardless of changed paths:
 - Windows MSVC x64 tests and ARM64 cross-check;
 - macOS x64 and ARM64 compile checks;
 - `cargo deny`, dependency review, CodeQL, and secret-safe fork permissions;
+- versioned hosted-CI/repository-protection contract and mutation tests;
 - LLVM coverage with a non-decreasing recorded global baseline and at least 80%
   line coverage on changed Automexia-owned lines.
 
@@ -649,6 +701,10 @@ Renderer-neutral geometry additionally proves that a visible context tag starts
 on at least a 1.22-row rhythm from the preceding row origin, no context produces
 no spacing geometry, and tiny or unusually tall rows remain bounded without
 overlapping the complete path below. Completion timing shares the same origin.
+
+The same path proves seven viewport-boundary heights, full source eviction,
+silent/newline-only output, repaint/reflow, deduplication, and bounded overflow
+performance; see [command-result assurance](COMMAND-RESULT-ASSURANCE.md).
 The same gate proves that 1,000 queued PTY resizes collapse to the final size while input and
 shutdown remain ordering barriers. A recording PTY sink verifies exact
 delivery order, duplicate suppression, final size, and retry behavior after a
@@ -688,6 +744,8 @@ HWND-visible/application-not-ready race. The opt-in `native-gui-test-hooks`
 build feature is enabled only by that command. Product builds perform no
 snapshot or capture I/O.
 
+See [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) for the focused incident and native evidence.
+
 Before the pane-local coverage, the native gate exercises the exact top-level
 tab lifecycle used by `Ctrl+T`. It requires the new tab to be selected exactly
 once, expose its launch profile before shell output, inherit the live window
@@ -695,9 +753,11 @@ viewport rather than the reduced PTY extent, place its footer against the pane
 bottom, and publish one complete prompt without synthetic keyboard input.
 The same real ConPTY then enters bare `cmd`, requires CMD identity and the
 complete lambda/path prompt without a second keypress, renders folder and Rust
-icons directly beside fixture names, exits, and requires PowerShell identity to
-return on the first parent prompt. Native snapshots are decoded explicitly as
-UTF-8, so mojibake cannot satisfy the glyph assertions.
+icons directly beside fixture names, and requires that output to own a fresh
+neutral result surface with no fabricated generation, exit status, or duration.
+It then exits and requires PowerShell identity to return on the first parent
+prompt. Native snapshots are decoded explicitly as UTF-8, so mojibake cannot
+satisfy the glyph assertions.
 The driver sends the already-tested CSI Up encoding through Automexia's input
 queue, avoiding nondeterministic desktop foreground-lock policy while retaining
 the real frontend queue, ConPTY, PSReadLine, VT, damage, and renderer path. Rust
@@ -815,9 +875,9 @@ tests also assert the deterministic root/cyan/violet/blue/lime path hierarchy.
 `cargo test -p rio-fonts` parses the embedded Symbols Nerd Font and verifies
 that every declared composite folder codepoint has a real glyph.
 
-These cover Windows-drive versus WSL title classification, custom chrome hit
-targets and resize edges, the absence of workspace-action paint and hit targets,
-conditional pane-local tab-rail reservation, pane/sibling isolation, HiDPI hit
+These cover Windows-drive versus WSL title classification, custom chrome
+independent-card snapshots, hit targets, resize edges, and the absence of
+workspace-action paint and hit targets, conditional pane-local tab-rail reservation, pane/sibling isolation, HiDPI hit
 testing, terminal-content displacement, native snapshot restoration, bundled Nerd icon
 codepoints, explicit shell identity, terminal-owned full-path three-row prompts,
 per-command context snapshots, OSC command status/timing, and context/result
@@ -850,14 +910,13 @@ base64, parser-transcode, and bounded Kitty temporary-file transport regressions
 instead of running the entire VT suite or calling native `simdutf` FFI. The
 optimized SIMD path remains enabled in production. The explicit Miri suite has
 a 30-minute job timeout; filesystem isolation is disabled only on the ephemeral
-hosted runner so the two bounded temporary-file cases can execute. Criterion
-cases exist for parser throughput, row rebuild, prompt layout, cache access,
-worker submission, cold/warm image quick look, PTY startup/clean exit, and
-sustained PTY output/clean exit. Hosted nightly compiles every declared target
-under a 45-minute hard job limit; a named self-hosted runner executes and
-retains every Criterion result under a 180-minute hard job limit when
-AUTOMEXIA_BENCHMARK_RUNNER=1. Run the commands below for local
-measurements. The controlled 30-day comparison baseline is not complete.
+hosted runner so the two bounded temporary-file cases can execute. Nine controlled Criterion targets cover parser/reflow/rendering, cache/worker,
+image, PTY, OpenSSH inventory, Quick Actions/store, and connection planning.
+Hosted nightly keeps compile-only proof separate. Controlled QA uses a unique
+per-run target; Linux retains classified latency, while the declared Windows
+GPU/benchmark runner composes the existing native private-byte/working-set
+report with Criterion. Normalized artifacts are retained for 90 days. The
+reviewed baseline is still collecting.
 
 The renderer-neutral application-service benchmarks are available with:
 
@@ -893,12 +952,21 @@ The renderer-neutral `row_rebuild_full_snapshot` and
 `prompt_layout_resize_reflow` cases cover full visible-row materialization and
 repeated narrow/wide semantic-prompt reflow.
 
-The performance roadmap includes startup, sustained PTY throughput,
-resize/reflow latency, idle/scrollback memory, and extension refresh latency.
-The complete 30-day controlled baseline has not yet been collected. Once the
-execution pipeline and baseline exist, results remain informational for 30 days;
-afterward, regressions above 5% latency or 10% memory need a recorded
-maintainer waiver.
+The S1/S2 policy and mutation gate is:
+
+```text
+python tools/ci/performance_assurance.py check-policy
+python tools/ci/test_performance_assurance.py
+```
+
+Bounded no-follow normalization rejects linked/changed files, unsafe metadata,
+weak samples, dirty/mismatched source, stale/future evidence, and unknown metrics.
+`build-baseline` needs 30-90 same-runner days with operator/digest traceability
+and independent HTTPS review. Protected activation checks clean source. Tagged
+`evaluate --require-active --expected-commit` fails
+above 5% latency or 10% memory except for an exact temporary waiver. The
+checked-in baseline remains `collecting`; see the
+[S2 completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
 
 For a focused optimized measurement of the most common unchanged-frame fast
 path, run:
@@ -913,6 +981,10 @@ does not copy the resident style table or visible grid. Run the complete
 `vt_input` benchmark before and after changes to parser, grid, or snapshot code;
 record the machine, power mode, and median result in any performance waiver.
 
+Command-result lifecycle benchmark commands, samples, and interpretation are in
+[Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md).
+
+
 Shell-history repaint latency has a dedicated deep-scrollback benchmark:
 
 ```text
@@ -924,19 +996,47 @@ the clear/repaint pattern emitted by PSReadLine, Readline, and ZLE for Up Arrow
 and reverse-history search. Runtime must remain proportional to the live prompt
 block, not the configured scrollback depth.
 
-Current keybinding tests construct macOS, Windows, and Linux/BSD default
-tables on every host, verify classic tab/split/clone scopes, geometric pane
-focus, pane-local tab cycling, global-tab separation, and explicit shell
-passthroughs, exercise user overrides and intentional compound actions, and
-reject shortcut collisions and duplicate visible palette labels. Pure layout
-tests cover all four directions, uneven/nested grids, perpendicular-beam
-preference, deterministic ties, edge stopping, and local-tab wraparound. The
-planned compiled-profile suite—including fixture provenance,
-origins and shadowing, atomic reload, fallthrough, sequences/tables/chains,
-generated docs, fuzzing, and hot-path latency—is specified in the
-[full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) and must
-not be reported as implemented until those gates exist and pass.
+Current keybinding assurance constructs the classic platform tables and the
+pinned Ghostty profile on every host. The pure suite verifies fixture hashes,
+action schemas, aliases, bounded parsing, layer precedence, strict/permissive
+diagnostics, unbinds, allocation-free physical/named/logical precedence,
+sequences, exact byte flushing, tables, chains, scopes, and deterministic
+Windows adaptation. Frontend tests cover atomic registry publication, classic
+bridging, shell fallthrough, finite numeric parameter translation, Ghostty's
+positive-down scroll convention, clear semantics, selection/search,
+zoom/equalize, secure export, profile-derived palette hints, migration,
+inspector redaction/modal input, bounded selection serialization, and top-level-
+tab parking, restore, and two-step clear.
 
+The focused compatibility gate is:
+
+```powershell
+cargo xtask test keybindings
+cargo xtask generate keybindings --version 1.3.1
+cargo xtask generate keybindings --check
+cargo xtask verify keybindings
+python tools/ci/check_ghostty_compatibility.py
+python tools/ci/test_ghostty_compatibility.py
+python tools/ci/test_ghostty_native_evidence.py
+cargo check --manifest-path fuzz/Cargo.toml --bins --locked --offline
+cargo bench -p automexia-keybindings --bench registry --locked -- --noplot
+```
+
+`cargo xtask test keybindings` runs all `automexia-keybindings` unit/property
+tests plus the frontend registry, command-palette, inspector, compatibility
+action, export, migration, zoom/equalize, topology-history, and VT bounded-
+selection owners before byte-verifying generated artifacts and references.
+Hosted Linux nightly runs both Ghostty fuzzers; mutation gates freeze wiring.
+Native evidence uses a private exact-commit manifest and QA keeps only a
+redacted summary. Missing evidence is not a pass. Scenarios, benchmarks, the
+Windows fuzz failure, and cleanup are in the
+[ledger](GHOSTTY-COMPATIBILITY-IMPLEMENTATION.md#2026-08-26-local-assurance-evidence).
+
+These tests prove pure compilation and Windows runtime contracts; they do not
+replace native macOS/Linux keyboard-layout, rendered-frame, assistive-
+technology, resource-cycle, packaging, or signing evidence. The macOS fixture
+is an explicit external prerequisite and profile selection fails closed until
+it exists.
 Nightly builds unsigned installers for every artifact target. The Windows x64
 MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5
 source because WiX 3 has no ARM64 MSI support. Linux package jobs install the
@@ -958,6 +1058,8 @@ Release trust has a deterministic PR layer and a credentialed controlled layer.
 Run the PR layer with:
 
 ```text
+python tools/ci/stable_release.py check-policy
+python tools/ci/test_stable_release.py
 python tools/ci/release_trust.py --check-policy
 python tools/ci/test_release_trust.py
 python tools/ci/check_platform_coverage.py
@@ -1022,33 +1124,465 @@ calls, missing resource ceilings, weakened private permissions, or loss of
 fuzz/benchmark ownership. Full threat model, limits, and manual interpretation
 are in [OpenSSH inventory](SSH-INVENTORY.md).
 
-## Planned Connection Hub assurance
+## Connection Hub F2 model and golden contract
 
-The Connection Hub is D5/D6 planned work, not a shipped v0.4 test claim. Before
-activation it must add the deterministic, native, controlled-provider,
-accessibility, visual, security, performance, privacy, and resource evidence in
-[Connection Hub](CONNECTION-HUB.md#verification-plan).
+The F2/D5.0 capability-free baseline is implemented and remains non-activated.
+It is reproduced locally with:
 
-At minimum, PR evidence must prove no process/network/authentication work during
-passive discovery or search; legal generation-scoped authentication transitions;
-exact capability approval/revocation; secret-free serialized models; hostile
-OpenSSH/provider/kubeconfig parsing; exact Windows/Unix launch arguments;
-cross-session capsule isolation; responsive modal/focus/z-order behavior; and
-10,000-entry virtualized search without unbounded storage or workers.
+    cargo test -p automexia-connectivity --tests
+    cargo test -p automexia-ui-model --tests
+    python tools/ci/check_connection_hub_f2.py
+    python tools/ci/test_connection_hub_f2.py
+    cargo bench -p automexia-connectivity --bench connection_planning --no-run
+    cargo test --manifest-path fuzz/Cargo.toml --no-run
+    cargo xtask verify architecture
 
-Native release evidence must cover Windows, macOS, and Linux OpenSSH/agent
-flows; AWS/Azure/Google/Kubernetes/OpenShift expiry, MFA, cancellation, offline,
-and denial; real plus mocked SSH; Narrator/NVDA, VoiceOver, and Orca; and 1/10/50
-session/process/tunnel teardown. Synthetic provider fixtures and
-renderer-neutral goldens remain mandatory but never substitute for controlled
-native evidence. Until those gates land in executable CI/QA ownership, the Hub
-must remain documented as planned/non-activated.
+The connectivity tests cover strict/versioned records and sealed validation; all document/dependency/review/step ceilings; hostile, command-shaped, option-confusing, and secret-bearing input; redaction and stable fingerprints; authentication correlation, stale generations, and state transitions; 64-step/order-independent/panic-free conversion; and the all-false process/network/provider/credential/PTY/listener authority ceiling.
 
-## CP2.0 model and CP2.1 persistence-only Quick Action assurance
+The UI-model tests cover the ten-provider and all-auth fixture matrices, every
+Hub empty/loading/failure state, wide/medium/narrow projection at 100-400% text
+scale, bounded row virtualization, modal/background-inert/topmost behavior,
+keyboard navigation, managed composite focus with stale-selection fallback,
+opener focus restoration, route-aware modal tab cycles, reading order, live
+loading progress, status text independent of color, high contrast, reduced
+motion/transparency, all seven Connection Review sections, blocking decisions,
+and value-redacted human dry-run action narration. The structured files under
+`tests/fixtures/connection-hub/goldens` are semantic/layout contracts, not a
+claim about native pixels or a shipped dialog.
 
-The capability-free schema/parser/validator remains in the exact three-file
-`automexia-devops/src/actions` boundary. CP2.1 adds exactly five reviewed app
-sources under `automexia::quick_actions` for bounded private no-follow storage,
+`tools/ci/check_connection_hub_f2.py` freezes schemas, ceilings, provider/state/
+layout matrices, 30 required regressions, sealed validation, panic-free planning,
+evidence owners, forbidden authority primitives, and disabled execution/modal
+invariants. Its mutation suite proves those checks fail when limits, authority,
+states, validation construction, panic primitives, required tests,
+accessibility, or projected-value privacy invariants drift.
+Nightly owns the bounded `connection_planning` fuzz target; controlled QA owns
+execution of the 64-step validation/resolution benchmark. The benchmark build
+is a PR/nightly ownership check, not a longitudinal performance ratchet.
+
+A local Windows release-profile diagnostic on 2026-08-17 first used ten samples:
+validation measured 3.8865-4.5138 us and resolution measured 87.246-89.835 us.
+Criterion reported an apparent 10.635% validation regression, but that sample
+contained a severe high outlier. The required 50-sample investigation then
+measured validation at 3.6726-3.7202 us and resolution at 85.880-87.687 us;
+validation improved and resolution remained within noise. Both paths are far
+below the 10 ms reviewed ceiling. These local measurements prove the current
+bounded implementation, not the controlled named-hardware or 30-day baseline.
+
+The fuzz package and `connection_planning` target compile on this Windows host.
+Native campaign execution remains external here: the sanitizer build could not
+load `clang_rt.asan_dynamic-x86_64.dll`, while the `--sanitizer none` fallback
+failed in the MSVC linker on the libFuzzer sanitizer-coverage start/stop symbols.
+Nightly's supported sanitizer runner remains the execution owner; this local
+host limitation is not recorded as a successful fuzz campaign.
+
+No F2 test requires an account, network, process, filesystem persistence, PTY,
+window server, or GPU. Resource-lifetime and storage evidence are not applicable
+because F2 is synchronous pure modeling with bounded owned collections and no
+resource/persistence owner. This does not waive those gates for D5.1/D5.2.
+
+### M3 direct OpenSSH review contract
+
+The M3 source slice is application-wired and deliberately nonactivated:
+
+    cargo test -p automexia-connectivity --test direct_openssh_review --locked
+    cargo test -p automexia-terminal launch_broker::tests --locked
+    cargo test -p automexia-terminal automexia::connections::receipts::tests --locked
+    cargo test -p automexia-terminal automexia::connections::runtime::tests::managed_receipt --locked
+    python tools/ci/check_session_launch_d0.py
+    python tools/ci/test_session_launch_d0.py
+    python tools/ci/check_feature_assurance.py
+
+The devops tests cover the exact 17 managed options followed by one destination,
+full-review equality before opaque launch binding, destination and identity
+redaction, observation/trust/source/capsule/plan invalidation, and explicit
+preservation of OpenSSH `KexAlgorithms` and `WarnWeakCrypto` policy. Broker and
+runner tests cover reordered/removed/extra argv, current native executable
+replacement, grant/scope/replay/capacity/publication rules, actual success/
+failure/unavailable/cancel outcomes, fixed notifications, reconnect eligibility,
+and 1/10/50 bounded pure lifecycles.
+
+Receipt tests cover private permissions and no-follow reads, malformed/oversized
+state, model/reconnect identity validation, destination-free debug, 256-record
+and 2-MiB ceilings, atomic primary/previous recovery, read-only/disk-full/busy
+errors, worker queue saturation, shutdown drain, restart recovery, and stale D4
+source rejection. The connection-owned private-filesystem adapter is separately
+ratcheted for no-follow opens, Windows handle volume/file-index identity, native
+link/reparse rejection, private Windows DACL
+or Unix mode validation, and source-identity snapshots; it does not depend on Quick
+Actions. Filesystem work occurs only on the existing bounded connection worker;
+the runner's sink call is nonblocking.
+
+On the native Windows x86_64 development host on 2026-08-22, the focused M3,
+Windows handle-identity/ACL, schema/mutation, phase-audit, and assurance tests
+passed. Final gates passed: formatting, warning-denied workspace Clippy, 1,801
+CI-profile tests with 7 explicitly skipped, workspace documentation tests, full
+QA, and `cargo ready`. Full QA also passed resize/session-clone stress, Loom,
+dependency policy, and repository contracts; its report is
+`target/qa/20260822T114111Z-10124/report.html`.
+
+The first full nextest attempt had 1,798 passes, 1 architecture-contract failure,
+and 7 skips; two automatic retries reproduced the failure. The receipt source
+had incorrectly imported the Quick Actions private-filesystem module. Moving the
+generic no-follow/native-permission adapter under Connection ownership removed
+that cross-phase runtime edge. The final 1,801-test rerun and architecture
+self-verification passed. The first `cargo ready` preflight also truthfully stopped
+because D: had 10.95 GiB free versus its 12-GiB threshold; the complete rerun used
+a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
+verification phases and the application-version smoke test, then removed its
+7.79-GiB verification tree and disposable outer target.
+
+Active schema 6 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
+contract and hash-checks historical schemas 1, 2, 3, and 4. No test in this
+slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the product or treats
+`Unverified` as attested. Real OpenSSH prompts, network traffic, descendant
+cleanup, manual-SSH regression, native pixels/screen readers, and
+Windows/macOS/Linux/WSL 1/10/50 resource campaigns remain external gates.
+
+### M4 SSH routes and trust contract
+
+The M4 source slice is nonactivated and can be reproduced with:
+
+    cargo test -p automexia-connectivity --test direct_openssh_review --locked
+    cargo test -p automexia-devops-ssh --locked
+    cargo test -p automexia-ui-model --test direct_openssh_review --locked
+    cargo test -p automexia-ui-model --test connection_hub --locked
+    cargo test -p automexia-terminal direct_openssh --locked
+    cargo test -p automexia-terminal connection_hub --locked
+    python tools/ci/check_session_launch_d0.py
+    python tools/ci/test_session_launch_d0.py
+    python tools/ci/test_pr_policy.py
+
+On the Windows x86_64 development host, the focused suites passed 19 core
+review cases, 31 D4 unit plus 4 D4 integration cases, 3 review-projection cases,
+13 Hub-model cases, 5 application-adapter cases, 9 renderer/screen cases, 9
+schema mutation cases, and 12 protected-path policy cases. Strict all-feature
+Clippy passed for `automexia-devops`, `automexia-devops-ssh`,
+`automexia-ui-model`, and `automexia-terminal`.
+
+Final required gates passed: formatting, warning-denied workspace Clippy, 1,812
+CI-profile tests with 7 explicitly skipped, 64 workspace documentation tests
+with 3 ignored examples, and `python3 tools/ci/qa.py --full`. Full QA also
+passed repository and shell contracts, resize/session-clone stress, Loom, and
+dependency policy. Its report is
+`target/qa/20260822T141736Z-26152/report.html`.
+
+The first full nextest attempt had 1,811 passes, 1 architecture-contract failure,
+and 7 skips; its automatic retry reproduced the failure. The existing workspace
+`base64` dependency used for exact OpenSSH fingerprint decoding was missing from
+the private-crate dependency allowlist. Adding that one explicit reviewed entry
+to the architecture contract fixed the cause; the focused self-verification and
+complete 1,812-test rerun passed.
+
+The first `cargo ready` preflight truthfully stopped because D: had 7.94 GiB free
+versus its 12-GiB threshold. The complete rerun used a verified disposable C:
+target with 22.58 GiB free, passed all three cold isolated phases, dependency
+policy, persistent application build, and the `automexia 0.4.0` version smoke,
+then removed its 7.79-GiB verification tree and exact disposable outer target.
+
+The regression set covers distinct host/user/port input, exact direct and routed
+argv, first-value canonical ProxyJump (8 hops/2 KiB), option/ProxyCommand/shell/
+raw-IPv6/oversize denial, route/evidence staleness, first-use/known/changed full
+algorithm and 32-byte SHA-256 evidence, changed-key binding denial, debug
+redaction, no `known_hosts` mutation, copy-without-execution/newline/Enter, and
+bounded hostile `ssh-add -l -E sha256` public output (2 seconds, 64 KiB, 64
+identities). The existing workspace `base64` dependency is reused for exact
+32-byte OpenSSH fingerprint validation; no new third-party dependency was added.
+
+Primary sources reviewed on 2026-08-22 were the OpenBSD
+[`ssh_config(5)`](https://man.openbsd.org/ssh_config),
+[`ssh(1)`](https://man.openbsd.org/ssh), and
+[`ssh-add(1)`](https://man.openbsd.org/ssh-add.1) manuals plus upstream
+[`ssh.c`](https://github.com/openssh/openssh-portable/blob/master/ssh.c) and
+[`readconf.c`](https://github.com/openssh/openssh-portable/blob/master/readconf.c).
+They support wrapping system OpenSSH, command-line-first route precedence, exact
+argument arrays, public fingerprint listing, and leaving KEX/warning policy to
+OpenSSH. Automexia does not run `ssh -G`, parse effective config, implement SSH,
+or take key/agent/`known_hosts` custody.
+
+Renderer-neutral accessibility and tiny-to-8K geometry tests passed, including
+three typed fields, full nontruncated Safety evidence, and mnemonic `C`. No new
+native pixel or controlled screen-reader run was captured for M4; real
+`ssh-add`, host-key prompts, system OpenSSH routing, protected activation,
+native cleanup proof, and cross-platform resources remain external gates.
+
+### M5 typed OpenSSH tunnels and native release evidence
+
+The M5 source and evidence-contract suites are reproducible with:
+
+    cargo test -p automexia-connectivity --test direct_openssh_tunnels --locked
+    cargo test -p automexia-ui-model --test direct_openssh_review --locked
+    cargo test -p automexia-terminal --bin automexia --locked strong_tunnels_reject_session_grants_and_require_allow_once
+    cargo test -p automexia-terminal connection_hub --locked
+    python tools/ci/native_openssh_evidence.py --check-repository
+    python tools/ci/test_native_openssh_evidence.py
+    python tools/ci/check_session_launch_d0.py
+    python tools/ci/test_session_launch_d0.py
+    python tools/ci/test_pr_policy.py
+    python tools/ci/test_platform_coverage.py
+    python tools/ci/test_repository_protection.py
+
+The Rust regression set covers exact local/remote/dynamic `-F none` argv,
+independent grammar revalidation, unchanged no-tunnel behavior, hostile
+endpoints, local/dynamic versus remote collision domains, loopback defaults,
+strong confirmation, config-route denial, endpoint staleness, owner-scoped
+lifecycle transitions, stale observations, terminal reversal, closure, compact
+icon/color/text/accessibility projection, disabled session grants, and
+deterministic 1/10/50 cleanup. The repository checker binds active schema 6 to
+immutable schemas 1-5 and the synthetic evidence fixture. The Python mutation
+sets cover duplicate JSON keys, oversize manifests, contract/source drift, WSL,
+synthetic release claims, missing/reordered/failed scenarios, resource cleanup,
+manual-client/disable/uninstall baselines, forbidden fields, and redaction
+canaries. Controlled-binding mutations additionally cover native OS and
+architecture drift, requested-commit drift, fixed client/server version drift,
+tampered application artifacts, linked files, path redaction, and real
+zero-sentinel baselines.
+
+The safe local prerequisite probe is explicit:
+
+    python tools/ci/native_openssh_evidence.py
+
+It resolves only fixed platform OpenSSH locations, executes exact `-V` arrays
+with a 2-second/512-byte cap, and performs no install, service, network, or SSH
+configuration operation. On the 2026-08-22 Windows x86_64 development host it
+truthfully returned the external-prerequisite result: OpenSSH client 9.5 was
+present and `sshd` was absent. That is not native tunnel evidence.
+
+The protected runner setup, exact environment inputs, direct validation forms,
+host/tool/artifact checks, retention, rollback, and remaining external matrix
+are maintained in the [F5 native OpenSSH assurance guide](F5-NATIVE-OPENSSH-ASSURANCE.md).
+The QA command runs controlled validation only when the private evidence input
+is present; otherwise it reports an explicit external prerequisite without
+printing paths. A synthetic fixture or path-free summary is never real native
+evidence.
+
+Final local M5 evidence on Windows x86_64 (2026-08-22): the tunnel crate suite
+passed 8 tests, the UI review suite passed 4, the renderer/Hub filter passed 11,
+and the exact strong-tunnel runner regression passed 1. The native-evidence
+checker completed 9 test methods with 1 Windows symlink-privilege skip; the
+schema mutation suite passed 10 and the protected-file policy suite passed 12.
+The required workspace gates then passed: Rustfmt; warning-denied all-target
+Clippy; Nextest with 1,824 passed and 7 skipped; documentation tests with 64
+passed and 3 ignored; and full QA, whose local report is
+`target/qa/20260822T182116Z-36592/report.html`. `cargo ready` independently
+passed a cold all-target check, warning-denied Clippy, unit/integration/doc
+tests, dependency policy, debug build, and `automexia 0.4.0` smoke check. It
+removed its 7.81 GiB isolated target, and the remaining verified temporary
+build target was removed after success.
+
+The evidence ladder found three local defects before handoff. The first
+architecture run rejected `std::net` in the authority-free F2 connection model;
+the loopback classifier was replaced with a pure allocation-free parser and the
+architecture gate then passed. The first full Clippy run reported a manual
+parity check in the independent tunnel grammar parser; it was replaced with
+`is_multiple_of(2)` and the exact full Clippy command then passed. Final review
+also found that the release validator captured complete Git status output for a
+boolean clean-tree decision; it now uses a deadline-bounded, no-output
+`diff-index --quiet` check, and its dirty-tree mutation passes. Neither first
+failure is counted as a passing result.
+
+No real server, network tunnel, native resource campaign, before/after install
+or uninstall, or controlled screen-reader run was executed in this local slice.
+Those Windows/macOS/Linux results remain F5.4 release gates; activation stays
+false and the repository fixture must never be cited as their substitute.
+
+### Connection Hub F3 catalog contract
+
+The first D5.1 slice adds a pure catalog contract without activating D4 or any
+process, network, authentication, PTY, listener, or provider authority:
+
+    cargo test -p automexia-ui-model --locked
+    cargo bench -p automexia-terminal --bench connection_catalog --no-default-features --no-run --locked
+    cargo bench -p automexia-terminal --bench connection_catalog --no-default-features --locked -- --sample-size 20 --measurement-time 3
+
+The catalog tests cover deterministic combined text/favorite/recent/tag/source
+filtering, source-revision preservation, contiguous bounded grouping, truthful
+empty versus filtered-empty states, hostile controls and bidirectional format
+characters, query/tag/record/memory ceilings, 10,000-record projection, 300%
+text scale, 8K layout, 32-row virtualization, one managed selected row, and the
+all-disabled execution/PTY boundary. On this Windows host on 2026-08-17, the
+release-profile rapid-filter benchmark measured 7.0513-7.4408 ms for complete
+10,000-record filter/group projections, below the 16 ms reviewed target. This
+is local implementation evidence, not the controlled multi-platform baseline.
+
+A fresh M0 rerun on 2026-08-21 at revision
+`074bb49e6c93bac231a8acb408e99992f557c25d` plus the documentation-only diff
+measured 8.1839-8.8694 ms (8.4996 ms estimate) with 20 samples and a three-second
+measurement window. The Windows 11 `10.0.26200` host used an AMD Ryzen 5 5600H
+(6 cores/12 logical processors) and 27.9 GiB RAM. The result remains below the
+16 ms target; it is a same-host spot measurement, not longitudinal enforcement.
+
+The catalog benchmark does not by itself prove persistence, rendering, or
+native accessibility. Application composition and private persistence have
+their own contracts below; native product rendering and platform/screen-reader
+evidence remain D5.1 gates.
+
+### Connection Hub F3 transactional OpenSSH metadata
+
+The D4 metadata owner now supplies the persistence semantics required by the
+read-only Hub's favorites, tags, and recent-use fields:
+
+    cargo test -p automexia-devops-ssh --locked
+    cargo test -p automexia-devops-ssh --test metadata_store --locked
+    cargo clippy -p automexia-devops-ssh --all-targets --locked -- -D warnings
+
+The focused contract covers legacy revision-zero documents, CAS increments,
+stale-writer rejection, one validated previous generation, malformed-primary
+fallback with an explicit recovery origin, reviewed recovery with a new
+revision, unnecessary-recovery refusal, process-local writer contention, and
+Unix no-follow recovery paths. The full D4 suite retains bounded serialization,
+atomic replacement, interrupted staging, redacted malformed/oversized input,
+exact removal, Unix mode, and Windows current-user DACL coverage. Application
+composition and the private profile/recipe/preference library are separate F3
+contracts below; the product editor and rendered metadata controls remain open.
+
+### Connection Hub F3 application composition
+
+The native application owns explicit D4 grants, generation-scoped background
+refresh, public snapshot/metadata composition, last-known-good health, and
+static platform setup guidance without activating connection authority:
+
+    cargo test -p automexia-terminal --test connection_hub_runtime --no-default-features --locked
+    cargo clippy -p automexia-terminal --test connection_hub_runtime --no-default-features --locked -- -D warnings
+
+The focused contract proves that opening the runtime does not scan; only exact
+reviewed grants start work; metadata and OpenSSH records produce a bounded
+public catalog; newer generations supersede older work; failures retain the
+last good catalog with a path-free diagnostic code; metadata writes use reviewed
+revision CAS; and explicit shutdown cancels and joins the single worker. The
+private profile/recipe/preference library and product adapter are covered below.
+
+### Connection Hub M1 read-only product activation
+
+The application Router owns the service, each Screen owns one route-local
+controller, and Sugarloaf owns the topmost modal. The native picker is invoked
+only by an explicit product action and passes selected files to the review/
+worker boundary; it never becomes an ambient scanner or persistent grant.
+
+    cargo test -p automexia-terminal --test connection_hub_runtime --locked
+    cargo test -p automexia-terminal --test connection_hub_controller --locked
+    cargo test -p automexia-terminal --bin automexia connection_hub --locked
+    cargo test -p automexia-terminal --bin automexia command_palette --locked
+    cargo test -p automexia-devops-ssh --locked
+    cargo test -p automexia-ui-model --locked
+    cargo bench -p automexia-terminal --bench connection_catalog --locked -- --noplot
+    cargo build -p automexia-terminal --bin automexia --features native-gui-test-hooks --locked
+    cargo deny check
+    cargo build -p automexia-terminal --release --locked
+
+Windows 11 results on 2026-08-21: 10 runtime, 8 controller integration, 3
+targeted worker/controller/cache unit, 5 renderer, 46 palette, 33 D4, 33
+UI-model, and 5 library tests passed. The contracts cover
+no-scan-on-open, memory-only grant revocation, review tokens, stale generation
+rejection, publish-before-wake, explicit joined shutdown, last-known-good state,
+metadata CAS success/conflict/reload, read-only recent, hostile tags/search,
+keyboard/pointer/IME, focus restoration, inert modal stacking, distinct filter
+pointer actions, and bounded tiny/normal/ultrawide/8K geometry. Connect, Login,
+provider refresh, recipe execution, process, network, authentication, listener,
+and PTY authority remain disabled.
+
+`cargo deny check` passed advisories, bans, licenses, and sources. `rfd` 0.17.2
+is the only new direct dependency and `pollster` is its only new transitive
+package. The release 10,000-record projection measured 7.1790–7.7931 ms versus
+the below-16-ms target. The earlier same-host range was 7.0513–7.4408 ms; this
+single run is not treated as a statistical regression comparison. The release
+executable is 22,670,336 bytes, 650,752 bytes (2.96%) above the 22,019,584-byte
+same-host pre-M1 baseline.
+
+For the current visual review, the feature-gated native test control first
+waited for the renderer-neutral prompt-active signal. Only then did it open
+Connection Hub, avoiding the startup race caused by sending a shortcut before
+the terminal was ready. A direct native-window capture at 1600x950 physical
+pixels and 125% scale was inspected on Windows 11. The complete frame showed a
+centered 760x480-logical setup surface, one clear primary action, complete
+bounds, distinct hierarchy, restrained semantic color, code-native icons with
+redundant text, and no setup-only search/filter toolbar or verbose disabled-
+action footer. The hook is excluded from normal builds.
+
+Renderer-neutral tests remain the evidence for tiny-to-8K responsive geometry.
+
+Native macOS/Linux picker and static permission/recovery runs plus controlled
+Narrator/NVDA, VoiceOver, and Orca verification remain external. Local semantic,
+geometry, and limited Windows frame evidence do not substitute for those runs.
+
+### Connection Hub F3 private profile, recipe, and preference library
+
+The application crate owns a private, versioned Connection Library store for
+saved connection profiles, automation recipes, and user preferences. M1
+initializes it once and exposes only a non-executing snapshot/recovery state:
+
+    cargo test -p automexia-terminal --lib automexia::connections::library::tests::injected_read_only_and_disk_full_fail_before_replacing_primary --no-default-features --locked
+    cargo test -p automexia-terminal --test connection_library --no-default-features --locked
+    cargo clippy -p automexia-terminal --lib --test connection_library --no-default-features --locked -- -D warnings
+
+The 16 MiB document boundary validates every imported or loaded value before
+publication. Persistence uses an expected-revision compare-and-swap contract,
+same-directory staging and atomic replacement, one validated previous
+generation, and explicit reviewed recovery. No-follow file opening rejects
+link substitution where the platform adapter supports it. Redacted transfer
+omits opaque credential references, last-used timestamps, and private local
+state; import generates fresh identifiers. Deterministic tests cover hostile
+controls, oversized and unknown data, stale writers, concurrent contention,
+interrupted and corrupt writes, recovery, canary preservation, and injected
+read-only/disk-full failures before primary replacement.
+
+On 2026-08-21, at source revision
+`074bb49e6c93bac231a8acb408e99992f557c25d` plus the documentation-only M0
+reconciliation, Windows 11 `10.0.26200` on an AMD Ryzen 5 5600H recorded one
+focused failure-path unit test passing and all five Windows-applicable
+integration tests passing. The Unix symlink substitution case was compiled but
+not executed on Windows; native Linux/macOS runs remain external evidence.
+
+#### M0 local reconciliation evidence
+
+The documentation-only reconciliation used these final local gates:
+
+    cargo clippy -p automexia-terminal --lib --test connection_library --no-default-features --locked -- -D warnings
+    python tools/ci/check_feature_assurance.py
+    python tools/ci/check_documentation_coverage.py
+    python tools/ci/check_platform_coverage.py
+    python tools/ci/validate_repository.py
+    cargo fmt --all --check
+    cargo ready
+    git diff --check
+
+Focused Clippy, all four Python policy/coverage validators, Rustfmt, and the diff
+check passed. The follow-up completion audit also ran 105 application library
+tests and all five Windows-applicable Connection Library integration tests with
+no failures. Repository validation counted 41 TOML, 14 YAML, 25 JSON, 6 XML,
+one desktop file, 199 Markdown files, and 24 assurance entries.
+
+`cargo ready` passed its repository validation, PowerShell integration,
+licensing/provenance, architecture/trust, formatting, isolated all-target
+workspace check, warnings-as-errors workspace Clippy, full workspace unit/
+integration/documentation tests, `cargo deny`, persistent debug application
+build, and `automexia 0.4.0` executable smoke check. The isolated 7.75 GiB
+verification target was removed after success. Optional packaging tools that
+were reported missing are not required by this local contributor gate; hosted
+native/release evidence remains separate.
+
+### Remaining Connection Hub activation assurance
+
+D5.1 behavior is fully implemented locally. Its remaining release evidence is
+native macOS/Linux picker and permission/recovery coverage plus controlled
+Narrator/NVDA, VoiceOver, and Orca verification. D5.2 managed launch and D6
+provider work remain non-activated and must add their own deterministic,
+native, controlled-provider, security, performance, privacy, persistence, and
+resource evidence before authority is enabled.
+
+At minimum, D5.2 must prove exact capability approval/revocation, exact Windows/
+Unix launch arguments, host-trust behavior, session isolation, and bounded
+1/10/50 process/PTY/tunnel teardown. D6 must separately prove provider expiry,
+MFA, cancellation, offline, denial, cache isolation, and external credential
+custody for each provider. Synthetic fixtures remain mandatory but never
+substitute for controlled native evidence.
+
+## CP2.0-CP2.2 Quick Action assurance
+
+The capability-free schema/parser/validator, activation index, and CP3.0
+projection compiler remain in the exact five-file `automexia-command-productivity/src/actions`
+boundary. CP2.1/CP2.2 use exactly
+eight reviewed app sources under `automexia::quick_actions` for bounded private no-follow storage,
 atomic primary/one-previous recovery, nonblocking cross-process lock/CAS,
 immutable fingerprinted last-known-good snapshots, exact watch filtering,
 bounded coalescing/periodic reconciliation, CRUD, and redacted errors. The
@@ -1056,26 +1590,42 @@ checker rejects process, network, environment discovery, clipboard, provider,
 shell-profile, UI, VT, PTY, async-runtime, execution, and unsafe code outside the
 reviewed platform permission adapter.
 
-CP2.1 is foundation code, not a shipped Command Center surface: startup does not
-instantiate it, no alias/projection is generated, and no command is inserted or
-executed. CP2.2 activation must add worker/UI/accessibility/shell-insertion and
-native-host evidence described in
-[DevOps Quick Actions and persistent aliases](DEVOPS-ALIASES.md#verification-plan).
+CP2.2 starts one joined application worker and provides bounded layered search,
+per-route latest-query coalescing with a 32-route ceiling and fair multi-pane
+publication, activation-time model revalidation, responsive
+placeholder/risk/conflict/health review, explicit empty/error states, dry-run administration and
+digest-checked transfer, plus explicit copy or bracketed-paste insertion without
+Enter. Secret and exact operations are rejected before placeholder input. CP2.2
+itself adds no alias projection, provider work, trusted-workspace activation,
+secret expansion, or exact execution. Native-host and controlled accessibility
+evidence remains as described in [DevOps Quick Actions and persistent
+aliases](DEVOPS-ALIASES.md#verification-plan).
 
-Run the focused CP2.0/CP2.1 gate with:
+Run the focused CP2.0-CP2.2 gate with:
 
 ```powershell
-cargo test -p automexia-devops --all-targets --locked
+cargo test -p automexia-command-productivity --all-targets --locked
 cargo test -p automexia-terminal --lib quick_actions --locked
 cargo test -p automexia-terminal --test quick_action_persistence --locked
+cargo test -p automexia-terminal --test quick_action_transfer --locked
+cargo test -p automexia-ui-model quick_actions --locked
 cargo clippy -p automexia-terminal --lib --locked -- -D warnings
-cargo bench -p automexia-devops --bench quick_actions --locked -- --noplot
+cargo bench -p automexia-command-productivity --bench quick_actions --locked -- --noplot
 cargo bench -p automexia-terminal --bench quick_action_store --locked -- --noplot
 python tools/ci/check_devops_alias_spec.py
 python tools/ci/test_devops_alias_spec.py
 python tools/ci/check_command_productivity.py
 python tools/ci/test_command_productivity.py
+python tools/ci/check_command_productivity_cp22.py
+python tools/ci/test_command_productivity_cp22.py
 ```
+
+The active schema-1 CP2.2 contract now names 13 mandatory evidence categories,
+including multi-route fairness/capacity, visible health/empty state,
+activation-time revalidation, and pre-prompt secret denial. The
+`automexia-devops` target owns both `quick_action_search_1024` and
+`quick_action_expand_and_quote`; controlled QA executes the same target so these
+measurements cannot become orphaned compile-only benchmarks.
 
 The focused Windows evidence is 26 unit cases and four public integration /
 property cases, including a protected single-entry DACL assertion, concurrent
@@ -1087,6 +1637,44 @@ and warnings-denied Linux Clippy, including Unix modes, links, sync, and inotify
 Hosted native Windows/Linux/macOS CI plus the named-hardware 30-day benchmark
 remain mandatory before cross-platform or release-performance claims.
 
+### CP3.0 pure projection compiler
+
+CP3.0 compiles only validated GlobalUser/ShellUser aliases into deterministic
+in-memory PowerShell, Bash, Zsh, Fish, or CMD artifacts. Complete bounded
+collision/completion/tool observations are mandatory. Native definitions win
+unless matching User consent names the exact owner fingerprint. A claimed
+same-action owner must also match the compiler's deterministic fingerprint;
+another or forged Automexia owner cannot be replaced. The compiler recomputes
+canonical source identity, retains degraded tool health in decisions, and
+verifies source, tool, owner, previous-artifact, structured-manifest, and body
+identities while always recording activation disabled. No compiler or test path
+reads/writes a profile or executes a provider.
+
+Run its focused gate with:
+
+```powershell
+cargo test -p automexia-command-productivity --test quick_action_projection --locked
+cargo bench -p automexia-command-productivity --bench quick_actions --no-run --locked
+cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_projection
+python tools/ci/check_command_productivity_cp30.py
+python tools/ci/test_command_productivity_cp30.py
+```
+
+The thirteen Rust cases cover five serializers, typed/fixed/forwarded arguments,
+unsafe eligibility, CMD's nine required typed positions, collision ownership and
+fingerprinted consent, source identity mismatch, truthful completion/tool health,
+bounded complete inventories, disabled-completion collisions, inventory-order
+determinism, structured/text tamper verification, hostile quoting, 256
+deterministic bindings, and available native shell parsing, exact capture, and
+wrapper exit status. On Windows the native path exercises PowerShell exact argv/
+exit status and CMD macro-file loading; Unix hosts syntax-check and capture
+arguments/exit status with each installed Bash/Zsh/Fish. The nightly libFuzzer
+target generates bounded valid actions across all five shells, argument policies,
+completion/tool degradation, collisions, and tampering. The controlled 30-day
+benchmark measured 2.7919-2.9846 ms locally for 256 Bash bindings after the
+integrity hardening. Treat that result as diagnostic only; the named-hardware
+30-day baseline and hosted all-platform results remain release evidence.
+
 The gate must exercise PowerShell 5.1/7+, Bash, Zsh, Fish, CMD, WSL, Windows,
 Linux, and macOS while proving that native definitions win, generated files are
 fully removable, no alias silently executes provider/network/secret work, and
@@ -1094,6 +1682,76 @@ new shells restore enabled aliases without duplicating profile hooks. Synthetic
 serializer fixtures are required for every PR; controlled native shells remain
 mandatory before a release claim. CP2/CP3 cannot be marked complete merely
 because a generated file parses or an alias works in one interactive shell.
+
+### CP3.1 persistent alias publication and activation
+
+CP3.1 adds two application-owned sources to the eight-file CP2 persistence
+boundary. It publishes all five shell artifacts as one private immutable
+content-addressed generation, verifies SHA-256 plus exact source/shell/compiler
+identity, journals source-CAS/pointer-last changes, retains and verifies one
+rollback generation, and recovers a crash to all-old or all-new. Verification
+rejects unexpected topology and checks artifact permissions even when hashes
+match. Read-only commands never create, lock, repair, or clean live state.
+Startup executes no action/provider/network operation and does not rewrite
+canonical source. Native definitions win; exact consent is accepted only for
+still-observed authenticated owner identity.
+
+Run the focused contract, mutation, Rust, CLI, and benchmark-build gates with:
+
+```powershell
+python tools/ci/check_command_productivity_cp31.py
+python tools/ci/test_command_productivity_cp31.py
+python tools/ci/check_devops_alias_spec.py
+python tools/ci/test_devops_alias_spec.py
+cargo test -p automexia-terminal --lib quick_actions::aliases::tests --locked -- --nocapture
+cargo test -p automexia-terminal --lib cli::tests --locked -- --nocapture
+cargo test -p automexia-terminal --lib aliases_cli::tests --locked -- --nocapture
+cargo clippy -p automexia-command-productivity -p automexia-terminal --all-targets --locked -- -D warnings
+cargo bench -p automexia-terminal --bench quick_action_store --no-run --locked
+```
+
+Run native activation, reload, collision, tamper, disabled-state, startup p95,
+and exact uninstall preservation/refusal with:
+
+```powershell
+pwsh -NoLogo -NoProfile -File tools/ci/test_shell_integration.ps1
+bash tools/ci/test_shell_integration.sh
+bash tools/ci/test_shell_sources.sh
+```
+
+Linux/macOS CI installs and executes the Bash/Zsh/Fish aggregate; Windows CI
+executes PowerShell and CMD. Configured nightly and release WSL runners now run
+the same full aggregate, not only session-clone tests. The fixtures prove one
+exact-compiler verified generation activates in a fresh shell, a self-consistent
+wrong-compiler generation and tampering fail closed while last-known-good stays
+active, late native owners win, disable affects only the pointer, and uninstall
+removes only validated generated aliases while preserving `actions/actions.toml`.
+PowerShell/Bash/Zsh/Fish reload removes only unchanged Automexia-owned definitions;
+CMD truthfully requires a new session. Bash and Zsh take twenty-five reloads
+(five warmups and twenty measured samples); Fish takes five warmups followed by
+twenty shell-native timing samples of three reloads each. Every adapter enforces
+the provisional 50 ms p95 locally. Fish batches fixed-path metadata and digest
+verification into one bounded constant helper invocation, with no provider,
+network, action execution, or per-alias subprocess. This diagnostic budget is
+not the controlled named-hardware 30-day release baseline. A local Windows
+release-profile run on 2026-08-17 measured the 256-binding five-shell compile at
+24.228-26.100 ms, durable publish-and-verify at 35.476-37.391 ms, and read-only
+doctor at 8.580-9.228 ms. Publish and doctor intentionally authenticate every
+active/rollback artifact ACL and exact directory entry; publication also validates
+the rollback pointer both before mutation and during cleanup. These values are
+local diagnostic evidence, not the pending named-hardware baseline.
+
+Twenty-one owned alias-store regressions span common, three Windows-native, and two
+Unix-permission/link cases (19 run on Windows and 18 on Unix), with three focused
+CLI detail regressions and seven CLI parser cases. A hostile-manifest property,
+cross-process lock contention, the schema-1 CP3.1 contract, eight mutations,
+workflow evidence checks, and the aggregate CP2-CP3.3 checker prevent publication-
+order, capability, security, UX, lifecycle, and documentation drift. Local WSL
+also passes the Unix unsafe-artifact-permission case. Published hosted native
+Windows/Linux/macOS/WSL results and the 30-day resource baseline remain release
+evidence. CP3.2 static actions remain disabled and unaliased. CP3.3 native
+imports and trusted task bridges are fully implemented locally, insert-only,
+unaliasable, explicitly selected/trusted, and separately revocable.
 
 ## Command-productivity CP0 contract
 
@@ -1136,17 +1794,19 @@ powershell -NoProfile -File tools/ci/test_powershell.ps1
 bash tools/ci/test_shell_sources.sh
 ```
 
-The Rust suite covers provider/shell policy, argument parsing, fixed artifact
-names, invalid UTF-8/NUL/control output, stdout/stderr bounds, timeout kill,
-successful capture, cross-platform descendant/process-tree termination, linked
-destinations and managed directories, early leader exit with inherited pipes,
-provider executable replacement, bounded doctor validation, absolute and
-platform-canonical config roots, atomic replacement, stable SHA-256, and
-immutable limits. Shell suites cover native
-definition precedence, digest tamper fallback, disable behavior, repeated
-sourcing, prompt/editor ownership, install/no-op/repair/uninstall, Unicode
-surrounding profile content, stale owned-block repair, simulated canonical
-macOS installation, relative-root rejection, parent-link/reparse substitution,
+The Rust suite covers provider/shell policy, strict argument parsing, fixed
+artifact names, invalid UTF-8/NUL/C0/bidirectional output, sanitized diagnostics,
+stdout/stderr bounds, timeout kill, successful capture, cross-platform
+descendant/process-tree termination, linked destinations and managed directories,
+early leader exit with inherited pipes, provider executable replacement,
+destination preflight, bounded doctor validation, absolute/local platform roots,
+atomic replacement, two-digest interruption recovery, ambient-secret environment
+isolation, stable SHA-256, and immutable limits. Shell suites cover native
+definition precedence, steady-state and transitional digest verification, tamper
+fallback, disable behavior, repeated sourcing, prompt/editor ownership,
+install/no-op/repair/uninstall, Unicode surrounding profile content, stale
+owned-block repair, simulated canonical macOS installation, relative/overlong
+root rejection, Windows UNC rejection, parent-link/reparse substitution,
 pre-mutation validation, exact owned-file removal, and 20-sample post-warmup
 adapter p95 enforcement against the 50 ms
 registration budget. Because non-interactive Fish does not update
@@ -1154,6 +1814,10 @@ registration budget. Because non-interactive Fish does not update
 exact baseline/source process pairs after five warmups and computes p95 from
 paired registration overhead. Linux/macOS CI
 installs Bash/Zsh/Fish validators; Windows CI runs PowerShell/CMD integration.
+
+Windows source contracts also prohibit module-dependent hashing on installer
+integrity checks and the PowerShell completion startup path; both use the
+platform SHA-256 API directly.
 
 Windows profile-path coverage classifies the complete Microsoft Cloud Files tag
 family separately from name-surrogate tags, accepts a real OneDrive-backed
@@ -1184,59 +1848,163 @@ The authoritative runtime fixture is
 Native hosted macOS and clean-runner evidence remains required before a stable
 release; local WSL success is not represented as macOS evidence.
 
-## Planned CP5 Shell Completion and Suggestions gate
+## Command-productivity CP5.0 research
 
-CP5 has no runtime test command yet because implementation is forbidden until
-its bridge ADR, threat amendment, compatibility version, and machine contract
-are accepted. When activated, PR and nightly ownership must cover:
+CP5.0 has a deterministic, non-activating evidence gate:
 
-| Layer | PR evidence | Nightly/release evidence |
-|---|---|---|
-| Pure model/ranking | Deterministic ordering, precedence, limits, Unicode/grapheme, hostile labels, replacement-span properties, stale-generation rejection | Criterion 32/128/512-candidate and low-end reference baselines; dependency-size/startup comparison |
-| Bridge protocol | Frame/schema/route/capability/generation validation, malformed/oversize/replay/cross-pane/downgrade rejection, memory-only redaction | Native Windows named-pipe and Unix-socket churn, crash/restart/sleep/resume, ACL/mode and handle/socket leak campaigns |
-| Shell adapters | Supported PowerShell/PSReadLine, Bash/Readline, Zsh/ZLE, Fish and CMD fallback fixtures; spaces, quotes, selections, multiline and no-Enter insertion | Native Windows/WSL/Linux/macOS shell/version matrix, unsupported/downgrade, profile preservation and exact uninstall |
-| Source broker | Explicit source opt-in, shell-owned history, cwd/executable, frequency-ID, cached-public-provider and action precedence; no-network/no-secret negatives | Rapid typing/cancellation, slow filesystem, stale cache, worker loss, offline and multi-pane/session storms |
-| Pane UI | Renderer-neutral placement, cursor/IME/footer/tab/sibling/modal avoidance, tiny-to-8K and 100–300% scale goldens, focus/dismissal | Native GPU screenshots, high-contrast/reduced-motion, menu/confirmation z-order, long-running resize/reflow storms |
-| Accessibility | Listbox/option names, keyboard-only navigation, coalesced announcements, icon-plus-text semantics | Controlled NVDA/Narrator, VoiceOver and Orca sessions before stable activation |
-| Resources/security | Bounded allocation/queue/cache/message tests, fuzz/property corpus, dependency policy, no log/crash/telemetry/extension leakage | ASan/TSan/Miri where supported, sustained fuzz, process/task/pipe/socket/file/GPU/storage leak and 30-day performance baselines |
+    python tools/ci/check_command_productivity_cp50.py
+    python tools/ci/test_command_productivity_cp50.py
+    cargo fmt --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml -- --check
+    cargo clippy --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --all-targets --locked -- -D warnings
+    cargo test --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --locked
+    cargo run --release --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --locked --quiet
 
-After each bridge operation, tests assert the shell/editor buffer, cursor,
-selection, quoting mode, generation, and history remain authoritative; the
-terminal grid is never the source. Accepting a candidate must revalidate the
-route/generation/replacement span, insert exactly once using shell-native
-escaping, and never send Enter. Dismissal, typing, focus change, modal opening,
-resize, pane/tab close, clone, reconnect, and shutdown must cancel obsolete work
-and leave no popup, private payload, task, endpoint, process, or cache entry.
+The policy tests fix false runtime capabilities, seven shell-family decisions,
+UTF-8 byte-span validation, stale-generation rejection, count/byte ceilings,
+control-character rejection, replacement-only insertion, dependency isolation,
+and roadmap/documentation wiring. The locked standalone benchmark covers
+32/128/512 candidate corpora, Unicode and combining text, long prefixes, and
+cancellation after a deterministic generation change. It is not a root
+workspace or release dependency.
 
-The initial performance gates are warm local display <= 50 ms p95, popup update
-<= 8 ms p95, cancellation <= 50 ms p95, local-source deadline <= 250 ms with
-native/stale fallback, process-wide completion cache <= 8 MiB, and exactly zero
-provider/network/authentication work during startup and typing. Benchmarks must
-publish distribution, machine identity, corpus, cold/warm state, sample count,
-and peak memory; a single fast local run is not release evidence.
+The local Windows report includes PowerShell 7/5.1, CMD, Bash/WSL startup,
+three repeated matcher runs with 20 warmups and 200 samples, compile/binary/
+startup cost, and the first cold WSL timeout. Native Zsh/Fish, Linux/macOS
+interaction, controlled screen readers, and low-end hardware replication are
+reported as external, not passing. See
+[CP5.0 native autocomplete research](research/CP5-AUTOCOMPLETE-RESEARCH.md).
+
+## CP5.1-CP5.6 accepted source and release gate
+
+The exact source commands, PR/nightly/native evidence matrix, Windows benchmark
+metadata, shell fallback fixtures, sanitizer limitation, and external release
+gates are maintained in
+[CP5 suggestion source and release testing](CP5-SUGGESTION-TESTING.md). Preview
+activation remains false and CP1/native completion remains the default fallback.
+
+## D7/CP6 accepted source and release gate
+
+The accepted-source contract/mutation commands, pure domain/property tests, real
+signed ZIP/Ed25519/provenance/SBOM/license fixtures, atomic store/ACL/recovery,
+WIT parser, optional no-default-WASI Wasmtime conformance, action-pack, selected-
+input privacy/UI, terminal denial adapter, fuzz harness, Criterion results, and
+external native/release matrix are maintained in
+[Sandboxed ecosystem and selected-input model suggestion testing](ECOSYSTEM-PLATFORM-TESTING.md).
+
+The source boundary is complete locally but activation remains false. Public
+SDK/download/distribution, provider calls, actual native product UX, signed
+three-platform packages, malicious-corpus drills, 1,000 cycles and the 30-day
+soak are external gates and must not be reported as passing.
+
+## LLM Orchestration evidence gate
+
+LO0 is documentation-only; LO1-LO5 are not implemented. The separate threat,
+contract, unit/property/fuzz/mutation, provider/privacy, workflow, security,
+resource/leak, accessibility, native, package, disable/uninstall and external
+evidence ladder is maintained in
+[Optional LLM Orchestration testing](LLM-ORCHESTRATION-TESTING.md). It does not
+replace or relax the initial D7/CP6 no-tool contract.
+
+## Automation Studio evidence gate
+
+AS0 is proposal-only; AS1-AS6 are not implemented. The complete future gate is
+[Automation Studio testing](AUTOMATION-STUDIO-TESTING.md).
+
+## Situation-Aware Production Operations evidence gate
+
+PO0 is a proposal/checker only; PO1-PO8 are not implemented. The separate
+environment-passport/route-lock; change/ownership/drift, resource/scheduler,
+cohort/revision/environment, passive-network/SLO and dependency evidence;
+Kubernetes situation/ranking; editor-byte/no-Enter;
+permission/GitOps/JIT/policy preflight; Incident hypothesis/time/live-log/
+Diagnostic-Navigator-handoff/journal; execute-observe-stabilize-verify-recover;
+port-forward/probe/debug; organization-pack; provider; security; fuzz/model;
+visual/accessibility; native; resource/storage; rollback/disable/uninstall;
+package; and external evidence ladder is maintained
+in [Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md).
+Exact surface, responsive, focus, ownership-path/session-kind, usability, and accessibility
+requirements are owned by the
+[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+The dedicated testing plan applies them separately to shell-owned insertion,
+PO6 managed execution and PO6 managed diagnostic sessions; this index does not
+duplicate that contract.
+
+That plan does not activate CP5, provider collection, a watcher, investigation
+view, live-log controller, managed diagnostic session, completion source, LLM,
+model, D3 runner, or any product behavior. CP1 remains the
+fallback and all phase-specific external provider/native evidence stays open.
+
+The non-activating
+[PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md) is checked with:
+
+```text
+python tools/ci/check_production_operations_po0.py
+python tools/ci/test_production_operations_po0.py
+```
+
+They prove proposal integrity and current source-marker absence only; all
+runtime, provider, native and release evidence stays external.
+
+## External-tool and adopted-dependency assurance
+
+The canonical ownership policy is
+[Build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
+Every OpenSSH, provider CLI, Mosh, Git, Upterm, SOPS/age, task-runner, transfer,
+policy, collaboration, or local executable model adapter must use the one core
+ExternalToolRunner. A network model endpoint instead requires the separately
+reviewed extension-host network capability and provider/privacy contract. Neither
+kind receives action execution authority. Each adapter's protected milestone
+adds all applicable evidence below.
+
+| Layer | Required deterministic evidence |
+|---|---|
+| Core runner | Canonical executable identity; exact argv; validated cwd; allowlisted environment; null/protected stdin; byte/line caps; startup/idle/total deadlines; cancellation; descendant termination; redacted events; version state; session/extension/operation ownership |
+| Extension adapter | Fake executable contract; supported/unsupported version fixtures; truncated, malformed, oversized, hostile, and Unicode output; bounded parser; typed normalization; no shell concatenation; no direct spawn; no ambient credential/environment; extension-disable fallback |
+| Lifecycle/state | Offline, locked, expired, MFA, denied, cancelled, timeout, crash, stale/last-known-good, ambiguous outcome, repeated create/drop, owner close, and cross-pane/window/process isolation |
+| Native integration | One controlled real-tool job on every claimed OS; platform-specific agent/keychain/PTY/process-tree behavior; clean absence and unsupported-version behavior; no silent fallback |
+| Performance/resources | Cold and warm launch, output parsing, search/cache refresh, cancellation, cleanup, peak memory/handles/threads/files, binary-size delta, queue saturation, and 10/50/100-session evidence where relevant |
+| Security/privacy | Secret canaries, hostile executable/path/argument/output, log and bundle redaction, capability denial/revocation, production review, no startup/typing/render/resize invocation, and no retained raw provider output |
+| UI/accessibility | Renderer-neutral state, stable item identity, focus restoration, keyboard-only operation, screen-reader roles/names/states/actions, responsive goldens, stale/error/permission presentation, and reduced-motion/high-contrast behavior |
+
+Parsers for external JSON, safe SSH inventory, route graphs, policy input, file
+operations, log frames, and collaboration messages receive property and fuzz
+coverage. Pure security decisions and state machines receive scoped mutation
+testing. cargo-vet is introduced only with a named audit owner, trusted-import
+policy, explicit criteria, ratcheted exemptions, and renewal process; it
+complements rather than replaces cargo-deny, dependency review, CodeQL, SBOMs,
+attestations, or release signing. Diagnostic Nextest retries remain reported
+flaky failures.
+
+An adopted runtime crate also needs pinned minimal features, license/source/
+advisory/provenance review, an update owner, platform declaration, measured
+startup/binary/resource cost, cargo xtask doctor classification, and tests
+showing that disabling or uninstalling its feature leaves ordinary terminal
+behavior intact. Naming a crate in a roadmap does not satisfy this gate.
 
 ## Assurance status and remaining expansion
 
-The Phase 0 local baseline now includes pinned Nextest/JUnit/doctests, a
-self-tested deadline/process-tree-safe and privacy-bounded `cargo qa --bundle`,
-allowlisted host identity, isolated coverage summaries, shrinking viewport/DPI
-properties with a persisted regression, a reviewed structured footer snapshot,
-finite Loom models, Windows resource ceilings, and topmost client-region final-frame
-smoke validation.
-These are implemented commands and locally passing evidence, not release-host
-claims.
+S1 source assurance is versioned and release-gated:
+
+```text
+python tools/ci/s1_assurance.py check-policy
+python tools/ci/test_s1_assurance.py
+python tools/ci/s1_assurance.py validate --manifest <private-manifest.json> --expected-commit <40-character-commit> --require-complete --output <public-summary.json>
+```
+
+It rejects incomplete, stale, dirty-source, secret-bearing, or unreviewed input.
+See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md).
 
 The remaining roadmap work is deliberately separate:
 
-- controlled expected/actual/diff raster goldens across viewport, theme, font,
-  and DPI matrices plus native Linux/macOS frame evidence;
+- execution and approval of the exact 1,600-case raster matrix across the four
+  policy environments, plus retained Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
   a separate Automexia-owned coverage baseline;
 - executed and compared Criterion/startup/interaction/resource evidence on named
   stable hardware followed by the complete 30-day baseline;
-- elevated Windows Application Verifier/WPR evidence and expanded controlled GPU
-  resource tests on all supported operating systems;
-- recorded v0.4 Narrator/NVDA, VoiceOver, and Orca smoke followed by the v0.5
+- elevated Windows Application Verifier/WPR evidence and named Intel/AMD/NVIDIA/
+  RDP, Linux X11/Wayland, and macOS Intel/Apple Silicon resource runs;
+- recorded v0.4 Narrator/NVDA, VoiceOver, and Orca evidence followed by the v0.5
   renderer-independent native accessibility model; and
 - v0.5 scoped mutation testing and maintainable cargo-vet supply-chain audits.
 
@@ -1245,3 +2013,272 @@ criteria are in the
 [stabilization roadmap](STABILIZATION-ROADMAP.md#verification-infrastructure-plan).
 A source implementation never substitutes for the hosted, elevated, signed, or
 human-reviewed evidence named there.
+
+## CP3.2 reviewed DevOps action packs
+
+CP3.2 is fully done at the local source boundary. Its focused validation is:
+
+```text
+cargo test -p automexia-command-productivity --test quick_action_packs --lib
+cargo test -p automexia-terminal cli::tests::pack_ --lib
+cargo test -p automexia-terminal packs_cli --lib
+cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_packs
+cargo bench -p automexia-command-productivity --bench quick_actions --no-run
+python tools/ci/check_command_productivity_cp32.py
+python tools/ci/test_command_productivity_cp32.py
+python tools/ci/check_devops_alias_spec.py
+python tools/ci/test_devops_alias_spec.py
+```
+
+The pack suite covers the exact 11-provider/33-action inventory, HTTPS/version/
+sort validation, disabled and unaliased defaults, explicit materialization,
+effect/risk alias denial, forged built-in provenance, missing/unsupported/
+completion/ready health, hostile version text, overlay preservation, deprecation
+replacement, functional update detection, correct version-only unchanged
+classification, stale-overlay rejection, and immutable-version advancement.
+Registry unit mutations reject enabled defaults, wrong provenance, duplicate
+actions, inconsistent completion policies, and malformed HTTPS documentation
+URLs. Five CLI parser/rendering/preflight cases prove enable is a dry run, apply
+needs revision CAS, stale revisions fail before store creation, exact argv/risk/
+effect/documentation are reviewable, and registry doctor never claims provider
+readiness.
+
+A short local Windows Criterion run measured full 11-pack/33-action validation at
+272.31-283.98 us and all 11 ready health evaluations at 289.48-310.79 us. This
+proves the benchmark and current bounds, not the controlled 30-day baseline.
+The Criterion targets validate all 11 manifests/33 actions and evaluate all 11
+health reports. Nightly fuzzes bounded hostile version observations and both
+valid/stale overlay digests. The contract freezes the complete reviewed registry
+digest plus 17 named integration/CLI regressions; eight mutation cases freeze
+inventory, capability denial, exact preview UX, alias safety, lifecycle, source,
+tests, benchmark, fuzz, CI wiring, and eight CP3.2 documents. Hosted
+cross-platform and
+30-day comparable measurements remain release evidence.
+
+## M6 typed automation and multi-environment workspaces
+
+Run the focused review-only evidence with:
+
+```text
+cargo test -p automexia-connectivity --locked --test connection_planning
+cargo test -p automexia-connectivity --locked --test connection_automation_m6
+cargo test -p automexia-connectivity --locked --test workspace_automation_m6
+cargo test -p automexia-ui-model --locked --test connection_hub
+cargo test -p automexia-terminal --locked --test connection_library
+cargo test -p automexia-terminal --locked --test m6_workspace_product
+cargo test -p automexia-terminal --locked --bin automexia workspace_
+cargo clippy -p automexia-connectivity --all-targets --all-features --locked -- -D warnings
+cargo clippy -p automexia-ui-model --all-targets --all-features --locked -- -D warnings
+cargo clippy -p automexia-terminal --test connection_library --locked -- -D warnings
+python tools/ci/check_connection_hub_f2.py
+python tools/ci/test_connection_hub_f2.py
+cargo xtask verify architecture
+cargo bench -p automexia-connectivity --bench connection_planning --locked -- workspace_validate_16_windows_64_panes_128_connections --noplot --sample-size 30
+cargo bench -p automexia-connectivity --bench connection_planning --locked -- broadcast_review_50_targets --noplot --sample-size 30
+```
+
+Local Windows x86_64 evidence on 2026-08-22 passed 9 planner, 6 automation, 10
+workspace, 15 Hub-model, and 10 Connection Library integration tests plus all
+three focused warning-denied Clippy commands. Coverage includes a deliberately
+failing then fixed forged-privilege review regression, exact stage/risk policy,
+no-hooks, retry/deadline/cancel/generation/shutdown, hostile/cycle/stale binding,
+clone/rebind/restore, schema-1 migration preview, CAS/recovery/rollback, atomic
+dependent revisions/fingerprints, redacted topology transfer, semantic focus and
+armed state, and 1,000 repeated generations at the maximum 50 targets. The F2/M6
+mutation checker passed with 9 required source models and 51 named tests; the
+architecture verifier passed. The workspace parsers are registered in the
+connection-planning fuzz target.
+
+The required final gates also passed on Windows x86_64 on 2026-08-23:
+`cargo fmt --all -- --check`; warning-denied workspace Clippy; Nextest with
+1,847 passed and 7 skipped tests across 54 binaries; workspace documentation
+tests with 64 passed and 3 ignored examples; and `python3 tools/ci/qa.py --full`.
+Full QA additionally passed resize stress, session-clone lifecycle, Loom, and
+dependency policy; its ignored local report is
+`target/qa/20260822T220242Z-35148/report.html`. The first `cargo ready` preflight
+correctly refused to proceed with only 7.07 GiB free on D:. A later clean run
+exposed the existing completion-provider pipe-holder test's timing-only cleanup
+check while every M6 suite passed. Investigation replaced fire-and-forget group
+termination with synchronous descendant reaping and made the regression assert
+that no descendant survives to emit output. The focused regression, Nextest,
+full QA, and a final readiness run then passed. Final readiness used a fresh C:
+target with 24.71 GiB free and passed the isolated check, Clippy, workspace
+unit/integration/doc tests, dependency policy, fresh application build, and
+`automexia 0.4.0` smoke. Both exact temporary targets and the 7.83 GiB
+verification generation were removed. The original D: target could not be
+purged because Windows retained the running Automexia executable, so that
+reproducible cache remains a local storage warning, not an M6 correctness
+failure.
+
+On 2026-08-25, Criterion measured maximum workspace validation (16 windows,
+64 panes, 128 connections) at 28.873–33.842 µs with 7/30 high outliers and
+50-target broadcast review at 16.454–16.915 µs with 3/30 high outliers. These
+fresh same-host runs have no established release ratchet or named-hardware
+baseline, so they are recorded as uncontrolled evidence, not an improvement.
+
+Windows x86_64 evidence on 2026-08-25 passes 9 product and 6 interaction tests,
+workspace formatting/Clippy, 2,095 Nextest cases (7 skipped), 64 doc tests (3
+ignored), full QA, and clean-target `cargo ready`. It covers CLI/CAS/recovery/
+limits, current reviews, worker/modal isolation, responsive/accessibility state,
+and no PTY input; two guards failed before correction. ADR 0023 review/edit is
+active. Execution, native cleanup/resources/accessibility, and hosted evidence
+remain D3/M5 gates.
+
+## M7 provider-neutral authentication and capsule isolation
+
+M7 is fully done at the authority-free local framework boundary. Run its focused
+evidence with:
+
+```text
+cargo test -p automexia-connectivity --locked --test provider_auth_m7
+cargo test -p automexia-extension-runtime --locked provider_context_rebind_requires_a_fresh_session
+cargo test -p automexia-ui-model --locked --test connection_hub
+python tools/ci/check_provider_auth_m7.py
+python tools/ci/test_provider_auth_m7.py
+python tools/ci/check_connection_hub_f2.py
+python tools/ci/test_connection_hub_f2.py
+python tools/ci/validate_repository.py
+cargo check --manifest-path fuzz/Cargo.toml --locked --bin connection_planning
+cargo bench -p automexia-connectivity --locked --bench connection_planning -- provider_auth_bind_and_read_64_capsules
+```
+
+The 12 M7 integration tests cover strict 16 MiB JSON ingress; provider/context
+bounds; unique capsule/session/revision identity; sibling and stale-generation
+rejection; rebind cancellation; 19 auth states; last-known-good offline/expiry;
+refresh/auth/browser/device/MFA transitions; cancel/revoke/disable/uninstall/
+shutdown; exact current `AllowOnce` review; external-browser and IP-literal
+loopback policy with real bracketed-IPv6 parsing; process/network-only
+capability scope; exact visible operation/session/argument/capability/isolation/
+browser/callback/risk binding; truthful initial freshness; atomic pinned
+configuration/provider/risk publication; secret flags and global-context
+mutation; receipt/audit/debug canaries; and 16 repeated maximum 64-capsule
+lifecycles. Extension-runtime
+coverage proves a provider-context rebind cannot reuse a session. Hub fixtures
+cover all 19 states with text recovery labels.
+
+The schema-1 M7 contract freezes 11 ceilings, 19 states, three isolation
+strategies, four browser flows, seven forbidden managed mutations, nine absent
+authorities, eight secret surfaces, source/test/fixture/fuzz/benchmark owners,
+and synchronized documentation. Six mutation cases reject contract drift,
+runtime process/network/filesystem authority, the removed passive WSL/provider
+probe, deleted isolation tests, duplicate keys, and linked evidence. One linked-
+file mutation case is skipped where Windows cannot create symbolic links.
+
+The connection-planning fuzz target now feeds arbitrary bounded bytes through
+the strict provider-capsule parser. A local Windows x86_64 Criterion run on
+2026-08-23 measured bind plus exact-session read of 64 one-provider capsules at
+92.648–96.272 µs over 100 samples; nine high-side outliers were reported. This
+proves the target and current fixed-capacity path, not a controlled regression,
+startup, network, login, or cross-platform release baseline.
+
+The final 2026-08-23 contributor gates passed: formatting; workspace Clippy with
+warnings denied; Nextest with 1,859 passed and seven skipped tests across 55
+binaries; 64 passed and three ignored documentation tests; and full QA. The QA
+report is `target/qa/20260823T020059Z-10904/report.html`. It records controlled
+benchmark baselines, long campaigns, screen readers, AppVerifier/WPR, hosted
+native GPU/platform runs, and real OpenSSH/provider release evidence as external
+rather than passed.
+
+The repository-target `cargo ready` preflight correctly refused to start with
+6.61 GiB free against its 12 GiB minimum. A disposable Windows temporary target
+passed the storage preflight. Its first run exposed an existing Windows Job
+Object lifecycle defect: `try_wait()` could consume the completion notification
+before a second blocking `wait()`, stalling the `xtask` process-capture test.
+The implementation now terminates the Job Object and joins both bounded output
+readers without that second wait. This follows Microsoft's
+[`TerminateJobObject`](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-terminatejobobject)
+contract that associated processes cannot postpone or handle termination. The
+four focused success/deadline/overflow/descendant/pipe-holder cases passed, the
+full `xtask` suite passed 43/43, and a fresh clean-target `cargo ready` then
+passed workspace checks, warning-denied Clippy, unit/integration/doc tests,
+dependency policy, the Windows application build, and version smoke. All
+disposable readiness artifacts were removed afterward.
+
+The pure framework owns no process, thread, PTY, socket, browser listener,
+filesystem, credential, token/certificate cache, provider configuration, or GPU
+resource. Lifecycle tests therefore prove collection cleanup and isolation only.
+No real AWS/Azure/Google Cloud/Kubernetes/OpenShift/Teleport/OpenBao CLI,
+browser/device/MFA flow, cloud network, credential cache, product login UI,
+screen reader, or Linux/macOS native runtime was exercised. Those exact
+provider-specific and native gates belong to D6.1-D6.5.
+
+## M8 AWS adapter source contracts
+
+```text
+cargo test -p automexia-devops-aws --locked
+cargo clippy -p automexia-devops-aws --all-targets --all-features --locked -- -D warnings
+```
+
+Ten Windows x86_64 tests cover disabled least privilege; 1 MiB/128-profile
+hostile/duplicate/secret bounds; exact capsule-scoped SSO/STS; strict 64 KiB
+identity; AWS CLI 2.22+/plugin 1.1.17+ floors; SSM cleanup; and EKS dry-run. No
+AWS tool/network/cache/session/cluster/native provider fixture ran. D3 activation into
+M11 runtime ingestion, accessibility/resources, packaging, and release remain external.
+
+## M9 Azure adapter source contracts
+
+```text
+cargo test -p automexia-devops-azure --locked
+cargo clippy -p automexia-devops-azure --all-targets --all-features --locked -- -D warnings
+cargo test -p automexia-terminal azure_is_independently_registered_and_disabled --lib --locked
+```
+
+Eight Windows x86_64 tests cover disabled least privilege; 256 KiB/128-account/
+4,096-node/depth-32 bounds; secret/duplicate/hostile rejection; exact capsule-
+scoped broker/browser/device and subscription status without global mutation;
+AAD-only tree-cancelled Bastion; opaque AKS output; CLI floors, redaction, and a 473.69–478.86 µs 128-account Criterion target. No
+Azure tool/auth/network/cache/Bastion/AKS/PTY/filesystem/native provider fixture
+ran. D3 activation into M11 runtime ingestion, accessibility/resources, packaging, and
+release remain external.
+
+## CP3.3 native imports and trusted workspace task bridges
+
+CP3.3 is fully done at the local source boundary. Its complete schema-1
+contract and evidence are in ADR 0021 and the phase audit. Run:
+
+```text
+cargo test -p automexia-command-productivity --test quick_action_imports --locked
+cargo test -p automexia-terminal --test quick_action_native_import --locked
+cargo test -p automexia-terminal --test quick_action_workspace_trust --locked
+cargo check --manifest-path fuzz/Cargo.toml --bin quick_action_imports
+cargo bench -p automexia-command-productivity --bench quick_actions --no-run --locked
+python tools/ci/check_command_productivity_cp33.py
+python tools/ci/test_command_productivity_cp33.py
+```
+
+These gates cover six explicit native formats, exact just/Task/mise bridges,
+dry-run/CAS import, path-free trust receipts, revocation/removal, background and
+final insertion authorization, hostile input, Unix no-follow cases, fuzzing, and
+benchmarks. Hosted native/accessibility and controlled 30-day evidence remain.
+
+## M13 provider-aware Quick Actions
+
+M13/CP4 is product-integrated and nonactivated locally. M8-M12 own each
+provider's suite; run CP4 integration evidence with:
+
+```text
+cargo test -p automexia-command-productivity --test provider_quick_actions_cp4 --locked
+cargo test -p automexia-command-productivity --test quick_action_activation --locked
+cargo test -p automexia-terminal --test cp4_provider_product_publication --locked
+cargo test -p automexia-terminal --lib --locked provider
+cargo test -p automexia-terminal --bin automexia --locked provider
+cargo test -p automexia-ui-model --locked provider_context
+cargo check --manifest-path fuzz/Cargo.toml --bin provider_quick_actions
+cargo bench -p automexia-command-productivity --bench quick_actions --locked -- provider_quick_action
+python3 tools/ci/check_provider_quick_actions_cp4.py
+python3 tools/ci/test_provider_quick_actions_cp4.py
+cargo xtask verify architecture
+```
+
+The schema-1 contract freezes seven providers, three publication outcomes,
+nine decisions, eleven denied authorities, five ceilings, 25 named regressions,
+fuzz, benchmarks, and docs. Tests cover retained-product handoff, exact grammar,
+composition, precedence, route/session/revision/generation isolation,
+idempotence, cancellation/revocation, final revalidation, production
+confirmation, accessible states, cleanup, redaction, and no typing-time provider
+work. Seven mutations also reject bridge removal, authority, import, and drift.
+
+The CP4 audit records the current Windows benchmark ranges and outliers.
+No long fuzz campaign, approved provider refresh/capsule producer, exact
+execution, real account/CLI/cluster, native screen-reader/Linux/macOS,
+controlled resource, packaging, signing, or release fixture is claimed.

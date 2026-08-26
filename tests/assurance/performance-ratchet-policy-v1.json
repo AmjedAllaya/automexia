@@ -1,0 +1,117 @@
+{
+  "schema": 1,
+  "phase": "S1-S2",
+  "status": "collecting",
+  "thresholds": {
+    "latency_percent": 5.0,
+    "memory_percent": 10.0
+  },
+  "quality": {
+    "candidate_max_age_hours": 24,
+    "maximum_future_skew_minutes": 5,
+    "minimum_criterion_samples": 50,
+    "maximum_criterion_samples": 10000,
+    "criterion_confidence_level": 0.95,
+    "maximum_latency_interval_percent": 10.0,
+    "maximum_memory_interval_percent": 100.0
+  },
+  "required_claims": [
+    "startup",
+    "input",
+    "prompt",
+    "context",
+    "listing",
+    "parser",
+    "renderer",
+    "resize",
+    "memory",
+    "workers",
+    "images",
+    "actions",
+    "pty",
+    "build-storage"
+  ],
+  "comparability_fields": [
+    "runner_class",
+    "os",
+    "arch",
+    "cpu",
+    "gpu",
+    "power_mode",
+    "toolchain",
+    "profile"
+  ],
+  "criterion_claim_rules": [
+    {"glob": "*pty_process*", "claim": "startup"},
+    {"glob": "*quick_action_store*", "claim": "build-storage"},
+    {"glob": "*cp31_alias_projection*", "claim": "build-storage"},
+    {"glob": "*openssh_inventory*", "claim": "listing"},
+    {"glob": "*connection_plan*", "claim": "listing"},
+    {"glob": "*direct_openssh*", "claim": "listing"},
+    {"glob": "*broadcast_review*", "claim": "actions"},
+    {"glob": "*provider_auth*", "claim": "context"},
+    {"glob": "*history_navigation*", "claim": "prompt"},
+    {"glob": "*reflow*", "claim": "resize"},
+    {"glob": "*resize*", "claim": "resize"},
+    {"glob": "*prompt*", "claim": "prompt"},
+    {"glob": "*context*", "claim": "context"},
+    {"glob": "*quick_action_parse*", "claim": "parser"},
+    {"glob": "*parser*", "claim": "parser"},
+    {"glob": "*processor*", "claim": "parser"},
+    {"glob": "*snapshot*", "claim": "renderer"},
+    {"glob": "*row_rebuild*", "claim": "renderer"},
+    {"glob": "*bench_poll*", "claim": "workers"},
+    {"glob": "*worker*", "claim": "workers"},
+    {"glob": "*image*", "claim": "images"},
+    {"glob": "*quick_action*", "claim": "actions"},
+    {"glob": "*pty_output*", "claim": "pty"},
+    {"glob": "*keyboard_selection*", "claim": "input"},
+    {"glob": "*vt_input*", "claim": "input"},
+    {"glob": "*input*", "claim": "input"}  ],
+  "baseline": {
+    "minimum_consecutive_days": 30,
+    "maximum_days": 90,
+    "minimum_metrics_per_claim": 1,
+    "maximum_acceptance_delay_days": 7
+  },
+  "waivers": {
+    "maximum_duration_days": 30,
+    "maximum_reason_bytes": 512,
+    "https_review_required": true,
+    "wildcards_forbidden": true,
+    "independent_approver_required": true
+  },
+  "limits": {
+    "max_policy_bytes": 65536,
+    "max_baseline_bytes": 8388608,
+    "max_evidence_bytes": 2097152,
+    "max_waiver_bytes": 262144,
+    "max_report_bytes": 262144,
+    "max_criterion_file_bytes": 262144,
+    "max_criterion_sample_file_bytes": 1048576,
+    "max_criterion_entries": 4096,
+    "max_criterion_depth": 16,
+    "max_metrics": 512,
+    "max_unclassified_metrics": 512,
+    "max_metric_id_bytes": 192,
+    "max_metadata_value_bytes": 192
+  },
+  "privacy": {
+    "persist": "allowlisted-runner-and-aggregate-metrics-only",
+    "forbidden": [
+      "environment-dump",
+      "terminal-content",
+      "command-history",
+      "clipboard",
+      "credentials",
+      "user-paths",
+      "raw-etl"
+    ]
+  },
+  "activation": {
+    "automatic": false,
+    "requires_reviewed_baseline": true,
+    "independent_review_required": true,
+    "release_mode": "fail-closed-require-active"
+  }
+}

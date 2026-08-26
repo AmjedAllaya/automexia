@@ -12,7 +12,9 @@ const SHADOW: [f32; 4] = [0.0, 0.0, 0.0, 0.52];
 const OUTLINE: [f32; 4] = [0.0, 0.67, 0.94, 1.0];
 const CARD: [f32; 4] = [0.012, 0.035, 0.062, 1.0];
 const CANCEL: [f32; 4] = [0.025, 0.105, 0.155, 1.0];
+const CANCEL_HOVER: [f32; 4] = [0.035, 0.18, 0.25, 1.0];
 const QUIT: [f32; 4] = [0.37, 0.025, 0.07, 1.0];
+const QUIT_HOVER: [f32; 4] = [0.53, 0.03, 0.11, 1.0];
 const QUIT_OUTLINE: [f32; 4] = [1.0, 0.30, 0.42, 1.0];
 const ORDER: u8 = 20;
 
@@ -51,6 +53,7 @@ pub enum ConfirmQuitAction {
 #[derive(Default)]
 pub struct ConfirmQuit {
     active: bool,
+    hovered: Option<ConfirmQuitAction>,
 }
 
 impl ConfirmQuit {
@@ -60,6 +63,9 @@ impl ConfirmQuit {
 
     pub fn set_active(&mut self, active: bool) {
         self.active = active;
+        if !active {
+            self.hovered = None;
+        }
     }
 
     fn layout(dimensions: (f32, f32, f32)) -> Layout {
@@ -145,6 +151,25 @@ impl ConfirmQuit {
         } else {
             None
         }
+    }
+
+    pub fn hover(
+        &mut self,
+        mouse_x: f32,
+        mouse_y: f32,
+        dimensions: (f32, f32, f32),
+    ) -> bool {
+        let next = self.hit_test(mouse_x, mouse_y, dimensions);
+        if next == self.hovered {
+            false
+        } else {
+            self.hovered = next;
+            true
+        }
+    }
+
+    pub fn hovered_action(&self) -> Option<ConfirmQuitAction> {
+        self.hovered
     }
 
     pub fn render(&self, sugarloaf: &mut Sugarloaf, dimensions: (f32, f32, f32)) {
@@ -251,7 +276,11 @@ impl ConfirmQuit {
         button(
             sugarloaf,
             layout.cancel,
-            CANCEL,
+            if self.hovered == Some(ConfirmQuitAction::Cancel) {
+                CANCEL_HOVER
+            } else {
+                CANCEL
+            },
             OUTLINE,
             if layout.tiny { "N" } else { "Cancel" },
             if layout.tiny { "" } else { "Esc / N" },
@@ -261,7 +290,11 @@ impl ConfirmQuit {
         button(
             sugarloaf,
             layout.quit,
-            QUIT,
+            if self.hovered == Some(ConfirmQuitAction::Quit) {
+                QUIT_HOVER
+            } else {
+                QUIT
+            },
             QUIT_OUTLINE,
             if layout.tiny { "Y" } else { "Close" },
             if layout.tiny { "" } else { "Y" },
@@ -365,6 +398,20 @@ mod tests {
             Some(ConfirmQuitAction::Quit)
         );
         assert_eq!(dialog.hit_test(l.card.x, l.card.y, d), None);
+    }
+
+    #[test]
+    fn hover_tracks_buttons_and_clears_when_hidden() {
+        let dimensions = (1_280.0, 720.0, 1.0);
+        let mut dialog = ConfirmQuit::default();
+        dialog.set_active(true);
+        let layout = ConfirmQuit::layout(dimensions);
+        assert!(dialog.hover(layout.cancel.x + 1.0, layout.cancel.y + 1.0, dimensions));
+        assert_eq!(dialog.hovered_action(), Some(ConfirmQuitAction::Cancel));
+        assert!(dialog.hover(layout.quit.x + 1.0, layout.quit.y + 1.0, dimensions));
+        assert_eq!(dialog.hovered_action(), Some(ConfirmQuitAction::Quit));
+        dialog.set_active(false);
+        assert_eq!(dialog.hovered_action(), None);
     }
 
     #[test]

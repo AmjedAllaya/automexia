@@ -4,15 +4,19 @@ mod pipes;
 mod spsc;
 
 use std::ffi::OsStr;
-use std::io::{self};
+use std::io::{self, Write};
 use std::iter::once;
 use std::os::windows::ffi::OsStrExt;
 use std::os::windows::process::CommandExt;
 use std::process::{Command, Stdio};
 use std::sync::mpsc::TryRecvError;
+use std::time::{Duration, Instant};
 
 use crate::windows::child::ChildExitWatcher;
-use crate::{ChildEvent, EventedPty, ProcessReadWrite, Winsize, WinsizeBuilder};
+use crate::{
+    ChildEvent, EventedPty, ExactExecutable, ManagedPtyShutdown, ProcessReadWrite,
+    Winsize, WinsizeBuilder,
+};
 use windows_sys::Win32::System::Threading::{CREATE_NEW_PROCESS_GROUP, CREATE_NO_WINDOW};
 
 use conpty::Conpty as Backend;
@@ -28,6 +32,7 @@ pub struct Pty {
     write_token: corcovado::Token,
     child_event_token: corcovado::Token,
     child_watcher: ChildExitWatcher,
+    managed_owned_tree: bool,
 }
 
 // Creates conpty instead of pty
@@ -47,7 +52,49 @@ pub fn create_pty(
     rows: u16,
 ) -> Result<Pty, std::io::Error> {
     let exec = shell.map(|shell| build_command_line(shell, &args));
-    conpty::new(exec.as_deref(), working_directory, env, columns, rows)
+    conpty::new(
+        None,
+        exec.as_deref(),
+        working_directory,
+        env,
+        true,
+        false,
+        columns,
+        rows,
+    )
+}
+
+/// Create one managed PTY from an already-opened exact executable.
+///
+/// The guard remains live through native process creation. The child receives
+/// only the supplied application-owned environment and is suspended until it
+/// is assigned to a kill-on-close Job Object.
+pub fn create_exact_pty(
+    executable: ExactExecutable,
+    args: Vec<String>,
+    working_directory: &Option<String>,
+    environment: Vec<(String, String)>,
+    columns: u16,
+    rows: u16,
+) -> Result<Pty, std::io::Error> {
+    let program = executable.path().to_str().ok_or_else(|| {
+        std::io::Error::new(
+            std::io::ErrorKind::InvalidInput,
+            "the exact executable path is not valid Unicode",
+        )
+    })?;
+    let command_line = build_command_line(program, &args);
+    let _replacement_guard = &executable.file;
+    conpty::new(
+        Some(program),
+        Some(&command_line),
+        working_directory,
+        Some(environment),
+        false,
+        true,
+        columns,
+        rows,
+    )
 }
 
 /// Build the single UTF-16 command line consumed by CreateProcessW using the
@@ -101,6 +148,7 @@ impl Pty {
         conout: impl Into<ReadPipe>,
         conin: impl Into<WritePipe>,
         child_watcher: ChildExitWatcher,
+        managed_owned_tree: bool,
     ) -> Self {
         Self {
             backend: backend.into(),
@@ -110,6 +158,7 @@ impl Pty {
             write_token: 0.into(),
             child_event_token: 0.into(),
             child_watcher,
+            managed_owned_tree,
         }
     }
 
@@ -274,6 +323,38 @@ impl EventedPty for Pty {
             Err(TryRecvError::Disconnected) => Some(ChildEvent::Exited(None)),
         }
     }
+
+    fn shutdown_owned_process_tree(&mut self) -> io::Result<ManagedPtyShutdown> {
+        if !self.managed_owned_tree {
+            return Ok(ManagedPtyShutdown::NotManaged);
+        }
+        let _ = self.conin.write_all(&[0x03]);
+        if wait_for_job_empty(&self.backend, Duration::from_secs(2))? {
+            return Ok(ManagedPtyShutdown::Graceful);
+        }
+        self.backend.terminate_managed_job()?;
+        if wait_for_job_empty(&self.backend, Duration::from_secs(3))? {
+            Ok(ManagedPtyShutdown::Forced)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::TimedOut,
+                "the managed Job Object did not terminate within the force budget",
+            ))
+        }
+    }
+}
+
+fn wait_for_job_empty(backend: &Backend, timeout: Duration) -> io::Result<bool> {
+    let deadline = Instant::now() + timeout;
+    loop {
+        if backend.managed_job_is_empty()? {
+            return Ok(true);
+        }
+        if Instant::now() >= deadline {
+            return Ok(false);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
 }
 
 fn cmdline(shell: Option<&str>) -> String {
@@ -333,5 +414,55 @@ mod command_line_tests {
             build_command_line("wsl.exe", &["--distribution".into(), "Ubuntu".into()]),
             "wsl.exe --distribution Ubuntu"
         );
+    }
+}
+
+#[cfg(test)]
+mod exact_spawn_tests {
+    use std::path::PathBuf;
+    use std::time::Duration;
+
+    use corcovado::{event::Events, Poll, PollOpt, Ready, Token};
+
+    use super::*;
+
+    #[test]
+    fn exact_spawn_uses_explicit_program_and_does_not_inherit_path() {
+        let system_root = std::env::var("SystemRoot").unwrap();
+        let executable = crate::ExactExecutable::open(
+            &PathBuf::from(&system_root).join("System32/cmd.exe"),
+        )
+        .unwrap();
+        let pty = create_exact_pty(
+            executable,
+            vec![
+                "/D".into(),
+                "/S".into(),
+                "/C".into(),
+                "if defined PATH (exit 73) else (exit 0)".into(),
+            ],
+            &None,
+            vec![("SystemRoot".into(), system_root)],
+            80,
+            24,
+        )
+        .unwrap();
+
+        let mut events = Events::with_capacity(1);
+        let poll = Poll::new().unwrap();
+        poll.register(
+            pty.child_watcher().event_rx(),
+            Token::from(0usize),
+            Ready::readable(),
+            PollOpt::oneshot(),
+        )
+        .unwrap();
+        poll.poll(&mut events, Some(Duration::from_secs(5)))
+            .unwrap();
+
+        assert!(matches!(
+            pty.child_watcher().event_rx().try_recv(),
+            Ok(ChildEvent::Exited(Some(0)))
+        ));
     }
 }

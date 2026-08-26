@@ -1,14 +1,23 @@
+#![allow(
+    dead_code,
+    reason = "M3 managed SSH remains compile-time disabled until package attestation and native security gates are approved"
+)]
 //! Non-activated exact-argument session-launch boundary.
 //!
-//! ADR 0012 is still proposed, so the production module graph excludes this
-//! entire broker. Pure validation and lifecycle code is compiled by tests so
-//! it can be reviewed and exercised without granting an extension process,
-//! PTY, environment, or renderer authority.
+//! ADR 0012 is accepted, so this broker is compiled in the production module
+//! graph. Activation remains a compile-time hard denial until ADR 0003's
+//! protected approvals, loader attestation, and native evidence pass.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::fmt;
 use std::fs;
 use std::path::{Path, PathBuf};
+
+use sha2::{Digest, Sha256};
+
+use automexia_connectivity::connections::{
+    validate_direct_openssh_arguments, ResolvedExecutable,
+};
 
 use automexia_extension_api::{
     Capability, CapabilityDecision, CapabilityRequest, Decision, ExecutableId,
@@ -25,6 +34,7 @@ const _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED);
 const REVIEWED_EXTENSION_ID: &str = "automexia.devops-ssh";
 const REVIEWED_PUBLISHER: &str = "io.github.AmjedAllaya";
 const MAX_PUBLISHER_BYTES: usize = 256;
+const REVIEWED_CONTRACT_VERSION: u32 = 1;
 const MAX_VERSION_BYTES: usize = 64;
 const MAX_TOTAL_ARGUMENT_BYTES: usize = 32 * 1024;
 const MAX_DESTINATION_BYTES: usize = 512;
@@ -102,6 +112,7 @@ pub enum LaunchDenialCode {
     DuplicateOperation,
     ReplayedOperation,
     NonceExhausted,
+    CapacityExceeded,
     Revoked,
     StaleOperationLease,
 }
@@ -153,6 +164,7 @@ impl fmt::Display for LaunchDenialCode {
                 "the operation identifier was already used in this session"
             }
             Self::NonceExhausted => "the operation lease generation is exhausted",
+            Self::CapacityExceeded => "the managed launch concurrency limit was reached",
             Self::Revoked => "the extension or session grant was revoked",
             Self::StaleOperationLease => {
                 "the operation lease is stale or belongs to another scope"
@@ -162,22 +174,78 @@ impl fmt::Display for LaunchDenialCode {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct VerifiedExtension {
+pub struct PackageDigest([u8; 32]);
+
+impl PackageDigest {
+    pub fn new(bytes: [u8; 32]) -> Result<Self, LaunchDenialCode> {
+        if bytes.iter().all(|byte| *byte == 0) {
+            return Err(LaunchDenialCode::InvalidPrincipal);
+        }
+        Ok(Self(bytes))
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "constructed only from the external attested-loader gate"
+    )
+)]
+pub enum PackageVerification {
+    RepositoryReviewed,
+    FirstPartySigned,
+    Unverified,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReviewedPackagePolicy {
     id: ExtensionId,
     publisher: String,
     version: String,
+    package_digest: PackageDigest,
+    contract_version: u32,
 }
 
-impl VerifiedExtension {
+impl ReviewedPackagePolicy {
+    pub fn linked_first_party() -> Result<Self, LaunchDenialCode> {
+        let mut digest = Sha256::new();
+        digest.update(automexia_devops_ssh::ID.as_bytes());
+        digest.update([0]);
+        digest.update(REVIEWED_PUBLISHER.as_bytes());
+        digest.update([0]);
+        digest.update(automexia_devops_ssh::VERSION.as_bytes());
+        digest.update([0]);
+        digest.update(REVIEWED_CONTRACT_VERSION.to_le_bytes());
+        for capability in automexia_devops_ssh::MANIFEST.capabilities {
+            digest.update([0]);
+            digest.update(capability.label().as_bytes());
+        }
+        let package_digest = PackageDigest::new(digest.finalize().into())?;
+        Self::new(
+            ExtensionId::new(automexia_devops_ssh::ID)
+                .map_err(|_| LaunchDenialCode::InvalidPrincipal)?,
+            REVIEWED_PUBLISHER,
+            automexia_devops_ssh::VERSION,
+            package_digest,
+            REVIEWED_CONTRACT_VERSION,
+        )
+    }
+
     pub fn new(
         id: ExtensionId,
         publisher: impl Into<String>,
         version: impl Into<String>,
+        package_digest: PackageDigest,
+        contract_version: u32,
     ) -> Result<Self, LaunchDenialCode> {
         let publisher = publisher.into();
         let version = version.into();
-        if !valid_identity_text(&publisher, MAX_PUBLISHER_BYTES)
-            || !valid_version(&version)
+        if id.as_str() != REVIEWED_EXTENSION_ID
+            || publisher != REVIEWED_PUBLISHER
+            || version != env!("CARGO_PKG_VERSION")
+            || contract_version != REVIEWED_CONTRACT_VERSION
         {
             return Err(LaunchDenialCode::InvalidPrincipal);
         }
@@ -185,13 +253,72 @@ impl VerifiedExtension {
             id,
             publisher,
             version,
+            package_digest,
+            contract_version,
+        })
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct VerifiedExtension {
+    id: ExtensionId,
+    publisher: String,
+    version: String,
+    package_digest: PackageDigest,
+    contract_version: u32,
+    verification: PackageVerification,
+}
+
+impl VerifiedExtension {
+    pub fn new(
+        id: ExtensionId,
+        publisher: impl Into<String>,
+        version: impl Into<String>,
+        package_digest: PackageDigest,
+        contract_version: u32,
+        verification: PackageVerification,
+    ) -> Result<Self, LaunchDenialCode> {
+        let publisher = publisher.into();
+        let version = version.into();
+        if !valid_identity_text(&publisher, MAX_PUBLISHER_BYTES)
+            || !valid_version(&version)
+            || contract_version == 0
+        {
+            return Err(LaunchDenialCode::InvalidPrincipal);
+        }
+        Ok(Self {
+            id,
+            publisher,
+            version,
+            package_digest,
+            contract_version,
+            verification,
         })
     }
 
-    fn is_reviewed_first_party(&self) -> bool {
-        self.id.as_str() == REVIEWED_EXTENSION_ID
-            && self.publisher == REVIEWED_PUBLISHER
-            && self.version == env!("CARGO_PKG_VERSION")
+    pub fn linked_unverified_candidate() -> Result<Self, LaunchDenialCode> {
+        let policy = ReviewedPackagePolicy::linked_first_party()?;
+        Self::new(
+            policy.id,
+            policy.publisher,
+            policy.version,
+            policy.package_digest,
+            policy.contract_version,
+            PackageVerification::Unverified,
+        )
+    }
+
+    fn is_reviewed_first_party(&self, policy: &ReviewedPackagePolicy) -> bool {
+        self.id == policy.id
+            && self.publisher == policy.publisher
+            && self.version == policy.version
+            && self.package_digest == policy.package_digest
+            && self.contract_version == policy.contract_version
+            && matches!(
+                self.verification,
+                PackageVerification::RepositoryReviewed
+                    | PackageVerification::FirstPartySigned
+            )
     }
 }
 
@@ -215,6 +342,9 @@ pub struct LaunchSubmission<'a> {
     /// extension state or the inherited process environment.
     pub trusted_environment: &'a [(String, String)],
     pub safe_default_working_directory: &'a Path,
+    /// Digest from the current identity-bound Connection Review. Generic
+    /// broker tests may omit it; managed SSH must supply it.
+    pub reviewed_executable_identity_digest: Option<&'a str>,
     pub now_ms: u64,
 }
 
@@ -231,6 +361,7 @@ pub enum AuditResultClass {
     Denied(LaunchDenialCode),
     Cancelled,
     Completed,
+    Failed,
 }
 
 /// Deliberately contains no argv, environment value, cwd, terminal content,
@@ -289,6 +420,62 @@ pub enum WorkingDirectoryDisposition {
 struct FileIdentity {
     canonical_path: PathBuf,
     platform: PlatformFileIdentity,
+    guarded: teletypewriter::ExactExecutableIdentity,
+}
+impl FileIdentity {
+    fn review_digest(&self) -> Result<String, LaunchDenialCode> {
+        let path = self
+            .canonical_path
+            .to_str()
+            .ok_or(LaunchDenialCode::UnsupportedEncoding)?;
+        let mut digest = Sha256::new();
+        digest.update(b"automexia.direct-openssh.executable-identity.v1\0");
+        digest.update(path.as_bytes());
+        match self.platform {
+            #[cfg(unix)]
+            PlatformFileIdentity::Unix {
+                device,
+                inode,
+                size,
+                modified_seconds,
+                modified_nanoseconds,
+            } => {
+                digest.update(device.to_le_bytes());
+                digest.update(inode.to_le_bytes());
+                digest.update(size.to_le_bytes());
+                digest.update(modified_seconds.to_le_bytes());
+                digest.update(modified_nanoseconds.to_le_bytes());
+            }
+            #[cfg(target_os = "windows")]
+            PlatformFileIdentity::Windows {
+                volume_serial,
+                file_index,
+                size,
+                last_write,
+            } => {
+                digest.update(volume_serial.to_le_bytes());
+                digest.update(file_index.to_le_bytes());
+                digest.update(size.to_le_bytes());
+                digest.update(last_write.to_le_bytes());
+            }
+            #[cfg(not(any(unix, target_os = "windows")))]
+            PlatformFileIdentity::Portable {
+                size,
+                modified_nanoseconds,
+            } => {
+                digest.update(size.to_le_bytes());
+                digest.update(modified_nanoseconds.unwrap_or_default().to_le_bytes());
+            }
+        }
+        const HEX: &[u8; 16] = b"0123456789abcdef";
+        let digest = digest.finalize();
+        let mut encoded = String::with_capacity(64);
+        for byte in digest {
+            encoded.push(char::from(HEX[usize::from(byte >> 4)]));
+            encoded.push(char::from(HEX[usize::from(byte & 0x0f)]));
+        }
+        Ok(encoded)
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -371,6 +558,22 @@ impl PreparedLaunch {
         }
     }
 
+    /// Open the exact executable with the low-level replacement guard and
+    /// compare the native identity observed by the broker with the file that
+    /// the PTY seam will execute.
+    pub fn guarded_executable(
+        &self,
+    ) -> Result<teletypewriter::ExactExecutable, LaunchDenialCode> {
+        let executable = teletypewriter::ExactExecutable::open(
+            &self.executable_identity.canonical_path,
+        )
+        .map_err(|_| LaunchDenialCode::ExecutableIdentityChanged)?;
+        if executable.identity() != &self.executable_identity.guarded {
+            return Err(LaunchDenialCode::ExecutableIdentityChanged);
+        }
+        Ok(executable)
+    }
+
     /// Revalidate the cwd immediately before launch. If a previously valid
     /// requested directory vanished, return the trusted safe default instead.
     pub fn revalidated_working_directory(&self) -> Result<PathBuf, LaunchDenialCode> {
@@ -419,6 +622,82 @@ impl PreparedLaunch {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[cfg_attr(
+    not(test),
+    allow(
+        dead_code,
+        reason = "all variants are exercised by the fixed cross-platform resolver contract"
+    )
+)]
+enum OpenSshHostPlatform {
+    Windows,
+    MacOs,
+    Linux,
+    Wsl,
+    Unsupported,
+}
+
+#[cfg(target_os = "windows")]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    OpenSshHostPlatform::Windows
+}
+
+#[cfg(target_os = "macos")]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    OpenSshHostPlatform::MacOs
+}
+
+#[cfg(target_os = "linux")]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    let wsl_environment = std::env::var_os("WSL_DISTRO_NAME").is_some()
+        || std::env::var_os("WSL_INTEROP").is_some();
+    let wsl_kernel = fs::read_to_string("/proc/sys/kernel/osrelease")
+        .is_ok_and(|release| release.to_ascii_lowercase().contains("microsoft"));
+    if wsl_environment || wsl_kernel {
+        OpenSshHostPlatform::Wsl
+    } else {
+        OpenSshHostPlatform::Linux
+    }
+}
+
+#[cfg(not(any(target_os = "windows", target_os = "macos", target_os = "linux")))]
+fn current_openssh_host_platform() -> OpenSshHostPlatform {
+    OpenSshHostPlatform::Unsupported
+}
+
+fn platform_candidate_roots(
+    platform: OpenSshHostPlatform,
+    windows_system_directory: Option<&Path>,
+) -> Vec<PathBuf> {
+    match platform {
+        OpenSshHostPlatform::Windows => windows_system_directory
+            .map(|directory| vec![directory.join("OpenSSH")])
+            .unwrap_or_default(),
+        OpenSshHostPlatform::MacOs => ["/usr/bin", "/usr/local/bin", "/opt/homebrew/bin"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        OpenSshHostPlatform::Linux => ["/usr/bin", "/bin", "/usr/local/bin"]
+            .into_iter()
+            .map(PathBuf::from)
+            .collect(),
+        // WSL launch remains outside the accepted ADR boundary. A later phase
+        // must verify fixed System32/wsl.exe and /usr/bin/ssh identities.
+        OpenSshHostPlatform::Wsl | OpenSshHostPlatform::Unsupported => Vec::new(),
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn host_windows_system_directory() -> Option<PathBuf> {
+    windows_system_directory()
+}
+
+#[cfg(not(target_os = "windows"))]
+fn host_windows_system_directory() -> Option<PathBuf> {
+    None
+}
+
 #[derive(Clone, Debug, Default)]
 pub struct ExecutablePolicy {
     candidates: BTreeMap<&'static str, Vec<PathBuf>>,
@@ -427,25 +706,21 @@ pub struct ExecutablePolicy {
 impl ExecutablePolicy {
     pub fn host_defaults() -> Self {
         let mut policy = Self::default();
-        #[cfg(target_os = "windows")]
-        if let Some(system_directory) = windows_system_directory() {
-            let openssh = system_directory.join("OpenSSH");
+        let system_directory = host_windows_system_directory();
+        for directory in platform_candidate_roots(
+            current_openssh_host_platform(),
+            system_directory.as_deref(),
+        ) {
             for executable in OpenSshExecutable::ALL {
-                policy.add_candidate(executable, openssh.join(executable.filename()));
-            }
-        }
-        #[cfg(not(target_os = "windows"))]
-        for directory in ["/usr/bin", "/bin", "/usr/local/bin", "/opt/homebrew/bin"] {
-            for executable in OpenSshExecutable::ALL {
-                policy.add_candidate(
-                    executable,
-                    Path::new(directory).join(executable.filename()),
-                );
+                policy.add_candidate(executable, directory.join(executable.filename()));
             }
         }
         policy
     }
 
+    /// An explicit override replaces host defaults. Failure never falls back
+    /// to a PATH, working-directory, or default candidate.
+    #[cfg(test)]
     pub fn with_configured_path(
         mut self,
         executable: OpenSshExecutable,
@@ -484,6 +759,7 @@ impl ExecutablePolicy {
     }
 }
 
+#[cfg(test)]
 fn filename_matches(executable: OpenSshExecutable, path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
@@ -518,9 +794,12 @@ fn identify_executable(path: &Path) -> Result<FileIdentity, LaunchDenialCode> {
     if !metadata.is_file() || !is_platform_executable(&canonical_path, &metadata) {
         return Err(LaunchDenialCode::ExecutableUnavailable);
     }
+    let guarded = teletypewriter::ExactExecutable::open(&canonical_path)
+        .map_err(|_| LaunchDenialCode::ExecutableUnavailable)?;
     Ok(FileIdentity {
         canonical_path: canonical_path.clone(),
         platform: platform_file_identity(&canonical_path, &metadata)?,
+        guarded: guarded.identity().clone(),
     })
 }
 
@@ -625,6 +904,7 @@ fn canonical_directory(path: &Path) -> Option<PathBuf> {
 
 #[derive(Clone, Debug)]
 struct OperationBinding {
+    #[cfg(test)]
     extension_id: ExtensionId,
     lease: OperationLease,
 }
@@ -645,6 +925,7 @@ enum BrokerActivation {
 pub struct CapabilityBroker {
     activation: BrokerActivation,
     executable_policy: ExecutablePolicy,
+    package_policy: ReviewedPackagePolicy,
     next_nonce: u64,
     operations: BTreeMap<OperationId, OperationBinding>,
     sessions: BTreeMap<SessionId, SessionRegistration>,
@@ -653,11 +934,15 @@ pub struct CapabilityBroker {
 }
 
 impl CapabilityBroker {
-    pub fn pending_security_review(executable_policy: ExecutablePolicy) -> Self {
+    pub fn pending_security_review(
+        executable_policy: ExecutablePolicy,
+        package_policy: ReviewedPackagePolicy,
+    ) -> Self {
         Self {
             activation: BrokerActivation::PendingSecurityReview,
             executable_policy,
             next_nonce: 1,
+            package_policy,
             operations: BTreeMap::new(),
             sessions: BTreeMap::new(),
             highest_session_id: 0,
@@ -665,9 +950,37 @@ impl CapabilityBroker {
         }
     }
 
+    pub(crate) const fn activation_denial(&self) -> Option<LaunchDenialCode> {
+        match self.activation {
+            BrokerActivation::PendingSecurityReview => {
+                Some(LaunchDenialCode::PendingSecurityReview)
+            }
+            #[cfg(test)]
+            BrokerActivation::ReviewHarness => None,
+        }
+    }
+    /// Observe the exact configured `ssh` file only after package activation.
+    /// Production denial happens before any filesystem resolution.
+    pub(crate) fn observe_openssh_executable(
+        &self,
+    ) -> Result<ResolvedExecutable, LaunchDenialCode> {
+        if let Some(code) = self.activation_denial() {
+            return Err(code);
+        }
+        let executable_id = ExecutableId::new(OpenSshExecutable::Ssh.id())
+            .map_err(|_| LaunchDenialCode::UnsupportedExecutable)?;
+        let identity = self.executable_policy.resolve(&executable_id)?;
+        Ok(ResolvedExecutable {
+            executable_id: OpenSshExecutable::Ssh.id().into(),
+            identity_digest: identity.review_digest()?,
+        })
+    }
     #[cfg(test)]
-    fn review_harness(executable_policy: ExecutablePolicy) -> Self {
-        let mut broker = Self::pending_security_review(executable_policy);
+    pub(crate) fn review_harness(
+        executable_policy: ExecutablePolicy,
+        package_policy: ReviewedPackagePolicy,
+    ) -> Self {
+        let mut broker = Self::pending_security_review(executable_policy, package_policy);
         broker.activation = BrokerActivation::ReviewHarness;
         broker
     }
@@ -700,6 +1013,7 @@ impl CapabilityBroker {
 
     /// Advance an existing session to a new capsule revision and cancel only
     /// operations owned by the previous revision.
+    #[cfg(test)]
     pub fn rebind_session(
         &mut self,
         session_id: SessionId,
@@ -741,7 +1055,9 @@ impl CapabilityBroker {
     ) -> Result<PreparedLaunch, Box<DeniedLaunch>> {
         let operation_kind = operation_kind(submission.launch);
 
-        if !submission.principal.is_reviewed_first_party()
+        if !submission
+            .principal
+            .is_reviewed_first_party(&self.package_policy)
             || submission.capability.extension_id != submission.principal.id
         {
             return Err(deny(
@@ -752,6 +1068,15 @@ impl CapabilityBroker {
         }
         if self.revoked_extensions.contains(&submission.principal.id) {
             return Err(deny(&submission, LaunchDenialCode::Revoked, operation_kind));
+        }
+        if self.operations.len()
+            >= super::external_tool_runner::MAX_CONCURRENT_EXTERNAL_TOOLS
+        {
+            return Err(deny(
+                &submission,
+                LaunchDenialCode::CapacityExceeded,
+                operation_kind,
+            ));
         }
         if submission.launch.operation_id.get() == 0
             || submission.launch.session_id.get() == 0
@@ -898,6 +1223,19 @@ impl CapabilityBroker {
             Ok(identity) => identity,
             Err(code) => return Err(deny(&submission, code, operation_kind)),
         };
+        if let Some(reviewed_digest) = submission.reviewed_executable_identity_digest {
+            let current_digest = match executable_identity.review_digest() {
+                Ok(digest) => digest,
+                Err(code) => return Err(deny(&submission, code, operation_kind)),
+            };
+            if current_digest != reviewed_digest {
+                return Err(deny(
+                    &submission,
+                    LaunchDenialCode::ExecutableIdentityChanged,
+                    operation_kind,
+                ));
+            }
+        }
         let next_nonce = match self.next_nonce.checked_add(1) {
             Some(next_nonce) => next_nonce,
             None => {
@@ -927,6 +1265,7 @@ impl CapabilityBroker {
         self.operations.insert(
             lease.operation_id,
             OperationBinding {
+                #[cfg(test)]
                 extension_id: submission.principal.id.clone(),
                 lease,
             },
@@ -989,6 +1328,14 @@ impl CapabilityBroker {
         before - self.operations.len()
     }
 
+    pub fn shutdown(&mut self) -> usize {
+        let active = self.operations.len();
+        self.operations.clear();
+        self.sessions.clear();
+        active
+    }
+
+    #[cfg(test)]
     pub fn revoke_extension(&mut self, extension_id: ExtensionId) -> usize {
         if extension_id.as_str() != REVIEWED_EXTENSION_ID {
             return 0;
@@ -1014,9 +1361,20 @@ fn validate_operation(request: &LaunchRequest) -> Result<(), LaunchDenialCode> {
     if executable != OpenSshExecutable::Ssh {
         return Err(LaunchDenialCode::UnsupportedOperation);
     }
-    if request.arguments.len() != 1 {
-        return Err(LaunchDenialCode::InvalidArguments);
+    if request
+        .arguments
+        .last()
+        .is_some_and(|argument| argument.as_str().starts_with('-'))
+    {
+        return Err(LaunchDenialCode::OptionConfusedDestination);
     }
+    let exact_arguments = request
+        .arguments
+        .iter()
+        .map(|argument| argument.as_str().to_owned())
+        .collect::<Vec<_>>();
+    validate_direct_openssh_arguments(&exact_arguments)
+        .map_err(|_| LaunchDenialCode::InvalidArguments)?;
     let total_bytes = request
         .arguments
         .iter()
@@ -1027,7 +1385,13 @@ fn validate_operation(request: &LaunchRequest) -> Result<(), LaunchDenialCode> {
     if total_bytes > MAX_TOTAL_ARGUMENT_BYTES {
         return Err(LaunchDenialCode::InvalidArguments);
     }
-    validate_destination(request.arguments[0].as_str())
+    validate_destination(
+        request
+            .arguments
+            .last()
+            .ok_or(LaunchDenialCode::InvalidArguments)?
+            .as_str(),
+    )
 }
 
 fn validate_destination(destination: &str) -> Result<(), LaunchDenialCode> {
@@ -1155,11 +1519,37 @@ fn deny(
 
 #[cfg(test)]
 mod tests {
+    use automexia_connectivity::connections::{
+        DIRECT_OPENSSH_MANAGED_OPTIONS, DIRECT_OPENSSH_ROUTED_OPTIONS,
+    };
+
     use super::*;
+    use crate::automexia::connections::{
+        ManagedReceiptPersistenceState, ManagedReceiptRecord, ManagedReceiptSink,
+    };
+    use automexia_connectivity::connections::{
+        validate_connection_receipt, DirectOpenSshDestinationKind, OperationResultState,
+    };
     use automexia_extension_api::{BoundedText, SecretReference};
     use proptest::prelude::*;
     use std::ffi::OsStr;
     use std::io::Write;
+    use std::sync::{Arc, Mutex};
+
+    #[derive(Default)]
+    struct RecordingReceiptSink {
+        records: Mutex<Vec<ManagedReceiptRecord>>,
+    }
+
+    impl ManagedReceiptSink for RecordingReceiptSink {
+        fn try_persist(
+            &self,
+            record: ManagedReceiptRecord,
+        ) -> ManagedReceiptPersistenceState {
+            self.records.lock().unwrap().push(record);
+            ManagedReceiptPersistenceState::Queued
+        }
+    }
     use tempfile::TempDir;
 
     struct TestRequest {
@@ -1203,7 +1593,12 @@ mod tests {
                     session_id,
                     capsule_revision,
                     executable,
-                    vec![BoundedText::new(destination).unwrap()],
+                    DIRECT_OPENSSH_MANAGED_OPTIONS
+                        .iter()
+                        .copied()
+                        .chain(std::iter::once(destination))
+                        .map(|argument| BoundedText::new(argument).unwrap())
+                        .collect(),
                     None,
                     None,
                     Vec::new(),
@@ -1255,6 +1650,7 @@ mod tests {
                 launch: &self.launch,
                 trusted_environment: &self.environment,
                 safe_default_working_directory: &self.safe_default,
+                reviewed_executable_identity_digest: None,
                 now_ms: 100,
             }
         }
@@ -1295,11 +1691,29 @@ mod tests {
         }
     }
 
+    fn review_package_digest() -> PackageDigest {
+        PackageDigest::new([0xa5; 32]).unwrap()
+    }
+
+    fn reviewed_package_policy() -> ReviewedPackagePolicy {
+        ReviewedPackagePolicy::new(
+            ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
+            REVIEWED_PUBLISHER,
+            env!("CARGO_PKG_VERSION"),
+            review_package_digest(),
+            REVIEWED_CONTRACT_VERSION,
+        )
+        .unwrap()
+    }
+
     fn reviewed_principal() -> VerifiedExtension {
         VerifiedExtension::new(
             ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
             REVIEWED_PUBLISHER,
             env!("CARGO_PKG_VERSION"),
+            review_package_digest(),
+            REVIEWED_CONTRACT_VERSION,
+            PackageVerification::RepositoryReviewed,
         )
         .unwrap()
     }
@@ -1308,7 +1722,8 @@ mod tests {
         fixture: &ExecutableFixture,
         request: &TestRequest,
     ) -> CapabilityBroker {
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
         broker
             .register_session(request.launch.session_id, request.launch.capsule_revision)
             .unwrap();
@@ -1319,8 +1734,10 @@ mod tests {
     fn production_broker_is_a_hard_denial_before_resolution() {
         let fixture = ExecutableFixture::new();
         let request = TestRequest::new(fixture.safe_default.clone(), "prod-alias");
-        let mut broker =
-            CapabilityBroker::pending_security_review(ExecutablePolicy::default());
+        let mut broker = CapabilityBroker::pending_security_review(
+            ExecutablePolicy::default(),
+            reviewed_package_policy(),
+        );
         let denied = broker.authorize(request.submission()).unwrap_err();
         assert_eq!(denied.code, LaunchDenialCode::PendingSecurityReview);
         assert_eq!(denied.audit.result, AuditResultClass::Denied(denied.code));
@@ -1333,7 +1750,12 @@ mod tests {
         let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let descriptor = prepared.session_launch_descriptor().unwrap();
-        assert_eq!(descriptor.args(), &["prod-alias"]);
+        let expected_arguments = DIRECT_OPENSSH_MANAGED_OPTIONS
+            .iter()
+            .copied()
+            .chain(std::iter::once("prod-alias"))
+            .collect::<Vec<_>>();
+        assert_eq!(descriptor.args(), expected_arguments);
         assert_eq!(descriptor.environment(), request.environment);
         assert_eq!(
             Path::new(descriptor.program().unwrap()),
@@ -1348,7 +1770,7 @@ mod tests {
     #[test]
     fn exact_arguments_are_never_joined_or_sent_through_a_shell() {
         let fixture = ExecutableFixture::new();
-        let request = TestRequest::new(fixture.safe_default.clone(), "user@example.test");
+        let request = TestRequest::new(fixture.safe_default.clone(), "example.test");
         let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let command = prepared.test_command();
@@ -1356,10 +1778,33 @@ mod tests {
             command.get_program(),
             canonical_existing(&fixture.executable).unwrap().as_os_str()
         );
-        assert_eq!(
-            command.get_args().collect::<Vec<_>>(),
-            vec![OsStr::new("user@example.test")]
-        );
+        let expected_arguments = DIRECT_OPENSSH_MANAGED_OPTIONS
+            .iter()
+            .copied()
+            .chain(std::iter::once("example.test"))
+            .map(OsStr::new)
+            .collect::<Vec<_>>();
+        assert_eq!(command.get_args().collect::<Vec<_>>(), expected_arguments);
+    }
+
+    #[test]
+    fn reviewed_routed_arguments_reach_the_native_descriptor_as_exact_values() {
+        let fixture = ExecutableFixture::new();
+        let mut request = TestRequest::new(fixture.safe_default.clone(), "prod");
+        request.launch.arguments = DIRECT_OPENSSH_ROUTED_OPTIONS
+            .iter()
+            .copied()
+            .chain(["-J", "edge,operator@bastion.example:2200", "prod"])
+            .map(|argument| BoundedText::new(argument).unwrap())
+            .collect();
+        let mut broker = review_broker(&fixture, &request);
+        let prepared = broker.authorize(request.submission()).unwrap();
+        let descriptor = prepared.session_launch_descriptor().unwrap();
+        assert!(descriptor.args().iter().any(|argument| argument == "-J"));
+        assert!(descriptor
+            .args()
+            .iter()
+            .any(|argument| argument == "edge,operator@bastion.example:2200"));
     }
 
     #[test]
@@ -1370,6 +1815,17 @@ mod tests {
         assert_eq!(
             broker.authorize(option.submission()).unwrap_err().code,
             LaunchDenialCode::OptionConfusedDestination
+        );
+
+        let mut altered_option = TestRequest::new(fixture.safe_default.clone(), "host");
+        altered_option.launch.arguments[0] =
+            BoundedText::new("-oAddKeysToAgent=yes").unwrap();
+        assert_eq!(
+            broker
+                .authorize(altered_option.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::InvalidArguments
         );
 
         let mut extra = TestRequest::new(fixture.safe_default.clone(), "host");
@@ -1482,6 +1938,9 @@ mod tests {
             ExtensionId::new("third.party").unwrap(),
             "third.party",
             env!("CARGO_PKG_VERSION"),
+            review_package_digest(),
+            REVIEWED_CONTRACT_VERSION,
+            PackageVerification::RepositoryReviewed,
         )
         .unwrap();
         unreviewed.capability.extension_id = unreviewed.principal.id.clone();
@@ -1517,6 +1976,94 @@ mod tests {
                 LaunchDenialCode::UnsupportedOperation
             );
         }
+    }
+
+    #[test]
+    fn package_identity_digest_compatibility_and_verification_fail_closed() {
+        assert_eq!(
+            PackageDigest::new([0; 32]).unwrap_err(),
+            LaunchDenialCode::InvalidPrincipal
+        );
+        assert_eq!(
+            ReviewedPackagePolicy::new(
+                ExtensionId::new(REVIEWED_EXTENSION_ID).unwrap(),
+                REVIEWED_PUBLISHER,
+                "999.0.0",
+                review_package_digest(),
+                REVIEWED_CONTRACT_VERSION,
+            )
+            .unwrap_err(),
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let fixture = ExecutableFixture::new();
+        let seed = TestRequest::new(fixture.safe_default.clone(), "host");
+        let mut broker = review_broker(&fixture, &seed);
+
+        let mut unverified = TestRequest::new(fixture.safe_default.clone(), "host");
+        unverified.principal.verification = PackageVerification::Unverified;
+        assert_eq!(
+            broker.authorize(unverified.submission()).unwrap_err().code,
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let mut wrong_digest = TestRequest::new(fixture.safe_default.clone(), "host");
+        wrong_digest.principal.package_digest = PackageDigest::new([0x5a; 32]).unwrap();
+        assert_eq!(
+            broker
+                .authorize(wrong_digest.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let mut wrong_contract = TestRequest::new(fixture.safe_default.clone(), "host");
+        wrong_contract.principal.contract_version = REVIEWED_CONTRACT_VERSION + 1;
+        assert_eq!(
+            broker
+                .authorize(wrong_contract.submission())
+                .unwrap_err()
+                .code,
+            LaunchDenialCode::InvalidPrincipal
+        );
+
+        let mut signed = TestRequest::new(fixture.safe_default.clone(), "host");
+        signed.principal.verification = PackageVerification::FirstPartySigned;
+        let prepared = broker.authorize(signed.submission()).unwrap();
+        broker.complete(prepared.lease()).unwrap();
+    }
+
+    #[test]
+    fn platform_resolution_contract_is_fixed_and_wsl_remains_disabled() {
+        let system_directory = PathBuf::from("/fixed/windows/System32");
+        assert_eq!(
+            platform_candidate_roots(
+                OpenSshHostPlatform::Windows,
+                Some(system_directory.as_path()),
+            ),
+            vec![system_directory.join("OpenSSH")]
+        );
+        assert_eq!(
+            platform_candidate_roots(OpenSshHostPlatform::MacOs, None),
+            vec![
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/usr/local/bin"),
+                PathBuf::from("/opt/homebrew/bin"),
+            ]
+        );
+        assert_eq!(
+            platform_candidate_roots(OpenSshHostPlatform::Linux, None),
+            vec![
+                PathBuf::from("/usr/bin"),
+                PathBuf::from("/bin"),
+                PathBuf::from("/usr/local/bin"),
+            ]
+        );
+        assert!(platform_candidate_roots(OpenSshHostPlatform::Windows, None).is_empty());
+        assert!(platform_candidate_roots(OpenSshHostPlatform::Wsl, None).is_empty());
+        assert!(
+            platform_candidate_roots(OpenSshHostPlatform::Unsupported, None).is_empty()
+        );
     }
 
     #[test]
@@ -1661,14 +2208,14 @@ mod tests {
     fn trusted_environment_is_bounded_and_never_appears_in_debug_or_audit() {
         let fixture = ExecutableFixture::new();
         let mut request =
-            TestRequest::new(fixture.safe_default.clone(), "private-user@host");
+            TestRequest::new(fixture.safe_default.clone(), "private-host-canary");
         request.environment =
             vec![("SSH_AUTH_SOCK".into(), "CANARY-SECRET-SOCKET".into())];
         let mut broker = review_broker(&fixture, &request);
         let prepared = broker.authorize(request.submission()).unwrap();
         let combined = format!("{prepared:?} {:?}", prepared.audit());
         assert!(!combined.contains("CANARY-SECRET-SOCKET"));
-        assert!(!combined.contains("private-user@host"));
+        assert!(!combined.contains("private-host-canary"));
         assert!(!combined.contains(&fixture.safe_default.to_string_lossy().to_string()));
 
         let mut invalid = TestRequest::new(fixture.safe_default.clone(), "host");
@@ -1772,7 +2319,8 @@ mod tests {
         );
 
         let unregistered = TestRequest::new(fixture.safe_default.clone(), "host");
-        let mut broker = CapabilityBroker::review_harness(fixture.policy());
+        let mut broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
         assert_eq!(
             broker
                 .authorize(unregistered.submission())
@@ -1840,7 +2388,10 @@ mod tests {
     fn one_ten_and_fifty_session_cycles_release_all_bounded_state() {
         let fixture = ExecutableFixture::new();
         for count in [1_u64, 10, 50] {
-            let mut broker = CapabilityBroker::review_harness(fixture.policy());
+            let mut broker = CapabilityBroker::review_harness(
+                fixture.policy(),
+                reviewed_package_policy(),
+            );
             for index in 1..=count {
                 let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
                 request.set_scope(OperationId::new(1), SessionId::new(index), 1);
@@ -1858,6 +2409,268 @@ mod tests {
         }
     }
 
+    #[test]
+    fn application_runner_guards_publish_order_and_records_success_receipt() {
+        use crate::context::external_tool_runner::{
+            ExternalToolRunner, ManagedProcessOutcome, RunnerErrorCode,
+        };
+
+        let fixture = ExecutableFixture::new();
+        let request =
+            TestRequest::new(fixture.safe_default.clone(), "private-target-canary");
+        let broker = review_broker(&fixture, &request);
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        let sink = Arc::new(RecordingReceiptSink::default());
+        assert!(runner.attach_receipt_sink(sink.clone()));
+
+        let launch = runner.authorize(request.submission()).unwrap();
+        let lease = launch.lease();
+        runner.bind_test_receipt_seed(
+            lease,
+            "profile-prod",
+            "source-8",
+            &"a".repeat(64),
+            DirectOpenSshDestinationKind::InventoryAlias,
+            100,
+        );
+        assert_eq!(
+            launch.descriptor().args(),
+            DIRECT_OPENSSH_MANAGED_OPTIONS
+                .iter()
+                .copied()
+                .chain(std::iter::once("private-target-canary"))
+                .collect::<Vec<_>>()
+        );
+        assert_eq!(
+            runner
+                .complete_with_outcome(lease, 120, ManagedProcessOutcome::Succeeded)
+                .unwrap_err()
+                .code,
+            RunnerErrorCode::NotPublished
+        );
+        runner.mark_published(lease, 7).unwrap();
+        let completion = runner
+            .complete_with_outcome(lease, 140, ManagedProcessOutcome::Succeeded)
+            .unwrap();
+        assert_eq!(completion.audit.result, AuditResultClass::Completed);
+        assert_eq!(completion.audit.duration_ms, 40);
+        let receipt = completion.receipt.as_ref().unwrap();
+        validate_connection_receipt(receipt).unwrap();
+        assert_eq!(receipt.outcome, OperationResultState::Succeeded);
+        assert_eq!(runner.recent_receipts(), vec![receipt.clone()]);
+        assert_eq!(
+            completion.receipt_persistence,
+            ManagedReceiptPersistenceState::Queued
+        );
+        let persisted = sink.records.lock().unwrap();
+        assert_eq!(persisted.len(), 1);
+        assert_eq!(persisted[0].receipt(), receipt);
+        assert_eq!(
+            persisted[0].reconnect_identity(),
+            Some(("profile-prod", "source-8"))
+        );
+        drop(persisted);
+        let reconnect = runner.recent_reconnect_candidates();
+        assert_eq!(reconnect.len(), 1);
+        assert!(reconnect[0].matches_current_source("profile-prod", "source-8"));
+        assert!(!reconnect[0].matches_current_source("profile-prod", "source-9"));
+        assert_eq!(
+            completion.notification.as_ref().unwrap().title,
+            "SSH session ended"
+        );
+
+        let debug = format!("{runner:?}{launch:?}{:?}", completion.audit);
+        assert!(!debug.contains("private-target-canary"));
+        assert!(!debug.contains(fixture.executable.to_string_lossy().as_ref()));
+        assert!(runner.is_idle());
+    }
+
+    #[test]
+    fn failed_managed_process_is_not_reported_as_success_or_reconnectable_literal() {
+        use crate::context::external_tool_runner::{
+            ExternalToolRunner, ManagedProcessOutcome,
+        };
+
+        let fixture = ExecutableFixture::new();
+        let request = TestRequest::new(fixture.safe_default.clone(), "private-host");
+        let broker = review_broker(&fixture, &request);
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        let launch = runner.authorize(request.submission()).unwrap();
+        runner.bind_test_receipt_seed(
+            launch.lease(),
+            "literal-connection",
+            "source-1",
+            &"b".repeat(64),
+            DirectOpenSshDestinationKind::Literal,
+            100,
+        );
+        runner.mark_published(launch.lease(), 7).unwrap();
+
+        let completion = runner
+            .complete_with_outcome(launch.lease(), 155, ManagedProcessOutcome::Failed)
+            .unwrap();
+        assert_eq!(completion.audit.result, AuditResultClass::Failed);
+        assert_eq!(
+            completion.receipt.as_ref().unwrap().outcome,
+            OperationResultState::Failed {
+                diagnostic_code: "connection-process-exit-failed".into(),
+            }
+        );
+        assert_eq!(
+            completion.notification.as_ref().unwrap().body,
+            "The managed SSH process ended with an error. Review its terminal output."
+        );
+        assert!(runner.recent_reconnect_candidates().is_empty());
+        assert!(!format!("{completion:?}").contains("private-host"));
+    }
+
+    #[test]
+    fn application_runner_shutdown_cancels_only_owned_active_operations() {
+        use crate::context::external_tool_runner::ExternalToolRunner;
+
+        let fixture = ExecutableFixture::new();
+        let request = TestRequest::new(fixture.safe_default.clone(), "host");
+        let broker = review_broker(&fixture, &request);
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        let launch = runner.authorize(request.submission()).unwrap();
+        runner.bind_test_receipt_seed(
+            launch.lease(),
+            "literal-connection",
+            "source-1",
+            &"c".repeat(64),
+            DirectOpenSshDestinationKind::Literal,
+            100,
+        );
+        runner.mark_published(launch.lease(), 7).unwrap();
+
+        assert_eq!(runner.shutdown(150), 1);
+        assert!(runner.is_idle());
+        assert_eq!(
+            runner.recent_audits().last().unwrap().result,
+            AuditResultClass::Cancelled
+        );
+        assert_eq!(
+            runner.recent_receipts().last().unwrap().outcome,
+            OperationResultState::Cancelled {
+                diagnostic_code: "connection-session-cancelled".into(),
+            }
+        );
+        assert!(runner.recent_reconnect_candidates().is_empty());
+        assert!(runner.cancel(launch.lease(), 160).is_err());
+    }
+
+    #[test]
+    fn linked_candidate_path_stays_fail_closed_and_redacted_without_attestation() {
+        use crate::context::external_tool_runner::{ExternalToolRunner, RunnerErrorCode};
+
+        let runner = ExternalToolRunner::pending_security_review();
+        let error = runner.managed_openssh_activation_error().unwrap();
+        assert_eq!(
+            error.code,
+            RunnerErrorCode::LaunchDenied(LaunchDenialCode::PendingSecurityReview)
+        );
+        assert!(runner.is_idle());
+        assert!(runner.recent_audits().is_empty());
+    }
+
+    #[test]
+    fn application_runner_enforces_fifty_active_and_bounded_audit_history() {
+        use crate::context::external_tool_runner::{
+            ExternalToolRunner, RunnerErrorCode, MAX_CONCURRENT_EXTERNAL_TOOLS,
+            MAX_RUNNER_AUDIT_RECORDS,
+        };
+
+        let fixture = ExecutableFixture::new();
+        let broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        for index in 1..=MAX_CONCURRENT_EXTERNAL_TOOLS {
+            let numeric = u64::try_from(index).unwrap();
+            let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
+            request.set_scope(OperationId::new(numeric), SessionId::new(numeric), 1);
+            runner
+                .register_session(request.launch.session_id, 1)
+                .unwrap();
+            let launch = runner.authorize(request.submission()).unwrap();
+            runner.mark_published(launch.lease(), index).unwrap();
+        }
+
+        let overflow_id = u64::try_from(MAX_CONCURRENT_EXTERNAL_TOOLS + 1).unwrap();
+        let mut overflow = TestRequest::new(fixture.safe_default.clone(), "host");
+        overflow.set_scope(
+            OperationId::new(overflow_id),
+            SessionId::new(overflow_id),
+            1,
+        );
+        runner
+            .register_session(overflow.launch.session_id, 1)
+            .unwrap();
+        assert_eq!(
+            runner.authorize(overflow.submission()).unwrap_err().code,
+            RunnerErrorCode::CapacityExceeded
+        );
+        assert_eq!(runner.shutdown(200), MAX_CONCURRENT_EXTERNAL_TOOLS);
+        assert!(runner.is_idle());
+
+        let broker =
+            CapabilityBroker::review_harness(fixture.policy(), reviewed_package_policy());
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        for index in 1..=MAX_RUNNER_AUDIT_RECORDS + 1 {
+            let numeric = u64::try_from(index).unwrap();
+            let mut request = TestRequest::new(fixture.safe_default.clone(), "host");
+            request.set_scope(OperationId::new(numeric), SessionId::new(numeric), 1);
+            runner
+                .register_session(request.launch.session_id, 1)
+                .unwrap();
+            let launch = runner.authorize(request.submission()).unwrap();
+            runner.mark_published(launch.lease(), index).unwrap();
+            runner.complete(launch.lease(), 101).unwrap();
+        }
+        let audits = runner.recent_audits();
+        assert_eq!(audits.len(), MAX_RUNNER_AUDIT_RECORDS);
+        assert_eq!(audits.first().unwrap().session_id, SessionId::new(2));
+        assert_eq!(
+            audits.last().unwrap().session_id,
+            SessionId::new(u64::try_from(MAX_RUNNER_AUDIT_RECORDS + 1).unwrap())
+        );
+    }
+
+    #[test]
+    fn executable_observation_is_activation_gated_and_bound_to_authorization() {
+        let fixture = ExecutableFixture::new();
+        let request = TestRequest::new(fixture.safe_default.clone(), "host");
+        let production = CapabilityBroker::pending_security_review(
+            fixture.policy(),
+            reviewed_package_policy(),
+        );
+        assert_eq!(
+            production.observe_openssh_executable().unwrap_err(),
+            LaunchDenialCode::PendingSecurityReview
+        );
+
+        let mut broker = review_broker(&fixture, &request);
+        let observed = broker.observe_openssh_executable().unwrap();
+        assert_eq!(observed.executable_id, "ssh");
+        assert_eq!(observed.identity_digest.len(), 64);
+        let mut submission = request.submission();
+        submission.reviewed_executable_identity_digest =
+            Some(observed.identity_digest.as_str());
+        assert!(broker.authorize(submission).is_ok());
+
+        let mut mismatched_broker = review_broker(&fixture, &request);
+        let mut mismatched = request.submission();
+        let wrong_digest = "f".repeat(64);
+        mismatched.reviewed_executable_identity_digest = Some(&wrong_digest);
+        assert_eq!(
+            mismatched_broker.authorize(mismatched).unwrap_err().code,
+            LaunchDenialCode::ExecutableIdentityChanged
+        );
+    }
     proptest! {
         #[test]
         fn accepted_destination_remains_one_literal_native_argument(
