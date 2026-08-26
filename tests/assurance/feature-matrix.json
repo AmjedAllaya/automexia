@@ -294,16 +294,16 @@
       "documentation": {
         "guide": ["RELEASING.md", "docs/RELEASE-TRUST.md#user-verification"],
         "reference": ["packaging/README.md", "docs/RELEASE-TRUST.md#release-artifact-contract"],
-        "explanation": ["docs/adr/0016-final-artifact-release-trust.md"]
+        "explanation": ["docs/adr/0016-final-artifact-release-trust.md", "docs/adr/0031-versioned-hosted-ci-and-repository-protection.md", "docs/research/STABLE-RELEASE-AND-REPOSITORY-BLOCKERS-AUDIT.md"]
       },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md", "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml"]},
-        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
-        "security": {"level": "controlled", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/check_runtime_trust.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml"]},
+        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/stable_release.py", "tools/ci/test_stable_release.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
+        "security": {"level": "controlled", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tests/assurance/stable-release-policy-v1.json", "tools/ci/check_runtime_trust.py", "tools/ci/stable_release.py", "tools/ci/repository_protection.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml"]},
         "performance": {"level": "controlled", "evidence": ["tools/ci/release_trust.py", "tools/ci/check_reproducible_build.sh", ".github/workflows/release.yml", "docs/RELEASE-TRUST.md#tests-and-performance-evidence"]},
         "resource_lifetime": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh"]},
         "storage_hygiene": {"level": "nightly", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", "tools/xtask/src/main.rs"]},
-        "resilience": {"level": "controlled", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml", "RELEASING.md"]},
+        "resilience": {"level": "controlled", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/test_stable_release.py", "tools/ci/test_repository_protection.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml", "RELEASING.md"]},
         "visual_quality": {"level": "pr", "evidence": ["assets/brand/ASSET-MANIFEST.toml", "tools/ci/validate_repository.py"]}
       },
       "platforms": {

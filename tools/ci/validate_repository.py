@@ -70,6 +70,11 @@ from check_repository_aligned_docs import validate as validate_repository_aligne
 from check_platform_coverage import validate_repository_workflows
 from repository_protection import validate_repository as validate_repository_protection
 from release_trust import load_policy as validate_release_trust_policy
+from stable_release import (
+    load_policy as load_stable_release_policy,
+    validate_policy as validate_stable_release_policy,
+    validate_release_workflow as validate_stable_release_workflow,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -323,6 +328,11 @@ def validate() -> None:
 
     validate_release_trust_policy()
     counts["release trust policy"] = 1
+
+    stable_release_policy = load_stable_release_policy()
+    validate_stable_release_policy(stable_release_policy)
+    validate_stable_release_workflow(stable_release_policy)
+    counts["stable release policy"] = 1
 
     feature_counts = validate_feature_assurance()
     counts["feature assurance entries"] = feature_counts["features"]

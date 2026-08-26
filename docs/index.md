@@ -42,7 +42,7 @@ assurance, and project pages own future work and decision history.
 | Audit completed-output grouping and its validation incident | [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) |
 | Review UI branding implementation and exact U10 release evidence | [UI branding roadmap](UI-BRANDING-ROADMAP.md), [U10 assurance audit](research/U10-UI-BRANDING-ASSURANCE-AUDIT.md) |
 | Configure or audit controlled F5 native OpenSSH evidence | [F5 native OpenSSH assurance](F5-NATIVE-OPENSSH-ASSURANCE.md) |
-| Audit or restore hosted CI and repository protection | [Repository protection guide](../.github/BRANCH-PROTECTION.md), [ADR 0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) |
+| Audit stable-release blockers or restore hosted CI and repository protection | [Section 12 completion audit](research/STABLE-RELEASE-AND-REPOSITORY-BLOCKERS-AUDIT.md), [repository protection guide](../.github/BRANCH-PROTECTION.md), [ADR 0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) |
 | Review stabilization/S1/S2 status and external evidence | [Stabilization roadmap](STABILIZATION-ROADMAP.md), [S1 native/visual/resource/accessibility audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md), [S2 release-ratchet completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md), [historical S1/S2 implementation audit](research/S1-S2-IMPLEMENTATION-AUDIT.md) |
 | See future work / decision history | [Canonical roadmap](ROADMAP.md), [canonical decision index](DECISIONS.md), [condensed project overview](project/roadmap.md) |
 | Review reconciled research and proposals | [Aligned research/proposal pack](../automexia_docs_repository_aligned/README.md) - non-authoritative until integrated into a canonical owner |

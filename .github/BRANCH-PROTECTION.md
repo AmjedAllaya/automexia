@@ -95,3 +95,13 @@ repository and left these gates open:
 4. after public visibility, enable private vulnerability reporting; after
    entitlement or public visibility exposes them, enable secret scanning and
    push protection;
+5. merge the reviewed implementation branch so S1, S2, and F5 controlled
+   workflows exist on `main`, then rerun every default-branch workflow on the
+   exact current commit.
+
+Stable release has a stronger fail-closed gate. Configure the protected
+`stable-release` environment secret `AUTOMEXIA_REPOSITORY_AUDIT_TOKEN` with
+read-only access to repository administration, Actions, collaborator, and
+security state. The tag preflight requires an annotated tag at the exact remote
+`main` head, validates complete fork/DCO provenance, and calls `audit --json`.
+An exit status of 1 or 2 blocks publication.

@@ -79,6 +79,18 @@ plan exposes them.
 - Treating payment rejection or plan limits as CI failure or success was
   rejected. They are separately reported external gates.
 
+## 2026-08-26 stable-release binding amendment
+
+Stable tag preflight now consumes the separate digest-pinned stable-release
+source policy. Before packaging it requires an annotated local and remote tag at
+the exact remote `main` head, the annotated published Rio fork tag at the audited
+base, complete clean linear downstream history, and author-matching DCO trailers.
+The protected `stable-release` environment supplies a read-only repository audit
+credential, and preflight accepts only an all-pass authenticated audit. Exit 1
+drift and exit 2 external prerequisites both block publication. This adds no
+runtime authority and does not permit visibility, billing, plan, collaborator,
+credential, security-entitlement, or history changes.
+
 ## Verification
 
 Mutation tests cover duplicate JSON keys, identity drift, bypasses, missing

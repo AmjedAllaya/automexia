@@ -1303,6 +1303,10 @@ their UI/ecosystem capability is included in the release claim.
 - dependency/security policy and hosted assurance jobs pass;
 - signed/notarized artifacts, SBOMs, checksums, and attestations validate;
 - the release commit is reviewed, protected, reproducible, and traceable;
+- the annotated release tag is published at the exact remote `main` head, the
+  annotated remote Rio fork tag resolves to the audited base, downstream
+  history is complete/clean/linear and DCO-signed, and the authenticated
+  repository audit reports only pass results;
 - deterministic renderer state and controlled rendered-frame captures agree,
   visual changes have reviewed expected/actual/diff evidence, and no footer,
   focus border, cursor, prompt, or overlay is misplaced after resize;

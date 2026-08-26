@@ -99,21 +99,23 @@ remain subject to their documented protected milestones and evidence.
 
 | Check | Result on the audited commit |
 |---|---|
-| Feature assurance | Passed: 39 feature-assurance entries, 301 documented source/evidence entries, and 46 phase-audit entries. |
+| Feature assurance | Passed: 40 feature-assurance entries, 302 documented source/evidence entries, and 46 phase-audit entries. |
 | Platform coverage policy | Passed: Windows/Linux/macOS, PowerShell/CMD/Unix shells, X11/Wayland, alternate architectures, nightly artifacts, deep Windows/WSL jobs, and release validators are machine-enforced. |
 | Documentation coverage | Passed: 13 public pages, 175 configuration keys, 79 binding actions, 17 CLI flags, 5 CLI commands, and 25 xtask commands. |
-| Repository validation | Passed: 50 TOML, 14 YAML, 48 JSON, 6 XML, one desktop file, 331 Markdown files, 75 pinned Actions, 2 repository-protection rulesets, 14 exact required checks, release trust, assurance, and roadmap policy contracts. |
+| Repository validation | Passed: 52 TOML, 17 YAML, 54 JSON, 6 XML, one desktop file, 367 Markdown files, 83 pinned Actions, 2 repository-protection rulesets, 14 exact required checks, and release-trust/stable-source/assurance/roadmap contracts. |
 
-The hosted GitHub state was authenticated on 2026-08-24. Eight available
+The hosted GitHub state was authenticated again on 2026-08-26. Seven available
 controls pass the versioned contract: repository merge/DCO/cleanup settings,
 Actions and selected-publisher permissions, workflow-token authority,
-Dependabot alerts and security updates, immutable releases, and active required
-workflows. Rulesets are unavailable on the private Free plan, reviewer capacity
-is one human, and hosted jobs are rejected before checkout by the account
-billing/spending state. Private vulnerability reporting and Secret Protection
-are also unavailable in the current private/entitlement state. These five
-conditions remain **unverified and unresolved for release** until the exact
-protected commit passes and the authenticated audit returns no external result.
+Dependabot alerts and security updates, and immutable releases. Required hosted
+workflows currently fail because controlled S1, S2, and F5 workflow files are on
+the implementation branch but not remote `main`. Rulesets are unavailable on
+the private Free plan, reviewer capacity is one human, and hosted jobs are
+rejected before checkout by the account billing/spending state. Private
+vulnerability reporting and Secret Protection are also unavailable in the
+current private/entitlement state. The workflow failure and five external
+conditions remain **unresolved for release** until reviewed integration reaches
+`main`, the exact protected commit passes, and the authenticated audit is all-pass.
 
 ## Executive phase matrix
 
@@ -1645,8 +1647,10 @@ exist. Publication still requires:
 - signed/notarized clean install/upgrade/uninstall/coexistence evidence;
 - Linux/macOS GPU/PTY/visual/accessibility and native alternate hardware;
 - elevated AppVerifier/WPR and the 30-day performance baseline;
-- intentional fork tag publication and resolution of the recorded old DCO
-  exception.
+- exact annotated tag/default-branch/fork/DCO source provenance and an
+  authenticated all-pass repository audit are now release-blocking; the fork
+  tag is published, while controlled workflows have not reached `main` and six post-fork merge commits and the
+  recorded old DCO exception remain unresolved.
 
 Unsigned/nightly artifacts are not release candidates.
 

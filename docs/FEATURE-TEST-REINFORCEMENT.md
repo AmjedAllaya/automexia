@@ -234,6 +234,12 @@ Current assurance: **Controlled/external**.
   checksum or replaced artifacts.
 - Bind native install/launch/uninstall, scanners, signatures, SBOM, provenance,
   checksums and source by exact digest; measure residual state and rollback.
+- Reject lightweight/unpushed tags, wrong remote `main`, missing fork provenance,
+  downstream merges, missing DCO, dirty source, blocker substitution, or removal
+  of the authenticated repository audit.
+- Require the protected audit to return only pass; plan, billing, reviewer,
+  workflow, security-entitlement, credential, native-host, and elapsed evidence
+  remain external until actually observed.
 
 ### command-productivity-cp0-policy
 

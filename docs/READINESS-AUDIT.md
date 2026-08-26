@@ -13,7 +13,7 @@ satisfy.
 
 | Plan area | Evidence and result |
 |---|---|
-| Standalone source and history | The checkout builds without an overlay or bootstrap step. `origin` and `rio-upstream` are configured, Rio base `7d595af583f6ef1ea6036a66b367ba1e5a84d4a2` is an ancestor, and local annotated tag `rio-base-0.5.20-7d595af` resolves to that base. |
+| Standalone source and history | The checkout builds without an overlay or bootstrap step. `origin` and `rio-upstream` are configured, Rio base `7d595af583f6ef1ea6036a66b367ba1e5a84d4a2` is an ancestor, and the local and published remote annotated tag `rio-base-0.5.20-7d595af` resolves to that base. The stable-source policy now enforces exact remote `main`, tag, fork, clean-history, linear-history, and DCO provenance before publication. |
 | Identity and coexistence | Central identity/path constants, Automexia executable/package/app IDs, environment variables, URL/desktop metadata, terminfo, identity allowlist, and migration/coexistence tests pass. Inherited private `rio-*`, `librio`, Sugarloaf, and engine type names remain intentionally attributed. XTGETTCAP `TN`/name now returns `automexia`; native error/dialog surfaces and the protocol response are enforced by identity regressions. |
 | Repository structure | The frontend lives at `apps/automexia-terminal`; brand, documentation, packaging, shell integration, conformance fixtures, integration tests, and `tools/xtask` use the planned v0.4 layout. The release-critical provider-neutral API, runtime, DevOps, and UI-model code is extracted into four private crates. `automexia-app` extraction and inherited engine-directory regrouping remain deliberately deferred. |
 | Single-command workflow | `cargo ready`, `cargo dev`, `cargo automexia`, storage preflight, isolated verification targets, runtime launch copies, and cleanup are implemented and documented. Launch now exposes a validated repository/package integration root only to the child session; it does not write profiles, run an installer, bypass execution policy, or provision WSL. Persistent integration is an explicit application subcommand. Doctor reports host-native, WSL-native, or mounted-drive workspace I/O, and heavy workflows reject WSL source/targets under `/mnt/<drive>` with a dual-checkout remedy. |
@@ -191,14 +191,17 @@ These are not source defects and must not be bypassed:
    address.
 3. Windows Authenticode and Apple Developer ID/notarization credentials are not
    configured. The locally built Windows executable is intentionally unsigned.
-4. The repository is private on GitHub Free. The 2026-08-24 authenticated
-   contract apply and audit enabled and rechecked squash-only merging, merged-
-   branch cleanup, update-branch UX, web DCO signoff, selected full-SHA Actions,
-   read-only non-approving workflow tokens, dependency graph/Dependabot alerts
-   and security updates, active required workflows, and immutable future
-   releases. The versioned source contract, local checker, mutation tests,
-   CODEOWNERS fallback, exact check set, no-bypass branch/tag rules, and bounded
-   audit/apply path are fully implemented locally.
+4. The repository is private on GitHub Free. The 2026-08-26 authenticated audit
+   passed squash-only merging, merged-branch cleanup, update-branch UX, web DCO
+   signoff, selected full-SHA Actions, read-only non-approving workflow tokens,
+   dependency graph/Dependabot alerts and security updates, and immutable future
+   releases. The versioned contract, local checker, mutation tests, CODEOWNERS
+   fallback, exact check set, no-bypass branch/tag rules, bounded audit/apply
+   path, and authenticated stable-tag preflight are fully implemented locally.
+
+   Hosted workflows are a real failure: controlled S1, S2, and F5 workflows are
+   present on this branch but absent from remote `main`, which was 109 commits
+   behind at audit time. They must reach `main` through reviewed integration.
 
    Five external gates remain: the current private Free plan rejects rulesets;
    only one human collaborator exists; Actions jobs are rejected before checkout
@@ -208,16 +211,15 @@ These are not source defects and must not be bypassed:
    explicitly authorize public visibility, invite at least two independent
    reviewers and expand CODEOWNERS, rerun the exact protected commit, then rerun
    the apply/audit. None of those states is credited as passing source evidence.
-5. The fork-point tag exists locally but was not observed on `origin`; publish
-   it intentionally during repository administration rather than as a side
-   effect of a code audit.
-6. One existing downstream commit, `0f3fec43ac`, lacks a DCO trailer. Current
-   PR policy enforces DCO for new work; repairing already-published history
-   would require an explicit coordinated history rewrite and is not automatic.
-7. The required 30-day performance baseline and controlled-hardware release
+5. Six existing post-fork merge commits violate the linear release-source
+   contract, and downstream commit `0f3fec43ac` lacks a DCO trailer. Current PR
+   policy enforces squash-only, DCO-signed new work; repairing already-published
+   history requires an explicit coordinated legal/history process and is not
+   automatic.
+6. The required 30-day performance baseline and controlled-hardware release
    checklist are time- and infrastructure-dependent and cannot be declared
    complete by one local run.
-8. Controlled Windows AppVerifier/WPR, cross-platform GPU/render capture, and
+7. Controlled Windows AppVerifier/WPR, cross-platform GPU/render capture, and
    native assistive-technology infrastructure have not been observed. Their
    v0.4 baseline jobs and redacted artifacts must run on the declared hosts.
 

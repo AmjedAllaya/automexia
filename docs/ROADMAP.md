@@ -67,7 +67,7 @@ the audit's executive matrix so the two cannot drift.
 
 | Status | Feature / phase | Current scope |
 |---|---|---|
-| **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, and a versioned hosted-CI/repository-protection contract with local mutation coverage are source-complete. Available GitHub controls are applied; plan-limited rulesets, reviewer capacity, executed exact-head hosted runs, reporting, and secret-scanning entitlements remain external. |
+| **Fully done** | v0.4/S0 | Core identity, hostile-input bounds, atomic reload, versioned hosted-CI/repository protection, exact annotated tag/default-branch/fork/DCO provenance, authenticated stable-tag audit enforcement, and local mutations are source-complete. The fork tag is published. Controlled workflows still need reviewed integration to `main`; plan-limited rulesets, reviewer capacity, executed exact-head hosted runs, historical linearity/DCO resolution, reporting, and secret-scanning entitlements remain external. |
 | **Partially done** | v0.4/S1 | Source implementation is fully done: the opt-in deterministic visual fixture, bounded Windows WGPU/CPU native/resource harness, separate AppVerifier Basics/low-resource phases, exact 24-suite evidence policy, mutation-tested validator, controlled workflow, and fail-closed release dependency are implemented. Actual Linux/macOS/named-GPU/elevated/accessibility runs and approved visual matrices remain external. |
 | **Fully done** | S2 | Source and automation are fully implemented: bounded no-follow evidence, repeated-sample/confidence quality, clean exact-commit/operator binding, independently reviewed 30-day baseline activation, exact waivers, 90-day retention, and a fail-closed 5% latency/10% memory release ratchet. Release evidence remains collecting until 30 controlled consecutive days are reviewed and activated. |
 | **Partially done** | D0 | ADR 0012 is accepted; schema 5 freezes M3-M5 direct/routed/tunnel argv, trust/status, tunnel lifecycle, receipt/reconnect, and native-manifest rules while retaining immutable schemas 1/2/3/4. Protected approvals and real native execution remain. |
@@ -124,9 +124,11 @@ Complete product rebranding, configuration coexistence/migration, contributor
 automation, mandatory multi-platform CI, coverage/security policy, and signed
 desktop artifact production. Only the newest v0.4 patch is supported.
 
-The v0.4 source-level identity, hostile-control-string, and atomic-reload S0
-gates are closed locally and protected by contributor checks. Stable release
-still requires the declared native Linux/macOS, hosted security, visual,
+The v0.4 source-level identity, hostile-control-string, atomic-reload, exact
+stable-source provenance, and authenticated repository-audit S0 gates are
+closed locally and protected by contributor checks. Stable release still
+requires reviewed workflow integration plus the declared native Linux/macOS,
+hosted security, visual,
 performance, packaging, signing, asset-rights, and repository-policy evidence;
 local Windows success does not replace those gates.
 
