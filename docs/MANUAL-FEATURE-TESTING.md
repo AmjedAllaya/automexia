@@ -763,15 +763,46 @@ negative/offscreen hit area.
 
 ### UI-03 — font size, glyph list, and appearance
 
-1. Use `Ctrl/Cmd+=`, `Ctrl/Cmd+-`, and `Ctrl/Cmd+0`.
-2. Open registered fonts with `Ctrl/Cmd+Shift+L`.
-3. Toggle appearance with the platform shortcut.
-4. Render the TERM-01 Unicode line at minimum, default, and large font size.
+1. Use an isolated config root from the clean-machine setup and set `[fonts]`
+   `size = 18.0` in `config.toml`.
+2. Launch Automexia, create two panes and a second OS window, then use
+   `Ctrl/Cmd+=` twice. Do not type or press Enter after the shortcut.
+3. Confirm every existing pane/window reaches 20 pt and that the prompt line is
+   byte-for-byte unchanged. Create another pane; it must inherit 20 pt.
+4. Wait for `state/user-preferences-v1.toml` to appear. It must be no larger
+   than 16 KiB and contain schema 1 plus `font-size = 20.0`; it must not contain
+   terminal text, paths, history, environment values, credentials, or provider
+   data.
+5. Close Automexia normally and reopen it with the same isolated root. The
+   first window and every newly created pane must start at 20 pt without a
+   visible 18-to-20 pt flash.
+6. Toggle appearance with the platform shortcut, close, and reopen. The same
+   light/dark choice must be active on the first frame and on all branded
+   surfaces.
+7. Edit an unrelated config value, reload config, and confirm it applies while
+   the saved 20 pt override remains. Use `Ctrl/Cmd+0`; every pane must return to
+   the configured 18 pt size. Restart once more; 18 pt must remain.
+8. Open registered fonts with `Ctrl/Cmd+Shift+L` and render the TERM-01 Unicode
+   line at the 6 pt lower bound, default, and 100 pt upper bound. Additional
+   decrease/increase attempts must stop at the exact bound.
+9. Recovery: with Automexia closed, first create two valid generations by
+   changing the size twice. Replace only
+   `state/user-preferences-v1.toml` with malformed text and relaunch. Automexia
+   must warn, recover the `.previous.toml` value, preserve `config.toml`, and
+   still accept Reset.
+10. Failure isolation: make the state directory read-only or hold the
+    `user-preferences-v1.lock` from a second process, change the size, and wait
+    for the warning. The live terminal must keep accepting input and rendering;
+    the last durable primary file must remain parseable and unchanged. Restore
+    permissions/release the lock, change the setting again, and verify a normal
+    restart.
 
 Expected result: size stays within the documented 6–100 point bound; reset is
-deterministic; the font browser is reachable and dismissible; light/dark state
-updates all branded surfaces with readable contrast; grapheme layout remains
-stable.
+deterministic and returns to `config.toml`; font and appearance survive restart
+and stay application-wide; the font browser is reachable and dismissible;
+light/dark state updates all branded surfaces with readable contrast; grapheme
+layout remains stable; preference activity emits no PTY bytes, never rewrites
+`config.toml`, and storage failure cannot block the terminal.
 
 ### UI-04 — command palette and modal input isolation
 

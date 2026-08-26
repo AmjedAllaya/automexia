@@ -1184,15 +1184,13 @@ impl Screen<'_> {
     }
 
     fn set_compatibility_font_size(&mut self, points: f32) {
-        let dim = &mut self.context_manager.current_mut().dimension;
-        if (points - dim.font_size).abs() <= f32::EPSILON {
+        if (points - self.context_manager.current().dimension.font_size).abs()
+            <= f32::EPSILON
+        {
             return;
         }
-        dim.update_font_size(points);
         self.context_manager
-            .current_grid_mut()
-            .update_dimensions(&mut self.sugarloaf);
-        self.resize_all_contexts();
+            .update_font_size(rio_backend::event::FontSizeRequest::Set(points));
     }
 }
 

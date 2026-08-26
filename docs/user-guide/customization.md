@@ -8,7 +8,8 @@ Automexia is designed to work with **zero configuration**. The most maintainable
 |---|---|
 | Different directory for one launch | `automexia --working-dir <PATH>` |
 | Different shell/program for one launch | `automexia ... -e <PROGRAM> [ARGS...]` |
-| Permanent terminal preference | `config.toml` |
+| Permanent declarative terminal preference | `config.toml` |
+| Font size or light/dark appearance changed in the running UI | Saved automatically for the next launch |
 | Different preferences by platform | Platform-specific config override tables |
 | Temporary diagnostic logging | `--enable-log-file` or log environment override |
 | Frequent UI action on another key | `[bindings]` custom binding |
@@ -35,7 +36,8 @@ Default roots:
 | macOS | `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` |
 | Linux | `$XDG_CONFIG_HOME/automexia` or `~/.config/automexia` |
 
-The root can contain `config.toml`, `themes/`, `extensions/`, and `logs/`.
+The root can contain `config.toml`, `themes/`, `extensions/`, `logs/`, and the
+application-owned `state/` directory.
 
 ## 2. Open the config from Automexia
 
@@ -102,7 +104,7 @@ Use this setting for your everyday default. Use `automexia -e ...` when you need
 
 The argument list is an exact vector, not a shell command string. Avoid embedding pipelines/redirection there; those belong in an actual shell session.
 
-## 5. Configure fonts without breaking runtime zoom
+## 5. Configure fonts and saved runtime zoom
 
 Example:
 
@@ -113,14 +115,18 @@ family = "Cascadia Code"
 features = ["calt=1", "liga=1"]
 ```
 
-Runtime zoom remains pane-local:
+Runtime zoom applies to all open panes and windows:
 
 - Windows/Linux/BSD: `Ctrl+0`, `Ctrl+=`/`Ctrl++`, `Ctrl+-`
 - macOS: `Cmd+0`, `Cmd+=`/`Cmd++`, `Cmd+-`
 
-Reset returns the pane to the configured size.
+The chosen size is saved automatically and restored before the first window is
+created on the next launch. Reset clears that saved override and returns every
+pane to the current configured size.
 
-Use runtime zoom for temporary readability changes and config for the long-term default.
+Use runtime zoom for a convenient remembered preference and config for the
+declarative default you want Reset to recover. The UI does not rewrite or
+reformat `config.toml`.
 
 ## 6. Configure window appearance
 
@@ -174,6 +180,11 @@ Choose one approach deliberately:
 - **Force theme** when app appearance must be independent of the host.
 
 Both adaptive theme files must load successfully. Theme/config failures do not replace the current runtime state with partially parsed values; Automexia keeps the last known-good configuration.
+
+The appearance shortcut also saves the selected light/dark choice. To clear all
+runtime UI overrides, close Automexia and remove the two
+`state/user-preferences-v1*.toml` files. The next launch uses `config.toml` and
+the host appearance again.
 
 ## 9. Add a custom key binding
 

@@ -48,7 +48,7 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Shift+Arrow` | Start at the terminal insertion cursor, then extend/reverse selection by one cell or row. |
 | `Ctrl+Shift+Left/Right` | Extend/reverse selection by a Unicode word boundary. |
 | `Ctrl+Shift+A` | Select all on Windows. |
-| `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
+| `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Clear the saved override, increase, or decrease the application-wide font size; the result is restored next launch. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |
 | `Shift+PageUp/PageDown` | Scroll one page up / down outside the alternate screen. |
 | `Ctrl+Shift+Up/Down` | Jump to the previous / next shell-integrated command in the selected pane. |
@@ -99,7 +99,7 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Ctrl+Cmd+Arrow` | Resize the selected split. |
 | `Cmd+C` / `Cmd+V` | Copy / paste. `Ctrl+C` remains selection-aware as described above. |
 | `Cmd+A` | Select all. |
-| `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Reset, increase, or decrease font size. |
+| `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Clear the saved override, increase, or decrease the application-wide font size; the result is restored next launch. |
 | `Cmd+F` / `Cmd+B` | Select or refocus the current-pane scope in the active search session. |
 | `Cmd+Shift+F` / `Cmd+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Cmd+Shift+Up` / `Cmd+Shift+Down` | Jump to the previous / next marked command in the selected pane's scrollback. |

@@ -14,7 +14,10 @@ Automexia uses one writable product root:
 | macOS | `~/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal` |
 | Linux | `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia` |
 
-The root contains `config.toml`, `themes/`, `extensions/`, and `logs/`.
+The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
+application-owned `state/`. Runtime font and appearance choices are stored in
+the private, versioned `state/user-preferences-v1.toml` overlay; it is not a
+second general configuration file.
 `AUTOMEXIA_CONFIG_HOME` replaces the complete root. `AUTOMEXIA_LOG_LEVEL`
 overrides the configured log level. For v0.4 only, `RIO_CONFIG_HOME` is a
 read-only migration source and `RIO_LOG_LEVEL` is a deprecated value fallback;
@@ -220,8 +223,27 @@ weight = 400
 and optional CSS-style `weight` (100…900). `style` is `"default"`, `false` to
 reuse regular, or a named face style. `symbol-map` entries use `start`, `end`,
 and `font-family` Unicode ranges. The default family is Cascadia Code and the
-default size is 18 pt. Runtime `Ctrl`/`Cmd` zoom is pane-local; reset returns to
-this configured size.
+default size is 18 pt. Runtime `Ctrl`/`Cmd` zoom applies to every open pane and
+window and is restored on the next launch. Reset clears the saved font override
+and returns to this configured size. The saved override has precedence during a
+config reload until Reset is used.
+
+## Saved runtime preferences
+
+Automexia automatically saves the settings that can be changed directly from
+the running UI:
+
+- font size changed with `Ctrl`/`Cmd` plus `+`, `-`, or `0`;
+- the forced light/dark appearance selected by the appearance shortcut.
+
+Writes are coalesced off the input/rendering path, bounded to 16 KiB, restricted
+to the current user, and retain one last-known-good snapshot. A malformed,
+oversized, linked, permission-denied, or contended file never replaces live
+configuration; Automexia reports a warning and uses the recovered snapshot or
+`config.toml` values. Close Automexia before deleting
+`state/user-preferences-v1.toml` and its `.previous.toml` companion to clear all
+runtime overrides. This file never stores credentials, terminal contents,
+history, paths, tabs, panes, sessions, or provider state.
 
 ## Renderer and keyboard
 

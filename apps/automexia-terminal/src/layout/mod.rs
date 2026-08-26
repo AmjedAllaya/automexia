@@ -2781,16 +2781,6 @@ impl ContextDimension {
         self.update();
     }
 
-    #[inline]
-    pub fn update_font_size(&mut self, font_size: f32) {
-        self.font_size = font_size;
-        self.scaled_font_size = font_size * self.dimension.scale;
-        // Caller is responsible for re-running `compute_cell_metrics`
-        // and feeding the result back via `update_dimensions` —
-        // `font_size` alone doesn't change the cell stride, the
-        // recomputed metrics do.
-    }
-
     /// Update only the stored scale factor. Caller must follow with
     /// `compute_cell_metrics` + `update_dimensions` so width/height
     /// and canonical cell stride are recomputed for the new DPI.
@@ -2801,48 +2791,13 @@ impl ContextDimension {
     }
 
     /// Re-baseline the font size — both current and "original".
-    /// Called from `update_config` so a config edit becomes the new
-    /// reset target. Per-panel zoom (`change_font_size`) uses
-    /// `update_font_size` instead so the original stays put.
+    /// Called from `update_config` so a config edit or saved runtime
+    /// preference becomes the new reset target for every panel.
     #[inline]
     pub fn rebaseline_font_size(&mut self, font_size: f32) {
         self.font_size = font_size;
         self.original_font_size = font_size;
         self.scaled_font_size = font_size * self.dimension.scale;
-    }
-
-    /// Increment the panel's font size by 1 logical point. Returns
-    /// `true` if the size changed (i.e. wasn't already at the upper
-    /// clamp). Caller must follow with `compute_cell_metrics` +
-    /// `update_dimensions` to refresh the cell stride.
-    #[inline]
-    pub fn increase_font_size(&mut self) -> bool {
-        if self.font_size < 100.0 {
-            self.update_font_size(self.font_size + 1.0);
-            true
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    pub fn decrease_font_size(&mut self) -> bool {
-        if self.font_size > 6.0 {
-            self.update_font_size(self.font_size - 1.0);
-            true
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    pub fn reset_font_size(&mut self) -> bool {
-        if (self.font_size - self.original_font_size).abs() > f32::EPSILON {
-            self.update_font_size(self.original_font_size);
-            true
-        } else {
-            false
-        }
     }
 
     #[inline]
