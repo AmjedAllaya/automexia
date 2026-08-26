@@ -800,6 +800,8 @@ Within the Hub:
 
 | Input | Behavior |
 |---|---|
+| `C` / `W` / `P` | Switch the visible Connections, Workspaces, or Providers section from a top-level list; Search and nested reviews retain the key as their own input |
+| `F` | Open the same parented native exact-file picker as the visible **Choose files** action from Connections/setup only; modified keys and nested surfaces are inert |
 | `Ctrl/Cmd+F` or `/` outside a text control | Focus search |
 | `Up`/`Down` | Move one result; never connects |
 | `Home`/`End` | First/last result in the current filtered list |
@@ -1030,7 +1032,10 @@ production managed process. Overall D5.0 stays **Partially done** until ADR
 - [x] **Fully done** — Render bounded search, tag/favorite/recent/source filters,
   grouping, clear filters, virtualized rows, inspector, setup/loading/error/
   recovery states, keyboard, pointer, IME, focus restoration, and responsive
-  tiny-to-8K geometry.
+  tiny-to-8K geometry. The initial state uses the shared application palette,
+  a compact 680-by-380 logical-pixel ceiling, one safety statement, 40-pixel
+  actions, and visible `C`/`W`/`P`/`L`/`F` keycaps; pointer and `F` share one
+  native picker owner and neither path reaches PTY input.
 - [x] **Fully done** — Review favorite/tag public diffs and commit only through
   D4 revision CAS; reload on conflict and keep recent read-only.
 - [x] **Fully done** — Display profile/recipe/preference counts as local,

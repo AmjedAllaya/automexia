@@ -533,8 +533,11 @@ Current assurance: **Partial**.
   selection, responsive, localization and reduced-motion modal states.
 - Reject unreviewed/replaced/linked/denied/malformed/stale/stacked/wrong-focus/
   process/network/login/PTY paths.
-- Drive native shortcut, keyboard, pointer, picker, focus, scale, theme,
-  screen-reader, pixel, restart and revoke flows.
+- Drive native C/W/P section switching and L/F action mnemonics in both cases,
+  keyboard, pointer/picker equivalence, modified/search/nested-surface rejection,
+  PTY side-effect absence, focus, compact 680×380 geometry, 40-pixel targets,
+  exact shared-brand pixels, contrast, scale, theme, screen-reader, restart and
+  revoke flows.
 
 ### connection-hub-f3-library
 

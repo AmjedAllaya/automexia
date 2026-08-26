@@ -85,6 +85,16 @@ impl Route<'_> {
         self.request_redraw();
     }
 
+    pub fn choose_connection_hub_files(&mut self) {
+        let selected = rfd::FileDialog::new()
+            .set_title("Choose SSH configuration files")
+            .set_parent(&self.window.winit_window)
+            .pick_files();
+        if let Some(paths) = selected {
+            self.window.screen.review_connection_files(paths);
+        }
+    }
+
     #[inline]
     pub fn begin_render(&mut self) {
         self.window.render_timestamp = Instant::now();
@@ -444,6 +454,16 @@ impl Route<'_> {
                     _ => {}
                 }
             }
+            return true;
+        }
+
+        if self
+            .window
+            .screen
+            .connection_hub_file_picker_shortcut(key_event)
+        {
+            self.choose_connection_hub_files();
+            self.request_overlay_redraw();
             return true;
         }
 

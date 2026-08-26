@@ -2763,6 +2763,11 @@ $rendererConfig
     } else {
         'confirm-quit-wgpu.png'
     }
+    $hubCaptureName = if ($UseCpuRenderer) {
+        'connection-hub-cpu.png'
+    } else {
+        'connection-hub-wgpu.png'
+    }
     $paletteCapturePath = if ($null -eq $modalCaptureRoot) {
         $null
     } else {
@@ -2772,6 +2777,103 @@ $rendererConfig
         $null
     } else {
         Join-Path $modalCaptureRoot $quitCaptureName
+    }
+    $hubCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $hubCaptureName
+    }
+
+    $script:testStage = 'connection hub native section navigation and composition'
+    $hubControl = 'open-connection-hub:modal-hub'
+    Send-AutomexiaTestControl $hubControl
+    $hubSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$hubSnapshot.last_control -ne $hubControl -or
+            -not [bool]$hubSnapshot.connection_hub_active -or
+            [string]$hubSnapshot.connection_hub_route -ne 'results' -or
+            [bool]$hubSnapshot.palette_enabled -or
+            [bool]$hubSnapshot.confirm_quit_active) -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSnapshot.sequence)
+    }
+    if ([string]$hubSnapshot.last_control -ne $hubControl -or
+        -not [bool]$hubSnapshot.connection_hub_active -or
+        [string]$hubSnapshot.connection_hub_route -ne 'results' -or
+        [bool]$hubSnapshot.palette_enabled -or
+        [bool]$hubSnapshot.confirm_quit_active) {
+        Write-Host ($hubSnapshot | ConvertTo-Json -Depth 8)
+        throw 'The Connection Hub did not acquire exclusive modal ownership'
+    }
+    $hubPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSnapshot.sequence)
+    $hubInputBaseline = $hubPresented
+    $hubTerminalBefore = Get-ActiveAutomexiaPanel $hubInputBaseline
+
+    foreach ($section in @(
+            [ordered]@{ key = 0x57; route = 'workspaces'; label = 'W' },
+            [ordered]@{ key = 0x50; route = 'providers'; label = 'P' },
+            [ordered]@{ key = 0x43; route = 'results'; label = 'C' })) {
+        $script:testStage = "connection hub native $($section.label) section mnemonic"
+        if (-not [AutomexiaResizeDriver]::PostKeyTap(
+                $window, [uint32]$section.key, $false)) {
+            $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "Could not inject Connection Hub $($section.label) mnemonic (Win32 error $code)"
+        }
+        $nextHub = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPresented.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not [bool]$nextHub.connection_hub_active -or
+                [string]$nextHub.connection_hub_route -ne [string]$section.route) -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $nextHub = Read-AutomexiaSnapshot -AfterSequence ([int64]$nextHub.sequence)
+        }
+        if (-not [bool]$nextHub.connection_hub_active -or
+            [string]$nextHub.connection_hub_route -ne [string]$section.route) {
+            Write-Host ($nextHub | ConvertTo-Json -Depth 8)
+            throw "Connection Hub $($section.label) did not select $($section.route)"
+        }
+        $hubPresented = $nextHub
+    }
+
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for Connection Hub capture (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $hubFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $hubCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($hubFrame.Width -lt 100 -or
+        $hubFrame.Height -lt 100 -or
+        $hubFrame.SampleCount -lt 100 -or
+        $hubFrame.DistinctColorBuckets -lt 8 -or
+        $hubFrame.LuminanceSpread -lt 32) {
+        throw "Connection Hub composited frame is blank or unreadable: $($hubFrame.Width)x$($hubFrame.Height), buckets=$($hubFrame.DistinctColorBuckets), spread=$($hubFrame.LuminanceSpread)"
+    }
+
+    $script:testStage = 'connection hub native dismissal and PTY isolation'
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject Connection Hub Escape (Win32 error $code)"
+    }
+    $hubDismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPresented.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([bool]$hubDismissed.connection_hub_active -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubDismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDismissed.sequence)
+    }
+    $hubTerminalAfter = Get-ActiveAutomexiaPanel $hubDismissed
+    if ([bool]$hubDismissed.connection_hub_active -or
+        [int64]$hubTerminalAfter.route_id -ne [int64]$hubTerminalBefore.route_id -or
+        [int]$hubDismissed.display_offset -ne [int]$hubInputBaseline.display_offset -or
+        [int]$hubDismissed.cursor_column -ne [int]$hubInputBaseline.cursor_column -or
+        [int]$hubDismissed.cursor_row -ne [int]$hubInputBaseline.cursor_row -or
+        [string]$hubTerminalAfter.raw_cursor_line_text -ne
+            [string]$hubTerminalBefore.raw_cursor_line_text) {
+        Write-Host ($hubDismissed | ConvertTo-Json -Depth 8)
+        throw 'Connection Hub navigation changed terminal state or remained active'
     }
 
     $script:testStage = 'topmost command palette composition'
@@ -3102,6 +3204,19 @@ $rendererConfig
                         [IO.Path]::GetFileName($paletteCapturePath)
                     }
                 }
+                connection_hub = [ordered]@{
+                    width = $hubFrame.Width
+                    height = $hubFrame.Height
+                    distinct_color_buckets = $hubFrame.DistinctColorBuckets
+                    luminance_spread = $hubFrame.LuminanceSpread
+                    section_sequence = @('results', 'workspaces', 'providers', 'results')
+                    terminal_state_preserved = $true
+                    artifact = if ($null -eq $hubCapturePath) {
+                        $null
+                    } else {
+                        [IO.Path]::GetFileName($hubCapturePath)
+                    }
+                }
                 close_confirmation = [ordered]@{
                     width = $quitFrame.Width
                     height = $quitFrame.Height
@@ -3115,7 +3230,8 @@ $rendererConfig
                 }
                 exclusive_state_restored = (
                     -not [bool]$modalDismissed.palette_enabled -and
-                    -not [bool]$modalDismissed.confirm_quit_active)
+                    -not [bool]$modalDismissed.confirm_quit_active -and
+                    -not [bool]$modalDismissed.connection_hub_active)
             }
             image_preview_pixels = [ordered]@{
                 width = $previewPixels.Width

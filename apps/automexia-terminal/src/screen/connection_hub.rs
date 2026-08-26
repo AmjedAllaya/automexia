@@ -10,21 +10,60 @@ use automexia_ui_model::connection_hub::{
 use rio_backend::clipboard::{Clipboard, ClipboardType};
 use rio_window::{
     event::{ElementState, KeyEvent},
-    keyboard::{Key, ModifiersState, NamedKey},
+    keyboard::{Key, KeyCode, ModifiersState, NamedKey, PhysicalKey},
 };
 
 use crate::renderer::connection_hub::ConnectionHubHit;
 
 use super::Screen;
 
-fn is_literal_destination_shortcut(logical_key: &Key, modifiers: ModifiersState) -> bool {
+fn mnemonic_letter(logical_key: &Key, physical_key: PhysicalKey) -> Option<char> {
+    match logical_key {
+        Key::Character(value) if value.chars().count() == 1 => {
+            value.chars().next().map(|value| value.to_ascii_lowercase())
+        }
+        // Native automation and a small number of platform input paths can
+        // report an unidentified logical key while preserving the exact
+        // physical letter. Use that only as a fallback so alternate keyboard
+        // layouts continue to follow the user's logical character.
+        Key::Unidentified(_) => match physical_key {
+            PhysicalKey::Code(KeyCode::KeyC) => Some('c'),
+            PhysicalKey::Code(KeyCode::KeyF) => Some('f'),
+            PhysicalKey::Code(KeyCode::KeyL) => Some('l'),
+            PhysicalKey::Code(KeyCode::KeyP) => Some('p'),
+            PhysicalKey::Code(KeyCode::KeyW) => Some('w'),
+            _ => None,
+        },
+        _ => None,
+    }
+}
+
+fn is_literal_destination_shortcut(
+    logical_key: &Key,
+    physical_key: PhysicalKey,
+    modifiers: ModifiersState,
+) -> bool {
     !modifiers.control_key()
         && !modifiers.super_key()
         && !modifiers.alt_key()
-        && matches!(
-            logical_key,
-            Key::Character(value) if value.eq_ignore_ascii_case("l")
-        )
+        && mnemonic_letter(logical_key, physical_key) == Some('l')
+}
+
+fn review_files_shortcut(
+    logical_key: &Key,
+    physical_key: PhysicalKey,
+    modifiers: ModifiersState,
+    focus: &HubFocus,
+    route: HubRoute,
+    action_available: bool,
+) -> bool {
+    action_available
+        && route == HubRoute::Results
+        && !matches!(focus, HubFocus::Search)
+        && !modifiers.control_key()
+        && !modifiers.super_key()
+        && !modifiers.alt_key()
+        && mnemonic_letter(logical_key, physical_key) == Some('f')
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -36,6 +75,7 @@ enum HubSectionShortcut {
 
 fn hub_section_shortcut(
     logical_key: &Key,
+    physical_key: PhysicalKey,
     modifiers: ModifiersState,
     focus: &HubFocus,
     route: HubRoute,
@@ -51,16 +91,10 @@ fn hub_section_shortcut(
     {
         return None;
     }
-    match logical_key {
-        Key::Character(value) if value.eq_ignore_ascii_case("c") => {
-            Some(HubSectionShortcut::Connections)
-        }
-        Key::Character(value) if value.eq_ignore_ascii_case("w") => {
-            Some(HubSectionShortcut::Workspaces)
-        }
-        Key::Character(value) if value.eq_ignore_ascii_case("p") => {
-            Some(HubSectionShortcut::Providers)
-        }
+    match mnemonic_letter(logical_key, physical_key) {
+        Some('c') => Some(HubSectionShortcut::Connections),
+        Some('w') => Some(HubSectionShortcut::Workspaces),
+        Some('p') => Some(HubSectionShortcut::Providers),
         _ => None,
     }
 }
@@ -318,6 +352,18 @@ impl Screen<'_> {
         self.connection_hub.is_active()
     }
 
+    pub fn connection_hub_file_picker_shortcut(&self, key_event: &KeyEvent) -> bool {
+        key_event.state == ElementState::Pressed
+            && review_files_shortcut(
+                &key_event.logical_key,
+                key_event.physical_key,
+                self.modifiers.state(),
+                &self.connection_hub.focus(),
+                self.connection_hub.route(),
+                self.connection_hub.can_begin_literal_destination_entry(),
+            )
+    }
+
     pub(super) fn sync_connection_hub(&mut self) {
         if let Some(request) = self.connection_hub_review_request {
             if !self.connection_hub.is_active() {
@@ -552,6 +598,7 @@ impl Screen<'_> {
         }
         if let Some(shortcut) = hub_section_shortcut(
             &key_event.logical_key,
+            key_event.physical_key,
             modifiers,
             &self.connection_hub.focus(),
             self.connection_hub.route(),
@@ -568,7 +615,11 @@ impl Screen<'_> {
             }
         }
         if self.connection_hub.can_begin_literal_destination_entry()
-            && is_literal_destination_shortcut(&key_event.logical_key, modifiers)
+            && is_literal_destination_shortcut(
+                &key_event.logical_key,
+                key_event.physical_key,
+                modifiers,
+            )
         {
             let _ = self.connection_hub.begin_literal_destination_entry();
             self.sync_connection_hub();
@@ -876,15 +927,23 @@ mod tests {
 
     #[test]
     fn literal_destination_shortcut_is_mnemonic_and_never_steals_modified_keys() {
+        let physical = PhysicalKey::Code(KeyCode::KeyL);
         for value in ["l", "L"] {
             assert!(is_literal_destination_shortcut(
                 &Key::Character(value.into()),
+                physical,
                 ModifiersState::empty(),
             ));
         }
         assert!(is_literal_destination_shortcut(
             &Key::Character("L".into()),
+            physical,
             ModifiersState::SHIFT,
+        ));
+        assert!(is_literal_destination_shortcut(
+            &Key::Unidentified(rio_window::keyboard::NativeKey::Unidentified),
+            physical,
+            ModifiersState::empty(),
         ));
         for modifiers in [
             ModifiersState::CONTROL,
@@ -894,26 +953,103 @@ mod tests {
         ] {
             assert!(!is_literal_destination_shortcut(
                 &Key::Character("l".into()),
+                physical,
                 modifiers,
             ));
         }
         assert!(!is_literal_destination_shortcut(
             &Key::Character("ll".into()),
+            physical,
             ModifiersState::empty(),
         ));
         assert!(!is_literal_destination_shortcut(
             &Key::Named(NamedKey::Enter),
+            PhysicalKey::Code(KeyCode::Enter),
             ModifiersState::empty(),
+        ));
+    }
+
+    #[test]
+    fn file_picker_shortcut_is_mnemonic_scope_safe_and_never_steals_input() {
+        let none = ModifiersState::empty();
+        let physical = PhysicalKey::Code(KeyCode::KeyF);
+        for value in ["f", "F"] {
+            assert!(review_files_shortcut(
+                &Key::Character(value.into()),
+                physical,
+                none,
+                &HubFocus::Results,
+                HubRoute::Results,
+                true,
+            ));
+        }
+        assert!(review_files_shortcut(
+            &Key::Character("F".into()),
+            physical,
+            ModifiersState::SHIFT,
+            &HubFocus::PrimaryAction,
+            HubRoute::Results,
+            true,
+        ));
+        assert!(review_files_shortcut(
+            &Key::Unidentified(rio_window::keyboard::NativeKey::Unidentified),
+            physical,
+            none,
+            &HubFocus::Results,
+            HubRoute::Results,
+            true,
+        ));
+
+        for (focus, route, available) in [
+            (HubFocus::Search, HubRoute::Results, true),
+            (HubFocus::Review, HubRoute::Review, true),
+            (HubFocus::WorkspaceList, HubRoute::Workspaces, true),
+            (HubFocus::ProviderList, HubRoute::Providers, true),
+            (HubFocus::Results, HubRoute::Results, false),
+        ] {
+            assert!(!review_files_shortcut(
+                &Key::Character("f".into()),
+                physical,
+                none,
+                &focus,
+                route,
+                available,
+            ));
+        }
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::ALT,
+            ModifiersState::SUPER,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+        ] {
+            assert!(!review_files_shortcut(
+                &Key::Character("f".into()),
+                physical,
+                modifiers,
+                &HubFocus::Results,
+                HubRoute::Results,
+                true,
+            ));
+        }
+        assert!(!review_files_shortcut(
+            &Key::Named(NamedKey::Enter),
+            PhysicalKey::Code(KeyCode::Enter),
+            none,
+            &HubFocus::Results,
+            HubRoute::Results,
+            true,
         ));
     }
 
     #[test]
     fn workspace_section_shortcuts_are_mnemonic_scope_safe_and_search_safe() {
         let none = ModifiersState::empty();
+        let workspaces_key = PhysicalKey::Code(KeyCode::KeyW);
         for value in ["w", "W"] {
             assert_eq!(
                 hub_section_shortcut(
                     &Key::Character(value.into()),
+                    workspaces_key,
                     none,
                     &HubFocus::Results,
                     HubRoute::Results,
@@ -923,7 +1059,18 @@ mod tests {
         }
         assert_eq!(
             hub_section_shortcut(
+                &Key::Unidentified(rio_window::keyboard::NativeKey::Unidentified),
+                workspaces_key,
+                none,
+                &HubFocus::Results,
+                HubRoute::Results,
+            ),
+            Some(HubSectionShortcut::Workspaces)
+        );
+        assert_eq!(
+            hub_section_shortcut(
                 &Key::Character("c".into()),
+                PhysicalKey::Code(KeyCode::KeyC),
                 none,
                 &HubFocus::WorkspaceList,
                 HubRoute::Workspaces,
@@ -933,6 +1080,7 @@ mod tests {
         assert_eq!(
             hub_section_shortcut(
                 &Key::Character("p".into()),
+                PhysicalKey::Code(KeyCode::KeyP),
                 none,
                 &HubFocus::WorkspaceList,
                 HubRoute::Workspaces,
@@ -942,6 +1090,7 @@ mod tests {
         assert_eq!(
             hub_section_shortcut(
                 &Key::Character("w".into()),
+                workspaces_key,
                 none,
                 &HubFocus::ProviderList,
                 HubRoute::Providers,
@@ -950,6 +1099,7 @@ mod tests {
         );
         assert!(hub_section_shortcut(
             &Key::Character("w".into()),
+            workspaces_key,
             none,
             &HubFocus::Search,
             HubRoute::Results,
@@ -957,6 +1107,7 @@ mod tests {
         .is_none());
         assert!(hub_section_shortcut(
             &Key::Character("w".into()),
+            workspaces_key,
             none,
             &HubFocus::Results,
             HubRoute::WorkspaceReview,
@@ -970,6 +1121,7 @@ mod tests {
         ] {
             assert!(hub_section_shortcut(
                 &Key::Character("w".into()),
+                workspaces_key,
                 modifiers,
                 &HubFocus::Results,
                 HubRoute::Results,
@@ -978,6 +1130,7 @@ mod tests {
         }
         assert!(hub_section_shortcut(
             &Key::Named(NamedKey::Enter),
+            PhysicalKey::Code(KeyCode::Enter),
             none,
             &HubFocus::Results,
             HubRoute::Results,

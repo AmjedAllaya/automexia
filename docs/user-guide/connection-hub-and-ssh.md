@@ -19,8 +19,9 @@
    separate fields. The host is limited to 512 bytes and cannot start with a
    hyphen; user and port have their own bounded validation. Tab/Shift+Tab moves
    Host → User → Port → Review → Cancel. Press Enter on Review or Escape to cancel.
-3. Alternatively, select **Choose SSH files**. The native file picker accepts
-   one or more exact files, including an extensionless `config` file.
+3. Alternatively, select **Choose files** or press `F`. Both inputs open the
+   same native picker, which accepts one or more exact files, including an
+   extensionless `config` file.
 4. Read the canonical-path review. Use Up/Down, Page Up/Page Down, Home/End, or
    the pointer to inspect it. Press Enter or choose the confirmation action to
    scan; press Escape or choose Cancel to revoke the selection.
@@ -53,12 +54,15 @@ operation settles.
 
 ## Browse efficiently
 
-The first-run setup keeps two clear choices visible: **Enter host** and
-**Choose SSH files**. Search, filters, grouping, and catalog shortcuts appear
-only after a usable catalog exists; hidden controls cannot receive pointer,
-keyboard, or IME input. **Clear** appears only while a filter is active. The
-modal keeps terminal input inert until it closes. These controls work from the
-results route while the search field is not receiving text:
+The compact first-run setup keeps only a short purpose statement, the local-only
+safety message, and two clear choices: **Enter host** (`L`) and **Choose files**
+(`F`). It does not repeat a status footer or show a machine-specific candidate
+path. **Connections** (`C`), **Workspaces** (`W`), and **Providers** (`P`) show
+their mnemonics directly in the header. Search, filters, grouping, and catalog
+controls appear only after a usable catalog exists; hidden controls cannot
+receive pointer, keyboard, or IME input. **Clear** appears only while a filter
+is active. The modal keeps terminal input inert until it closes. These controls
+work from the results route while the search field is not receiving text:
 
 | Key | Result |
 |---|---|
@@ -69,6 +73,8 @@ results route while the search field is not receiving text:
 | `D` | Deny and return from Connection Review |
 | `C` | Copy the exact reviewed SSH command; never execute it or append Enter |
 | `L` | Open the direct-host editor; Search still receives `l` as text while focused |
+| `F` | Open the native exact-file picker; Search and nested reviews/editors retain `f` |
+| `C` / `W` / `P` | Switch to Connections, Workspaces, or Providers; nested surfaces retain their own input |
 | `/` or `Ctrl/Cmd+F` | Focus search |
 | Tab / Shift+Tab | Move modal focus |
 | Space | Review a favorite change for the selected row |
