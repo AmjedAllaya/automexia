@@ -56,6 +56,28 @@ class FeatureOwnershipTests(unittest.TestCase):
         )
         self.write(
             root,
+            "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+            "compiler remains in automexia-command-productivity\n",
+        )
+        for relative, contents in {
+            "docs/DEVOPS-ALIASES.md": "models owned by automexia-command-productivity\n",
+            "docs/CONNECTION-HUB.md": "provider-neutral automexia-connectivity\n",
+            "docs/SSH-CONNECTION-AUTOMATION.md": (
+                "automexia-connectivity automexia-command-productivity\n"
+            ),
+            "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md": (
+                "automexia-connectivity automexia-command-productivity\n"
+            ),
+            "docs/ROADMAP.md": (
+                "automexia-connectivity automexia-command-productivity\n"
+            ),
+            "docs/PHASE-IMPLEMENTATION-AUDIT.md": (
+                "automexia-connectivity automexia-command-productivity\n"
+            ),
+        }.items():
+            self.write(root, relative, contents)
+        self.write(
+            root,
             "apps/automexia-terminal/src/renderer/command_results.rs",
             "pub struct CommandResults;\n",
         )
@@ -143,6 +165,32 @@ fn render() {
                 provider.read_text(encoding="utf-8")
                 + "automexia-devops = {}\n",
                 encoding="utf-8",
+            )
+            with mock.patch.object(policy, "ROOT", root):
+                with self.assertRaises(AssertionError):
+                    policy.main()
+
+    def test_stale_application_ownership_comment_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.fixture(root)
+            self.write(
+                root,
+                "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+                "compiler remains in `automexia-devops`\n",
+            )
+            with mock.patch.object(policy, "ROOT", root):
+                with self.assertRaises(AssertionError):
+                    policy.main()
+
+    def test_stale_documented_ownership_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.fixture(root)
+            self.write(
+                root,
+                "docs/DEVOPS-ALIASES.md",
+                "`automexia-devops` pure modules\n",
             )
             with mock.patch.object(policy, "ROOT", root):
                 with self.assertRaises(AssertionError):

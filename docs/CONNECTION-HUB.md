@@ -83,7 +83,7 @@ The implementation adapts to the existing structure:
 
 | Concern | Owner | Forbidden dependencies/authority |
 |---|---|---|
-| Connection, filter, review, authentication-state, and capability-view models | `automexia-ui-model` and provider-neutral `automexia-devops` types | Renderer, PTY, GPU, OpenSSH parser, provider SDK, secret values |
+| Connection, filter, review, authentication-state, and capability-view models | `automexia-ui-model` and provider-neutral `automexia-connectivity` types | Renderer, PTY, GPU, OpenSSH parser, provider SDK, secret values |
 | OpenSSH inventory and public metadata | private `automexia-devops-ssh` extension | Process launch, direct network, raw keys, `ssh -G`, executable config evaluation |
 | Provider inventory and capsule templates | independently enabled D6 provider extensions | Renderer access, ambient environment, another provider's cache |
 | Capability decision and exact launch | application-owned D3 broker | Shell command strings, wildcard executables, extension-owned PTYs |

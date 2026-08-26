@@ -1,7 +1,7 @@
 //! CP3.1 application-owned publication for explicitly enabled alias projections.
 //!
-//! The capability-free compiler remains in `automexia-devops`. This boundary
-//! owns only the private generated tree, a cross-process lock, immutable
+//! The capability-free compiler remains in `automexia-command-productivity`.
+//! This boundary owns only the private generated tree, a cross-process lock, immutable
 //! generations, and one atomically replaced verified pointer. Shell profiles
 //! are still owned by the separate CP1 installer.
 
