@@ -326,14 +326,14 @@ fn command_result_boundary(
 
 fn command_result_anchors(
     rows: &[Row<Square>],
-    first_absolute_row: u64,
     origin_x: f32,
     origin_y: f32,
     grid_width: f32,
     cell_height: f32,
     prompt_anchors: &[crate::automexia::ui::PromptAnchor],
 ) -> Vec<crate::automexia::ui::CommandResultAnchor> {
-    rows.iter()
+    let mut anchors = rows
+        .iter()
         .enumerate()
         .filter_map(|(row_index, row)| {
             if row.semantic_prompt != SemanticPrompt::Prompt {
@@ -349,7 +349,7 @@ fn command_result_anchors(
                 synthetic_index.or_else(|| prompt_visual_anchor(rows, row_index))?;
             let anchor = crate::automexia::ui::CommandResultAnchor {
                 generation: row.semantic_prompt_id,
-                key: first_absolute_row.saturating_add(row_index as u64),
+                key: result.id,
                 x: origin_x,
                 y: origin_y + visual_index as f32 * cell_height,
                 width: grid_width,
@@ -361,7 +361,44 @@ fn command_result_anchors(
             };
             Some(command_result_boundary(anchor, prompt_anchors))
         })
-        .collect()
+        .collect::<Vec<_>>();
+
+    // The source prompt can sit just above the viewport while its output tail
+    // and the following prompt remain visible. The terminal attaches one
+    // bounded completion projection to that following prompt; use it only
+    // when the exact source result is absent from this visible snapshot.
+    for (row_index, row) in rows.iter().enumerate() {
+        if row.semantic_prompt != SemanticPrompt::Prompt {
+            continue;
+        }
+        let Some(boundary) = row.semantic_command_boundary else {
+            continue;
+        };
+        if anchors
+            .iter()
+            .any(|anchor| anchor.key == boundary.result.id)
+        {
+            continue;
+        }
+        let Some(visual_index) = prompt_visual_anchor(rows, row_index) else {
+            continue;
+        };
+        anchors.push(crate::automexia::ui::CommandResultAnchor {
+            generation: boundary.source_prompt_id,
+            key: boundary.result.id,
+            x: origin_x,
+            y: origin_y + visual_index as f32 * cell_height,
+            width: grid_width,
+            height: cell_height,
+            output_top: Some(origin_y),
+            separates_next_prompt: true,
+            exit_code: boundary.result.exit_code,
+            elapsed_ms: boundary.result.elapsed_ms,
+        });
+    }
+    anchors
+        .sort_by(|left, right| left.y.total_cmp(&right.y).then(left.key.cmp(&right.key)));
+    anchors
 }
 
 fn devops_pane_render_state(
@@ -503,7 +540,6 @@ fn devops_pane_render_state(
         };
     let command_results = command_result_anchors(
         &rc.visible_rows,
-        first_absolute_row,
         origin_x,
         origin_y,
         grid_width,
@@ -1550,7 +1586,6 @@ impl Renderer {
                 };
                 let command_results = command_result_anchors(
                     &rc.visible_rows,
-                    first_absolute_row,
                     origin_x,
                     origin_y,
                     grid_width,
@@ -2053,6 +2088,9 @@ mod prompt_visual_anchor_tests {
     use super::*;
     use rio_backend::config::colors::ColorRgb;
     use rio_backend::crosswords::pos::Column;
+    use rio_backend::crosswords::{Crosswords, CrosswordsSize};
+    use rio_backend::event::{TerminalDamage, VoidListener, WindowId};
+    use rio_backend::performer::handler::Processor;
 
     fn bg_style(bg: AnsiColor, flags: StyleFlags) -> CellStyle {
         CellStyle {
@@ -2308,6 +2346,95 @@ mod prompt_visual_anchor_tests {
     }
 
     #[test]
+    fn parser_snapshot_keeps_result_surface_when_output_pushes_owner_above_viewport() {
+        const SCREEN_LINES: usize = 8;
+        for output_rows in [4usize, 5, 6, 7, 8, 9, 16] {
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(80, SCREEN_LINES),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                1_024,
+            );
+            let mut processor = Processor::default();
+            let mut stream = Vec::new();
+            stream.extend_from_slice(
+                b"\x1b]133;A;aid=41\x07 \r\n\
+                  \x1b]133;P;k=c;aid=41\x07/work\r\n\
+                  \x1b]133;P;k=c;aid=41\x07lambda command\x1b]133;B\x07\r\n\
+                  \x1b]133;C\x07",
+            );
+            for index in 0..output_rows {
+                stream.extend_from_slice(format!("result-{index}\r\n").as_bytes());
+            }
+            stream.extend_from_slice(
+                b"\x1b]133;D;0\x07\
+                  \x1b]133;A;aid=42\x07 \r\n\
+                  \x1b]133;P;k=c;aid=42\x07/work\r\n\
+                  \x1b]133;P;k=c;aid=42\x07lambda \x1b]133;B\x07",
+            );
+            processor.advance(&mut terminal, &stream);
+
+            let first_absolute_row = terminal
+                .lines_evicted()
+                .saturating_add(terminal.history_size() as u64);
+            let mut visible_rows = Vec::new();
+            let mut styles = Vec::new();
+            let mut extras = rustc_hash::FxHashMap::default();
+            terminal.snapshot_visible(
+                &TerminalDamage::Full,
+                terminal.columns(),
+                &mut visible_rows,
+                &mut styles,
+                &mut extras,
+            );
+            assert!(
+                visible_rows
+                    .iter()
+                    .all(|row| row.semantic_command_result.is_none()),
+                "fixture must move the result owner above the {SCREEN_LINES}-row viewport for output_rows={output_rows}"
+            );
+
+            let prompt_anchors = visible_rows
+                .iter()
+                .enumerate()
+                .filter_map(|(row_index, row)| {
+                    (row.semantic_prompt == SemanticPrompt::Prompt)
+                        .then(|| prompt_visual_anchor(&visible_rows, row_index))
+                        .flatten()
+                        .map(|visual_index| crate::automexia::ui::PromptAnchor {
+                            generation: row.semantic_prompt_id,
+                            key: first_absolute_row.saturating_add(row_index as u64),
+                            x: 4.0,
+                            y: visual_index as f32 * 20.0,
+                            width: 720.0,
+                            height: 20.0,
+                        })
+                })
+                .collect::<Vec<_>>();
+            let results = command_result_anchors(
+                &visible_rows,
+                4.0,
+                0.0,
+                720.0,
+                20.0,
+                &prompt_anchors,
+            );
+
+            assert_eq!(results.len(), 1, "output_rows={output_rows}");
+            assert_eq!(results[0].generation, Some(41));
+            assert_eq!(results[0].output_top, Some(0.0));
+            assert!(results[0].separates_next_prompt);
+            assert_eq!(results[0].exit_code, Some(0));
+            assert!(
+                results[0].output_top.is_some_and(|top| top < results[0].y),
+                "the visible output tail must retain nonempty paint bounds for output_rows={output_rows}"
+            );
+        }
+    }
+
+    #[test]
     fn result_anchors_cover_success_error_single_and_multiline_output() {
         for (exit_code, output_row_count) in [(0, 1usize), (7, 3usize)] {
             let next_prompt_index = 3 + output_row_count;
@@ -2317,6 +2444,7 @@ mod prompt_visual_anchor_tests {
             rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
             rows[0].set_semantic_command_result(
                 rio_backend::crosswords::grid::row::SemanticCommandResult {
+                    id: 10,
                     exit_code: Some(exit_code),
                     elapsed_ms: Some(18),
                 },
@@ -2349,8 +2477,7 @@ mod prompt_visual_anchor_tests {
                 },
             ];
 
-            let results =
-                command_result_anchors(&rows, 10, 4.0, 0.0, 720.0, 20.0, &prompts);
+            let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
 
             assert_eq!(results.len(), 1);
             assert_eq!(results[0].output_top, Some(60.0));
@@ -2361,11 +2488,60 @@ mod prompt_visual_anchor_tests {
     }
 
     #[test]
+    fn visible_source_and_following_boundary_render_one_result_surface() {
+        let result = rio_backend::crosswords::grid::row::SemanticCommandResult {
+            id: 33,
+            exit_code: Some(0),
+            elapsed_ms: Some(9),
+        };
+        let mut rows = (0..=3).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
+        rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+        rows[0].set_semantic_command_result(result);
+        rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+        rows[1][Column(0)].set_c('λ');
+        rows[2][Column(0)].set_c('o');
+        rows[3].set_semantic_prompt(SemanticPrompt::Prompt, Some(8));
+        rows[3].set_semantic_command_boundary(
+            rio_backend::crosswords::grid::row::SemanticCommandBoundary {
+                source_prompt_id: Some(7),
+                result,
+            },
+        );
+        let prompts = [
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(7),
+                key: 10,
+                x: 4.0,
+                y: 0.0,
+                width: 720.0,
+                height: 20.0,
+            },
+            crate::automexia::ui::PromptAnchor {
+                generation: Some(8),
+                key: 13,
+                x: 4.0,
+                y: 60.0,
+                width: 720.0,
+                height: 20.0,
+            },
+        ];
+
+        let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].key, 33);
+        assert_eq!(results[0].generation, Some(7));
+        assert_eq!(results[0].output_top, Some(40.0));
+        assert_eq!(results[0].y, 60.0);
+        assert!(results[0].separates_next_prompt);
+    }
+    #[test]
     fn legacy_cmd_result_uses_lambda_and_next_prompt_without_claiming_status() {
         let mut rows = (0..=5).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
         rows[0].set_semantic_prompt(SemanticPrompt::Prompt, None);
         rows[0].set_semantic_command_result(
             rio_backend::crosswords::grid::row::SemanticCommandResult {
+                id: 10,
                 exit_code: None,
                 elapsed_ms: None,
             },
@@ -2395,7 +2571,7 @@ mod prompt_visual_anchor_tests {
             },
         ];
 
-        let results = command_result_anchors(&rows, 10, 4.0, 0.0, 720.0, 20.0, &prompts);
+        let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].generation, None);
@@ -2412,6 +2588,7 @@ mod prompt_visual_anchor_tests {
         rows[0].set_semantic_prompt(SemanticPrompt::Prompt, None);
         rows[0].set_semantic_command_result(
             rio_backend::crosswords::grid::row::SemanticCommandResult {
+                id: 10,
                 exit_code: None,
                 elapsed_ms: None,
             },
@@ -2422,6 +2599,7 @@ mod prompt_visual_anchor_tests {
         rows[3].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
         rows[3].set_semantic_command_result(
             rio_backend::crosswords::grid::row::SemanticCommandResult {
+                id: 10,
                 exit_code: Some(0),
                 elapsed_ms: Some(1),
             },
@@ -2449,7 +2627,7 @@ mod prompt_visual_anchor_tests {
             },
         ];
 
-        let results = command_result_anchors(&rows, 10, 4.0, 0.0, 720.0, 20.0, &prompts);
+        let results = command_result_anchors(&rows, 4.0, 0.0, 720.0, 20.0, &prompts);
 
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].key, 10);

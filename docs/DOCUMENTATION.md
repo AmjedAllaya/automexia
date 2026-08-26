@@ -88,6 +88,10 @@ the claim.
   not authorize a provider dependency, action registry, workflow executor,
   extension capability, model download, or runtime activation; proposed ADR
   0033 owns the durable decision.
+- `docs/UI-BRANDING-ROADMAP.md` owns renderer-surface U0-U10 status and
+  `docs/research/U10-UI-BRANDING-ASSURANCE-AUDIT.md` records its evidence-led
+  source/external reconciliation. The S1 policy remains the exact native,
+  visual, resource, accessibility, and review authority.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/FEATURE-TEST-REINFORCEMENT.md` owns the human per-feature scenario,
   oracle, interaction, checker, and exit-criteria plan synchronized with

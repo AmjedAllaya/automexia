@@ -1331,8 +1331,9 @@ Reusable current foundations:
 
 Important missing evidence:
 
-- current result metadata is not a durable complete command-output region, and
-  the command-result surface has a recorded long-output/scrollback gap;
+- current result metadata and its following-prompt boundary now survive
+  viewport and complete source-prompt eviction, but remain content-free
+  lifecycle identity rather than a durable complete command-output region;
 - no generic stable logical-line identity exists, and the proposal intentionally
   defers adding one;
 - no navigator owner, action, palette entry, binding, setting, continuation,

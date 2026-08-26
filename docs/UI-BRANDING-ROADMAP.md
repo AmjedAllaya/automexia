@@ -5,7 +5,7 @@ surfaces. It supplements the release sequencing in [the main roadmap](ROADMAP.md
 and the visual contract in [Liquid Hacker UX](LIQUID-HACKER-UX.md); it does not
 change terminal, PTY, shell, provider, or native-dialog authority.
 
-Audit date: 2026-08-25.
+Audit date: 2026-08-26.
 
 ## Status vocabulary
 
@@ -56,17 +56,18 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U7 modal input composition | `application.rs`, `router/mod.rs`, and `screen/mod.rs` prioritize the visible modal owner before resize, chrome, pane, PTY, wheel, input-method, and file-drop paths; hidden surfaces do not intercept a higher-priority command palette | None for source implementation |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
 | **Fully done** | U9 branded window caption controls | renderer/island.rs retains right-edge layout and 40–46 pixel hit targets while rendering three separated rounded cards without a shared border, with distinct cyan/purple/coral rails and glyphs, rest/hover/held/inactive states, native maximize/restore state, and same-control release activation with drag-away/focus-loss cancellation; application and screen owners only snapshot native state and route events | None for source implementation |
-| **Partially done** | U9.1 command-result boundary and surface | `rio-vt` owns identified command lifecycles and the renderer owns the tint, gutter, end rule, status treatment, and reduced-motion-aware lightening. Existing parser, PowerShell, CMD, short WSL Bash, WGPU/CPU glyph, and contrast fixtures pass their bounded cases. | A real viewport-overflow defect remains: long output can scroll the originating prompt metadata out of the visible scan, so commands such as GNU/WSL `ls -ll` may lose separation. Add the real parser-to-scrollback-to-visible-render regression for output heights around every viewport boundary, then fix ownership and rerun native shell, exact-pixel, resource, benchmark, Linux/macOS GUI, and assistive-technology evidence. |
+| **Fully done** | U9.1 command-result boundary and surface | `rio-vt` allocates stable pane-local completion IDs, carries one content-free result boundary onto the following prompt, and preserves it through prompt repaint, row reuse, reflow, viewport overflow, and complete source-prompt scrollback eviction. The renderer deduplicates by that ID and paints one persistent tint, gutter, end rule, status treatment, and reduced-motion-aware lightening without scanning history. Real parser-to-visible-render tests cover output heights on both sides of every viewport boundary, newline-only output, silent completion, and full source eviction. | Current-commit multi-platform pixels and assistive-technology delivery remain U10 release evidence, not missing U9.1 source behavior. |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
 | **Fully done** | U9.4 continuous pane/workspace search | `bindings/mod.rs` keeps local/global search shortcuts active during Search; `screen/mod.rs` owns query-preserving, pane-isolated scope transitions and bounded visible-match counts; `renderer/search.rs` owns one responsive surface with clickable/keyboard scope choices, focus state, result status, and privacy-safe announcements. Focused tests cover both directions, idempotence, pointer targets, PTY isolation, checked/focused semantics, and tiny/HiDPI/ultrawide geometry; native Windows WGPU and CPU runs validate the real split-pane card. | Native Narrator/NVDA, VoiceOver, and Orca delivery remains part of U10 and the accepted v0.5 platform adapter. |
-| **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, and strict-lint evidence is automated | Record safe screenshots on supported WGPU/CPU backends at tiny, normal, split, 100–300% scale, light/dark custom themes, and complete Narrator/NVDA, VoiceOver, and Orca smoke evidence on the supported native operating systems |
+| **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, strict-lint, exact one-pixel visual-diff policy, 1,600-case visual-suite matrices, privacy/freshness checks, and release enforcement are automated. The source-completion audit is recorded in [the U10 assurance audit](research/U10-UI-BRANDING-ASSURANCE-AUDIT.md). | Execute and independently review all 24 current-commit S1 suites: Windows WGPU and CPU/RDP; Linux X11 and Wayland; macOS Intel and Apple Silicon; named resource/elevated suites; four 1,600-capture visual matrices; Narrator, NVDA, VoiceOver, and Orca X11/Wayland. A clean controlled manifest must pass `--require-complete`. |
 
 There are no **Not done** rows in this renderer-owned branding scope. U9.1 is
-**Partially done** because viewport-overflow output can lose its visible
-command-result owner; the real long-output regression is now an explicit exit
-criterion. U10 remains an external release-assurance gate and must not be
-presented as passing until its native runs are recorded.
+**Fully done** at its source and focused-evidence boundary: long output retains
+one terminal-owned completion boundary even after the originating prompt leaves
+the entire retained scrollback. U10 remains **Partially done** and must not be
+presented as passing until all current-commit controlled native, visual,
+resource, assistive-technology, and independent-review suites are recorded.
 
 ## Interaction and trust boundaries
 
@@ -133,7 +134,7 @@ the required external evidence explicit.
 
 ## Verification ladder
 
-Focused Windows x86_64 and WSL source/native evidence completed on 2026-08-25:
+Focused Windows x86_64 and WSL source/native evidence completed through 2026-08-26:
 
 - first-run welcome layout, DPI, target, and path-disclosure tests: 4 passed;
 - shared theme contrast/source-over tests: 2 passed;
@@ -144,19 +145,23 @@ Focused Windows x86_64 and WSL source/native evidence completed on 2026-08-25:
 - scrollbar geometry, fade, lifecycle, and brand-role tests: 13 passed;
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
   held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 53 passed;
-- command-result following-prompt placement, truthful output bounds, final-result
-  fallback, listing/non-listing success/error single/multiline coverage, deep
-  managed-prompt wrapping, stale-row invalidation, active-generation repaint
-  ownership, surface/gutter geometry, visible opacity ranges, 540 ms hold/fade
-  idempotence, and scroll/reflow suppression passed focused VT/renderer suites;
-- native Windows WGPU and CPU runs passed eight PowerShell command cases,
-  including exact `ls -ll`, pipeline, native stderr exit `7`, and silent success;
-  plus interactive CMD neutral grouping. Each measured a 16.384-pixel surface,
-  10.716-pixel gutter, and a 1,581×36 physical-pixel region; output glyphs had
-  38 color buckets and luminance spread `211`, and blank surface/gutter RGB
-  distance was `27`. Both captures were visually inspected and showed no
-  vertical rail; the paint contract exposed 0.065/0.42/0.14 opacities and a
-  540 ms one-third hold;
+- command-result following-prompt placement, truthful output bounds, stable
+  completion identity, newline-only output, silent completion, full source-row
+  eviction, row reuse, repaint, reflow, and renderer deduplication passed 506 VT
+  unit tests, 3 VT conformance tests, and 24 focused renderer tests;
+- the real parser-to-scrollback-to-visible-render regression passes output
+  heights `rows-2`, `rows-1`, `rows`, `rows+1`, `2*rows-1`, `2*rows`, and
+  `2*rows+1`; the last five require the source owner to be offscreen and exactly
+  one following-prompt boundary to carry the matching completion ID;
+- a 512-output-row Criterion sample measured 192.69-202.72 microseconds and
+  50.384-53.005 MiB/s on the local Windows x86_64 host. This is a first sample,
+  not a controlled regression comparison;
+- the current Windows WGPU native run passed all eight base PowerShell cases and
+  the seven dynamic viewport-boundary cases at the 0.099 resting tint, including
+  glyph and blank-surface pixel thresholds. The wider desktop run was later
+  contaminated by a Windows Security dialog and stopped at the unrelated image
+  hover stage, so neither that composed frame nor a current CPU rerun is claimed
+  as complete U10 evidence;
 - native Automexia/ConPTY/WSL/Bash passed stdout, multiline pipeline, stderr
   exit `7`, and silent-success ownership in the real application;
 - pointer-owned pane selection, selection preservation, and cross-pane wheel

@@ -1118,9 +1118,17 @@ and stable activation remain forbidden until its exact release gates pass.
   available from semantic shell metadata or immutable launch intent before the
   PTY emits OSC titles, preventing startup profile commands from becoming
   transient visible identities.
-- OSC 133 `C`/`D` records exit code and elapsed time on the stable prompt row.
-  This metadata is copied, recycled, merged and split with the row and marks
-  metadata-only snapshots dirty.
+- OSC 133 `C`/`D` allocates a stable pane-local completion ID and records exit
+  code and elapsed time on the source prompt while that row remains retained.
+  After `C`, bounded terminal state observes content or line advance without
+  copying command text. An output-producing `D` publishes one content-free
+  boundary on the following prompt with the source generation and result ID.
+  Source and boundary metadata are copied, recycled, merged, split and marked
+  dirty with their rows, so prompt repaint, reflow, viewport overflow and full
+  source-prompt scrollback eviction preserve exactly one lifecycle owner.
+  The renderer consumes only visible source/boundary anchors, deduplicates by
+  result ID, rejects stale generations and never scans retained history during
+  paint. Silent completion publishes no empty visual surface.
 
 ### Planned semantic diagnostic navigation boundary
 
@@ -1131,9 +1139,11 @@ implemented or authorized. Proposed
 generic, on-demand terminal workflow rather than a DevOps-only feature.
 
 The selected grid and trusted shell semantic metadata remain canonical. Current
-OSC 133 result metadata identifies a supported prompt result; it does not define
-a durable complete command-output region. DN1 therefore navigates failed-command
-actions to the exact prompt/input anchor and keeps unknown shell status neutral.
+OSC 133 result metadata and the following-prompt boundary identify one completed
+prompt lifecycle across viewport and source-row eviction; they deliberately do
+not store text or define a durable complete command-output region. DN1 therefore
+navigates failed-command actions to the exact prompt/input anchor and keeps
+unknown shell status neutral.
 Failed command, diagnostic class, severity, provenance, and confidence remain
 separate types.
 

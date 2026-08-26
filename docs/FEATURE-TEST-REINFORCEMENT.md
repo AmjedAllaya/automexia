@@ -163,16 +163,21 @@ Current assurance: **Partial**.
 
 ### prompt-context-devops-semantics
 
-Current assurance: **Partial; the viewport-overflow command-result gap is open**.
+Current assurance: **Partial; viewport and complete source-prompt eviction are
+controlled, while cross-platform native and assistive-technology evidence is
+external**.
 
-- Add zero/short/wrapped/viewport-overflow/scrollback-overflow/alternate-screen/
-  storm output, plus arguments, aliases, functions, pipelines, stderr, silent
-  completion and syntax failures.
-- Require real PowerShell, CMD, Bash, Zsh, Fish and WSL PTY bytes; exact prompt
-  and result ownership; visible text; geometry; pixels; accessibility; and no
-  stale or borrowed surface.
-- Prevent a completion claim until the long-output owner survives or is safely
-  clipped when its original prompt leaves the viewport.
+- The source suite covers zero, short, wrapped, viewport-overflow,
+  scrollback-eviction, newline-only and silent output, arguments, pipelines,
+  stderr, repaint, row reuse and reflow. Preserve the stable result-ID and
+  exactly-one following-boundary invariants when adding alternate-screen, storm,
+  alias, function or syntax-failure cases.
+- Require real PowerShell, CMD, Bash, Zsh, Fish and WSL PTY bytes; exact prompt,
+  result and boundary ownership; visible text; geometry; pixels; accessibility;
+  and no stale, duplicated or borrowed surface.
+- Do not claim U10 completion until current-commit WGPU/CPU, Linux, macOS,
+  resource, exact visual-matrix, assistive-technology and independent-review
+  evidence passes the S1 `--require-complete` policy.
 
 ### openssh-inventory-persistence
 

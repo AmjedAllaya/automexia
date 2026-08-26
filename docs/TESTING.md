@@ -52,7 +52,7 @@ host-provided. The required evidence is:
 | Surface | Required host and checks |
 |---|---|
 | Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize-stress, clone, WSL, and image gates. Resize stress proves eight PowerShell command shapes, neutral CMD output, fresh result ownership, real glyph pixels, bounds, a 6-12.5 pixel measured gutter, visible resting/pulse opacity ranges, no vertical rail, and the single 540 ms hold/fade cue. |
+| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize, clone, WSL, and image gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
 | Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
 | Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
 | WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
@@ -495,14 +495,10 @@ before running the canonical command:
         Join-Path $PWD 'artifacts\native-gui\wgpu.json'
     cargo xtask test resize-stress --native-gui
 
-The command writes clean four-pane WGPU and CPU workspace PNGs under the
-adjacent typography-captures directory, plus palette and close-confirmation
-PNGs under modal-captures. The report also records each pane's effective font
-size, zoom-reset baseline, scaled size, and line height, and rejects blank
-or low-detail frames. Retained screenshots temporarily enter per-monitor DPI
-awareness so 125%-225% Windows scaling cannot crop the visual evidence. These
-artifacts are local evidence and must not be
-committed.
+The command writes WGPU/CPU workspace, modal, and result PNGs beside the report.
+It records effective font geometry, rejects blank/low-detail frames, and captures
+at per-monitor DPI. Any foreign OS overlay invalidates the frame and requires a
+rerun. These private artifacts must not be committed.
 
 ## Build-artifact lifecycle and storage
 
@@ -705,6 +701,10 @@ Renderer-neutral geometry additionally proves that a visible context tag starts
 on at least a 1.22-row rhythm from the preceding row origin, no context produces
 no spacing geometry, and tiny or unusually tall rows remain bounded without
 overlapping the complete path below. Completion timing shares the same origin.
+
+The same path proves seven viewport-boundary heights, full source eviction,
+silent/newline-only output, repaint/reflow, deduplication, and bounded overflow
+performance; see [command-result assurance](COMMAND-RESULT-ASSURANCE.md).
 The same gate proves that 1,000 queued PTY resizes collapse to the final size while input and
 shutdown remain ordering barriers. A recording PTY sink verifies exact
 delivery order, duplicate suppression, final size, and retry behavior after a
