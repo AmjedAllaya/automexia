@@ -58,6 +58,7 @@ STEP_TIMEOUT_SECONDS = {
     "benchmark-quick-actions": 7200,
     "benchmark-connection-planning": 7200,
     "benchmark-quick-action-store": 7200,
+    "benchmark-keybindings": 7200,
 }
 TOKEN_PATTERNS = (
     re.compile(r"(?i)(authorization\s*[:=]\s*)(?:bearer\s+)?[^\s]+"),
@@ -650,6 +651,16 @@ def main() -> int:
             None,
         ),
         (
+            "ghostty-assurance-mutations",
+            [sys.executable, "tools/ci/test_ghostty_compatibility.py"],
+            None,
+        ),
+        (
+            "ghostty-native-evidence-mutations",
+            [sys.executable, "tools/ci/test_ghostty_native_evidence.py"],
+            None,
+        ),
+        (
             "cp50-research-format",
             [
                 "cargo",
@@ -842,6 +853,36 @@ def main() -> int:
             )
         )
 
+    ghostty_evidence = os.environ.get("AUTOMEXIA_QA_GHOSTTY_EVIDENCE", "").strip()
+    if ghostty_evidence:
+        steps.append(
+            run_step(
+                run_dir,
+                next_index,
+                "ghostty-native-release-evidence",
+                [
+                    sys.executable,
+                    "tools/ci/ghostty_native_evidence.py",
+                    "--manifest",
+                    ghostty_evidence,
+                    "--expected-commit",
+                    git_value("rev-parse", "HEAD"),
+                    "--require-complete",
+                    "--output",
+                    str(run_dir / "artifacts" / "ghostty-native-evidence.json"),
+                ],
+            )
+        )
+        next_index += 1
+    else:
+        steps.append(
+            skipped(
+                "ghostty-native-release-evidence",
+                "set AUTOMEXIA_QA_GHOSTTY_EVIDENCE to a private, redacted, complete Windows/Linux/macOS manifest",
+                external=True,
+            )
+        )
+
     if truthy("AUTOMEXIA_QA_NATIVE") and os.name == "nt":
         steps.append(
             run_step(
@@ -959,6 +1000,10 @@ def main() -> int:
             (
                 "benchmark-quick-action-store",
                 ["cargo", "bench", "-p", "automexia-terminal", "--bench", "quick_action_store", "--locked", "--", "--noplot"],
+            ),
+            (
+                "benchmark-keybindings",
+                ["cargo", "bench", "-p", "automexia-keybindings", "--bench", "registry", "--locked", "--", "--noplot"],
             ),
         )
         for name, command in benchmark_commands:

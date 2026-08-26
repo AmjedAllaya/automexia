@@ -202,6 +202,55 @@ fn secondary_click_clipboard_action(
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum CompatibilityInspectorKeyAction {
+    Consume,
+    Close,
+    CancelClear,
+    RestoreNewest,
+    RequestClear,
+    ConfirmClear,
+}
+
+fn compatibility_inspector_key_action(
+    key: &Key,
+    state: ElementState,
+    modifiers: ModifiersState,
+    clear_confirmation: bool,
+) -> CompatibilityInspectorKeyAction {
+    if state != ElementState::Pressed {
+        return CompatibilityInspectorKeyAction::Consume;
+    }
+    match key {
+        Key::Named(NamedKey::Escape) if clear_confirmation => {
+            CompatibilityInspectorKeyAction::CancelClear
+        }
+        Key::Named(NamedKey::Escape) => CompatibilityInspectorKeyAction::Close,
+        Key::Named(NamedKey::Enter) if clear_confirmation => {
+            CompatibilityInspectorKeyAction::ConfirmClear
+        }
+        Key::Character(character)
+            if !modifiers.intersects(
+                ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER,
+            ) && character.eq_ignore_ascii_case("r") =>
+        {
+            CompatibilityInspectorKeyAction::RestoreNewest
+        }
+        Key::Character(character)
+            if !modifiers.intersects(
+                ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER,
+            ) && character.eq_ignore_ascii_case("c") =>
+        {
+            if clear_confirmation {
+                CompatibilityInspectorKeyAction::ConfirmClear
+            } else {
+                CompatibilityInspectorKeyAction::RequestClear
+            }
+        }
+        _ => CompatibilityInspectorKeyAction::Consume,
+    }
+}
+
 fn should_copy_selection_on_ctrl_c(
     key: &Key,
     mods: ModifiersState,
@@ -477,6 +526,9 @@ struct NativeWindowSnapshot {
     active_tab_profile: Option<String>,
     palette_enabled: bool,
     confirm_quit_active: bool,
+    compatibility_inspector_active: bool,
+    compatibility_inspector_accessibility_summary: Option<String>,
+    compatibility_inspector_clear_confirmation: bool,
     search_active: bool,
     search_scope: Option<&'static str>,
     search_focus: Option<&'static str>,
@@ -654,6 +706,12 @@ fn write_native_resize_snapshot(
         "panels": panels,
     });
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["compatibility_inspector_active"] =
+        serde_json::json!(window.compatibility_inspector_active);
+    snapshot["compatibility_inspector_accessibility_summary"] =
+        serde_json::json!(window.compatibility_inspector_accessibility_summary);
+    snapshot["compatibility_inspector_clear_confirmation"] =
+        serde_json::json!(window.compatibility_inspector_clear_confirmation);
     snapshot["search_active"] = serde_json::json!(window.search_active);
     snapshot["search_scope"] = serde_json::json!(window.search_scope);
     snapshot["search_focus"] = serde_json::json!(window.search_focus);
@@ -1799,6 +1857,9 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        if self.process_compatibility_inspector_key(key) {
+            return;
+        }
         if self.handle_image_preview_key(key) {
             return;
         }
@@ -4033,17 +4094,40 @@ impl Screen<'_> {
             .compatibility_inspector
             .hit_test(mouse_x, mouse_y, dimensions)
         {
-            Ok(Some(
-                crate::renderer::compatibility_inspector::CompatibilityInspectorAction::Close,
-            ))
-            | Err(()) => {
-                self.renderer
-                    .compatibility_inspector
-                    .set_visibility("hide");
+            Ok(Some(action)) => {
+                use crate::renderer::compatibility_inspector::CompatibilityInspectorAction;
+                match action {
+                    CompatibilityInspectorAction::Close => {
+                        self.renderer.compatibility_inspector.set_visibility("hide");
+                    }
+                    CompatibilityInspectorAction::RestoreNewest => {
+                        if self.context_manager.undo_topology(&mut self.sugarloaf) {
+                            self.resize_top_or_bottom_line();
+                        }
+                        self.publish_compatibility_inspector();
+                    }
+                    CompatibilityInspectorAction::ClearParked => {
+                        self.renderer
+                            .compatibility_inspector
+                            .request_clear_confirmation();
+                    }
+                    CompatibilityInspectorAction::ConfirmClearParked => {
+                        self.context_manager.clear_parked_topologies();
+                        self.renderer
+                            .compatibility_inspector
+                            .cancel_clear_confirmation();
+                        self.publish_compatibility_inspector();
+                    }
+                }
                 self.mark_dirty();
                 true
             }
             Ok(None) => true,
+            Err(()) => {
+                self.renderer.compatibility_inspector.set_visibility("hide");
+                self.mark_dirty();
+                true
+            }
         }
     }
 
@@ -6056,6 +6140,23 @@ impl Screen<'_> {
                         .tab_profile_identity(self.context_manager.current_index()),
                     palette_enabled: self.renderer.command_palette.is_enabled(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    compatibility_inspector_active: self
+                        .renderer
+                        .compatibility_inspector
+                        .is_active(),
+                    compatibility_inspector_accessibility_summary: self
+                        .renderer
+                        .compatibility_inspector
+                        .is_active()
+                        .then(|| {
+                            self.renderer
+                                .compatibility_inspector
+                                .accessibility_summary()
+                        }),
+                    compatibility_inspector_clear_confirmation: self
+                        .renderer
+                        .compatibility_inspector
+                        .clear_confirmation(),
                     search_active: self.search_active(),
                     search_scope: self.search_active().then_some(
                         match self.search_scope {
@@ -7734,6 +7835,60 @@ mod tests {
         assert!(!search_query_accepts_char(MAX_SEARCH_QUERY_BYTES, 'a'));
         assert!(search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 4, '🦀'));
         assert!(!search_query_accepts_char(MAX_SEARCH_QUERY_BYTES - 3, '🦀'));
+    }
+
+    #[test]
+    fn compatibility_inspector_key_policy_is_modal_idempotent_and_confirmed() {
+        let none = ModifiersState::empty();
+        let pressed = ElementState::Pressed;
+        let released = ElementState::Released;
+        let escape = Key::Named(NamedKey::Escape);
+        let enter = Key::Named(NamedKey::Enter);
+        let restore = Key::Character("r".into());
+        let clear = Key::Character("C".into());
+        let ordinary = Key::Character("x".into());
+
+        assert_eq!(
+            compatibility_inspector_key_action(&escape, pressed, none, false),
+            CompatibilityInspectorKeyAction::Close
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&escape, pressed, none, true),
+            CompatibilityInspectorKeyAction::CancelClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&restore, pressed, none, false),
+            CompatibilityInspectorKeyAction::RestoreNewest
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&clear, pressed, none, false),
+            CompatibilityInspectorKeyAction::RequestClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&clear, pressed, none, true),
+            CompatibilityInspectorKeyAction::ConfirmClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&enter, pressed, none, true),
+            CompatibilityInspectorKeyAction::ConfirmClear
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&ordinary, pressed, none, false),
+            CompatibilityInspectorKeyAction::Consume
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(
+                &restore,
+                pressed,
+                ModifiersState::CONTROL,
+                false,
+            ),
+            CompatibilityInspectorKeyAction::Consume
+        );
+        assert_eq!(
+            compatibility_inspector_key_action(&clear, released, none, false),
+            CompatibilityInspectorKeyAction::Consume
+        );
     }
 
     #[test]

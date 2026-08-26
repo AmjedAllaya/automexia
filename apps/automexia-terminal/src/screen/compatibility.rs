@@ -75,8 +75,10 @@ impl Screen<'_> {
         self.publish_compatibility_inspector();
     }
 
-    fn publish_compatibility_inspector(&mut self) {
-        use crate::renderer::compatibility_inspector::InspectorSnapshot;
+    pub(super) fn publish_compatibility_inspector(&mut self) {
+        use crate::renderer::compatibility_inspector::{
+            InspectorSnapshot, ParkedTopologyPresentation,
+        };
 
         if !self.renderer.compatibility_inspector.is_active() {
             return;
@@ -117,6 +119,17 @@ impl Screen<'_> {
             || "automexia".into(),
             |snapshot| snapshot.profile.requested.to_string(),
         );
+        let active_sessions = self.context_manager.route_ids().len();
+        let parked_topologies = self
+            .context_manager
+            .parked_topology_summaries()
+            .into_iter()
+            .map(|parked| ParkedTopologyPresentation {
+                sessions: parked.sessions,
+                history_lines: parked.history_lines,
+                remaining_seconds: parked.remaining_seconds,
+            })
+            .collect();
         let context = self.context_manager.current();
         let terminal = context.terminal.lock();
         let snapshot = InspectorSnapshot {
@@ -133,6 +146,8 @@ impl Screen<'_> {
             last_binding,
             pending_bytes,
             active_table,
+            active_sessions,
+            parked_topologies,
             parser_diagnostics,
         };
         drop(terminal);
@@ -140,6 +155,55 @@ impl Screen<'_> {
             .compatibility_inspector
             .replace_snapshot(snapshot);
     }
+    /// Consume every key event while the modal compatibility inspector is
+    /// visible. Only bounded lifecycle controls are interpreted; no key from
+    /// this surface is ever encoded for the active PTY.
+    pub(super) fn process_compatibility_inspector_key(
+        &mut self,
+        key: &rio_window::event::KeyEvent,
+    ) -> bool {
+        if !self.renderer.compatibility_inspector.is_active() {
+            return false;
+        }
+        let action = compatibility_inspector_key_action(
+            &key.logical_key,
+            key.state,
+            self.modifiers.state(),
+            self.renderer.compatibility_inspector.clear_confirmation(),
+        );
+        match action {
+            CompatibilityInspectorKeyAction::Consume => return true,
+            CompatibilityInspectorKeyAction::Close => {
+                self.renderer.compatibility_inspector.set_visibility("hide");
+            }
+            CompatibilityInspectorKeyAction::CancelClear => {
+                self.renderer
+                    .compatibility_inspector
+                    .cancel_clear_confirmation();
+            }
+            CompatibilityInspectorKeyAction::RestoreNewest => {
+                if self.context_manager.undo_topology(&mut self.sugarloaf) {
+                    self.resize_top_or_bottom_line();
+                }
+                self.publish_compatibility_inspector();
+            }
+            CompatibilityInspectorKeyAction::RequestClear => {
+                self.renderer
+                    .compatibility_inspector
+                    .request_clear_confirmation();
+            }
+            CompatibilityInspectorKeyAction::ConfirmClear => {
+                self.context_manager.clear_parked_topologies();
+                self.renderer
+                    .compatibility_inspector
+                    .cancel_clear_confirmation();
+                self.publish_compatibility_inspector();
+            }
+        }
+        self.mark_dirty();
+        true
+    }
+
     /// Resolve an opt-in typed binding before the legacy Automexia table.
     ///
     /// Returning `false` deliberately falls through to the legacy table and

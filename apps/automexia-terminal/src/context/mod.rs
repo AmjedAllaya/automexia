@@ -290,6 +290,13 @@ struct ParkedTopLevel<T: EventListener> {
     parked_at: Instant,
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ParkedTopologySummary {
+    pub sessions: usize,
+    pub history_lines: usize,
+    pub remaining_seconds: u64,
+}
+
 #[derive(Clone, Copy, Debug)]
 struct RestoredTopLevel {
     route_id: usize,
@@ -1625,6 +1632,35 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         !self.restored_topologies.is_empty()
     }
 
+    /// Return newest-first, redacted lifecycle summaries. Route IDs, titles,
+    /// commands, remote destinations, and terminal contents never leave the
+    /// session owner through this projection.
+    pub fn parked_topology_summaries(&mut self) -> Vec<ParkedTopologySummary> {
+        self.prune_topology_history();
+        self.parked_topologies
+            .iter()
+            .rev()
+            .map(|entry| ParkedTopologySummary {
+                sessions: entry.grid.route_ids().len(),
+                history_lines: entry.grid.retained_history_lines(),
+                remaining_seconds: PARKED_TOPOLOGY_TTL
+                    .saturating_sub(entry.parked_at.elapsed())
+                    .as_secs(),
+            })
+            .collect()
+    }
+
+    /// Explicitly terminate every currently parked topology in this native
+    /// window. Dropping each grid delegates child cleanup to the existing
+    /// Context/PTY owner and also invalidates redo references.
+    pub fn clear_parked_topologies(&mut self) -> usize {
+        self.prune_topology_history();
+        let cleared = self.parked_topologies.len();
+        self.parked_topologies.clear();
+        self.restored_topologies.clear();
+        cleared
+    }
+
     pub fn invalidate_topology_redo(&mut self) {
         self.restored_topologies.clear();
     }
@@ -2491,6 +2527,25 @@ pub mod test {
         assert_eq!(manager.parked_topologies.back().unwrap().index, 1);
         assert!(manager.can_undo_topology());
         assert!(!manager.can_redo_topology());
+    }
+
+    #[test]
+    fn parked_topology_summary_is_redacted_bounded_and_clear_is_exact() {
+        let window_id = WindowId::from(74);
+        let mut manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, window_id).unwrap();
+        manager.add_context(true, 0);
+        assert!(manager.park_current_topology_model());
+
+        let summaries = manager.parked_topology_summaries();
+        assert_eq!(summaries.len(), 1);
+        assert_eq!(summaries[0].sessions, 1);
+        assert!(summaries[0].remaining_seconds <= PARKED_TOPOLOGY_TTL.as_secs());
+        assert_eq!(manager.clear_parked_topologies(), 1);
+        assert!(manager.parked_topology_summaries().is_empty());
+        assert!(!manager.can_undo_topology());
+        assert!(!manager.can_redo_topology());
+        assert_eq!(manager.clear_parked_topologies(), 0);
     }
     #[derive(Clone, Default)]
     struct RecordingListener {
