@@ -167,6 +167,43 @@ Do not add a dependency merely because it appears in a future roadmap.
 If current research cannot be completed because network or source access is
 unavailable, record the limitation and do not invent results.
 
+### 4.1 Decide feature placement before implementation
+
+Before editing production code for any feature, analyze where that feature
+belongs and record one explicit decision: core terminal, an existing extension,
+or a new extension. Do not start implementation until this ownership decision is
+supported by the current architecture, call sites, trust boundaries, lifecycle,
+and tests.
+
+Use these placement rules:
+
+- Put behavior in the core terminal only when it is fundamental to terminal
+  operation or must be shared by every installation, such as PTY/process
+  ownership, terminal state, input, rendering, panes/tabs, windowing, clipboard,
+  common configuration, or a stable capability-broker boundary. Keep optional
+  product and provider authority out of core hot paths.
+- Extend an existing extension when the feature belongs to that extension's
+  cohesive domain and can remain behind its established capability, dependency,
+  lifecycle, persistence, enable/disable, and uninstall boundaries.
+- Create a new extension only when the feature is optional, cohesive, and has a
+  distinct authority or dependency footprint that does not fit an existing
+  extension. Define its public contract, capability manifest, limits, lifecycle,
+  failure isolation, feature gate, disable/uninstall behavior, tests, and
+  packaging ownership before implementation.
+- Split cross-cutting features at trust boundaries: keep only capability-free
+  shared contracts or indispensable terminal mechanisms in the appropriate core
+  owner; keep provider, network, authentication, filesystem, process, or other
+  optional authority in an extension; and route privileged activation through
+  the application-owned broker rather than duplicating authority.
+
+For the chosen placement, identify the existing authoritative owner and all
+important consumers, reject duplicate sources of truth, and document why the
+other two options are inferior. Include dependency direction, startup and hot-
+path impact, security/capability surface, persistence, failure containment,
+cross-platform behavior, test ownership, packaging, rollback, and future
+replacement cost. A new or materially changed package/capability boundary
+normally requires an ADR and architecture-checker coverage.
+
 ### 5. Produce an implementation plan before editing production code
 
 The plan must cover:
@@ -174,7 +211,8 @@ The plan must cover:
 1. requirements and acceptance criteria;
 2. evidence-led full/partial/missing classification;
 3. alternatives considered and the build/wrap/adopt decision;
-4. crate, module, file, and authority ownership;
+4. the recorded core/existing-extension/new-extension placement decision, plus
+   crate, module, file, authority ownership, and rejected alternatives;
 5. data flow, state model, threads/tasks, cancellation, cleanup, and shutdown;
 6. trust boundaries, capability checks, redaction, limits, persistence,
    migration, rollback, and fail-safe behavior;
@@ -565,6 +603,8 @@ durations, and evidence actually exercised.
 - [ ] Worktree, owners, callers, contracts, tests, docs, and recent history inspected.
 - [ ] Every item classified as full, partial, missing, or external with evidence.
 - [ ] Current primary-source research and build/wrap/adopt analysis completed.
+- [ ] Core, existing-extension, or new-extension placement is decided and
+  justified before production editing.
 - [ ] Architecture, trust, lifecycle, failure, UX, platform, and rollback plan written.
 - [ ] Deterministic failing tests and limits defined before production changes.
 - [ ] Affected reinforcement entries, scenario classes, interactions, independent oracles, and exit criteria updated.
