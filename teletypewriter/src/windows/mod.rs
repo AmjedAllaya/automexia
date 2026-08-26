@@ -397,14 +397,14 @@ mod command_line_tests {
     fn quotes_program_arguments_spaces_unicode_and_embedded_quotes() {
         let args = vec![
             "--cd".to_string(),
-            "/home/<REDACTED_LOCAL_VALUE>/work tree/项目".to_string(),
+            "/home/alice/work tree/项目".to_string(),
             "say \"hello\"".to_string(),
             r"C:\trailing path\".to_string(),
             String::new(),
         ];
         assert_eq!(
             build_command_line(r"C:\Program Files\PowerShell\7\pwsh.exe", &args),
-            r#""C:\Program Files\PowerShell\7\pwsh.exe" --cd "/home/<REDACTED_LOCAL_VALUE>/work tree/项目" "say \"hello\"" "C:\trailing path\\" """#
+            r#""C:\Program Files\PowerShell\7\pwsh.exe" --cd "/home/alice/work tree/项目" "say \"hello\"" "C:\trailing path\\" """#
         );
     }
 

@@ -650,9 +650,9 @@ mod tests {
                 "--distribution",
                 "Ubuntu-24.04",
                 "--user",
-                "<REDACTED_LOCAL_VALUE>",
+                "alice",
                 "--cd",
-                "/home/<REDACTED_LOCAL_VALUE>/project",
+                "/home/alice/project",
                 "--exec",
                 "/bin/zsh",
                 "-l",
@@ -683,7 +683,7 @@ mod tests {
             .fresh_clone(&LiveSessionMetadata {
                 current_directory: Some(PathBuf::from("/srv/项目")),
                 distro: Some("Ubuntu-24.04".to_string()),
-                user: Some("<REDACTED_LOCAL_VALUE>".to_string()),
+                user: Some("alice".to_string()),
                 shell_name: Some("bash".to_string()),
                 shell_path: Some("/usr/bin/bash".to_string()),
             })
@@ -694,7 +694,7 @@ mod tests {
                 "--distribution",
                 "Ubuntu-24.04",
                 "--user",
-                "<REDACTED_LOCAL_VALUE>",
+                "alice",
                 "--cd",
                 "/srv/项目",
                 "--exec",
@@ -712,9 +712,9 @@ mod tests {
                 "--distribution",
                 "Ubuntu",
                 "--user",
-                "<REDACTED_LOCAL_VALUE>",
+                "alice",
                 "--cd",
-                "/home/<REDACTED_LOCAL_VALUE>/safe",
+                "/home/alice/safe",
                 "--exec",
                 "/bin/zsh",
                 "-l",
@@ -725,7 +725,7 @@ mod tests {
             .fresh_clone(&LiveSessionMetadata {
                 current_directory: Some(PathBuf::from("relative/linux/path")),
                 distro: Some("Ubuntu".to_string()),
-                user: Some("<REDACTED_LOCAL_VALUE>".to_string()),
+                user: Some("alice".to_string()),
                 shell_name: Some("zsh".to_string()),
                 shell_path: Some("/bin/zsh".to_string()),
             })
@@ -733,7 +733,7 @@ mod tests {
         assert!(clone
             .args()
             .windows(2)
-            .any(|pair| pair == ["--cd", "/home/<REDACTED_LOCAL_VALUE>/safe"]));
+            .any(|pair| pair == ["--cd", "/home/alice/safe"]));
     }
 
     #[test]
@@ -741,9 +741,9 @@ mod tests {
         let source = descriptor("powershell.exe", &["-NoLogo"], r"D:\work");
         let clone = source
             .fresh_clone(&LiveSessionMetadata {
-                current_directory: Some(PathBuf::from("/home/<REDACTED_LOCAL_VALUE>/work tree")),
+                current_directory: Some(PathBuf::from("/home/alice/work tree")),
                 distro: Some("Ubuntu".to_string()),
-                user: Some("<REDACTED_LOCAL_VALUE>".to_string()),
+                user: Some("alice".to_string()),
                 shell_name: Some("zsh".to_string()),
                 shell_path: Some("/usr/bin/zsh".to_string()),
             })
@@ -755,9 +755,9 @@ mod tests {
                 "--distribution",
                 "Ubuntu",
                 "--user",
-                "<REDACTED_LOCAL_VALUE>",
+                "alice",
                 "--cd",
-                "/home/<REDACTED_LOCAL_VALUE>/work tree",
+                "/home/alice/work tree",
                 "--exec",
                 "/usr/bin/zsh",
                 "-l",
@@ -771,9 +771,9 @@ mod tests {
         let source = descriptor("powershell.exe", &["-NoLogo"], r"D:\work");
         let error = source
             .fresh_clone(&LiveSessionMetadata {
-                current_directory: Some(PathBuf::from("/home/<REDACTED_LOCAL_VALUE>")),
+                current_directory: Some(PathBuf::from("/home/alice")),
                 distro: Some("Ubuntu".to_string()),
-                user: Some("<REDACTED_LOCAL_VALUE>".to_string()),
+                user: Some("alice".to_string()),
                 ..LiveSessionMetadata::default()
             })
             .unwrap_err();

@@ -515,8 +515,8 @@ mod tests {
     fn current_directory_strips_windows_leading_slash() {
         assert_eq!(cwd("file:///C:/Users/user"), Some("C:/Users/user".into()));
         assert_eq!(
-            cwd("file:///home/<REDACTED_LOCAL_VALUE>/work%20tree"),
-            Some("/home/<REDACTED_LOCAL_VALUE>/work tree".into())
+            cwd("file:///home/alice/work%20tree"),
+            Some("/home/alice/work tree".into())
         );
     }
 
