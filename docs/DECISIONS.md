@@ -43,6 +43,7 @@ decision supersedes an old one instead of silently rewriting history.
 | [0033](adr/0033-optional-llm-orchestration-extension.md) | Optional LLM orchestration extension (proposed) | Keep Automexia useful without AI while allowing a separately installed extension to propose bounded typed workflows that core-owned policy, review, approval, and action execution control. |
 | [0034](adr/0034-situation-aware-production-operations.md) | Situation-aware production operations boundary (proposed) | Compose separate deterministic change, explanation, comparison, network, impact, incident and managed-session capabilities over existing owners—without a monolithic operations engine—while keeping provider logic, credentials, LLMs and automatic execution out of the core and hot paths. The [strict PO0 contract candidate](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md) is non-activating and still requires protected acceptance. |
 | [0035](adr/0035-core-domain-and-optional-extension-ownership.md) | Core domain and optional extension ownership | Keep generic command results in the application renderer, provider-neutral connectivity and command productivity in capability-free domain packages, and independently disabled provider/context behavior in extensions. |
+| [0036](adr/0036-application-owned-runtime-user-preferences.md) | Application-owned runtime user preferences | Preserve hand-edited config while restoring bounded font and appearance overrides through one app-owned, coalescing, private persistence path. |
 
 ## When an ADR is required
 

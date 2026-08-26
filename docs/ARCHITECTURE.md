@@ -1727,6 +1727,19 @@ antivirus rationale are in
 The one-release migration reads a narrow Rio
 allowlist and never modifies the source. See `docs/MIGRATION.md`.
 
+Runtime-editable baseline preferences use a separate application-owned overlay
+below `state/user-preferences-v1.toml`. The application reads at most 16 KiB
+before creating the first window, layers only font size and forced appearance
+over the platform-adjusted config, and retains the unmodified config as Reset's
+source of truth. Screens emit typed font requests; VT, PTY, input, layout, and
+renderer owners perform no persistence. One lazily started worker coalesces to a
+single pending snapshot, serializes multiple application instances with a
+private file lock, replaces same-directory staged files, retains one valid
+previous snapshot, and receives a bounded shutdown flush. State never includes
+terminal text, command history, paths, topology, credentials, provider data, or
+extension settings. See
+[ADR 0036](adr/0036-application-owned-runtime-user-preferences.md).
+
 Extension state is versioned below its own directory, atomically replaced,
 bounded, and protected with user-only platform permissions. General config,
 extension state, logs, renderer snapshots, diagnostics, QA bundles, and

@@ -4,6 +4,7 @@ use automexia_terminal::automexia::api::{
     ContextContribution, ExtensionId, Freshness, IconKind, SegmentRole, SessionFacts,
     SessionId, StatusSegment,
 };
+use automexia_terminal::automexia::preferences::{PreferenceWriter, UserPreferences};
 use automexia_terminal::automexia::runtime;
 use automexia_ui_model::{layout_segments, project_status};
 use criterion::{criterion_group, criterion_main, Criterion};
@@ -80,6 +81,20 @@ fn services(c: &mut Criterion) {
     c.bench_function("extension_worker_submission_nonblocking", |b| {
         b.iter(|| black_box(runtime::request_devops_refresh(black_box(&session), None)))
     });
+
+    let preference_root = tempfile::tempdir().expect("preference benchmark root");
+    let mut preference_writer =
+        PreferenceWriter::new(preference_root.path().to_path_buf());
+    c.bench_function("preference_worker_submission_nonblocking", |b| {
+        b.iter(|| {
+            preference_writer.submit(black_box(UserPreferences {
+                font_size: Some(18.0),
+                appearance_theme: None,
+            }));
+        })
+    });
+    assert!(preference_writer.flush(std::time::Duration::from_secs(5)));
+    assert!(preference_writer.shutdown(std::time::Duration::from_secs(5)));
 
     runtime::shutdown_background_services();
 }

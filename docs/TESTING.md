@@ -1775,6 +1775,39 @@ evidence. CP3.2 static actions remain disabled and unaliased. CP3.3 native
 imports and trusted task bridges are fully implemented locally, insert-only,
 unaliasable, explicitly selected/trusted, and separately revocable.
 
+## Saved runtime preference persistence
+
+The application-owned font/appearance overlay is exercised with:
+
+```text
+cargo test -p automexia-terminal --lib automexia::preferences::tests --locked
+cargo test -p automexia-terminal --bin automexia --locked font_preference_request
+cargo test -p automexia-terminal --test user_preferences_restart --locked
+cargo bench -p automexia-terminal --bench automexia_services --locked -- preference_worker_submission_nonblocking
+```
+
+The library suite uses real private temporary directories and durable files. It
+covers missing state without startup writes, canonical font/theme round trip,
+6/100 point boundaries, NaN/infinity/out-of-range rejection, unknown fields,
+future schema, malformed/oversized data, previous-snapshot recovery, Reset to
+the unmodified config, depth-one coalescing, bounded flush/join, private
+permissions, multiple-instance lock contention, and zero staged-file residue.
+The binary tests independently validate typed application requests and prove
+invalid values do not mutate the last accepted preference. The integration test
+starts the actual test artifact as a child twice, proving set/restart/reset
+round trips across process boundaries without changing `config.toml`. The renderer/PTY
+path is not used by the store, and the native manual procedure additionally
+checks that shortcuts produce no prompt bytes and every pane receives the same
+effective size before and after restart.
+
+`preference_worker_submission_nonblocking` measures the actual mutex/coalescing
+enqueue owner while its one worker persists in the background. Record a
+same-host release baseline before adding a performance claim; an isolated
+helper benchmark is not proof of full startup or filesystem latency. Native
+Windows, Linux/BSD, and macOS restart runs, power-loss/filesystem-specific
+durability, assistive-technology warnings, and controlled long-session resource
+campaigns remain explicit release evidence until run on those environments.
+
 ## Command-productivity CP0 contract
 
 CP0 is a non-runtime policy boundary. It does not enable managed completion,

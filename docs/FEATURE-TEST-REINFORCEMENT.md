@@ -170,6 +170,19 @@ Current assurance: **Partial**.
   absent-timestamp fallbacks at tiny through 8K widths and 100–300% scale.
   Bind measured text and pixels to the exact result identity; reject clipping,
   prompt-context overlap, fabricated labels, stale timestamps or changed cells.
+- For saved font/appearance preferences, cover missing, zero-field, canonical,
+  boundary-minus-one/boundary/boundary-plus-one, repeated, malformed,
+  truncated, oversized, unknown/future schema, linked/reparse, permission,
+  disk-full, lock-contention, interrupted-replace, previous-snapshot recovery,
+  config reload, Reset, rapid-key-repeat, multi-window/pane, and shutdown cases.
+- Independently compare typed requests, effective config, every live pane
+  dimension/theme, exact private file bytes/permissions, before/after directory
+  digests, queue depth, worker/thread cleanup, prompt cells, PTY bytes, and first
+  native frame after restart. Mutations that remove bounds, no-follow checks,
+  locking, backup recovery, coalescing, Reset precedence, bounded shutdown, or
+  native restart evidence must fail closed. Filesystem-specific power-loss,
+  cross-platform native frames, and assistive-technology warning delivery stay
+  external until executed.
 
 ### windows-tabs-sessions-input
 

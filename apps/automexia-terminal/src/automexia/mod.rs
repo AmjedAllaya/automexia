@@ -15,6 +15,8 @@ pub mod export;
 pub mod ghostty_migration;
 pub mod marketplace;
 pub mod migration;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod preferences;
 pub(crate) mod private_fs;
 pub mod quick_actions;
 pub mod runtime;

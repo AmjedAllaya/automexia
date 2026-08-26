@@ -30,6 +30,11 @@ use rio_window::window::{CursorIcon, Fullscreen, ResizeDirection};
 use std::error::Error;
 use std::time::{Duration, Instant};
 
+use crate::automexia::preferences::{
+    self as runtime_preferences, PreferenceErrorCode, PreferenceWriter, UserPreferences,
+    MAX_FONT_POINTS, MIN_FONT_POINTS,
+};
+
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
 enum RuntimeConfigReload {
@@ -63,6 +68,45 @@ fn prepare_runtime_font_reload(
     match errors {
         Some(error) => Err(error.fonts_not_found),
         None => Ok(Some(font_library)),
+    }
+}
+
+fn preference_warning(
+    error: PreferenceErrorCode,
+    recovered: bool,
+) -> rio_backend::error::RioError {
+    let recovery = if recovered {
+        " The last known-good saved settings were restored."
+    } else {
+        " The configured defaults remain active."
+    };
+    rio_backend::error::RioError {
+        level: rio_backend::error::RioErrorLevel::Warning,
+        report: rio_backend::error::RioErrorType::InvalidConfigurationFormat(format!(
+            "saved terminal settings could not be applied ({error:?}).{recovery}"
+        )),
+    }
+}
+
+fn apply_font_size_request(
+    preferences: &mut UserPreferences,
+    request: rio_backend::event::FontSizeRequest,
+) -> Result<(), PreferenceErrorCode> {
+    use rio_backend::event::FontSizeRequest;
+
+    match request {
+        FontSizeRequest::Set(points)
+            if points.is_finite()
+                && (MIN_FONT_POINTS..=MAX_FONT_POINTS).contains(&points) =>
+        {
+            preferences.font_size = Some(points);
+            Ok(())
+        }
+        FontSizeRequest::Reset => {
+            preferences.font_size = None;
+            Ok(())
+        }
+        FontSizeRequest::Set(_) => Err(PreferenceErrorCode::InvalidData),
     }
 }
 
@@ -153,7 +197,11 @@ fn logical_wheel_pixels(physical_pixels: f64, scale_factor: f32) -> f64 {
 }
 
 pub struct Application<'a> {
+    /// Parsed config before runtime UI preferences are layered onto it.
+    base_config: rio_backend::config::Config,
     config: rio_backend::config::Config,
+    user_preferences: UserPreferences,
+    preference_writer: PreferenceWriter,
     event_proxy: EventProxy,
     router: Router<'a>,
     scheduler: Scheduler,
@@ -177,9 +225,20 @@ impl Application<'_> {
         let clipboard =
             unsafe { Clipboard::new(event_loop.display_handle().unwrap().as_raw()) };
 
+        let base_config = config;
+        let preference_load = runtime_preferences::load();
+        let user_preferences = preference_load.preferences;
+        let config = user_preferences.apply_to(&base_config);
+
         let mut router = Router::new(config.fonts.to_owned(), clipboard);
         if let Some(error) = config_error {
             router.propagate_error_to_next_route(error.into());
+        }
+        if let Some(error) = preference_load.warning {
+            router.propagate_error_to_next_route(preference_warning(
+                error,
+                preference_load.source == runtime_preferences::PreferenceSource::Previous,
+            ));
         }
 
         let proxy = event_loop.create_proxy();
@@ -197,7 +256,10 @@ impl Application<'_> {
         rio_notifier::request_authorization();
 
         Application {
+            base_config,
             config,
+            user_preferences,
+            preference_writer: runtime_preferences::writer(),
             event_proxy,
             router,
             scheduler,
@@ -205,6 +267,44 @@ impl Application<'_> {
             global_hotkey: None,
             #[cfg(target_os = "macos")]
             quake_previous_app: None,
+        }
+    }
+
+    fn publish_user_preferences(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        has_font_updates: bool,
+    ) {
+        let mut config = self.user_preferences.apply_to(&self.base_config);
+        let theme = config
+            .force_theme
+            .map(|theme| theme.to_window_theme())
+            .or_else(|| event_loop.system_theme());
+        update_colors_based_on_theme(&mut config, theme);
+        self.config = config;
+
+        for route in self.router.routes.values_mut() {
+            route.update_config(
+                &self.config,
+                &self.router.font_library,
+                has_font_updates,
+                None,
+                false,
+            );
+            route.window.configure_window(&self.config);
+            route.request_redraw();
+        }
+        self.preference_writer.submit(self.user_preferences.clone());
+    }
+
+    fn report_preference_write_failure(&mut self) {
+        let Some(error) = self.preference_writer.take_error() else {
+            return;
+        };
+        let report = preference_warning(error, false);
+        for route in self.router.routes.values_mut() {
+            route.report_error(&report);
+            route.request_redraw();
         }
     }
 
@@ -710,7 +810,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::UpdateConfig) => {
-                let mut config = match prepare_runtime_config_reload(
+                let base_config = match prepare_runtime_config_reload(
                     rio_backend::config::Config::try_load(),
                 ) {
                     RuntimeConfigReload::Apply(config) => *config,
@@ -725,6 +825,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         return;
                     }
                 };
+                let mut config = self.user_preferences.apply_to(&base_config);
 
                 let system_theme = event_loop.system_theme();
                 let theme = config
@@ -811,6 +912,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 if let Some(font_library) = prepared_font_library {
                     *self.router.font_library = font_library;
                 }
+                self.base_config = base_config;
                 self.config = config;
 
                 for route in self.router.routes.values_mut() {
@@ -1032,6 +1134,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
             RioEventType::Rio(RioEvent::UpdateTitles) => {
                 self.router.update_titles();
+                self.report_preference_write_failure();
             }
             RioEventType::Rio(RioEvent::MouseCursorDirty) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
@@ -1263,34 +1366,35 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::ToggleAppearanceTheme) => {
-                if let Some(route) = self.router.routes.get_mut(&window_id) {
-                    use rio_backend::config::theme::AppearanceTheme;
-                    let current = self
-                        .config
-                        .force_theme
-                        .or_else(|| {
+                use rio_backend::config::theme::AppearanceTheme;
+                let current = self
+                    .config
+                    .force_theme
+                    .or_else(|| {
+                        self.router.routes.get(&window_id).and_then(|route| {
                             route
                                 .window
                                 .winit_window
                                 .theme()
                                 .map(AppearanceTheme::from_window_theme)
                         })
-                        .unwrap_or(AppearanceTheme::Dark);
-                    let toggled = current.toggled();
-                    self.config.force_theme = Some(toggled);
-                    update_colors_based_on_theme(
-                        &mut self.config,
-                        Some(toggled.to_window_theme()),
-                    );
-                    route.window.screen.update_config(
-                        &self.config,
-                        &self.router.font_library,
-                        false,
-                        None,
-                        false,
-                    );
-                    route.window.configure_window(&self.config);
+                    })
+                    .unwrap_or(AppearanceTheme::Dark);
+                self.user_preferences.appearance_theme = Some(current.toggled());
+                self.publish_user_preferences(event_loop, false);
+            }
+            RioEventType::Rio(RioEvent::UpdateFontSize(request)) => {
+                if let Err(error) =
+                    apply_font_size_request(&mut self.user_preferences, request)
+                {
+                    let report = preference_warning(error, false);
+                    if let Some(route) = self.router.routes.get_mut(&window_id) {
+                        route.report_error(&report);
+                        route.request_redraw();
+                    }
+                    return;
                 }
+                self.publish_user_preferences(event_loop, true);
             }
             RioEventType::Rio(RioEvent::ColorChange(route_id, index, color)) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
@@ -2982,6 +3086,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     // This is irreversible - if this event is emitted, it is guaranteed to be the last event that gets emitted.
     // You generally want to treat this as an “do on quit” event.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        if !self.preference_writer.shutdown(Duration::from_secs(2)) {
+            tracing::warn!(
+                "saved terminal settings did not finish flushing before shutdown"
+            );
+        }
         self.router.shutdown_services();
         // Ensure that all the windows are dropped, so the destructors for
         // Renderer and contexts ran.
@@ -3070,6 +3179,43 @@ where
 #[cfg(test)]
 mod custom_chrome_tests {
     use super::*;
+
+    #[test]
+    fn font_preference_request_accepts_exact_bounds_and_reset() {
+        use rio_backend::event::FontSizeRequest;
+
+        let mut preferences = UserPreferences::default();
+        apply_font_size_request(&mut preferences, FontSizeRequest::Set(MIN_FONT_POINTS))
+            .unwrap();
+        assert_eq!(preferences.font_size, Some(MIN_FONT_POINTS));
+        apply_font_size_request(&mut preferences, FontSizeRequest::Set(MAX_FONT_POINTS))
+            .unwrap();
+        assert_eq!(preferences.font_size, Some(MAX_FONT_POINTS));
+        apply_font_size_request(&mut preferences, FontSizeRequest::Reset).unwrap();
+        assert_eq!(preferences.font_size, None);
+    }
+
+    #[test]
+    fn invalid_font_preference_request_is_side_effect_free() {
+        use rio_backend::event::FontSizeRequest;
+
+        for invalid in [
+            f32::NAN,
+            f32::INFINITY,
+            MIN_FONT_POINTS - 0.01,
+            MAX_FONT_POINTS + 0.01,
+        ] {
+            let mut preferences = UserPreferences {
+                font_size: Some(18.0),
+                appearance_theme: None,
+            };
+            assert_eq!(
+                apply_font_size_request(&mut preferences, FontSizeRequest::Set(invalid)),
+                Err(PreferenceErrorCode::InvalidData)
+            );
+            assert_eq!(preferences.font_size, Some(18.0));
+        }
+    }
 
     #[test]
     fn every_runtime_load_failure_keeps_the_last_known_good_config() {

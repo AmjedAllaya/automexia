@@ -1719,22 +1719,20 @@ impl Screen<'_> {
 
     #[inline]
     pub fn change_font_size(&mut self, action: FontSizeAction) {
-        let dim = &mut self.context_manager.current_mut().dimension;
-        let changed = match action {
-            FontSizeAction::Increase => dim.increase_font_size(),
-            FontSizeAction::Decrease => dim.decrease_font_size(),
-            FontSizeAction::Reset => dim.reset_font_size(),
+        use rio_backend::event::FontSizeRequest;
+
+        let current = self.context_manager.current().dimension.font_size;
+        let request = match action {
+            FontSizeAction::Increase if current < 100.0 => {
+                FontSizeRequest::Set((current + 1.0).min(100.0))
+            }
+            FontSizeAction::Decrease if current > 6.0 => {
+                FontSizeRequest::Set((current - 1.0).max(6.0))
+            }
+            FontSizeAction::Reset => FontSizeRequest::Reset,
+            FontSizeAction::Increase | FontSizeAction::Decrease => return,
         };
-        if !changed {
-            return;
-        }
-
-        self.context_manager
-            .current_grid_mut()
-            .update_dimensions(&mut self.sugarloaf);
-
-        self.mark_dirty();
-        self.resize_all_contexts();
+        self.context_manager.update_font_size(request);
     }
 
     #[inline]
