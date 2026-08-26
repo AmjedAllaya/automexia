@@ -26,6 +26,11 @@ the claim.
   experience principles, and broader direction. It does not define feature
   availability.
 - `docs/FEATURES.md` owns the human-readable capability catalog.
+- `docs/MANUAL-FEATURE-TESTING.md` owns the end-to-end clean-machine manual
+  acceptance workbook: setup, feature-to-scenario mapping, positive/negative/
+  boundary workflows, expected results, controlled external evidence, and
+  cleanup. It consumes rather than overrides exact references, feature status,
+  machine contracts, specialized testing pages, and release policy.
 - `docs/CONFIGURATION.md`, `docs/KEYBOARD.md`, and
   `docs/CLI-REFERENCE.md` own exact public reference.
 - `docs/ARCHITECTURE.md` and `docs/adr/` own technical rationale.

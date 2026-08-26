@@ -27,6 +27,7 @@ assurance, and project pages own future work and decision history.
 | Configure SSH or find Connection Hub | **[Connection Hub and SSH](user-guide/connection-hub-and-ssh.md)** |
 | Work with images, listings, semantic output, or WSL | [Files and images](user-guide/files-and-images.md), [Remote and WSL](user-guide/remote-and-wsl.md) |
 | Follow practical project, operations, automation, and media examples | [Workflow recipes](user-guide/recipes.md) |
+| Manually validate every implemented feature from a clean machine | [Complete implemented-feature manual testing guide](MANUAL-FEATURE-TESTING.md) |
 | Build Automexia from source | [Contributor getting started](guide/getting-started.md) |
 | Diagnose a problem | [Troubleshooting](guide/troubleshooting.md) |
 | Look up exact CLI syntax | [CLI reference](reference/cli.md) |
