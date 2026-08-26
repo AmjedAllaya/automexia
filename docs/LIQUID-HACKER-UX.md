@@ -95,7 +95,10 @@ and quit surfaces fit to the logical viewport. The static first-run card uses
 the shared Automexia accents, one clear Enter action, a concise
 time/effort/flexibility promise, and no local configuration path. The command palette reduces its
 visible result count with height, long labels are ellipsized on Unicode
-boundaries, and editable input keeps its tail visible. The diagnostic assistant
+boundaries, and editable input keeps its tail visible. When results overflow,
+a subdued vertical thumb stays visible and brightens during bounded mouse-wheel,
+trackpad, or keyboard scrolling; the selected row remains on screen and resize
+reclamps the viewport without leaving blank rows. The diagnostic assistant
 and redacted
 compatibility inspector are centered blue-black cards with a semantic status
 chip, visible close control, restrained cyan/blue actions, and an inert scrim.

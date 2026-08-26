@@ -111,6 +111,47 @@ fn should_confirm_window_close(
     window_count == 1 && confirm_before_quit && !already_confirmed_by_platform
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WheelEventTarget {
+    Blocked,
+    CommandPalette,
+    Terminal,
+}
+
+/// Resolve the single owner of a wheel event before any pane, terminal, or
+/// PTY-facing behavior runs. The command palette is above secondary overlays
+/// in the modal stack; confirmation and non-terminal routes remain absolute
+/// blockers.
+#[inline]
+fn wheel_event_target(
+    route_is_terminal: bool,
+    hard_blocker_active: bool,
+    secondary_modal_active: bool,
+    command_palette_active: bool,
+) -> WheelEventTarget {
+    if !route_is_terminal || hard_blocker_active {
+        WheelEventTarget::Blocked
+    } else if command_palette_active {
+        WheelEventTarget::CommandPalette
+    } else if secondary_modal_active {
+        WheelEventTarget::Blocked
+    } else {
+        WheelEventTarget::Terminal
+    }
+}
+
+/// Winit reports precision-trackpad motion in physical pixels while palette
+/// geometry is logical. Fail closed for malformed scale state rather than
+/// publishing an unbounded or direction-flipped delta.
+#[inline]
+fn logical_wheel_pixels(physical_pixels: f64, scale_factor: f32) -> f64 {
+    if !physical_pixels.is_finite() || !scale_factor.is_finite() || scale_factor <= 0.0 {
+        0.0
+    } else {
+        physical_pixels / scale_factor as f64
+    }
+}
+
 pub struct Application<'a> {
     config: rio_backend::config::Config,
     event_proxy: EventProxy,
@@ -2407,25 +2448,89 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::MouseWheel { delta, phase, .. } => {
-                if route.path != RoutePath::Terminal
-                    || route.window.screen.renderer.confirm_quit.is_active()
-                    || route.window.screen.connection_hub_is_active()
-                    || route.window.screen.renderer.assistant.is_active()
-                    || route
-                        .window
-                        .screen
-                        .renderer
-                        .compatibility_inspector
-                        .is_active()
-                    || route
-                        .window
-                        .screen
-                        .renderer
-                        .island
-                        .as_ref()
-                        .is_some_and(|island| island.is_color_picker_open())
-                {
-                    return;
+                let hard_blocker_active =
+                    route.window.screen.renderer.confirm_quit.is_active()
+                        || route.window.screen.connection_hub_is_active();
+                let secondary_modal_active =
+                    route.window.screen.renderer.assistant.is_active()
+                        || route
+                            .window
+                            .screen
+                            .renderer
+                            .compatibility_inspector
+                            .is_active()
+                        || route
+                            .window
+                            .screen
+                            .renderer
+                            .island
+                            .as_ref()
+                            .is_some_and(|island| island.is_color_picker_open());
+                match wheel_event_target(
+                    route.path == RoutePath::Terminal,
+                    hard_blocker_active,
+                    secondary_modal_active,
+                    route.window.screen.renderer.command_palette.is_enabled(),
+                ) {
+                    WheelEventTarget::Blocked => return,
+                    WheelEventTarget::CommandPalette => {
+                        if self.config.hide_cursor_when_typing {
+                            route.window.winit_window.set_cursor_visible(true);
+                        }
+                        let changed = match delta {
+                            MouseScrollDelta::LineDelta(_, lines) => route
+                                .window
+                                .screen
+                                .renderer
+                                .command_palette
+                                .scroll_line_delta(lines),
+                            MouseScrollDelta::PixelDelta(lpos) => match phase {
+                                TouchPhase::Started => {
+                                    route
+                                        .window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .reset_scroll_gesture();
+                                    false
+                                }
+                                TouchPhase::Moved => {
+                                    let magnitude = lpos.x.hypot(lpos.y);
+                                    let physical_vertical = if magnitude > 0.0
+                                        && lpos.x.abs() / magnitude > 0.9
+                                    {
+                                        0.0
+                                    } else {
+                                        lpos.y
+                                    };
+                                    let vertical = logical_wheel_pixels(
+                                        physical_vertical,
+                                        route.window.screen.sugarloaf.scale_factor(),
+                                    );
+                                    route
+                                        .window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .scroll_pixel_delta(vertical)
+                                }
+                                _ => {
+                                    route
+                                        .window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .reset_scroll_gesture();
+                                    false
+                                }
+                            },
+                        };
+                        if changed {
+                            route.request_overlay_redraw();
+                        }
+                        return;
+                    }
+                    WheelEventTarget::Terminal => {}
                 }
                 // Focus the pane under the pointer before reading dimensions
                 // or delivering this same wheel event.
@@ -3044,6 +3149,45 @@ mod custom_chrome_tests {
         assert!(!should_report_terminal_mouse(false, true, true));
         assert!(!should_report_terminal_mouse(true, true, false));
         assert!(!should_report_terminal_mouse(false, false, false));
+    }
+
+    #[test]
+    fn palette_owns_wheel_before_pane_selection_terminal_scrollback_or_pty_input() {
+        assert_eq!(
+            wheel_event_target(true, false, false, true),
+            WheelEventTarget::CommandPalette
+        );
+        assert_eq!(
+            wheel_event_target(true, false, false, false),
+            WheelEventTarget::Terminal
+        );
+        assert_eq!(
+            wheel_event_target(true, true, false, true),
+            WheelEventTarget::Blocked
+        );
+        assert_eq!(
+            wheel_event_target(false, false, false, true),
+            WheelEventTarget::Blocked
+        );
+        assert_eq!(
+            wheel_event_target(true, false, true, true),
+            WheelEventTarget::CommandPalette
+        );
+        assert_eq!(
+            wheel_event_target(true, false, true, false),
+            WheelEventTarget::Blocked
+        );
+    }
+
+    #[test]
+    fn precision_trackpad_pixels_follow_logical_hidpi_geometry() {
+        assert_eq!(logical_wheel_pixels(44.0, 1.0), 44.0);
+        assert_eq!(logical_wheel_pixels(88.0, 2.0), 44.0);
+        assert_eq!(logical_wheel_pixels(-132.0, 3.0), -44.0);
+        assert_eq!(logical_wheel_pixels(f64::NAN, 1.0), 0.0);
+        assert_eq!(logical_wheel_pixels(44.0, f32::INFINITY), 0.0);
+        assert_eq!(logical_wheel_pixels(44.0, 0.0), 0.0);
+        assert_eq!(logical_wheel_pixels(44.0, -1.0), 0.0);
     }
 
     #[test]

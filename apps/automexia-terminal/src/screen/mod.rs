@@ -525,6 +525,10 @@ struct NativeWindowSnapshot {
     grid_margin: Margin,
     active_tab_profile: Option<String>,
     palette_enabled: bool,
+    palette_scroll_offset: usize,
+    palette_selected_index: usize,
+    palette_visible_results: usize,
+    palette_total_results: usize,
     confirm_quit_active: bool,
     compatibility_inspector_active: bool,
     compatibility_inspector_accessibility_summary: Option<String>,
@@ -689,7 +693,6 @@ fn write_native_resize_snapshot(
         "latest_prompt_start_count": latest_prompt_start_count,
         "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
-        "palette_enabled": window.palette_enabled,
         "confirm_quit_active": window.confirm_quit_active,
         "fullscreen_display_request_active": fullscreen_display_request_active,
         "image_preview": {
@@ -713,6 +716,13 @@ fn write_native_resize_snapshot(
         "panels": panels,
     });
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["display_offset"] = serde_json::json!(content.display_offset);
+    snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
+    snapshot["palette_scroll_offset"] = serde_json::json!(window.palette_scroll_offset);
+    snapshot["palette_selected_index"] = serde_json::json!(window.palette_selected_index);
+    snapshot["palette_visible_results"] =
+        serde_json::json!(window.palette_visible_results);
+    snapshot["palette_total_results"] = serde_json::json!(window.palette_total_results);
     snapshot["compatibility_inspector_active"] =
         serde_json::json!(window.compatibility_inspector_active);
     snapshot["compatibility_inspector_accessibility_summary"] =
@@ -6130,6 +6140,8 @@ impl Screen<'_> {
                 self.renderer.command_results.native_test_result_identity();
             let command_result_style =
                 self.renderer.command_results.native_test_result_style();
+            let palette_scroll_state =
+                self.renderer.command_palette.native_test_scroll_state();
             write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
@@ -6146,6 +6158,10 @@ impl Screen<'_> {
                         .context_manager
                         .tab_profile_identity(self.context_manager.current_index()),
                     palette_enabled: self.renderer.command_palette.is_enabled(),
+                    palette_scroll_offset: palette_scroll_state.0,
+                    palette_selected_index: palette_scroll_state.1,
+                    palette_visible_results: palette_scroll_state.2,
+                    palette_total_results: palette_scroll_state.3,
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
                     compatibility_inspector_active: self
                         .renderer

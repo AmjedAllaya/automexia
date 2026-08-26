@@ -151,6 +151,16 @@ Current assurance: **Partial**.
   retain resource/cleanup results. Linux, macOS, RDP/hardware matrices, native
   accessibility delivery, and independent release review remain external until
   current exact-environment evidence exists.
+- For command-palette overflow, exercise line wheels and fractional trackpads
+  in both directions; partial reversal; zero/short/empty/filtered lists; top and
+  bottom; keyboard/query/gesture/resize transitions; malformed and over-limit
+  deltas; and every modal-priority combination.
+- Independently assert the visible row window and selected index, persistent
+  idle/active thumb geometry, responsive reclamping, 100–300% physical-to-logical
+  trackpad conversion, the 1,024-row per-event bound, palette-before-pane
+  ownership, and absence of terminal scroll, mouse reporting, pane focus
+  changes, and PTY input. Native physical wheel/trackpad, exact pixels, and
+  platform accessibility events remain release evidence.
 
 ### windows-tabs-sessions-input
 

@@ -107,6 +107,22 @@ public static class AutomexiaResizeDriver {
         return ClientToScreen(hWnd, ref point) && SetCursorPos(point.X, point.Y);
     }
 
+    public static bool PostMouseWheel(
+        IntPtr hWnd, int clientX, int clientY, int delta) {
+        Point point = new Point { X = clientX, Y = clientY };
+        if (!ClientToScreen(hWnd, ref point)) {
+            return false;
+        }
+        uint wheel = ((uint)(ushort)(short)delta) << 16;
+        uint coordinates = (uint)(ushort)(short)point.X |
+            ((uint)(ushort)(short)point.Y << 16);
+        return PostMessage(
+            hWnd,
+            0x020A,
+            new IntPtr(unchecked((int)wheel)),
+            new IntPtr(unchecked((int)coordinates)));
+    }
+
     public static void WritePreviewFixture(
         string path, int width, int height, bool jpeg) {
         using (var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb)) {
@@ -2756,6 +2772,77 @@ $rendererConfig
     # The snapshot that acknowledges a control is published before that dirty
     # frame is presented. Wait one additional renderer generation.
     $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteSnapshot.sequence)
+    if ([int]$palettePresented.palette_total_results -le
+            [int]$palettePresented.palette_visible_results -or
+        [int]$palettePresented.palette_scroll_offset -ne 0) {
+        Write-Host ($palettePresented | ConvertTo-Json -Depth 8)
+        throw 'The native command-palette fixture must begin at the top of an overflowing list'
+    }
+    $palettePanelBeforeWheel = Get-ActiveAutomexiaPanel $palettePresented
+    $wheelClientX = [int]([double]$palettePresented.window_width / 2.0)
+    $wheelClientY = [int]([double]$palettePresented.window_height / 2.0)
+
+    $script:testStage = 'command palette native mouse wheel down'
+    if (-not [AutomexiaResizeDriver]::PostMouseWheel(
+            $window, $wheelClientX, $wheelClientY, -360)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject command-palette wheel-down input (Win32 error $code)"
+    }
+    $paletteWheelDown = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    $paletteWheelDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$paletteWheelDown.palette_enabled -or
+            [int]$paletteWheelDown.palette_scroll_offset -le 0) -and
+           [DateTime]::UtcNow -lt $paletteWheelDeadline) {
+        $paletteWheelDown =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteWheelDown.sequence)
+    }
+    $palettePanelAfterWheelDown = Get-ActiveAutomexiaPanel $paletteWheelDown
+    $paletteSelectionEnd = [int]$paletteWheelDown.palette_scroll_offset +
+        [int]$paletteWheelDown.palette_visible_results
+    if (-not [bool]$paletteWheelDown.palette_enabled -or
+        [int]$paletteWheelDown.palette_scroll_offset -le 0 -or
+        [int]$paletteWheelDown.palette_selected_index -lt
+            [int]$paletteWheelDown.palette_scroll_offset -or
+        [int]$paletteWheelDown.palette_selected_index -ge $paletteSelectionEnd -or
+        [int64]$palettePanelAfterWheelDown.route_id -ne
+            [int64]$palettePanelBeforeWheel.route_id -or
+        [int]$paletteWheelDown.display_offset -ne [int]$palettePresented.display_offset -or
+        [int]$paletteWheelDown.cursor_column -ne [int]$palettePresented.cursor_column -or
+        [int]$paletteWheelDown.cursor_row -ne [int]$palettePresented.cursor_row -or
+        [string]$palettePanelAfterWheelDown.raw_cursor_line_text -ne
+            [string]$palettePanelBeforeWheel.raw_cursor_line_text) {
+        Write-Host ($paletteWheelDown | ConvertTo-Json -Depth 8)
+        throw 'Native palette wheel-down escaped its modal list or hid the selected command'
+    }
+
+    $script:testStage = 'command palette native mouse wheel up'
+    if (-not [AutomexiaResizeDriver]::PostMouseWheel(
+            $window, $wheelClientX, $wheelClientY, 360)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject command-palette wheel-up input (Win32 error $code)"
+    }
+    $paletteWheelUp = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteWheelDown.sequence)
+    $paletteWheelDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$paletteWheelUp.palette_enabled -or
+            [int]$paletteWheelUp.palette_scroll_offset -ne 0) -and
+           [DateTime]::UtcNow -lt $paletteWheelDeadline) {
+        $paletteWheelUp =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteWheelUp.sequence)
+    }
+    $palettePanelAfterWheelUp = Get-ActiveAutomexiaPanel $paletteWheelUp
+    if (-not [bool]$paletteWheelUp.palette_enabled -or
+        [int]$paletteWheelUp.palette_scroll_offset -ne 0 -or
+        [int64]$palettePanelAfterWheelUp.route_id -ne
+            [int64]$palettePanelBeforeWheel.route_id -or
+        [int]$paletteWheelUp.display_offset -ne [int]$palettePresented.display_offset -or
+        [int]$paletteWheelUp.cursor_column -ne [int]$palettePresented.cursor_column -or
+        [int]$paletteWheelUp.cursor_row -ne [int]$palettePresented.cursor_row -or
+        [string]$palettePanelAfterWheelUp.raw_cursor_line_text -ne
+            [string]$palettePanelBeforeWheel.raw_cursor_line_text) {
+        Write-Host ($paletteWheelUp | ConvertTo-Json -Depth 8)
+        throw 'Native palette wheel-up did not return to the top without terminal side effects'
+    }
+    $palettePresented = $paletteWheelUp
     if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
         $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Could not expose Automexia for palette capture (Win32 error $code)"
@@ -2978,6 +3065,13 @@ $rendererConfig
                     height = $paletteFrame.Height
                     distinct_color_buckets = $paletteFrame.DistinctColorBuckets
                     luminance_spread = $paletteFrame.LuminanceSpread
+                    wheel_down_offset = [int]$paletteWheelDown.palette_scroll_offset
+                    wheel_down_selected_index =
+                        [int]$paletteWheelDown.palette_selected_index
+                    wheel_up_offset = [int]$paletteWheelUp.palette_scroll_offset
+                    terminal_display_offset_preserved =
+                        [int]$paletteWheelDown.display_offset -eq
+                            [int]$palettePresented.display_offset
                     artifact = if ($null -eq $paletteCapturePath) {
                         $null
                     } else {
