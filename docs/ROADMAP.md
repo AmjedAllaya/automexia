@@ -1319,9 +1319,11 @@ explicit `ghostty-1.3` profile and moving `ghostty` alias are implemented, but
 an unqualified cross-platform compatibility release is still gated. The
 [full Ghostty compatibility roadmap](GHOSTTY-COMPATIBILITY-ROADMAP.md) is the
 source of truth: G1-G4 are fully done locally; G0/G5 remain partially done on
-native release evidence; G6 is partially done at the accepted redacted
-inspector and complete-top-level-tab history scope. Complete compatibility is
-not a v0.4 release criterion.
+native release evidence; G6 is partially done at the accepted modal redacted
+inspector, parked count/list/newest-restore/two-step-clear, and complete-top-
+level-tab history scope. Individual topology history and controlled native
+lifecycle proof remain gated. Complete compatibility is not a v0.4 release
+criterion.
 
 ## Assurance delivery track
 

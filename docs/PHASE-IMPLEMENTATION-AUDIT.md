@@ -1596,26 +1596,32 @@ feature-gated native state controls without query disclosure.
 
 **Partially implemented:** controlled native, accessibility, resource, long-campaign, and release evidence remain external.
 
-Pre-GUI action/keybinding/explain/JSON CLI, dry-run-first migration, xtask
-generate/verify/test, generated fixture/reference comparison, two fuzz targets,
-properties, and Criterion coverage are implemented. Native Windows x64 timing
-was observed on 2026-08-23. Native Linux/BSD/macOS fixtures and keyboard/visual/
-assistive-technology/resource matrices, a fixed fuzz campaign, QA bundle, and an
-activated like-hardware 30-day baseline remain release prerequisites.
+Pre-GUI action/keybinding/explain/JSON CLI, dry-run-first migration, host-
+independent xtask generation/verification, generated fixture/reference
+comparison, two nightly fuzz targets, properties, Criterion coverage, a
+mutation-tested repository policy, and strict private exact-commit native-
+evidence validation/QA summary wiring are implemented. Same-host Windows x64
+timing was observed on 2026-08-23. Controlled Linux/BSD/macOS fixtures and
+Windows/Linux/macOS keyboard, visual, assistive-technology, resource, lifecycle,
+and package matrices plus an activated like-hardware 30-day baseline remain
+release prerequisites.
 
 ### G6 — inspector and topology history — Partially done
 
 **Partially implemented:** individual split, local-tab, and native-window history plus native lifecycle evidence remain external.
 
-Accepted ADR 0027 protects a bounded renderer-owned inspector that excludes
-terminal output, clipboard, environment, commands, paths, and credentials.
-Accepted ADR 0028 enables memory-only parked-PTY undo/redo for a complete closed
-top-level window tab, bounded to 8 entries, 5 minutes, and 250,000 retained
-history lines per window with redo invalidation and owner-driven cleanup.
-User-visible parked-session count, list, and clear controls remain missing; the
-newest-tab restore shortcut is not a complete management surface. Individual
-split, pane-local-tab, and whole-native-window history plus native
-lifecycle/resource evidence also remain outside the activated scope.
+Accepted ADR 0027 protects a bounded renderer-owned modal inspector that
+excludes terminal output, clipboard, environment, commands, paths, credentials,
+and parked entry identifiers/content. It now shows redacted active/parked counts
+and newest-first session/history/TTL summaries, offers pointer/keyboard newest
+restore, and requires two-step confirmation before clearing all parked entries.
+Every modal key press/release is consumed before PTY encoding, and the feature-
+gated native snapshot exposes only redacted accessibility state. Accepted ADR
+0028 keeps complete-top-level-tab PTYs memory-only and bounded to 8 entries,
+5 minutes, and 250,000 retained history lines per window with redo invalidation
+and owner-driven cleanup. Individual split, pane-local-tab, whole-native-window
+history, and controlled native lifecycle/resource/visual/AT evidence remain
+outside the activated scope.
 
 ## Version milestone assessment
 

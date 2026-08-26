@@ -258,11 +258,14 @@ release criterion.
   catch-all, chains, route isolation, and exact pending-byte behavior exist.
 - **G4 — Fully done:** planned stateless compatibility actions and their bounded
   security/resource behavior are implemented.
-- **G5 — Partially done:** tooling, generated references, fuzz/property tests,
-  and Windows benchmarks exist; controlled native/release evidence remains.
-- **G6 — Partially done:** redacted inspector and complete-top-level-tab
-  parked-PTY history exist; individual split/local-tab/native-window history is
-  not activated.
+- **G5 — Partially done:** host-independent verification, generated references,
+  nightly fuzz/benchmark wiring, properties, repository mutation gates, and a
+  strict private evidence validator exist; controlled native/release evidence
+  and the activated 30-day baseline remain.
+- **G6 — Partially done:** the modal redacted inspector has parked count/list,
+  newest restore, two-step clear, and no-PTY key isolation; complete-top-level-
+  tab history exists, while individual split/local-tab/native-window history and
+  controlled native lifecycle evidence remain gated.
 
 Compatibility work must not regress Automexia defaults or bypass the same
 security, performance, accessibility, native, and release gates as other input

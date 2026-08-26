@@ -21,8 +21,12 @@ The desktop renderer owns one passive compatibility-inspector modal per window.
 Its input is an immutable, renderer-neutral `InspectorSnapshot` with a positive
 field allowlist: route ID, opaque session ID, grid dimensions, viewport offset,
 history line count, terminal/keyboard mode names, requested profile, last
-binding trigger and origin, pending-byte count, active table name, and at most
-eight redacted diagnostic codes.
+binding trigger and origin, pending-byte count, active table name, aggregate
+active-session count, and at most eight redacted diagnostic codes. It may also
+receive up to eight newest-first parked-topology summaries containing only a
+session count, aggregate retained-history-line count, and remaining bounded TTL.
+Route IDs, titles, commands, destinations, and terminal contents of parked
+entries are excluded.
 
 The inspector never receives or reads environment values, clipboard data,
 terminal cells/output, commands, working directories, paths, provider data,
@@ -31,10 +35,15 @@ authentication, configuration, PTY, or persistence capability. Route/session
 identity is numeric and opaque. Strings are bounded or derived from typed enums,
 and renderer layout is viewport- and scale-bounded.
 
-The modal is keyboard controlled through the typed `inspector` action. It is
-part of the existing overlay stack, restores terminal focus when dismissed,
-and never writes terminal input. The stable Ghostty profile binding and user
-bindings are discoverable through the same compiled registry.
+The modal is opened through the typed `inspector` action. While visible it
+consumes every press and release before image-preview, suggestion, IME, binding,
+or PTY encoding. `R` restores the newest eligible parked top-level tab, `C`
+starts or confirms clear, `Enter` confirms, and `Escape` cancels confirmation or
+closes. Pointer controls expose the same actions. Clearing is available only
+after a two-step confirmation that states the parked processes will end. The
+modal restores terminal focus when dismissed and never writes terminal input.
+The stable Ghostty profile binding and user bindings remain discoverable through
+the same compiled registry.
 
 ## Alternatives considered
 
@@ -47,13 +56,19 @@ bindings are discoverable through the same compiled registry.
 
 ## Verification
 
-- A schema test rejects forbidden field names and freezes the positive allowlist.
-- Geometry tests cover compact and 200% scale-equivalent viewports.
+- Schema and policy tests reject forbidden field names, freeze the positive
+  allowlist, and prohibit parked identifiers or content.
+- Geometry, hit-target, confirmation, compact-mode, and 200%-scale-equivalent
+  tests cover the renderer-neutral surface.
+- Key-policy tests prove all unrecognized and release events are consumed while
+  the modal is active; the repository checker freezes its precedence before
+  every other terminal key path.
+- Feature-gated native snapshots publish only the accessibility summary,
+  confirmation state, and active flag for controlled automation.
 - The typed action schema, generated references, CLI action inventory, and
   profile fixtures share stable action identity.
-- Renderer-neutral and Windows-native keyboard/focus checks are local gates.
-  Native macOS/Linux rendered-frame and assistive-technology evidence remains
-  an external release prerequisite.
+- Native Windows/Linux/macOS rendered-frame, focus, keyboard-layout, and
+  assistive-technology evidence remains a controlled release prerequisite.
 
 ## Consequences
 

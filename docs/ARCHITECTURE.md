@@ -1255,6 +1255,15 @@ only by the existing typed global-hotkey owner. All-surface actions use a stable
 route snapshot and coalesce damage; unavailable and adapted actions remain
 explicit rather than being aliased to unrelated behavior.
 
+`ContextManager` remains the sole owner of live and parked PTY topologies. It
+projects only newest-first session count, aggregate history-line count, and TTL
+to the renderer-owned compatibility inspector; no parked route, title, command,
+destination, or terminal content crosses that boundary. Restore and confirmed
+clear call the same owner. While the modal is visible, the screen consumes all
+key presses and releases before preview, suggestion, IME, binding, or PTY
+encoding. Individual split/local-tab/native-window parking is not activated by
+this adapter. ADRs 0027 and 0028 own the redaction and lifetime decisions.
+
 Ghostty 1.3.1 Linux/BSD fixtures are checked in with source/binary/checksum
 provenance; Windows is a deterministic, labeled adaptation. macOS profile
 selection fails closed until a native fixture is reviewed. Normal builds,

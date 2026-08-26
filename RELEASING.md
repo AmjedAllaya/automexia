@@ -129,15 +129,33 @@ releases are not rewritten.
 
 A release that advertises `ghostty-1.3` compatibility must byte-verify the
 checked-in fixtures and generated references, run the dedicated keybinding,
-fuzz-compilation, migration, full CI, and package gates, and retain the exact
-Ghostty 1.3.1 source/binary/checksum provenance. Windows must be labeled as an
-Automexia adaptation, never as an upstream Ghostty Windows profile.
+repository-policy/mutation, fuzz, migration, full CI, benchmark, and package
+gates, and retain the exact Ghostty 1.3.1 source/binary/checksum provenance.
+Windows must be labeled as an Automexia adaptation, never as an upstream Ghostty
+Windows profile. At minimum run:
+
+```text
+cargo xtask verify keybindings
+python tools/ci/check_ghostty_compatibility.py
+python tools/ci/test_ghostty_compatibility.py
+python tools/ci/test_ghostty_native_evidence.py
+```
+
+The controlled job sets `AUTOMEXIA_QA_GHOSTTY_EVIDENCE` to a private strict
+manifest for the exact release commit before running full QA. Validate that
+manifest separately with `ghostty_native_evidence.py --require-complete
+--expected-commit <release-commit>`. It must contain exact Windows, Linux, and
+macOS scenario/visual/accessibility/resource/package results and zero cleanup;
+never upload it, fixture paths, terminal content, or redaction canaries. Retain
+only the generated path-free bounded summary.
 
 The release remains blocked until native Linux/BSD and macOS fixture/smoke
 evidence, native Windows/Linux/macOS keyboard-layout and rendered-frame
-matrices, screen-reader checks, repeated lifecycle/resource cleanup, and an
-activated comparable 30-day registry benchmark baseline are reviewed. The
-macOS selector must continue to fail closed while its fixture is absent.
+matrices, screen-reader checks, repeated lifecycle/resource cleanup, package
+install/rollback, and an activated comparable 30-day registry benchmark
+baseline are independently reviewed. The macOS selector must continue to fail
+closed while its fixture is absent. Missing, incomplete, stale, wrong-commit,
+synthetic, or non-private evidence fails closed.
 No stable release may contain placeholder assets or unsigned/notarized desktop
 artifacts. A signed artifact can still receive a vendor false positive; follow
 the evidence and submission procedure in `docs/RELEASE-TRUST.md` instead of

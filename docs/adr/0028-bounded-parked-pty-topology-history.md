@@ -32,6 +32,13 @@ Restore refuses when top-level capacity is full; the entry remains parked rather
 than being duplicated. Redo reparks the exact restored route. Any later topology
 mutation invalidates redo.
 
+The compatibility inspector projects a newest-first redacted count/list from
+this owner and can restore the newest entry. An explicit clear drops every
+parked entry and invalidates redo through the same `ContextManager`; it requires
+two-step confirmation because dropping entries ends their processes. The
+renderer never receives a route ID, title, command, destination, or terminal
+content for a parked entry.
+
 Closed individual splits, individual pane-local tabs, and whole native windows
 are not activated by this first boundary. Their restoration needs distinct
 Taffy-node, tab-position, or application/window ownership and native resource
@@ -55,6 +62,8 @@ it.
 - Deterministic tests enforce count and TTL eviction; source invariants enforce
   aggregate scrollback bounds, exact route/index restoration, capacity refusal,
   child-exit eviction, redo invalidation, and drop-owned shutdown.
+- Redacted projection and exact-clear tests prove the list contains only counts,
+  aggregate history, and TTL; pointer/key tests prove restore and two-step clear.
 - Action support metadata and generated references expose the adapted scope.
 - Native Windows process/handle/resource-cycle evidence is required before a
   release claim. Native Linux/BSD and macOS lifecycle evidence, and individual
