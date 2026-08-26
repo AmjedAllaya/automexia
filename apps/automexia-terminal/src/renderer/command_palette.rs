@@ -44,6 +44,8 @@ const RESULT_ICON_SIZE: f32 = 22.0;
 const SHORTCUT_FONT_SIZE: f32 = 10.0;
 const MAX_VISIBLE_RESULTS: usize = 10;
 const MAX_PALETTE_QUERY_BYTES: usize = 4 * 1024;
+const PALETTE_SCROLLBAR_IDLE_OPACITY: f32 = 0.55;
+const MAX_WHEEL_ROWS_PER_EVENT: f64 = 1_024.0;
 
 // Copy icon (two overlapping page outlines with rounded corners,
 // drawn by layering filled + cutout rounded rects). Sized to fit
@@ -85,6 +87,11 @@ const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
 fn quick_action_metadata_max_width(input_width: f32) -> f32 {
     (input_width * 0.42).clamp(72.0, 220.0)
+}
+
+#[inline]
+fn bounded_scroll_offset(total: usize, visible: usize, requested: usize) -> usize {
+    requested.min(total.saturating_sub(visible.max(1)))
 }
 
 // Depth / order
@@ -1384,11 +1391,12 @@ pub struct CommandPalette {
     /// Timestamp for caret blinking
     caret_blink_start: Instant,
     /// Timestamp of the last event that actually changed `scroll_offset`.
-    /// Drives the scrollbar fade-in/fade-out, sharing the terminal
-    /// scrollbar's 2 s delay + 300 ms fade envelope via
-    /// `scrollbar::opacity_from_last_scroll`. `None` while the palette
-    /// has never scrolled since it opened — scrollbar stays hidden.
+    /// Drives the scrollbar's active-to-idle fade while overflow remains
+    /// discoverable at a subdued baseline opacity.
     last_scroll_time: Option<Instant>,
+    /// Fractional vertical wheel/trackpad motion in logical pixels. A
+    /// palette owns this independently from terminal and pane scroll state.
+    wheel_accumulated_y: f64,
     /// Number of rows that fit the most recently rendered viewport.
     visible_results: usize,
 }
@@ -1405,6 +1413,7 @@ impl Default for CommandPalette {
             mode: PaletteMode::Commands,
             caret_blink_start: Instant::now(),
             last_scroll_time: None,
+            wheel_accumulated_y: 0.0,
             visible_results: MAX_VISIBLE_RESULTS,
         }
     }
@@ -1494,6 +1503,7 @@ impl CommandPalette {
             // Clear scrollbar history so reopening the palette never
             // flashes a leftover scrollbar from the previous session.
             self.last_scroll_time = None;
+            self.wheel_accumulated_y = 0.0;
             // Always re-open into Commands mode — a stale Fonts list
             // from a previous session would be misleading (fonts may
             // have changed) and surprising (user toggles palette and
@@ -1513,6 +1523,7 @@ impl CommandPalette {
         self.scroll_offset = 0;
         self.caret_blink_start = Instant::now();
         self.last_scroll_time = None;
+        self.wheel_accumulated_y = 0.0;
     }
 
     pub fn enter_market_mode(&mut self, items: Vec<MarketItem>) {
@@ -1522,6 +1533,7 @@ impl CommandPalette {
         self.scroll_offset = 0;
         self.caret_blink_start = Instant::now();
         self.last_scroll_time = None;
+        self.wheel_accumulated_y = 0.0;
     }
 
     pub fn enter_action_search(
@@ -1538,6 +1550,7 @@ impl CommandPalette {
         self.scroll_offset = 0;
         self.caret_blink_start = Instant::now();
         self.last_scroll_time = None;
+        self.wheel_accumulated_y = 0.0;
     }
 
     pub fn update_action_items(
@@ -1551,6 +1564,7 @@ impl CommandPalette {
                 .selected_index
                 .min(self.filtered_rows().len().saturating_sub(1));
             self.scroll_offset = self.scroll_offset.min(self.selected_index);
+            self.wheel_accumulated_y = 0.0;
         }
     }
 
@@ -1561,6 +1575,7 @@ impl CommandPalette {
         self.scroll_offset = 0;
         self.caret_blink_start = Instant::now();
         self.last_scroll_time = None;
+        self.wheel_accumulated_y = 0.0;
     }
 
     pub fn enter_action_review(&mut self, view: QuickActionReviewView) {
@@ -1573,6 +1588,7 @@ impl CommandPalette {
         self.scroll_offset = 0;
         self.caret_blink_start = Instant::now();
         self.last_scroll_time = None;
+        self.wheel_accumulated_y = 0.0;
     }
 
     pub fn is_action_search(&self) -> bool {
@@ -1598,9 +1614,100 @@ impl CommandPalette {
         // Typing reshapes the list entirely — drop any scrollbar
         // fade state so the next scroll starts with a clean timer.
         self.last_scroll_time = None;
+        self.wheel_accumulated_y = 0.0;
+    }
+
+    /// Reset fractional motion at native gesture boundaries. This never
+    /// changes the list position and therefore never wakes the renderer.
+    pub fn reset_scroll_gesture(&mut self) {
+        self.wheel_accumulated_y = 0.0;
+    }
+
+    /// Apply a mouse-wheel delta measured in rows. Positive values move
+    /// toward the top, matching winit and terminal scrollback direction.
+    pub fn scroll_line_delta(&mut self, lines_y: f32) -> bool {
+        if !lines_y.is_finite() {
+            return false;
+        }
+        self.scroll_pixel_delta(
+            (lines_y as f64).clamp(-MAX_WHEEL_ROWS_PER_EVENT, MAX_WHEEL_ROWS_PER_EVENT)
+                * RESULT_ITEM_HEIGHT as f64,
+        )
+    }
+
+    /// Apply smooth trackpad motion measured in logical pixels. Partial rows
+    /// accumulate deterministically; reversing direction starts fresh so the
+    /// user never has to cancel stale momentum before movement is visible.
+    pub fn scroll_pixel_delta(&mut self, pixels_y: f64) -> bool {
+        if !pixels_y.is_finite() || pixels_y == 0.0 {
+            return false;
+        }
+        let max_pixels = MAX_WHEEL_ROWS_PER_EVENT * RESULT_ITEM_HEIGHT as f64;
+        let pixels_y = pixels_y.clamp(-max_pixels, max_pixels);
+        if self.wheel_accumulated_y != 0.0
+            && self.wheel_accumulated_y.signum() != pixels_y.signum()
+        {
+            self.wheel_accumulated_y = 0.0;
+        }
+        self.wheel_accumulated_y =
+            (self.wheel_accumulated_y + pixels_y).clamp(-max_pixels, max_pixels);
+
+        let rows_toward_top =
+            (self.wheel_accumulated_y / RESULT_ITEM_HEIGHT as f64).trunc() as isize;
+        if rows_toward_top == 0 {
+            return false;
+        }
+        self.wheel_accumulated_y %= RESULT_ITEM_HEIGHT as f64;
+        self.scroll_rows(rows_toward_top.saturating_neg())
+    }
+
+    /// Move the visible window by signed rows (`+` toward the end). The
+    /// keyboard selection is clamped into the resulting viewport so Enter
+    /// can never activate an invisible command.
+    fn scroll_rows(&mut self, rows_toward_end: isize) -> bool {
+        let total = self.filtered_rows().len();
+        let visible = self.visible_results.max(1);
+        let max_offset = total.saturating_sub(visible);
+        if max_offset == 0 {
+            self.scroll_offset = 0;
+            self.selected_index = self.selected_index.min(total.saturating_sub(1));
+            self.wheel_accumulated_y = 0.0;
+            return false;
+        }
+
+        let target = (self.scroll_offset as i128 + rows_toward_end as i128)
+            .clamp(0, max_offset as i128) as usize;
+        if target == self.scroll_offset {
+            self.wheel_accumulated_y = 0.0;
+            return false;
+        }
+
+        self.scroll_offset = target;
+        let last_visible = (target + visible - 1).min(total - 1);
+        self.selected_index = self.selected_index.clamp(target, last_visible);
+        self.last_scroll_time = Some(Instant::now());
+        true
+    }
+
+    fn scrollbar_opacity(&self) -> f32 {
+        scrollbar::opacity_from_last_scroll(self.last_scroll_time, false)
+            .max(PALETTE_SCROLLBAR_IDLE_OPACITY)
+    }
+
+    /// Privacy-safe native evidence: positions and counts only, never query or
+    /// command text. Available solely in feature-gated GUI test builds.
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub fn native_test_scroll_state(&self) -> (usize, usize, usize, usize) {
+        (
+            self.scroll_offset,
+            self.selected_index,
+            self.visible_results,
+            self.filtered_rows().len(),
+        )
     }
 
     pub fn move_selection_up(&mut self) {
+        self.wheel_accumulated_y = 0.0;
         if self.selected_index > 0 {
             self.selected_index -= 1;
             if self.selected_index < self.scroll_offset {
@@ -1611,6 +1718,7 @@ impl CommandPalette {
     }
 
     pub fn move_selection_down(&mut self) {
+        self.wheel_accumulated_y = 0.0;
         let count = self.filtered_rows().len();
         if self.selected_index < count.saturating_sub(1) {
             self.selected_index += 1;
@@ -2064,14 +2172,16 @@ impl CommandPalette {
 
         let results_y = sep_y + SEPARATOR_HEIGHT + RESULTS_MARGIN_TOP;
         let filtered = self.filtered_rows();
+        let effective_scroll_offset =
+            bounded_scroll_offset(filtered.len(), visible_results, self.scroll_offset);
 
         for (display_i, (_, row)) in filtered
             .iter()
-            .skip(self.scroll_offset)
+            .skip(effective_scroll_offset)
             .take(visible_results)
             .enumerate()
         {
-            let actual_index = self.scroll_offset + display_i;
+            let actual_index = effective_scroll_offset + display_i;
             let item_y = results_y + RESULT_ITEM_HEIGHT * display_i as f32;
             let is_selected = actual_index == self.selected_index;
             let presentation = row.presentation();
@@ -2249,15 +2359,17 @@ impl CommandPalette {
             );
         }
 
-        // Scrollbar: shares the terminal scrollbar's visual language
-        // (6 px wide, gray semi-transparent, 2 s visibility + 300 ms
-        // fade after the last scroll event) via `renderer::scrollbar`.
-        // Drawn only when the palette has actually been scrolled —
-        // hidden on first open, faded out 2.3 s after the last scroll.
+        // Scrollbar: shares the terminal scrollbar's branded 6 px thumb and
+        // fade envelope. Overflow always keeps a subdued indicator visible;
+        // wheel, trackpad, or keyboard scrolling brightens it immediately.
         let total = filtered.len();
+        if effective_scroll_offset != self.scroll_offset {
+            self.wheel_accumulated_y = 0.0;
+            self.scroll_offset = effective_scroll_offset;
+        }
         let track_height = visible_results as f32 * RESULT_ITEM_HEIGHT;
         let normalized = if total > visible_results {
-            self.scroll_offset as f32 / (total - visible_results) as f32
+            effective_scroll_offset as f32 / (total - visible_results) as f32
         } else {
             0.0
         };
@@ -2268,10 +2380,7 @@ impl CommandPalette {
             track_height,
             normalized,
         ) {
-            let opacity = scrollbar::opacity_from_last_scroll(
-                self.last_scroll_time,
-                false, // palette has no drag interaction
-            );
+            let opacity = self.scrollbar_opacity();
             let bar_x = input_x + input_width
                 - scrollbar::SCROLLBAR_WIDTH
                 - scrollbar::SCROLLBAR_MARGIN;
@@ -2840,17 +2949,115 @@ mod tests {
 
     // Scrollbar geometry + fade math live in `renderer::scrollbar` and
     // are tested there. The tests below cover the palette's own contract:
-    // the scrollbar only surfaces after the user actually scrolls, and
-    // resets when the list reshapes.
+    // overflowing lists expose an idle indicator, scrolling brightens it,
+    // and gesture state resets when the list reshapes.
 
     #[test]
-    fn scrollbar_hidden_until_first_scroll() {
-        // Long list, palette just opened — no scroll event has happened,
-        // so the fade timer is `None` and the scrollbar stays invisible
-        // despite the list being taller than the visible window.
+    fn scrollbar_activity_starts_idle_until_first_scroll() {
+        // Long list, palette just opened — no scroll activity has happened,
+        // so the persistent overflow indicator remains at idle opacity.
         let mut palette = CommandPalette::new();
         palette.enter_fonts_mode((0..50).map(|i| format!("Family {i:02}")).collect());
         assert!(palette.last_scroll_time.is_none());
+        assert_eq!(palette.scrollbar_opacity(), PALETTE_SCROLLBAR_IDLE_OPACITY);
+    }
+
+    #[test]
+    fn mouse_wheel_scrolls_long_palette_both_directions_and_keeps_selection_visible() {
+        let mut palette = CommandPalette::new();
+        palette.enter_fonts_mode((0..50).map(|i| format!("Family {i:02}")).collect());
+        palette.visible_results = 6;
+
+        assert!(palette.scroll_line_delta(-3.0));
+        assert_eq!(palette.scroll_offset, 3);
+        assert!((3..9).contains(&palette.selected_index));
+        assert!(palette.last_scroll_time.is_some());
+
+        assert!(palette.scroll_line_delta(2.0));
+        assert_eq!(palette.scroll_offset, 1);
+        assert!((1..7).contains(&palette.selected_index));
+    }
+
+    #[test]
+    fn trackpad_pixels_accumulate_without_losing_direction_or_overscrolling() {
+        let mut palette = CommandPalette::new();
+        palette.enter_fonts_mode((0..50).map(|i| format!("Family {i:02}")).collect());
+        palette.visible_results = 5;
+
+        assert!(!palette.scroll_pixel_delta(-20.0));
+        assert_eq!(palette.scroll_offset, 0);
+        assert!(palette.scroll_pixel_delta(-25.0));
+        assert_eq!(palette.scroll_offset, 1);
+
+        // Reversing direction starts a fresh gesture instead of making the
+        // user cancel a stale fractional delta first.
+        assert!(!palette.scroll_pixel_delta(22.0));
+        assert!(palette.scroll_pixel_delta(22.0));
+        assert_eq!(palette.scroll_offset, 0);
+
+        // Boundary motion is consumed but cannot leave latent momentum that
+        // delays the next gesture in the opposite direction.
+        assert!(!palette.scroll_line_delta(100.0));
+        assert!(palette.scroll_line_delta(-100.0));
+        assert_eq!(palette.scroll_offset, 45);
+        assert_eq!(palette.selected_index, 45);
+    }
+
+    #[test]
+    fn resize_and_keyboard_transitions_drop_stale_fractional_motion() {
+        assert_eq!(bounded_scroll_offset(50, 5, 45), 45);
+        assert_eq!(bounded_scroll_offset(50, 10, 45), 40);
+        assert_eq!(bounded_scroll_offset(4, 10, 3), 0);
+
+        let mut palette = CommandPalette::new();
+        palette.enter_fonts_mode((0..50).map(|i| format!("Family {i:02}")).collect());
+        palette.visible_results = 5;
+        assert!(!palette.scroll_pixel_delta(-20.0));
+        palette.move_selection_down();
+        assert_eq!(palette.wheel_accumulated_y, 0.0);
+        assert!(!palette.scroll_pixel_delta(-24.0));
+        assert_eq!(palette.scroll_offset, 0);
+    }
+
+    #[test]
+    fn wheel_is_bounded_for_short_empty_and_reshaped_lists() {
+        let mut palette = CommandPalette::new();
+        palette.enter_fonts_mode(vec!["Fira Code".into(), "JetBrains Mono".into()]);
+        palette.visible_results = 10;
+        assert!(!palette.scroll_line_delta(-3.0));
+        assert_eq!(palette.scroll_offset, 0);
+
+        palette.enter_fonts_mode((0..50).map(|i| format!("Family {i:02}")).collect());
+        palette.visible_results = 4;
+        assert!(palette.scroll_line_delta(-8.0));
+        palette.set_query("Family 00".into());
+        assert_eq!(palette.scroll_offset, 0);
+        assert!(!palette.scroll_line_delta(-1.0));
+
+        palette.enter_fonts_mode(Vec::new());
+        assert!(!palette.scroll_line_delta(-1.0));
+        assert_eq!(palette.selected_index, 0);
+
+        assert!(!palette.scroll_line_delta(f32::INFINITY));
+        assert!(!palette.scroll_pixel_delta(f64::NAN));
+
+        palette.enter_fonts_mode((0..3_000).map(|i| format!("Family {i:04}")).collect());
+        palette.visible_results = 4;
+        assert!(palette.scroll_line_delta(-f32::MAX));
+        assert_eq!(palette.scroll_offset, MAX_WHEEL_ROWS_PER_EVENT as usize);
+        assert!(palette.scroll_pixel_delta(-f64::MAX));
+        assert_eq!(palette.scroll_offset, 2 * MAX_WHEEL_ROWS_PER_EVENT as usize);
+    }
+
+    #[test]
+    fn overflowing_palette_exposes_an_idle_indicator_and_brightens_on_scroll() {
+        let mut palette = CommandPalette::new();
+        palette.enter_fonts_mode((0..50).map(|i| format!("Family {i:02}")).collect());
+        palette.visible_results = 6;
+
+        assert_eq!(palette.scrollbar_opacity(), PALETTE_SCROLLBAR_IDLE_OPACITY);
+        assert!(palette.scroll_line_delta(-1.0));
+        assert_eq!(palette.scrollbar_opacity(), 1.0);
     }
 
     #[test]

@@ -744,6 +744,9 @@ HWND-visible/application-not-ready race. The opt-in `native-gui-test-hooks`
 build feature is enabled only by that command. Product builds perform no
 snapshot or capture I/O.
 
+Palette wheel/indicator native oracles are in UI-04:
+[Manual feature testing](MANUAL-FEATURE-TESTING.md).
+
 See [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) for the focused incident and native evidence.
 
 Before the pane-local coverage, the native gate exercises the exact top-level

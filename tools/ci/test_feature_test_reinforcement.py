@@ -153,9 +153,16 @@ class FeatureTestReinforcementTests(unittest.TestCase):
             ("needed_tests", "40 logical-pixel interaction targets"),
             ("needed_tests", "zero PTY input"),
             ("needed_tests", "WGPU and CPU"),
+            ("needed_tests", "fractional trackpad"),
+            ("needed_tests", "physical-to-logical scaling"),
+            ("needed_tests", "responsive reclamping"),
             ("verification_reinforcements", "42-pixel header"),
             ("verification_reinforcements", "full-shelf RGBA"),
+            ("verification_reinforcements", "ownership before pane selection"),
+            ("verification_reinforcements", "1,024-row event bound"),
+            ("verification_reinforcements", "persistent idle indicator"),
             ("checker_reinforcements", "184-pixel default tab cap"),
+            ("checker_reinforcements", "modal event ownership"),
         ):
             with self.subTest(field=field, detail=detail):
                 document = copy.deepcopy(self.document)

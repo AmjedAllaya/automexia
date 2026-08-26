@@ -103,7 +103,10 @@ available without interrupting intermediate window closes.
 Command palette, search, diagnostic and quit overlays fit to the logical
 viewport. The command palette reduces its visible result count with height,
 long labels are ellipsized on Unicode boundaries, and editable input keeps its
-tail visible. Split containers clamp negative available space and preserve the
+tail visible. When results overflow, a subdued vertical thumb stays visible and
+brightens during bounded mouse-wheel, trackpad, or keyboard scrolling; the
+selected row remains on screen and resize reclamps the viewport without leaving
+blank rows. Split containers clamp negative available space and preserve the
 combined adjacent-panel size when a divider reaches a compact limit. These
 rules apply equally at 1× and HiDPI scale factors and do not upscale UI on very
 large displays; the terminal grid simply gains rows and columns.

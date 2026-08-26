@@ -92,12 +92,21 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "40 logical-pixel interaction targets",
             "zero PTY input",
             "WGPU and CPU",
+            "fractional trackpad",
+            "physical-to-logical scaling",
+            "responsive reclamping",
         ),
         "verification_reinforcements": (
             "42-pixel header",
             "full-shelf RGBA",
+            "ownership before pane selection",
+            "1,024-row event bound",
+            "persistent idle indicator",
         ),
-        "checker_reinforcements": ("184-pixel default tab cap",),
+        "checker_reinforcements": (
+            "184-pixel default tab cap",
+            "modal event ownership",
+        ),
     }
 }
 

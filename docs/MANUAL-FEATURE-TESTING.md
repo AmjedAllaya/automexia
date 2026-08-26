@@ -777,13 +777,36 @@ stable.
 
 1. Type `DO-NOT-SUBMIT` at a prompt without Enter.
 2. Open the command palette.
-3. Search, move selection, dismiss with Escape, reopen, and activate a harmless
-   UI action.
-4. Repeat with Connection Hub, quit confirmation, and compatibility inspector.
+3. With the unfiltered list overflowing, confirm that a slim vertical indicator
+   is already visible. Scroll down and up with a mouse wheel; repeat with a
+   precision trackpad when available at 100%, 200%, and 300% display scale, and
+   reach both exact list boundaries without scale-dependent speed changes.
+4. Reverse trackpad direction after a partial movement, mix wheel movement with
+   Up/Down keys, type and clear a query, then resize from a one-row palette to
+   the normal ten-row layout and back.
+5. Search, dismiss with Escape, reopen, and activate a harmless UI action.
+6. Repeat with Connection Hub, quit confirmation, assistant, and compatibility
+   inspector beneath or above the palette where the UI permits it.
 
 Expected result: underlying terminal is dim/inert; typed modal query never joins
-`DO-NOT-SUBMIT`; Escape restores exact pane focus; only the selected UI action
-runs; stacked or hidden modals cannot receive input.
+`DO-NOT-SUBMIT`; wheel/trackpad movement changes only the palette result window,
+keeps one selected row visible, never focuses another pane, never moves terminal
+scrollback, and sends no PTY bytes. The indicator position follows the bounded
+offset, remains subdued before/after activity, and brightens while scrolling;
+short, empty, filtered, and enlarged lists do not show an unnecessary thumb or
+blank trailing rows. Escape restores exact pane focus; only the selected UI
+action runs; stacked or hidden modals cannot receive input.
+
+Automated native evidence: the Windows driver injects `WM_MOUSEWHEEL` messages
+at the real palette center in both directions and requires offset `0 -> 3 -> 0`
+while selected index `3` remains inside the visible result window. Independent
+oracles preserve the active route, terminal display offset, cursor position,
+and raw cursor line, so pane selection, terminal scrolling, and PTY input cannot
+masquerade as a palette pass. Controlled WGPU and CPU runs each capture and
+inspect a 1750 x 1080 palette frame; the reports retain offsets, selected index,
+terminal-state invariants, color buckets, luminance spread, and artifact
+identity. Physical mouse/precision-trackpad hardware, non-Windows backends, and
+native accessibility scroll announcements remain release evidence.
 
 ### UI-05 — completed-command result separation matrix
 
