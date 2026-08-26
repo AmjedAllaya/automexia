@@ -1492,13 +1492,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             if hit
                                 == crate::renderer::connection_hub::ConnectionHubHit::ReviewFiles
                             {
-                                let selected = rfd::FileDialog::new()
-                                    .set_title("Review exact OpenSSH configuration files")
-                                    .set_parent(&route.window.winit_window)
-                                    .pick_files();
-                                if let Some(paths) = selected {
-                                    route.window.screen.review_connection_files(paths);
-                                }
+                                route.choose_connection_hub_files();
                             } else {
                                 route.window.screen.handle_connection_hub_hit(hit);
                             }

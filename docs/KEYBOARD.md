@@ -129,6 +129,7 @@ process.
 | Shortcut | Result |
 |---|---|
 | `L` | From Hub results or first-run setup, open the typed host/user/port editor. If Search owns focus, `l` remains search text. |
+| `F` | From Hub results or first-run setup, open the same native exact-file picker as **Choose files**. If Search or a nested review/editor owns focus, `f` remains owned by that surface. |
 | `W` | From the Connections or Providers catalog, open saved Workspaces. If Search or a review owns focus, `w` remains owned by that surface. |
 | `P` | From the Connections or Workspaces catalog, open cached Providers. If Search or a review owns focus, `p` remains owned by that surface. |
 | `C` | From Workspaces or Providers, return to Connections. In Connection Review it copies the exact reviewed SSH command; it never executes or appends a newline. |

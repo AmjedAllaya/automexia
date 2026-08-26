@@ -11,23 +11,18 @@ use crate::automexia::connections::{
     MetadataChangeReview, ReviewedGrantFile,
 };
 use crate::renderer::responsive::Viewport;
+use crate::renderer::ui_theme::{
+    color_u8, BRAND_AMBER as WARNING, BRAND_CORAL, BRAND_CYAN as CYAN,
+    BRAND_LIME as SUCCESS, BRAND_PURPLE as VIOLET, CARD, MODAL_SCRIM as SCRIM, OUTLINE,
+    SURFACE, SURFACE_RAISED,
+};
 
 const ORDER: u8 = 20;
-const SCRIM: [f32; 4] = [0.0, 0.012, 0.028, 0.84];
-const OUTLINE: [f32; 4] = [0.0, 0.66, 0.93, 1.0];
-const CARD: [f32; 4] = [0.012, 0.035, 0.062, 1.0];
-const SURFACE: [f32; 4] = [0.025, 0.07, 0.105, 1.0];
-const SURFACE_RAISED: [f32; 4] = [0.037, 0.095, 0.14, 1.0];
-const SELECTED: [f32; 4] = [0.025, 0.19, 0.27, 1.0];
-const PRIMARY: [f32; 4] = [0.0, 0.34, 0.50, 1.0];
-const READ_ONLY_BADGE: [f32; 4] = [0.035, 0.16, 0.18, 1.0];
+const SELECTED: [f32; 4] = [0.016, 0.17, 0.24, 1.0];
+const PRIMARY: [f32; 4] = [0.0, 0.32, 0.46, 1.0];
 const DISABLED: [f32; 4] = [0.12, 0.13, 0.15, 1.0];
-const CYAN: [f32; 4] = [0.28, 0.79, 0.91, 1.0];
-const VIOLET: [f32; 4] = [0.70, 0.58, 1.0, 1.0];
 const FAVORITE: [f32; 4] = [0.96, 0.74, 0.25, 1.0];
 const RECENT: [f32; 4] = [0.32, 0.84, 0.72, 1.0];
-const SUCCESS: [f32; 4] = [0.36, 0.83, 0.59, 1.0];
-const WARNING: [f32; 4] = [1.0, 0.60, 0.26, 1.0];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HubIcon {
@@ -408,7 +403,7 @@ impl ConnectionHub {
             0.0,
             ORDER,
         );
-        rounded(sugarloaf, layout.card, OUTLINE, 15.0);
+        rounded(sugarloaf, layout.card, OUTLINE, 14.0);
         rounded(
             sugarloaf,
             inset(layout.card, 1.0),
@@ -417,10 +412,10 @@ impl ConnectionHub {
             } else {
                 [CARD[0], CARD[1], CARD[2], 0.98]
             },
-            14.0,
+            13.0,
         );
 
-        let title = text(20.0, [238, 249, 255, 255], true);
+        let title = text(18.0, [238, 249, 255, 255], true);
         let body = text(13.0, [183, 211, 226, 255], false);
         let small = text(11.0, [139, 177, 198, 255], false);
         let label = text(12.0, [241, 250, 255, 255], true);
@@ -429,16 +424,16 @@ impl ConnectionHub {
 
         let brand = Rect {
             x: left,
-            y: layout.card.y + 18.0,
-            width: 36.0,
-            height: 36.0,
+            y: layout.card.y + 16.0,
+            width: 32.0,
+            height: 32.0,
         };
-        rounded(sugarloaf, brand, SURFACE_RAISED, 10.0);
+        rounded(sugarloaf, brand, SURFACE_RAISED, 9.0);
         draw_hub_icon(
             sugarloaf,
             HubIcon::Connections,
-            brand.x + 7.0,
-            brand.y + 7.0,
+            brand.x + 5.0,
+            brand.y + 5.0,
             CYAN,
             SURFACE_RAISED,
         );
@@ -449,8 +444,8 @@ impl ConnectionHub {
         };
         sugarloaf
             .text_mut()
-            .draw(left + 48.0, layout.card.y + 18.0, hub_title, &title);
-        if layout.card.width >= 650.0 {
+            .draw(left + 42.0, layout.card.y + 17.0, hub_title, &title);
+        if layout.card.width >= 650.0 && layout.setup_panel.is_none() {
             let subtitle = if presentation.view.route == HubRoute::Review {
                 "Connection review"
             } else if presentation.view.route == HubRoute::Workspaces {
@@ -468,7 +463,7 @@ impl ConnectionHub {
             };
             sugarloaf.text_mut().draw(
                 left + 48.0,
-                layout.card.y + 45.0,
+                layout.card.y + 42.0,
                 subtitle,
                 &small,
             );
@@ -483,14 +478,16 @@ impl ConnectionHub {
             section_tab(
                 sugarloaf,
                 connections_tab,
-                if layout.compact { "C" } else { "Connections" },
+                if layout.compact { "" } else { "Connections" },
+                "C",
                 connections_active,
                 &label,
             );
             section_tab(
                 sugarloaf,
                 workspaces_tab,
-                if layout.compact { "W" } else { "Workspaces" },
+                if layout.compact { "" } else { "Workspaces" },
+                "W",
                 matches!(
                     presentation.view.route,
                     HubRoute::Workspaces | HubRoute::WorkspaceReview
@@ -500,14 +497,15 @@ impl ConnectionHub {
             section_tab(
                 sugarloaf,
                 providers_tab,
-                if layout.compact { "P" } else { "Providers" },
+                if layout.compact { "" } else { "Providers" },
+                "P",
                 matches!(
                     presentation.view.route,
                     HubRoute::Providers | HubRoute::ProviderReview
                 ),
                 &label,
             );
-            button(sugarloaf, layout.close, "×", false, &label);
+            close_button(sugarloaf, layout.close, &label);
         }
 
         if matches!(
@@ -583,27 +581,29 @@ impl ConnectionHub {
                 &query,
                 &body,
             );
-            action_button(
+            action_button_with_shortcut(
                 sugarloaf,
                 layout.review_host,
-                if layout.compact {
-                    "Host (L)"
-                } else {
-                    "Enter host (L)"
-                },
+                (
+                    if layout.compact { "Host" } else { "Enter host" },
+                    Some("L"),
+                ),
                 HubIcon::Connections,
                 SURFACE_RAISED,
                 CYAN,
                 &label,
             );
-            action_button(
+            action_button_with_shortcut(
                 sugarloaf,
                 layout.review_files,
-                if layout.compact {
-                    "Add files"
-                } else {
-                    "Add SSH files"
-                },
+                (
+                    if layout.compact {
+                        "Files"
+                    } else {
+                        "Choose files"
+                    },
+                    Some("F"),
+                ),
                 HubIcon::FolderAdd,
                 PRIMARY,
                 [0.90, 0.98, 1.0, 1.0],
@@ -661,19 +661,19 @@ impl ConnectionHub {
         } else if presentation.view.route == HubRoute::Results
             && layout.setup_panel.is_none()
         {
-            action_button(
+            action_button_with_shortcut(
                 sugarloaf,
                 layout.review_host,
-                "Enter host (L)",
+                ("Enter host", Some("L")),
                 HubIcon::Connections,
                 SURFACE_RAISED,
                 CYAN,
                 &label,
             );
-            action_button(
+            action_button_with_shortcut(
                 sugarloaf,
                 layout.review_files,
-                "Choose different files",
+                ("Choose different files", Some("F")),
                 HubIcon::FolderAdd,
                 SURFACE_RAISED,
                 CYAN,
@@ -895,14 +895,16 @@ impl ConnectionHub {
             }
         }
 
-        render_status_footer(
-            sugarloaf,
-            presentation,
-            &layout,
-            left,
-            &operation_status,
-            &small,
-        );
+        if layout.setup_panel.is_none() {
+            render_status_footer(
+                sugarloaf,
+                presentation,
+                &layout,
+                left,
+                &operation_status,
+                &small,
+            );
+        }
         sugarloaf.end_modal_layer();
     }
     fn layout(
@@ -931,14 +933,14 @@ impl ConnectionHub {
         let maximum_width: f32 = if connection_review_active {
             920.0
         } else if simple_state {
-            760.0
+            680.0
         } else {
             1100.0
         };
         let maximum_height: f32 = if connection_review_active {
             620.0
         } else if simple_state {
-            480.0
+            380.0
         } else {
             760.0
         };
@@ -956,7 +958,7 @@ impl ConnectionHub {
         let close = bounded_to(
             Rect {
                 x: card.x + card.width - inner - 40.0,
-                y: card.y + 16.0,
+                y: card.y + 12.0,
                 width: 40.0,
                 height: 40.0,
             },
@@ -967,22 +969,22 @@ impl ConnectionHub {
                 bounded_to(
                     Rect {
                         x: card.x + inner,
-                        y: card.y + 76.0,
+                        y: card.y + 66.0,
                         width: (card.width - inner * 2.0).max(1.0),
-                        height: (card.height - 134.0).max(1.0),
+                        height: (card.height - 82.0).max(1.0),
                     },
                     card,
                 )
             });
         let action_width = if compact { 142.0 } else { 174.0 };
         let review_files = if let Some(panel) = setup_panel {
-            let width = 224.0_f32.min((panel.width - 24.0).max(1.0));
+            let width = 204.0_f32.min((panel.width - 24.0).max(1.0));
             bounded_to(
                 Rect {
                     x: panel.x + (panel.width - width) * 0.5,
-                    y: panel.y + (panel.height - 76.0).max(2.0),
+                    y: panel.y + (panel.height - 58.0).max(2.0),
                     width,
-                    height: 44.0,
+                    height: 40.0,
                 },
                 panel,
             )
@@ -998,7 +1000,7 @@ impl ConnectionHub {
             )
         };
         let review_host = if let Some(panel) = setup_panel {
-            let total_width = (panel.width - 24.0).clamp(1.0, 454.0);
+            let total_width = (panel.width - 24.0).clamp(1.0, 418.0);
             let width = ((total_width - gap) * 0.5).max(1.0);
             bounded_to(
                 Rect {
@@ -1401,13 +1403,13 @@ impl ConnectionHub {
 
 fn hub_tabs(layout: &Layout) -> (Rect, Rect, Rect) {
     let gap = 6.0;
-    let width = if layout.compact { 38.0 } else { 96.0 };
+    let width = if layout.compact { 40.0 } else { 108.0 };
     let providers = bounded_to(
         Rect {
             x: layout.close.x - gap - width,
-            y: layout.close.y + 3.0,
+            y: layout.close.y,
             width,
-            height: layout.close.height - 6.0,
+            height: layout.close.height,
         },
         layout.card,
     );
@@ -2181,6 +2183,49 @@ fn managed_launch_recovery(diagnostic: &str) -> &'static str {
     }
 }
 
+struct SetupCopy<'a> {
+    title: &'a str,
+    description: &'a str,
+    action: &'a str,
+}
+
+fn setup_copy<'a>(
+    presentation: &'a HubControllerPresentation,
+    operation_status: &'a str,
+) -> SetupCopy<'a> {
+    let state = presentation.view.content_state;
+    let title = match (&presentation.grant_review, state) {
+        (GrantReviewState::Reviewing { .. }, _) => "Reviewing files",
+        (GrantReviewState::Error { .. }, _) => "Files need attention",
+        (_, HubContentState::InitialSetup) => "Add a connection",
+        (_, HubContentState::Loading) => "Preparing connections",
+        (_, HubContentState::Error) => "Connections need attention",
+        _ => "No connections yet",
+    };
+    let description = match (&presentation.grant_review, state) {
+        (GrantReviewState::Reviewing { .. } | GrantReviewState::Error { .. }, _) => {
+            operation_status
+        }
+        (_, HubContentState::InitialSetup) => {
+            "Review one host or choose SSH config files."
+        }
+        (_, HubContentState::Loading | HubContentState::Error) => operation_status,
+        _ => "Choose a config file whenever you are ready.",
+    };
+    let action = if matches!(presentation.grant_review, GrantReviewState::Error { .. })
+        || state == HubContentState::Empty
+    {
+        "Choose again"
+    } else {
+        "Choose files"
+    };
+    SetupCopy {
+        title,
+        description,
+        action,
+    }
+}
+
 fn render_setup_state(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
@@ -2190,7 +2235,6 @@ fn render_setup_state(
     operation_status: &str,
     compact: bool,
 ) {
-    rounded(sugarloaf, panel, SURFACE, 12.0);
     let heading = text(
         if compact { 16.0 } else { 18.0 },
         [241, 250, 255, 255],
@@ -2199,26 +2243,9 @@ fn render_setup_state(
     let body = text(13.0, [183, 211, 226, 255], false);
     let small = text(11.0, [139, 177, 198, 255], false);
     let label = text(12.0, [241, 250, 255, 255], true);
-    let detailed = panel.width >= 340.0 && panel.height >= 250.0;
+    let detailed = panel.width >= 340.0 && panel.height >= 220.0;
     let state = presentation.view.content_state;
-    let title = match (&presentation.grant_review, state) {
-        (GrantReviewState::Reviewing { .. }, _) => "Reviewing your selection",
-        (GrantReviewState::Error { .. }, _) => "Choose SSH files again",
-        (_, HubContentState::InitialSetup) => "Bring in your SSH hosts",
-        (_, HubContentState::Loading) => "Preparing your SSH inventory",
-        (_, HubContentState::Error) => "SSH inventory needs attention",
-        _ => "No SSH hosts yet",
-    };
-    let description = match (&presentation.grant_review, state) {
-        (GrantReviewState::Reviewing { .. } | GrantReviewState::Error { .. }, _) => {
-            operation_status
-        }
-        (_, HubContentState::InitialSetup) => {
-            "Add SSH files or review one host. Nothing connects yet."
-        }
-        (_, HubContentState::Loading | HubContentState::Error) => operation_status,
-        _ => "Choose another OpenSSH config file when you are ready.",
-    };
+    let copy = setup_copy(presentation, operation_status);
     let icon_color =
         if matches!(presentation.grant_review, GrantReviewState::Error { .. })
             || state == HubContentState::Error
@@ -2230,91 +2257,74 @@ fn render_setup_state(
 
     if detailed {
         let orb = Rect {
-            x: panel.x + (panel.width - 60.0) * 0.5,
-            y: panel.y + 28.0,
-            width: 60.0,
-            height: 60.0,
+            x: panel.x + (panel.width - 44.0) * 0.5,
+            y: panel.y + 20.0,
+            width: 44.0,
+            height: 44.0,
         };
-        rounded(sugarloaf, orb, SURFACE_RAISED, 30.0);
+        rounded(sugarloaf, orb, SURFACE_RAISED, 14.0);
         draw_hub_icon(
             sugarloaf,
             HubIcon::Connections,
-            orb.x + 19.0,
-            orb.y + 19.0,
+            orb.x + 11.0,
+            orb.y + 11.0,
             icon_color,
             SURFACE_RAISED,
         );
-        draw_centered(sugarloaf, panel, panel.y + 105.0, title, &heading, 7.5);
-        draw_centered(sugarloaf, panel, panel.y + 139.0, description, &body, 7.0);
+        draw_centered(sugarloaf, panel, panel.y + 78.0, copy.title, &heading, 7.5);
+        draw_centered(
+            sugarloaf,
+            panel,
+            panel.y + 109.0,
+            copy.description,
+            &body,
+            7.0,
+        );
 
-        let safety = Rect {
-            x: panel.x + (panel.width - 270.0_f32.min(panel.width - 20.0)) * 0.5,
-            y: panel.y + 177.0,
-            width: 270.0_f32.min(panel.width - 20.0),
-            height: 30.0,
-        };
-        rounded(sugarloaf, safety, READ_ONLY_BADGE, 15.0);
+        let safety_text = "Local review only · nothing connects";
+        let safety_width = sugarloaf.text_mut().measure(safety_text, &small);
+        let safety_x = panel.x + ((panel.width - safety_width - 29.0) * 0.5).max(4.0);
         draw_hub_icon(
             sugarloaf,
             HubIcon::Shield,
-            safety.x + 12.0,
-            safety.y + 5.0,
+            safety_x,
+            panel.y + 139.0,
             SUCCESS,
-            READ_ONLY_BADGE,
+            CARD,
         );
-        sugarloaf.text_mut().draw(
-            safety.x + 38.0,
-            safety.y + 8.0,
-            "Local scan · no connection opened",
+        sugarloaf
+            .text_mut()
+            .draw(safety_x + 29.0, panel.y + 146.0, safety_text, &small);
+    } else if panel.height >= 70.0 {
+        draw_centered(sugarloaf, panel, panel.y + 14.0, copy.title, &heading, 7.5);
+        draw_centered(
+            sugarloaf,
+            panel,
+            panel.y + 41.0,
+            copy.description,
             &small,
+            7.0,
         );
-    } else if panel.height >= 44.0 {
-        draw_centered(sugarloaf, panel, panel.y + 14.0, title, &heading, 7.5);
     }
 
-    let action_label =
-        if matches!(presentation.grant_review, GrantReviewState::Error { .. })
-            || state == HubContentState::Empty
-        {
-            "Choose another file"
-        } else {
-            "Choose SSH files"
-        };
-    action_button(
+    action_button_with_shortcut(
         sugarloaf,
         host_action,
-        if compact {
-            "Host (L)"
-        } else {
-            "Enter host (L)"
-        },
+        (if compact { "Host" } else { "Enter host" }, Some("L")),
         HubIcon::Connections,
         SURFACE_RAISED,
         CYAN,
         &label,
     );
-    action_button(
+    action_button_with_shortcut(
         sugarloaf,
         file_action,
-        action_label,
+        (copy.action, Some("F")),
         HubIcon::FolderAdd,
         PRIMARY,
         [0.90, 0.98, 1.0, 1.0],
         &label,
     );
-
-    if detailed {
-        if let Some(location) = presentation.setup_guidance.candidate_locations.first() {
-            draw_centered(
-                sugarloaf,
-                panel,
-                file_action.y + file_action.height + 12.0,
-                &format!("Typical location: {}", truncated(location, 58)),
-                &small,
-                7.0,
-            );
-        }
-    }
 }
 
 fn render_status_footer(
@@ -3002,12 +3012,35 @@ fn action_button(
     icon_color: [f32; 4],
     options: &DrawOpts,
 ) {
+    action_button_with_shortcut(
+        sugarloaf,
+        rect,
+        (label, None),
+        icon,
+        fill,
+        icon_color,
+        options,
+    );
+}
+
+fn action_button_with_shortcut(
+    sugarloaf: &mut Sugarloaf,
+    rect: Rect,
+    label: (&str, Option<&str>),
+    icon: HubIcon,
+    fill: [f32; 4],
+    icon_color: [f32; 4],
+    options: &DrawOpts,
+) {
+    let (label, shortcut) = label;
     rounded(sugarloaf, rect, fill, 9.0);
-    let maximum = (((rect.width - 38.0) / 7.0).floor() as usize).max(1);
+    let shortcut_space = if shortcut.is_some() { 31.0 } else { 0.0 };
+    let maximum = (((rect.width - 38.0 - shortcut_space) / 7.0).floor() as usize).max(1);
     let visible = truncated(label, maximum);
     let label_width = sugarloaf.text_mut().measure(&visible, options);
     let content_width = 22.0 + 8.0 + label_width;
-    let start = rect.x + ((rect.width - content_width) * 0.5).max(4.0);
+    let available_width = (rect.width - shortcut_space).max(1.0);
+    let start = rect.x + ((available_width - content_width) * 0.5).max(4.0);
     draw_hub_icon(
         sugarloaf,
         icon,
@@ -3022,26 +3055,85 @@ fn action_button(
         &visible,
         options,
     );
+    if let Some(shortcut) = shortcut {
+        let key = Rect {
+            x: rect.x + rect.width - 27.0,
+            y: rect.y + (rect.height - 20.0) * 0.5,
+            width: 20.0,
+            height: 20.0,
+        };
+        rounded(sugarloaf, key, CARD, 6.0);
+        let key_options = text(9.0, [177, 221, 237, 255], true);
+        let width = sugarloaf.text_mut().measure(shortcut, &key_options);
+        sugarloaf.text_mut().draw(
+            key.x + (key.width - width) * 0.5,
+            key.y + 5.0,
+            shortcut,
+            &key_options,
+        );
+    }
 }
 fn section_tab(
     sugarloaf: &mut Sugarloaf,
     rect: Rect,
     label: &str,
+    shortcut: &str,
     selected: bool,
     options: &DrawOpts,
 ) {
+    let fill = if selected { SELECTED } else { SURFACE };
+    rounded(sugarloaf, rect, fill, 10.0);
+    let key_options = text(9.0, [177, 221, 237, 255], true);
+    let key_width = 20.0;
+    let label_width = sugarloaf.text_mut().measure(label, options);
+    let content_width = if label.is_empty() {
+        key_width
+    } else {
+        label_width + 7.0 + key_width
+    };
+    let x = rect.x + ((rect.width - content_width) * 0.5).max(4.0);
+    if !label.is_empty() {
+        sugarloaf.text_mut().draw(
+            x,
+            rect.y + ((rect.height - options.font_size) * 0.5).max(3.0) - 1.0,
+            label,
+            options,
+        );
+    }
+    let key = Rect {
+        x: x + if label.is_empty() {
+            0.0
+        } else {
+            label_width + 7.0
+        },
+        y: rect.y + (rect.height - 20.0) * 0.5,
+        width: key_width,
+        height: 20.0,
+    };
     rounded(
         sugarloaf,
-        rect,
-        if selected { SELECTED } else { SURFACE_RAISED },
-        8.0,
+        key,
+        if selected { CARD } else { SURFACE_RAISED },
+        6.0,
     );
-    let x = rect.x + ((rect.width - label.chars().count() as f32 * 7.0) * 0.5).max(6.0);
+    let width = sugarloaf.text_mut().measure(shortcut, &key_options);
     sugarloaf.text_mut().draw(
-        x,
-        rect.y + ((rect.height - options.font_size) * 0.5).max(3.0) - 1.0,
-        label,
-        options,
+        key.x + (key.width - width) * 0.5,
+        key.y + 5.0,
+        shortcut,
+        &key_options,
+    );
+}
+
+fn close_button(sugarloaf: &mut Sugarloaf, rect: Rect, options: &DrawOpts) {
+    rounded(sugarloaf, rect, SURFACE, 10.0);
+    let close = text(options.font_size, color_u8(BRAND_CORAL), true);
+    let width = sugarloaf.text_mut().measure("×", &close);
+    sugarloaf.text_mut().draw(
+        rect.x + (rect.width - width) * 0.5,
+        rect.y + ((rect.height - close.font_size) * 0.5).max(3.0) - 1.0,
+        "×",
+        &close,
     );
 }
 
@@ -3517,10 +3609,19 @@ mod tests {
         let mut hub = ConnectionHub::default();
         hub.set_presentation(Some(presentation));
 
-        assert!(layout.card.width <= 780.0);
-        assert!(layout.card.height <= 520.0);
-        assert!(layout.review_host.width >= 200.0);
+        assert!(layout.card.width <= 680.0);
+        assert!(layout.card.height <= 400.0);
+        assert!(layout.review_host.width >= 180.0);
+        assert!(layout.review_host.height >= 40.0);
         assert_eq!(layout.review_host.width, layout.review_files.width);
+        let tabs = hub_tabs(&layout);
+        for tab in [tabs.0, tabs.1, tabs.2] {
+            assert!(tab.width >= 40.0);
+            assert!(tab.height >= 40.0);
+        }
+        assert!(tabs.0.x + tabs.0.width < tabs.1.x);
+        assert!(tabs.1.x + tabs.1.width < tabs.2.x);
+        assert!(tabs.2.x + tabs.2.width < layout.close.x);
         let actions_center =
             (layout.review_host.x + layout.review_files.x + layout.review_files.width)
                 * 0.5;
@@ -3560,6 +3661,35 @@ mod tests {
                 ),
                 Some(ConnectionHubHit::Inert)
             );
+        }
+    }
+
+    #[test]
+    fn initial_setup_copy_is_minimal_actionable_and_safety_copy_is_not_repeated() {
+        let presentation = presentation();
+        let copy = setup_copy(&presentation, "ignored status");
+
+        assert_eq!(copy.title, "Add a connection");
+        assert_eq!(
+            copy.description,
+            "Review one host or choose SSH config files."
+        );
+        assert_eq!(copy.action, "Choose files");
+        assert!(!copy.description.contains("Typical location"));
+        assert!(!copy.description.contains("inventory"));
+    }
+
+    #[test]
+    fn connection_hub_brand_text_and_keycaps_meet_contrast_floor() {
+        use automexia_ui_model::{contrast_ratio, MIN_TEXT_CONTRAST};
+
+        for (foreground, background) in [
+            ([0.90, 0.98, 1.0, 1.0], PRIMARY),
+            (CYAN, SURFACE_RAISED),
+            ([177.0 / 255.0, 221.0 / 255.0, 237.0 / 255.0, 1.0], CARD),
+            (BRAND_CORAL, SURFACE),
+        ] {
+            assert!(contrast_ratio(foreground, background) >= MIN_TEXT_CONTRAST);
         }
     }
 

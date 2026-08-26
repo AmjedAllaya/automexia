@@ -530,6 +530,8 @@ struct NativeWindowSnapshot {
     palette_visible_results: usize,
     palette_total_results: usize,
     confirm_quit_active: bool,
+    connection_hub_active: bool,
+    connection_hub_route: Option<&'static str>,
     compatibility_inspector_active: bool,
     compatibility_inspector_accessibility_summary: Option<String>,
     compatibility_inspector_clear_confirmation: bool,
@@ -728,6 +730,8 @@ fn write_native_resize_snapshot(
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
     snapshot["display_offset"] = serde_json::json!(content.display_offset);
     snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
+    snapshot["connection_hub_active"] = serde_json::json!(window.connection_hub_active);
+    snapshot["connection_hub_route"] = serde_json::json!(window.connection_hub_route);
     snapshot["palette_scroll_offset"] = serde_json::json!(window.palette_scroll_offset);
     snapshot["palette_selected_index"] = serde_json::json!(window.palette_selected_index);
     snapshot["palette_visible_results"] =
@@ -6181,6 +6185,31 @@ impl Screen<'_> {
                     palette_visible_results: palette_scroll_state.2,
                     palette_total_results: palette_scroll_state.3,
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    connection_hub_active: self.connection_hub.is_active(),
+                    connection_hub_route: self
+                        .connection_hub
+                        .is_active()
+                        .then_some(match self.connection_hub.route() {
+                        automexia_ui_model::connection_hub::HubRoute::Results => {
+                            "results"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::Review => "review",
+                        automexia_ui_model::connection_hub::HubRoute::RecipePlanner => {
+                            "recipe-planner"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::Workspaces => {
+                            "workspaces"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::WorkspaceReview => {
+                            "workspace-review"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::Providers => {
+                            "providers"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::ProviderReview => {
+                            "provider-review"
+                        }
+                    }),
                     compatibility_inspector_active: self
                         .renderer
                         .compatibility_inspector

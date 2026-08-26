@@ -1309,11 +1309,16 @@ Launch with the isolated configuration root and synthetic SSH files located
 outside normal `~/.ssh` paths. Open the Hub with `Ctrl+Shift+H`
 (`Cmd+Shift+H` on macOS) or **Connection Hub (read-only)** in the palette.
 
-Expected result: the branded first-run view shows only the clear primary choices
-**Enter host** and **Choose SSH files**. Search/filter/catalog controls are
-hidden and unfocusable until records exist. No standard SSH path is scanned, no
-file/process/network/agent/keychain/PTY is touched, and terminal input is inert
-until the modal closes. Escape restores exact previous pane focus.
+Expected result: the shared-brand first-run card is compact and shows one short
+description, one **Local review only · nothing connects** safety line, and the
+two primary choices **Enter host** (`L`) and **Choose files** (`F`). There is no
+inner grouping panel, duplicate bottom status bar, or candidate configuration
+path. The header shows distinct 40-pixel **Connections C**, **Workspaces W**,
+**Providers P**, and close targets without overlap. Search/filter/catalog
+controls are hidden and unfocusable until records exist. No standard SSH path
+is scanned, no file/process/network/agent/keychain/PTY is touched, and terminal
+input is inert until the modal closes. Escape restores exact previous pane
+focus.
 
 ### HUB-02 — exact-file picker, canonical review, and revocation
 
@@ -1334,16 +1339,20 @@ Host automexia-routed
     ProxyJump jump-a,jump-b
 ```
 
-Choose **Choose SSH files**, select only that exact file, inspect the canonical-
-path review using keyboard/pointer/Page/Home/End, then cancel. Repeat and confirm
-scan. Restart Automexia.
+Choose **Choose files**, select only that exact file, inspect the canonical-path
+review using keyboard/pointer/Page/Home/End, then cancel. Return to setup, press
+`F`, and verify that the same parented native picker and review appear. Repeat
+and confirm scan. Restart Automexia. While Search is focused, type `f`; while a
+nested review/editor is open, press `F`; also try Ctrl/Alt/Super-modified `F`.
 
 Expected result: cancel revokes the selection and no read occurs; confirmation
 scans only the reviewed canonical regular file within limits and presents public
 aliases. The grant is memory-only and gone after restart. Automexia never edits
 the file or persists its path. Links, directories, replaced files, invalid UTF-8,
 oversized/many files, controls/bidi and ambiguous dynamic directives fail with a
-path-free diagnostic and no partial publication.
+path-free diagnostic and no partial publication. Pointer and unmodified `F`
+produce the same file-review path; Search receives literal `f`, nested/modified
+keys do not open a picker, and no shortcut byte reaches the selected PTY.
 
 ### HUB-03 — transient literal host editor and paste/IME validation
 
@@ -1411,7 +1420,11 @@ Expected result: concise title/status/help, colored icon plus redundant text,
 clear hierarchy and bounded detail; no overlap with close controls, clipping or
 hidden focus. Roles/names/states/position/count/actions are announced, focus is
 trapped only while modal and restored on close, disabled prerequisites are
-explained, and no interaction reaches terminal input.
+explained, and no interaction reaches terminal input. At the standard viewport,
+the first-run card remains at or below 680×380 logical pixels; each section,
+setup action, and close hit target remains at least 40×40 logical pixels. Verify
+the C/W/P/L/F keycaps at 100%, 200%, and 300% scale and confirm long/localized
+text cannot cover another action.
 
 ### HUB-08 — complete Hub model/runtime/product source evidence
 
