@@ -5,8 +5,8 @@
 This is the canonical source of truth for the Ghostty G0-G6 track. Automexia
 keeps `automexia` as the implicit profile and provides explicit pinned
 `ghostty-1.3` and moving `ghostty` selectors. The local source/runtime contract
-is implemented through G4; broader release and lifecycle claims remain bounded
-by the status table below.
+is implemented through the accepted local G6 boundary; broader release and
+lifecycle claims remain bounded by the status table below.
 
 The stable G0-G6 identifiers remain the machine-readable roadmap keys. Each
 item is also classified by intent:
@@ -33,12 +33,8 @@ Only these status labels are used:
 | G2 — profiles and reload | **Fully done** | Default/moving/pinned profiles, bind/unbind layers, strict diagnostics, immutable last-known-good publication, transactional global/palette update, safe migration | Native release matrix is tracked under G5 |
 | G3 — dispatch language | **Fully done** | Structured outcomes, performable/unconsumed fallthrough, exact sequences and cancellation, bounded tables/catch-all/chains, route isolation, all-surface snapshots | Native IME/layout evidence is tracked under G5 |
 | G4 — stateless actions | **Fully done** | Clear, selection/search, topology, inherited independent splits, exact logical resize, transactional zoom/equalize, private bounded export and cleanup | Controlled visual/resource proof is tracked under G5 |
-| G5 — tooling and release assurance | **Partially done** | CLI/explain/JSON, dry-run migration, xtask generation/verify/test, generated docs, property/fuzz targets, Windows Criterion results | Native Linux/macOS/Windows layout/visual/AT/resource evidence, fixed fuzz campaign, QA bundle, and activated 30-day baseline |
-| G6 — high-lifecycle features | **Partially done** | Accepted redaction/lifecycle ADRs, renderer-owned inspector, and bounded parked-PTY undo/redo for a complete closed top-level tab | Individual split, pane-local-tab, and native-window closure history plus native lifecycle evidence |
-
-G6 also still needs user-visible parked-session count, list, and clear controls.
-The implemented shortcut restores the newest eligible top-level tab, but it is
-not yet a complete session-management surface.
+| G5 — tooling and release assurance | **Partially done** | CLI/explain/JSON, dry-run migration, host-independent xtask generation/verification, generated docs, two nightly fuzz targets, properties, Criterion coverage, a mutation-tested repository gate, and strict private native-evidence validation/QA wiring | Controlled Windows/Linux/macOS layout, visual, AT, resource, package, and lifecycle evidence plus an activated comparable 30-day baseline |
+| G6 — high-lifecycle features | **Partially done** | Accepted redaction/lifecycle ADRs; modal renderer inspector; redacted parked count/list; newest restore; two-step clear; bounded parked-PTY undo/redo for complete closed top-level tabs | Individual split, pane-local-tab, and native-window closure history plus controlled native lifecycle evidence |
 
 Modern terminal capability, explicit Ghostty migration, and session lifecycle
 remain
@@ -55,9 +51,10 @@ Compatibility reuses the repository's Nextest, doctest, fuzz, snapshot,
 Criterion, QA, and release infrastructure. Normal startup/build/test paths are
 offline and never execute Ghostty. A compatibility-profile release must add the
 remaining native fixture, keyboard-layout, rendered-frame, assistive-technology,
-resource-cycle, packaging, and comparable 30-day benchmark evidence to the
-redacted QA bundle; synthetic platform tables and a Windows-only run cannot
-close those gates.
+resource-cycle, packaging, and comparable 30-day benchmark evidence through the
+strict private evidence-manifest contract. QA publishes only its bounded
+redacted summary; synthetic platform tables and a Windows-only run cannot close
+those gates.
 
 ## Decisions
 
@@ -307,8 +304,10 @@ it touches the filesystem or another process.
 
 ### G5 — tooling, generation, and release verification — Partially done
 
-Local tooling, generation, fuzz-build, properties, and Windows benchmarks are
-implemented. The native and controlled release items below remain open.
+Local tooling, generation, host-independent synthetic tables, mutation-tested
+repository policy, nightly fuzz/benchmark wiring, properties, and same-host
+Windows benchmarks are implemented. The native and controlled release items
+below remain open.
 
 - generate exact Linux/macOS profiles from the pinned fixtures and generate
   Windows through a deterministic transform: Super becomes the Windows key,
@@ -377,7 +376,13 @@ Implemented:
   PTYs without relaunch;
 - limits of 8 entries, 5 minutes, and 250,000 retained history lines per window,
   plus redo invalidation and cleanup on pressure, expiry, child exit, failed
-  restore, and shutdown.
+  restore, and shutdown;
+- a newest-first inspector projection containing only session count, aggregate
+  history lines, and TTL, with no parked route IDs, titles, commands,
+  destinations, or terminal content; and
+- pointer and keyboard restore plus a two-step clear that explicitly warns it
+  will end parked processes; every modal key press/release is consumed before
+  the PTY input path.
 
 Remaining:
 

@@ -15,7 +15,7 @@ The pinned profile is derived from Ghostty 1.3.1 tag `v1.3.1`, commit
 | Typed registry, profiles, reload, sequences, tables, chains | **Fully done locally** | Bounded pure registry, direct/reverse allocation-free lookup, exact prefix flushing, per-surface state, strict/permissive diagnostics, atomic last-known-good reload, and OS-global ownership. |
 | Stateless action families | **Fully done locally** | Finite fractional font sizing, absolute/line/fractional scrolling, clear variants, extended selection/search, inherited independent splits, logical-pixel resize, zoom/equalize, and bounded private screen/selection/scrollback export. |
 | Tooling and release assurance | **Partially done** | CLI, migration, generation, verification, generated references, fuzz targets, properties, and Windows Criterion evidence exist. Native three-platform keyboard/visual/resource/assistive-technology and 30-day benchmark evidence remains a release gate. |
-| Inspector and undo/redo | **Partially done** | The redacted inspector is implemented. Undo/redo parks complete closed top-level window tabs; individual split, pane-local-tab, and whole-native-window history is not activated. |
+| Inspector and undo/redo | **Partially done** | The modal redacted inspector shows active/parked counts, supports newest restore and two-step clear, and parks complete closed top-level window tabs. Individual split, pane-local-tab, whole-native-window history, and controlled native lifecycle evidence remain gated. |
 
 These limitations are why the project does not yet make an unqualified “full
 Ghostty compatibility” release claim. See the
@@ -147,9 +147,27 @@ split zoom without depending on color alone.
 
 The typed `inspector` action opens a renderer-owned modal containing only grid
 size, viewport/history counts, terminal/keyboard modes, profile, redacted
-binding origin/trigger, pending/table state, opaque session/route IDs, and up to
-eight diagnostic codes. It excludes environment values, clipboard contents,
-commands, paths, working directories, credentials, and terminal output.
+binding origin/trigger, pending/table state, opaque active session/route IDs,
+active-session count, at most eight diagnostic codes, and newest-first parked
+summaries. A parked summary contains only its session count, aggregate history
+lines, and remaining TTL. It excludes parked route IDs, titles, commands,
+destinations and content, plus all environment values, clipboard contents,
+working directories, credentials, and terminal output.
+
+While the inspector is open:
+
+- click **Restore newest** or press `R` to restore the newest eligible top-level
+  tab;
+- click **Clear parked** or press `C` once to review the destructive action;
+- click **Confirm clear**, press `C` again, or press `Enter` to end every parked
+  group through the existing PTY owner;
+- press `Escape` during confirmation to cancel it, or otherwise to close; and
+- every other key press and release is consumed by the modal and never reaches
+  the active PTY.
+
+The pointer controls are hidden when no entry exists and on compact viewports;
+the keyboard controls remain available. Closing the inspector cancels an
+unfinished clear confirmation. Clearing parked entries cannot be undone.
 
 `undo` and `redo` currently apply to a complete closed top-level window tab.
 The existing `ContextGrid`—including its splits, pane-local tabs, route IDs, and
@@ -173,6 +191,8 @@ Upstream source/build/packaging/license authority is documented in
 
 A compatibility-profile release still requires native Linux/BSD and macOS
 fixtures/smoke runs, Windows/Linux/macOS keyboard-layout and rendered-frame
-matrices, screen-reader evidence, resource-cycle evidence, and a like-hardware
-30-day benchmark baseline. Synthetic platform tables and a Windows test run do
-not replace those gates.
+matrices, screen-reader evidence, resource-cycle evidence, packaging checks, and
+a like-hardware 30-day benchmark baseline. Controlled runs use the strict
+private evidence manifest documented in the testing guide; QA publishes only a
+redacted summary. Synthetic platform tables and a Windows test run do not
+replace those gates.

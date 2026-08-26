@@ -1005,8 +1005,8 @@ Windows adaptation. Frontend tests cover atomic registry publication, classic
 bridging, shell fallthrough, finite numeric parameter translation, Ghostty's
 positive-down scroll convention, clear semantics, selection/search,
 zoom/equalize, secure export, profile-derived palette hints, migration,
-inspector redaction, bounded selection serialization, and bounded top-level-tab
-parking.
+inspector redaction/modal input, bounded selection serialization, and top-level-
+tab parking, restore, and two-step clear.
 
 The focused compatibility gate is:
 
@@ -1015,24 +1015,22 @@ cargo xtask test keybindings
 cargo xtask generate keybindings --version 1.3.1
 cargo xtask generate keybindings --check
 cargo xtask verify keybindings
+python tools/ci/check_ghostty_compatibility.py
+python tools/ci/test_ghostty_compatibility.py
+python tools/ci/test_ghostty_native_evidence.py
 cargo check --manifest-path fuzz/Cargo.toml --bins --locked --offline
-cargo bench -p automexia-keybindings --bench registry --locked
+cargo bench -p automexia-keybindings --bench registry --locked -- --noplot
 ```
 
 `cargo xtask test keybindings` runs all `automexia-keybindings` unit/property
 tests plus the frontend registry, command-palette, inspector, compatibility
 action, export, migration, zoom/equalize, topology-history, and VT bounded-
-selection owners before byte-verifying generated artifacts and references. The
-two fuzz targets exercise hostile binding text/sequence resolution and bounded
-migration/include graphs; the check above proves they compile offline, while a
-release campaign still needs a fixed-duration nightly runner.
-
-A native Windows x64 Criterion run on 2026-08-23 measured median
-`compile_1000_bindings` 4.1217 ms, single-key lookup 33.485 ns, lookup in a
-1,000-binding registry 66.353 ns, reverse lookup 202.60 ns, four-level sequence
-188.95 ns, invalid-prefix flush 136.32 ns, and active-table lookup 94.829 ns.
-These are same-host development observations, not an activated 30-day
-like-hardware baseline.
+selection owners before byte-verifying generated artifacts and references.
+Hosted Linux nightly runs both Ghostty fuzzers; mutation gates freeze wiring.
+Native evidence uses a private exact-commit manifest and QA keeps only a
+redacted summary. Missing evidence is not a pass. Scenarios, benchmarks, the
+Windows fuzz failure, and cleanup are in the
+[ledger](GHOSTTY-COMPATIBILITY-IMPLEMENTATION.md#2026-08-26-local-assurance-evidence).
 
 These tests prove pure compilation and Windows runtime contracts; they do not
 replace native macOS/Linux keyboard-layout, rendered-frame, assistive-
