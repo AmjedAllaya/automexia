@@ -93,7 +93,7 @@ functionality.
   separate versioned data migration, not an ownership cleanup.
 - Rollback is a normal source revert: there is no persisted schema migration.
   Historical D0 fixtures must not be edited during rollback.
-- The two pre-existing untracked root documents are user-owned and excluded from
+- Unrelated user-owned documentation and specification work is excluded from
   this change.
 
 ## Automated enforcement
@@ -112,12 +112,35 @@ mutations for extension-gated paint, mixed DevOps source/provider dependencies,
 and engine-domain coupling. `cargo xtask verify architecture` runs both on every
 architecture verification path.
 
+## Follow-up deletion and ownership proof
+
+A fresh review of commit `47268da4cd` compared every former generic DevOps
+feature file with the committed tree:
+
+- all 46 source, test, benchmark and suggestion files removed from the broad
+  package have a destination under `automexia-connectivity` or
+  `automexia-command-productivity`;
+- 22 are byte-identical moves and the other 24 differ only for direct crate
+  imports, fixture paths, or strengthened tests and benchmarks;
+- the commit has no deleted path outside that mapped feature set;
+- active source comments, architecture tables, roadmaps and the CP2.2 ownership
+  contract now name the resulting owners; and
+- historical D0 schemas plus persisted alias/compiler generator identities keep
+  their exact legacy strings because changing them requires a separate versioned
+  migration.
+
+The ownership checker now rejects stale live source and documentation claims.
+The CP2.2 checker also compares the complete ownership object and its mutation
+suite proves the former model owner is rejected.
+
 ## Local verification evidence
 
 The completed 2026-08-26 campaign ran on Windows x86_64 with the repository's
 locked dependency graph:
 
-- ownership checker mutation suite: 5 passed;
+- ownership checker mutation suite: 7 passed;
+- CP2.2 ownership and safety mutation suite: 8 passed and 1 platform-dependent
+  symlink case skipped;
 - focused command-result native-hook suite: 15 passed;
 - moved connectivity, command-productivity, DevOps-context and UI-model package
   tests: passed;

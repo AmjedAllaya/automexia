@@ -123,12 +123,12 @@ enables an alias. Generated shell files are caches, never the database.
 
 | Concern | Existing owner to extend | Must not depend on |
 |---|---|---|
-| Quick Action, alias, pack, risk, scope, precedence, and validation models | `automexia-devops` pure modules | Renderer, GPU, PTY, shell process, provider SDK, secret store |
+| Quick Action, alias, pack, risk, scope, precedence, and validation models | `automexia-command-productivity` pure modules | Renderer, GPU, PTY, shell process, provider SDK, secret store |
 | Action/alias list, editor, review, conflict, and health projections | `automexia-ui-model` | Shell syntax, filesystem mutation, provider process |
 | User-private store, atomic update, watcher, and last-known-good snapshot | application-owned service in `apps/automexia-terminal` using existing persistence seams | Renderer/input/VT threads, generated file as authority |
 | PowerShell/Bash/Zsh/Fish/CMD projection compilers | shell-integration/command-productivity adapter layer | Provider network/authentication, terminal-grid inference |
 | CP1 completion linkage and managed startup hook | existing shell-integration completion adapters | A second profile block or second completion system |
-| Built-in pack manifests | versioned data owned by `automexia-devops`, validated and shipped with the signed application | Remote marketplace or mutable downloaded code |
+| Built-in pack manifests | versioned data owned by `automexia-command-productivity`, validated and shipped with the signed application | Remote marketplace or mutable downloaded code |
 | Contributor validation/generation | `tools/xtask` and `tools/ci` | User home mutation during checks |
 
 Do not create one crate per provider merely for static action data. Provider
@@ -283,7 +283,7 @@ shell:
 - One bounded prior revision for recovery:
   `<config-root>/actions/actions.previous.toml`.
 - Immutable built-in packs: signed application resources owned by the
-  `automexia-devops` package; not copied into user state unless customized.
+  `automexia-command-productivity` package; not copied into user state unless customized.
 - Trusted workspace source: `.automexia/actions.toml`, disabled until the user
   trusts that exact workspace revision.
 - Generated aliases: immutable
@@ -917,7 +917,7 @@ ratchets fail closed.
 
 CP3.0 remains a pure non-activated compiler. CP3.1 now owns only the separate
 application publication boundary and existing managed shell-hook activation; it
-does not move filesystem/process authority into `automexia-devops`. CP3.1 cannot
+does not move filesystem/process authority into `automexia-command-productivity`. CP3.1 cannot
 execute an action/provider, read secrets, or grant exact launch. CP3.2 owns only
 the separate capability-free pack registry and explicit app-owned enable CLI.
 CP3.3 owns a capability-free native-inventory/task-bridge model plus an app-owned

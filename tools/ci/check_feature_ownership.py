@@ -29,6 +29,60 @@ def main() -> int:
     ui_manifest = read("automexia-ui-model/Cargo.toml")
     app_manifest = read("apps/automexia-terminal/Cargo.toml")
 
+    live_ownership_claims = (
+        (
+            "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+            ("automexia-command-productivity",),
+            ("compiler remains in `automexia-devops`",),
+        ),
+        (
+            "docs/DEVOPS-ALIASES.md",
+            ("automexia-command-productivity",),
+            (
+                "`automexia-devops` pure modules",
+                "owned by `automexia-devops`",
+                "into `automexia-devops`",
+            ),
+        ),
+        (
+            "docs/CONNECTION-HUB.md",
+            ("automexia-connectivity",),
+            ("provider-neutral `automexia-devops`",),
+        ),
+        (
+            "docs/SSH-CONNECTION-AUTOMATION.md",
+            ("automexia-connectivity", "automexia-command-productivity"),
+            (
+                "source model should live in `automexia-devops`",
+                "provider-neutral state | `automexia-devops`",
+            ),
+        ),
+        (
+            "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
+            ("automexia-connectivity", "automexia-command-productivity"),
+            (
+                "automexia-devops model",
+                "all `automexia-devops` and `automexia-ui-model` tests",
+            ),
+        ),
+        (
+            "docs/ROADMAP.md",
+            ("automexia-connectivity", "automexia-command-productivity"),
+            (),
+        ),
+        (
+            "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+            ("automexia-connectivity", "automexia-command-productivity"),
+            (),
+        ),
+    )
+    for relative, required, forbidden in live_ownership_claims:
+        source = read(relative)
+        for owner in required:
+            require(owner in source, f"{relative} is missing current owner {owner}")
+        for stale in forbidden:
+            require(stale not in source, f"{relative} retains stale owner claim: {stale}")
+
     require(
         'name = "automexia-command-productivity"' in command_manifest,
         "command productivity must have a capability-free private domain owner",

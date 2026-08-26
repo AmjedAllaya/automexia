@@ -466,9 +466,10 @@ launch disabled.
 
 **Fully implemented at source boundary.**
 
-- automexia-extension-api, automexia-extension-runtime, automexia-devops, and
-  automexia-ui-model are private and separated from frontend/GPU/PTY/provider
-  implementation.
+- automexia-extension-api, automexia-extension-runtime,
+  automexia-connectivity, automexia-command-productivity, automexia-devops,
+  and automexia-ui-model are private and separated from
+  frontend/GPU/PTY/provider implementation.
 - Versioned types reject unknown/oversized/invalid/session-mismatched data;
   launch debug is redacted and environment values are absent.
 - Exact-route wake, bounded cache/queues, registration ordering, cancellation,

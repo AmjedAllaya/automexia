@@ -40,6 +40,13 @@ class Cp22ContractTests(unittest.TestCase):
             lambda document: document["limits"].__setitem__("query_bytes", 1_000_000)
         )
 
+    def test_stale_or_competing_model_owner_is_rejected(self) -> None:
+        self.validate_mutation(
+            lambda document: document["ownership"].__setitem__(
+                "model", "automexia-devops-capability-free"
+            )
+        )
+
     def test_network_or_exact_launch_authority_is_rejected(self) -> None:
         self.validate_mutation(
             lambda document: document["capabilities"].__setitem__("network", True)

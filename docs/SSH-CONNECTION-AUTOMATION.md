@@ -177,7 +177,7 @@ must remain the safest and easiest path.
 
 ## Connection profile model
 
-The provider-neutral source model should live in `automexia-devops`; the UI
+The provider-neutral source model lives in `automexia-connectivity`; the UI
 projection belongs in `automexia-ui-model`.
 
 ```text
@@ -757,7 +757,8 @@ record cold/warm state and tool versions.
 
 | Concern | Existing owner |
 |---|---|
-| Profile, recipe, action, result, and provider-neutral state | `automexia-devops` |
+| Profile, recipe, result, and provider-neutral connection state | `automexia-connectivity` |
+| Quick Action and recipe-action policy | `automexia-command-productivity` |
 | Renderer-neutral Hub/editor/focus/accessibility models | `automexia-ui-model` |
 | Capability requests, bounded types, operation/session IDs | `automexia-extension-api` |
 | Cancellation, queues, workers, latest generation, cache | `automexia-extension-runtime` |

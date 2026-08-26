@@ -300,6 +300,7 @@ Unrelated engine-directory movement must not delay the SSH release.
 ### v0.5.0 foundation
 
 1. Extract private `automexia-extension-api`, `automexia-extension-runtime`,
+   `automexia-connectivity`, `automexia-command-productivity`,
    `automexia-devops`, and `automexia-ui-model` crates from the existing
    application and renderer seams. Remove deprecated Rio environment fallbacks
    only when the product version advances to v0.5; v0.4.x compatibility remains

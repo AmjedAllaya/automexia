@@ -71,7 +71,7 @@ documentation, feature assurance, and a change fragment.
 
 | Area | Phase | Status | Evidence owner | Remaining exit |
 |---|---|---|---|---|
-| Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
+| Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-connectivity, automexia-command-productivity, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
 | SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 6 ratchets immutable schemas 1/2/3/4/5 with exact M3-M5 routes/tunnels, trust/status, lifecycle/receipt/reconnect, 23-scenario native-manifest rules, host/artifact binding, a protected manual workflow, and mutations | Obtain ADR 0003's two independent exact-head protected approvals/server enforcement; execute and validate real native F4/F5 manifests |
 | Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, bounded current-executable review worker, exact guarded PTY seam, route publication, process-group/Job Object teardown, PTY-worker joining, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, and native OpenSSH descendant/process/resource/accessibility evidence |
@@ -82,7 +82,7 @@ documentation, feature assurance, and a change fragment.
 | Profiles, recipes, remote workspaces | D5.0-D5.2 | Partially done | Bounded profiles, typed recipes/actions, strict validation, deterministic dry-run planning, approval fingerprints, and private transactional Connection Library persistence/redacted transfer are implemented | Product editor, remote workspace lifecycle, and separately gated execution remain |
 | Multi-cloud framework and providers | D6.0-D6.5 | Partially done overall: M7 fully done locally; M8-M11 and M12 Teleport source/cached review plus M11 private lifecycle fully done locally and nonactivated; OpenBao not done | Provider-neutral capsules, independent exact adapters, strict cached publication, six-provider Hub review, bounded private validation/revalidation/revoke/cleanup, tests, and benchmarks | D3 activation, ADR 0024 acceptance plus OpenBao implementation, and real official-CLI/cluster/native/resource/accessibility/release evidence |
 | Native completion | CP1 | Fully done | shell integration, xtask completion manager, CP1 contract/tests | Hosted three-OS and longitudinal release evidence |
-| Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-devops model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
+| Quick Actions and persistence | CP2.0-CP2.2 | Fully done | automexia-command-productivity model, application store/worker/UI/CLI tests | Hosted shell insertion, controlled accessibility, longitudinal evidence |
 | Aliases and DevOps packs | CP3.0-CP3.2 | Fully done | compiler, private generations, shell activation, packs, fuzz/bench/contracts | Hosted native and controlled baseline evidence |
 | Trusted local workspace tasks | CP3.3 | Fully done | native imports, workspace store/trust/runtime/CLI tests and ADR 0021 | Hosted native/accessibility and longitudinal evidence |
 | Provider-aware Quick Actions | CP4 | Fully done locally at product-integrated nonactivating boundary; partially done overall | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible context, production confirmation, fuzz/benchmark/policy evidence | Approved provider refresh/capsule production, exact provider execution, OpenBao, and native provider/accessibility/release evidence |
@@ -294,7 +294,7 @@ Implementation evidence (2026-08-17):
 - model owners: `automexia-connectivity/src/connections` and
   `automexia-ui-model/src/connection_hub.rs`;
 - frozen contract/fixtures: `tests/fixtures/connection-hub`;
-- deterministic tests: all `automexia-devops` and `automexia-ui-model` tests,
+- deterministic tests: all `automexia-connectivity` and `automexia-ui-model` tests,
   plus `tools/ci/test_connection_hub_f2.py`;
 - deep owners: `fuzz/fuzz_targets/connection_planning.rs` and the
   `connection_planning` Criterion benchmark;

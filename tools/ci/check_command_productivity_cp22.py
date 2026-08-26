@@ -60,6 +60,12 @@ MODEL_FORBIDDEN = {
     "automexia_ui_model::",
     "unsafe {",
 }
+EXPECTED_OWNERSHIP = {
+    "model": "automexia-command-productivity-capability-free",
+    "persistence_and_worker": "automexia-terminal-application",
+    "view_model": "automexia-ui-model-renderer-independent",
+    "renderer_and_input": "automexia-terminal-frontend",
+}
 WORKER_FORBIDDEN = {
     "std::env",
     "std::net",
@@ -119,6 +125,8 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
         raise Cp22Error("CP2.2 contract identity must remain active schema 1")
     if document["limits"] != EXPECTED_LIMITS:
         raise Cp22Error("CP2.2 resource ceilings changed")
+    if document["ownership"] != EXPECTED_OWNERSHIP:
+        raise Cp22Error("CP2.2 ownership boundary changed")
     if document["scope_precedence"] != EXPECTED_PRECEDENCE:
         raise Cp22Error("CP2.2 scope precedence changed")
     if document["execution"] != EXPECTED_EXECUTION:
