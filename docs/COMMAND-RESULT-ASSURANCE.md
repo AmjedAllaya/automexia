@@ -111,7 +111,19 @@ wsl.exe --distribution Ubuntu-24.04 --exec zsh tools/ci/test_zsh_integration.zsh
 wsl.exe --distribution Ubuntu-24.04 --exec fish tools/ci/test_fish_integration.fish
 cargo bench -p rio-vt --bench vt_input command_result_lifecycle --locked -- --noplot
 cargo bench -p rio-vt --bench vt_input command_result_viewport_overflow --locked -- --noplot
+cargo bench -p rio-vt --bench vt_input command_prompt_jump_15000_rows --locked -- --noplot
 ```
+
+Command-boundary navigation reuses this metadata without changing result
+ownership. VT tests cover no marks, one/multiple marks, first/last no-ops,
+wrapped prompt runs, adjacent prompts after silent commands, directional
+navigation from output, reflow, and retained history. Platform binding tests
+cover Windows, Linux/BSD, and macOS defaults
+plus search/Vi/alternate-screen suppression. The native Windows driver sends
+the real foreground Ctrl+Shift+Up/Down modifier sequence and independently
+compares the selected route, per-pane display offsets, live cursor prompt
+generation, raw
+cursor line, and unfocused pane before and after both directions.
 
 Native Windows validation:
 
@@ -127,6 +139,11 @@ Portable QA bundles exclude terminal-content PNGs and retain only bounded,
 redacted summaries.
 
 ## Recorded local evidence
+
+On 2026-08-26, the Windows x86_64 optimized benchmark above measured one
+previous-and-next navigation pair across 15,000 retained output rows at
+53.608–56.748 microseconds (100 samples; one high-mild outlier). This is
+same-host development evidence, not a cross-platform release threshold.
 
 The clean 2026-08-25 Windows WGPU and CPU runs remain evidence for the original
 eight bounded PowerShell cases, CMD neutral output, exact glyph paint, and

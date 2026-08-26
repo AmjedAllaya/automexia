@@ -764,10 +764,15 @@ impl Screen<'_> {
                     .and_then(|value| value.parse::<i32>().ok())
                     .unwrap_or(1)
                     > 0;
-                let mut terminal = self.context_manager.current_mut().terminal.lock();
-                terminal.scroll_to_prompt(forward);
-                drop(terminal);
-                ActionOutcome::performed(true, terminal_damage)
+                let moved = self.scroll_to_command(forward);
+                ActionOutcome::performed(
+                    true,
+                    if moved {
+                        terminal_damage
+                    } else {
+                        ActionDamage::default()
+                    },
+                )
             }
             "write_screen_file" => {
                 self.compatibility_export(ExportScope::Visible, parameter, clipboard)

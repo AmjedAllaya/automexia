@@ -179,6 +179,14 @@ const SHORTCUT_PASTE: &str = "Cmd+V";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PASTE: &str = "Ctrl+Shift+V";
 #[cfg(target_os = "macos")]
+const SHORTCUT_PREVIOUS_COMMAND: &str = "Cmd+Shift+Up";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_PREVIOUS_COMMAND: &str = "Ctrl+Shift+Up";
+#[cfg(target_os = "macos")]
+const SHORTCUT_NEXT_COMMAND: &str = "Cmd+Shift+Down";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NEXT_COMMAND: &str = "Ctrl+Shift+Down";
+#[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH: &str = "Cmd+F";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SEARCH: &str = "Ctrl+F";
@@ -278,6 +286,8 @@ pub enum PaletteAction {
     ToggleAppearanceTheme,
     Copy,
     Paste,
+    ScrollToPreviousCommand,
+    ScrollToNextCommand,
     SearchForward,
     SearchBackward,
     SearchGlobalForward,
@@ -455,6 +465,14 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::Paste,
             accent: BRAND_CYAN,
         },
+        ScrollToPreviousCommand => RowPresentation {
+            icon: CommandIcon::History,
+            accent: BRAND_CYAN,
+        },
+        ScrollToNextCommand => RowPresentation {
+            icon: CommandIcon::History,
+            accent: BRAND_PURPLE,
+        },
         SearchForward | SearchBackward => RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_BLUE,
@@ -526,6 +544,8 @@ fn palette_binding_target(
         SearchGlobalForward => Some(("start_search", Some("visible_panes"))),
         SearchGlobalBackward => Some(("start_search", Some("visible_panes"))),
         ClearScreen => Some(("clear_screen", None)),
+        ScrollToPreviousCommand => Some(("jump_to_prompt", Some("-1"))),
+        ScrollToNextCommand => Some(("jump_to_prompt", Some("1"))),
         CloseCurrentSplitOrTab => Some(("close_surface", None)),
         Quit => Some(("quit", None)),
         LocalTabCreate
@@ -701,6 +721,16 @@ const COMMANDS: &[Command] = &[
         title: "Paste",
         shortcut: SHORTCUT_PASTE,
         action: PaletteAction::Paste,
+    },
+    Command {
+        title: "Jump to Previous Command",
+        shortcut: SHORTCUT_PREVIOUS_COMMAND,
+        action: PaletteAction::ScrollToPreviousCommand,
+    },
+    Command {
+        title: "Jump to Next Command",
+        shortcut: SHORTCUT_NEXT_COMMAND,
+        action: PaletteAction::ScrollToNextCommand,
     },
     Command {
         title: "Find in Pane",
@@ -2676,6 +2706,35 @@ mod tests {
             CommandIcon::Image
         );
     }
+
+    #[test]
+    fn command_jump_actions_are_directional_and_discoverable() {
+        let command = |action| {
+            COMMANDS
+                .iter()
+                .find(|command| command.action == action)
+                .expect("command navigation action")
+        };
+        let previous = command(PaletteAction::ScrollToPreviousCommand);
+        let next = command(PaletteAction::ScrollToNextCommand);
+
+        assert_eq!(previous.title, "Jump to Previous Command");
+        assert_eq!(next.title, "Jump to Next Command");
+        #[cfg(target_os = "macos")]
+        {
+            assert_eq!(previous.shortcut, "Cmd+Shift+Up");
+            assert_eq!(next.shortcut, "Cmd+Shift+Down");
+        }
+        #[cfg(not(target_os = "macos"))]
+        {
+            assert_eq!(previous.shortcut, "Ctrl+Shift+Up");
+            assert_eq!(next.shortcut, "Ctrl+Shift+Down");
+        }
+        assert_ne!(
+            command_presentation(previous.action).accent,
+            command_presentation(next.action).accent
+        );
+    }
     #[test]
     fn strict_profile_palette_labels_come_from_the_compiled_registry() {
         let bindings = automexia_keybindings::bundled_profile(
@@ -2703,6 +2762,14 @@ mod tests {
             "ctrl+shift+o · Profile"
         );
         assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Unbound");
+        assert_eq!(
+            shortcut(PaletteAction::ScrollToPreviousCommand),
+            "ctrl+shift+page_up · Profile"
+        );
+        assert_eq!(
+            shortcut(PaletteAction::ScrollToNextCommand),
+            "ctrl+shift+page_down · Profile"
+        );
     }
 
     #[test]

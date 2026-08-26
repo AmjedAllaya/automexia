@@ -51,6 +51,7 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |
 | `Shift+PageUp/PageDown` | Scroll one page up / down outside the alternate screen. |
+| `Ctrl+Shift+Up/Down` | Jump to the previous / next shell-integrated command in the selected pane. |
 | `Ctrl+F` | Select or refocus the current-pane scope in the active search session. |
 | `Ctrl+Shift+F` / `Ctrl+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Ctrl+Shift+Space` | Toggle Vi mode on Windows. |
@@ -101,6 +102,7 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Reset, increase, or decrease font size. |
 | `Cmd+F` / `Cmd+B` | Select or refocus the current-pane scope in the active search session. |
 | `Cmd+Shift+F` / `Cmd+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
+| `Cmd+Shift+Up` / `Cmd+Shift+Down` | Jump to the previous / next marked command in the selected pane's scrollback. |
 | `Cmd+K` | Clear visible screen and then history. |
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
