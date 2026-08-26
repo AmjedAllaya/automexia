@@ -33,10 +33,20 @@ REQUIRED_SURFACES = {
     "shell-integration",
     "tools/xtask",
 }
+EXCLUDED_TREE_PARTS = {".git", ".automexia-private", "target"}
 
 
 class AssuranceError(ValueError):
     """The assurance matrix violates its contract."""
+
+
+def benchmark_targets(root: Path) -> set[str]:
+    """Return product benchmark owners without scanning generated/private copies."""
+    return {
+        path.relative_to(root).as_posix()
+        for path in root.glob("**/benches/*.rs")
+        if not EXCLUDED_TREE_PARTS.intersection(path.relative_to(root).parts)
+    }
 
 
 def workspace_members(root: Path) -> set[str]:
@@ -231,12 +241,8 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
     if missing_surfaces:
         raise AssuranceError(f"repository surfaces missing from feature assurance: {sorted(missing_surfaces)}")
 
-    benchmark_targets = {
-        path.relative_to(root).as_posix()
-        for path in root.glob("**/benches/*.rs")
-        if "target" not in path.parts
-    }
-    missing_benchmarks = benchmark_targets - performance_evidence
+    discovered_benchmarks = benchmark_targets(root)
+    missing_benchmarks = discovered_benchmarks - performance_evidence
     if missing_benchmarks:
         raise AssuranceError(f"benchmark targets missing from performance evidence: {sorted(missing_benchmarks)}")
     fuzz_targets = {
@@ -251,7 +257,7 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
         "features": len(features),
         "components": len(claimed_components),
         "evidence": evidence_count,
-        "benchmarks": len(benchmark_targets),
+        "benchmarks": len(discovered_benchmarks),
         "fuzz_targets": len(fuzz_targets),
         "documentation": documentation_count,
     }

@@ -7,6 +7,7 @@ import copy
 import importlib.util
 import json
 from pathlib import Path
+import tempfile
 import unittest
 
 
@@ -31,6 +32,21 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertEqual(counts["benchmarks"], 18)
         self.assertEqual(counts["fuzz_targets"], 17)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
+
+    def test_benchmark_inventory_ignores_private_and_generated_copies_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            product = root / "crate" / "benches" / "real.rs"
+            private = root / ".automexia-private" / "copy" / "benches" / "real.rs"
+            generated = root / "target" / "copy" / "benches" / "real.rs"
+            for path in (product, private, generated):
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fn main() {}\n", encoding="utf-8")
+
+            self.assertEqual(
+                ASSURANCE.benchmark_targets(root),
+                {"crate/benches/real.rs"},
+            )
 
     def test_missing_documentation_type_is_rejected(self) -> None:
         document = copy.deepcopy(self.document)
