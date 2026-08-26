@@ -88,6 +88,16 @@ fn semantic_result_term() -> Crosswords<VoidListener> {
     )
 }
 
+fn semantic_overflow_result_stream(output_rows: usize) -> Vec<u8> {
+    let mut stream = String::with_capacity(output_rows.saturating_mul(24));
+    stream.push_str("\x1b]133;A;aid=1\x07> \x1b]133;B\x07overflow\r\n\x1b]133;C\x07");
+    for row in 0..output_rows {
+        stream.push_str(&format!("overflow-result-{row}\r\n"));
+    }
+    stream.push_str("\x1b]133;D;0\x07\x1b]133;A;aid=2\x07> ");
+    stream.into_bytes()
+}
+
 /// Same word rhythm, only two styles alternating: isolates SGR parse and
 /// dispatch cost from style-table churn.
 fn ansi_two_styles(total: usize) -> Vec<u8> {
@@ -359,6 +369,22 @@ fn bench(c: &mut Criterion) {
         });
     }
     result_group.finish();
+
+    let overflow_result = semantic_overflow_result_stream(512);
+    let mut overflow_group = c.benchmark_group("command_result_viewport_overflow");
+    overflow_group.sample_size(20);
+    overflow_group.throughput(Throughput::Bytes(overflow_result.len() as u64));
+    overflow_group.bench_function("512_output_rows", |b| {
+        b.iter_batched(
+            || (semantic_result_term(), Processor::default()),
+            |(mut crosswords, mut processor)| {
+                processor.advance(&mut crosswords, &overflow_result);
+                std::hint::black_box(crosswords)
+            },
+            criterion::BatchSize::SmallInput,
+        )
+    });
+    overflow_group.finish();
 }
 
 criterion_group!(benches, bench);

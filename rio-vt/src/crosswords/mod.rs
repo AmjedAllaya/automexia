@@ -532,6 +532,17 @@ where
     active_semantic_prompt: Option<ActiveSemanticPrompt>,
     semantic_command_candidate: Option<Option<u64>>,
     semantic_command_started: Option<(Option<u64>, std::time::Instant)>,
+    /// Set only by visible text/newline activity after OSC 133 C. This keeps
+    /// output detection truthful even when the source prompt leaves the
+    /// bounded scrollback ring before OSC 133 D arrives.
+    semantic_command_output_observed: bool,
+    /// Pane-local identity for completed commands. It is independent from
+    /// physical rows so renderer pulses remain stable through reflow.
+    semantic_command_result_sequence: u64,
+    /// Output boundary awaiting the next semantic prompt. This is populated
+    /// only for a proven nonempty output region.
+    pending_semantic_command_boundary:
+        Option<crate::crosswords::grid::row::SemanticCommandBoundary>,
 
     /// Whether a `TerminalDamaged` event is already in flight to the renderer.
     /// Set by PTY thread before sending; cleared by renderer after extracting damage.
@@ -598,6 +609,9 @@ impl<U: EventListener> Crosswords<U> {
             active_semantic_prompt: None,
             semantic_command_candidate: None,
             semantic_command_started: None,
+            semantic_command_output_observed: false,
+            semantic_command_result_sequence: 0,
+            pending_semantic_command_boundary: None,
             damage_event_in_flight: false,
             modify_other_keys: 0,
             keyboard_mode_stack: Default::default(),
@@ -2568,8 +2582,14 @@ impl<U: EventListener> Crosswords<U> {
     /// shell is replacing that prompt, not starting a new command. Clearing
     /// every row carrying the id avoids leaving wrapped path/lambda fragments
     /// behind when the replacement is shorter or arrives after a resize.
-    fn clear_active_prompt_block(&mut self, prompt_id: u64) {
+    fn clear_active_prompt_block(
+        &mut self,
+        prompt_id: u64,
+    ) -> Option<crate::crosswords::grid::row::SemanticCommandBoundary> {
         let lines = self.all_prompt_rows(prompt_id);
+        let prior_boundary = lines
+            .iter()
+            .find_map(|line| self.grid[*line].semantic_command_boundary);
         let mut first_visible = None;
 
         for line in lines {
@@ -2584,6 +2604,7 @@ impl<U: EventListener> Crosswords<U> {
             self.grid.cursor.should_wrap = false;
         }
         self.mark_fully_damaged();
+        prior_boundary
     }
 
     fn active_prompt_rows(&self, prompt_id: u64, visible_only: bool) -> Vec<Line> {
@@ -3699,6 +3720,8 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.active_semantic_prompt = None;
         self.semantic_command_candidate = None;
         self.semantic_command_started = None;
+        self.semantic_command_output_observed = false;
+        self.pending_semantic_command_boundary = None;
         self.vi_mode_cursor = Default::default();
         self.keyboard_mode_stack = Default::default();
         self.inactive_keyboard_mode_stack = Default::default();
@@ -3829,13 +3852,20 @@ impl<U: EventListener> Handler for Crosswords<U> {
                 .active_semantic_prompt
                 .as_ref()
                 .is_some_and(|active| active.id == prompt_id);
-        if let Some(prompt_id) = prompt_id.filter(|_| redraws_live_prompt) {
-            self.clear_active_prompt_block(prompt_id);
-        }
+        let redrawn_boundary = prompt_id
+            .filter(|_| redraws_live_prompt)
+            .and_then(|prompt_id| self.clear_active_prompt_block(prompt_id));
 
         let row = self.grid.cursor.pos.row;
         self.grid[row].set_semantic_prompt(mark, prompt_id);
         if mark == crate::crosswords::grid::row::SemanticPrompt::Prompt {
+            if let Some(boundary) = self
+                .pending_semantic_command_boundary
+                .take()
+                .or(redrawn_boundary)
+            {
+                self.grid[row].set_semantic_command_boundary(boundary);
+            }
             self.semantic_command_candidate = None;
             self.semantic_prompt_id = prompt_id;
             self.active_semantic_prompt = Some(ActiveSemanticPrompt {
@@ -3867,6 +3897,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
     fn semantic_command_start(&mut self) {
         self.active_semantic_prompt = None;
+        self.semantic_command_output_observed = false;
         let candidate = self.semantic_command_candidate;
         let prompt_id = self.semantic_prompt_id.or_else(|| candidate.flatten());
         if prompt_id.is_some() || candidate.is_some() {
@@ -3883,6 +3914,8 @@ impl<U: EventListener> Handler for Crosswords<U> {
         let active_candidate =
             self.active_semantic_prompt.as_ref().map(|active| active.id);
         self.active_semantic_prompt = None;
+        self.pending_semantic_command_boundary = None;
+        let output_observed = std::mem::take(&mut self.semantic_command_output_observed);
         let candidate = self.semantic_command_candidate.take().or(active_candidate);
         let (prompt_id, elapsed_ms) = match self.semantic_command_started.take() {
             Some((prompt_id, started)) => (
@@ -3902,7 +3935,19 @@ impl<U: EventListener> Handler for Crosswords<U> {
         // backward from the live edge and stop as soon as its prompt-start row
         // is reached. Normal commands now inspect only their recent output
         // instead of traversing the entire scrollback ring after every Enter.
+        let mut newest_nonempty_line = None;
+        self.semantic_command_result_sequence =
+            self.semantic_command_result_sequence.wrapping_add(1).max(1);
+        let result = crate::crosswords::grid::row::SemanticCommandResult {
+            id: self.semantic_command_result_sequence,
+            exit_code,
+            elapsed_ms,
+        };
+        let mut discovered_output = false;
         for line in (-history..screen_lines).rev().map(Line) {
+            if newest_nonempty_line.is_none() && !self.grid[line].is_clear() {
+                newest_nonempty_line = Some(line);
+            }
             if self.grid[line].semantic_prompt
                 != crate::crosswords::grid::row::SemanticPrompt::Prompt
             {
@@ -3913,17 +3958,37 @@ impl<U: EventListener> Handler for Crosswords<U> {
                 None => self.grid[line].semantic_prompt_id.is_none(),
             };
             if owns_prompt {
-                self.grid[line].set_semantic_command_result(
-                    crate::crosswords::grid::row::SemanticCommandResult {
-                        exit_code,
-                        elapsed_ms,
-                    },
-                );
+                self.grid[line].set_semantic_command_result(result);
+
+                // Locate the first row not owned by the prompt's editable
+                // block. The reverse traversal already found the newest
+                // nonempty row, so proving whether output exists is O(1)
+                // after this short contiguous prompt walk.
+                let mut output_start = line.0.saturating_add(1);
+                while output_start < screen_lines {
+                    let row = &self.grid[Line(output_start)];
+                    if row.semantic_prompt
+                        != crate::crosswords::grid::row::SemanticPrompt::PromptContinuation
+                        || row.semantic_prompt_id != prompt_id
+                    {
+                        break;
+                    }
+                    output_start = output_start.saturating_add(1);
+                }
+                discovered_output =
+                    newest_nonempty_line.is_some_and(|newest| newest.0 >= output_start);
                 if line.0 >= 0 {
                     self.damage.damage_line(line.0 as usize);
                 }
                 break;
             }
+        }
+        if output_observed || discovered_output {
+            self.pending_semantic_command_boundary =
+                Some(crate::crosswords::grid::row::SemanticCommandBoundary {
+                    source_prompt_id: prompt_id,
+                    result,
+                });
         }
     }
 
@@ -4012,6 +4077,9 @@ impl<U: EventListener> Handler for Crosswords<U> {
             Some(w) => w as usize,
             None => return,
         };
+        if self.semantic_command_started.is_some() {
+            self.semantic_command_output_observed = true;
+        }
 
         // Handle zero-width characters.
         if width == 0 {
@@ -4622,6 +4690,9 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
     #[inline]
     fn linefeed(&mut self) {
+        if self.semantic_command_started.is_some() {
+            self.semantic_command_output_observed = true;
+        }
         if let Some(active) = self.active_semantic_prompt.as_mut() {
             if active.phase == ActivePromptPhase::Context {
                 active.context_row_open = false;
@@ -6569,6 +6640,173 @@ mod tests {
     }
 
     #[test]
+    fn nonempty_results_publish_stable_following_prompt_boundaries() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::performer::handler::Processor;
+
+        let mut cw = make_prompt_crosswords(80, 10);
+        let mut processor = Processor::default();
+        processor.advance(
+            &mut cw,
+            b"\x1b]133;A;aid=1\x07one> \x1b]133;B\x07echo one\r\n\
+              \x1b]133;C\x07one-output\r\n\x1b]133;D;0\x07\
+              \x1b]133;A;aid=2\x07two> \x1b]133;B\x07echo two\r\n\
+              \x1b]133;C\x07two-output\r\n\x1b]133;D;7\x07\
+              \x1b]133;A;aid=3\x07three> ",
+        );
+
+        let rows = (-(cw.grid.history_size() as i32)..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .filter(|line| cw.grid[*line].semantic_prompt == SemanticPrompt::Prompt)
+            .collect::<Vec<_>>();
+        let result_ids = rows
+            .iter()
+            .filter_map(|line| {
+                cw.grid[*line]
+                    .semantic_command_result
+                    .map(|result| result.id)
+            })
+            .collect::<Vec<_>>();
+        assert_eq!(result_ids, vec![1, 2]);
+
+        let second_boundary = rows
+            .iter()
+            .find(|line| cw.grid[**line].semantic_prompt_id == Some(2))
+            .and_then(|line| cw.grid[*line].semantic_command_boundary)
+            .expect("second prompt should bound first output");
+        assert_eq!(second_boundary.source_prompt_id, Some(1));
+        assert_eq!(second_boundary.result.id, 1);
+        assert_eq!(second_boundary.result.exit_code, Some(0));
+
+        let third_boundary = rows
+            .iter()
+            .find(|line| cw.grid[**line].semantic_prompt_id == Some(3))
+            .and_then(|line| cw.grid[*line].semantic_command_boundary)
+            .expect("third prompt should bound second output");
+        assert_eq!(third_boundary.source_prompt_id, Some(2));
+        assert_eq!(third_boundary.result.id, 2);
+        assert_eq!(third_boundary.result.exit_code, Some(7));
+
+        processor.advance(&mut cw, b"\x1b]133;A;aid=3\x07three> ");
+        let repainted = (-(cw.grid.history_size() as i32)..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .find_map(|line| {
+                (cw.grid[line].semantic_prompt_id == Some(3))
+                    .then_some(cw.grid[line].semantic_command_boundary)
+                    .flatten()
+            })
+            .expect("same-generation repaint must preserve the prior output boundary");
+        assert_eq!(repainted, third_boundary);
+    }
+
+    #[test]
+    fn silent_completion_does_not_publish_an_empty_result_boundary() {
+        use crate::performer::handler::Processor;
+
+        let mut cw = make_prompt_crosswords(80, 8);
+        let mut processor = Processor::default();
+        processor.advance(
+            &mut cw,
+            b"\x1b]133;A;aid=1\x07one> \x1b]133;B\x07true\r\n\
+              \x1b]133;C\x07\x1b]133;D;0\x07\x1b]133;A;aid=2\x07two> ",
+        );
+
+        let next_prompt_boundary = (-(cw.grid.history_size() as i32)
+            ..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .find_map(|line| {
+                (cw.grid[line].semantic_prompt_id == Some(2))
+                    .then_some(cw.grid[line].semantic_command_boundary)
+            })
+            .flatten();
+        assert_eq!(next_prompt_boundary, None);
+        assert!(
+            (-(cw.grid.history_size() as i32)..cw.grid.screen_lines() as i32)
+                .map(Line)
+                .any(|line| cw.grid[line]
+                    .semantic_command_result
+                    .is_some_and(|result| result.id == 1)),
+            "silent commands still retain truthful completion metadata"
+        );
+    }
+
+    #[test]
+    fn result_boundary_survives_source_prompt_scrollback_eviction() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::performer::handler::Processor;
+
+        let mut cw = Crosswords::new(
+            CrosswordsSize::new(24, 4),
+            CursorShape::Block,
+            VoidListener {},
+            crate::event::WindowId::from(0),
+            0,
+            2,
+        );
+        let mut processor = Processor::default();
+        let mut stream = b"]133;A;aid=1one> ]133;Brun
+]133;C"
+            .to_vec();
+        for index in 0..24 {
+            stream.extend_from_slice(
+                format!(
+                    "overflow-{index}
+"
+                )
+                .as_bytes(),
+            );
+        }
+        stream.extend_from_slice(b"]133;D;7]133;A;aid=2two> ");
+        processor.advance(&mut cw, &stream);
+
+        let retained = (-(cw.grid.history_size() as i32)..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .collect::<Vec<_>>();
+        assert!(retained.iter().all(|line| {
+            cw.grid[*line].semantic_prompt_id != Some(1)
+                && cw.grid[*line].semantic_command_result.is_none()
+        }));
+        let boundary = retained
+            .into_iter()
+            .find(|line| {
+                cw.grid[*line].semantic_prompt == SemanticPrompt::Prompt
+                    && cw.grid[*line].semantic_prompt_id == Some(2)
+            })
+            .and_then(|line| cw.grid[line].semantic_command_boundary)
+            .expect(
+                "the following prompt must retain the evicted command result boundary",
+            );
+        assert_eq!(boundary.source_prompt_id, Some(1));
+        assert_eq!(boundary.result.id, 1);
+        assert_eq!(boundary.result.exit_code, Some(7));
+    }
+
+    #[test]
+    fn newline_only_output_publishes_a_result_boundary() {
+        use crate::performer::handler::Processor;
+
+        let mut cw = make_prompt_crosswords(80, 8);
+        let mut processor = Processor::default();
+        processor.advance(
+            &mut cw,
+            b"]133;A;aid=1one> ]133;Bblank
+              ]133;C
+
+]133;D;0]133;A;aid=2two> ",
+        );
+
+        let boundary = (-(cw.grid.history_size() as i32)..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .find_map(|line| {
+                (cw.grid[line].semantic_prompt_id == Some(2))
+                    .then_some(cw.grid[line].semantic_command_boundary)
+                    .flatten()
+            })
+            .expect("linefeed activity after command start is visible output");
+        assert_eq!(boundary.source_prompt_id, Some(1));
+        assert_eq!(boundary.result.id, 1);
+    }
+    #[test]
     fn bare_command_end_closes_the_latest_legacy_prompt_without_guessing_status() {
         use crate::crosswords::grid::row::SemanticPrompt;
         use crate::performer::handler::Processor;
@@ -6590,6 +6828,7 @@ mod tests {
         assert_eq!(
             completed,
             Some(crate::crosswords::grid::row::SemanticCommandResult {
+                id: 1,
                 exit_code: None,
                 elapsed_ms: None,
             }),
@@ -6618,6 +6857,7 @@ mod tests {
         assert_eq!(
             completed,
             Some(crate::crosswords::grid::row::SemanticCommandResult {
+                id: 1,
                 exit_code: None,
                 elapsed_ms: None,
             }),
@@ -6654,6 +6894,7 @@ mod tests {
         assert_eq!(
             completed,
             vec![crate::crosswords::grid::row::SemanticCommandResult {
+                id: 1,
                 exit_code: None,
                 elapsed_ms: None,
             }],

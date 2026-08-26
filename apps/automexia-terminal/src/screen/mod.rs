@@ -599,6 +599,7 @@ fn write_native_resize_snapshot(
         .filter(|(_, row)| {
             row.semantic_prompt != SemanticPrompt::None
                 || row.semantic_command_result.is_some()
+                || row.semantic_command_boundary.is_some()
         })
         .map(|(index, row)| {
             let kind = match row.semantic_prompt {
@@ -617,6 +618,12 @@ fn write_native_resize_snapshot(
                     .semantic_command_result
                     .and_then(|result| result.elapsed_ms),
                 "has_result": row.semantic_command_result.is_some(),
+                "boundary_source_generation": row
+                    .semantic_command_boundary
+                    .and_then(|boundary| boundary.source_prompt_id),
+                "boundary_result_id": row
+                    .semantic_command_boundary
+                    .map(|boundary| boundary.result.id),
             })
         })
         .collect::<Vec<_>>();

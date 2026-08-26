@@ -1009,10 +1009,41 @@ $rendererConfig
             HasOutput = $false
         }
     )
+    $viewportRows = [Math]::Max(4, [int]$initial.rows)
+    $overflowHeights = @(
+        [Math]::Max(1, $viewportRows - 2)
+        [Math]::Max(1, $viewportRows - 1)
+        $viewportRows
+        $viewportRows + 1
+        ($viewportRows * 2) - 1
+        $viewportRows * 2
+        ($viewportRows * 2) + 1
+    ) | Select-Object -Unique
+    $overflowIndex = 0
+    foreach ($outputRows in $overflowHeights) {
+        $overflowIndex += 1
+        $marker = "AMX_RESULT_OVERFLOW_$($overflowIndex.ToString('D2'))"
+        $resultCommandCases += [pscustomobject]@{
+            Name = "viewport-overflow-$outputRows"
+            Command = "1..$outputRows | ForEach-Object { Write-Output ('$marker' + '_' + `$_) }"
+            Tokens = @("$marker`_$outputRows")
+            ExitCode = 0
+            HasOutput = $true
+            OutputRows = $outputRows
+            OwnerMustBeOffscreen = $outputRows -ge $viewportRows
+        }
+    }
     $resultCommandEvidence = @()
     $resultProbe = $initial
 
     foreach ($case in $resultCommandCases) {
+        $ownerMustBeOffscreen = $null -ne $case.PSObject.Properties['OwnerMustBeOffscreen'] -and
+            [bool]$case.OwnerMustBeOffscreen
+        $outputRowsEvidence = if ($null -eq $case.PSObject.Properties['OutputRows']) {
+            $null
+        } else {
+            [int]$case.OutputRows
+        }
         $previousPromptId = [int64]$resultProbe.latest_prompt_id
         $previousResultKey = if ($null -eq $resultProbe.command_result_key) {
             -1
@@ -1065,6 +1096,22 @@ $rendererConfig
             Write-Host ($caseReady | ConvertTo-Json -Depth 10)
             throw "Command-result case '$($case.Name)' did not publish fresh, truthful, visible output grouping"
         }
+        if ($ownerMustBeOffscreen) {
+            $visibleOwner = @($caseReady.semantic_rows | Where-Object {
+                $_.has_result -and [int64]$_.generation -eq $previousPromptId
+            })
+            if ($visibleOwner.Count -ne 0) {
+                throw "Viewport-overflow case '$($case.Name)' did not move its source result owner above the visible snapshot"
+            }
+            $visibleBoundary = @($caseReady.semantic_rows | Where-Object {
+                $null -ne $_.boundary_result_id -and
+                    [int64]$_.boundary_result_id -eq [int64]$caseReady.command_result_key -and
+                    [int64]$_.boundary_source_generation -eq $previousPromptId
+            })
+            if ($visibleBoundary.Count -ne 1) {
+                throw "Viewport-overflow case '$($case.Name)' did not retain exactly one visible terminal-owned result boundary"
+            }
+        }
         # Report the evidence owned by this command, not the most recent
         # paintable surface. Silent commands intentionally leave the preceding
         # output surface visible, so copying the selected surface here would
@@ -1086,6 +1133,8 @@ $rendererConfig
             exit_code = [int]$case.ExitCode
             has_output = [bool]$case.HasOutput
             painted = [bool]$case.HasOutput
+            output_rows = $outputRowsEvidence
+            source_owner_offscreen = $ownerMustBeOffscreen
         }
         $resultProbe = $caseReady
     }

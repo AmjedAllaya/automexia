@@ -37,7 +37,8 @@ pub struct PromptAnchor {
 pub struct CommandResultAnchor {
     /// Stable semantic prompt identity; preferred across resize/reflow.
     pub generation: Option<u64>,
-    /// Absolute source-row fallback for integrations without stable identities.
+    /// Pane-local monotonic completion identity. This remains stable through
+    /// resize/reflow even for integrations without stable prompt identities.
     pub key: u64,
     pub x: f32,
     pub y: f32,

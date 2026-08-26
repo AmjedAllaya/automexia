@@ -28,12 +28,27 @@ pub enum SemanticPrompt {
 /// status/duration badge without writing decoration bytes into the PTY.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct SemanticCommandResult {
+    /// Pane-local monotonic completion identity. Unlike a physical row key,
+    /// this remains stable when the grid reflows.
+    pub id: u64,
     /// Shell-reported status. A missing OSC 133 `D` status is intentionally
     /// neutral; it must never be presented as a successful exit.
     pub exit_code: Option<i32>,
     /// Terminal-measured execution time. This is absent when a shell can prove
     /// only the output boundary (for example stock Command Prompt).
     pub elapsed_ms: Option<u64>,
+}
+
+/// Completed output boundary attached to the following semantic prompt.
+///
+/// The originating prompt can scroll above the viewport while the output tail
+/// and following prompt remain visible. Carrying this small projection on the
+/// following prompt preserves result ownership without scanning scrollback on
+/// the renderer hot path.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticCommandBoundary {
+    pub source_prompt_id: Option<u64>,
+    pub result: SemanticCommandResult,
 }
 
 /// A row in the grid.
@@ -68,6 +83,9 @@ pub struct Row<T> {
     /// 133 `C`/`D` lifecycle.  It remains `None` for an editable prompt.
     pub semantic_command_result: Option<SemanticCommandResult>,
 
+    /// Previous command result whose visible output ends at this prompt.
+    pub semantic_command_boundary: Option<SemanticCommandBoundary>,
+
     /// Per-row dirty bit set on every write through `IndexMut` /
     /// `last_mut` / `iter_mut` / `reset` / `append*` / `front_split_off`.
     /// Read + cleared by the renderer's snapshot path so it can copy
@@ -87,6 +105,7 @@ impl<T> Default for Row<T> {
             semantic_prompt: SemanticPrompt::None,
             semantic_prompt_id: None,
             semantic_command_result: None,
+            semantic_command_boundary: None,
             dirty: true,
         }
     }
@@ -128,6 +147,7 @@ impl<T: Clone + Default> Row<T> {
             semantic_prompt: SemanticPrompt::None,
             semantic_prompt_id: None,
             semantic_command_result: None,
+            semantic_command_boundary: None,
             dirty: true,
         }
     }
@@ -147,6 +167,7 @@ impl<T: Clone + Default> Row<T> {
         self.semantic_prompt = src.semantic_prompt;
         self.semantic_prompt_id = src.semantic_prompt_id;
         self.semantic_command_result = src.semantic_command_result;
+        self.semantic_command_boundary = src.semantic_command_boundary;
     }
 
     /// Reset a recycled row back to a blank `columns`-wide row, reusing the
@@ -165,6 +186,7 @@ impl<T: Clone + Default> Row<T> {
         self.semantic_prompt = SemanticPrompt::None;
         self.semantic_prompt_id = None;
         self.semantic_command_result = None;
+        self.semantic_command_boundary = None;
         self.dirty = true;
     }
 
@@ -252,6 +274,7 @@ impl<T: Clone + Default> Row<T> {
         self.semantic_prompt = SemanticPrompt::None;
         self.semantic_prompt_id = None;
         self.semantic_command_result = None;
+        self.semantic_command_boundary = None;
         self.dirty = true;
     }
 }
@@ -268,6 +291,7 @@ impl<T> Row<T> {
             semantic_prompt: SemanticPrompt::None,
             semantic_prompt_id: None,
             semantic_command_result: None,
+            semantic_command_boundary: None,
             dirty: true,
         }
     }
@@ -360,6 +384,7 @@ impl<T> Row<T> {
         self.semantic_prompt_id = prompt_id;
         if prompt == SemanticPrompt::Prompt {
             self.semantic_command_result = None;
+            self.semantic_command_boundary = None;
         }
         self.dirty = true;
     }
@@ -373,10 +398,12 @@ impl<T> Row<T> {
         if self.semantic_prompt != SemanticPrompt::None
             || self.semantic_prompt_id.is_some()
             || self.semantic_command_result.is_some()
+            || self.semantic_command_boundary.is_some()
         {
             self.semantic_prompt = SemanticPrompt::None;
             self.semantic_prompt_id = None;
             self.semantic_command_result = None;
+            self.semantic_command_boundary = None;
             self.dirty = true;
         }
     }
@@ -385,6 +412,13 @@ impl<T> Row<T> {
     #[inline]
     pub fn set_semantic_command_result(&mut self, result: SemanticCommandResult) {
         self.semantic_command_result = Some(result);
+        self.dirty = true;
+    }
+
+    /// Store the preceding completed output boundary on this prompt row.
+    #[inline]
+    pub fn set_semantic_command_boundary(&mut self, boundary: SemanticCommandBoundary) {
+        self.semantic_command_boundary = Some(boundary);
         self.dirty = true;
     }
 }

@@ -1932,10 +1932,22 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         .as_ref()
         .and_then(|report| report.parent())
         .map(|parent| parent.join("typography-captures"));
+    let result_capture_directory = requested_report_path
+        .as_ref()
+        .and_then(|report| report.parent())
+        .map(|parent| parent.join("result-captures"));
     if let Some(directory) = typography_capture_directory.as_ref() {
         fs::create_dir_all(directory).map_err(|error| {
             format!(
                 "could not create native typography capture directory {}: {error}",
+                directory.display()
+            )
+        })?;
+    }
+    if let Some(directory) = result_capture_directory.as_ref() {
+        fs::create_dir_all(directory).map_err(|error| {
+            format!(
+                "could not create native command-result capture directory {}: {error}",
                 directory.display()
             )
         })?;
@@ -1946,6 +1958,12 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     let cpu_typography_capture = typography_capture_directory
         .as_ref()
         .map(|directory| directory.join("workspace-cpu.png"));
+    let wgpu_result_capture = result_capture_directory
+        .as_ref()
+        .map(|directory| directory.join("command-result-wgpu.png"));
+    let cpu_result_capture = result_capture_directory
+        .as_ref()
+        .map(|directory| directory.join("command-result-cpu.png"));
     let wgpu_report = requested_report_path
         .clone()
         .unwrap_or_else(|| report_directory.path().join("wgpu.json"));
@@ -1969,6 +1987,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     }
     if let Some(capture) = wgpu_typography_capture.as_ref() {
         command.arg("-TypographyCapture").arg(capture);
+    }
+    if let Some(capture) = wgpu_result_capture.as_ref() {
+        command.arg("-ResultCapture").arg(capture);
     }
     run_command(command, "native Windows WGPU GUI resize stress")?;
 
@@ -1997,6 +2018,9 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     }
     if let Some(capture) = cpu_typography_capture.as_ref() {
         cpu_command.arg("-TypographyCapture").arg(capture);
+    }
+    if let Some(capture) = cpu_result_capture.as_ref() {
+        cpu_command.arg("-ResultCapture").arg(capture);
     }
     run_command(cpu_command, "native Windows CPU GUI resize stress")?;
     verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)
