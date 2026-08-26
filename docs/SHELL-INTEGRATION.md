@@ -167,7 +167,11 @@ success and error exits, single- and multiline output, and managed input wrapped
 beyond eight rows. A persistent tinted band, adaptive 6-10 pixel visual
 breathing gutter, end rule, and compact exit state plus duration when the shell
 can provide them separate the result from the next editable command without
-relying on color alone. A newly completed live result lightens once, holds for
+relying on color alone. Every accepted desktop completion also receives a
+terminal-owned local datetime. The right edge shows `YYYY-MM-DD HH:MM:SS` with
+status and duration when it fits, drops duration first, then uses `MM-DD HH:MM`
+in a narrow pane. It never uses shell-provided timestamp text or a live clock.
+A newly completed live result lightens once, holds for
 the first third of its 540 millisecond cycle, and then eases out through
 opacity; it never blinks, moves, repeats, or restarts while viewing scrollback.
 
@@ -177,7 +181,7 @@ opacity; it never blinks, moves, repeats, or restarts while viewing scrollback.
 | Bash | Monotonic `A/B/C/D` with the captured shell exit status | Available |
 | Zsh | Monotonic `A/B/C/D` with the captured shell exit status | Available |
 | Fish | `fish_prompt`, `fish_preexec`, `fish_postexec`, and `fish_posterror` provide a monotonic `A/B/C/D` lifecycle with the captured status without replacing the user's prompt body | Available |
-| stock CMD | The next prompt emits a bare `D` before its fresh `A/B`; `cmd.exe` exposes no supported generic status or timing value | Available as a neutral surface; status and duration are not fabricated |
+| stock CMD | The next prompt emits a bare `D` before its fresh `A/B`; `cmd.exe` exposes no supported generic status or timing value | Available with terminal-owned completion datetime and neutral status/duration |
 | unintegrated or unsupported shell | No complete trusted lifecycle | Not drawn |
 
 The renderer applies that treatment only when semantic prompt ownership proves

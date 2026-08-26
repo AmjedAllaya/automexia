@@ -747,7 +747,7 @@ snapshot or capture I/O.
 Palette wheel/indicator native oracles are in UI-04:
 [Manual feature testing](MANUAL-FEATURE-TESTING.md).
 
-See [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) for the focused incident and native evidence.
+[Command-result assurance](COMMAND-RESULT-ASSURANCE.md) owns focused native evidence.
 
 Before the pane-local coverage, the native gate exercises the exact top-level
 tab lifecycle used by `Ctrl+T`. It requires the new tab to be selected exactly
@@ -757,7 +757,7 @@ bottom, and publish one complete prompt without synthetic keyboard input.
 The same real ConPTY then enters bare `cmd`, requires CMD identity and the
 complete lambda/path prompt without a second keypress, renders folder and Rust
 icons directly beside fixture names, and requires that output to own a fresh
-neutral result surface with no fabricated generation, exit status, or duration.
+neutral result surface with a terminal-owned datetime and no fabricated status or duration.
 It then exits and requires PowerShell identity to return on the first parent
 prompt. Native snapshots are decoded explicitly as UTF-8, so mojibake cannot
 satisfy the glyph assertions.
@@ -1927,7 +1927,7 @@ package; and external evidence ladder is maintained
 in [Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md).
 Exact surface, responsive, focus, ownership-path/session-kind, usability, and accessibility
 requirements are owned by the
-[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+[Production Operations experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
 The dedicated testing plan applies them separately to shell-owned insertion,
 PO6 managed execution and PO6 managed diagnostic sessions; this index does not
 duplicate that contract.

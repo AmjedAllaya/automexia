@@ -57,7 +57,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U7.1 command-palette mouse scrolling | `application.rs` routes wheel/trackpad input to the visible palette before pane focus, terminal scrollback, mouse reporting, or PTY paths; `renderer/command_palette.rs` owns bounded fractional motion, direction reset, responsive offset clamping, visible selection, and a persistent branded overflow thumb that brightens during activity; focused tests cover both directions, boundaries, short/empty/filtered lists, malformed and over-limit deltas, query/keyboard/resize transitions, and modal priority | Native physical mouse/precision-trackpad pixels and accessibility scroll-position delivery on every release platform remain U10 evidence |
 | **Fully done** | U8 first-run welcome | `router/routes/welcome.rs` replaces the legacy black-and-white animation with a static responsive Automexia card, shared theme-aware accents, one clear Enter action, bounded copy, and no local configuration-path disclosure; layout/DPI/target/privacy tests own the contract | None for source implementation |
 | **Fully done** | U9 branded window caption controls | `renderer/responsive.rs` and `renderer/island.rs` use a compact 42-pixel comfortable shelf and 30-pixel visible caption cards inside preserved 40-pixel right-edge hit targets; the three separated cards have no shared border or decorative underline, use distinct cyan/purple/coral glyphs, expose rest/hover/held/inactive feedback, follow native maximize/restore state, and activate only on same-control release with drag-away/focus-loss cancellation; exact geometry and paint-command regressions reject enlarged chrome, undersized targets, overlap, grouped containers, and reintroduced underline rails | None for source implementation |
-| **Fully done** | U9.1 command-result boundary and surface | `rio-vt` allocates stable pane-local completion IDs, carries one content-free result boundary onto the following prompt, and preserves it through prompt repaint, row reuse, reflow, viewport overflow, and complete source-prompt scrollback eviction. The renderer deduplicates by that ID and paints one persistent tint, gutter, end rule, status treatment, and reduced-motion-aware lightening without scanning history. Real parser-to-visible-render tests cover output heights on both sides of every viewport boundary, newline-only output, silent completion, and full source eviction. | Current-commit multi-platform pixels and assistive-technology delivery remain U10 release evidence, not missing U9.1 source behavior. |
+| **Fully done** | U9.1 command-result boundary, datetime and surface | `rio-vt` allocates stable pane-local completion IDs, captures one validated terminal-owned local completion datetime, carries one content-free result boundary onto the following prompt, and preserves both through prompt repaint, row reuse, reflow, viewport overflow, and complete source-prompt scrollback eviction. The renderer deduplicates by ID and paints one responsive ISO/compact datetime, persistent tint, gutter, end rule, status treatment, and reduced-motion-aware lightening without scanning history. Real parser-to-visible-render tests cover output heights on both sides of every viewport boundary, boundary-only CMD, newline-only output, silent completion, full source eviction, and no timestamp fabrication. | Current-commit multi-platform pixels, timezone-transition runs, and assistive-technology delivery remain U10 release evidence, not missing U9.1 source behavior. |
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
 | **Fully done** | U9.4 continuous pane/workspace search | `bindings/mod.rs` keeps local/global search shortcuts active during Search; `screen/mod.rs` owns query-preserving, pane-isolated scope transitions and bounded visible-match counts; `renderer/search.rs` owns one responsive surface with clickable/keyboard scope choices, focus state, result status, and privacy-safe announcements. Focused tests cover both directions, idempotence, pointer targets, PTY isolation, checked/focused semantics, and tiny/HiDPI/ultrawide geometry; native Windows WGPU and CPU runs validate the real split-pane card. | Native Narrator/NVDA, VoiceOver, and Orca delivery remains part of U10 and the accepted v0.5 platform adapter. |
@@ -154,9 +154,10 @@ Focused Windows x86_64 and WSL source/native evidence completed through 2026-08-
 - custom caption-control layout, semantic role, hit-target, maximize/restore,
   held-state, focus-loss, release-cancellation, and independent-card snapshot tests: 54 passed;
 - command-result following-prompt placement, truthful output bounds, stable
-  completion identity, newline-only output, silent completion, full source-row
-  eviction, row reuse, repaint, reflow, and renderer deduplication passed 506 VT
-  unit tests, 3 VT conformance tests, and 24 focused renderer tests;
+  completion identity and datetime, newline-only output, silent completion,
+  full source-row eviction, row reuse, repaint, reflow, and renderer
+  deduplication passed 508 VT unit tests, 3 VT conformance tests, 13 direct
+  command-result tests, and the 15-case broad `result_` renderer filter;
 - the real parser-to-scrollback-to-visible-render regression passes output
   heights `rows-2`, `rows-1`, `rows`, `rows+1`, `2*rows-1`, `2*rows`, and
   `2*rows+1`; the last five require the source owner to be offscreen and exactly
@@ -164,12 +165,13 @@ Focused Windows x86_64 and WSL source/native evidence completed through 2026-08-
 - a 512-output-row Criterion sample measured 192.69-202.72 microseconds and
   50.384-53.005 MiB/s on the local Windows x86_64 host. This is a first sample,
   not a controlled regression comparison;
-- the current Windows WGPU native run passed all eight base PowerShell cases and
-  the seven dynamic viewport-boundary cases at the 0.099 resting tint, including
-  glyph and blank-surface pixel thresholds. The wider desktop run was later
-  contaminated by a Windows Security dialog and stopped at the unrelated image
-  hover stage, so neither that composed frame nor a current CPU rerun is claimed
-  as complete U10 evidence;
+- the current Windows WGPU and CPU native drivers each passed all eight base
+  PowerShell cases, seven dynamic viewport-boundary cases, CMD, resize, history,
+  fullscreen, and multi-window stress at the 0.099 resting tint. Each backend
+  recorded 15 timestamped completions and the expected label on all 14 painted
+  results while retaining silent-command metadata without an empty surface;
+  cross-platform exact matrices and independent review remain external U10
+  evidence;
 - native Automexia/ConPTY/WSL/Bash passed stdout, multiline pipeline, stderr
   exit `7`, and silent-success ownership in the real application;
 - pointer-owned pane selection, selection preservation, and cross-pane wheel

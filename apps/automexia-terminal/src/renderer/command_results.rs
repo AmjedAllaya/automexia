@@ -115,7 +115,7 @@ struct CommandResultIdentity {
 type NativeCommandResultVisual = ([f32; 4], [f32; 4], u64);
 
 #[cfg(feature = "native-gui-test-hooks")]
-type NativeCommandResultIdentity = (Option<u64>, u64, Option<i32>);
+type NativeCommandResultIdentity = (Option<u64>, u64, Option<i32>, Option<u64>);
 
 #[cfg(feature = "native-gui-test-hooks")]
 type NativeCommandResultStyle = ([f32; 3], u64, f32);
@@ -225,6 +225,8 @@ pub struct CommandResults {
     native_visual: Option<CommandResultVisual>,
     #[cfg(feature = "native-gui-test-hooks")]
     native_identity: Option<NativeCommandResultIdentity>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_label: Option<String>,
 }
 
 impl CommandResults {
@@ -262,6 +264,11 @@ impl CommandResults {
     ) -> Option<NativeCommandResultIdentity> {
         self.native_identity
     }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_result_label(&self) -> Option<&str> {
+        self.native_label.as_deref()
+    }
     /// Draw completion state on the semantic row that owns the command.
     pub fn render_command_results(
         &mut self,
@@ -275,16 +282,31 @@ impl CommandResults {
         self.pulse
             .observe(anchors, allow_animation, prefer_untagged, now);
         #[cfg(feature = "native-gui-test-hooks")]
+        let native_label_target =
+            latest_paintable_command_result(anchors, prefer_untagged)
+                .map(CommandResultIdentity::from);
+        #[cfg(feature = "native-gui-test-hooks")]
         {
             let latest = latest_paintable_command_result(anchors, prefer_untagged);
             self.native_visual = latest.and_then(command_result_visual);
-            self.native_identity =
-                latest.map(|anchor| (anchor.generation, anchor.key, anchor.exit_code));
+            self.native_identity = latest.map(|anchor| {
+                (
+                    anchor.generation,
+                    anchor.key,
+                    anchor.exit_code,
+                    anchor.completed_at.map(|timestamp| timestamp.unix_ms),
+                )
+            });
+            self.native_label = None;
         }
         for anchor in anchors {
-            let (tone, label) =
-                command_result_presentation(anchor.exit_code, anchor.elapsed_ms);
-            let accent_color = match tone {
+            let timestamp = command_timestamp_label(anchor.completed_at);
+            let presentation = command_result_presentation(
+                anchor.exit_code,
+                anchor.elapsed_ms,
+                timestamp.as_deref(),
+            );
+            let accent_color = match presentation.tone {
                 CommandResultTone::Success => colors.green,
                 CommandResultTone::Failure => colors.red,
                 CommandResultTone::Neutral => colors.blue,
@@ -327,14 +349,25 @@ impl CommandResults {
                 divider_color[3] = RESULT_DIVIDER_ALPHA;
                 sugarloaf.rect(None, x, y, width, height, divider_color, 0.0, ORDER - 2);
             }
-            let text_width = sugarloaf.text_mut().measure(&label, &opts);
-            let x = anchor.x + anchor.width - text_width - 10.0;
-            if x <= anchor.x + 24.0 {
+            let maximum_width = (anchor.width - 34.0).max(0.0);
+            let Some((label, text_width)) =
+                fitting_command_result_label(&presentation, |candidate| {
+                    let width = sugarloaf.text_mut().measure(candidate, &opts);
+                    (width <= maximum_width).then_some(width)
+                })
+            else {
                 continue;
-            }
+            };
+            let x = anchor.x + anchor.width - text_width - 10.0;
             let tag_y = anchor.y + top_inset;
             let y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
-            sugarloaf.text_mut().draw(x, y, &label, &opts);
+            sugarloaf.text_mut().draw(x, y, label, &opts);
+            #[cfg(feature = "native-gui-test-hooks")]
+            {
+                if native_label_target == Some(CommandResultIdentity::from(anchor)) {
+                    self.native_label = Some(label.to_owned());
+                }
+            }
         }
     }
 }
@@ -346,10 +379,55 @@ enum CommandResultTone {
     Neutral,
 }
 
+#[derive(Debug, PartialEq, Eq)]
+struct CommandResultPresentation {
+    tone: CommandResultTone,
+    labels: [Option<String>; 4],
+}
+
+fn command_timestamp_label(
+    timestamp: Option<rio_backend::crosswords::grid::row::SemanticCommandTimestamp>,
+) -> Option<String> {
+    let timestamp = timestamp?;
+    #[cfg(feature = "visual-test-hooks")]
+    if let Some(label) =
+        crate::automexia::visual_test_hooks::frozen_command_datetime_label()
+    {
+        return Some(label.to_owned());
+    }
+    Some(format!(
+        "{:04}-{:02}-{:02} {:02}:{:02}:{:02}",
+        timestamp.year,
+        timestamp.month,
+        timestamp.day,
+        timestamp.hour,
+        timestamp.minute,
+        timestamp.second
+    ))
+}
+
+fn compact_command_timestamp(label: &str) -> Option<String> {
+    let bytes = label.as_bytes();
+    if bytes.len() != 19
+        || bytes[4] != b'-'
+        || bytes[7] != b'-'
+        || bytes[10] != b' '
+        || bytes[13] != b':'
+        || bytes[16] != b':'
+        || bytes.iter().enumerate().any(|(index, byte)| {
+            !matches!(index, 4 | 7 | 10 | 13 | 16) && !byte.is_ascii_digit()
+        })
+    {
+        return None;
+    }
+    Some(label[5..16].to_owned())
+}
+
 fn command_result_presentation(
     exit_code: Option<i32>,
     elapsed_ms: Option<u64>,
-) -> (CommandResultTone, String) {
+    timestamp: Option<&str>,
+) -> CommandResultPresentation {
     let (tone, status) = match exit_code {
         Some(0) => (CommandResultTone::Success, "✓"),
         Some(_) => (CommandResultTone::Failure, "×"),
@@ -358,7 +436,30 @@ fn command_result_presentation(
     let detail = elapsed_ms
         .map(format_duration)
         .unwrap_or_else(|| "done".to_string());
-    (tone, format!("{status}  {detail}"))
+    let fallback = format!("{status}  {detail}");
+    let labels = if let Some(timestamp) = timestamp {
+        [
+            Some(format!("{fallback}  ·  {timestamp}")),
+            Some(format!("{status}  {timestamp}")),
+            compact_command_timestamp(timestamp)
+                .map(|compact| format!("{status}  {compact}")),
+            Some(fallback),
+        ]
+    } else {
+        [Some(fallback), None, None, None]
+    };
+    CommandResultPresentation { tone, labels }
+}
+
+fn fitting_command_result_label<T>(
+    presentation: &CommandResultPresentation,
+    mut fits: impl FnMut(&str) -> Option<T>,
+) -> Option<(&str, T)> {
+    presentation
+        .labels
+        .iter()
+        .flatten()
+        .find_map(|label| fits(label).map(|measurement| (label.as_str(), measurement)))
 }
 
 fn format_duration(elapsed_ms: u64) -> String {
@@ -387,6 +488,18 @@ fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn timestamp() -> rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+        rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+            unix_ms: 1_777_575_942_000,
+            year: 2026,
+            month: 8,
+            day: 26,
+            hour: 19,
+            minute: 5,
+            second: 42,
+        }
+    }
     #[test]
     fn command_duration_uses_compact_units() {
         assert_eq!(format_duration(18), "18ms");
@@ -397,12 +510,68 @@ mod tests {
     #[test]
     fn command_result_status_is_neutral_when_the_shell_omits_exit_state() {
         assert_eq!(
-            command_result_presentation(None, None),
-            (CommandResultTone::Neutral, "•  done".to_string())
+            command_result_presentation(None, None, Some("2026-08-26 19:05:42")),
+            CommandResultPresentation {
+                tone: CommandResultTone::Neutral,
+                labels: [
+                    Some("•  done  ·  2026-08-26 19:05:42".to_string()),
+                    Some("•  2026-08-26 19:05:42".to_string()),
+                    Some("•  08-26 19:05".to_string()),
+                    Some("•  done".to_string()),
+                ],
+            }
         );
         assert_eq!(
-            command_result_presentation(Some(1), Some(18)),
-            (CommandResultTone::Failure, "×  18ms".to_string())
+            command_result_presentation(Some(1), Some(18), Some("2026-08-26 19:05:42")),
+            CommandResultPresentation {
+                tone: CommandResultTone::Failure,
+                labels: [
+                    Some("×  18ms  ·  2026-08-26 19:05:42".to_string()),
+                    Some("×  2026-08-26 19:05:42".to_string()),
+                    Some("×  08-26 19:05".to_string()),
+                    Some("×  18ms".to_string()),
+                ],
+            }
+        );
+    }
+
+    #[test]
+    fn timestamp_format_and_responsive_fallbacks_are_stable() {
+        assert_eq!(command_timestamp_label(None), None);
+        assert_eq!(
+            command_timestamp_label(Some(timestamp())).as_deref(),
+            Some("2026-08-26 19:05:42")
+        );
+        assert_eq!(
+            compact_command_timestamp("2026-08-26 19:05:42").as_deref(),
+            Some("08-26 19:05")
+        );
+        assert_eq!(compact_command_timestamp("untrusted"), None);
+
+        let presentation =
+            command_result_presentation(Some(0), Some(125), Some("2026-08-26 19:05:42"));
+        assert_eq!(
+            fitting_command_result_label(&presentation, |label| {
+                let width = label.chars().count();
+                (width <= 18).then_some(width)
+            })
+            .map(|(label, _)| label),
+            Some("✓  08-26 19:05")
+        );
+        assert_eq!(
+            fitting_command_result_label(&presentation, |label| {
+                let width = label.chars().count();
+                (width <= 8).then_some(width)
+            })
+            .map(|(label, _)| label),
+            Some("✓  125ms")
+        );
+        assert_eq!(
+            fitting_command_result_label(&presentation, |label| {
+                let width = label.chars().count();
+                (width <= 3).then_some(width)
+            }),
+            None
         );
     }
 
@@ -419,6 +588,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
         };
         let [x, y, width, height] = command_result_divider(&anchor).unwrap();
         assert!(x >= anchor.x);
@@ -443,6 +613,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
         };
 
         let visual = command_result_visual(&anchor).expect("visible output surface");
@@ -468,6 +639,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
         };
         assert_eq!(command_result_visual(&anchor), None);
 
@@ -492,6 +664,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
         };
         let started = Instant::now();
         let mut pulse = CommandResultPulse::default();
@@ -524,6 +697,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
         };
         let second = CommandResultAnchor {
             generation: Some(8),
@@ -577,6 +751,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: None,
             elapsed_ms: None,
+            completed_at: Some(timestamp()),
         };
         let stale = CommandResultAnchor {
             generation: Some(12),
@@ -589,6 +764,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(12),
+            completed_at: Some(timestamp()),
         };
         let started = Instant::now();
         let mut pulse = CommandResultPulse::default();
@@ -614,6 +790,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
         };
         let reflowed = CommandResultAnchor {
             key: 142,
@@ -649,6 +826,7 @@ mod tests {
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(12),
+            completed_at: Some(timestamp()),
         };
         let started = Instant::now();
         let mut results = CommandResults::default();

@@ -280,7 +280,10 @@ the renderer applies the same visible but restrained result surface to listing
 and non-listing commands, success and error exits, single- and multiline
 output, and managed input wrapped beyond eight rows. Its persistent tinted
 band, adaptive 6-10 pixel breathing gutter, end rule, and right-aligned known-
-status badge with duration keep the boundary redundant. The newest live result
+status badge with duration and one stable local completion datetime keep the
+boundary redundant. Wide panes show `YYYY-MM-DD HH:MM:SS`; constrained panes
+drop duration first and then use `MM-DD HH:MM` rather than overlap prompt
+context. The newest live result
 holds its lightening for the first third of one 540 millisecond cycle and then
 eases out, with no repeated blink or movement. These renderer-only cues do not
 insert rows or bytes, so selection, copy, search, history, prompt identity,
@@ -291,7 +294,8 @@ CMD reserves the same visible three-row structure and publishes OSC 7 plus OSC
 133 boundaries. Before each new prompt, the batch integration closes the
 previous command with a bare `D`; because stock `cmd.exe` exposes no supported
 generic status or timing value, Automexia groups its proven output with neutral
-styling and never fabricates a badge or duration. Fish wraps the existing user-
+styling and never fabricates a status or duration. It still receives the same
+terminal-owned completion datetime. Fish wraps the existing user-
 owned `fish_prompt` to add an identified `A/B` boundary without replacing its
 body, then publishes `C/D` from preexec/postexec/posterror events. Complete output
 surfaces are available in PowerShell, Bash, Zsh, Fish, and CMD; CMD is neutral.

@@ -6,7 +6,8 @@ command output grouping. User behavior and shell support remain authoritative in
 remains authoritative in [UI branding roadmap](UI-BRANDING-ROADMAP.md).
 
 Generic result geometry, exit classification, color, spacing, the 540 ms
-completion pulse, route-isolated state, and native hooks are owned by
+completion pulse, terminal-owned completion datetime, route-isolated state,
+and native hooks are owned by
 `apps/automexia-terminal/src/renderer/command_results.rs`. They are core
 application-renderer feedback and remain active when the optional DevOps context
 extension is disabled. `renderer/devops_status.rs` owns only optional prompt
@@ -54,13 +55,17 @@ threshold:
 6. expected output tokens must be present in renderer-neutral visible text;
 7. known success/error state must match the completed command, while a shell
    that cannot expose it must remain explicitly neutral;
-8. silent completion remains semantic without creating an empty surface or
+8. every accepted desktop completion carries one terminal-owned local datetime
+   and Unix-millisecond identity captured at completion; source and following-
+   prompt boundary metadata must agree, while render-width fallback may omit
+   duration or shorten the visible date without changing that identity;
+9. silent completion remains semantic without creating an empty surface or
    borrowing the preceding result;
-9. a native glyph-only region, excluding divider/status decoration, must
+10. a native glyph-only region, excluding divider/status decoration, must
    contain real output paint;
-10. blank surface pixels must visibly differ from adjacent blank gutter pixels;
-11. WGPU and the independent CPU fallback must pass the same release contract;
-12. generated snapshots and native hooks remain feature-gated test evidence and
+11. blank surface pixels must visibly differ from adjacent blank gutter pixels;
+12. WGPU and the independent CPU fallback must pass the same release contract;
+13. generated snapshots and native hooks remain feature-gated test evidence and
     add no product I/O, PTY bytes, terminal rows, persistence, or telemetry.
 
 Test-first execution also exposed a separate PowerShell defect. A shell-only
@@ -85,7 +90,7 @@ The native command matrix covers:
 | `Get-Item` provider pipeline | fresh success surface, pipeline token, and filename |
 | native stderr with exit `7` | fresh failure surface, stderr token, and exact exit status |
 | silent successful provider lookup | semantic success with no empty or falsely borrowed surface |
-| interactive CMD listing | fresh neutral surface with no fabricated generation, status, or duration |
+| interactive CMD listing | fresh neutral surface with a completion datetime and no fabricated generation, status, or duration |
 | native WSL Bash stdout/multiline/stderr/silent matrix | the same visible-or-silent ownership rules through Automexia, ConPTY, WSL, Bash, VT, and renderer |
 | output heights around viewport and two-viewport boundaries | one stable result ID; exact offscreen source ownership where required; one following-prompt boundary; visible output; no duplicate surface |
 | complete source-prompt scrollback eviction | the following prompt retains one boundary with the matching source generation and result ID |
@@ -96,6 +101,8 @@ Focused reproduction and ownership checks:
 ```text
 powershell.exe -NoLogo -NoProfile -ExecutionPolicy Bypass -File tools/ci/test_shell_integration.ps1
 cargo test -p automexia-terminal --bin automexia --locked --features native-gui-test-hooks result_
+cargo test -p automexia-terminal --bin automexia --locked command_result
+cargo test -p rio-vt --locked command_timestamp
 cargo test -p rio-vt --locked semantic_
 python tools/ci/check_feature_ownership.py
 python tools/ci/test_feature_ownership.py
@@ -128,8 +135,9 @@ are not presented as current-commit U10 visual evidence.
 
 Fresh source and focused evidence on 2026-08-26 produced:
 
-- 506 `rio-vt` unit tests and 3 VT conformance tests passed;
-- 24 focused renderer tests passed, including a real
+- 508 `rio-vt` unit tests and 3 VT conformance tests passed;
+- 13 direct command-result tests and the 15-case broad `result_` renderer
+  filter passed, including a real
   parser-to-scrollback-to-visible-render path;
 - output heights `rows-2`, `rows-1`, `rows`, `rows+1`, `2*rows-1`, `2*rows`,
   and `2*rows+1` retain one surface; cases at or beyond one viewport require
@@ -140,18 +148,21 @@ Fresh source and focused evidence on 2026-08-26 produced:
   50.384-53.005 MiB/s on this Windows x86_64 host, with 20 samples and six
   outliers. This first sample has no same-commit controlled baseline and is not
   a regression claim; and
-- the current WGPU native run passed the eight base PowerShell result cases and
-  all seven dynamic viewport-boundary result cases at the 0.099 resting tint,
-  including fresh ownership, exact boundary identity, visible tokens, glyph
-  paint, and blank-surface contrast thresholds.
+- the current WGPU and CPU native drivers each passed the eight base PowerShell
+  result cases, all seven dynamic viewport-boundary cases, CMD, resize, history,
+  fullscreen, and multi-window stress. Each report recorded 15 completion
+  timestamps; all 14 painted results exposed the exact frozen datetime label,
+  while the silent result retained timestamp identity without an empty surface;
+  and
+- the real lifecycle benchmark measured verified-status completion at
+  599.69-628.59 microseconds and boundary-only completion at 424.88-456.19
+  microseconds over 20 samples on this Windows x86_64 host. This is a first
+  timestamp-aware sample, not a controlled regression comparison.
 
-The complete native driver later encountered an unrelated image-hover failure,
-and a Windows Security dialog covered the application during the retained
-capture. That composed screenshot is contaminated and is not accepted as clean
-visual evidence. The current CPU fallback result matrix was not reached. These
-limitations do not invalidate the deterministic source tests or the WGPU
-result-stage assertions, but they do prevent a current-commit U10 completion
-claim.
+The WGPU and CPU result captures and path-bearing reports remain ignored,
+private local evidence. Automated geometry, label-state, glyph, contrast, and
+resource assertions passed; independent human review of exact native frames is
+still required before a controlled U10 visual claim.
 
 ## Remaining gates
 
@@ -161,11 +172,12 @@ viewport and complete-source-eviction defect without scanning retained history,
 adding product I/O, or fabricating output for silent commands.
 
 U10 remains **Partially done** because release assurance is larger than this
-source fix. A clean current-commit Windows WGPU and CPU run, native Linux X11 and
-Wayland, native macOS Intel and Apple Silicon, named resource/elevated suites,
-four exact 1,600-capture visual matrices, Narrator, NVDA, VoiceOver, and Orca
-X11/Wayland sessions, and independent review must populate one manifest that
-passes `python tools/ci/s1_assurance.py validate --require-complete`.
+source fix and one local automated Windows WGPU/CPU run. Native Linux X11 and
+Wayland, native macOS Intel and Apple Silicon, other Windows GPU/RDP and named
+resource/elevated suites, four exact 1,600-capture visual matrices, Narrator,
+NVDA, VoiceOver, and Orca X11/Wayland sessions, and independent review must
+populate one manifest that passes
+`python tools/ci/s1_assurance.py validate --require-complete`.
 Unintegrated or unsupported shells continue to fail closed.
 
 ## Relationship to planned diagnostic navigation

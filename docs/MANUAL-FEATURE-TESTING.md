@@ -840,6 +840,9 @@ For each output-producing command expect:
   next command line;
 - a status icon/duration when the shell proves them, or explicit neutral
   treatment when it cannot;
+- a stable local completion datetime at the right edge. A normal/wide pane uses
+  `YYYY-MM-DD HH:MM:SS`; narrower panes drop duration before compacting to
+  `MM-DD HH:MM`, without overlapping the left prompt-context tags;
 - one visible 540 ms lightening, roughly three times the original short effect,
   without repeated blinking or layout movement;
 - real output glyphs still visible independently of decoration; and
@@ -849,6 +852,11 @@ For each output-producing command expect:
 surface. The silent final command must not create an empty rectangle or borrow
 the previous command's surface. Failure to group any output-producing command,
 including `ls -ll`, is a failure even if the end rule alone is visible.
+Stock CMD keeps status and duration neutral but must still show its terminal-
+owned completion datetime. Change the OS timezone between two harmless commands:
+the earlier label must remain unchanged and the later label must use the new
+local timezone. Repeat across a DST boundary in a controlled VM when claiming
+timezone-transition evidence.
 
 ### UI-06 — result separation across overflow and scrollback
 
@@ -863,7 +871,8 @@ including `ls -ll`, is a failure even if the end rule alone is visible.
 
 Expected result: exactly one separation belongs to each completion; no duplicate
 or stale surface appears; output remains grouped even when the source prompt is
-offscreen or fully evicted; repaint/reflow does not lose the boundary.
+offscreen or fully evicted; repaint/reflow does not lose the boundary or change
+its datetime.
 
 ### UI-07 — reduced motion and accessibility redundancy
 
