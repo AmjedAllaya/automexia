@@ -1216,6 +1216,7 @@ fn verify_all() -> TaskResult {
     verify_identity()?;
     verify_provenance()?;
     verify_architecture()?;
+    keybindings::verify()?;
     verify_phase_zero_assurance()?;
     package_check()
 }
@@ -1374,7 +1375,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     let pty_manifest = read(&root().join("teletypewriter/Cargo.toml"))?;
     require(
         nightly_workflow.contains(
-            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh --no-run --locked",
+            "cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-devops -p automexia-devops-ssh -p automexia-keybindings --no-run --locked",
         )
             && qa.contains("\"benchmark-image\": 7200")
             && qa.contains("\"benchmark-image\"")
@@ -1402,6 +1403,13 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("\"quick_action_store\"")
             && root()
                 .join("apps/automexia-terminal/benches/quick_action_store.rs")
+                .is_file()
+            && qa.contains("\"benchmark-keybindings\": 7200")
+            && qa.contains("\"benchmark-keybindings\"")
+            && qa.contains("\"automexia-keybindings\"")
+            && qa.contains("\"registry\"")
+            && root()
+                .join("automexia-keybindings/benches/registry.rs")
                 .is_file()
             && pty_manifest.contains("name = \"pty_io\"")
             && root().join("teletypewriter/benches/pty_io.rs").is_file(),
@@ -2269,6 +2277,7 @@ fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_session_launch_d0.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
     run_python("tools/ci/check_ecosystem_d7_cp6.py")?;
+    run_python("tools/ci/check_ghostty_compatibility.py")?;
     let identity = product_identity()?;
     let metadata = metadata()?;
     let packages = metadata["packages"]

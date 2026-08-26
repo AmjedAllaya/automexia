@@ -300,9 +300,10 @@ where
             }
         }),
     )?;
-    if cfg!(windows) {
-        outputs.insert("automexia-classic-windows.json".into(), load_classic()?);
-    }
+    // The explicit Windows projection is host-independent. Every host must
+    // therefore regenerate and verify this golden; otherwise hosted Linux and
+    // macOS checks are weaker than the Windows contributor gate.
+    outputs.insert("automexia-classic-windows.json".into(), load_classic()?);
 
     let checksums = outputs
         .iter()

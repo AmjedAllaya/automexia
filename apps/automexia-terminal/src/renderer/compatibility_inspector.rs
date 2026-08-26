@@ -6,7 +6,8 @@
 
 use crate::renderer::responsive::{elide_end, Viewport};
 use crate::renderer::ui_theme::{
-    color_u8, UiTheme, BRAND_BLUE, BRAND_CYAN, BRAND_LIME, MODAL_SCRIM, MODAL_SHADOW,
+    color_u8, UiTheme, BRAND_AMBER, BRAND_BLUE, BRAND_CYAN, BRAND_LIME, MODAL_SCRIM,
+    MODAL_SHADOW,
 };
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -14,15 +15,15 @@ use rio_backend::sugarloaf::Sugarloaf;
 use serde::Serialize;
 
 const IDEAL_WIDTH: f32 = 560.0;
-const IDEAL_HEIGHT: f32 = 430.0;
+const IDEAL_HEIGHT: f32 = 500.0;
 const MARGIN: f32 = 18.0;
 const PADDING: f32 = 22.0;
 const HEADER_HEIGHT: f32 = 66.0;
-const FOOTER_HEIGHT: f32 = 42.0;
+const FOOTER_HEIGHT: f32 = 76.0;
 const LINE_HEIGHT: f32 = 20.0;
 const CLOSE_SIZE: f32 = 30.0;
 const MAX_DIAGNOSTICS: usize = 8;
-const MAX_LINES: usize = 18;
+const MAX_LINES: usize = 22;
 const ORDER: u8 = 28;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -46,6 +47,8 @@ impl Rect {
 struct Layout {
     card: Rect,
     close: Rect,
+    restore: Rect,
+    clear: Rect,
     compact: bool,
     tiny: bool,
     visible_lines: usize,
@@ -54,6 +57,16 @@ struct Layout {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CompatibilityInspectorAction {
     Close,
+    RestoreNewest,
+    ClearParked,
+    ConfirmClearParked,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Serialize)]
+pub struct ParkedTopologyPresentation {
+    pub sessions: usize,
+    pub history_lines: usize,
+    pub remaining_seconds: u64,
 }
 
 #[derive(Clone, Debug, Default, Eq, PartialEq, Serialize)]
@@ -71,6 +84,8 @@ pub struct InspectorSnapshot {
     pub last_binding: String,
     pub pending_bytes: usize,
     pub active_table: String,
+    pub active_sessions: usize,
+    pub parked_topologies: Vec<ParkedTopologyPresentation>,
     pub parser_diagnostics: Vec<String>,
 }
 
@@ -96,6 +111,20 @@ impl InspectorSnapshot {
             format!("PTY identity  session-{}", self.session_id),
             format!("Route         {}", self.route_id),
         ];
+        lines.push(format!(
+            "Sessions      {} active · {} parked",
+            self.active_sessions,
+            self.parked_topologies.len()
+        ));
+        for (index, parked) in self.parked_topologies.iter().take(3).enumerate() {
+            lines.push(format!(
+                "  Parked {}   {} session(s) · {} history lines · {}s left",
+                index + 1,
+                parked.sessions,
+                parked.history_lines,
+                parked.remaining_seconds
+            ));
+        }
         lines.push("Diagnostics   recent redacted codes".into());
         if self.parser_diagnostics.is_empty() {
             lines.push("  ✓ none".into());
@@ -117,6 +146,7 @@ pub struct CompatibilityInspector {
     active: bool,
     snapshot: InspectorSnapshot,
     hovered_action: Option<CompatibilityInspectorAction>,
+    clear_confirmation: bool,
 }
 
 impl CompatibilityInspector {
@@ -134,12 +164,47 @@ impl CompatibilityInspector {
         self.active = next;
         if !next {
             self.hovered_action = None;
+            self.clear_confirmation = false;
         }
         changed
     }
 
     pub fn replace_snapshot(&mut self, snapshot: InspectorSnapshot) {
+        if snapshot.parked_topologies.is_empty() {
+            self.clear_confirmation = false;
+        }
         self.snapshot = snapshot;
+    }
+
+    pub fn request_clear_confirmation(&mut self) -> bool {
+        if self.snapshot.parked_topologies.is_empty() || self.clear_confirmation {
+            return false;
+        }
+        self.clear_confirmation = true;
+        true
+    }
+
+    pub fn cancel_clear_confirmation(&mut self) -> bool {
+        std::mem::take(&mut self.clear_confirmation)
+    }
+
+    pub fn clear_confirmation(&self) -> bool {
+        self.clear_confirmation
+    }
+
+    #[cfg(any(test, feature = "native-gui-test-hooks"))]
+    pub fn accessibility_summary(&self) -> String {
+        let parked = self.snapshot.parked_topologies.len();
+        format!(
+            "Compatibility inspector. {} active sessions. {parked} parked {}. {}",
+            self.snapshot.active_sessions,
+            if parked == 1 { "group" } else { "groups" },
+            if self.clear_confirmation {
+                "Confirm clearing parked sessions; this ends their processes."
+            } else {
+                "R restores the newest parked group. C reviews clearing parked sessions. Escape closes."
+            }
+        )
     }
 
     fn layout(&self, dimensions: (f32, f32, f32)) -> Layout {
@@ -173,6 +238,19 @@ impl CompatibilityInspector {
             width: close_size,
             height: close_size,
         };
+        let button_y = card.y + height - inset - 50.0;
+        let restore = Rect {
+            x: card.x + inset,
+            y: button_y,
+            width: 132.0_f32.min((width - inset * 2.0).max(1.0)),
+            height: 30.0,
+        };
+        let clear = Rect {
+            x: restore.x + restore.width + 8.0,
+            y: button_y,
+            width: 150.0_f32.min((width - inset * 2.0 - restore.width - 8.0).max(1.0)),
+            height: 30.0,
+        };
         let body_top = card.y + if compact { 52.0 } else { HEADER_HEIGHT };
         let footer = if compact { 8.0 } else { FOOTER_HEIGHT };
         let available = (card.y + height - inset - footer - body_top).max(0.0);
@@ -185,6 +263,8 @@ impl CompatibilityInspector {
         Layout {
             card,
             close,
+            restore,
+            clear,
             compact,
             tiny,
             visible_lines,
@@ -205,6 +285,20 @@ impl CompatibilityInspector {
             Err(())
         } else if layout.close.contains(mouse_x, mouse_y) {
             Ok(Some(CompatibilityInspectorAction::Close))
+        } else if !layout.compact
+            && !self.snapshot.parked_topologies.is_empty()
+            && layout.restore.contains(mouse_x, mouse_y)
+        {
+            Ok(Some(CompatibilityInspectorAction::RestoreNewest))
+        } else if !layout.compact
+            && !self.snapshot.parked_topologies.is_empty()
+            && layout.clear.contains(mouse_x, mouse_y)
+        {
+            Ok(Some(if self.clear_confirmation {
+                CompatibilityInspectorAction::ConfirmClearParked
+            } else {
+                CompatibilityInspectorAction::ClearParked
+            }))
         } else {
             Ok(None)
         }
@@ -220,10 +314,25 @@ impl CompatibilityInspector {
             .active
             .then(|| self.layout(dimensions))
             .and_then(|layout| {
-                layout
-                    .close
-                    .contains(mouse_x, mouse_y)
-                    .then_some(CompatibilityInspectorAction::Close)
+                if layout.close.contains(mouse_x, mouse_y) {
+                    Some(CompatibilityInspectorAction::Close)
+                } else if !layout.compact
+                    && !self.snapshot.parked_topologies.is_empty()
+                    && layout.restore.contains(mouse_x, mouse_y)
+                {
+                    Some(CompatibilityInspectorAction::RestoreNewest)
+                } else if !layout.compact
+                    && !self.snapshot.parked_topologies.is_empty()
+                    && layout.clear.contains(mouse_x, mouse_y)
+                {
+                    Some(if self.clear_confirmation {
+                        CompatibilityInspectorAction::ConfirmClearParked
+                    } else {
+                        CompatibilityInspectorAction::ClearParked
+                    })
+                } else {
+                    None
+                }
             });
         if next == self.hovered_action {
             false
@@ -365,6 +474,80 @@ impl CompatibilityInspector {
                 );
             }
             if !layout.compact {
+                if !self.snapshot.parked_topologies.is_empty() {
+                    let restore_fill = if self.hovered_action
+                        == Some(CompatibilityInspectorAction::RestoreNewest)
+                    {
+                        BRAND_LIME
+                    } else {
+                        theme.raised
+                    };
+                    rounded(
+                        sugarloaf,
+                        layout.restore.x,
+                        layout.restore.y,
+                        layout.restore.width,
+                        layout.restore.height,
+                        restore_fill,
+                        8.0,
+                    );
+                    let restore = DrawOpts {
+                        font_size: 11.0,
+                        color: color_u8(if restore_fill == BRAND_LIME {
+                            theme.background
+                        } else {
+                            BRAND_LIME
+                        }),
+                        bold: true,
+                        ..DrawOpts::default()
+                    };
+                    sugarloaf.text_mut().draw(
+                        layout.restore.x + 10.0,
+                        layout.restore.y + 7.0,
+                        "↶  Restore newest",
+                        &restore,
+                    );
+
+                    let clear_action = if self.clear_confirmation {
+                        CompatibilityInspectorAction::ConfirmClearParked
+                    } else {
+                        CompatibilityInspectorAction::ClearParked
+                    };
+                    let clear_fill = if self.hovered_action == Some(clear_action) {
+                        BRAND_AMBER
+                    } else {
+                        theme.raised
+                    };
+                    rounded(
+                        sugarloaf,
+                        layout.clear.x,
+                        layout.clear.y,
+                        layout.clear.width,
+                        layout.clear.height,
+                        clear_fill,
+                        8.0,
+                    );
+                    let clear = DrawOpts {
+                        font_size: 11.0,
+                        color: color_u8(if clear_fill == BRAND_AMBER {
+                            theme.background
+                        } else {
+                            BRAND_AMBER
+                        }),
+                        bold: true,
+                        ..DrawOpts::default()
+                    };
+                    sugarloaf.text_mut().draw(
+                        layout.clear.x + 10.0,
+                        layout.clear.y + 7.0,
+                        if self.clear_confirmation {
+                            "!  Confirm clear"
+                        } else {
+                            "×  Clear parked"
+                        },
+                        &clear,
+                    );
+                }
                 let footer = DrawOpts {
                     font_size: 11.0,
                     color: color_u8(theme.muted_text),
@@ -373,7 +556,11 @@ impl CompatibilityInspector {
                 sugarloaf.text_mut().draw(
                     card.x + inset,
                     card.y + card.height - inset - footer.font_size,
-                    "Esc close  ·  sensitive values never collected",
+                    if self.clear_confirmation {
+                        "Enter confirm  ·  Esc cancel  ·  parked processes will end"
+                    } else {
+                        "R restore  ·  C clear  ·  Esc close  ·  values stay redacted"
+                    },
                     &footer,
                 );
             }
@@ -432,6 +619,20 @@ mod tests {
         inspector
     }
 
+    fn parked_inspector() -> CompatibilityInspector {
+        let mut inspector = active_inspector();
+        inspector.replace_snapshot(InspectorSnapshot {
+            active_sessions: 2,
+            parked_topologies: vec![ParkedTopologyPresentation {
+                sessions: 3,
+                history_lines: 144,
+                remaining_seconds: 27,
+            }],
+            ..InspectorSnapshot::default()
+        });
+        inspector
+    }
+
     #[test]
     fn snapshot_schema_contains_only_explicit_redacted_fields() {
         let value = serde_json::to_value(InspectorSnapshot::default()).unwrap();
@@ -460,6 +661,8 @@ mod tests {
         let b = inspector.layout((1_280.0, 960.0, 2.0));
         assert_eq!(a.card, b.card);
         assert_eq!(a.close, b.close);
+        assert_eq!(a.restore, b.restore);
+        assert_eq!(a.clear, b.clear);
         for dimensions in [(300.0, 200.0, 1.0), (180.0, 90.0, 1.0)] {
             let layout = inspector.layout(dimensions);
             let viewport =
@@ -488,8 +691,88 @@ mod tests {
     }
 
     #[test]
-    fn hiding_clears_hover_state() {
-        let mut inspector = active_inspector();
+    fn parked_controls_are_bounded_distinct_and_pointer_accessible() {
+        let mut inspector = parked_inspector();
+        let dimensions = (800.0, 600.0, 1.0);
+        let layout = inspector.layout(dimensions);
+        assert!(layout.restore.width >= 24.0 && layout.restore.height >= 24.0);
+        assert!(layout.clear.width >= 24.0 && layout.clear.height >= 24.0);
+        assert!(layout.restore.x + layout.restore.width < layout.clear.x);
+        assert_eq!(
+            inspector.hit_test(
+                layout.restore.x + 1.0,
+                layout.restore.y + 1.0,
+                dimensions,
+            ),
+            Ok(Some(CompatibilityInspectorAction::RestoreNewest))
+        );
+        assert_eq!(
+            inspector.hit_test(layout.clear.x + 1.0, layout.clear.y + 1.0, dimensions),
+            Ok(Some(CompatibilityInspectorAction::ClearParked))
+        );
+        assert!(inspector.request_clear_confirmation());
+        assert_eq!(
+            inspector.hit_test(layout.clear.x + 1.0, layout.clear.y + 1.0, dimensions),
+            Ok(Some(CompatibilityInspectorAction::ConfirmClearParked))
+        );
+    }
+
+    #[test]
+    fn parked_pointer_controls_never_exist_when_hidden() {
+        let empty = active_inspector();
+        let normal = (800.0, 600.0, 1.0);
+        let empty_layout = empty.layout(normal);
+        assert_eq!(
+            empty.hit_test(
+                empty_layout.restore.x + 1.0,
+                empty_layout.restore.y + 1.0,
+                normal,
+            ),
+            Ok(None)
+        );
+
+        let compact = parked_inspector();
+        let dimensions = (360.0, 240.0, 1.0);
+        let compact_layout = compact.layout(dimensions);
+        assert!(compact_layout.compact);
+        assert_eq!(
+            compact.hit_test(
+                compact_layout.restore.x + 1.0,
+                compact_layout.restore.y + 1.0,
+                dimensions,
+            ),
+            Ok(None)
+        );
+        assert_eq!(
+            compact.hit_test(
+                compact_layout.clear.x + 1.0,
+                compact_layout.clear.y + 1.0,
+                dimensions,
+            ),
+            Ok(None)
+        );
+    }
+
+    #[test]
+    fn clear_requires_confirmation_and_accessibility_copy_names_consequences() {
+        let mut inspector = parked_inspector();
+        let initial = inspector.accessibility_summary();
+        assert!(initial.contains("2 active sessions"));
+        assert!(initial.contains("1 parked group"));
+        assert!(!initial.contains("144"));
+        assert!(inspector.request_clear_confirmation());
+        assert!(!inspector.request_clear_confirmation());
+        assert!(inspector.clear_confirmation());
+        assert!(inspector
+            .accessibility_summary()
+            .contains("this ends their processes"));
+        assert!(inspector.cancel_clear_confirmation());
+        assert!(!inspector.clear_confirmation());
+    }
+
+    #[test]
+    fn hiding_clears_hover_and_confirmation_state() {
+        let mut inspector = parked_inspector();
         let dimensions = (800.0, 600.0, 1.0);
         let close = inspector.layout(dimensions).close;
         assert!(inspector.hover(close.x + 1.0, close.y + 1.0, dimensions));
@@ -497,7 +780,9 @@ mod tests {
             inspector.hovered_action(),
             Some(CompatibilityInspectorAction::Close)
         );
+        assert!(inspector.request_clear_confirmation());
         assert!(inspector.set_visibility("hide"));
         assert_eq!(inspector.hovered_action(), None);
+        assert!(!inspector.clear_confirmation());
     }
 }
