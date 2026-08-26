@@ -740,9 +740,11 @@ after quiescence, and closing the pane releases the process.
 
 Expected result: the welcome copy describes saving time, effort, and improving
 flexibility without presenting SSH as the product's main purpose; controls are
-separate rather than inside a grouped border; icons, hover/pressed/focus states,
-and hit targets are distinct; no search/modal covers the close target; maximize
-changes to restore; no clipping or overlap occurs.
+separate rather than inside a grouped border, with no short underline beneath
+any control at rest, hover, press, or inactive-window state; icons,
+hover/pressed/focus states, and hit targets remain distinct; no search/modal
+covers the close target; maximize changes to restore; no clipping or overlap
+occurs.
 
 ### UI-02 — responsive panes, footer, and chrome priority
 
