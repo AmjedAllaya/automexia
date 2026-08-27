@@ -40,9 +40,11 @@ jobs:
       labels: automexia-openssh-${{ inputs.platform }}-${{ inputs.architecture }}
     timeout-minutes: 40
     env:
-      AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE: ${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}
-      AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY: ${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY }}
-      AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE: ${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE: ${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY: ${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE: ${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW: ${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW }}
+      AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE: ${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE }}
       AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT: ${{ inputs.source_commit }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -53,6 +55,10 @@ jobs:
         if: inputs.platform == 'windows'
         shell: pwsh
         run: |
+          python3 tools/ci/check_session_launch_d0.py
+          if ($LASTEXITCODE -ne 0) { throw 'D0 contract check failed' }
+          python3 tools/ci/test_session_launch_d0.py
+          if ($LASTEXITCODE -ne 0) { throw 'D0 contract mutations failed' }
           python3 tools/ci/test_native_openssh_evidence.py
           if ($LASTEXITCODE -ne 0) { throw 'F5 mutation tests failed' }
           New-Item -ItemType Directory -Force -Path target/native-openssh | Out-Null
@@ -68,6 +74,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          python3 tools/ci/check_session_launch_d0.py
+          python3 tools/ci/test_session_launch_d0.py
           python3 tools/ci/test_native_openssh_evidence.py
           mkdir -p target/native-openssh
           python3 tools/ci/native_openssh_evidence.py --validate-environment > target/native-openssh/summary.json

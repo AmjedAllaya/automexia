@@ -79,6 +79,15 @@ def valid_manifest() -> dict[str, object]:
             shell_versions=["bash-5.2", "zsh-5.9"],
             os_build="Fedora-42",
         ),
+        "linux-nvidia-wgpu": environment(
+            "linux-nvidia-wgpu",
+            platform="linux",
+            display_server="x11",
+            renderer_backend="wgpu",
+            gpu_vendor="nvidia",
+            shell_versions=["bash-5.2", "zsh-5.9"],
+            os_build="Ubuntu-24.04",
+        ),
         "macos-intel": environment(
             "macos-intel",
             platform="macos",
@@ -388,6 +397,78 @@ class S1AssuranceTests(unittest.TestCase):
         self.assertIn("MaximumVerifierLogBytes", verifier)
         self.assertIn("Severity", verifier)
         self.assertIn("StopCode", verifier)
+
+    def test_recent_u10_surfaces_and_interactions_are_release_evidence(self) -> None:
+        policy = S1.load_policy()
+        expected_surfaces = {
+            "compact-top-shelf",
+            "diagnostic-assistant",
+            "tab-appearance-picker",
+            "command-palette-overflow",
+            "connection-hub-setup",
+            "connection-hub-direct-entry",
+            "command-result-datetime",
+            "scrollbar",
+            "saved-preferences-restart",
+        }
+        expected_tasks = {
+            "compact-window-chrome",
+            "diagnostic-assistant-actions",
+            "compatibility-inspector-redaction",
+            "tab-appearance-picker",
+            "quit-confirmation",
+            "command-palette-scroll-position",
+            "image-preview-open-close",
+            "connection-hub-direct-entry",
+            "command-result-datetime",
+            "saved-preferences-restart",
+            "command-boundary-navigation",
+            "scrollbar-position",
+        }
+        for suite in policy["required_suites"]:
+            if suite["domain"] == "visual":
+                self.assertTrue(
+                    expected_surfaces.issubset(suite["coverage"]["surfaces"]),
+                    suite["id"],
+                )
+            if suite["domain"] == "accessibility":
+                self.assertTrue(
+                    expected_tasks.issubset(suite["coverage"]["tasks"]),
+                    suite["id"],
+                )
+
+    def test_visual_matrix_includes_high_contrast_400_percent_and_reduced_motion(self) -> None:
+        policy = S1.load_policy()
+        for suite in policy["required_suites"]:
+            if suite["domain"] != "visual":
+                continue
+            coverage = suite["coverage"]
+            self.assertIn("high-contrast", coverage["themes"], suite["id"])
+            self.assertIn("4.0", coverage["scales"], suite["id"])
+            self.assertEqual(coverage["motion_profiles"], ["enabled", "reduced"])
+            expected = (
+                len(coverage["themes"])
+                * len(coverage["scales"])
+                * len(coverage["viewports"])
+                * len(coverage["surfaces"])
+                * len(coverage["motion_profiles"])
+            )
+            self.assertEqual(coverage["capture_count"], expected, suite["id"])
+
+    def test_resource_and_visual_matrix_covers_all_claimed_macos_and_linux_gpu_variants(self) -> None:
+        policy = S1.load_policy()
+        suites = {
+            (suite["domain"], suite["environment_id"])
+            for suite in policy["required_suites"]
+        }
+        for required in {
+            ("resource", "linux-nvidia-wgpu"),
+            ("resource", "macos-intel"),
+            ("resource", "macos-apple-silicon"),
+            ("visual", "macos-intel"),
+            ("visual", "macos-apple-silicon"),
+        }:
+            self.assertIn(required, suites)
 
 
 if __name__ == "__main__":

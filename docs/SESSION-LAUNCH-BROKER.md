@@ -124,7 +124,7 @@ resolved credential.
 
 ### Frozen trust-boundary ledger
 
-The active schema-6 contract retains nine boundaries: extension model,
+The active schema-7 contract retains nine boundaries: extension model,
 application capability broker, future PTY/process owner, renderer/VT parser,
 OpenSSH child, OpenSSH configuration, agent/keychain/hardware owner, remote
 host, and future provider helper. Every row fixes accepted and returned data,
@@ -391,7 +391,7 @@ cargo test -p automexia-terminal --bin automexia --locked context::launch_broker
 cargo xtask verify architecture
 ```
 
-The suite covers schema-1/schema-2/schema-3/schema-4 immutability, schema-6 mutation, hard
+The suite covers schema-1 through schema-6 immutability, schema-7 mutation, hard
 production denial, exact package digest source/size/version/contract/
 verification matching, manual-path preservation, nine trust boundaries,
 hermetic fixture and evidence rules, four-platform fixed roots,

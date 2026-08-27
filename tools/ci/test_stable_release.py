@@ -7,6 +7,7 @@ import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import stable_release
 
@@ -96,6 +97,48 @@ class StableReleaseTests(unittest.TestCase):
         policy["external_prerequisites"][0]["id"] = "substituted-blocker"
         with self.assertRaisesRegex(stable_release.ReleaseError, "identities drifted"):
             stable_release.validate_policy(policy)
+
+    def test_policy_rejects_unknown_fields_and_weakened_tag_grammar(self) -> None:
+        policy = stable_release.load_policy()
+        policy["release_source"]["allow_lightweight_tag"] = True
+        with self.assertRaisesRegex(stable_release.ReleaseError, "keys drifted"):
+            stable_release.validate_policy(policy)
+
+        policy = stable_release.load_policy()
+        policy["release_source"]["tag_pattern"] = ".*"
+        with self.assertRaisesRegex(stable_release.ReleaseError, "tag pattern drifted"):
+            stable_release.validate_policy(policy)
+
+    def test_external_prerequisite_owner_and_evidence_cannot_be_redirected(self) -> None:
+        policy = stable_release.load_policy()
+        policy["external_prerequisites"][0]["owner"] = "different-owner"
+        with self.assertRaisesRegex(stable_release.ReleaseError, "contract drifted"):
+            stable_release.validate_policy(policy)
+
+        policy = stable_release.load_policy()
+        policy["external_prerequisites"][0]["evidence"] = "Cargo.toml"
+        with self.assertRaisesRegex(stable_release.ReleaseError, "contract drifted"):
+            stable_release.validate_policy(policy)
+
+    def test_dco_history_is_read_once_with_a_bounded_batch(self) -> None:
+        first = "1" * 40
+        second = "2" * 40
+        output = (
+            f"{first}\0release@example.invalid\0"
+            "feat: first\n\nSigned-off-by: Release Tester <release@example.invalid>\0"
+            f"{second}\0release@example.invalid\0"
+            "fix: second\n\nSigned-off-by: Release Tester <release@example.invalid>\0"
+        )
+        with mock.patch.object(stable_release, "_run_git", return_value=output) as run:
+            stable_release._validate_dco(Path("."), "0" * 40, second)
+        run.assert_called_once_with(
+            Path("."),
+            "log",
+            "-z",
+            "--reverse",
+            "--format=%H%x00%ae%x00%B",
+            f"{'0' * 40}..{second}",
+        )
     def test_valid_annotated_exact_main_release_passes(self) -> None:
         temporary, work, base = self.fixture()
         self.addCleanup(temporary.cleanup)

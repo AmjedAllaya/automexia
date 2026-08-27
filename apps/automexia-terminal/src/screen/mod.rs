@@ -532,6 +532,9 @@ struct NativeWindowSnapshot {
     confirm_quit_active: bool,
     connection_hub_active: bool,
     connection_hub_route: Option<&'static str>,
+    connection_hub_literal_entry: bool,
+    connection_hub_pointer_hit: Option<String>,
+    connection_hub_last_hit: Option<String>,
     compatibility_inspector_active: bool,
     compatibility_inspector_accessibility_summary: Option<String>,
     compatibility_inspector_clear_confirmation: bool,
@@ -732,6 +735,12 @@ fn write_native_resize_snapshot(
     snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
     snapshot["connection_hub_active"] = serde_json::json!(window.connection_hub_active);
     snapshot["connection_hub_route"] = serde_json::json!(window.connection_hub_route);
+    snapshot["connection_hub_literal_entry"] =
+        serde_json::json!(window.connection_hub_literal_entry);
+    snapshot["connection_hub_pointer_hit"] =
+        serde_json::json!(window.connection_hub_pointer_hit);
+    snapshot["connection_hub_last_hit"] =
+        serde_json::json!(window.connection_hub_last_hit);
     snapshot["palette_scroll_offset"] = serde_json::json!(window.palette_scroll_offset);
     snapshot["palette_selected_index"] = serde_json::json!(window.palette_selected_index);
     snapshot["palette_visible_results"] =
@@ -6215,6 +6224,24 @@ impl Screen<'_> {
                             "provider-review"
                         }
                     }),
+                    connection_hub_literal_entry: self
+                        .connection_hub
+                        .literal_destination_entry_is_active(),
+                    connection_hub_pointer_hit: self
+                        .renderer
+                        .connection_hub
+                        .hit_test(
+                            self.mouse.x as f32 / self.sugarloaf.scale_factor(),
+                            self.mouse.y as f32 / self.sugarloaf.scale_factor(),
+                            (
+                                window_size.width,
+                                window_size.height,
+                                self.sugarloaf.scale_factor(),
+                            ),
+                        )
+                        .map(|hit| format!("{hit:?}")),
+                    connection_hub_last_hit:
+                        connection_hub::native_connection_hub_last_hit(),
                     compatibility_inspector_active: self
                         .renderer
                         .compatibility_inspector

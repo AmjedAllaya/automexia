@@ -104,6 +104,32 @@ def require_step_condition(
     )
 
 
+def require_exact_upload(
+    value: dict[str, Any],
+    *,
+    name: str,
+    path: str,
+    retention_days: int,
+    label: str,
+) -> dict[str, Any]:
+    uploads = [
+        step
+        for step in steps(value)
+        if "actions/upload-artifact@" in str(step.get("uses", ""))
+    ]
+    expected = {
+        "name": name,
+        "path": path,
+        "if-no-files-found": "error",
+        "retention-days": retention_days,
+    }
+    require(
+        len(uploads) == 1 and uploads[0].get("with") == expected,
+        f"{label} must upload only the exact summary identity for {retention_days}-day retention",
+    )
+    return uploads[0]
+
+
 def validate_ci(workflow: dict[str, Any]) -> None:
     native = job(workflow, "native", "ci.yml")
     require(
@@ -242,30 +268,135 @@ def validate_release(workflow: dict[str, Any]) -> None:
     assurance = job(workflow, "s1-assurance", "release.yml")
     assurance_commands = commands(assurance)
     for fragment in (
+        "s1_assurance.py check-policy",
+        "test_s1_assurance.py",
         "s1_assurance.py validate",
         "--expected-commit $env:GITHUB_SHA",
         "--require-complete",
+        "--output target/s1-assurance/summary.json",
     ):
         require(
             fragment in assurance_commands,
             f"release S1 assurance is missing {fragment!r}",
         )
+    assurance_labels = {
+        str(label).lower() for label in assurance.get("runs-on", [])
+    }
     require(
-        "self-hosted"
-        in {str(label).lower() for label in assurance.get("runs-on", [])},
-        "release S1 assurance must use a controlled self-hosted runner",
+        {"self-hosted", "automexia-assurance"}.issubset(assurance_labels),
+        "release S1 assurance must use the controlled assurance runner",
+    )
+    require(
+        assurance.get("if") == "vars.AUTOMEXIA_S1_ASSURANCE_RUNNER == '1'",
+        "release S1 assurance activation must remain explicit",
+    )
+    assurance_timeout = assurance.get("timeout-minutes")
+    require(
+        isinstance(assurance_timeout, int)
+        and not isinstance(assurance_timeout, bool)
+        and 1 <= assurance_timeout <= 30,
+        "release S1 assurance must retain a bounded timeout",
+    )
+    assurance_steps = steps(assurance)
+    require(
+        assurance.get("continue-on-error") is not True
+        and all(step.get("continue-on-error") is not True for step in assurance_steps),
+        "release S1 assurance must fail closed",
+    )
+    require(
+        "AUTOMEXIA_S1_ASSURANCE_EVIDENCE" in str(assurance.get("env", {})),
+        "release S1 assurance must consume the controlled evidence path",
+    )
+    require_exact_upload(
+        assurance,
+        name="release-evidence-s1-assurance",
+        path="target/s1-assurance/summary.json",
+        retention_days=90,
+        label="release S1 assurance summary",
+    )
+
+    performance = job(workflow, "performance-assurance", "release.yml")
+    performance_commands = commands(performance)
+    for fragment in (
+        "cargo xtask test resize-stress --native-gui",
+        "cargo xtask qa --full --bundle",
+        "performance_assurance.py collect-native-resource",
+        "performance_assurance.py collect-criterion",
+        "--require-classified",
+        "performance_assurance.py evaluate",
+        "--expected-commit $env:GITHUB_SHA",
+        "--require-active",
+    ):
+        require(
+            fragment in performance_commands,
+            f"release S2 performance assurance is missing {fragment!r}",
+        )
+    performance_labels = {
+        str(label).lower() for label in performance.get("runs-on", [])
+    }
+    require(
+        {"self-hosted", "automexia-benchmark"}.issubset(performance_labels),
+        "release S2 performance assurance must use the controlled benchmark runner",
+    )
+    require(
+        performance.get("if")
+        == "vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1'",
+        "release S2 performance activation must remain explicit",
+    )
+    performance_timeout = performance.get("timeout-minutes")
+    require(
+        isinstance(performance_timeout, int)
+        and not isinstance(performance_timeout, bool)
+        and 1 <= performance_timeout <= 240,
+        "release S2 performance assurance must retain a bounded timeout",
+    )
+    performance_steps = steps(performance)
+    require(
+        performance.get("continue-on-error") is not True
+        and all(step.get("continue-on-error") is not True for step in performance_steps),
+        "release S2 performance assurance must fail closed",
+    )
+    performance_upload = require_exact_upload(
+        performance,
+        name="release-evidence-performance-assurance",
+        path=(
+            "target/performance/*.json\n"
+            "target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip\n"
+        ),
+        retention_days=90,
+        label="release S2 performance evidence",
+    )
+    require(
+        performance_upload.get("if") == "always()",
+        "release S2 performance evidence must be retained on failure",
     )
 
     preflight = job(workflow, "preflight", "release.yml")
     preflight_needs = {str(item) for item in preflight.get("needs", [])}
+    controlled_assurance_gates = {
+        "native-gui-resilience",
+        "native-wsl-resilience",
+        "performance-assurance",
+        "s1-assurance",
+    }
     require(
-        "s1-assurance" in preflight_needs,
-        "release preflight must depend on complete S1 assurance",
+        controlled_assurance_gates.issubset(preflight_needs),
+        "release preflight controlled assurance gates must include native GUI, "
+        "native WSL, S2, and S1 assurance",
     )
     preflight_condition = str(preflight.get("if", ""))
+    expected_preflight_condition = " && ".join(
+        f"needs.{gate}.result == 'success'"
+        for gate in (
+            "native-gui-resilience",
+            "native-wsl-resilience",
+            "performance-assurance",
+            "s1-assurance",
+        )
+    )
     require(
-        "needs.s1-assurance.result == 'success'" in preflight_condition,
-        "release preflight must fail closed unless S1 assurance succeeds",
+        preflight_condition == expected_preflight_condition,
+        "release preflight must fail closed for every controlled assurance gate",
     )
     preflight_environment = preflight.get("env", {})
     for name in (
@@ -497,15 +628,37 @@ def validate_release(workflow: dict[str, Any]) -> None:
 
 
 def validate_s1_assurance(workflow: dict[str, Any]) -> None:
+    triggers = workflow.get("on", workflow.get(True))
+    require(
+        isinstance(triggers, dict) and set(triggers) == {"workflow_dispatch"},
+        "S1 assurance must use manual dispatch only",
+    )
     require(
         workflow.get("permissions") == {"contents": "read"},
         "S1 assurance workflow must be read-only",
     )
     validate = job(workflow, "validate", "s1-assurance.yml")
+    labels = {str(label).lower() for label in validate.get("runs-on", [])}
     require(
-        "self-hosted"
-        in {str(label).lower() for label in validate.get("runs-on", [])},
-        "S1 assurance must use a controlled self-hosted runner",
+        {"self-hosted", "automexia-assurance"}.issubset(labels),
+        "S1 assurance must use the controlled assurance runner",
+    )
+    require(
+        validate.get("if") == "vars.AUTOMEXIA_S1_ASSURANCE_RUNNER == '1'",
+        "S1 assurance activation must remain explicit",
+    )
+    timeout = validate.get("timeout-minutes")
+    require(
+        isinstance(timeout, int)
+        and not isinstance(timeout, bool)
+        and 1 <= timeout <= 30,
+        "S1 assurance must retain a bounded timeout",
+    )
+    validate_steps = steps(validate)
+    require(
+        validate.get("continue-on-error") is not True
+        and all(step.get("continue-on-error") is not True for step in validate_steps),
+        "S1 assurance must fail closed",
     )
     source = commands(validate)
     for fragment, message in (
@@ -514,11 +667,76 @@ def validate_s1_assurance(workflow: dict[str, Any]) -> None:
         ("s1_assurance.py validate", "manifest validator"),
         ("--expected-commit $env:GITHUB_SHA", "source binding"),
         ("--require-complete", "complete matrix"),
+        ("--output target/s1-assurance/summary.json", "exact summary"),
     ):
         require(fragment in source, f"S1 assurance is missing {message}")
     require(
         "AUTOMEXIA_S1_ASSURANCE_EVIDENCE" in str(validate.get("env", {})),
         "S1 assurance must consume the controlled evidence path",
+    )
+    require_exact_upload(
+        validate,
+        name="s1-assurance-summary",
+        path="target/s1-assurance/summary.json",
+        retention_days=90,
+        label="S1 assurance exact summary",
+    )
+
+
+def validate_s2_assurance(workflow: dict[str, Any]) -> None:
+    triggers = workflow.get("on", workflow.get(True))
+    require(
+        isinstance(triggers, dict) and set(triggers) == {"workflow_dispatch"},
+        "S2 activation must use manual dispatch only",
+    )
+    require(
+        workflow.get("permissions") == {"contents": "read"},
+        "S2 activation workflow must be read-only",
+    )
+    require(
+        workflow.get("concurrency")
+        == {
+            "group": "s2-controlled-activation-${{ github.ref }}",
+            "cancel-in-progress": False,
+        },
+        "S2 activation must retain serialized activation per ref",
+    )
+    validate = job(workflow, "validate-active-baseline", "s2-assurance.yml")
+    require(
+        validate.get("runs-on") == "ubuntu-latest",
+        "S2 activation validation runner must remain explicit",
+    )
+    require(
+        validate.get("environment") == "stable-release",
+        "S2 activation must use the protected environment",
+    )
+    timeout = validate.get("timeout-minutes")
+    require(
+        isinstance(timeout, int) and not isinstance(timeout, bool) and 1 <= timeout <= 30,
+        "S2 activation must retain a bounded timeout",
+    )
+    validate_steps = steps(validate)
+    require(
+        validate.get("continue-on-error") is not True
+        and all(step.get("continue-on-error") is not True for step in validate_steps),
+        "S2 activation must fail closed",
+    )
+    source = commands(validate)
+    for fragment, message in (
+        ("set -euo pipefail", "fail-closed shell"),
+        ("performance_assurance.py check-policy", "reviewed policy"),
+        ("test_performance_assurance.py", "mutation suite"),
+        ("performance_assurance.py validate-baseline", "baseline validator"),
+        ('--expected-source-commit "$GITHUB_SHA"', "exact source commit"),
+        ("target/performance/s2-activation-summary.json", "bounded summary"),
+    ):
+        require(fragment in source, f"S2 activation is missing {message}")
+    require_exact_upload(
+        validate,
+        name="automexia-s2-activation-summary",
+        path="target/performance/s2-activation-summary.json",
+        retention_days=90,
+        label="S2 activation 90-day summary",
     )
 
 
@@ -535,6 +753,9 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         and set(inputs) == {"source_commit", "platform", "architecture"}
         and inputs["platform"].get("options") == ["windows", "macos", "linux"]
         and inputs["architecture"].get("options") == ["x86_64", "aarch64"]
+        and inputs["source_commit"].get("type") == "string"
+        and inputs["platform"].get("type") == "choice"
+        and inputs["architecture"].get("type") == "choice"
         and all(
             isinstance(value, dict) and value.get("required") is True
             for value in inputs.values()
@@ -545,13 +766,21 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         workflow.get("permissions") == {"contents": "read"},
         "F5 OpenSSH assurance workflow must be read-only",
     )
+    require(
+        workflow.get("concurrency")
+        == {
+            "group": "f5-openssh-${{ inputs.source_commit }}-${{ inputs.platform }}-${{ inputs.architecture }}",
+            "cancel-in-progress": False,
+        },
+        "F5 OpenSSH assurance concurrency must bind the exact request without cancellation",
+    )
     validate = job(workflow, "validate", "f5-openssh-assurance.yml")
     runs_on = validate.get("runs-on", {})
     require(
         isinstance(runs_on, dict)
         and runs_on.get("group") == "automexia-openssh"
-        and "inputs.platform" in str(runs_on.get("labels", ""))
-        and "inputs.architecture" in str(runs_on.get("labels", "")),
+        and runs_on.get("labels")
+        == "automexia-openssh-${{ inputs.platform }}-${{ inputs.architecture }}",
         "F5 OpenSSH assurance must use the restricted self-hosted runner group",
     )
     require(
@@ -559,28 +788,65 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         "F5 OpenSSH assurance must use the protected environment",
     )
     require(
-        "AUTOMEXIA_F5_OPENSSH_RUNNER" in str(validate.get("if", "")),
+        validate.get("if") == "vars.AUTOMEXIA_F5_OPENSSH_RUNNER == '1'",
         "F5 OpenSSH assurance must remain explicitly operator-enabled",
+    )
+    require(
+        validate.get("timeout-minutes") == 40,
+        "F5 OpenSSH assurance timeout must remain exactly 40 minutes",
     )
     environment = validate.get("env", {})
     required_environment = {
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY",
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE",
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT": "${{ inputs.source_commit }}",
     }
     require(
-        isinstance(environment, dict)
-        and required_environment.issubset(environment),
+        environment == required_environment,
         "F5 OpenSSH assurance must receive the private manifest and exact artifact paths",
     )
-    source = commands(validate)
-    for fragment, message in (
-        ("test_native_openssh_evidence.py", "mutation tests"),
-        ("--validate-environment", "controlled validator"),
-        ("target/native-openssh/summary.json", "redacted summary"),
-    ):
-        require(fragment in source, f"F5 OpenSSH assurance is missing {message}")
+    validate_steps = steps(validate)
+    require(
+        validate.get("continue-on-error") is not True
+        and all(step.get("continue-on-error") is not True for step in validate_steps),
+        "F5 OpenSSH assurance must fail closed",
+    )
+    platform_steps = {
+        str(step.get("shell")): str(step.get("run", ""))
+        for step in validate_steps
+        if step.get("shell") in {"pwsh", "bash"}
+    }
+    require(
+        set(platform_steps) == {"pwsh", "bash"},
+        "F5 OpenSSH assurance must have exact Windows and Unix validation steps",
+    )
+    for shell, source in platform_steps.items():
+        for fragment, message in (
+            ("check_session_launch_d0.py", "D0 contract checker"),
+            ("test_session_launch_d0.py", "D0 mutation tests"),
+            ("test_native_openssh_evidence.py", "native evidence mutation tests"),
+            ("--validate-environment", "controlled validator"),
+            ("target/native-openssh/summary.json", "redacted summary"),
+        ):
+            require(
+                fragment in source,
+                f"F5 OpenSSH {shell} assurance is missing {message}",
+            )
+        require(
+            "|| true" not in source and "continue-on-error" not in source,
+            "F5 OpenSSH assurance must fail closed",
+        )
+    require(
+        "set -euo pipefail" in platform_steps["bash"],
+        "F5 OpenSSH Unix assurance is missing fail-closed shell settings",
+    )
+    require(
+        platform_steps["pwsh"].count("$LASTEXITCODE -ne 0") == 4,
+        "F5 OpenSSH Windows assurance must check every command exit",
+    )
     checkout = next(
         (
             step
@@ -594,6 +860,13 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         and checkout.get("with", {}).get("persist-credentials") is False
         and "inputs.source_commit" in str(checkout.get("with", {}).get("ref", "")),
         "F5 OpenSSH assurance checkout must bind the requested commit without credentials",
+    )
+    require_exact_upload(
+        validate,
+        name="f5-openssh-${{ inputs.platform }}-${{ inputs.architecture }}-summary",
+        path="target/native-openssh/summary.json",
+        retention_days=90,
+        label="F5 OpenSSH 90-day summary",
     )
 
 
@@ -649,6 +922,7 @@ def validate_repository_workflows() -> None:
     validate_nightly(load_workflow("nightly.yml"))
     validate_release(load_workflow("release.yml"))
     validate_s1_assurance(load_workflow("s1-assurance.yml"))
+    validate_s2_assurance(load_workflow("s2-assurance.yml"))
     validate_macos_runtime_contract(MACOS_BUILD_SCRIPT.read_text(encoding="utf-8"))
     validate_windows_release_trust_contract(
         WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")

@@ -1477,7 +1477,7 @@ wake, lingering file handle, child or thread.
 
 Exercise Setup, Loading, populated, filtered, stale, literal editor, file review,
 connection review and metadata editor at 320, 1,920 and 5,120 px-equivalent
-widths and 100–300% scale. Navigate without pointer, then with pointer and IME,
+widths and 100–400% scale. Navigate without pointer, then with pointer and IME,
 then a native screen reader.
 
 Expected result: concise title/status/help, colored icon plus redundant text,
@@ -1485,10 +1485,17 @@ clear hierarchy and bounded detail; no overlap with close controls, clipping or
 hidden focus. Roles/names/states/position/count/actions are announced, focus is
 trapped only while modal and restored on close, disabled prerequisites are
 explained, and no interaction reaches terminal input. At the standard viewport,
-the first-run card remains at or below 680×380 logical pixels; each section,
-setup action, and close hit target remains at least 40×40 logical pixels. Verify
-the C/W/P/L/F keycaps at 100%, 200%, and 300% scale and confirm long/localized
-text cannot cover another action.
+the first-run card is exactly 840×500 logical pixels and its setup actions are at
+least 44 pixels high. Direct entry is exactly 840×420, its inner form is no more
+than 280 pixels high, and Review/Cancel remain at least 40 pixels high on usable
+viewports. Resize below 650 logical pixels: Host stays full width while User and
+Port move together to a second row before any field becomes unusable. Confirm
+the duplicate footer and the inactive top-row Host/Files actions are absent, the
+top-right close target cancels the nested editor, and Escape does the same. On
+the synthetic 90×70 micro-viewport only, compact bounded controls may fall below
+40 pixels but must never overlap or acquire the wrong hit. Verify the C/W/P/L/F
+keycaps at 100%, 200%, and 300% scale and confirm long/localized text cannot
+cover another action.
 
 ### HUB-08 — complete Hub model/runtime/product source evidence
 
@@ -1504,6 +1511,21 @@ cargo test -p automexia-terminal --bin automexia connection_hub --locked
 cargo test -p automexia-terminal --bin automexia command_palette --locked
 cargo bench -p automexia-terminal --bench connection_catalog --locked -- --noplot
 ```
+
+On native Windows, build the deterministic GUI fixture and run the focused Hub
+workflow under both renderers:
+
+```powershell
+cargo build -p automexia-terminal --locked --features visual-test-hooks
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/resize-stress-windows.ps1 -ConnectionHubOnly -Binary target/debug/automexia.exe -ModalCaptureDirectory target/ui-evidence/wgpu/modals -ResourceReport target/ui-evidence/wgpu/report.json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/resize-stress-windows.ps1 -ConnectionHubOnly -UseCpuRenderer -Binary target/debug/automexia.exe -ModalCaptureDirectory target/ui-evidence/cpu/modals -ResourceReport target/ui-evidence/cpu/report.json
+```
+
+Expected result: both runs report focused Connection Hub visual/input assurance
+passed. Each report names the exact deterministic fixture and renderer, records
+nonblank setup/direct frames, and proves the physical top-right click cancelled
+only direct entry while the terminal remained unchanged. Inspect the images;
+do not approve or mask a capture obscured by another desktop surface.
 
 Expected result: every process exits 0; no-scan opening, grants/revocation,
 parser/metadata limits, CAS/recovery, generation/LKG, controller isolation,
@@ -1774,7 +1796,7 @@ named reason. No fallback turns rejected text into executable shell code.
 ### ACT-07 — responsive, keyboard, accessibility, and no-PTY audit
 
 Repeat ACT-03 with zero, one, and maximum-sized fixture catalogs; tiny through
-8K-equivalent viewport; 100–300% scale; long Unicode; high contrast; reduced
+8K-equivalent viewport; 100–400% scale; long Unicode; high contrast; reduced
 motion; keyboard; pointer; IME; and available screen readers.
 
 Expected result: loading/empty/unavailable/conflict/confirmation states are
@@ -3170,17 +3192,17 @@ current-commit manifest:
 python tools/ci/s1_assurance.py validate --manifest <private-manifest.json> --expected-commit <40-character-commit> --require-complete --output <public-summary.json>
 ```
 
-Expected result: all 24 required native, resource, visual and accessibility
+Expected result: all 28 required native, resource, visual and accessibility
 suites are complete, independently reviewed and cleanup-clean; the bounded
 public summary contains no private artifact path or terminal content. A local or
 fabricated manifest must fail and must never be substituted for controlled S1.
 
 ### ASSURE-02 — native visual and single-pixel-sensitive review
 
-Prepare four policy environments from the S1 audit, including the required
-renderer/OS combinations. For each required case exercise tiny through
-8K-equivalent dimensions, 100–300% scale, normal/high-contrast/custom themes,
-light/dark backgrounds, Unicode/emoji/combining/bidi-safe fixtures, long paths,
+Prepare all five visual policy suites from the S1 audit, including Windows,
+Linux X11/Wayland, and macOS Intel/Apple Silicon. For each required case exercise
+tiny through 8K-equivalent dimensions, 100–400% scale, dark/light/high-contrast
+themes, enabled and reduced motion, Unicode/emoji/combining/bidi-safe fixtures, long paths,
 multiple tabs/panes, overlays, search, Connection Hub, Quick Actions, completion,
 prompt/result separation, alternate screen and renderer fallback.
 
@@ -3205,8 +3227,9 @@ change; anti-aliasing/dynamic regions use only reviewed masks and thresholds.
 No changed pixel may be dismissed solely because aggregate ratio passes. Text,
 icons, focus, borders, prompt/result boundaries, cursor and close controls are
 aligned, unclipped, nonoverlapping and consistent. A mask/threshold/dimension
-mismatch fails. The complete matrix is 1,600 cases; an incomplete local subset
-is recorded as such, never as full S1.
+mismatch fails. Each visual suite contains 8,352 cases (3 themes × 6 scales ×
+8 viewports × 29 surfaces × 2 motion profiles), for 41,760 controlled captures;
+an incomplete local subset is recorded as such, never as full S1.
 
 ### ASSURE-03 — keyboard-only and native assistive-technology review
 

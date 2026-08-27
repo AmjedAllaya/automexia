@@ -1033,9 +1033,12 @@ production managed process. Overall D5.0 stays **Partially done** until ADR
   grouping, clear filters, virtualized rows, inspector, setup/loading/error/
   recovery states, keyboard, pointer, IME, focus restoration, and responsive
   tiny-to-8K geometry. The initial state uses the shared application palette,
-  a compact 680-by-380 logical-pixel ceiling, one safety statement, 40-pixel
-  actions, and visible `C`/`W`/`P`/`L`/`F` keycaps; pointer and `F` share one
-  native picker owner and neither path reaches PTY input.
+  a spacious 840-by-500 logical-pixel ceiling, one safety statement, 44-pixel
+  setup actions, and visible `C`/`W`/`P`/`L`/`F` keycaps. Direct entry uses a
+  focused 840-by-420 ceiling, persistent Host/User/Port labels, responsive field
+  stacking, one safety line, and a top-right cancel target; misleading catalog
+  actions and the duplicate footer are absent while it is open. Pointer and `F`
+  share one native picker owner and neither path reaches PTY input.
 - [x] **Fully done** — Review favorite/tag public diffs and commit only through
   D4 revision CAS; reload on conflict and keep recent read-only.
 - [x] **Fully done** — Display profile/recipe/preference counts as local,

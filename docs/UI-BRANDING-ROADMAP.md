@@ -47,7 +47,7 @@ They retain their terminal/application or native-platform authority.
 | Status | Item | Source and proof | Remaining evidence |
 |---|---|---|---|
 | **Fully done** | U0 shared application-chrome tokens | `renderer/ui_theme.rs` owns theme-aware opaque surfaces, semantic accents, source-over composition, and 4.5:1 foreground correction; focused unit tests cover dark and light configured themes | None for source implementation |
-| **Fully done** | U1 aligned surfaces | Command palette, scoped pane/workspace search, image quick look, pane/window chrome, prompt context, and session footer retain responsive shared-brand source and tests. Connection Hub now consumes the shared Liquid Hacker card/surface/outline/accent tokens, caps first-run geometry at 680×380 logical pixels, removes its redundant inner panel/footer/path hint, and exposes polished C/W/P/L/F keycaps without shrinking 40-pixel targets; layout, pointer, mnemonic-scope, minimal-copy, and contrast tests own that contract. | Native release pixels and screen-reader evidence remain tracked by the owning U10/Connection Hub feature rows |
+| **Fully done** | U1 aligned surfaces | Command palette, scoped pane/workspace search, image quick look, pane/window chrome, prompt context, and session footer retain responsive shared-brand source and tests. Connection Hub consumes the shared Liquid Hacker tokens, expands first-run geometry to a spacious 840×500 ceiling with 44-pixel setup actions, and gives direct entry a focused 840×420 card with persistent field labels, responsive stacking, one safety line, functional top-right cancellation, and no misleading inactive chrome or duplicate footer. C/W/P/L/F keycaps retain 40-pixel targets; layout, pointer, mnemonic-scope, minimal-copy, contrast, nested-hit, and micro-viewport tests own the contract. | Current-commit native release pixels and screen-reader evidence remain tracked by the owning U10/Connection Hub feature rows |
 | **Fully done** | U2 diagnostic assistant | `renderer/assistant.rs` now owns a centered severity card, explicit close and troubleshooting actions, semantic amber/coral status, cyan help action, bounded text, responsive geometry, hover, and hit testing | None for source implementation |
 | **Fully done** | U3 compatibility inspector | `renderer/compatibility_inspector.rs` keeps the ADR 0027 redaction allowlist while adding a centered branded card, visible close action, redaction label, empty-state success icon, hover, and bounded layout | None for source implementation |
 | **Fully done** | U4 tab appearance picker | `renderer/island.rs` owns a cyan/purple final-layer card, 24-pixel swatches, check/clear icons, explicit Enter/Escape help, a 256-byte UTF-8-safe title limit, and fail-safe cancellation when the surface cannot fit | None for source implementation |
@@ -61,7 +61,7 @@ They retain their terminal/application or native-platform authority.
 | **Fully done** | U9.2 pointer-owned pane scrolling | `application.rs`, `screen/mod.rs`, `layout/mod.rs`, and `mouse/mod.rs` activate the exact pane under the pointer before delivering the initiating wheel/trackpad event, preserve wheel-focused selection, reset cross-pane fractional accumulation, and retain passive hover; focused tests cover hit-test boundaries and focus policy | Manual cross-platform mouse/trackpad interaction remains part of U10 native evidence |
 | **Fully done** | U9.3 Windows Ctrl+V paste | `bindings/mod.rs` maps both `Ctrl+V` and `Ctrl+Shift+V` to the existing safe Paste action for every Windows-hosted child session, including WSL and SSH; explicit `ReceiveChar` configuration restores application ownership, while Linux/BSD and macOS defaults remain unchanged | Manual physical clipboard validation in native WSL and terminal applications remains part of U10 native evidence |
 | **Fully done** | U9.4 continuous pane/workspace search | `bindings/mod.rs` keeps local/global search shortcuts active during Search; `screen/mod.rs` owns query-preserving, pane-isolated scope transitions and bounded visible-match counts; `renderer/search.rs` owns one responsive surface with clickable/keyboard scope choices, focus state, result status, and privacy-safe announcements. Focused tests cover both directions, idempotence, pointer targets, PTY isolation, checked/focused semantics, and tiny/HiDPI/ultrawide geometry; native Windows WGPU and CPU runs validate the real split-pane card. | Native Narrator/NVDA, VoiceOver, and Orca delivery remains part of U10 and the accepted v0.5 platform adapter. |
-| **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, strict-lint, exact one-pixel visual-diff policy, 1,600-case visual-suite matrices, privacy/freshness checks, and release enforcement are automated. The source-completion audit is recorded in [the U10 assurance audit](research/U10-UI-BRANDING-ASSURANCE-AUDIT.md). | Execute and independently review all 24 current-commit S1 suites: Windows WGPU and CPU/RDP; Linux X11 and Wayland; macOS Intel and Apple Silicon; named resource/elevated suites; four 1,600-capture visual matrices; Narrator, NVDA, VoiceOver, and Orca X11/Wayland. A clean controlled manifest must pass `--require-complete`. |
+| **Partially done** | U10 native visual and assistive-technology release evidence | Renderer-neutral layout, contrast, hit-test, hostile-input, redaction, strict-lint, exact one-pixel visual-diff policy, five 8,352-case visual-suite matrices, privacy/freshness checks, and release enforcement are automated. The source-completion audit is recorded in [the U10 assurance audit](research/U10-UI-BRANDING-ASSURANCE-AUDIT.md). | Execute and independently review all 28 current-commit S1 suites: Windows WGPU and CPU/RDP; Linux X11/Wayland plus NVIDIA resource evidence; macOS Intel and Apple Silicon; named resource/elevated suites; five 8,352-capture dark/light/high-contrast, 100–400%, enabled/reduced-motion visual matrices; Narrator, NVDA, VoiceOver, and Orca X11/Wayland. A clean controlled manifest must pass `--require-complete`. |
 
 There are no **Not done** rows in this renderer-owned branding scope. U9.1 is
 **Fully done** at its source and focused-evidence boundary: long output retains
@@ -151,12 +151,15 @@ Focused Windows x86_64 and WSL source/native evidence completed through 2026-08-
   observed offsets `0 -> 3 -> 0` with selected index `3`, preserved the active
   route/terminal display offset/cursor/raw line, and captured inspected 1750 x
   1080 frames with the persistent right-edge indicator;
-- the current Windows WGPU and CPU Connection Hub runs drove `W -> P -> C`
-  through the native window, preserved the active route, cursor, scroll
-  position, and raw terminal line after Escape, and produced inspected 1750 x
-  1080 frames with a centered 680 x 380 logical-pixel card, unclipped C/W/P/L/F
-  keycaps, and no redundant setup footer or local path. Their 850 x 475 physical
-  Hub-card crops matched across all 403,750 pixels;
+- current-commit focused Windows WGPU and CPU Connection Hub runs at 1600×950
+  physical pixels and 125% scale captured the 840×500 setup and 840×420 direct
+  cards, drove the real `L` mnemonic, independently resolved the physical
+  pointer to `CancelLiteralDestination`, handled that action, preserved route,
+  raw line and scroll state, and dismissed the parent with Escape. The
+  unobscured 1000×625 setup and 1000×525 direct regions matched across all
+  pixels; a host notification obscured the far lower-right edge of the full
+  captures, so complete release baselines and controlled screen-reader review
+  remain U10 evidence rather than being masked or claimed here;
 - the current local Windows Criterion sample projected 10,000 rapidly filtered
   connection rows in 9.416-10.627 ms and six cached provider rows in
   6.527-7.342 microseconds. This is a same-host sample, not a controlled
