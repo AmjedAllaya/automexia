@@ -1476,56 +1476,10 @@ private profile/recipe/preference library and product adapter are covered below.
 
 ### Connection Hub M1 read-only product activation
 
-The application Router owns the service, each Screen owns one route-local
-controller, and Sugarloaf owns the topmost modal. The native picker is invoked
-only by an explicit product action and passes selected files to the review/
-worker boundary; it never becomes an ambient scanner or persistent grant.
-
-    cargo test -p automexia-terminal --test connection_hub_runtime --locked
-    cargo test -p automexia-terminal --test connection_hub_controller --locked
-    cargo test -p automexia-terminal --bin automexia connection_hub --locked
-    cargo test -p automexia-terminal --bin automexia command_palette --locked
-    cargo test -p automexia-devops-ssh --locked
-    cargo test -p automexia-ui-model --locked
-    cargo bench -p automexia-terminal --bench connection_catalog --locked -- --noplot
-    cargo build -p automexia-terminal --bin automexia --features native-gui-test-hooks --locked
-    cargo deny check
-    cargo build -p automexia-terminal --release --locked
-
-Windows 11 results on 2026-08-21: 10 runtime, 8 controller integration, 3
-targeted worker/controller/cache unit, 5 renderer, 46 palette, 33 D4, 33
-UI-model, and 5 library tests passed. The contracts cover
-no-scan-on-open, memory-only grant revocation, review tokens, stale generation
-rejection, publish-before-wake, explicit joined shutdown, last-known-good state,
-metadata CAS success/conflict/reload, read-only recent, hostile tags/search,
-keyboard/pointer/IME, focus restoration, inert modal stacking, distinct filter
-pointer actions, and bounded tiny/normal/ultrawide/8K geometry. Connect, Login,
-provider refresh, recipe execution, process, network, authentication, listener,
-and PTY authority remain disabled.
-
-`cargo deny check` passed advisories, bans, licenses, and sources. `rfd` 0.17.2
-is the only new direct dependency and `pollster` is its only new transitive
-package. The release 10,000-record projection measured 7.1790–7.7931 ms versus
-the below-16-ms target. The earlier same-host range was 7.0513–7.4408 ms; this
-single run is not treated as a statistical regression comparison. The release
-executable is 22,670,336 bytes, 650,752 bytes (2.96%) above the 22,019,584-byte
-same-host pre-M1 baseline.
-
-For the current visual review, the feature-gated native test control first
-waited for the renderer-neutral prompt-active signal. Only then did it open
-Connection Hub, avoiding the startup race caused by sending a shortcut before
-the terminal was ready. A direct native-window capture at 1600x950 physical
-pixels and 125% scale was inspected on Windows 11. The complete frame showed a
-centered 760x480-logical setup surface, one clear primary action, complete
-bounds, distinct hierarchy, restrained semantic color, code-native icons with
-redundant text, and no setup-only search/filter toolbar or verbose disabled-
-action footer. The hook is excluded from normal builds.
-
-Renderer-neutral tests remain the evidence for tiny-to-8K responsive geometry.
-
-Native macOS/Linux picker and static permission/recovery runs plus controlled
-Narrator/NVDA, VoiceOver, and Orca verification remain external. Local semantic,
-geometry, and limited Windows frame evidence do not substitute for those runs.
+Current Windows WGPU/CPU evidence covers the 840x500 setup, 840x420 direct
+editor, `L`, cancellation, terminal isolation and exact unobscured pixels. Run
+HUB-08 in [the manual guide](MANUAL-FEATURE-TESTING.md); other native evidence
+remains external.
 
 ### Connection Hub F3 private profile, recipe, and preference library
 

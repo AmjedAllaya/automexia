@@ -555,9 +555,10 @@ Current assurance: **Partial**.
   process/network/login/PTY paths.
 - Drive native C/W/P section switching and L/F action mnemonics in both cases,
   keyboard, pointer/picker equivalence, modified/search/nested-surface rejection,
-  PTY side-effect absence, focus, compact 680×380 geometry, 40-pixel targets,
-  exact shared-brand pixels, contrast, scale, theme, screen-reader, restart and
-  revoke flows.
+  PTY side-effect absence, focus, spacious 840×500 setup and focused 840×420
+  direct-entry geometry, responsive field stacking, 44/40-pixel targets,
+  functional nested cancellation, exact shared-brand pixels, contrast, scale,
+  theme, screen-reader, restart and revoke flows.
 
 ### connection-hub-f3-library
 

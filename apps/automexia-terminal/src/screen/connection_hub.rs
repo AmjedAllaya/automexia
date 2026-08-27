@@ -17,6 +17,28 @@ use crate::renderer::connection_hub::ConnectionHubHit;
 
 use super::Screen;
 
+#[cfg(feature = "native-gui-test-hooks")]
+static NATIVE_CONNECTION_HUB_LAST_HIT: std::sync::OnceLock<
+    std::sync::Mutex<Option<String>>,
+> = std::sync::OnceLock::new();
+
+#[cfg(feature = "native-gui-test-hooks")]
+fn record_native_connection_hub_hit(hit: &ConnectionHubHit) {
+    *NATIVE_CONNECTION_HUB_LAST_HIT
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner) = Some(format!("{hit:?}"));
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+pub(super) fn native_connection_hub_last_hit() -> Option<String> {
+    NATIVE_CONNECTION_HUB_LAST_HIT
+        .get_or_init(|| std::sync::Mutex::new(None))
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner)
+        .clone()
+}
+
 fn mnemonic_letter(logical_key: &Key, physical_key: PhysicalKey) -> Option<char> {
     match logical_key {
         Key::Character(value) if value.chars().count() == 1 => {
@@ -707,6 +729,8 @@ impl Screen<'_> {
         if !self.connection_hub.is_active() {
             return;
         }
+        #[cfg(feature = "native-gui-test-hooks")]
+        record_native_connection_hub_hit(&hit);
         let size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
         let presentation = self.connection_hub.presentation(
