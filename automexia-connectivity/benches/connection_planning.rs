@@ -191,6 +191,14 @@ fn workspace() -> WorkspaceIntentV1 {
 
 fn m6_workspace_and_broadcast_planning(criterion: &mut Criterion) {
     let workspace = workspace();
+    let workspace_json = serde_json::to_vec(&workspace).unwrap();
+    let bindings = (0..MAX_WORKSPACE_CONNECTIONS)
+        .map(|index| WorkspaceProfileBinding {
+            profile_id: format!("profile-{index}"),
+            profile_revision: 1,
+            profile_fingerprint: digest('b'),
+        })
+        .collect::<Vec<_>>();
     let targets = (0..MAX_BROADCAST_TARGETS)
         .map(|index| BroadcastTargetV1 {
             id: format!("target-{index}"),
@@ -203,6 +211,27 @@ fn m6_workspace_and_broadcast_planning(criterion: &mut Criterion) {
     criterion.bench_function(
         "workspace_validate_16_windows_64_panes_128_connections",
         |bencher| bencher.iter(|| validate_workspace(black_box(&workspace)).unwrap()),
+    );
+    criterion.bench_function(
+        "workspace_parse_strict_json_16_windows_64_panes_128_connections",
+        |bencher| {
+            bencher.iter(|| {
+                black_box(parse_workspace_json(black_box(&workspace_json))).unwrap()
+            })
+        },
+    );
+    criterion.bench_function(
+        "connection_plan_workspace_restore_128_connections",
+        |bencher| {
+            bencher.iter(|| {
+                black_box(resolve_workspace_restore(
+                    black_box(&workspace),
+                    black_box(&bindings),
+                    1,
+                ))
+                .unwrap()
+            })
+        },
     );
     criterion.bench_function("broadcast_review_50_targets", |bencher| {
         bencher.iter(|| {

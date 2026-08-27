@@ -8,8 +8,8 @@ use std::{
 };
 
 use automexia_connectivity::connections::{
-    parse_workspace_json, RecipeRunMode, ResolvedExecutable, MAX_BROADCAST_COMMAND_BYTES,
-    MAX_DOCUMENT_BYTES,
+    from_json_slice_without_duplicate_keys, parse_workspace_json, RecipeRunMode,
+    ResolvedExecutable, MAX_BROADCAST_COMMAND_BYTES, MAX_DOCUMENT_BYTES,
 };
 use serde::Deserialize;
 
@@ -31,6 +31,7 @@ enum WorkspaceCliErrorCode {
     StaleRevision,
     ReviewRejected,
     MigrationNotRequired,
+    RecoveryRequired,
     RecoveryNotRequired,
     ClockUnavailable,
 }
@@ -338,6 +339,7 @@ pub fn execute_workspaces_command_at(
                         "targets": review.targets,
                         "production_confirmation_required": review.production_confirmation_required,
                         "approval_fingerprint": review.approval_fingerprint,
+                        "reviewed_at_ms": review.reviewed_at_ms,
                         "armed_until_ms": review.armed_until_ms,
                         "review_required": true,
                         "execution_enabled": false,
@@ -363,15 +365,18 @@ pub fn execute_workspaces_command_at(
             expected_revision,
             json,
         } => {
-            let migration_pending = matches!(
-                loaded.origin,
-                LibraryLoadOrigin::PrimaryMigrationPreview
-                    | LibraryLoadOrigin::PreviousMigrationPreview
-            );
-            if !migration_pending {
-                return Err(Box::new(WorkspaceCliError(
-                    WorkspaceCliErrorCode::MigrationNotRequired,
-                )));
+            match loaded.origin {
+                LibraryLoadOrigin::PrimaryMigrationPreview => {}
+                LibraryLoadOrigin::PreviousMigrationPreview => {
+                    return Err(Box::new(WorkspaceCliError(
+                        WorkspaceCliErrorCode::RecoveryRequired,
+                    )));
+                }
+                _ => {
+                    return Err(Box::new(WorkspaceCliError(
+                        WorkspaceCliErrorCode::MigrationNotRequired,
+                    )));
+                }
             }
             let resulting_revision = if *apply {
                 require_revision(*expected_revision, document.revision)?;
@@ -491,7 +496,7 @@ fn read_bounded_regular(
 
 fn read_recipe_context(path: &Path) -> Result<RecipeContextDocument, WorkspaceCliError> {
     let bytes = read_bounded_regular(path, MAX_DOCUMENT_BYTES)?;
-    serde_json::from_slice(&bytes)
+    from_json_slice_without_duplicate_keys(&bytes)
         .map_err(|_| WorkspaceCliError(WorkspaceCliErrorCode::InputRejected))
 }
 

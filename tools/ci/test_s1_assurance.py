@@ -437,6 +437,39 @@ class S1AssuranceTests(unittest.TestCase):
                     suite["id"],
                 )
 
+    def test_m6_workspaces_have_native_resource_visual_and_accessibility_evidence(self) -> None:
+        policy = S1.load_policy()
+        for suite in policy["required_suites"]:
+            domain = suite["domain"]
+            coverage = suite["coverage"]
+            if domain == "native":
+                self.assertIn(
+                    "connection-hub-workspaces-review",
+                    coverage["scenarios"],
+                    suite["id"],
+                )
+            elif suite["tool"] == "native-resource":
+                self.assertIn(
+                    "connection-hub-workspaces-replacement",
+                    coverage["scenarios"],
+                    suite["id"],
+                )
+            elif domain == "visual":
+                self.assertTrue(
+                    {
+                        "connection-hub-workspaces-catalog",
+                        "connection-hub-workspace-restore",
+                        "connection-hub-workspace-broadcast",
+                    }.issubset(coverage["surfaces"]),
+                    suite["id"],
+                )
+            elif domain == "accessibility":
+                self.assertIn(
+                    "connection-hub-workspaces-review",
+                    coverage["tasks"],
+                    suite["id"],
+                )
+
     def test_visual_matrix_includes_high_contrast_400_percent_and_reduced_motion(self) -> None:
         policy = S1.load_policy()
         for suite in policy["required_suites"]:

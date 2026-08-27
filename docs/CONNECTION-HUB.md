@@ -715,13 +715,23 @@ CLI/model review: redundant icon/color/text describe disarmed/armed/completed/
 cancelled/expired states, exact transient command appears only in explicit
 review output, production confirmation is separate, and execution/Enter are
 never requested. Debug and audit retain only digest, byte count, target, outcome,
-and stable diagnostics.
+and stable diagnostics. Expiry is a terminal per-target outcome rather than an
+aggregate-only label. Review timestamps and lifecycle transitions reject clock
+reversal, and only the explicit active generation can publish a result.
+
+All workspace, recipe, context, import, and persisted-library JSON enters through
+the shared duplicate-name-rejecting parser. Workspace restore resolves only the
+selected workspace's referenced profiles; unrelated library rows do not consume
+the 128-connection restore limit. Previous schema recovery remains a distinct
+explicit action and cannot be applied by the migration command.
 
 The model caps 16 windows, 64 panes, 128 connections, 50 broadcast targets, 8 KiB
 of command text, and 60 seconds of arming; the private document is 16 MiB.
 Controlled native pixels, screen readers, real OpenSSH/process/resource cleanup,
 and managed execution remain external D3/M5 gates. [Accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
 owns the boundary.
+The stable-release integrity and evidence ledger is in the
+[M6/F6 assurance audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 
 ## M8-M12 cached provider catalog and review
 

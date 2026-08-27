@@ -241,25 +241,35 @@ M6 is implemented as a product-visible but execution-disabled review boundary:
 
 - Connection Library schema 2 stores profiles, recipes, workspaces, and
   preferences under the existing private filenames. Schema 1 loads as an
-  explicit migration preview and changes persist only through reviewed CAS.
+  explicit migration preview and changes persist only through reviewed CAS. A
+  schema-1 previous generation requires explicit `workspaces recover`; migrate
+  never consumes recovery state.
 - Editing a recipe advances every dependent profile/workspace revision,
   recomputes exact fingerprints, and clears approvals. A mismatched, dangling,
-  overflowing, stale, malformed, linked, or oversized document fails closed.
+  overflowing, stale, malformed, linked, oversized, or duplicate-key document
+  fails closed before typed deserialization.
 - Export is redacted and workspace-topology only; importing creates fresh local
   IDs and requires review before CAS. Rebind imported topology locally.
 - A recipe review preserves the fixed lifecycle order, revalidates typed policy,
   exposes no authority, and supports `NoHooks` as a reviewed recovery intent.
-  The public `recipe-plan --no-hooks` command reviews this recovery intent but cannot execute it.
+  Reducers revalidate the complete fingerprint-bound review and exact all-false
+  authority ceiling, reject clock reversal/deadline overflow, and terminalize
+  stale generations. The public `recipe-plan --no-hooks` command reviews this
+  recovery intent but cannot execute it.
 - Remote initialization is a typed POSIX-sh or PowerShell envelope for directory,
   public environment, user switch, and verification. It contains no arbitrary
   command/script field; `sudo`/`doas` remains visible and confirms every
   connection.
 - Workspace restore rebuilds only layout and connection intent into a fresh
   reviewed generation. It does not restore PTYs, credentials, tunnels, automatic
-  reconnect, or interrupted work.
+  reconnect, or interrupted work. Only referenced profiles are read, so an
+  otherwise valid workspace remains restorable in a library containing more
+  than 128 unrelated profiles.
 - Broadcast requires exact transient command/target preview, explicit time-
   bounded arming, separate production confirmation, and per-target results. It
   requests no Enter and audit/debug state contains only a command digest/count.
+  The review time is fingerprint-bound; clock reversal is rejected and expiry
+  terminalizes every pending target with an explicit digest-only audit result.
 - `automexia workspaces` exposes bounded preview-first management and reviews;
   the joined Hub worker publishes an immutable library snapshot to the
   Workspaces catalog and restore review. CAS writes, current fingerprint binding,
@@ -278,6 +288,8 @@ library revision, resolve a new generation, or retain manual system OpenSSH in
 the terminal. Imported topology must be rebound. No partial migration or stale
 preview is committed. See [accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md)
 and [M6 testing](TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
+The evidence-led stable-release classification is in the
+[M6/F6 assurance audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 ## Automation recipe model
 
 ```text

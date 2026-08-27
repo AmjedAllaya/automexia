@@ -128,8 +128,8 @@ start a process, create a PTY, connect, broadcast, or send Enter.
 | `automexia workspaces restore <id> --generation <n> [--json]` | Review exact current profile bindings for a fresh restore generation. Reconnect and resume stay off. |
 | `automexia workspaces recipe-plan --profile <id> --generation <n> [--no-hooks] [--context <file>] [--json]` | Review the authoritative ordered typed plan. `--no-hooks` is explicit recovery intent; context JSON is bounded and strict. |
 | `automexia workspaces broadcast <id> --command-file <file> [--arm-duration-ms <n>] [--json]` | Review one bounded single-line exact command and exact targets from a regular file. The command is never accepted as an argument and execution stays off. |
-| `automexia workspaces migrate [--json]` | Preview an in-memory schema migration; add `--apply --expected-revision <library>` to persist by CAS. |
-| `automexia workspaces recover <previous-revision> [--json]` | Preview an available previous generation; add `--apply` only when the primary is absent or rejected. |
+| `automexia workspaces migrate [--json]` | Preview an in-memory migration of the primary schema-1 document; add `--apply --expected-revision <library>` to persist by CAS. A previous-generation recovery candidate fails with `recovery_required`. |
+| `automexia workspaces recover <previous-revision> [--json]` | Explicitly preview an available previous generation; add `--apply` only when the primary is absent or rejected. This is the only command that consumes previous-generation recovery state. |
 | `automexia workspaces doctor [--json]` | Report load/recovery state and the D3/M5 activation blockers without probing the network or tools. |
 
 There is still no public managed `connect`, `run`, or `tunnel` command. Continue

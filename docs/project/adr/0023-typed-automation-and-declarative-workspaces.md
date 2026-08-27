@@ -120,3 +120,29 @@ Canonical [ADR 0035](../../adr/0035-core-domain-and-optional-extension-ownership
 moves the capability-free `connections` implementation to
 `automexia-connectivity`; this ADR's typed automation, review, authority, and
 lifecycle decision is unchanged.
+
+## 2026-08-27 stable-release integrity amendment
+
+The accepted nonexecuting boundary is strengthened without adding runtime
+authority or a dependency:
+
+- every M6 JSON ingress rejects duplicate object member names, including escaped
+  spellings and nested duplicates, before typed deserialization;
+- recipe and broadcast reducers independently revalidate their complete reviewed
+  artifact, including content fingerprints, exact all-false authority ceilings,
+  bounded counts, revisions, generations, stage policy, and transient-command
+  metadata;
+- lifecycle timestamps use checked arithmetic and reject clock reversal;
+  broadcast expiry terminalizes and audits every still-pending target;
+- workspace restore reads only the profiles referenced by the selected
+  workspace, so unrelated library cardinality cannot prevent a valid bounded
+  restore; and
+- a schema-1 previous generation is recoverable only through explicit
+  `workspaces recover`; `workspaces migrate` never silently changes recovery
+  ownership.
+
+These are fail-closed validation and recovery clarifications to the accepted
+review-only design. They do not authenticate an in-memory review, enable SSH or
+PTY execution, or satisfy the external D3/M5 native evidence gates. The exact
+source and assurance audit is
+[M6/F6 workspaces stable-release assurance](../../research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).

@@ -2,11 +2,11 @@ use std::collections::{HashMap, HashSet};
 
 use serde::de::DeserializeOwned;
 
-use super::model::*;
 use super::openssh_tunnels::{
     canonical_tunnel_bind_address, canonical_tunnel_destination_host,
 };
 use super::provider_auth::{validate_provider_context, MAX_PROVIDER_CONTEXTS};
+use super::{model::*, strict_json::from_json_slice_without_duplicate_keys};
 
 fn error(
     code: ConnectionModelErrorCode,
@@ -24,7 +24,7 @@ fn parse_strict<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, ConnectionModelE
             "document exceeds the fixed byte ceiling",
         ));
     }
-    serde_json::from_slice(bytes).map_err(|_| {
+    from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
             "document",

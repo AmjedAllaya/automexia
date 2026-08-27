@@ -108,6 +108,12 @@ the claim.
   `docs/research/U10-UI-BRANDING-ASSURANCE-AUDIT.md` records its evidence-led
   source/external reconciliation. The S1 policy remains the exact native,
   visual, resource, accessibility, and review authority.
+- `docs/research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md` owns the
+  evidence-led M6/F6 source/external classification, corrected integrity gaps,
+  placement decision, and exact remaining activation/native release criteria.
+  ADR 0023 remains the durable design authority; the roadmap, user guide,
+  reference, and testing pages describe status, workflow, and evidence without
+  creating another runtime owner.
 - `docs/TESTING.md` owns evidence levels and commands.
 - `docs/FEATURE-TEST-REINFORCEMENT.md` owns the human per-feature scenario,
   oracle, interaction, checker, and exit-criteria plan synchronized with

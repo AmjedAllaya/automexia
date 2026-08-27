@@ -5,6 +5,7 @@ use super::model::{
     ConnectionProfileDocumentV1, CONNECTION_SCHEMA_VERSION, MAX_DOCUMENT_BYTES,
     MAX_PROFILES, MAX_RECIPES,
 };
+use super::strict_json::from_json_slice_without_duplicate_keys;
 use super::validation::{validate_profile, validate_recipe};
 
 fn error(
@@ -25,7 +26,7 @@ pub fn parse_profile_document_json(
             "profile document exceeds the fixed byte ceiling",
         ));
     }
-    let document = serde_json::from_slice(bytes).map_err(|_| {
+    let document = from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
             "document",
@@ -46,7 +47,7 @@ pub fn parse_recipe_document_json(
             "recipe document exceeds the fixed byte ceiling",
         ));
     }
-    let document = serde_json::from_slice(bytes).map_err(|_| {
+    let document = from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
             "document",

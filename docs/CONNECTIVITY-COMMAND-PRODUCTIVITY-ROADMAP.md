@@ -572,7 +572,9 @@ fully done locally.** Execution remains gated by protected D3/M5 native evidence
 
 - [x] **Fully done locally:** schema-2 profile/recipe/workspace persistence,
   entity revisioning, explicit migration/recovery/import/export previews, CAS,
-  fresh transfer IDs, exact cross-record fingerprints, and approval invalidation.
+  fresh transfer IDs, exact cross-record fingerprints, approval invalidation,
+  duplicate-name-safe JSON ingress, and explicit separation of primary migration
+  from previous-generation recovery.
 - [x] **Fully done locally:** deterministic pure recipe review preserves Resolve,
   Preflight, Authenticate, BeforeConnect, Connect, RemoteInitialize, Verify,
   Ready, BeforeDisconnect, and Cleanup ordering.
@@ -581,19 +583,28 @@ fully done locally.** Execution remains gated by protected D3/M5 native evidence
   envelope; privileged switches are revalidated and confirmed every connection.
 - [x] **Fully done locally:** deadlines, cancellation, safe failure, bounded
   eligibility-checked retry/backoff/jitter, generation invalidation, shutdown,
-  and reviewed no-hooks recovery.
+  checked deadline arithmetic, clock-order validation, complete reviewed-artifact
+  revalidation, and reviewed no-hooks recovery.
 - [x] **Fully done locally:** bounded declarative multi-window/pane layout and
   connection intent, isolated clone/rebind, and review-only restore with no live
   PTY/tunnel/credential state, automatic reconnect, or interrupted-action resume.
+  Restore reads only selected-workspace profile references, not unrelated
+  library inventory.
 - [x] **Fully done locally:** bounded reviewed broadcast with exact transient
   command/targets, unmistakable semantic armed/disarmed state, production
   confirmation, no implicit Enter, per-target results, isolation, cancellation,
-  and digest-only audit.
+  clock-order validation, terminal expiry for every pending target, and
+  digest-only audit.
 - [x] **Fully done locally:** custom scripts, hidden key injection, terminal-cell
   readiness inference, and automatic persistent mutation remain absent.
 - [x] **Fully done locally:** hostile/limit/cycle/fingerprint, clone/rebind,
   multi-pane/window, retry/reconnect/shutdown, focus/accessibility, recovery,
   redaction, repeated-generation, fuzz, mutation, and benchmark evidence passes.
+- [x] **Fully done locally:** the dedicated semantic M6 checker and mutation
+  suite fail closed on contract, source, test, fuzz, benchmark, documentation,
+  CI, and S1 policy drift. Every S1 native/resource/accessibility suite contains
+  an M6 workflow, and every visual suite specifies the exact 9,216-capture
+  catalog/restore/broadcast matrix.
 - [x] **Fully done locally:** accepted ADR 0023, a bounded preview-first public
   workspace CLI, immutable background-worker library publication, and the
   Connection Hub workspace catalog/restore review are wired with CAS writes,
@@ -607,6 +618,7 @@ fully done locally.** Execution remains gated by protected D3/M5 native evidence
 Exit remains unavailable for execution, but the shipped product can safely
 manage and review reusable profiles, recipes, and remote workspace intent.
 Advanced custom code and every M6 execution path remain disabled.
+See the [M6/F6 stable-release evidence ledger](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 
 ## F7 - implement D6.0 provider-neutral auth and capsule orchestration
 

@@ -55,6 +55,7 @@ REQUIRED_NATIVE_SCENARIOS = {
     "command-result-datetime",
     "user-preference-restart",
     "command-boundary-navigation",
+    "connection-hub-workspaces-review",
 }
 REQUIRED_RESOURCE_SCENARIOS = {
     "tab-split-clone-close",
@@ -72,6 +73,7 @@ REQUIRED_RESOURCE_SCENARIOS = {
     "connection-hub-direct-entry",
     "user-preference-restart",
     "command-boundary-navigation",
+    "connection-hub-workspaces-replacement",
 }
 REQUIRED_VISUAL_THEMES = {"dark", "light", "high-contrast"}
 REQUIRED_VISUAL_SCALES = {"1.0", "1.25", "1.5", "2.0", "3.0", "4.0"}
@@ -95,6 +97,9 @@ REQUIRED_VISUAL_SURFACES = {
     "scoped-search-global",
     "connection-hub-catalog",
     "connection-hub-review",
+    "connection-hub-workspaces-catalog",
+    "connection-hub-workspace-restore",
+    "connection-hub-workspace-broadcast",
     "quick-actions",
     "compatibility-inspector",
     "confirmation-dialogs",
@@ -128,6 +133,7 @@ REQUIRED_ACCESSIBILITY_TASKS = {
     "known-limitations-confirmed",
     "switch-scoped-search",
     "connection-hub-navigation",
+    "connection-hub-workspaces-review",
     "quick-actions-navigation",
     "modal-stack-focus",
     "window-controls",

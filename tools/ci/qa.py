@@ -607,6 +607,16 @@ def main() -> int:
             None,
         ),
         (
+            "m6-workspaces-contract",
+            [sys.executable, "tools/ci/check_m6_workspaces.py"],
+            None,
+        ),
+        (
+            "m6-workspaces-mutations",
+            [sys.executable, "tools/ci/test_m6_workspaces.py"],
+            None,
+        ),
+        (
             "s1-assurance-policy",
             [sys.executable, "tools/ci/s1_assurance.py", "check-policy"],
             None,

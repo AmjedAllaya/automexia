@@ -414,6 +414,13 @@ malformed/oversized input, and exhausted bounded fresh-ID attempts fail closed.
 Workspace transfer preserves only redacted topology and assigns fresh local IDs;
 it never transfers live connection bindings.
 
+All M6 document ingress uses the connectivity-owned strict JSON adapter before
+Serde conversion. It rejects duplicate object member names after escape
+decoding at every nesting level and rejects trailing data; typed validators then
+enforce schema, size, count, graph, and identifier contracts. This avoids
+parser-dependent duplicate-key interpretation without creating a second schema
+or persistence owner.
+
 A reviewed recipe run retains the fixed ten-stage order but may omit empty
 stages. `NoHooks` removes recipe-origin steps and resequences only the trusted
 planner resolve/connect steps. The review boundary independently revalidates
@@ -422,7 +429,10 @@ forged resolved plan cannot downgrade privilege. Runtime state is monotonic and
 per generation: every step has a bounded deadline, automatic retries require the
 existing idempotent/noninteractive/nonmutating/cancellation-safe declaration,
 and cancellation, shutdown, or connection replacement terminalizes obsolete
-work.
+work. The reducer does not trust a publicly constructible review: it revalidates
+the exact review fingerprint, revisions, generation, omitted-hook count, stage
+policy, step fingerprints, and exact all-false authority ceiling. Checked time
+arithmetic and start/deadline ordering reject overflow and clock reversal.
 
 Remote initialization does not expose a shell command string. It carries typed
 working-directory, public-environment, `sudo`/`doas` user-switch, and
@@ -440,6 +450,13 @@ only per-target digest/outcome diagnostics. It never requests Enter. Structured
 UI projections use redundant icon/color/text state, exact preview, alert/switch/
 textbox semantics, and deterministic focus restoration without owning pixels or
 execution.
+
+Broadcast follows the same independent-review rule. The fingerprint includes
+review time, command digest/length, exact ordered target set, duration,
+production-confirmation derivation, and all-false authority flags. Expiry
+terminalizes and audits every pending target. Application restore fingerprints
+only profiles referenced by the selected workspace, preserving the model's
+128-binding ceiling without imposing it on unrelated library inventory.
 
 The application composes, but does not duplicate, those authorities:
 `connections::workspaces` binds current library fingerprints to restore, recipe,

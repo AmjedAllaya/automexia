@@ -2367,6 +2367,12 @@ cycle, use a split ratio outside its allowed range, insert bidi/control text,
 reference a nonexistent profile, or exceed a documented count/byte limit. Each
 must fail closed and leave the last-known-good library unchanged.
 
+Also duplicate the same top-level member once literally, once by an equivalent
+JSON Unicode-escape spelling, and once inside a nested pane or recipe object.
+Repeat through the persisted library, redacted import, and recipe context-file
+paths. Every case must fail before a preview is published; the primary and
+previous files must be byte-for-byte unchanged.
+
 ### WORK-04 — responsive workspace catalog and restore review
 
 With the valid retained fixture, open the Hub and press `W`. Test at a narrow
@@ -2405,6 +2411,12 @@ recovery intent. Neither mode starts OpenSSH, a shell, a provider, a PTY, or any
 recipe action. Generation reuse, stale binding, invalid context JSON, an unknown
 variable, dependency cycle, unsafe action, or oversized input fails closed.
 
+For the maximum-cardinality path, add more than 128 unrelated valid profiles to
+the disposable library while the selected workspace still references a bounded
+set. Restore must succeed with exactly the selected references. A workspace that
+itself exceeds 128 bindings must still fail; unrelated inventory is not a reason
+to reject the valid workspace.
+
 ### WORK-06 — safe broadcast review
 
 Create a regular UTF-8 file containing exactly one harmless line:
@@ -2427,6 +2439,11 @@ logs. No target receives bytes.
 Negative cases: a second line, NUL/control/bidi text, more than 8 KiB, a link or
 non-regular file, more than 50 targets, an arm duration above 60 seconds, stale
 workspace revision, and a vanished file must all fail without partial delivery.
+With a deterministic test clock, attempt to arm before review time, publish a
+result before arm time, overflow the expiry calculation, and publish after
+expiry. Clock reversal and overflow must fail. Expiry must produce one explicit
+`Expired` outcome and digest-only audit row for every still-pending target while
+preserving already-terminal results.
 
 ### WORK-07 — migration, recovery, isolation, and complete M6 source evidence
 
@@ -2443,7 +2460,10 @@ automexia workspaces recover <previous-revision> --apply --json
 
 Expected result: migration is explicit and CAS-bound; imported topology loses
 unsafe bindings until locally rebound; recovery is allowed only when the primary
-is absent/rejected and never overwrites a valid newer primary.
+is absent/rejected and never overwrites a valid newer primary. When only a
+schema-1 previous generation is available, `workspaces migrate` must return
+`recovery_required` and make no write; only `workspaces recover` may preview and
+apply it.
 
 Run the deterministic evidence set:
 
@@ -2457,12 +2477,20 @@ cargo test -p automexia-terminal --locked --test m6_workspace_product
 cargo test -p automexia-terminal --locked --bin automexia workspace_
 python tools/ci/check_connection_hub_f2.py
 python tools/ci/test_connection_hub_f2.py
+python tools/ci/check_m6_workspaces.py
+python tools/ci/test_m6_workspaces.py
+python tools/ci/s1_assurance.py check-policy
+python tools/ci/test_s1_assurance.py
 cargo xtask verify architecture
 ```
 
 Expected result: every process exits 0. These tests prove deterministic local
 contracts, not a real remote restore, broadcast, managed recipe, or native
-OpenSSH lifecycle.
+OpenSSH lifecycle. The S1 policy must enumerate all 28 suites, including the M6
+native/resource/accessibility workflows and the three M6 visual surfaces. Each
+visual suite must require exactly 9,216 controlled captures; those artifacts and
+independent human/assistive-technology review remain external until actually
+collected for the exact release commit.
 
 ### CLOUD-01 — six-provider cached review and provider-neutral isolation
 
@@ -3227,7 +3255,7 @@ change; anti-aliasing/dynamic regions use only reviewed masks and thresholds.
 No changed pixel may be dismissed solely because aggregate ratio passes. Text,
 icons, focus, borders, prompt/result boundaries, cursor and close controls are
 aligned, unclipped, nonoverlapping and consistent. A mask/threshold/dimension
-mismatch fails. Each visual suite contains 8,352 cases (3 themes × 6 scales ×
+mismatch fails. Each visual suite contains 9,216 cases (3 themes × 6 scales ×
 8 viewports × 29 surfaces × 2 motion profiles), for 41,760 controlled captures;
 an incomplete local subset is recorded as such, never as full S1.
 

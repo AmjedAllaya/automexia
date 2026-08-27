@@ -576,12 +576,19 @@ Current assurance: **Partial**.
 
 Current assurance: **Partial**.
 
-- Cross windows/panes/split-depth/profiles/recipes/stages/retries/deadlines/
-  restore/broadcast/layout limits.
-- Reject cycles, dangling bindings, forged risk, unsafe retry, stale review,
-  cross-workspace targets, hidden scripts, secrets, implicit Enter and execution.
-- Run native review/edit/restore/broadcast-preview, responsive pixel,
-  accessibility, persistence, replacement and no-execution flows.
+- Cross windows/panes/split-depth/profiles/recipes/stages/retries/checked
+  deadlines, libraries larger than one workspace binding set, restore/
+  broadcast/layout limits and 128-connection restore performance.
+- Reject cycles, dangling bindings, forged reviewed-run/broadcast fingerprints,
+  literal/escaped/nested duplicate JSON keys, unsafe retry, clock reversal or
+  overflow, stale review, cross-workspace targets, hidden scripts, secrets,
+  implicit Enter, previous-generation migration misuse and execution.
+- Require `check_m6_workspaces.py` plus its mutation suite to freeze the pure
+  model, application composition, activation blockers, real-path tests, fuzz,
+  benchmark, S1 matrix and CI/full-QA wiring.
+- Run native review/edit/restore/broadcast-preview and expiry flows with
+  responsive exact pixels, accessibility, persistence, replacement and
+  no-execution evidence. These controlled native gates remain external.
 
 ### provider-auth-m7-capsules
 

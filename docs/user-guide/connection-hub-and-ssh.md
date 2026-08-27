@@ -229,13 +229,17 @@ Use `automexia workspaces` for preview-first management and additional reviews.
 Writes require explicit `--apply` and exact compare-and-swap revisions. Broadcast
 accepts its bounded single-line command only from a regular file so it is not
 leaked in process arguments; it reviews exact targets and production status but
-has no execution switch.
+has no execution switch. When an arm expires, every pending target becomes an
+explicit expired result; no target remains silently pending.
 
 ADR 0023 is accepted, but ADR 0012/D3/M5 protected activation and native
 lifecycle evidence are still incomplete. Continue to use system OpenSSH in the
 shell for actual connections. Schema-1 libraries are previewed in memory and
-advance only after reviewed CAS; imported topology loses connection bindings and
-must be rebound locally.
+advance only after reviewed CAS. A schema-1 previous generation must be handled
+with explicit `workspaces recover`; `workspaces migrate` reports
+`recovery_required` instead of applying recovery. Duplicate JSON member names,
+including escaped spellings, fail closed. Imported topology loses connection
+bindings and must be rebound locally.
 ## Review cached provider contexts
 
 Open the Connection Hub and choose **Providers**, or press `P` while the main

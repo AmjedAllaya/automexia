@@ -11,6 +11,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
+use super::strict_json::from_json_slice_without_duplicate_keys;
 use super::{
     planner::hash_serializable, ConnectionModelError, ConnectionModelErrorCode,
     DestinationSurface, EnvironmentClassification, EnvironmentRisk,
@@ -356,7 +357,7 @@ pub fn parse_workspace_json(
             "workspace record exceeds the fixed byte ceiling",
         ));
     }
-    let workspace = serde_json::from_slice(bytes).map_err(|_| {
+    let workspace = from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
             "workspace",
@@ -377,7 +378,7 @@ pub fn parse_workspace_document_json(
             "workspace document exceeds the fixed byte ceiling",
         ));
     }
-    let document = serde_json::from_slice(bytes).map_err(|_| {
+    let document = from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
             "workspaces",
@@ -667,6 +668,7 @@ pub struct BroadcastReview {
     pub targets: Vec<BroadcastTargetV1>,
     pub production_confirmation_required: bool,
     pub approval_fingerprint: String,
+    pub reviewed_at_ms: u64,
     pub armed_until_ms: u64,
     pub review_required: bool,
     pub execution_enabled: bool,
@@ -687,6 +689,7 @@ impl fmt::Debug for BroadcastReview {
                 &self.production_confirmation_required,
             )
             .field("approval_fingerprint", &self.approval_fingerprint)
+            .field("reviewed_at_ms", &self.reviewed_at_ms)
             .field("armed_until_ms", &self.armed_until_ms)
             .field("review_required", &self.review_required)
             .field("execution_enabled", &self.execution_enabled)
@@ -706,27 +709,18 @@ struct BroadcastFingerprint<'a> {
     command_digest: &'a str,
     command_byte_count: usize,
     targets: &'a [BroadcastTargetV1],
+    reviewed_at_ms: u64,
     armed_until_ms: u64,
 }
 
-pub fn review_broadcast(
-    exact_command: &str,
+fn validate_broadcast_targets(
     targets: &[BroadcastTargetV1],
-    now_ms: u64,
-    arm_duration_ms: u64,
-) -> Result<BroadcastReview, ConnectionModelError> {
-    if exact_command.trim().is_empty()
-        || exact_command.len() > MAX_BROADCAST_COMMAND_BYTES
-        || contains_hostile_format(exact_command)
-        || targets.is_empty()
-        || targets.len() > MAX_BROADCAST_TARGETS
-        || arm_duration_ms == 0
-        || arm_duration_ms > MAX_BROADCAST_ARM_MS
-    {
+) -> Result<(), ConnectionModelError> {
+    if targets.is_empty() || targets.len() > MAX_BROADCAST_TARGETS {
         return Err(error(
             ConnectionModelErrorCode::LimitExceeded,
-            "broadcast",
-            "broadcast command, target count, or arming duration is invalid",
+            "broadcast.targets",
+            "broadcast target count is invalid",
         ));
     }
     let mut ids = HashSet::with_capacity(targets.len());
@@ -744,6 +738,28 @@ pub fn review_broadcast(
             ));
         }
     }
+    Ok(())
+}
+
+pub fn review_broadcast(
+    exact_command: &str,
+    targets: &[BroadcastTargetV1],
+    now_ms: u64,
+    arm_duration_ms: u64,
+) -> Result<BroadcastReview, ConnectionModelError> {
+    if exact_command.trim().is_empty()
+        || exact_command.len() > MAX_BROADCAST_COMMAND_BYTES
+        || contains_hostile_format(exact_command)
+        || arm_duration_ms == 0
+        || arm_duration_ms > MAX_BROADCAST_ARM_MS
+    {
+        return Err(error(
+            ConnectionModelErrorCode::LimitExceeded,
+            "broadcast",
+            "broadcast command, target count, or arming duration is invalid",
+        ));
+    }
+    validate_broadcast_targets(targets)?;
     let command_digest = blake3::hash(exact_command.as_bytes()).to_hex().to_string();
     let armed_until_ms = now_ms.checked_add(arm_duration_ms).ok_or_else(|| {
         error(
@@ -756,6 +772,7 @@ pub fn review_broadcast(
         command_digest: &command_digest,
         command_byte_count: exact_command.len(),
         targets,
+        reviewed_at_ms: now_ms,
         armed_until_ms,
     })?;
     Ok(BroadcastReview {
@@ -768,6 +785,7 @@ pub fn review_broadcast(
             .iter()
             .any(|target| target.environment_risk == EnvironmentRisk::Production),
         approval_fingerprint,
+        reviewed_at_ms: now_ms,
         armed_until_ms,
         review_required: true,
         execution_enabled: false,
@@ -775,10 +793,70 @@ pub fn review_broadcast(
     })
 }
 
+pub fn validate_broadcast_review(
+    review: &BroadcastReview,
+) -> Result<(), ConnectionModelError> {
+    let command = review.exact_command();
+    validate_broadcast_targets(&review.targets)?;
+    let arm_duration_ms = review
+        .armed_until_ms
+        .checked_sub(review.reviewed_at_ms)
+        .ok_or_else(|| {
+            error(
+                ConnectionModelErrorCode::InvalidPolicy,
+                "broadcast.deadline",
+                "broadcast deadline precedes its review",
+            )
+        })?;
+    let command_digest = blake3::hash(command.as_bytes()).to_hex().to_string();
+    let production_confirmation_required = review
+        .targets
+        .iter()
+        .any(|target| target.environment_risk == EnvironmentRisk::Production);
+    if review.schema_version != CONNECTION_SCHEMA_VERSION
+        || command.trim().is_empty()
+        || command.len() > MAX_BROADCAST_COMMAND_BYTES
+        || contains_hostile_format(command)
+        || review.command_byte_count != command.len()
+        || review.command_digest != command_digest
+        || !digest_is_valid(&review.approval_fingerprint)
+        || arm_duration_ms == 0
+        || arm_duration_ms > MAX_BROADCAST_ARM_MS
+        || review.production_confirmation_required != production_confirmation_required
+        || !review.review_required
+        || review.execution_enabled
+        || review.enter_requested
+    {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidPolicy,
+            "broadcast",
+            "broadcast review contents or disabled policy are invalid",
+        ));
+    }
+    let expected = hash_serializable(&BroadcastFingerprint {
+        command_digest: &review.command_digest,
+        command_byte_count: review.command_byte_count,
+        targets: &review.targets,
+        reviewed_at_ms: review.reviewed_at_ms,
+        armed_until_ms: review.armed_until_ms,
+    })?;
+    if expected != review.approval_fingerprint {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidFingerprint,
+            "broadcast.approval_fingerprint",
+            "broadcast review fingerprint does not match its contents",
+        ));
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BroadcastState {
     Disarmed,
-    Armed { expires_at_ms: u64 },
+    Armed {
+        armed_at_ms: u64,
+        expires_at_ms: u64,
+    },
     Completed,
     Cancelled,
     Expired,
@@ -791,6 +869,7 @@ pub enum BroadcastTargetOutcome {
     Succeeded,
     Failed { diagnostic_code: String },
     Cancelled,
+    Expired,
 }
 
 impl BroadcastTargetOutcome {
@@ -812,6 +891,7 @@ pub enum BroadcastAuditOutcome {
     Succeeded,
     Failed,
     Cancelled,
+    Expired,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -894,15 +974,26 @@ fn record_target(
             "stale broadcast generation was rejected",
         ));
     }
-    let BroadcastState::Armed { expires_at_ms } = lifecycle.state else {
+    let BroadcastState::Armed {
+        armed_at_ms,
+        expires_at_ms,
+    } = lifecycle.state
+    else {
         return Err(error(
             ConnectionModelErrorCode::InvalidTransition,
             "broadcast.state",
             "broadcast target result requires an armed review",
         ));
     };
+    if at_ms < armed_at_ms {
+        return Err(error(
+            ConnectionModelErrorCode::InvalidTransition,
+            "broadcast.clock",
+            "broadcast target result predates arming",
+        ));
+    }
     if at_ms > expires_at_ms {
-        lifecycle.state = BroadcastState::Expired;
+        expire_pending_targets(lifecycle, review, at_ms);
         return Err(error(
             ConnectionModelErrorCode::InvalidTransition,
             "broadcast.deadline",
@@ -933,6 +1024,7 @@ fn record_target(
             (BroadcastAuditOutcome::Failed, Some(diagnostic_code.clone()))
         }
         BroadcastTargetOutcome::Cancelled => (BroadcastAuditOutcome::Cancelled, None),
+        BroadcastTargetOutcome::Expired => (BroadcastAuditOutcome::Expired, None),
         BroadcastTargetOutcome::Pending => {
             return Err(error(
                 ConnectionModelErrorCode::InvalidTransition,
@@ -960,11 +1052,33 @@ fn record_target(
     Ok(())
 }
 
+fn expire_pending_targets(
+    lifecycle: &mut BroadcastLifecycle,
+    review: &BroadcastReview,
+    at_ms: u64,
+) {
+    for target in &mut lifecycle.targets {
+        if !target.outcome.is_terminal() {
+            target.outcome = BroadcastTargetOutcome::Expired;
+            lifecycle.audit.push(BroadcastAuditRecord {
+                command_digest: review.command_digest.clone(),
+                command_byte_count: review.command_byte_count,
+                target_id: target.target_id.clone(),
+                outcome: BroadcastAuditOutcome::Expired,
+                diagnostic_code: None,
+                at_ms,
+            });
+        }
+    }
+    lifecycle.state = BroadcastState::Expired;
+}
+
 pub fn apply_broadcast_event(
     lifecycle: &mut BroadcastLifecycle,
     review: &BroadcastReview,
     event: BroadcastEvent,
 ) -> Result<(), ConnectionModelError> {
+    validate_broadcast_review(review)?;
     if lifecycle.targets.len() != review.targets.len()
         || lifecycle.approval_fingerprint != review.approval_fingerprint
         || lifecycle.generation == 0
@@ -984,6 +1098,7 @@ pub fn apply_broadcast_event(
             production_confirmed,
         } => {
             if lifecycle.state != BroadcastState::Disarmed
+                || now_ms < review.reviewed_at_ms
                 || now_ms > review.armed_until_ms
                 || (review.production_confirmation_required && !production_confirmed)
             {
@@ -994,6 +1109,7 @@ pub fn apply_broadcast_event(
                 ));
             }
             lifecycle.state = BroadcastState::Armed {
+                armed_at_ms: now_ms,
                 expires_at_ms: review.armed_until_ms,
             };
         }
@@ -1039,15 +1155,26 @@ pub fn apply_broadcast_event(
                     "stale broadcast cancellation was rejected",
                 ));
             }
-            let BroadcastState::Armed { expires_at_ms } = lifecycle.state else {
+            let BroadcastState::Armed {
+                armed_at_ms,
+                expires_at_ms,
+            } = lifecycle.state
+            else {
                 return Err(error(
                     ConnectionModelErrorCode::InvalidTransition,
                     "broadcast.state",
                     "broadcast cancellation requires an armed review",
                 ));
             };
+            if at_ms < armed_at_ms {
+                return Err(error(
+                    ConnectionModelErrorCode::InvalidTransition,
+                    "broadcast.clock",
+                    "broadcast cancellation predates arming",
+                ));
+            }
             if at_ms > expires_at_ms {
-                lifecycle.state = BroadcastState::Expired;
+                expire_pending_targets(lifecycle, review, at_ms);
                 return Err(error(
                     ConnectionModelErrorCode::InvalidTransition,
                     "broadcast.deadline",
@@ -1070,21 +1197,25 @@ pub fn apply_broadcast_event(
             lifecycle.state = BroadcastState::Cancelled;
         }
         BroadcastEvent::Expire { now_ms } => {
-            let BroadcastState::Armed { expires_at_ms } = lifecycle.state else {
+            let BroadcastState::Armed {
+                armed_at_ms,
+                expires_at_ms,
+            } = lifecycle.state
+            else {
                 return Err(error(
                     ConnectionModelErrorCode::InvalidTransition,
                     "broadcast.state",
                     "only an armed broadcast can expire",
                 ));
             };
-            if now_ms <= expires_at_ms {
+            if now_ms < armed_at_ms || now_ms <= expires_at_ms {
                 return Err(error(
                     ConnectionModelErrorCode::InvalidTransition,
                     "broadcast.deadline",
                     "broadcast arming deadline has not elapsed",
                 ));
             }
-            lifecycle.state = BroadcastState::Expired;
+            expire_pending_targets(lifecycle, review, now_ms);
         }
     }
     Ok(())

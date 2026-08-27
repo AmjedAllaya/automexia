@@ -496,7 +496,7 @@ fn parse_strict<T: DeserializeOwned>(bytes: &[u8]) -> Result<T, ConnectionModelE
             "provider authentication document exceeds its fixed byte ceiling",
         ));
     }
-    serde_json::from_slice(bytes).map_err(|_| {
+    super::strict_json::from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         error(
             ConnectionModelErrorCode::MalformedSchema,
             "document",

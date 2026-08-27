@@ -88,7 +88,7 @@ private redacted manifest. The job requires all 28 current-commit native,
 resource, visual, and accessibility suites plus independent review before
 preflight. Missing runner configuration, missing/stale/synthetic evidence,
 review gaps, or commit drift fail closed. Only the bounded summary is uploaded.
-Five visual suites each require 8,352 exact dark/light/high-contrast,
+Five visual suites each require 9,216 exact dark/light/high-contrast,
 100–400%-scale, viewport, surface, and enabled/reduced-motion captures.
 The full contract is in
 `docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md`.

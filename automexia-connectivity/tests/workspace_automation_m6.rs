@@ -405,6 +405,105 @@ fn repeated_maximum_broadcast_generations_remain_bounded_and_isolated() {
 }
 
 #[test]
+fn broadcast_clock_integrity_and_expiry_terminalize_every_pending_target() {
+    let review = review_broadcast("uptime", &targets(), 100, 10).unwrap();
+    assert_eq!(review.reviewed_at_ms, 100);
+
+    let mut lifecycle = BroadcastLifecycle::new(&review, 41);
+    let unchanged = lifecycle.clone();
+    assert!(apply_broadcast_event(
+        &mut lifecycle,
+        &review,
+        BroadcastEvent::Arm {
+            now_ms: 99,
+            production_confirmed: true,
+        },
+    )
+    .is_err());
+    assert_eq!(lifecycle, unchanged);
+
+    apply_broadcast_event(
+        &mut lifecycle,
+        &review,
+        BroadcastEvent::Arm {
+            now_ms: 101,
+            production_confirmed: true,
+        },
+    )
+    .unwrap();
+    let armed = lifecycle.clone();
+    assert!(apply_broadcast_event(
+        &mut lifecycle,
+        &review,
+        BroadcastEvent::TargetSucceeded {
+            generation: 41,
+            target_id: "production".into(),
+            at_ms: 100,
+        },
+    )
+    .is_err());
+    assert_eq!(lifecycle, armed);
+
+    apply_broadcast_event(
+        &mut lifecycle,
+        &review,
+        BroadcastEvent::TargetSucceeded {
+            generation: 41,
+            target_id: "production".into(),
+            at_ms: 102,
+        },
+    )
+    .unwrap();
+    apply_broadcast_event(
+        &mut lifecycle,
+        &review,
+        BroadcastEvent::Expire { now_ms: 111 },
+    )
+    .unwrap();
+    assert_eq!(lifecycle.state, BroadcastState::Expired);
+    assert_eq!(lifecycle.audit.len(), review.targets.len());
+    assert!(lifecycle
+        .targets
+        .iter()
+        .all(|target| !matches!(target.outcome, BroadcastTargetOutcome::Pending)));
+    assert_eq!(
+        lifecycle.targets[1].outcome,
+        BroadcastTargetOutcome::Expired
+    );
+    assert_eq!(lifecycle.audit[1].outcome, BroadcastAuditOutcome::Expired);
+    assert!(!serde_json::to_string(&lifecycle.audit)
+        .unwrap()
+        .contains("uptime"));
+
+    let mut late = BroadcastLifecycle::new(&review, 42);
+    apply_broadcast_event(
+        &mut late,
+        &review,
+        BroadcastEvent::Arm {
+            now_ms: 101,
+            production_confirmed: true,
+        },
+    )
+    .unwrap();
+    assert!(apply_broadcast_event(
+        &mut late,
+        &review,
+        BroadcastEvent::TargetSucceeded {
+            generation: 42,
+            target_id: "production".into(),
+            at_ms: 111,
+        },
+    )
+    .is_err());
+    assert_eq!(late.state, BroadcastState::Expired);
+    assert!(late
+        .targets
+        .iter()
+        .all(|target| !matches!(target.outcome, BroadcastTargetOutcome::Pending)));
+    assert_eq!(late.audit.len(), review.targets.len());
+}
+
+#[test]
 fn strict_workspace_parsers_reject_unknown_fields_and_oversized_documents() {
     let bytes = serde_json::to_vec(&workspace()).unwrap();
     assert_eq!(parse_workspace_json(&bytes).unwrap(), workspace());
@@ -412,4 +511,18 @@ fn strict_workspace_parsers_reject_unknown_fields_and_oversized_documents() {
     value["live_pty"] = serde_json::json!(true);
     assert!(parse_workspace_json(&serde_json::to_vec(&value).unwrap()).is_err());
     assert!(parse_workspace_document_json(&vec![b'x'; MAX_DOCUMENT_BYTES + 1]).is_err());
+
+    let json = serde_json::to_string(&workspace()).unwrap();
+    let duplicate_top_level = json.replacen(
+        "\"display_name\":\"Operations\"",
+        "\"display_name\":\"Operations\",\"\\u0064isplay_name\":\"Forged\"",
+        1,
+    );
+    assert!(parse_workspace_json(duplicate_top_level.as_bytes()).is_err());
+    let duplicate_nested = json.replacen(
+        "\"id\":\"window-primary\"",
+        "\"id\":\"window-primary\",\"\\u0069d\":\"forged-window\"",
+        1,
+    );
+    assert!(parse_workspace_json(duplicate_nested.as_bytes()).is_err());
 }

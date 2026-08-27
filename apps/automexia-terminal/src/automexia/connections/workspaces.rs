@@ -4,7 +4,10 @@
 //! snapshots and composes immutable reviews. It owns no process, PTY, network,
 //! credential, listener, renderer, shell, or clock capability.
 
-use std::{collections::BTreeMap, fmt};
+use std::{
+    collections::{BTreeMap, HashSet},
+    fmt,
+};
 
 use automexia_connectivity::connections::{
     fingerprint_profile, resolve_connection_plan, resolve_workspace_restore,
@@ -88,18 +91,29 @@ pub fn review_library_workspace_restore(
         .ok_or_else(|| {
             WorkspaceProductError::new(WorkspaceProductErrorCode::WorkspaceNotFound)
         })?;
-    let bindings = document
-        .profiles
-        .profiles
+    let mut required_profiles = workspace
+        .connections
         .iter()
-        .map(|profile| {
-            Ok(WorkspaceProfileBinding {
+        .map(|connection| connection.profile_id.as_str())
+        .collect::<HashSet<_>>();
+    let mut bindings = Vec::with_capacity(required_profiles.len());
+    for profile in &document.profiles.profiles {
+        if required_profiles.remove(profile.id.as_str()) {
+            bindings.push(WorkspaceProfileBinding {
                 profile_id: profile.id.clone(),
                 profile_revision: profile.revision,
                 profile_fingerprint: fingerprint_profile(profile)?,
-            })
-        })
-        .collect::<Result<Vec<_>, ConnectionModelError>>()?;
+            });
+            if required_profiles.is_empty() {
+                break;
+            }
+        }
+    }
+    if !required_profiles.is_empty() {
+        return Err(WorkspaceProductError::new(
+            WorkspaceProductErrorCode::ProfileNotFound,
+        ));
+    }
     resolve_workspace_restore(workspace, &bindings, connection_generation)
         .map_err(Into::into)
 }

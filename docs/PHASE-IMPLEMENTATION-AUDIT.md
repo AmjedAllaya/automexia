@@ -130,7 +130,7 @@ conditions remain **unresolved for release** until reviewed integration reaches
 | Track | Phase | Implementation | Release evidence | Conclusion |
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
-| Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 28-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, five 8,352-frame visual matrices, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
+| Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 28-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, five 9,216-frame visual matrices, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
 | Performance | S2 | **Source and automation fully implemented; collecting** | **External baseline pending** | Bounded evidence normalization/composition, sample/confidence quality, exact source/operator binding, native memory metrics, independent baseline/waiver review, protected activation validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 7 ratchets immutable schemas 1-6 with exact M3-M5 route/tunnel, trust/status, monotonic review IDs, opaque tunnel receipt ownership, lifecycle/reconnect, and schema-2 native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
@@ -138,7 +138,7 @@ conditions remain **unresolved for release** until reviewed integration reaches
 | DevOps | D3 | **Partial; nonactivated** | **Blocked** | The fail-closed broker/runner owns bounded current-executable review with permanent exhaustion before ID wraparound, exact managed argv/identity binding, actual child status, redacted outcomes, process-group/Job Object teardown, PTY-worker joining, and bounded receipts through the guarded PTY/route owner. Protected approvals, real attestation/activation, and native OpenSSH descendant/resource/accessibility proof remain. |
 | DevOps | D4 | **Fully implemented; read-only product adapter active** | **Partial** | Bounded OpenSSH inventory/persistence is connected only to D5.1 reviewed browsing; it retains no process/network/launch authority. |
 | SSH UX | D5.0-D5.2 | **Partial overall; D5.1, nonactivated F5.1-F5.3, and the F5.4 local assurance path complete** | **Partial/blocked** | Routes/trust/tunnels/lifecycle, opaque per-tunnel receipts, exact schema-2 host/commit/application/OpenSSH-tool/advisory/provenance binding, protected manual workflow, and path-free summaries pass locally. Protected activation/attestation, actual status/SSH execution, and controlled real native descendant/listener/resource/accessibility manifests remain. |
-| Multi-environment | M6/F6 | **Partial overall; review/edit source and product surfaces fully implemented locally** | **Blocked on D3/M5 execution evidence** | Accepted ADR 0023; schema-2 editor/migration/recovery; public preview-first CLI; immutable worker publication; Connection Hub catalog/restore review; exact fingerprints; typed recipes/no-hooks; narrow remote initialization; armed broadcast; semantic projections; fuzz/mutation/integration and bounded benchmarks pass. Managed execution and controlled native/resource/accessibility/release evidence remain. |
+| Multi-environment | M6/F6 | **Partial overall; hardened review/edit source and product surfaces fully implemented locally** | **Blocked on D3/M5 execution evidence** | Accepted ADR 0023; duplicate-name-safe JSON ingress; schema-2 editor with separated migration/recovery; independently revalidated recipe/broadcast reviews; checked lifecycle clocks; terminal per-target expiry; large-library bounded restore; public preview-first CLI; immutable Hub publication; dedicated semantic checker/mutations; fuzz/benchmarks; and explicit 28-suite S1 coverage pass locally. Managed execution and executed controlled native/resource/accessibility/9,216-frame visual/release evidence remain. |
 | Multi-cloud | D6.0/M7 | **Fully implemented locally** | **Partial/external** | Strict provider-neutral schemas, immutable session capsules, 19-state lifecycle, exact allow-once review, isolation/redaction, passive-status migration, cached-only semantics, fuzz/mutation, 16×64 lifecycle, and a 64-capsule benchmark pass. No real provider CLI, cloud network, credential cache, browser/device flow, or Linux/macOS native provider evidence ran. |
 | Multi-cloud | D6.1/M8 | **Partial overall; source and cached product review fully implemented locally, execution nonactivated** | **Blocked** | AWS adapter, strict capsule replacement, cached six-provider Hub review, and M11 private EKS ingestion pass locally. D3 activation/attestation and controlled real AWS/native/resource/accessibility/release evidence remain. |
 | Multi-cloud | D6.2/M9 | **Partial overall; source and cached product review fully implemented locally, execution nonactivated** | **Blocked** | Azure adapter, cached Hub review, and M11 private AKS allocation/validation/revoke/cleanup pass locally. D3 activation/attestation and controlled real Azure/native/resource/accessibility/release evidence remain. |
@@ -303,7 +303,7 @@ portable QA. The repository-owned comparator now bounds encoded/decoded size,
 dimensions, output, and memory; rejects one changed channel in one pixel with
 no default masks; and atomically writes an exact JSON verdict plus heatmap.
 The exact test-only `s1-standard-v1` fixture freezes public content, clock, and
-motion, while the versioned policy enumerates 8,352 cases per visual suite
+motion, while the versioned policy enumerates 9,216 cases per visual suite
 across five platform/architecture suites, including high contrast, 400% scale,
 and enabled/reduced motion, and requires independent HTTPS human review.
 
@@ -791,6 +791,19 @@ Managed execution, real OpenSSH/PTY/process/handle/socket cleanup, native
 Windows/macOS/Linux, controlled screen-reader/visual, hosted policy, and release
 evidence remain external D3/M5 gates. M6 execution stays false and CP3.3 local
 workspace tasks gain no remote/provider authority.
+
+The 2026-08-27 stable-release re-audit found and corrected six local evidence
+gaps: duplicate JSON member names could be interpreted last-wins; publicly
+constructible recipe/broadcast reviews were not completely revalidated by their
+reducers; lifecycle time arithmetic could saturate and accept clock reversal;
+broadcast expiry left pending targets nonterminal; product restore counted
+unrelated profiles against the 128-binding limit; and migration could consume a
+schema-1 previous recovery generation. Real-path regressions now cover each
+failure. The dedicated M6 checker and mutation suite additionally bind exact
+limits, all-false authority, source/test/fuzz/benchmark/doc/CI owners, and every
+S1 suite. The corresponding evidence-led classification and external exit
+criteria are in the
+[M6/F6 stable-release audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 
 ### D6.0-D6.5 — providers and multi-cloud
 

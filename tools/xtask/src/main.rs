@@ -17,6 +17,8 @@ type TaskResult<T = ()> = Result<T, String>;
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
 const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
+const VERIFICATION_TARGET_ROOT_ENV: &str = "AUTOMEXIA_VERIFY_TARGET_ROOT";
+const WINDOWS_MAX_VERIFICATION_TARGET_UTF16: usize = 160;
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
@@ -712,17 +714,43 @@ struct VerificationTarget {
 impl VerificationTarget {
     fn prepare() -> TaskResult<Self> {
         require_native_wsl_workspace("the exhaustive verification gate")?;
-        let parent = canonical_target_dir()?;
-        ensure_free_space(
-            &parent,
-            configured_gib("AUTOMEXIA_VERIFY_MIN_FREE_GIB", DEFAULT_VERIFY_MIN_FREE_GIB)?,
-            "the exhaustive isolated verification gate",
-        )?;
         let generation = SystemTime::now()
             .duration_since(UNIX_EPOCH)
             .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
             .as_nanos();
         let name = verification_target_name(std::process::id(), generation);
+        let default_parent = canonical_target_dir()?;
+        let selected_parent = select_verification_parent(
+            &default_parent,
+            env::var_os(VERIFICATION_TARGET_ROOT_ENV).as_deref(),
+            &name,
+            cfg!(target_os = "windows"),
+        )?;
+        fs::create_dir_all(&selected_parent).map_err(|error| {
+            format!(
+                "could not create verification target root {}: {error}",
+                selected_parent.display()
+            )
+        })?;
+        require(
+            !path_is_reparse_point(&selected_parent)?,
+            "refusing to use a symlink/reparse-point verification target root",
+        )?;
+        let parent = selected_parent
+            .canonicalize()
+            .map(normalize_canonical_path)
+            .map_err(|error| {
+                format!(
+                    "could not resolve verification target root {}: {error}",
+                    selected_parent.display()
+                )
+            })?;
+        select_verification_parent(&parent, None, &name, cfg!(target_os = "windows"))?;
+        ensure_free_space(
+            &parent,
+            configured_gib("AUTOMEXIA_VERIFY_MIN_FREE_GIB", DEFAULT_VERIFY_MIN_FREE_GIB)?,
+            "the exhaustive isolated verification gate",
+        )?;
         let path = verified_target_child(&parent, &name)?;
         fs::create_dir(&path).map_err(|error| {
             format!(
@@ -805,6 +833,36 @@ fn is_verification_target_name(name: &OsStr) -> bool {
         && !generation.is_empty()
         && process_id.bytes().all(|byte| byte.is_ascii_digit())
         && generation.bytes().all(|byte| byte.is_ascii_digit())
+}
+
+fn select_verification_parent(
+    default_parent: &Path,
+    configured_parent: Option<&OsStr>,
+    child_name: &str,
+    windows: bool,
+) -> TaskResult<PathBuf> {
+    let parent = match configured_parent {
+        Some(configured) => {
+            let configured = PathBuf::from(configured);
+            require(
+                configured.is_absolute(),
+                &format!("{VERIFICATION_TARGET_ROOT_ENV} must be an absolute path"),
+            )?;
+            configured
+        }
+        None => default_parent.to_owned(),
+    };
+    let child = verified_target_child(&parent, child_name)?;
+    if windows {
+        let utf16_units = child.to_string_lossy().encode_utf16().count();
+        require(
+            utf16_units <= WINDOWS_MAX_VERIFICATION_TARGET_UTF16,
+            &format!(
+                "verification target path is {utf16_units} UTF-16 code units; the MSVC-safe ceiling is {WINDOWS_MAX_VERIFICATION_TARGET_UTF16}. Set {VERIFICATION_TARGET_ROOT_ENV} to a short absolute directory on the intended drive"
+            ),
+        )?;
+    }
+    Ok(parent)
 }
 
 fn environment_truthy(variable: &str) -> bool {
@@ -4748,6 +4806,43 @@ mod tests {
         )));
         assert!(verified_target_child(&parent, "../outside").is_err());
         assert!(verified_target_child(&parent, "nested/child").is_err());
+    }
+
+    #[test]
+    fn verification_target_requires_a_short_absolute_windows_parent() {
+        let name = verification_target_name(42, 1234);
+        let short = Path::new("D:/amx-ready");
+        assert_eq!(
+            select_verification_parent(short, None, &name, true).unwrap(),
+            short
+        );
+
+        let long = PathBuf::from(format!("D:/{}", "nested-segment/".repeat(12)));
+        let error = select_verification_parent(&long, None, &name, true).unwrap_err();
+        assert!(error.contains("AUTOMEXIA_VERIFY_TARGET_ROOT"));
+        assert!(error.contains("MSVC"));
+
+        assert_eq!(
+            select_verification_parent(
+                &long,
+                Some(OsStr::new("D:/amx-ready")),
+                &name,
+                true,
+            )
+            .unwrap(),
+            short
+        );
+        assert!(select_verification_parent(
+            &long,
+            Some(OsStr::new("relative/verify")),
+            &name,
+            true,
+        )
+        .is_err());
+        assert_eq!(
+            select_verification_parent(&long, None, &name, false).unwrap(),
+            long
+        );
     }
 
     #[test]

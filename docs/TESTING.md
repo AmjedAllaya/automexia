@@ -563,6 +563,8 @@ variables exist for unusual build hosts:
 - `AUTOMEXIA_VERIFY_MIN_FREE_GIB` (default `12`);
 - `AUTOMEXIA_BUILD_MIN_FREE_GIB` (default `4`);
 - `AUTOMEXIA_TARGET_WARN_GIB` (default `12`);
+- `AUTOMEXIA_VERIFY_TARGET_ROOT` selects a short absolute directory for
+  disposable exhaustive-verification artifacts;
 - `AUTOMEXIA_KEEP_VERIFY_TARGET=1` retains verification output for deliberate
   diagnosis instead of deleting it.
 
@@ -572,7 +574,13 @@ not `target` build products.
 
 To validate another checkout or filesystem, provide an absolute or
 invocation-relative `CARGO_TARGET_DIR`; build, smoke, launch, storage preflight,
-and cleanup all resolve the same directory consistently.
+and cleanup all resolve the same directory consistently. On Windows, the
+generated verification target must remain at most 160 UTF-16 code units so
+MSVC-owned files retain path headroom. If a deeply nested checkout exceeds that
+ceiling, `cargo ready` fails before compiling and names
+`AUTOMEXIA_VERIFY_TARGET_ROOT`; set it to a short absolute directory on the
+intended drive, for example `D:\amx-ready`. Only exact generated
+`automexia-verification-v1-*` children are removed.
 
 The local gate validates all checks that can run on the current host. GitHub CI
 keeps separate native and cross-platform jobs for operating-system matrices,
@@ -2004,7 +2012,7 @@ See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AU
 
 The remaining roadmap work is deliberately separate:
 
-- execution and approval of five exact 8,352-case raster matrices across
+- execution and approval of five exact 9,216-case raster matrices across
   Windows, Linux X11/Wayland, and macOS Intel/Apple Silicon, plus retained
   Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
@@ -2081,57 +2089,43 @@ cargo clippy -p automexia-ui-model --all-targets --all-features --locked -- -D w
 cargo clippy -p automexia-terminal --test connection_library --locked -- -D warnings
 python tools/ci/check_connection_hub_f2.py
 python tools/ci/test_connection_hub_f2.py
+python tools/ci/check_m6_workspaces.py
+python tools/ci/test_m6_workspaces.py
+python tools/ci/s1_assurance.py check-policy
+python tools/ci/test_s1_assurance.py
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+cargo check --manifest-path fuzz/Cargo.toml --locked --bin connection_planning
 cargo xtask verify architecture
 cargo bench -p automexia-connectivity --bench connection_planning --locked -- workspace_validate_16_windows_64_panes_128_connections --noplot --sample-size 30
+cargo bench -p automexia-connectivity --bench connection_planning --locked -- workspace_parse_strict_json_16_windows_64_panes_128_connections --noplot --sample-size 30
 cargo bench -p automexia-connectivity --bench connection_planning --locked -- broadcast_review_50_targets --noplot --sample-size 30
+cargo bench -p automexia-connectivity --bench connection_planning --locked -- connection_plan_workspace_restore_128_connections --noplot --sample-size 30
 ```
 
-Local Windows x86_64 evidence on 2026-08-22 passed 9 planner, 6 automation, 10
-workspace, 15 Hub-model, and 10 Connection Library integration tests plus all
-three focused warning-denied Clippy commands. Coverage includes a deliberately
-failing then fixed forged-privilege review regression, exact stage/risk policy,
-no-hooks, retry/deadline/cancel/generation/shutdown, hostile/cycle/stale binding,
-clone/rebind/restore, schema-1 migration preview, CAS/recovery/rollback, atomic
-dependent revisions/fingerprints, redacted topology transfer, semantic focus and
-armed state, and 1,000 repeated generations at the maximum 50 targets. The F2/M6
-mutation checker passed with 9 required source models and 51 named tests; the
-architecture verifier passed. The workspace parsers are registered in the
-connection-planning fuzz target.
+The M6 checker is semantic rather than file-count based. It freezes exact limits,
+the all-false authority ceiling, D3/M5 blockers, strict duplicate-name-safe JSON
+ingress, checked review and time integrity, terminal broadcast expiry,
+referenced-profile-only restore, explicit migration/recovery ownership, named
+real-path regressions, fuzz and benchmark owners, CI wiring, and the applicable
+S1 policy inventory. Its mutations delete or weaken each of those facts and must
+fail closed.
 
-The required final gates also passed on Windows x86_64 on 2026-08-23:
-`cargo fmt --all -- --check`; warning-denied workspace Clippy; Nextest with
-1,847 passed and 7 skipped tests across 54 binaries; workspace documentation
-tests with 64 passed and 3 ignored examples; and `python3 tools/ci/qa.py --full`.
-Full QA additionally passed resize stress, session-clone lifecycle, Loom, and
-dependency policy; its ignored local report is
-`target/qa/20260822T220242Z-35148/report.html`. The first `cargo ready` preflight
-correctly refused to proceed with only 7.07 GiB free on D:. A later clean run
-exposed the existing completion-provider pipe-holder test's timing-only cleanup
-check while every M6 suite passed. Investigation replaced fire-and-forget group
-termination with synchronous descendant reaping and made the regression assert
-that no descendant survives to emit output. The focused regression, Nextest,
-full QA, and a final readiness run then passed. Final readiness used a fresh C:
-target with 24.71 GiB free and passed the isolated check, Clippy, workspace
-unit/integration/doc tests, dependency policy, fresh application build, and
-`automexia 0.4.0` smoke. Both exact temporary targets and the 7.83 GiB
-verification generation were removed. The original D: target could not be
-purged because Windows retained the running Automexia executable, so that
-reproducible cache remains a local storage warning, not an M6 correctness
-failure.
+The current S1 policy has 28 suites. Every native/resource/accessibility suite
+contains an M6 workflow; every visual suite includes catalog, restore, and
+broadcast surfaces. The exact visual matrix is therefore 9,216 captures per
+suite (3 themes × 6 scales × 8 viewports × 32 surfaces × 2 motion modes). This
+source policy does not substitute for executing and independently reviewing the
+controlled frames and assistive-technology sessions on the release commit.
 
-On 2026-08-25, Criterion measured maximum workspace validation (16 windows,
-64 panes, 128 connections) at 28.873–33.842 µs with 7/30 high outliers and
-50-target broadcast review at 16.454–16.915 µs with 3/30 high outliers. These
-fresh same-host runs have no established release ratchet or named-hardware
-baseline, so they are recorded as uncontrolled evidence, not an improvement.
-
-Windows x86_64 evidence on 2026-08-25 passes 9 product and 6 interaction tests,
-workspace formatting/Clippy, 2,095 Nextest cases (7 skipped), 64 doc tests (3
-ignored), full QA, and clean-target `cargo ready`. It covers CLI/CAS/recovery/
-limits, current reviews, worker/modal isolation, responsive/accessibility state,
-and no PTY input; two guards failed before correction. ADR 0023 review/edit is
-active. Execution, native cleanup/resources/accessibility, and hosted evidence
-remain D3/M5 gates.
+Historical 2026-08-22 through 2026-08-25 Windows x86_64 focused/full-gate counts,
+same-host Criterion ranges, a corrected descendant-reaping regression, clean-
+target readiness, and storage limitations remain preserved in the
+[phase audit](PHASE-IMPLEMENTATION-AUDIT.md).
+The current evidence-led source classification, six corrected integrity gaps,
+and exact controlled/native exit criteria are in the
+[M6/F6 stable-release audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
+ADR 0023 review/edit is active; execution and D3/M5 evidence remain gated.
 
 ## M7 provider-neutral authentication and capsule isolation
 

@@ -218,13 +218,13 @@ workflow does not yet ship.
 | Agent forwarding | Per-connection explicit grant; off by default | D5 | Not implemented |
 | Snippets | Typed persistent Quick Actions | CP2 | CP2.0-CP2.2 model, private store, search/review/administration and explicit insert/copy are complete locally; hosted release evidence remains |
 | Shared snippets | Reviewed signed/team action catalogs | CP6/D7 | Not implemented |
-| Startup snippets | Typed connection lifecycle hooks | D5A-D5E | F2 typed recipe/dry-run model; editor and execution not implemented |
-| Multi-host execution | Bounded target query and result isolation | CP4/D6 | Not implemented |
+| Startup snippets | Typed connection lifecycle hooks | D5A-D5E | M6 schema-2 recipe review/editor, exact lifecycle, and no-hooks recovery are complete locally; execution is disabled pending D3/M5 |
+| Multi-host execution | Bounded target query and result isolation | CP4/D6 | M6 broadcast review/arming/result isolation is complete locally and nonexecuting; provider-aware execution and native evidence remain gated |
 | Autocomplete | Native completion first; optional editor bridge later | CP1/CP5 | CP1 is complete locally; CP5.1-CP5.4 and the inert CP5.5 bridge source are complete, while preview/live composition and CP5.6 release evidence remain disabled or partial |
 | DevOps aliases | Optional collision-checked projections of actions | CP3 | CP3.0-CP3.3 five-shell compilation, opt-in persistence, static packs, selected native imports and trusted task bridges are complete locally; hosted release evidence remains |
 | Workspaces | Declarative session/layout templates and restore | D5 plus core UI | M6 schema-2 preview/CAS manager, immutable Hub catalog and restore review are complete locally and nonexecuting; managed execution and native release evidence remain |
 | Focus/split modes | Existing panes/tabs plus workspace focus commands | v0.4/D5 | Primitives shipped |
-| Broadcast input | Explicit reviewed target set and visible armed state | D5/CP4 | Not implemented |
+| Broadcast input | Explicit reviewed target set and visible armed state | D5/CP4 | M6 exact transient review, explicit arming, production confirmation, per-target terminal result/expiry, redacted audit, and no-Enter contract are complete locally; execution remains disabled |
 | SFTP | `files` TUI plus scriptable transfer commands | Post-D5/D7 | Not implemented |
 | Session logs | Local bounded logs, search, bookmarks, comments | D7 | Not implemented |
 | Terminal multiplayer | Expiring read-only share and explicit control handoff | D7 | Not implemented |

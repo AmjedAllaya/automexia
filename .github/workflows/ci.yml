@@ -71,6 +71,10 @@ jobs:
         run: |
           python tools/ci/check_connection_hub_f2.py
           python tools/ci/test_connection_hub_f2.py
+      - name: M6 declarative workspace contract and mutation tests
+        run: |
+          python tools/ci/check_m6_workspaces.py
+          python tools/ci/test_m6_workspaces.py
       - name: Implemented CP2-CP3.3 and planned CP4+ alias mutation tests
         run: python tools/ci/test_devops_alias_spec.py
       - name: Completion adapter benchmark contract tests

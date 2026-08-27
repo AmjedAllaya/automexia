@@ -125,7 +125,7 @@ native/release claim.
 | F3/D5.1 read-only Connection Hub | Fully done locally; external evidence partially done | App-owned joined runtime, exact reviewed native selection, compact progressive setup, bounded browse/filter/group, redundant text/icon/color semantics, D4 favorite/tag CAS, read-only recent/library state, disabled authority, Windows tests/benchmark/build/native frame | Native macOS/Linux picker/permission and controlled screen-reader evidence remain external. |
 | F3 Connection Library | Fully done locally | `ConnectionLibraryStore` has 16 MiB private documents, CAS, recovery, transfer redaction, fresh import IDs, read-only/disk-full and link tests | Product editor/manager belongs to F6; macOS/Linux native permission and controlled screen-reader evidence remain. |
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path are complete nonactivated | Exact direct/routed/tunnel argv; typed endpoints; trust/review/lifecycle; 23-scenario validator; native host, commit, OpenSSH, and artifact binding; protected manual workflow; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
-| F6 recipes and remote declarative workspaces | Partially done overall; review/edit source and product surface complete locally | Accepted ADR 0023; schema-2 editor/migration/recovery; exact dependent fingerprints; recipe/restore/broadcast reviews; public preview-first CLI; worker-published immutable library snapshot; Connection Hub catalog/review routes; responsive semantic projections; fuzz, mutation, integration, and benchmark evidence | ADR 0012/D3/M5 protected activation, managed execution adapters, real OpenSSH/PTY/process/handle/socket cleanup, and controlled native/resource/accessibility/release evidence remain. |
+| F6 recipes and remote declarative workspaces | Partially done overall; review/edit source and product surface complete locally | Accepted ADR 0023; strict duplicate-name-safe ingress; schema-2 editor with separated migration/recovery; exact dependent fingerprints; independently revalidated recipe/broadcast reviews; checked lifecycle clocks; terminal per-target expiry; large-library bounded restore; public preview-first CLI; worker-published immutable snapshot; Hub catalog/review routes; semantic checker/mutations; fuzz, integration, benchmark, and explicit 28-suite S1 policy | ADR 0012/D3/M5 protected activation, managed execution adapters, real OpenSSH/PTY/process/handle/socket cleanup, and executed controlled native/resource/accessibility/9,216-frame visual/release evidence remain. |
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | M8-M11 and M12 Teleport source/cached review plus M11 private lifecycle are locally complete and nonactivated; real official-CLI/native execution evidence and OpenBao remain external/not done. |
 | D6.1/M8 AWS | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; cached six-provider Hub catalog/review; strict capsule replacement; focused source/product tests | D3 activation/attestation and controlled real official-tool/native/resource/accessibility/release evidence remain. |
 | D6.2/M9 Azure | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion; AKS private transient lifecycle; cached Hub review; focused source/product tests | D3 activation/attestation and controlled real Azure/native/resource/accessibility/release evidence remain. |
@@ -683,7 +683,9 @@ gated by D3/M5.
   private store with declarative workspaces, strict recipe/profile/workspace
   bindings, preview-first entity edits, atomic dependent revision/fingerprint
   updates, approval invalidation, schema-1 migration preview, CAS conflict and
-  recovery handling, and redacted topology-only import/export with fresh IDs.
+  recovery handling, redacted topology-only import/export with fresh IDs, and
+  duplicate-name rejection (including escaped and nested duplicates) at every
+  M6 JSON ingress. Migration cannot consume a previous recovery generation.
 - [x] **Fully done locally:** recipes resolve deterministically in the exact
   ten-stage `ExecutionStage::ORDER`. A second review boundary revalidates every
   resolved action, stage, risk, confirmation, retry, and timeout before emitting
@@ -695,17 +697,20 @@ gated by D3/M5.
   command string, or implicit Enter contract exists.
 - [x] **Fully done locally:** per-step deadline, cancellation, monotonic failure,
   capped eligibility-checked retry with deterministic jitter input, shutdown,
-  reconnect-generation invalidation, and reviewed no-hooks recovery are pure
-  state contracts.
+  reconnect-generation invalidation, checked time arithmetic, clock-reversal
+  rejection, complete review/fingerprint/authority revalidation, and reviewed
+  no-hooks recovery are pure state contracts.
 - [x] **Fully done locally:** declarative layouts cap 256 workspaces, 16 windows,
   64 panes, 128 connection bindings, and 32 recipe bindings. Clone/rebind creates
   isolated IDs/revisions; restore is review-only with automatic reconnect and
-  interrupted-action resume false.
+  interrupted-action resume false. Product restore reads only referenced
+  profiles, so unrelated inventory above 128 rows cannot reject a valid plan.
 - [x] **Fully done locally:** broadcast caps 50 targets, 8 KiB command text, and
   60 seconds of arming. Exact transient preview, explicit arming, separate
   production confirmation, per-target isolation/results, cancellation,
-  generation rejection, digest-only audit, redacted debug, and no implicit Enter
-  pass, including 1,000 repeated maximum-target generations.
+  generation rejection, review-time fingerprinting, clock-reversal rejection,
+  per-target terminal expiry, digest-only audit, redacted debug, and no implicit
+  Enter pass, including 1,000 repeated maximum-target generations.
 - [x] **Fully done locally:** CP3.3 trusted local workspace task bridges remain
   insert-only and have no M6 remote/provider/broadcast authority.
 - [x] **Fully done locally:** clone/rebind, pane graph/cross-window isolation,
@@ -720,6 +725,11 @@ gated by D3/M5.
   immutable bounded library snapshot to a Connection Hub workspace catalog and
   restore review with responsive pointer/keyboard navigation, stale-revision
   invalidation, semantic accessibility state, and no PTY input.
+- [x] **Fully done locally:** a dedicated M6 semantic checker plus mutation suite
+  enforce exact limits/authorities/blockers, owners, named regressions, fuzz,
+  restore benchmark, documentation, hosted CI, and complete S1 policy wiring.
+  All 28 S1 suites include the required M6 native/resource/visual/accessibility
+  workflows; each visual suite specifies 9,216 exact captures.
 - [ ] **Partially done / external prerequisite:** ADR 0012/D3/M5 protected
   activation and attestation, managed execution adapters, real OpenSSH/PTY/
   process/handle/socket cleanup, native Windows/macOS/Linux, controlled screen-
@@ -730,6 +740,8 @@ Exit remains unavailable for execution, but not for review: saved workflows are
 now manageable through the public CLI and reviewable in the Connection Hub
 without custom remote code or automatic persistent change. No M6 product action
 can start a child, create a PTY, open a connection, send Enter, or resume work.
+The current evidence ledger and external exit criteria are in the
+[M6/F6 stable-release audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 
 ### M7 — F7/D6.0 provider-neutral auth and capsule orchestration
 

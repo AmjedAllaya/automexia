@@ -325,6 +325,80 @@ fn lifecycle_rejects_cross_review_substitution_and_unbounded_diagnostics() {
 }
 
 #[test]
+fn reviewed_run_integrity_rejects_forgery_clock_reversal_and_deadline_overflow() {
+    let reviewed = review_recipe_run(&plan(), RecipeRunMode::ReviewedHooks, 31).unwrap();
+    validate_reviewed_recipe_run(&reviewed).unwrap();
+
+    let mut forged = reviewed.clone();
+    forged.steps[0].timeout_ms += 1;
+    assert!(validate_reviewed_recipe_run(&forged).is_err());
+    let mut forged_lifecycle = RecipeRunLifecycle::new(&reviewed);
+    let unchanged = forged_lifecycle.clone();
+    assert!(apply_recipe_run_event(
+        &mut forged_lifecycle,
+        &forged,
+        RecipeRunEvent::StartStep {
+            generation: 31,
+            sequence: 0,
+            now_ms: 1,
+        },
+    )
+    .is_err());
+    assert_eq!(forged_lifecycle, unchanged);
+
+    let mut overflow = RecipeRunLifecycle::new(&reviewed);
+    let unchanged = overflow.clone();
+    assert!(apply_recipe_run_event(
+        &mut overflow,
+        &reviewed,
+        RecipeRunEvent::StartStep {
+            generation: 31,
+            sequence: 0,
+            now_ms: u64::MAX,
+        },
+    )
+    .is_err());
+    assert_eq!(overflow, unchanged);
+
+    let mut reversed = RecipeRunLifecycle::new(&reviewed);
+    apply_recipe_run_event(
+        &mut reversed,
+        &reviewed,
+        RecipeRunEvent::StartStep {
+            generation: 31,
+            sequence: 0,
+            now_ms: 100,
+        },
+    )
+    .unwrap();
+    let running = reversed.clone();
+    assert!(apply_recipe_run_event(
+        &mut reversed,
+        &reviewed,
+        RecipeRunEvent::StepSucceeded {
+            generation: 31,
+            sequence: 0,
+            now_ms: 99,
+        },
+    )
+    .is_err());
+    assert_eq!(reversed, running);
+    assert!(apply_recipe_run_event(
+        &mut reversed,
+        &reviewed,
+        RecipeRunEvent::StepFailed {
+            generation: 31,
+            sequence: 0,
+            now_ms: 99,
+            diagnostic_code: "clock-reversed".into(),
+            jitter_basis_points: 0,
+        },
+    )
+    .is_err());
+    assert_eq!(reversed, running);
+}
+
+#[test]
 fn arbitrary_remote_code_and_implicit_enter_have_no_m6_contract() {
     let source = include_str!("../src/connections/automation.rs").to_ascii_lowercase();
     for forbidden in [

@@ -70,7 +70,7 @@ Tagged releases run `evaluate --require-active --expected-commit <tag-commit>` w
 
 ## Build-artifact lifecycle
 
-Fast application builds retain their normal incremental target. Exhaustive verification uses an isolated direct-child target with incremental compilation disabled and removes it after normal success or failure, unless the contributor explicitly keeps it for diagnosis. Windows/MSVC and WSL/Linux toolchains stay on their native filesystems and do not share `target/` directories. Use `cargo storage` before deleting and `cargo purge` for owned workspace artifacts.
+Fast application builds retain their normal incremental target. Exhaustive verification uses an isolated direct-child target with incremental compilation disabled and removes it after normal success or failure, unless the contributor explicitly keeps it for diagnosis. Windows/MSVC and WSL/Linux toolchains stay on their native filesystems and do not share `target/` directories. A deeply nested Windows checkout fails early when the generated path would exceed the 160-UTF-16-unit MSVC-safe ceiling; set `AUTOMEXIA_VERIFY_TARGET_ROOT` to a short absolute directory on the intended drive. Use `cargo storage` before deleting and `cargo purge` for owned workspace artifacts.
 
 ## Release artifact trust
 
@@ -128,6 +128,12 @@ same-host Criterion noise, and limitations are in
 [M6 testing](../TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 The accepted product boundary adds real temp-store CLI/CAS/recovery/hostile-file
 integration plus Hub worker/controller/keyboard/pointer/responsive/no-PTY tests.
+The dedicated M6 checker and mutation suite enforce exact limits and all-false
+authority, strict duplicate-name-safe JSON ingress, checked review lifecycle,
+terminal target expiry, large-library restore, migration/recovery separation,
+fuzz/benchmark ownership, CI wiring, and every applicable S1 suite. The source
+classification and controlled-evidence exit criteria are recorded in the
+[M6/F6 stable-release audit](../research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 These results activate review and editing only; they do not prove or enable
 native managed OpenSSH/PTY/process/resource/accessibility behavior.
 

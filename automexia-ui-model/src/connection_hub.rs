@@ -2479,6 +2479,7 @@ fn broadcast_outcome_presentation(
         BroadcastTargetOutcome::Succeeded => ("Succeeded", "✓", SemanticTone::Success),
         BroadcastTargetOutcome::Failed { .. } => ("Failed", "!", SemanticTone::Danger),
         BroadcastTargetOutcome::Cancelled => ("Cancelled", "■", SemanticTone::Warning),
+        BroadcastTargetOutcome::Expired => ("Expired", "◷", SemanticTone::Warning),
     }
 }
 
