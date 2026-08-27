@@ -1485,10 +1485,17 @@ clear hierarchy and bounded detail; no overlap with close controls, clipping or
 hidden focus. Roles/names/states/position/count/actions are announced, focus is
 trapped only while modal and restored on close, disabled prerequisites are
 explained, and no interaction reaches terminal input. At the standard viewport,
-the first-run card remains at or below 680×380 logical pixels; each section,
-setup action, and close hit target remains at least 40×40 logical pixels. Verify
-the C/W/P/L/F keycaps at 100%, 200%, and 300% scale and confirm long/localized
-text cannot cover another action.
+the first-run card is exactly 840×500 logical pixels and its setup actions are at
+least 44 pixels high. Direct entry is exactly 840×420, its inner form is no more
+than 280 pixels high, and Review/Cancel remain at least 40 pixels high on usable
+viewports. Resize below 650 logical pixels: Host stays full width while User and
+Port move together to a second row before any field becomes unusable. Confirm
+the duplicate footer and the inactive top-row Host/Files actions are absent, the
+top-right close target cancels the nested editor, and Escape does the same. On
+the synthetic 90×70 micro-viewport only, compact bounded controls may fall below
+40 pixels but must never overlap or acquire the wrong hit. Verify the C/W/P/L/F
+keycaps at 100%, 200%, and 300% scale and confirm long/localized text cannot
+cover another action.
 
 ### HUB-08 — complete Hub model/runtime/product source evidence
 
@@ -1504,6 +1511,21 @@ cargo test -p automexia-terminal --bin automexia connection_hub --locked
 cargo test -p automexia-terminal --bin automexia command_palette --locked
 cargo bench -p automexia-terminal --bench connection_catalog --locked -- --noplot
 ```
+
+On native Windows, build the deterministic GUI fixture and run the focused Hub
+workflow under both renderers:
+
+```powershell
+cargo build -p automexia-terminal --locked --features visual-test-hooks
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/resize-stress-windows.ps1 -ConnectionHubOnly -Binary target/debug/automexia.exe -ModalCaptureDirectory target/ui-evidence/wgpu/modals -ResourceReport target/ui-evidence/wgpu/report.json
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/integration/resize-stress-windows.ps1 -ConnectionHubOnly -UseCpuRenderer -Binary target/debug/automexia.exe -ModalCaptureDirectory target/ui-evidence/cpu/modals -ResourceReport target/ui-evidence/cpu/report.json
+```
+
+Expected result: both runs report focused Connection Hub visual/input assurance
+passed. Each report names the exact deterministic fixture and renderer, records
+nonblank setup/direct frames, and proves the physical top-right click cancelled
+only direct entry while the terminal remained unchanged. Inspect the images;
+do not approve or mask a capture obscured by another desktop surface.
 
 Expected result: every process exits 0; no-scan opening, grants/revocation,
 parser/metadata limits, CAS/recovery, generation/LKG, controller isolation,

@@ -54,10 +54,15 @@ operation settles.
 
 ## Browse efficiently
 
-The compact first-run setup keeps only a short purpose statement, the local-only
+The spacious first-run setup keeps only a short purpose statement, the local-only
 safety message, and two clear choices: **Enter host** (`L`) and **Choose files**
-(`F`). It does not repeat a status footer or show a machine-specific candidate
-path. **Connections** (`C`), **Workspaces** (`W`), and **Providers** (`P`) show
+(`F`). Its centered card is bounded to 840×500 logical pixels, does not repeat a
+status footer, and never shows a machine-specific candidate path. The direct-host
+editor uses a focused 840×420 ceiling, persistent Host/User/Port labels, one
+safety line, and a functional top-right cancel action. User and Port move to a
+second row before their fields become too narrow; the underlying catalog and
+file actions are neither painted nor pointer-active while this nested editor is
+open. **Connections** (`C`), **Workspaces** (`W`), and **Providers** (`P`) show
 their mnemonics directly in the header. Search, filters, grouping, and catalog
 controls appear only after a usable catalog exists; hidden controls cannot
 receive pointer, keyboard, or IME input. **Clear** appears only while a filter

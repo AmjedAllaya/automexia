@@ -23,6 +23,10 @@ const PRIMARY: [f32; 4] = [0.0, 0.32, 0.46, 1.0];
 const DISABLED: [f32; 4] = [0.12, 0.13, 0.15, 1.0];
 const FAVORITE: [f32; 4] = [0.96, 0.74, 0.25, 1.0];
 const RECENT: [f32; 4] = [0.32, 0.84, 0.72, 1.0];
+const SETUP_CARD_MAX_WIDTH: f32 = 840.0;
+const SETUP_CARD_MAX_HEIGHT: f32 = 500.0;
+const LITERAL_CARD_MAX_WIDTH: f32 = 840.0;
+const LITERAL_CARD_MAX_HEIGHT: f32 = 420.0;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum HubIcon {
@@ -155,20 +159,24 @@ impl ConnectionHub {
     ) -> Option<ConnectionHubHit> {
         let presentation = self.presentation.as_ref()?;
         let layout = Self::layout(presentation, dimensions);
-        let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
-        if connections_tab.contains(mouse_x, mouse_y) {
-            return Some(ConnectionHubHit::OpenConnections);
-        }
-        if workspaces_tab.contains(mouse_x, mouse_y) {
-            return Some(ConnectionHubHit::OpenWorkspaces);
-        }
-        if providers_tab.contains(mouse_x, mouse_y) {
-            return Some(ConnectionHubHit::OpenProviders);
-        }
-        if presentation.literal_destination.is_none()
-            && layout.close.contains(mouse_x, mouse_y)
-        {
-            return Some(ConnectionHubHit::Close);
+        if presentation.literal_destination.is_some() {
+            if layout.close.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::CancelLiteralDestination);
+            }
+        } else {
+            let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
+            if connections_tab.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::OpenConnections);
+            }
+            if workspaces_tab.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::OpenWorkspaces);
+            }
+            if providers_tab.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::OpenProviders);
+            }
+            if layout.close.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::Close);
+            }
         }
         if matches!(
             presentation.view.route,
@@ -506,6 +514,8 @@ impl ConnectionHub {
                 &label,
             );
             close_button(sugarloaf, layout.close, &label);
+        } else {
+            close_button(sugarloaf, layout.close, &label);
         }
 
         if matches!(
@@ -660,6 +670,7 @@ impl ConnectionHub {
             }
         } else if presentation.view.route == HubRoute::Results
             && layout.setup_panel.is_none()
+            && presentation.literal_destination.is_none()
         {
             action_button_with_shortcut(
                 sugarloaf,
@@ -882,7 +893,7 @@ impl ConnectionHub {
             }
             if let Some(confirm) = layout.overlay_confirm {
                 let (caption, disabled) = if presentation.literal_destination.is_some() {
-                    ("Review host", !presentation.literal_destination_valid)
+                    ("Review", !presentation.literal_destination_valid)
                 } else if presentation.tag_editor.is_some() {
                     ("Review change", false)
                 } else {
@@ -895,7 +906,7 @@ impl ConnectionHub {
             }
         }
 
-        if layout.setup_panel.is_none() {
+        if layout.setup_panel.is_none() && presentation.literal_destination.is_none() {
             render_status_footer(
                 sugarloaf,
                 presentation,
@@ -918,9 +929,10 @@ impl ConnectionHub {
             18.0
         };
         let catalog_chrome_visible = catalog_chrome_visible(presentation);
+        let literal_entry_active = presentation.literal_destination.is_some();
         let overlay_active = presentation.metadata_review.is_some()
             || presentation.tag_editor.is_some()
-            || presentation.literal_destination.is_some();
+            || literal_entry_active;
         let review_ready =
             matches!(presentation.grant_review, GrantReviewState::Ready { .. });
         let connection_review_active = presentation.view.route == HubRoute::Review
@@ -930,17 +942,21 @@ impl ConnectionHub {
             && !review_ready
             && !overlay_active
             && !connection_review_active;
-        let maximum_width: f32 = if connection_review_active {
+        let maximum_width: f32 = if literal_entry_active {
+            LITERAL_CARD_MAX_WIDTH
+        } else if connection_review_active {
             920.0
         } else if simple_state {
-            680.0
+            SETUP_CARD_MAX_WIDTH
         } else {
             1100.0
         };
-        let maximum_height: f32 = if connection_review_active {
+        let maximum_height: f32 = if literal_entry_active {
+            LITERAL_CARD_MAX_HEIGHT
+        } else if connection_review_active {
             620.0
         } else if simple_state {
-            380.0
+            SETUP_CARD_MAX_HEIGHT
         } else {
             760.0
         };
@@ -978,13 +994,13 @@ impl ConnectionHub {
             });
         let action_width = if compact { 142.0 } else { 174.0 };
         let review_files = if let Some(panel) = setup_panel {
-            let width = 204.0_f32.min((panel.width - 24.0).max(1.0));
+            let width = 234.0_f32.min((panel.width - 24.0).max(1.0));
             bounded_to(
                 Rect {
                     x: panel.x + (panel.width - width) * 0.5,
-                    y: panel.y + (panel.height - 58.0).max(2.0),
+                    y: panel.y + (panel.height - 64.0).max(2.0),
                     width,
-                    height: 40.0,
+                    height: 44.0,
                 },
                 panel,
             )
@@ -1000,7 +1016,7 @@ impl ConnectionHub {
             )
         };
         let review_host = if let Some(panel) = setup_panel {
-            let total_width = (panel.width - 24.0).clamp(1.0, 418.0);
+            let total_width = (panel.width - 24.0).clamp(1.0, 480.0);
             let width = ((total_width - gap) * 0.5).max(1.0);
             bounded_to(
                 Rect {
@@ -1131,7 +1147,22 @@ impl ConnectionHub {
             )
         });
         let overlay_panel = overlay_active.then(|| {
-            if card.height < 180.0 {
+            if literal_entry_active && card.width >= 280.0 && card.height >= 220.0 {
+                let panel_inset = if compact { 8.0 } else { 20.0 };
+                let top = card.y + 66.0;
+                let available = (card.height - 84.0).max(1.0);
+                let desired_height: f32 = if compact { 278.0 } else { 244.0 };
+                let height = desired_height.min(available);
+                bounded_to(
+                    Rect {
+                        x: card.x + panel_inset,
+                        y: top + (available - height) * 0.5,
+                        width: (card.width - panel_inset * 2.0).max(1.0),
+                        height,
+                    },
+                    card,
+                )
+            } else if card.height < 180.0 {
                 inset(card, 1.0)
             } else {
                 bounded_to(
@@ -1148,11 +1179,16 @@ impl ConnectionHub {
         let literal_destination_field = overlay_panel
             .filter(|_| presentation.literal_destination.is_some())
             .map(|panel| {
+                let stacked = panel.width < 560.0 && panel.height >= 210.0;
                 bounded_to(
                     Rect {
                         x: panel.x + 14.0,
-                        y: panel.y + if panel.height < 180.0 { 2.0 } else { 76.0 },
-                        width: ((panel.width - 40.0) * 0.5).max(1.0),
+                        y: panel.y + if panel.height < 180.0 { 2.0 } else { 82.0 },
+                        width: if stacked {
+                            (panel.width - 28.0).max(1.0)
+                        } else {
+                            ((panel.width - 40.0) * 0.5).max(1.0)
+                        },
                         height: if panel.height < 180.0 {
                             (panel.height - 50.0).max(1.0)
                         } else {
@@ -1166,11 +1202,24 @@ impl ConnectionHub {
             literal_destination_field
                 .zip(overlay_panel)
                 .map(|(destination, panel)| {
+                    let stacked = panel.width < 560.0 && panel.height >= 210.0;
                     bounded_to(
                         Rect {
-                            x: destination.x + destination.width + 6.0,
-                            y: destination.y,
-                            width: ((panel.width - 40.0) * 0.28).max(1.0),
+                            x: if stacked {
+                                panel.x + 14.0
+                            } else {
+                                destination.x + destination.width + 6.0
+                            },
+                            y: if stacked {
+                                destination.y + destination.height + 24.0
+                            } else {
+                                destination.y
+                            },
+                            width: if stacked {
+                                ((panel.width - 34.0) * 0.64).max(1.0)
+                            } else {
+                                ((panel.width - 40.0) * 0.28).max(1.0)
+                            },
                             height: destination.height,
                         },
                         panel,
@@ -1192,8 +1241,25 @@ impl ConnectionHub {
                 )
             });
         let overlay_confirm = overlay_panel.map(|panel| {
-            let desired_confirm = if compact { 122.0 } else { 156.0 };
-            let desired_cancel = if compact { 86.0 } else { 110.0 };
+            let comfortable_literal = literal_entry_active && panel.height >= 180.0;
+            let desired_confirm = if literal_entry_active {
+                if compact {
+                    132.0
+                } else {
+                    144.0
+                }
+            } else if compact {
+                122.0
+            } else {
+                156.0
+            };
+            let desired_cancel = if literal_entry_active {
+                108.0
+            } else if compact {
+                86.0
+            } else {
+                110.0
+            };
             let available = (panel.width - 28.0 - gap).max(2.0);
             let width = if available >= desired_confirm + desired_cancel {
                 desired_confirm
@@ -1203,17 +1269,34 @@ impl ConnectionHub {
             bounded_to(
                 Rect {
                     x: panel.x + 14.0,
-                    y: panel.y + panel.height - 48.0,
+                    y: panel.y + panel.height
+                        - if comfortable_literal { 54.0 } else { 48.0 },
                     width,
-                    height: 34.0,
+                    height: if comfortable_literal { 40.0 } else { 34.0 },
                 },
                 panel,
             )
         });
         let overlay_cancel =
             overlay_confirm.zip(overlay_panel).map(|(confirm, panel)| {
-                let desired_confirm = if compact { 122.0 } else { 156.0 };
-                let desired_cancel = if compact { 86.0 } else { 110.0 };
+                let desired_confirm = if literal_entry_active {
+                    if compact {
+                        132.0
+                    } else {
+                        144.0
+                    }
+                } else if compact {
+                    122.0
+                } else {
+                    156.0
+                };
+                let desired_cancel = if literal_entry_active {
+                    108.0
+                } else if compact {
+                    86.0
+                } else {
+                    110.0
+                };
                 let available = (panel.width - 28.0 - gap).max(2.0);
                 let width = if available >= desired_confirm + desired_cancel {
                     desired_cancel
@@ -2256,9 +2339,12 @@ fn render_setup_state(
         };
 
     if detailed {
+        let content_height = 166.0;
+        let available_height = (host_action.y - panel.y).max(content_height);
+        let content_y = panel.y + ((available_height - content_height) * 0.5).max(16.0);
         let orb = Rect {
             x: panel.x + (panel.width - 44.0) * 0.5,
-            y: panel.y + 20.0,
+            y: content_y,
             width: 44.0,
             height: 44.0,
         };
@@ -2271,11 +2357,18 @@ fn render_setup_state(
             icon_color,
             SURFACE_RAISED,
         );
-        draw_centered(sugarloaf, panel, panel.y + 78.0, copy.title, &heading, 7.5);
         draw_centered(
             sugarloaf,
             panel,
-            panel.y + 109.0,
+            content_y + 58.0,
+            copy.title,
+            &heading,
+            7.5,
+        );
+        draw_centered(
+            sugarloaf,
+            panel,
+            content_y + 89.0,
             copy.description,
             &body,
             7.0,
@@ -2288,13 +2381,16 @@ fn render_setup_state(
             sugarloaf,
             HubIcon::Shield,
             safety_x,
-            panel.y + 139.0,
+            content_y + 119.0,
             SUCCESS,
             CARD,
         );
-        sugarloaf
-            .text_mut()
-            .draw(safety_x + 29.0, panel.y + 146.0, safety_text, &small);
+        sugarloaf.text_mut().draw(
+            safety_x + 29.0,
+            content_y + 126.0,
+            safety_text,
+            &small,
+        );
     } else if panel.height >= 70.0 {
         draw_centered(sugarloaf, panel, panel.y + 14.0, copy.title, &heading, 7.5);
         draw_centered(
@@ -2687,23 +2783,38 @@ fn render_literal_destination_editor(
     diagnostic: Option<&str>,
     focus: &HubFocus,
 ) {
-    rounded(sugarloaf, panel, SURFACE, 8.0);
+    rounded(sugarloaf, panel, SURFACE, 12.0);
     let tiny = panel.height < 180.0;
     let heading = text(15.0, [238, 249, 255, 255], true);
     let body = text(13.0, [177, 207, 224, 255], false);
     let small = text(11.0, [125, 164, 187, 255], false);
     let warning = text(11.0, [255, 166, 92, 255], false);
     if !tiny {
+        let orb = Rect {
+            x: panel.x + 14.0,
+            y: panel.y + 12.0,
+            width: 34.0,
+            height: 34.0,
+        };
+        rounded(sugarloaf, orb, SURFACE_RAISED, 10.0);
+        draw_hub_icon(
+            sugarloaf,
+            HubIcon::Connections,
+            orb.x + 6.0,
+            orb.y + 6.0,
+            CYAN,
+            SURFACE_RAISED,
+        );
         sugarloaf.text_mut().draw(
-            panel.x + 14.0,
+            panel.x + 58.0,
             panel.y + 16.0,
-            "Review direct SSH",
+            "Enter a host",
             &heading,
         );
         sugarloaf.text_mut().draw(
-            panel.x + 14.0,
-            panel.y + 47.0,
-            "Host required · user and port optional · Tab moves · no URI, options, or shell text",
+            panel.x + 58.0,
+            panel.y + 38.0,
+            "Host required · user and port optional",
             &small,
         );
     }
@@ -2713,8 +2824,17 @@ fn render_literal_destination_editor(
         HubFocus::LiteralPort,
     ];
     let placeholders = ["host.example.com", "user (optional)", "port"];
+    let field_labels = ["Host", "User", "Port"];
     for index in 0..3 {
         let focused = focus == &focuses[index];
+        if !tiny {
+            sugarloaf.text_mut().draw(
+                fields[index].x,
+                fields[index].y - 16.0,
+                field_labels[index],
+                &small,
+            );
+        }
         rounded(
             sugarloaf,
             fields[index],
@@ -2741,12 +2861,16 @@ fn render_literal_destination_editor(
         );
     }
     if !tiny {
+        let fields_bottom = fields
+            .iter()
+            .map(|field| field.y + field.height)
+            .fold(panel.y, f32::max);
+        let message =
+            diagnostic.unwrap_or("Local review only · nothing connects or saves");
         sugarloaf.text_mut().draw(
             panel.x + 14.0,
-            panel.y + 132.0,
-            diagnostic.unwrap_or(
-                "Preparation only · Enter reviews · Escape cancels · nothing is saved",
-            ),
+            fields_bottom + 12.0,
+            &truncated(message, ((panel.width - 28.0) / 7.0).floor() as usize),
             if diagnostic.is_some() {
                 &warning
             } else {
@@ -3374,6 +3498,62 @@ mod tests {
     }
 
     #[test]
+    fn literal_destination_dialog_uses_a_focused_card_and_accessible_actions() {
+        let mut presentation = presentation();
+        presentation.view.content_state = HubContentState::Ready;
+        presentation.view.focus = HubFocus::LiteralDestination;
+        presentation.literal_destination = Some("host.example.invalid".into());
+        presentation.literal_user = Some("operator".into());
+        presentation.literal_port = Some("2222".into());
+        presentation.literal_destination_valid = true;
+        let dimensions = (1_600.0, 900.0, 1.0);
+        let layout = ConnectionHub::layout(&presentation, dimensions);
+
+        assert_eq!(layout.card.width, 840.0);
+        assert_eq!(layout.card.height, 420.0);
+        assert!(layout.overlay_panel.unwrap().height <= 280.0);
+        for action in [
+            layout.overlay_confirm.unwrap(),
+            layout.overlay_cancel.unwrap(),
+        ] {
+            assert!(action.width >= 100.0);
+            assert!(action.height >= 40.0);
+        }
+
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(presentation));
+        assert_eq!(
+            hub.hit_test(
+                layout.close.x + layout.close.width * 0.5,
+                layout.close.y + layout.close.height * 0.5,
+                dimensions,
+            ),
+            Some(ConnectionHubHit::CancelLiteralDestination)
+        );
+    }
+
+    #[test]
+    fn literal_destination_fields_stack_before_they_become_unusable() {
+        let mut presentation = presentation();
+        presentation.view.content_state = HubContentState::Ready;
+        presentation.literal_destination = Some("host.example.invalid".into());
+        presentation.literal_user = Some("operator".into());
+        presentation.literal_port = Some("2222".into());
+        presentation.literal_destination_valid = true;
+        let layout = ConnectionHub::layout(&presentation, (560.0, 520.0, 1.0));
+        let host = layout.literal_destination_field.unwrap();
+        let user = layout.literal_user_field.unwrap();
+        let port = layout.literal_port_field.unwrap();
+
+        assert!(host.width >= 480.0);
+        assert!(user.y > host.y);
+        assert_eq!(port.y, user.y);
+        for field in [host, user, port] {
+            assert!(field.height >= 40.0);
+        }
+    }
+
+    #[test]
     fn connection_review_is_responsive_and_exposes_all_pointer_decisions() {
         for dimensions in [
             (360.0, 280.0, 1.0),
@@ -3609,10 +3789,10 @@ mod tests {
         let mut hub = ConnectionHub::default();
         hub.set_presentation(Some(presentation));
 
-        assert!(layout.card.width <= 680.0);
-        assert!(layout.card.height <= 400.0);
-        assert!(layout.review_host.width >= 180.0);
-        assert!(layout.review_host.height >= 40.0);
+        assert_eq!(layout.card.width, 840.0);
+        assert_eq!(layout.card.height, 500.0);
+        assert!(layout.review_host.width >= 220.0);
+        assert!(layout.review_host.height >= 44.0);
         assert_eq!(layout.review_host.width, layout.review_files.width);
         let tabs = hub_tabs(&layout);
         for tab in [tabs.0, tabs.1, tabs.2] {
