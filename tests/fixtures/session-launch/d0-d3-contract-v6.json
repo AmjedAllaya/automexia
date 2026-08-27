@@ -608,15 +608,10 @@
     "documents": [
       "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md",
       "docs/SESSION-LAUNCH-BROKER.md",
-      "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
       "docs/ARCHITECTURE.md",
-      "docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md",
       "docs/TESTING.md",
-      "docs/PHASE-IMPLEMENTATION-AUDIT.md",
-      "docs/ROADMAP.md",
       "docs/DECISIONS.md",
-      "docs/READINESS-AUDIT.md",
-      "docs/STABILIZATION-ROADMAP.md"
+      "docs/READINESS-AUDIT.md"
     ]
   },
   "external_prerequisites": [

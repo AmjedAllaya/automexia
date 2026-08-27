@@ -7,6 +7,11 @@ result/
 /result
 
 target/
+
+# Private product research and unreleased implementation plans. This directory
+# is local-only and must never be staged or committed.
+/.automexia-private/
+
 # Opt-in native screenshots, reports, and other local QA evidence.
 artifacts/
 # Local libFuzzer output is generated per campaign. Crash artifacts are CI

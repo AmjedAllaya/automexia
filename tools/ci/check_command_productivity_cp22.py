@@ -256,7 +256,10 @@ def validate_documents() -> None:
         "docs/COMMAND-PRODUCTIVITY.md": {"CP2.2", "actions import", "Insert without Enter"},
         "docs/DEVOPS-ALIASES.md": {"CP2.2", "Quick Actions", "exact launch"},
         "docs/TESTING.md": {"CP2.2", "quick_action_search_1024"},
-        "docs/PHASE-IMPLEMENTATION-AUDIT.md": {"CP2.2", "Implemented locally"},
+        "docs/PHASE-IMPLEMENTATION-AUDIT.md": {
+            "Command productivity foundations",
+            "Feature documentation and source tests remain authoritative",
+        },
     }.items():
         require_tokens(relative, tokens)
 

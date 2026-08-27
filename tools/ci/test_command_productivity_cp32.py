@@ -30,7 +30,7 @@ class Cp32ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         self.assertEqual(policy.validate_repository(), {
             "providers": 11, "actions": 33, "commands": 4,
-            "tests": 17, "documents": 8,
+            "tests": 17, "documents": 6,
         })
 
     def test_provider_inventory_and_counts_cannot_drift(self) -> None:

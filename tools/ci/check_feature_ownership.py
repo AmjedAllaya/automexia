@@ -50,30 +50,12 @@ def main() -> int:
             ("provider-neutral `automexia-devops`",),
         ),
         (
-            "docs/SSH-CONNECTION-AUTOMATION.md",
-            ("automexia-connectivity", "automexia-command-productivity"),
-            (
-                "source model should live in `automexia-devops`",
-                "provider-neutral state | `automexia-devops`",
-            ),
-        ),
-        (
-            "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
+            "docs/ARCHITECTURE.md",
             ("automexia-connectivity", "automexia-command-productivity"),
             (
                 "automexia-devops model",
                 "all `automexia-devops` and `automexia-ui-model` tests",
             ),
-        ),
-        (
-            "docs/ROADMAP.md",
-            ("automexia-connectivity", "automexia-command-productivity"),
-            (),
-        ),
-        (
-            "docs/PHASE-IMPLEMENTATION-AUDIT.md",
-            ("automexia-connectivity", "automexia-command-productivity"),
-            (),
         ),
     )
     for relative, required, forbidden in live_ownership_claims:

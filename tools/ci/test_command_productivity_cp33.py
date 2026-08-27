@@ -35,7 +35,7 @@ class Cp33ContractTests(unittest.TestCase):
                 "task_runners": 3,
                 "commands": 6,
                 "tests": 14,
-                "documents": 12,
+                "documents": 9,
             },
         )
 

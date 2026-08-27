@@ -1967,38 +1967,26 @@ AS0 is proposal-only; AS1-AS6 are not implemented. The complete future gate is
 
 ## Situation-Aware Production Operations evidence gate
 
-PO0 is a proposal/checker only; PO1-PO8 are not implemented. The separate
-environment-passport/route-lock; change/ownership/drift, resource/scheduler,
-cohort/revision/environment, passive-network/SLO and dependency evidence;
-Kubernetes situation/ranking; editor-byte/no-Enter;
-permission/GitOps/JIT/policy preflight; Incident hypothesis/time/live-log/
-Diagnostic-Navigator-handoff/journal; execute-observe-stabilize-verify-recover;
-port-forward/probe/debug; organization-pack; provider; security; fuzz/model;
-visual/accessibility; native; resource/storage; rollback/disable/uninstall;
-package; and external evidence ladder is maintained
-in [Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md).
-Exact surface, responsive, focus, ownership-path/session-kind, usability, and accessibility
-requirements are owned by the
-[Production Operations experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
-The dedicated testing plan applies them separately to shell-owned insertion,
-PO6 managed execution and PO6 managed diagnostic sessions; this index does not
-duplicate that contract.
+Situation-aware Production Operations is a public direction only. No provider
+collection, watcher, investigation view, completion source, model, managed
+session, execution path, setting, or persistence ships. The future assurance
+categories and publication gates are summarized in
+[Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md);
+the [experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md) describes
+the intended interaction principles. Exact unreleased scenarios, schemas,
+provider matrices, limits, state machines, and phase recipes remain local until
+implementation and publication review.
 
-That plan does not activate CP5, provider collection, a watcher, investigation
-view, live-log controller, managed diagnostic session, completion source, LLM,
-model, D3 runner, or any product behavior. CP1 remains the
-fallback and all phase-specific external provider/native evidence stays open.
-
-The non-activating
-[PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md) is checked with:
+The non-activating public planning boundary is checked with:
 
 ```text
 python tools/ci/check_production_operations_po0.py
 python tools/ci/test_production_operations_po0.py
 ```
 
-They prove proposal integrity and current source-marker absence only; all
-runtime, provider, native and release evidence stays external.
+They prove planned-status language, absence of private planning artifacts, and
+current source-marker absence only; all runtime, provider, native and release
+evidence stays external.
 
 ## External-tool and adopted-dependency assurance
 

@@ -35,7 +35,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 "scenarios": 23,
                 "boundaries": 9,
                 "sources": 17,
-                "documents": 11,
+                "documents": 6,
                 "production_enabled": 0,
                 "native_platforms": 3,
             },
