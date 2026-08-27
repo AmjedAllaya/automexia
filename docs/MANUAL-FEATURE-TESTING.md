@@ -1477,7 +1477,7 @@ wake, lingering file handle, child or thread.
 
 Exercise Setup, Loading, populated, filtered, stale, literal editor, file review,
 connection review and metadata editor at 320, 1,920 and 5,120 px-equivalent
-widths and 100–300% scale. Navigate without pointer, then with pointer and IME,
+widths and 100–400% scale. Navigate without pointer, then with pointer and IME,
 then a native screen reader.
 
 Expected result: concise title/status/help, colored icon plus redundant text,
@@ -1796,7 +1796,7 @@ named reason. No fallback turns rejected text into executable shell code.
 ### ACT-07 — responsive, keyboard, accessibility, and no-PTY audit
 
 Repeat ACT-03 with zero, one, and maximum-sized fixture catalogs; tiny through
-8K-equivalent viewport; 100–300% scale; long Unicode; high contrast; reduced
+8K-equivalent viewport; 100–400% scale; long Unicode; high contrast; reduced
 motion; keyboard; pointer; IME; and available screen readers.
 
 Expected result: loading/empty/unavailable/conflict/confirmation states are
@@ -3192,17 +3192,17 @@ current-commit manifest:
 python tools/ci/s1_assurance.py validate --manifest <private-manifest.json> --expected-commit <40-character-commit> --require-complete --output <public-summary.json>
 ```
 
-Expected result: all 24 required native, resource, visual and accessibility
+Expected result: all 28 required native, resource, visual and accessibility
 suites are complete, independently reviewed and cleanup-clean; the bounded
 public summary contains no private artifact path or terminal content. A local or
 fabricated manifest must fail and must never be substituted for controlled S1.
 
 ### ASSURE-02 — native visual and single-pixel-sensitive review
 
-Prepare four policy environments from the S1 audit, including the required
-renderer/OS combinations. For each required case exercise tiny through
-8K-equivalent dimensions, 100–300% scale, normal/high-contrast/custom themes,
-light/dark backgrounds, Unicode/emoji/combining/bidi-safe fixtures, long paths,
+Prepare all five visual policy suites from the S1 audit, including Windows,
+Linux X11/Wayland, and macOS Intel/Apple Silicon. For each required case exercise
+tiny through 8K-equivalent dimensions, 100–400% scale, dark/light/high-contrast
+themes, enabled and reduced motion, Unicode/emoji/combining/bidi-safe fixtures, long paths,
 multiple tabs/panes, overlays, search, Connection Hub, Quick Actions, completion,
 prompt/result separation, alternate screen and renderer fallback.
 
@@ -3227,8 +3227,9 @@ change; anti-aliasing/dynamic regions use only reviewed masks and thresholds.
 No changed pixel may be dismissed solely because aggregate ratio passes. Text,
 icons, focus, borders, prompt/result boundaries, cursor and close controls are
 aligned, unclipped, nonoverlapping and consistent. A mask/threshold/dimension
-mismatch fails. The complete matrix is 1,600 cases; an incomplete local subset
-is recorded as such, never as full S1.
+mismatch fails. Each visual suite contains 8,352 cases (3 themes × 6 scales ×
+8 viewports × 29 surfaces × 2 motion profiles), for 41,760 controlled captures;
+an incomplete local subset is recorded as such, never as full S1.
 
 ### ASSURE-03 — keyboard-only and native assistive-technology review
 

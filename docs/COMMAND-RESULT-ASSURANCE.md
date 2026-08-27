@@ -191,7 +191,7 @@ adding product I/O, or fabricating output for silent commands.
 U10 remains **Partially done** because release assurance is larger than this
 source fix and one local automated Windows WGPU/CPU run. Native Linux X11 and
 Wayland, native macOS Intel and Apple Silicon, other Windows GPU/RDP and named
-resource/elevated suites, four exact 1,600-capture visual matrices, Narrator,
+resource/elevated suites, five exact 8,352-capture visual matrices, Narrator,
 NVDA, VoiceOver, and Orca X11/Wayland sessions, and independent review must
 populate one manifest that passes
 `python tools/ci/s1_assurance.py validate --require-complete`.
