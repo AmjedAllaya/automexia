@@ -1,0 +1,1015 @@
+{
+  "schema": 1,
+  "supported_platforms": ["windows", "linux", "macos"],
+  "quality_dimensions": [
+    "accessibility",
+    "correctness",
+    "security",
+    "performance",
+    "resource_lifetime",
+    "storage_hygiene",
+    "resilience",
+    "visual_quality"
+  ],
+  "features": [
+    {
+      "id": "identity-config-migration",
+      "title": "Product identity, configuration, migration, and coexistence",
+      "components": ["apps/automexia-terminal", "rio-backend"],
+      "documentation": {
+        "guide": ["docs/GETTING-STARTED.md#5-create-a-personal-configuration", "docs/MIGRATION.md"],
+        "reference": ["docs/CONFIGURATION.md#file-location-and-precedence"],
+        "explanation": ["docs/adr/0001-standalone-product-boundary.md", "docs/adr/0002-non-destructive-config-migration.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Configuration and migration have no independent interactive surface; rendered configuration effects are owned by renderer-ui."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "rio-backend/src/config/mod.rs"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "fuzz/fuzz_targets/config_migration.rs"]},
+        "performance": {"level": "controlled", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/migration.rs", "tools/ci/test_powershell.ps1"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/runtime.rs", "apps/automexia-terminal/src/global_hotkey.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "Migration is intentionally nonvisual and reports through established notification surfaces."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_powershell.ps1"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "terminal-protocols-grid-history",
+      "title": "VT protocols, Unicode grid, selection, search, history, and reflow",
+      "components": ["rio-vt"],
+      "documentation": {
+        "guide": ["docs/LIQUID-HACKER-UX.md#keyboard-selection"],
+        "reference": ["docs/TESTING.md#terminal-conformance"],
+        "explanation": ["docs/ARCHITECTURE.md#vt-control-string-trust-boundary"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["rio-vt/src/codepoint_width.rs", "rio-vt/src/selection.rs"]},
+        "correctness": {"level": "pr", "evidence": ["rio-vt/src/selection.rs", "rio-vt/tests/conformance_fixtures.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json"]},
+        "security": {"level": "nightly", "evidence": ["fuzz/fuzz_targets/vt_parser.rs", "fuzz/fuzz_targets/osc_metadata.rs", "fuzz/fuzz_targets/control_string_bounds.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "nightly", "evidence": ["rio-vt/benches/vt_input.rs", ".github/workflows/nightly.yml#benchmarks-controlled"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["rio-vt/src/performer/handler.rs", "rio-vt/src/crosswords/grid/storage.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["rio-vt/src/ansi/kitty_graphics_protocol.rs"]},
+        "resilience": {"level": "pr", "evidence": ["rio-vt/src/performer/parser/mod.rs", "tools/xtask/src/main.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["rio-vt/tests/conformance_fixtures.rs", "rio-vt/tests/sixel/testimage_libsixel.rgba"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "pty-scheduler-process-lifecycle",
+      "title": "PTY, ConPTY, event polling, resize delivery, child ownership, and teardown",
+      "components": ["teletypewriter", "corcovado"],
+      "documentation": {
+        "guide": ["docs/TROUBLESHOOTING.md#prompt-cursor-or-footer-moves-during-resize"],
+        "reference": ["docs/PLATFORMS.md#support-matrix"],
+        "explanation": ["docs/ARCHITECTURE.md#interactive-performance-invariants"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport has no independent user interface; terminal and renderer surfaces own accessibility."},
+        "correctness": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", "corcovado/test/test_poll.rs"]},
+        "security": {"level": "nightly", "evidence": [".github/workflows/nightly.yml#sanitizers", "tests/integration/appverifier-windows.ps1"]},
+        "performance": {"level": "nightly", "evidence": ["teletypewriter/benches/pty_io.rs", "corcovado/benches/bench_poll.rs"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", "tests/integration/appverifier-windows.ps1", "tests/integration/wpr-windows.ps1"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport owns processes, handles, pipes, and memory but does not persist product data."},
+        "resilience": {"level": "pr", "evidence": ["tests/integration/resize-stress-windows.ps1", "corcovado/tests/loom_channel_readiness.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "PTY transport does not paint pixels; native renderer storms consume its output."}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", ".github/workflows/nightly.yml#native-windows-deep"]},
+        "linux": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["teletypewriter/tests/pty_lifecycle.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "renderer-fonts-responsive-ui",
+      "title": "GPU/CPU rendering, fonts, saved runtime preferences, graphemes, responsive panes, branded startup/modal/window chrome, and footer",
+      "components": ["apps/automexia-terminal", "automexia-ui-model", "sugarloaf", "rio-graphics", "rio-fonts", "rio-grapheme-width"],
+      "documentation": {
+        "guide": ["docs/LIQUID-HACKER-UX.md#layout-contract", "docs/user-guide/customization.md#5-configure-fonts-and-saved-runtime-zoom", "docs/ACCESSIBILITY.md"],
+        "reference": ["docs/CONFIGURATION.md#saved-runtime-preferences", "docs/UI-BRANDING-ROADMAP.md#evidence-ledger"],
+        "explanation": ["docs/adr/0004-native-persistent-operational-chrome.md", "docs/adr/0013-renderer-independent-accessibility-model.md", "docs/adr/0036-application-owned-runtime-user-preferences.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/screen/mod.rs", "tests/integration/resize-stress-windows.ps1", "docs/ACCESSIBILITY.md"], "rationale": "Renderer-neutral search semantics and redundant, bounded completed-output cues plus Windows WGPU/CPU fresh-identity, glyph-pixel, and blank-surface contrast evidence are controlled; native UI Automation, VoiceOver, and AT-SPI delivery remains an external v0.5 gate."},
+        "correctness": {"level": "pr", "evidence": ["sugarloaf/tests/wgsl_validation.rs", "sugarloaf/src/font/cjk_metrics_tests.rs", "apps/automexia-terminal/src/layout/compute_tests.rs", "apps/automexia-terminal/src/automexia/preferences.rs", "apps/automexia-terminal/src/application.rs", "apps/automexia-terminal/tests/user_preferences_restart.rs", "apps/automexia-terminal/src/router/routes/welcome.rs", "apps/automexia-terminal/src/renderer/ui_theme.rs", "apps/automexia-terminal/src/renderer/assistant.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/renderer/confirm_quit.rs", "apps/automexia-terminal/src/renderer/island.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/renderer/scrollbar.rs", "rio-vt/src/crosswords/grid/row.rs", "rio-vt/src/crosswords/mod.rs", "shell-integration/cmd/automexia.cmd", "shell-integration/fish/automexia.fish", "tools/ci/test_shell_integration.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh", "tools/ci/test_fish_integration.fish", "tests/integration/resize-stress-windows.ps1", "tests/integration/session-clone-wsl-windows.ps1"]},
+        "security": {"level": "nightly", "evidence": ["sugarloaf/tests/wgsl_validation.rs", ".github/workflows/codeql.yml"]},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs", "rio-vt/benches/vt_input.rs", ".github/workflows/nightly.yml#benchmarks-controlled"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["sugarloaf/src/renderer/image_cache/cache.rs", "tests/integration/resize-stress-windows.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/preferences.rs", "docs/adr/0036-application-owned-runtime-user-preferences.md"], "rationale": "The application owns one 16 KiB-bounded private font/appearance overlay with no-follow reads, a depth-one writer, per-store lock, same-directory replacement, and one previous snapshot; renderer caches remain memory/GPU-only."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/layout/compute_tests.rs", "apps/automexia-terminal/proptest-regressions/layout/compute_tests.txt", "apps/automexia-terminal/src/automexia/preferences.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/router/routes/welcome.rs", "apps/automexia-terminal/src/renderer/ui_theme.rs", "apps/automexia-terminal/src/renderer/assistant.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/renderer/confirm_quit.rs", "apps/automexia-terminal/src/renderer/island.rs", "apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/renderer/scrollbar.rs", "rio-vt/src/crosswords/grid/row.rs", "rio-vt/src/crosswords/mod.rs", "shell-integration/cmd/automexia.cmd", "shell-integration/fish/automexia.fish", "apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__session_footer__tests__session_footer_geometry_matrix.snap", "apps/automexia-terminal/src/renderer/snapshots/automexia__renderer__search__tests__scoped_search_geometry_matrix.snap", "tests/integration/resize-stress-windows.ps1", "tests/integration/session-clone-wsl-windows.ps1", "docs/COMMAND-RESULT-ASSURANCE.md", "tests/assurance/feature-test-reinforcement-v1.json"], "rationale": "Renderer-neutral parser-to-scrollback-to-visible-render fixtures prove bounded short output, all one- and two-viewport boundary heights, full source-prompt eviction, stable result identity and completion datetime, exactly one following boundary, silent and newline-only behavior, repaint, reflow, responsive labels, and deduplication. Current local native Windows WGPU and CPU drivers cover CMD, PowerShell, geometry, timestamp identity/labels, glyph, contrast, resources, and all seven dynamic overflow cases. Cross-platform GUI, exact controlled visual matrices, other Windows GPU/RDP environments, assistive technology, and independent review remain external under U10."}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#native-gui-resize-stress"]},
+        "linux": {"level": "external", "evidence": ["docs/TESTING.md#native-platform-ownership"]},
+        "macos": {"level": "external", "evidence": ["docs/TESTING.md#native-platform-ownership"]}
+      }
+    },
+    {
+      "id": "windows-tabs-sessions-input",
+      "title": "OS windows, global and pane-local tabs, session cloning, shortcuts, command jumps, mouse, and clipboard",
+      "components": ["apps/automexia-terminal", "automexia-keybindings", "rio-vt", "rio-window", "rio-notifier"],
+      "documentation": {
+        "guide": ["docs/GETTING-STARTED.md#4-try-panes-tabs-and-selection", "docs/user-guide/shortcuts.md#search-and-scrollback"],
+        "reference": ["docs/KEYBOARD.md#windows-and-linuxbsd-defaults", "docs/GHOSTTY-COMPATIBILITY-ROADMAP.md#final-acceptance-gate"],
+        "explanation": ["docs/adr/0006-prompt-context-and-workspace-actions.md", "docs/adr/0007-pane-local-session-tabs.md", "docs/adr/0026-versioned-ghostty-keybinding-profiles.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "rio-vt/src/crosswords/mod.rs", "automexia-keybindings/src/lib.rs", "automexia-keybindings/tests/properties.rs", "tests/integration/resize-stress-windows.ps1"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/mouse/mod.rs", "automexia-keybindings/src/parser.rs", "automexia-keybindings/tests/properties.rs"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", "rio-vt/benches/vt_input.rs", "tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/appverifier-windows.ps1"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Window, tab, input, and clipboard routing do not own persistent storage."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "automexia-keybindings/src/sequence.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/session-clone-wsl-windows.ps1"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", ".github/workflows/ci.yml#linux-features"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", ".github/workflows/ci.yml#cross-checks"]}
+      }
+    },
+    {
+      "id": "ghostty-compatibility-g0-g6",
+      "title": "Versioned Ghostty keybinding profiles, compatibility actions, migration, inspector, and bounded topology history",
+      "components": ["automexia-keybindings", "apps/automexia-terminal", "rio-backend", "rio-vt"],
+      "documentation": {
+        "guide": ["docs/GHOSTTY-KEYBOARD-COMPATIBILITY.md"],
+        "reference": ["docs/generated/ghostty-1.3-keybindings.md", "docs/generated/ghostty-1.3-actions.md", "docs/reference/cli.md#ghostty-compatibility-inspection-and-migration"],
+        "explanation": ["docs/adr/0026-versioned-ghostty-keybinding-profiles.md", "docs/adr/0027-redacted-compatibility-inspector.md", "docs/adr/0028-bounded-parked-pty-topology-history.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/screen/mod.rs", "tools/ci/ghostty_native_evidence.py", "docs/TESTING.md"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-keybindings/src/lib.rs", "automexia-keybindings/tests/properties.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/screen/compatibility.rs", "tools/xtask/src/keybindings.rs", "tools/ci/check_ghostty_compatibility.py", "tools/ci/test_ghostty_compatibility.py"]},
+        "security": {"level": "pr", "evidence": ["automexia-keybindings/src/parser.rs", "apps/automexia-terminal/src/automexia/ghostty_migration.rs", "apps/automexia-terminal/src/automexia/export.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "apps/automexia-terminal/src/screen/mod.rs", "fuzz/fuzz_targets/ghostty_keybindings.rs", "fuzz/fuzz_targets/ghostty_migration.rs"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", ".github/workflows/nightly.yml", "docs/TESTING.md"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/automexia/export.rs", "tools/ci/ghostty_native_evidence.py", "tools/ci/test_ghostty_native_evidence.py", "RELEASING.md#ghostty-compatibility-profile-gate"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/src/automexia/export.rs", "apps/automexia-terminal/src/automexia/ghostty_migration.rs"]},
+        "resilience": {"level": "pr", "evidence": ["automexia-keybindings/src/sequence.rs", "apps/automexia-terminal/src/bindings/registry.rs", "apps/automexia-terminal/src/layout/mod.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/compatibility_inspector.rs", "docs/TESTING.md"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", "docs/TESTING.md"]},
+        "linux": {"level": "external", "evidence": ["docs/GHOSTTY-COMPATIBILITY-ROADMAP.md#final-acceptance-gate"]},
+        "macos": {"level": "external", "evidence": ["docs/GHOSTTY-COMPATIBILITY-ROADMAP.md#final-acceptance-gate"]}
+      }
+    },
+    {
+      "id": "prompt-context-devops-semantics",
+      "title": "Prompt metadata, path layout, semantic colors, Git, containers, Kubernetes, cloud, Terraform, and user context",
+      "components": ["automexia-devops", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/SHELL-INTEGRATION.md#prompt-ownership"],
+        "reference": ["docs/LIQUID-HACKER-UX.md#per-pane-operational-context"],
+        "explanation": ["docs/adr/0006-prompt-context-and-workspace-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/lib.rs", "automexia-devops/src/semantics.rs"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-devops/src/semantics.rs"]},
+        "security": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "fuzz/fuzz_targets/semantic_classification.rs", "fuzz/fuzz_targets/label_sanitization.rs"]},
+        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-devops/src/context.rs"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Provider discovery is read-only and retains bounded in-memory snapshots only."},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-ui-model/src/lib.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/devops_status.rs"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/src/context.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/src/context.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-devops/src/context.rs"]}
+      }
+    },
+    {
+      "id": "openssh-inventory-persistence",
+      "title": "Bounded static OpenSSH inventory, private metadata, and last-known-good refresh",
+      "components": ["extensions/devops-ssh"],
+      "documentation": {
+        "guide": ["docs/SSH-INVENTORY.md#using-the-inventory-package"],
+        "reference": ["docs/SSH-INVENTORY.md#security-and-resource-contract"],
+        "explanation": ["docs/SSH-INVENTORY.md#why-automexia-does-not-resolve-effective-ssh-configuration", "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "D4 is deliberately nonactivated and has no UI; future D5 connection surfaces own accessibility evidence."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/model.rs", "extensions/devops-ssh/src/refresh.rs", "extensions/devops-ssh/tests/metadata_store.rs"]},
+        "security": {"level": "nightly", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/src/secure_fs.rs", "extensions/devops-ssh/tests/metadata_store.rs", "fuzz/fuzz_targets/openssh_inventory.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "nightly", "evidence": ["extensions/devops-ssh/benches/openssh_inventory.rs", ".github/workflows/nightly.yml#benchmark-build", "tools/ci/qa.py"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["extensions/devops-ssh/src/refresh.rs", "extensions/devops-ssh/src/persistence.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"]},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/refresh.rs", "extensions/devops-ssh/src/secure_fs.rs", "extensions/devops-ssh/tests/metadata_store.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "The D4 package exposes models only and is not connected to a renderer or product surface."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "extensions/devops-ssh/src/inventory.rs", "extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"]}
+      }
+    },
+    {
+      "id": "extension-contract-runtime",
+      "title": "Versioned extension contracts, fail-closed application runner, exact PTY publication, and isolated bounded runtime",
+      "components": ["automexia-extension-api", "automexia-extension-runtime", "apps/automexia-terminal", "automexia-ui-model", "teletypewriter"],
+      "documentation": {
+        "guide": ["CONTRIBUTING.md#change-requirements"],
+        "reference": ["docs/ARCHITECTURE.md#core-and-extension-ownership", "docs/SESSION-LAUNCH-BROKER.md#authorization-contract"],
+        "explanation": ["docs/adr/0003-extension-capability-and-threading.md", "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/direct_openssh_review.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Three explicit approval decisions have text, pointer, focus-aware keyboard, and accessibility semantics. Controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-extension-runtime/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "teletypewriter/src/exact_executable.rs", "tests/fixtures/session-launch/d0-d3-contract-v4.json", "tests/fixtures/session-launch/d0-d3-contract-v3.json", "tests/fixtures/session-launch/d0-d3-contract-v2.json", "tests/fixtures/session-launch/d0-d3-contract-v1.json", "tools/ci/check_session_launch_d0.py", "tools/ci/test_session_launch_d0.py"]},
+        "security": {"level": "nightly", "evidence": ["automexia-extension-api/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "teletypewriter/src/exact_executable.rs", "tests/fixtures/session-launch/d0-d3-contract-v4.json", "tests/fixtures/session-launch/d0-d3-contract-v3.json", "tests/fixtures/session-launch/d0-d3-contract-v2.json", "tests/fixtures/session-launch/d0-d3-contract-v1.json", "tools/ci/check_session_launch_d0.py", "tools/ci/check_pr_policy.py", "tools/ci/test_pr_policy.py", ".github/workflows/ci.yml#policy", ".github/workflows/nightly.yml#miri"], "rationale": "Production ownership is compiled but hard disabled; the linked package remains unverified and authorization denies before executable resolution."},
+        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-extension-runtime/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs"], "rationale": "The app runner bounds active work at 50 and audits, receipts, reconnect candidates, and durable receipt history at 256; it reconciles actual child exit, cancellation, route close, failed publication, and shutdown. Native forced descendant cleanup and sustained leak proof remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs"], "rationale": "Managed completion receipts use a private, atomic, primary/previous-recovery store bounded to 256 records and 2 MiB; destination, terminal text, credentials, paths, and executable identity are excluded."},
+        "resilience": {"level": "pr", "evidence": ["automexia-extension-runtime/src/lib.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "tools/ci/test_session_launch_d0.py"], "rationale": "Capacity, stale scope/source, replay, executable replacement, pre-publication completion, nonzero or unavailable child status, persistence recovery/saturation, revocation, route close, and app shutdown fail closed with fixed redacted outcomes."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/direct_openssh_review.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Renderer-neutral and hit-geometry tests cover three compact review cards and three non-overlapping decisions from tiny through 8K-equivalent viewports; native pixel inspection remains external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/src/context/launch_broker.rs", "tests/fixtures/session-launch/d0-d3-contract-v4.json", "tests/fixtures/session-launch/d0-d3-contract-v3.json", "tests/fixtures/session-launch/d0-d3-contract-v2.json"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/src/context/launch_broker.rs", "tests/fixtures/session-launch/d0-d3-contract-v4.json", "tests/fixtures/session-launch/d0-d3-contract-v3.json", "tests/fixtures/session-launch/d0-d3-contract-v2.json"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/src/context/launch_broker.rs", "tests/fixtures/session-launch/d0-d3-contract-v4.json", "tests/fixtures/session-launch/d0-d3-contract-v3.json", "tests/fixtures/session-launch/d0-d3-contract-v2.json"]}
+      }
+    },
+    {
+      "id": "image-protocols-local-preview",
+      "title": "Kitty, Sixel, iTerm2, and bounded local image preview",
+      "components": ["automexia-image", "apps/automexia-terminal", "rio-vt", "sugarloaf"],
+      "documentation": {
+        "guide": ["docs/IMAGE-PREVIEWS.md#local-quick-look"],
+        "reference": ["docs/IMAGE-PREVIEWS.md#security-and-performance-contract"],
+        "explanation": ["docs/adr/0014-explicit-bounded-image-quick-look.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs", "rio-vt/src/ansi/graphics.rs"]},
+        "security": {"level": "nightly", "evidence": ["fuzz/fuzz_targets/image_decoder.rs", ".github/workflows/nightly.yml#sanitizers"]},
+        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/image_preview.rs"]},
+        "resource_lifetime": {"level": "controlled", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs", "tests/integration/resize-stress-windows.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "tools/xtask/src/main.rs"]},
+        "resilience": {"level": "pr", "evidence": ["automexia-image/src/lib.rs", "apps/automexia-terminal/src/image_preview.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "docs/IMAGE-PREVIEWS.md"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1"]},
+        "linux": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]},
+        "macos": {"level": "external", "evidence": ["docs/IMAGE-PREVIEWS.md"]}
+      }
+    },
+    {
+      "id": "shell-integration-listings",
+      "title": "PowerShell, CMD, WSL, Bash, Zsh, prompt integration, and icon-aware listings",
+      "components": ["shell-integration"],
+      "documentation": {
+        "guide": ["docs/SHELL-INTEGRATION.md#session-only-integration-by-default"],
+        "reference": ["docs/SHELL-INTEGRATION.md#icon-aware-listings"],
+        "explanation": ["docs/adr/0017-session-only-shell-integration.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh", "tools/ci/check_runtime_trust.py", "tools/ci/test_runtime_trust.py"]},
+        "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_powershell.ps1"]},
+        "visual_quality": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh"]}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "packaging-release-provenance",
+      "title": "Windows, macOS, and Linux packages, identity, signing, SBOM, checksum, and provenance",
+      "components": ["packaging", ".github/workflows"],
+      "documentation": {
+        "guide": ["RELEASING.md", "docs/RELEASE-TRUST.md#user-verification"],
+        "reference": ["packaging/README.md", "docs/RELEASE-TRUST.md#release-artifact-contract"],
+        "explanation": ["docs/adr/0016-final-artifact-release-trust.md", "docs/adr/0031-versioned-hosted-ci-and-repository-protection.md", "docs/research/STABLE-RELEASE-AND-REPOSITORY-BLOCKERS-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/ACCESSIBILITY.md", "packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml"]},
+        "correctness": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/stable_release.py", "tools/ci/test_stable_release.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", ".github/workflows/release.yml"]},
+        "security": {"level": "controlled", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tests/assurance/stable-release-policy-v1.json", "tools/ci/check_runtime_trust.py", "tools/ci/stable_release.py", "tools/ci/repository_protection.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml"]},
+        "performance": {"level": "controlled", "evidence": ["tools/ci/release_trust.py", "tools/ci/check_reproducible_build.sh", ".github/workflows/release.yml", "docs/RELEASE-TRUST.md#tests-and-performance-evidence"]},
+        "resource_lifetime": {"level": "nightly", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh"]},
+        "storage_hygiene": {"level": "nightly", "evidence": ["tests/assurance/release-trust-policy-v1.json", "tools/ci/test_release_trust.py", "tools/ci/test_windows_installer.ps1", "tools/ci/test_linux_package.sh", "tools/xtask/src/main.rs"]},
+        "resilience": {"level": "controlled", "evidence": ["tools/ci/test_release_trust.py", "tools/ci/test_runtime_trust.py", "tools/ci/test_stable_release.py", "tools/ci/test_repository_protection.py", "tools/ci/test_release_trust_windows.ps1", ".github/workflows/release.yml", "RELEASING.md"]},
+        "visual_quality": {"level": "pr", "evidence": ["assets/brand/ASSET-MANIFEST.toml", "tools/ci/validate_repository.py"]}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-windows", "tools/ci/test_windows_installer.ps1", "tools/ci/test_release_trust_windows.ps1"]},
+        "linux": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-linux", ".github/workflows/release.yml#reproducibility-linux", "tools/ci/test_linux_package.sh", "tools/ci/check_reproducible_build.sh"]},
+        "macos": {"level": "controlled", "evidence": [".github/workflows/release.yml#package-macos"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp0-policy",
+      "title": "Accepted command-productivity architecture plus the pure nonactivated CP3.0 shell projection compiler",
+      "components": ["tools/ci", "tests/fixtures/command-productivity", "automexia-command-productivity"],
+      "documentation": {
+        "guide": ["docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md", "docs/DEVOPS-ALIASES.md#cp30-projection-compiler-baseline"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases", "docs/TESTING.md#cp30-pure-projection-compiler"],
+        "explanation": ["docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP0 activates no UI; CP1 and CP5 retain explicit native and renderer accessibility gates."},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_command_productivity_cp30.py", "tools/ci/test_command_productivity_cp30.py", "automexia-command-productivity/src/actions/validation.rs", "automexia-command-productivity/src/actions/projection.rs", "automexia-command-productivity/tests/quick_actions.rs", "automexia-command-productivity/tests/quick_action_projection.rs", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-contract-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json", "tests/fixtures/command-productivity/cp30-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_devops_alias_spec.py", "tools/ci/test_devops_alias_spec.py", "tools/ci/check_command_productivity_cp30.py", "tools/ci/test_command_productivity_cp30.py", "automexia-command-productivity/src/actions/mod.rs", "automexia-command-productivity/src/actions/validation.rs", "automexia-command-productivity/src/actions/projection.rs", "automexia-command-productivity/tests/quick_actions.rs", "automexia-command-productivity/tests/quick_action_projection.rs", "fuzz/fuzz_targets/quick_action_projection.rs", ".github/workflows/nightly.yml#fuzz", "tests/fixtures/command-productivity/cp2-hostile-actions-v1.json", "tests/fixtures/command-productivity/cp0-threats-v1.json", "tests/fixtures/command-productivity/cp0-hostile-mutations-v1.json", "tests/fixtures/command-productivity/cp30-contract-v1.json"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-command-productivity/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"]},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and the pure CP3.0 compiler start no workers, watchers, providers, processes, or caches; activation phases require lifecycle tests."},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/check_command_productivity.py", "tests/fixtures/command-productivity/cp0-contract-v1.json"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_command_productivity.py", "tools/ci/test_command_productivity_cp30.py", "automexia-command-productivity/tests/quick_action_projection.rs", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#version-and-fallback-policy"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP0 draws no product UI; later candidate/action surfaces require visual and accessibility evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and CP3.0 activate no Windows runtime behavior; conditional PowerShell/CMD compiler evidence is correctness-only until CP3.1."},
+        "linux": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and CP3.0 activate no Linux runtime behavior; conditional Bash/Zsh/Fish compiler evidence is correctness-only until CP3.1."},
+        "macos": {"level": "not_applicable", "evidence": [], "rationale": "CP0 and CP3.0 activate no macOS runtime behavior; conditional native compiler evidence is correctness-only until CP3.1."}
+      }
+    },
+    {
+      "id": "command-productivity-cp2-persistence",
+      "title": "Private bounded Quick Action persistence, recovery, concurrency, and exact refresh foundation",
+      "components": ["apps/automexia-terminal", "automexia-command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#delivery-phases", "docs/TESTING.md#cp20-cp22-quick-action-assurance"],
+        "explanation": ["docs/ARCHITECTURE.md#command-productivity-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP2.1 is an internal persistence library and deliberately activates no UI; CP2.2 owns accessible search, review, recovery, and insertion."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/store.rs", "apps/automexia-terminal/src/automexia/quick_actions/service.rs", "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs", "tools/ci/check_command_productivity.py", "tools/ci/test_command_productivity.py", "tools/ci/check_devops_alias_spec.py", "tools/ci/test_devops_alias_spec.py"]},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/quick_action_store.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/quick_action_persistence.rs", "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/store.rs", "apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/service.rs", "apps/automexia-terminal/src/automexia/quick_actions/refresh.rs", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP2.1 draws no product UI; CP2.2 requires renderer-neutral goldens and native accessibility/visual evidence before activation."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/tests/quick_action_persistence.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "apps/automexia-terminal/tests/quick_action_persistence.rs"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp22-quick-actions",
+      "title": "Reviewed bounded Quick Action search, administration, import/export, and insert/copy",
+      "components": ["apps/automexia-terminal", "automexia-command-productivity", "automexia-ui-model", "teletypewriter"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp22-action-search-editor-and-insertcopy"],
+        "reference": ["docs/CLI-REFERENCE.md#application-command", "docs/TESTING.md#cp20-cp22-quick-action-assurance"],
+        "explanation": ["docs/ARCHITECTURE.md#command-productivity-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/ACCESSIBILITY.md"], "rationale": "Renderer-neutral labels, visible risk/source/conflict/health redundancy, explicit non-actionable loading/empty/error states, keyboard flow, and 400 percent layout are PR-tested; Narrator/NVDA/VoiceOver/Orca remain controlled release evidence."},
+        "correctness": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/renderer/command_palette.rs"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity_cp22.py", "tools/ci/test_command_productivity_cp22.py", "tests/fixtures/command-productivity/cp22-contract-v1.json", "automexia-command-productivity/src/actions/activation.rs", "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-command-productivity/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"], "rationale": "Short local Criterion evidence and nightly ownership exist; the named-hardware 30-day baseline remains controlled."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/tests/quick_action_persistence.rs"], "rationale": "Joined shutdown, per-route coalescing, close cleanup, multi-pane fairness, and the 32-route ceiling are deterministic PR tests."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs", "apps/automexia-terminal/src/automexia/quick_actions/transfer.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/automexia/quick_actions/service.rs", "apps/automexia-terminal/src/screen/action_surface.rs"]},
+        "visual_quality": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/LIQUID-HACKER-UX.md"], "rationale": "Geometry and interaction are deterministic; native frame review remains controlled."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-command-productivity/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-command-productivity/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-command-productivity/tests/quick_action_activation.rs", "apps/automexia-terminal/tests/quick_action_transfer.rs"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp4-provider-actions",
+      "title": "Bounded cached provider-aware Quick Actions with product handoff and final route binding revalidation",
+      "components": ["apps/automexia-terminal", "automexia-command-productivity", "automexia-connectivity", "automexia-ui-model", "extensions/devops-aws", "extensions/devops-azure", "extensions/devops-gcp", "extensions/devops-kubernetes", "extensions/devops-openshift", "extensions/devops-teleport", "tools/ci", "tests/fixtures/command-productivity", "fuzz"],
+      "documentation": {
+        "guide": ["docs/user-guide/commands-and-shell.md#provider-aware-quick-actions"],
+        "reference": ["docs/COMMAND-PRODUCTIVITY.md#cp4-capsuleprovider-aware-productivity", "docs/TESTING.md#m13-provider-aware-quick-actions"],
+        "explanation": ["docs/PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md", "docs/ARCHITECTURE.md#m13-provider-aware-quick-actions-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/ACCESSIBILITY.md"], "rationale": "Compact provider/target/state/risk labels, semantic icons/colors, textual redundancy, production confirmation, and unavailable recovery language are deterministic tests; native Narrator/NVDA/VoiceOver/Orca evidence remains controlled."},
+        "correctness": {"level": "pr", "evidence": ["automexia-command-productivity/src/actions/provider.rs", "automexia-command-productivity/tests/provider_quick_actions_cp4.rs", "automexia-command-productivity/tests/quick_action_activation.rs", "apps/automexia-terminal/src/automexia/quick_actions/providers.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"]},
+        "security": {"level": "nightly", "evidence": ["tools/ci/check_provider_quick_actions_cp4.py", "tools/ci/test_provider_quick_actions_cp4.py", "tests/fixtures/command-productivity/cp4-contract-v1.json", "automexia-command-productivity/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs", "fuzz/fuzz_targets/provider_quick_actions.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-command-productivity/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/qa.py"], "rationale": "A 16-action same-host cached snapshot/search baseline exists; named-hardware longitudinal and multi-platform baselines remain controlled."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"], "rationale": "The 32-route ceiling, idempotence, route cleanup, replacement, clear/revocation, stale-result rejection, and joined worker shutdown are deterministic tests; sustained native provider resources remain external."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "CP4 snapshots are memory-only and never enter the Quick Action store, provider configuration, credentials, aliases, history, logs, or exports."},
+        "resilience": {"level": "pr", "evidence": ["automexia-command-productivity/src/actions/provider.rs", "apps/automexia-terminal/src/automexia/quick_actions/providers.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"], "rationale": "All-or-nothing composition, exact product-to-route binding, idempotent publication, last-known-good preservation, cancellation, revocation, expiry/offline/error states, and final pre-insert checks fail closed."},
+        "visual_quality": {"level": "controlled", "evidence": ["automexia-ui-model/src/quick_actions.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "docs/LIQUID-HACKER-UX.md"], "rationale": "Renderer-neutral row/review presentation proves concise metadata and semantic connection visuals; native screenshots at scale and custom themes remain controlled."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-command-productivity/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/tests/cp4_provider_product_publication.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-command-productivity/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "Hosted pure/application tests are configured; real provider CLI/account/cluster and native accessibility remain external."},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "automexia-command-productivity/tests/provider_quick_actions_cp4.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "Hosted pure/application tests are configured; real provider CLI/account/cluster and native accessibility remain external."}
+      }
+    },
+    {
+      "id": "command-productivity-cp31-persistent-aliases",
+      "title": "Explicit opt-in private transactional aliases with verified native startup, reload, rollback, and uninstall",
+      "components": ["apps/automexia-terminal", "shell-integration", "tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp31-persistent-opt-in-user-aliases"],
+        "reference": ["docs/CLI-REFERENCE.md#application-command", "docs/TESTING.md#cp31-persistent-alias-publication-and-activation"],
+        "explanation": ["docs/ARCHITECTURE.md#command-productivity-boundary", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP3.1 uses existing shell-native definitions and a textual CLI; it adds no renderer-owned interactive surface. CP2.2 and CP5 retain their separate accessibility gates."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "apps/automexia-terminal/src/automexia/quick_actions/aliases_cli.rs", "tools/ci/check_command_productivity_cp31.py", "tools/ci/test_command_productivity_cp31.py", "tests/fixtures/command-productivity/cp31-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/secure_fs.rs", "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "tools/ci/test_command_productivity_cp31.py", "fuzz/fuzz_targets/quick_action_projection.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/quick_action_store.rs", "tools/ci/test_shell_integration.sh", "tools/ci/test_shell_integration.ps1", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Local 25-sample warm reload p95 is enforced; the named-hardware 30-day baseline remains controlled release evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_integration.sh", "tools/ci/test_shell_integration.ps1", "tools/ci/test_shell_sources.sh"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "shell-integration/uninstall-unix.sh", "shell-integration/uninstall-windows.ps1", "tools/ci/test_shell_sources.sh"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/aliases.rs", "tools/ci/test_shell_integration.sh", "tools/ci/test_shell_integration.ps1", "tools/ci/test_command_productivity_cp31.py"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP3.1 draws no Automexia UI; shell-native expansion and textual health output own presentation."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["tools/ci/test_shell_integration.ps1", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.sh", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp32-devops-packs",
+      "title": "Reviewed disabled-by-default static DevOps Quick Action packs",
+      "components": ["automexia-command-productivity", "apps/automexia-terminal", "tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp32-first-party-static-devops-packs"],
+        "reference": ["docs/CLI-REFERENCE.md#reviewed-devops-packs-cp32", "docs/TESTING.md#cp32-reviewed-devops-action-packs"],
+        "explanation": ["docs/ARCHITECTURE.md#cp32-static-devops-pack-boundary", "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md#cp32-implemented-controls", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP3.2 adds a textual CLI and typed actions but no renderer-owned interactive surface; CP2.2 and CP5 own visual accessibility."},
+        "correctness": {"level": "pr", "evidence": ["automexia-command-productivity/src/actions/packs.rs", "automexia-command-productivity/tests/quick_action_packs.rs", "apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs", "tools/ci/check_command_productivity_cp32.py", "tools/ci/test_command_productivity_cp32.py", "tests/fixtures/command-productivity/cp32-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["automexia-command-productivity/src/actions/packs.rs", "automexia-command-productivity/src/actions/validation.rs", "automexia-command-productivity/tests/quick_action_packs.rs", "tools/ci/check_command_productivity_cp32.py", "tools/ci/test_command_productivity_cp32.py", "fuzz/fuzz_targets/quick_action_packs.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-command-productivity/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Focused local registry/health measurements pass; the comparable named-hardware 30-day baseline remains controlled evidence."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "The registry and health/update evaluators own no worker, watcher, process, network client, or cache."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/packs_cli.rs", "apps/automexia-terminal/src/automexia/quick_actions/store.rs", "automexia-command-productivity/tests/quick_action_packs.rs"]},
+        "resilience": {"level": "pr", "evidence": ["automexia-command-productivity/src/actions/packs.rs", "automexia-command-productivity/tests/quick_action_packs.rs", "tools/ci/test_command_productivity_cp32.py"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP3.2 draws no new product UI; stable text and JSON output own presentation."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_packs.rs", "apps/automexia-terminal/src/cli.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_packs.rs", "apps/automexia-terminal/src/cli.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_packs.rs", "apps/automexia-terminal/src/cli.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp33-native-imports-workspace",
+      "title": "Selected native alias imports and exact trusted-workspace task bridges",
+      "components": ["automexia-command-productivity", "apps/automexia-terminal", "tools/ci", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/DEVOPS-ALIASES.md#cp33-native-imports-and-trusted-workspace-task-bridges"],
+        "reference": ["docs/CLI-REFERENCE.md#native-alias-imports-and-workspace-task-bridges-cp33", "docs/TESTING.md#cp33-native-imports-and-trusted-workspace-task-bridges"],
+        "explanation": ["docs/ARCHITECTURE.md#cp33-native-import-and-trusted-workspace-boundary", "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md#cp33-implemented-controls", "docs/adr/0021-trusted-workspace-task-bridges.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/screen/action_surface.rs", "automexia-ui-model/src/quick_actions.rs"], "rationale": "CP3.3 reuses the reviewed Quick Action surface and adds a textual unavailable state when trust is stale or revoked."},
+        "correctness": {"level": "pr", "evidence": ["automexia-command-productivity/src/actions/imports.rs", "automexia-command-productivity/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", "tools/ci/check_command_productivity_cp33.py", "tools/ci/test_command_productivity_cp33.py", "tests/fixtures/command-productivity/cp33-contract-v1.json"]},
+        "security": {"level": "nightly", "evidence": ["automexia-command-productivity/src/actions/imports.rs", "apps/automexia-terminal/src/automexia/quick_actions/native_import.rs", "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs", "apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "tools/ci/test_command_productivity_cp33.py", "fuzz/fuzz_targets/quick_action_imports.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-command-productivity/benches/quick_actions.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Focused local parser and trust-verification measurements pass; the comparable named-hardware 30-day baseline remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs"], "rationale": "The bounded 32-workspace cache, per-route cleanup, TTL authorization, and joined worker are covered by deterministic unit tests."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/native_import.rs", "apps/automexia-terminal/src/automexia/quick_actions/workspace.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs"]},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/quick_actions/worker.rs", "apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", "tools/ci/test_command_productivity_cp33.py"]},
+        "visual_quality": {"level": "controlled", "evidence": ["apps/automexia-terminal/src/screen/action_surface.rs", "apps/automexia-terminal/src/renderer/command_palette.rs"], "rationale": "Deterministic review-state semantics are tested; native frame review remains controlled evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-command-productivity/tests/quick_action_imports.rs", "apps/automexia-terminal/tests/quick_action_native_import.rs", "apps/automexia-terminal/tests/quick_action_workspace_trust.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp1-native-completion",
+      "title": "Bounded native-shell completion adapters, health, explicit provider refresh, and exact lifecycle",
+      "components": ["tools/xtask", "shell-integration", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/SHELL-INTEGRATION.md#native-command-completion"],
+        "reference": ["docs/CLI-REFERENCE.md#focused-xtask-commands", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#official-provider-completion-baseline"],
+        "explanation": ["docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["shell-integration/completion", "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md#shell-and-editor-ownership"]},
+        "correctness": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1", "tools/ci/test_command_productivity_cp1.py"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity_cp1.py", "tests/fixtures/command-productivity/cp1-contract-v1.json", "tools/xtask/src/completion.rs"]},
+        "performance": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "tools/ci/test_shell_sources.sh"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "shell-integration/uninstall-unix.sh", "shell-integration/uninstall-windows.ps1"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/xtask/src/completion.rs", "shell-integration/uninstall-unix.sh", "tools/ci/check_command_productivity_cp1.py"]},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_command_productivity_cp1.py", "shell-integration/completion"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP1 deliberately uses each native shell's accessible candidate UI and draws no Automexia completion overlay."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.ps1"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_shell_sources.sh", "tools/ci/test_fish_integration.fish"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/ci/test_shell_sources.sh", "tools/ci/test_fish_integration.fish"]}
+      }
+    },
+    {
+      "id": "command-productivity-cp50-research",
+      "title": "Non-activating native autocomplete feasibility, matcher, dependency, privacy, and fallback decision",
+      "components": ["tools/ci", "tools/research/cp5-matcher-benchmark", "tests/fixtures/command-productivity"],
+      "documentation": {
+        "guide": ["docs/COMMAND-PRODUCTIVITY.md#cp50-research-decision"],
+        "reference": ["docs/TESTING.md#command-productivity-cp50-research"],
+        "explanation": ["docs/research/CP5-AUTOCOMPLETE-RESEARCH.md#cp50-native-autocomplete-research"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "CP5.0 draws no product UI and deliberately retains each native shell's existing accessibility owner; future P2 screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/check_command_productivity_cp50.py", "tools/ci/test_command_productivity_cp50.py", "tests/fixtures/command-productivity/cp50-research-contract-v1.json"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/check_command_productivity_cp50.py", "tools/ci/test_command_productivity_cp50.py", "tests/fixtures/command-productivity/cp50-research-contract-v1.json"]},
+        "performance": {"level": "pr", "evidence": ["tools/research/cp5-matcher-benchmark/src/main.rs", "docs/research/CP5-AUTOCOMPLETE-RESEARCH.md#matcher-comparison"], "rationale": "The standalone same-host benchmark is reproducible PR evidence; low-end replication is explicitly external and no runtime dependency ships."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "CP5.0 adds no product worker, process, PTY, socket, watcher, queue, cache, or persistent runtime resource."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The research prototype persists no command buffer, cursor, history, candidate, provider, path, or user data."},
+        "resilience": {"level": "pr", "evidence": ["tools/ci/test_command_productivity_cp50.py", "tools/research/cp5-matcher-benchmark/src/main.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "CP5.0 creates no product surface; CP1 native completion remains the complete visual fallback."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["docs/research/CP5-AUTOCOMPLETE-RESEARCH.md#native-startup-and-ux-baseline", "tools/ci/test_command_productivity_cp50.py"]},
+        "linux": {"level": "external", "evidence": ["docs/research/CP5-AUTOCOMPLETE-RESEARCH.md#external-evidence"], "rationale": "No Linux native interaction run was available locally; CP5.0 ships no Linux runtime behavior."},
+        "macos": {"level": "external", "evidence": ["docs/research/CP5-AUTOCOMPLETE-RESEARCH.md#external-evidence"], "rationale": "No macOS native interaction run was available locally; CP5.0 ships no macOS runtime behavior."}
+      }
+    },
+    {
+      "id": "command-productivity-cp51-proposal",
+      "title": "Preview-disabled authenticated native-editor suggestion source boundary",
+      "components": ["automexia-command-productivity", "automexia-ui-model", "apps/automexia-terminal", "shell-integration/suggestions", "tools/ci", "tests/fixtures/command-productivity", "docs"],
+      "documentation": {
+        "guide": ["docs/COMMAND-PRODUCTIVITY.md#cp51-cp56-accepted-source-decision"],
+        "reference": ["docs/CP5-SUGGESTION-TESTING.md"],
+        "explanation": ["docs/adr/0025-authenticated-native-editor-suggestion-bridge.md", "docs/research/CP51-CP56-IMPLEMENTATION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/tests/suggestions_ui.rs", "apps/automexia-terminal/tests/suggestions_broker.rs"], "rationale": "Renderer-neutral listbox/option names, selected state, position/set size, keyboard/pointer state and coalesced announcements are tested; controlled native screen readers, IME and activated focus remain external."},
+        "correctness": {"level": "pr", "evidence": ["automexia-command-productivity/tests/suggestions_contract.rs", "automexia-command-productivity/tests/suggestion_sources.rs", "automexia-ui-model/tests/suggestions_ui.rs", "apps/automexia-terminal/tests/suggestions_broker.rs", "tools/ci/check_command_productivity_cp56.py", "tools/ci/test_command_productivity_cp56.py"], "rationale": "Strict bidirectional frames, route/span/generation ownership, six sources, deterministic ranking, pane UI/controller, fragmented streams and false-completion mutations are covered while activation stays false."},
+        "security": {"level": "pr", "evidence": ["docs/adr/0025-authenticated-native-editor-suggestion-bridge.md", "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "apps/automexia-terminal/src/automexia/suggestions/platform/windows.rs", "apps/automexia-terminal/src/automexia/suggestions/platform/unix.rs", "tools/ci/test_command_productivity_cp51.py", "tools/ci/test_command_productivity_cp56.py", "fuzz/fuzz_targets/suggestion_bridge.rs"], "rationale": "CP5-T17 through CP5-T22, restrictive endpoint sources, constant-time capabilities, strict limits, forbidden transports/process/Enter checks and preview nonactivation are enforced."},
+        "performance": {"level": "pr", "evidence": ["automexia-command-productivity/benches/suggestions.rs"], "rationale": "Criterion covers 32/128/512 ranking and near-limit UTF-8 frame encode/decode; named-hardware distributions, allocations, render latency and a 30-day baseline remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/suggestions_broker.rs", "apps/automexia-terminal/src/automexia/suggestions/service.rs"], "rationale": "Joined worker, one-latest route slots, kill/reset/disable/uninstall, endpoint cleanup and 1,000 broker lifecycle cycles are tested; 1,000 real native endpoint cycles and sustained leak campaigns remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["automexia-command-productivity/src/suggestions/mod.rs", "apps/automexia-terminal/src/automexia/suggestions/mod.rs"], "rationale": "Private buffers/cwd/capabilities remain memory-only and redacted; frequency stores bounded candidate IDs only. No public setting or persistent preview state ships."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/suggestions_broker.rs", "tools/ci/test_command_productivity_cp56.py", "docs/research/CP51-CP56-IMPLEMENTATION-AUDIT.md"], "rationale": "Stale/replay/cross-route rejection, fallback, latest-only saturation, kill, reset, disable/uninstall and truthful incomplete shell scaffolding are covered; CP1 remains independently usable."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/tests/suggestions_ui.rs", "apps/automexia-terminal/src/renderer/suggestions.rs"], "rationale": "Pane geometry, tiny-to-8K at 100-300%, compact fallback, high contrast, reduced motion, matched graphemes and draw-only branded rows are source-tested; activated native GPU screenshots and pixel review remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/suggestions/platform/windows.rs", "apps/automexia-terminal/tests/suggestions_broker.rs", "tools/ci/test_command_productivity_cp56.py"], "rationale": "Restrictive DACL/logon SID, first-instance, remote denial, PID/session peer checks, framing and cleanup have native/source tests on Windows x86_64; signed helper and native editor replacement remain absent."},
+        "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/suggestions/platform/unix.rs", ".github/workflows/ci.yml#policy", "tools/ci/test_command_productivity_cp56.py"], "rationale": "Filesystem socket modes, no-follow identity and SO_PEERCRED source are CI-compiled/policy-checked; native runtime churn, shells and accessibility remain external."},
+        "macos": {"level": "external", "evidence": ["apps/automexia-terminal/src/automexia/suggestions/platform/unix.rs", "docs/research/CP51-CP56-IMPLEMENTATION-AUDIT.md#cp56-preview-privacy-release-and-rollback"], "rationale": "getpeereid source exists; native endpoint, shells, VoiceOver, IME, signing and notarization remain explicit external gates."}
+      }
+    },
+    {
+      "id": "situation-aware-production-operations-po0-proposal",
+      "title": "Public, non-activating situation-aware production operations direction",
+      "components": ["docs", "tests/assurance"],
+      "documentation": {
+        "guide": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md#surface-map", "docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#user-experience"],
+        "reference": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md#exact-neutral-records", "docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#scenario-inventory"],
+        "explanation": ["docs/adr/0034-situation-aware-production-operations.md#proposed-decision"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "PO0 adds no product UI; keyboard, focus, semantics, contrast, reduced-motion, and native screen-reader evidence are mandatory gates for later visible PO phases."},
+        "correctness": {"level": "external", "evidence": ["tools/ci/check_production_operations_po0.py", "tools/ci/test_production_operations_po0.py", "docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "The checker and mutations prove public planned status, absence of private planning artifacts, and current-source nonactivation only; no production implementation, provider, native, or executable correctness evidence exists."},
+        "security": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#security-and-privacy-threat-model"], "rationale": "The threat model defines fail-closed trust boundaries; hostile-input, capability, redaction, no-implicit-Enter, and native process evidence remain future work."},
+        "performance": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#resource-and-performance-contract"], "rationale": "Provisional budgets are design ceilings rather than measurements; same-host and low-end native benchmarks are required before activation."},
+        "resource_lifetime": {"level": "not_applicable", "evidence": [], "rationale": "PO0 creates no runtime watcher, worker, process, cache, queue, or provider connection; later phases must prove bounded cancellation and cleanup."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "PO0 persists no operational data; later journaling and packs require redaction, quotas, atomic recovery, retention, disable, and uninstall evidence."},
+        "resilience": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md#failure-and-refusal-behavior"], "rationale": "Fallback, stale-evidence, refusal, recovery, and core-terminal independence are specified but have no executable evidence."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "PO0 draws no surface; later passport, candidate, preflight, incident, and recovery UI must pass renderer-neutral, exact-pixel, and native visual gates."}
+      },
+      "platforms": {
+        "windows": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "No Windows runtime behavior ships in PO0; native shells, CLIs, clusters, providers, accessibility, resource, and packaged-artifact evidence remain future gates."},
+        "linux": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "No Linux runtime behavior ships in PO0; native shells, CLIs, clusters, providers, accessibility, resource, and packaged-artifact evidence remain future gates."},
+        "macos": {"level": "external", "evidence": ["docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md#phase-exit-criteria"], "rationale": "No macOS runtime behavior ships in PO0; native shells, CLIs, clusters, providers, accessibility, resource, and packaged-artifact evidence remain future gates."}
+      }
+    },
+    {
+      "id": "ecosystem-d7-cp6-proposal",
+      "title": "Accepted nonactivating sandboxed ecosystem and selected-input model source",
+      "components": ["automexia-ecosystem", "automexia-ecosystem-runtime", "apps/automexia-terminal", "wit", "sdk/automexia-ecosystem", "tools/ci", "tests/fixtures/ecosystem"],
+      "documentation": {
+        "guide": ["docs/ECOSYSTEM-PLATFORM.md#current-behavior"],
+        "reference": ["docs/TESTING.md#d7cp6-accepted-source-and-release-gate"],
+        "explanation": ["docs/adr/0029-sandboxed-signed-ecosystem-boundary.md", "docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ecosystem/src/ui.rs"], "rationale": "Renderer-neutral review surfaces assert textual trust/risk, accessible names/values, cancel-first focus, responsive density and reduced motion; controlled native screen readers, IME and focus restoration remain external."},
+        "correctness": {"level": "pr", "evidence": ["automexia-ecosystem/tests/properties.rs", "automexia-ecosystem-runtime/src/package.rs", "automexia-ecosystem-runtime/src/store.rs", "automexia-ecosystem-runtime/tests/wit_contract.rs", "apps/automexia-terminal/src/automexia/ecosystem.rs", "tools/ci/check_ecosystem_d7_cp6.py", "tools/ci/test_ecosystem_d7_cp6.py"], "rationale": "Strict policy, 512-case properties, real signed ZIP fixtures, atomic recovery, WIT parsing, disabled app composition and 17 hostile mutations cover the accepted source while release activation stays false."},
+        "security": {"level": "pr", "evidence": ["docs/adr/0029-sandboxed-signed-ecosystem-boundary.md", "tests/fixtures/ecosystem/d7-cp6-acceptance-v1.json", "automexia-ecosystem-runtime/src/package.rs", "automexia-ecosystem-runtime/src/sandbox.rs", "tools/ci/test_ecosystem_d7_cp6.py", "fuzz/fuzz_targets/ecosystem_bundle.rs", ".github/workflows/nightly.yml#fuzz"], "rationale": "Verification-before-staging, exact signatures/provenance/revocation, no-default-WASI imports, exact grants, resource interruption and hard activation/download/provider denial implement nine reviewed threats; malicious corpus and independent native review remain external."},
+        "performance": {"level": "pr", "evidence": ["automexia-ecosystem/benches/policy.rs", "automexia-ecosystem-runtime/benches/verification.rs"], "rationale": "Criterion measures capability diff, manifest validation, exact grants, selected-input review, consent surfaces and real signed-bundle verification; startup/binary cost, named low-end hosts and 30-day baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-ecosystem/src/lifecycle.rs", "automexia-ecosystem-runtime/src/sandbox.rs", "automexia-ecosystem-runtime/src/store.rs"], "rationale": "Bounded fair queues, crash quarantine, fuel/epoch/memory/table/instance ceilings, cancellation/join, retained generations and cleanup tests exist; 1,000 native cycles, full process metrics and the 30-day soak remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["automexia-ecosystem-runtime/src/store.rs", "automexia-ecosystem/src/model_suggestion.rs"], "rationale": "Protected no-follow atomic disabled storage, receipt validation, exact owned uninstall and negative selected-input persistence are source-tested on Windows; native Unix/macOS, disk-full/read-only and power-loss campaigns remain external."},
+        "resilience": {"level": "pr", "evidence": ["automexia-ecosystem/src/lifecycle.rs", "automexia-ecosystem-runtime/src/store.rs", "tools/ci/test_ecosystem_d7_cp6.py"], "rationale": "Generation invalidation, stale rejection, quarantine, last-known-good reconstruction, interrupted publish pruning, kill/disable/uninstall and first-party plus CP1-CP3 fallback fail closed."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ecosystem/src/ui.rs"], "rationale": "Renderer-neutral package/model/lifecycle layouts and hostile Unicode containment are tested; no native pixels are released and the tiny-to-8K/theme/scale/localization matrix remains external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-ecosystem-runtime/src/store.rs", "automexia-ecosystem-runtime/src/sandbox.rs", "apps/automexia-terminal/src/automexia/ecosystem.rs"], "rationale": "Windows x86_64 ran signed-package, protected ACL, atomic recovery, Wasmtime conformance and app denial tests; signed package, screen reader and controlled resource release evidence remains external."},
+        "linux": {"level": "external", "evidence": ["automexia-ecosystem-runtime/src/store.rs", ".github/workflows/ci.yml#policy"], "rationale": "Portable source and Unix permission/no-follow adapters exist, but this change has no native Linux package, sandbox, accessibility or uninstall run."},
+        "macos": {"level": "external", "evidence": ["docs/research/D7-CP6-IMPLEMENTATION-AUDIT.md"], "rationale": "No native macOS D7/CP6 runtime ran; signed/notarized package, filesystem containment, sandbox cleanup, VoiceOver, IME, performance and uninstall remain external."}
+      }
+    },
+    {
+      "id": "contributor-automation-quality-policy",
+      "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
+      "components": ["tools/xtask"],
+      "documentation": {
+        "guide": ["CONTRIBUTING.md#one-command-workflows", "docs/GETTING-STARTED.md#6-prepare-a-contribution"],
+        "reference": ["docs/CLI-REFERENCE.md#focused-xtask-commands", "docs/TESTING.md#complete-local-gate"],
+        "explanation": ["docs/adr/0005-storage-bounded-build-workflow.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Contributor automation is a textual command interface; product accessibility is tested at renderer and input surfaces."},
+        "correctness": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/test_qa.py", "tools/ci/validate_repository.py", "deny.toml"]},
+        "performance": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py", "docs/WSL-DEVELOPMENT.md"]},
+        "resilience": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "QA reports are evidence artifacts rather than the terminal product UI."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/xtask/src/main.rs"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/xtask/src/main.rs"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native", "tools/xtask/src/main.rs"]}
+      }
+    },
+    {
+      "id": "stabilization-release-assurance-s1-s2",
+      "title": "S1 deterministic stabilization evidence and S2 fail-closed release performance ratchet",
+      "components": ["tools/ci", "tools/xtask", "rio-vt", "apps/automexia-terminal"],
+      "documentation": {
+        "guide": ["docs/TESTING.md#nightly-and-release-depth", "RELEASING.md"],
+        "reference": ["docs/STABILIZATION-ROADMAP.md#s2-enforcement"],
+        "explanation": ["docs/research/S1-S2-IMPLEMENTATION-AUDIT.md", "docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md", "docs/research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#s1-accessibility-baseline", "tests/assurance/s1-assurance-policy-v1.json", "tools/ci/s1_assurance.py", "docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md"], "rationale": "The exact Narrator, NVDA, VoiceOver, Orca X11, and Orca Wayland evidence contract, privacy checks, and independent HTTPS review are source complete; actual assistive-technology executions remain a release prerequisite and are not claimed by local model tests."},
+        "correctness": {"level": "pr", "evidence": ["rio-vt/src/performer/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "apps/automexia-terminal/src/automexia/visual_test_hooks.rs", "tools/ci/test_performance_assurance.py", "tools/ci/test_s1_assurance.py", "tools/xtask/src/visual_diff.rs"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/performance_assurance.py", "tools/ci/test_performance_assurance.py", "tests/assurance/performance-ratchet-policy-v1.json", "tools/ci/s1_assurance.py", "tools/ci/test_s1_assurance.py", "tests/assurance/s1-assurance-policy-v1.json"], "rationale": "Both performance and S1 evidence ingestion are size-bounded, duplicate-key rejecting, path-free, exact-policy and exact-commit bound, and fail closed for release enforcement. S2 additionally rejects linked or identity-changing files, dirty tracked source, secret/path-like runner text, stale or future evidence, reviewer/operator conflicts, and wildcard waiver material."},
+        "performance": {"level": "controlled", "evidence": ["tools/ci/performance_assurance.py", "tests/assurance/performance-ratchet-policy-v1.json", ".github/workflows/nightly.yml#performance-controlled-windows", ".github/workflows/release.yml#performance-assurance", ".github/workflows/s2-assurance.yml"], "rationale": "The exact 5% latency and 10% memory ratchet, repeated-sample/confidence quality, clean exact-source/operator binding, and protected activation validation are executable and release blocking. The checked-in baseline remains collecting until 30 consecutive complete same-runner days are independently reviewed, so active release evaluation intentionally fails closed."},
+        "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/appverifier-windows.ps1", "tools/ci/performance_assurance.py", "tools/ci/s1_assurance.py", "tests/assurance/s1-assurance-policy-v1.json", ".github/workflows/nightly.yml#performance-controlled-windows", ".github/workflows/s1-assurance.yml"], "rationale": "Native Windows WGPU/CPU resource deltas and repeated real preview ownership pass locally; exact separate AppVerifier Basics/low-resource and named-hardware evidence contracts are automated. Elevated, multi-GPU, Linux, macOS, and sustained campaigns remain external execution evidence."},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/performance_assurance.py", "tools/ci/s1_assurance.py", "tools/xtask/src/visual_diff.rs", "tools/ci/test_performance_assurance.py", "tools/ci/test_s1_assurance.py", ".github/workflows/s2-assurance.yml"], "rationale": "Inputs and outputs are bounded, no-follow, one-link, and identity-stable; Criterion traversal is depth/entry/result capped; reports contain no host paths; and artifacts are atomically replaced with explicit 90-day retention."},
+        "resilience": {"level": "pr", "evidence": ["rio-vt/src/performer/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "tools/ci/test_performance_assurance.py", "tools/ci/test_s1_assurance.py"], "rationale": "Property, state-model, and mutation tests cover resize coalescing, barriers, shutdown, generation replacement, write failure, corrupt/duplicate/oversized/linked evidence, stale and future candidates, dirty or mismatched source, missing samples/suites/days, and exact waiver and independent review behavior."},
+        "visual_quality": {"level": "controlled", "evidence": ["tools/xtask/src/visual_diff.rs", "tests/assurance/visual-diff-policy-v1.json", "tests/assurance/s1-assurance-policy-v1.json", "apps/automexia-terminal/src/automexia/visual_test_hooks.rs", ".github/workflows/s1-assurance.yml", "tools/ci/check_feature_test_reinforcement.py", "tools/ci/test_feature_test_reinforcement.py"], "rationale": "The exact test-only fixture freezes public state, clock, and motion; the deterministic bounded comparator rejects one changed channel in one pixel and reports exact bounds; the policy enumerates 1,600 cases per visual suite; and mutation tests freeze required surfaces plus independent HTTPS human review. Executed and approved cross-platform goldens remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#performance-controlled-windows", "tests/integration/resize-stress-windows.ps1"]},
+        "linux": {"level": "controlled", "evidence": [".github/workflows/nightly.yml#benchmarks-controlled", "tools/ci/performance_assurance.py"], "rationale": "Controlled Criterion collection is automated; Windows owns the release memory and GPU runner identity."},
+        "macos": {"level": "external", "evidence": ["docs/research/S1-S2-IMPLEMENTATION-AUDIT.md"], "rationale": "A controlled native macOS performance baseline, accessibility run, signing, and notarization evidence are not available locally."}
+      }
+    },
+    {
+      "id": "ffi-wasm-embedding",
+      "title": "Native C API and WebAssembly embedding surfaces",
+      "components": ["librio", "librio-wasm"],
+      "documentation": {
+        "guide": ["librio/README.md", "librio-wasm/README.md"],
+        "reference": ["docs/ARCHITECTURE.md#layers"],
+        "explanation": ["docs/adr/0001-standalone-product-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Embedding APIs do not define a standalone interface; the embedding consumer owns presentation accessibility."},
+        "correctness": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs", "librio-wasm/src/lib.rs"]},
+        "security": {"level": "nightly", "evidence": ["librio/src/capi.rs", ".github/workflows/codeql.yml"]},
+        "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#s1-executable-benchmark-pipeline"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs"]},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The embedding boundary owns no persistent storage."},
+        "resilience": {"level": "pr", "evidence": ["librio/src/capi.rs", "librio/src/lib.rs"]},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "Embedding APIs expose terminal state but do not own application chrome or visual policy."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": [".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "connection-hub-f2-models",
+      "title": "Capability-free connection schemas, state reducers, dry-run planner, and renderer-neutral Connection Hub",
+      "components": ["automexia-connectivity", "automexia-ui-model", "tools/ci", "tests/fixtures/connection-hub"],
+      "documentation": {
+        "guide": ["docs/SSH-CONNECTION-AUTOMATION.md#user-journeys"],
+        "reference": ["docs/CONNECTION-HUB.md#renderer-neutral-interaction-goldens", "docs/TESTING.md#connection-hub-f2-model-and-golden-contract"],
+        "explanation": ["docs/adr/0012-first-party-ssh-and-session-launch-boundary.md", "docs/SSH-CONNECTION-AUTOMATION.md#placement-in-the-existing-architecture"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs", "automexia-ui-model/tests/connection_review.rs", "tests/fixtures/connection-hub/goldens/accessibility/modal-grid-v1.json"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-connectivity/src/connections", "automexia-connectivity/tests/connection_planning.rs", "automexia-connectivity/tests/connection_properties.rs", "automexia-connectivity/tests/connection_records.rs", "automexia-connectivity/tests/connection_state_matrix.rs", "automexia-ui-model/tests/connection_review.rs", "tools/ci/check_connection_hub_f2.py", "tools/ci/test_connection_hub_f2.py"]},
+        "security": {"level": "nightly", "evidence": ["automexia-connectivity/src/connections/model.rs", "automexia-connectivity/src/connections/validation.rs", "automexia-connectivity/src/connections/planner.rs", "automexia-connectivity/src/connections/state.rs", "automexia-connectivity/tests/connection_state_matrix.rs", "automexia-ui-model/tests/connection_hub.rs", "tests/fixtures/connection-hub/goldens/accessibility/modal-grid-v1.json", "tools/ci/test_connection_hub_f2.py", "fuzz/fuzz_targets/connection_planning.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-connectivity/benches/connection_planning.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "The 64-step target compiles and runs locally; named-hardware longitudinal enforcement remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/planner.rs", "automexia-ui-model/src/connection_hub.rs", "automexia-connectivity/tests/connection_planning.rs"], "rationale": "F2 is a synchronous pure-model phase with fixed collections and no owned processes, sockets, listeners, workers, files, PTYs, or GPU resources."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "F2 defines strict serializable records but deliberately performs no persistence; atomic private profile/recipe storage remains a later phase owner."},
+        "resilience": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/documents.rs", "automexia-connectivity/src/connections/state.rs", "automexia-connectivity/tests/connection_planning.rs", "automexia-connectivity/tests/connection_state_matrix.rs", "automexia-ui-model/tests/connection_hub.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "tests/fixtures/connection-hub/goldens/layout/responsive-v1.json"], "rationale": "Structured geometry and semantics are frozen without claiming native pixels; renderer integration belongs to D5.1."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_planning.rs", "automexia-ui-model/tests/connection_hub.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_planning.rs", "automexia-ui-model/tests/connection_hub.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_planning.rs", "automexia-ui-model/tests/connection_hub.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "connection-hub-f3-catalog",
+      "title": "Bounded read-only Connection Hub catalog, filtering, grouping, and virtualization",
+      "components": ["automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/CONNECTION-HUB.md#search-filters-and-refresh"],
+        "reference": ["docs/TESTING.md#connection-hub-f3-catalog-contract"],
+        "explanation": ["docs/CONNECTION-HUB.md#product-outcome"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "The pure projection preserves the existing virtualized managed-focus model; native product and controlled screen-reader evidence remain later F3 gates."},
+        "correctness": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"]},
+        "security": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"], "rationale": "Public metadata is bounded and hostile control or direction-format text fails closed; D4 composition and persistent transfer require separate assurance."},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/connection_catalog.rs", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "The local 10,000-record release benchmark is below the 16 ms reviewed target; named-hardware longitudinal enforcement remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"], "rationale": "This slice is a synchronous pure projection with bounded owned collections and no workers, files, processes, sockets, listeners, PTYs, or GPU resources."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "The catalog slice performs no persistence; metadata and the private Connection Library have separate F3 assurance owners."},
+        "resilience": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs"]},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_catalog.rs", "tests/fixtures/connection-hub/goldens/layout/responsive-v1.json"], "rationale": "The renderer-neutral model proves maximum-cardinality virtualization and responsive geometry without claiming native product pixels."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["automexia-ui-model/tests/connection_catalog.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "connection-hub-f3-composition",
+      "title": "Explicit SSH inventory composition with generation safety and last-known-good health",
+      "components": ["apps/automexia-terminal", "extensions/devops-ssh", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/CONNECTION-HUB.md#search-filters-and-refresh"],
+        "reference": ["docs/TESTING.md#connection-hub-f3-application-composition"],
+        "explanation": ["docs/CONNECTION-HUB.md#product-outcome"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Truthful state and setup labels are model-level evidence; the product adapter is recorded separately and controlled screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"]},
+        "security": {"level": "pr", "evidence": ["extensions/devops-ssh/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "The application passes only explicit exact grants to capability-free static inventory and adds no process, network, authentication, credential, listener, or PTY authority."},
+        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "One worker serializes bounded scans and obsolete generations cannot publish; controlled end-to-end refresh latency remains later evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Router owns one service; explicit shutdown cancels current/pending work, clears memory-only grants, wakes the worker, and joins its handle. The last handle repeats the safe teardown."},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs", "extensions/devops-ssh/tests/metadata_store.rs"], "rationale": "Composition reads the validated transactional D4 metadata document and does not add another metadata authority."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Failed refreshes retain the immutable last-known-good catalog behind a redacted stale state and stale completions cannot replace a newer request."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "This service slice contains no renderer; the adjacent M1 product assurance entry owns structured rendering evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
+        "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]},
+        "macos": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", ".github/workflows/ci.yml#native"]}
+      }
+    },
+    {
+      "id": "connection-hub-m1-product",
+      "title": "Read-only Connection Hub product modal, reviewed file grants, and public metadata edits",
+      "components": ["apps/automexia-terminal", "extensions/devops-ssh", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#use-the-read-only-connection-hub"],
+        "reference": ["docs/TESTING.md#connection-hub-m1-read-only-product-activation"],
+        "explanation": ["docs/adr/0022-read-only-connection-hub-activation.md", "docs/CONNECTION-HUB.md#d51-read-only-hub-and-first-run-detection"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Renderer-neutral focus, visible C/W/P/L/F mnemonics, scope-safe keyboard/pointer actions, 40-pixel targets, contrast/motion flags, and bounded compact geometry pass locally; controlled native screen readers remain external."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/router/mod.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"]},
+        "security": {"level": "pr", "evidence": ["docs/adr/0022-read-only-connection-hub-activation.md", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "Exact reviewed paths remain memory-only, hostile text fails closed, diagnostics are path-free, and all process/network/authentication/provider/listener/PTY authority stays disabled."},
+        "performance": {"level": "controlled", "evidence": ["apps/automexia-terminal/benches/connection_catalog.rs", "docs/TESTING.md#connection-hub-m1-read-only-product-activation"], "rationale": "The current local Windows 10,000-record rapid-filter projection measured 9.416-10.627 ms and the six-provider cached projection measured 6.527-7.342 microseconds; named-hardware longitudinal enforcement remains controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/tests/connection_hub_runtime.rs"], "rationale": "One app service owns one joined worker; shutdown cancels generations, clears grants, wakes, and joins without adding PTY or renderer workers."},
+        "storage_hygiene": {"level": "pr", "evidence": ["extensions/devops-ssh/src/persistence.rs", "apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"], "rationale": "D4 remains public metadata authority, CAS conflicts reload, selected paths are never persisted, and library state remains private and versioned."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs"], "rationale": "Last-known-good state, stale generation rejection, recovery/unavailable projection, selection cancellation, and metadata conflict reload are deterministic."},
+        "visual_quality": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/ui_theme.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "tests/integration/resize-stress-windows.ps1"], "rationale": "The first-run card uses shared brand tokens, one concise content hierarchy, a 680x380 logical-pixel ceiling, and 40-pixel section/action targets; bounded geometry plus current-source Windows WGPU/CPU frames pass and their 403,750-pixel Hub crops match exactly, while commit-bound release baselines and other native environments remain controlled/external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_hub_runtime.rs", "apps/automexia-terminal/tests/connection_hub_controller.rs", "tests/integration/resize-stress-windows.ps1"]},
+        "linux": {"level": "external", "evidence": ["docs/TESTING.md#connection-hub-m1-read-only-product-activation"]},
+        "macos": {"level": "external", "evidence": ["docs/TESTING.md#connection-hub-m1-read-only-product-activation"]}
+      }
+    },
+    {
+      "id": "connection-hub-f3-library",
+      "title": "Private transactional Connection Hub profile, recipe, workspace, and preference library",
+      "components": ["apps/automexia-terminal", "automexia-connectivity", "automexia-ui-model", "teletypewriter"],
+      "documentation": {
+        "guide": ["docs/guide/remote-connections.md#internal-connection-library-boundary"],
+        "reference": ["docs/TESTING.md#connection-hub-f3-private-profile-recipe-and-preference-library"],
+        "explanation": ["docs/CONNECTION-HUB.md#product-outcome"]
+      },
+      "quality": {
+        "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "This slice owns no UI; schema-2 edit/migration previews remain internal and product controls, focus, and controlled screen-reader evidence are separate M6 gates."},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"]},
+        "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Ingress is bounded and validated, no-follow opens protect supported file paths, logs/errors omit values and paths, and redacted transfer strips credential references and private state."},
+        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "The 16 MiB schema-2 store is explicitly bounded and remains off renderer, input, resize, PTY, and catalog-search hot paths; controlled long-session persistence measurements remain external evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Operations are synchronous, bounded, close file handles by scope, clean staging files after failed commits, and own no workers, processes, sockets, listeners, PTYs, or GPU resources."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Expected-revision CAS, same-directory atomic replacement, one validated previous generation, explicit recovery, permission hardening, and failure-before-replacement tests protect the private store."},
+        "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Tests cover stale and concurrent writers, interrupted staging, malformed primary/previous documents, reviewed recovery, canary preservation, read-only and disk-full injection, and Unix link substitution."},
+        "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "This persistence slice has no renderer; native product pixels remain a separate F3 gate."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Windows-local tests exercise transactional persistence and injected failure paths; hosted native evidence remains the release authority."},
+        "linux": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix-only no-follow link tests are owned here; a native run was not part of the M0 Windows reconciliation."},
+        "macos": {"level": "pr", "evidence": ["apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix-only no-follow link tests are owned here; a native run was not part of the M0 Windows reconciliation."}
+      }
+    },
+    {
+      "id": "connection-automation-m6-workspaces",
+      "title": "Review-only typed connection automation and multi-environment workspaces",
+      "components": ["automexia-connectivity", "automexia-ui-model", "apps/automexia-terminal", "tools/ci", "fuzz"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#review-only-workspaces-and-broadcast"],
+        "reference": ["docs/SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation", "docs/TESTING.md#m6-typed-automation-and-multi-environment-workspaces"],
+        "explanation": ["docs/adr/0023-typed-automation-and-declarative-workspaces.md", "docs/ARCHITECTURE.md#m6-typed-automation-and-declarative-workspace-boundary"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "Restore and broadcast projections preserve reading order, exact preview, focus restoration, and redundant icon/color/text alert, switch, and textbox semantics; controlled native screen readers remain external."},
+        "correctness": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/automation.rs", "automexia-connectivity/src/connections/workspace.rs", "automexia-connectivity/tests/connection_automation_m6.rs", "automexia-connectivity/tests/workspace_automation_m6.rs", "apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs", "tools/ci/check_connection_hub_f2.py", "tools/ci/test_connection_hub_f2.py"]},
+        "security": {"level": "nightly", "evidence": ["automexia-connectivity/src/connections/automation.rs", "automexia-connectivity/src/connections/workspace.rs", "automexia-connectivity/tests/connection_automation_m6.rs", "automexia-connectivity/tests/workspace_automation_m6.rs", "apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/tests/connection_library.rs", "fuzz/fuzz_targets/connection_planning.rs", "tools/ci/check_connection_hub_f2.py", ".github/workflows/nightly.yml#fuzz"], "rationale": "Privileged steps are revalidated per connection; arbitrary code, implicit Enter, authority primitives, secret persistence, live PTY/tunnel restore, and automatic reconnect remain absent. Hostile input, stale fingerprints, redaction, and mutation checks fail closed."},
+        "performance": {"level": "controlled", "evidence": ["automexia-connectivity/benches/connection_planning.rs", "docs/TESTING.md#m6-typed-automation-and-multi-environment-workspaces", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "Maximum workspace and broadcast reviews are microsecond pure-model operations off interactive hot paths; same-host Criterion deltas are recorded without a release-regression claim and named-hardware baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/automation.rs", "automexia-connectivity/src/connections/workspace.rs", "automexia-connectivity/tests/workspace_automation_m6.rs"], "rationale": "Pure state owns no process, PTY, socket, listener, worker, filesystem, credential, provider, or GPU resource. A 1,000-generation maximum-50-target test proves per-generation collection bounds; real activated resources remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/library.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Schema-1 migration is preview-only; schema-2 CAS atomically advances dependent revisions/fingerprints, clears approvals, preserves private recovery, bounds fresh IDs, and transfers only redacted topology."},
+        "resilience": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_automation_m6.rs", "automexia-connectivity/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Deadline, retry eligibility, cancel, shutdown, generation replacement, stale CAS, recovery, rollback, clone/rebind, target failure isolation, and expired arming are deterministic."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "Compact semantic projections are renderer-neutral only; product pixels, tiny-to-8K controller integration, themes, scale, and native visual review remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_automation_m6.rs", "automexia-connectivity/tests/workspace_automation_m6.rs", "automexia-ui-model/tests/connection_hub.rs", "apps/automexia-terminal/tests/connection_library.rs"], "rationale": "Focused tests and benchmarks ran locally on Windows x86_64; managed execution remains disabled."},
+        "linux": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_automation_m6.rs", "automexia-connectivity/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Pure contracts are platform-neutral and Unix link tests are owned, but this M6 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["automexia-connectivity/tests/connection_automation_m6.rs", "automexia-connectivity/tests/workspace_automation_m6.rs", "apps/automexia-terminal/tests/connection_library.rs", ".github/workflows/ci.yml#native"], "rationale": "Pure contracts are platform-neutral and Unix link tests are owned, but this M6 run did not execute natively on macOS."}
+      }
+    },
+    {
+      "id": "provider-auth-m7-capsules",
+      "title": "Provider-neutral authentication capsules, isolation, and reviewed official-CLI requests",
+      "components": ["automexia-connectivity", "automexia-extension-runtime", "automexia-ui-model", "tools/ci"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#d60-provider-neutral-capsule-and-authentication-framework", "docs/TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation"],
+        "explanation": ["docs/ARCHITECTURE.md#m7-provider-neutral-authentication-capsule-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "All 19 states expose textual status and recovery alongside semantic UI data; provider-specific controls and controlled native screen readers remain D6.1-D6.5 evidence."},
+        "correctness": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/provider_auth.rs", "automexia-connectivity/tests/provider_auth_m7.rs", "automexia-extension-runtime/src/lib.rs", "tools/ci/check_provider_auth_m7.py"]},
+        "security": {"level": "nightly", "evidence": ["automexia-connectivity/src/connections/provider_auth.rs", "automexia-connectivity/tests/provider_auth_m7.rs", "tools/ci/check_provider_auth_m7.py", "tools/ci/test_provider_auth_m7.py", "fuzz/fuzz_targets/connection_planning.rs", ".github/workflows/nightly.yml#fuzz"], "rationale": "Exact allow-once review, strict ingress, generation/session isolation, global-mutation denial, and secret canaries pass; the framework has no process, network, filesystem, browser, credential, provider-write, PTY, or renderer authority."},
+        "performance": {"level": "controlled", "evidence": ["automexia-connectivity/benches/connection_planning.rs", "docs/TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation", ".github/workflows/nightly.yml#benchmarks-controlled"], "rationale": "A local 64-capsule pure-model target runs in microseconds; named-hardware longitudinal and real-provider latency remain controlled/external evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/provider_auth.rs", "automexia-connectivity/tests/provider_auth_m7.rs"], "rationale": "The store is capped at 64 capsules and 16 repeated maximum-capacity bind/auth/shutdown cycles release all public session state; no process, thread, socket, listener, file, PTY, credential, or GPU resource is owned."},
+        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "M7 stores public observations in memory only and creates no Automexia provider-auth, token-cache, browser, credential, or provider-configuration file."},
+        "resilience": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/provider_auth.rs", "automexia-connectivity/src/connections/state.rs", "automexia-connectivity/tests/provider_auth_m7.rs", "automexia-extension-runtime/src/lib.rs"], "rationale": "Refresh, browser/device/MFA waits, offline, expiry, cancellation, revocation, disable/uninstall, rebind, stale generation, and shutdown are deterministic and last-known-good aware."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "tests/fixtures/connection-hub/provider-observations/all-auth-states-v1.json"], "rationale": "Renderer-neutral labels and actions cover every state without activating a new product surface; native pixels and provider controls remain later evidence."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-connectivity/tests/provider_auth_m7.rs", "automexia-extension-runtime/src/lib.rs", "automexia-ui-model/tests/connection_hub.rs"], "rationale": "Focused pure-model tests and the Criterion target ran locally on Windows x86_64; no provider CLI or network ran."},
+        "linux": {"level": "pr", "evidence": ["automexia-connectivity/tests/provider_auth_m7.rs", ".github/workflows/ci.yml#native"], "rationale": "The contract is platform-neutral and CI owns Linux execution, but this M7 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["automexia-connectivity/tests/provider_auth_m7.rs", ".github/workflows/ci.yml#native"], "rationale": "The contract is platform-neutral and CI owns macOS execution, but this M7 run did not execute natively on macOS."}
+      }
+    },
+    {
+      "id": "direct-openssh-m3-review",
+      "title": "Nonactivated reviewed OpenSSH routes, typed tunnels, full trust evidence, lifecycle, receipts, and guarded PTY route",
+      "components": ["apps/automexia-terminal", "automexia-connectivity", "extensions/devops-ssh", "automexia-ui-model", "teletypewriter"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#what-the-current-managed-ssh-preparation-means", "docs/user-guide/connection-hub-and-ssh.md#review-typed-tunnels-after-activation"],
+        "reference": ["docs/TESTING.md#m3-direct-openssh-review-contract", "docs/TESTING.md#m4-ssh-routes-and-trust-contract", "docs/TESTING.md#m5-typed-openssh-tunnels-and-native-release-evidence", "docs/KEYBOARD.md#connection-hub-controls-v05-release-gated", "docs/SESSION-LAUNCH-BROKER.md#upstream-m5-reviewed-tunnel-request"],
+        "explanation": ["docs/ARCHITECTURE.md#m3-m4-reviewed-openssh-route-and-trust-boundary", "docs/ARCHITECTURE.md#m5-reviewed-openssh-tunnel-and-native-evidence-boundary", "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/direct_openssh_review.rs", "automexia-ui-model/tests/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "The review uses text plus icon/color, exposes Allow once/session/Deny plus a named trust-copy action, and never relies on color alone. A/Enter/S/D/C are explicit and focus-aware; Host/User/Port/Review/Cancel stay trapped and inert; controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-ssh/src/model.rs", "extensions/devops-ssh/src/inventory.rs", "automexia-connectivity/src/connections/direct_openssh.rs", "automexia-connectivity/src/connections/openssh_tunnels.rs", "automexia-connectivity/tests/direct_openssh_review.rs", "automexia-connectivity/tests/direct_openssh_tunnels.rs", "automexia-ui-model/tests/direct_openssh_review.rs", "automexia-ui-model/tests/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/direct_openssh.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "tests/fixtures/session-launch/d0-d3-contract-v6.json", "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v1.json", "tools/ci/native_openssh_evidence.py", "tools/ci/test_native_openssh_evidence.py", "tools/ci/check_session_launch_d0.py", "tools/ci/test_session_launch_d0.py"]},
+        "security": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/direct_openssh.rs", "automexia-connectivity/tests/direct_openssh_review.rs", "apps/automexia-terminal/src/automexia/connections/direct_openssh.rs", "apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/context/launch_broker.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "tools/ci/check_session_launch_d0.py", "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md"], "rationale": "Typed fields, config jumps, configuration-free tunnel endpoints, full trust evidence, and stale routes/scopes fail closed. Changed keys cannot bind; known_hosts is not written; copy cannot execute; remote/non-loopback/production tunnels require Allow once; session grants are rejected. Activation remains false and synthetic manifests cannot satisfy release; attestation, protected approvals, actual status/SSH execution, and real native proof remain gates."},
+        "performance": {"level": "pr", "evidence": ["automexia-connectivity/benches/connection_planning.rs", "docs/TESTING.md#m3-direct-openssh-review-contract", "docs/TESTING.md#m4-ssh-routes-and-trust-contract"], "rationale": "On the recorded Windows host, synchronous selected-record preparation measured 6.3520-6.6011 microseconds. Literal validation is linear over at most 512 bytes during the dedicated editor and composition occurs only on explicit Review; both remain off startup, renderer, PTY, and resize hot paths. Stable-hardware and activated process/PTY latency remain controlled evidence."},
+        "resource_lifetime": {"level": "pr", "evidence": ["automexia-connectivity/src/connections/openssh_tunnels.rs", "automexia-connectivity/tests/direct_openssh_tunnels.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "tools/ci/native_openssh_evidence.py"], "rationale": "The pure tunnel owner is bounded by profile limits, scopes owner events by session/generation/tunnel, rejects terminal reversal, and closes every nonterminal entry; deterministic 1/10/50 cleanup passes. One shared runner owns at most 50 active leases and 256 audits. Production keeps zero managed children/listeners while activation is false; native forced descendant cleanup and sustained resources remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/private_fs.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs"], "rationale": "Only provider-neutral completion receipts are queued off the runner hot path and stored atomically with private permissions, no-follow identity checks, primary/previous recovery, 256-record and 2-MiB ceilings; destinations, terminal text, credentials, executable paths, and digests are excluded."},
+        "resilience": {"level": "pr", "evidence": ["automexia-connectivity/tests/direct_openssh_review.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/receipts.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/context/external_tool_runner.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Preparation invalidates on owned revisions; hostile input and stale scope fail closed. Runner capacity, pre-publication completion, failed publication, route close, revocation, and shutdown have fixed redacted recovery and exact cleanup ownership."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "automexia-ui-model/tests/direct_openssh_review.rs", "automexia-ui-model/tests/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "The renderer uses compact icon-labelled Connection, Safety, and Launch cards, adds redundant icon/color/text tunnel state, disables strong-tunnel session grants, wraps complete trust evidence, and keeps approval/copy/editor hit targets non-overlapping. Renderer-neutral geometry passes tiny-to-8K-equivalent cases; controlled native pixel review remains external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["automexia-connectivity/tests/direct_openssh_review.rs", "automexia-ui-model/tests/direct_openssh_review.rs", "automexia-ui-model/tests/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/direct_openssh.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "tests/fixtures/session-launch/d0-d3-contract-v4.json", "tools/ci/check_session_launch_d0.py", "tools/ci/test_session_launch_d0.py"]},
+        "linux": {"level": "pr", "evidence": ["automexia-connectivity/tests/direct_openssh_review.rs", "automexia-ui-model/tests/direct_openssh_review.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral; this change did not execute on Linux and hosted native evidence remains required."},
+        "macos": {"level": "pr", "evidence": ["automexia-connectivity/tests/direct_openssh_review.rs", "automexia-ui-model/tests/direct_openssh_review.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral; this change did not execute on macOS and hosted native evidence remains required."}
+      }
+    },
+    {
+      "id": "provider-aws-m8-source",
+      "title": "Nonactivated bounded AWS official-CLI contracts with cached product review",
+      "components": ["extensions/devops-aws", "automexia-connectivity", "automexia-command-productivity", "automexia-extension-api", "apps/automexia-terminal", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#aws", "docs/TESTING.md#m8-aws-adapter-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m8-aws-adapter-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Cached rows/review use redundant text, semantic marks, freshness/recovery/risk labels, bounded focus, and keyboard/pointer ownership across responsive layouts; controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Provider contracts plus strict capsule replacement, cached review invalidation, private validation/revalidation/revoke/cleanup, and shutdown are deterministic."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", "automexia-connectivity/src/connections/provider_auth.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Secret-bearing input, global mutation, stale ownership, path disclosure, tamper, and unsupported OpenBao publication fail closed; execution remains disabled."},
+        "performance": {"level": "pr", "evidence": ["apps/automexia-terminal/benches/connection_catalog.rs", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle"], "rationale": "A Windows x86_64 100-sample six-provider cached projection measured 4.8751-4.9453 microseconds with 12 high-side outliers; controlled named-hardware and native rendering baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Snapshot replacement/revoke/shutdown invalidates stale review. The private manager bounds active files to 16 and proves expiry/provider/session/shutdown/drop plus 1,024-file repeated cleanup; activated process trees remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/automexia/private_fs.rs"], "rationale": "Generated kubeconfig is capped at 1 MiB, privately no-follow created, validated before opaque-handle publication, revalidated against tamper, and deleted by exact lifecycle owners. User files and public/debug paths remain untouched; Unix native no-follow evidence remains external."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Invalid, stale, cross-session, revoked, expired, tampered, capacity-bound, and shutdown paths remain non-ready, bounded, and redacted."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Compact semantic rows and review cards preserve hierarchy and non-overlap at 320, 1,920, and 5,120 pixels plus 300% scale; controlled native pixels, custom themes, and screen readers remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Cached product, private lifecycle, warning-denied Clippy, and benchmark evidence ran locally on Windows x86_64 without starting any provider tool or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M8 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-aws/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M8 run did not execute natively on macOS."}
+      }
+    },
+    {
+      "id": "provider-azure-m9-source",
+      "title": "Nonactivated bounded Azure official-CLI contracts with cached product review",
+      "components": ["extensions/devops-azure", "automexia-connectivity", "automexia-command-productivity", "automexia-extension-api", "apps/automexia-terminal", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#azure", "docs/TESTING.md#m9-azure-adapter-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m9-azure-adapter-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Cached rows/review use redundant text, semantic marks, freshness/recovery/risk labels, bounded focus, and keyboard/pointer ownership across responsive layouts; controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Provider contracts plus strict capsule replacement, cached review invalidation, private validation/revalidation/revoke/cleanup, and shutdown are deterministic."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "automexia-connectivity/src/connections/provider_auth.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Secret-bearing input, global mutation, stale ownership, path disclosure, tamper, and unsupported OpenBao publication fail closed; execution remains disabled."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-azure/benches/provider.rs", "apps/automexia-terminal/benches/connection_catalog.rs", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle"], "rationale": "The bounded provider parser benchmark and the 4.8751-4.9453 microsecond Windows six-provider cached projection are local evidence; controlled named-hardware and native rendering baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Snapshot replacement/revoke/shutdown invalidates stale review. The private manager bounds active files to 16 and proves expiry/provider/session/shutdown/drop plus 1,024-file repeated cleanup; activated process trees remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/automexia/private_fs.rs"], "rationale": "Generated kubeconfig is capped at 1 MiB, privately no-follow created, validated before opaque-handle publication, revalidated against tamper, and deleted by exact lifecycle owners. User files and public/debug paths remain untouched; Unix native no-follow evidence remains external."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Invalid, stale, cross-session, revoked, expired, tampered, capacity-bound, and shutdown paths remain non-ready, bounded, and redacted."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Compact semantic rows and review cards preserve hierarchy and non-overlap at 320, 1,920, and 5,120 pixels plus 300% scale; controlled native pixels, custom themes, and screen readers remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Cached product, private lifecycle, warning-denied Clippy, and benchmark evidence ran locally on Windows x86_64 without starting any provider tool or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M9 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-azure/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M9 run did not execute natively on macOS."}
+      }},
+    {
+      "id": "provider-gcp-m10-source",
+      "title": "Nonactivated bounded Google Cloud official-CLI contracts with cached product review",
+      "components": ["extensions/devops-gcp", "automexia-connectivity", "automexia-command-productivity", "automexia-extension-api", "apps/automexia-terminal", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#google-cloud", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m10-google-cloud-adapter-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m10-google-cloud-adapter-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Cached rows/review use redundant text, semantic marks, freshness/recovery/risk labels, bounded focus, and keyboard/pointer ownership across responsive layouts; controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Provider contracts plus strict capsule replacement, cached review invalidation, private validation/revalidation/revoke/cleanup, and shutdown are deterministic."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "automexia-connectivity/src/connections/provider_auth.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Secret-bearing input, global mutation, stale ownership, path disclosure, tamper, and unsupported OpenBao publication fail closed; execution remains disabled."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-gcp/benches/provider.rs", "apps/automexia-terminal/benches/connection_catalog.rs", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle"], "rationale": "The bounded provider parser benchmark and the 4.8751-4.9453 microsecond Windows six-provider cached projection are local evidence; controlled named-hardware and native rendering baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Snapshot replacement/revoke/shutdown invalidates stale review. The private manager bounds active files to 16 and proves expiry/provider/session/shutdown/drop plus 1,024-file repeated cleanup; activated process trees remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/automexia/private_fs.rs"], "rationale": "Generated kubeconfig is capped at 1 MiB, privately no-follow created, validated before opaque-handle publication, revalidated against tamper, and deleted by exact lifecycle owners. User files and public/debug paths remain untouched; Unix native no-follow evidence remains external."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Invalid, stale, cross-session, revoked, expired, tampered, capacity-bound, and shutdown paths remain non-ready, bounded, and redacted."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Compact semantic rows and review cards preserve hierarchy and non-overlap at 320, 1,920, and 5,120 pixels plus 300% scale; controlled native pixels, custom themes, and screen readers remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Cached product, private lifecycle, warning-denied Clippy, and benchmark evidence ran locally on Windows x86_64 without starting any provider tool or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M10 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-gcp/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M10 run did not execute natively on macOS."}
+      }
+    },
+    {
+      "id": "provider-kubernetes-openshift-m11-source",
+      "title": "Nonactivated bounded Kubernetes/OpenShift contracts with private lifecycle and cached review",
+      "components": ["extensions/devops-kubernetes", "extensions/devops-openshift", "automexia-connectivity", "automexia-command-productivity", "automexia-extension-api", "apps/automexia-terminal", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/CONNECTION-HUB.md#kubernetes", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m11-kubernetes-and-openshift-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m11-kubernetes-and-openshift-source-boundary", "docs/adr/0020-hybrid-build-wrap-adopt-boundary.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Cached rows/review use redundant text, semantic marks, freshness/recovery/risk labels, bounded focus, and keyboard/pointer ownership across responsive layouts; controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Provider contracts plus strict capsule replacement, cached review invalidation, private validation/revalidation/revoke/cleanup, and shutdown are deterministic."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs", "automexia-connectivity/src/connections/provider_auth.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Secret-bearing input, global mutation, stale ownership, path disclosure, tamper, and unsupported OpenBao publication fail closed; execution remains disabled."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-kubernetes/benches/kubeconfig.rs", "apps/automexia-terminal/benches/connection_catalog.rs", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle"], "rationale": "The bounded provider parser benchmark and the 4.8751-4.9453 microsecond Windows six-provider cached projection are local evidence; controlled named-hardware and native rendering baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Snapshot replacement/revoke/shutdown invalidates stale review. The private manager bounds active files to 16 and proves expiry/provider/session/shutdown/drop plus 1,024-file repeated cleanup; activated process trees remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/automexia/private_fs.rs"], "rationale": "Generated kubeconfig is capped at 1 MiB, privately no-follow created, validated before opaque-handle publication, revalidated against tamper, and deleted by exact lifecycle owners. User files and public/debug paths remain untouched; Unix native no-follow evidence remains external."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Invalid, stale, cross-session, revoked, expired, tampered, capacity-bound, and shutdown paths remain non-ready, bounded, and redacted."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Compact semantic rows and review cards preserve hierarchy and non-overlap at 320, 1,920, and 5,120 pixels plus 300% scale; controlled native pixels, custom themes, and screen readers remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-kubernetes/tests/contracts.rs", "extensions/devops-openshift/tests/contracts.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Cached product, private lifecycle, warning-denied Clippy, and benchmark evidence ran locally on Windows x86_64 without starting any provider tool or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix no-follow and symlink tests compile, but this M11 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-kubernetes/src/implementation.rs", ".github/workflows/ci.yml#native"], "rationale": "Unix no-follow and symlink tests compile, but this M11 run did not execute natively on macOS."}
+      }
+    },
+    {
+      "id": "provider-teleport-m12-source",
+      "title": "Nonactivated bounded Teleport contracts with cached product review",
+      "components": ["extensions/devops-teleport", "automexia-connectivity", "automexia-command-productivity", "automexia-extension-api", "apps/automexia-terminal", "automexia-ui-model"],
+      "documentation": {
+        "guide": ["docs/user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary"],
+        "reference": ["docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m12-teleport-source-contracts"],
+        "explanation": ["docs/ARCHITECTURE.md#m12-teleport-organization-identity-source-boundary", "docs/MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md"]
+      },
+      "quality": {
+        "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/automexia/connections/controller.rs", "apps/automexia-terminal/src/screen/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Cached rows/review use redundant text, semantic marks, freshness/recovery/risk labels, bounded focus, and keyboard/pointer ownership across responsive layouts; controlled native screen-reader evidence remains external."},
+        "correctness": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Provider contracts plus strict capsule replacement, cached review invalidation, private validation/revalidation/revoke/cleanup, and shutdown are deterministic."},
+        "security": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs", "automexia-connectivity/src/connections/provider_auth.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Secret-bearing input, global mutation, stale ownership, path disclosure, tamper, and unsupported OpenBao publication fail closed; execution remains disabled."},
+        "performance": {"level": "pr", "evidence": ["extensions/devops-teleport/benches/status.rs", "apps/automexia-terminal/benches/connection_catalog.rs", "docs/MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle"], "rationale": "The bounded provider parser benchmark and the 4.8751-4.9453 microsecond Windows six-provider cached projection are local evidence; controlled named-hardware and native rendering baselines remain external."},
+        "resource_lifetime": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Snapshot replacement/revoke/shutdown invalidates stale review. The private manager bounds active files to 16 and proves expiry/provider/session/shutdown/drop plus 1,024-file repeated cleanup; activated process trees remain external."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/automexia/private_fs.rs"], "rationale": "Generated kubeconfig is capped at 1 MiB, privately no-follow created, validated before opaque-handle publication, revalidated against tamper, and deleted by exact lifecycle owners. User files and public/debug paths remain untouched; Unix native no-follow evidence remains external."},
+        "resilience": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs", "apps/automexia-terminal/src/automexia/connections/providers.rs", "apps/automexia-terminal/src/automexia/connections/runtime.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs"], "rationale": "Invalid, stale, cross-session, revoked, expired, tampered, capacity-bound, and shutdown paths remain non-ready, bounded, and redacted."},
+        "visual_quality": {"level": "pr", "evidence": ["automexia-ui-model/src/connection_hub.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs"], "rationale": "Compact semantic rows and review cards preserve hierarchy and non-overlap at 320, 1,920, and 5,120 pixels plus 300% scale; controlled native pixels, custom themes, and screen readers remain external."}
+      },
+      "platforms": {
+        "windows": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", "extensions/devops-teleport/tests/contracts.rs", "apps/automexia-terminal/tests/m8_m12_provider_product.rs", "apps/automexia-terminal/src/automexia/connections/provider_transients.rs", "apps/automexia-terminal/src/renderer/connection_hub.rs"], "rationale": "Cached product, private lifecycle, warning-denied Clippy, and benchmark evidence ran locally on Windows x86_64 without starting any provider tool or network."},
+        "linux": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M12 run did not execute natively on Linux."},
+        "macos": {"level": "pr", "evidence": ["extensions/devops-teleport/src/lib.rs", ".github/workflows/ci.yml#native"], "rationale": "The pure contract is platform-neutral, but this M12 run did not execute natively on macOS."}
+      }
+    }
+  ]
+}
