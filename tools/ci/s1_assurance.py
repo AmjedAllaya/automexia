@@ -49,6 +49,12 @@ REQUIRED_NATIVE_SCENARIOS = {
     "command-result-viewport-overflow",
     "modal-interaction-matrix",
     "clipboard-ime-pointer",
+    "compact-window-chrome",
+    "command-palette-scroll",
+    "connection-hub-direct-entry",
+    "command-result-datetime",
+    "user-preference-restart",
+    "command-boundary-navigation",
 }
 REQUIRED_RESOURCE_SCENARIOS = {
     "tab-split-clone-close",
@@ -62,9 +68,14 @@ REQUIRED_RESOURCE_SCENARIOS = {
     "quick-actions-cancel",
     "image-preview-lifecycle",
     "long-output-storm",
+    "command-palette-scroll-storm",
+    "connection-hub-direct-entry",
+    "user-preference-restart",
+    "command-boundary-navigation",
 }
-REQUIRED_VISUAL_THEMES = {"dark", "light"}
-REQUIRED_VISUAL_SCALES = {"1.0", "1.25", "1.5", "2.0", "3.0"}
+REQUIRED_VISUAL_THEMES = {"dark", "light", "high-contrast"}
+REQUIRED_VISUAL_SCALES = {"1.0", "1.25", "1.5", "2.0", "3.0", "4.0"}
+REQUIRED_VISUAL_MOTION_PROFILES = {"enabled", "reduced"}
 REQUIRED_VISUAL_VIEWPORTS = {
     "300x200",
     "compact",
@@ -96,6 +107,15 @@ REQUIRED_VISUAL_SURFACES = {
     "path",
     "footer",
     "smallest-pane",
+    "compact-top-shelf",
+    "diagnostic-assistant",
+    "tab-appearance-picker",
+    "command-palette-overflow",
+    "connection-hub-setup",
+    "connection-hub-direct-entry",
+    "command-result-datetime",
+    "scrollbar",
+    "saved-preferences-restart",
 }
 REQUIRED_ACCESSIBILITY_TASKS = {
     "launch",
@@ -113,6 +133,18 @@ REQUIRED_ACCESSIBILITY_TASKS = {
     "window-controls",
     "command-result-announcement",
     "reduced-motion-high-contrast",
+    "compact-window-chrome",
+    "diagnostic-assistant-actions",
+    "compatibility-inspector-redaction",
+    "tab-appearance-picker",
+    "quit-confirmation",
+    "command-palette-scroll-position",
+    "image-preview-open-close",
+    "connection-hub-direct-entry",
+    "command-result-datetime",
+    "saved-preferences-restart",
+    "command-boundary-navigation",
+    "scrollbar-position",
 }
 
 POLICY_KEYS = {
@@ -424,6 +456,12 @@ def validate_policy(policy: dict[str, Any]) -> dict[str, Any]:
             surfaces = set(
                 _unique_strings(coverage.get("surfaces"), f"{suite_id} surfaces")
             )
+            motion_profiles = set(
+                _unique_strings(
+                    coverage.get("motion_profiles"),
+                    f"{suite_id} motion profiles",
+                )
+            )
             if not REQUIRED_VISUAL_THEMES.issubset(themes):
                 raise S1AssuranceError(f"{suite_id} omits a required visual theme")
             if not REQUIRED_VISUAL_SCALES.issubset(scales):
@@ -432,7 +470,17 @@ def validate_policy(policy: dict[str, Any]) -> dict[str, Any]:
                 raise S1AssuranceError(f"{suite_id} omits a required visual viewport")
             if not REQUIRED_VISUAL_SURFACES.issubset(surfaces):
                 raise S1AssuranceError(f"{suite_id} omits a required visual surface")
-            expected = len(themes) * len(scales) * len(viewports) * len(surfaces)
+            if not REQUIRED_VISUAL_MOTION_PROFILES.issubset(motion_profiles):
+                raise S1AssuranceError(
+                    f"{suite_id} omits a required visual motion profile"
+                )
+            expected = (
+                len(themes)
+                * len(scales)
+                * len(viewports)
+                * len(surfaces)
+                * len(motion_profiles)
+            )
             if coverage.get("cross_product_complete") is not True or coverage.get("capture_count") != expected:
                 raise S1AssuranceError("visual coverage must declare the complete matrix cross product")
         elif suite["domain"] == "accessibility":
