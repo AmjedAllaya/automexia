@@ -1181,6 +1181,26 @@
       "trigger": "ModifiersState(0x0)+Keycode { key: Named(ArrowDown), location: Standard }"
     },
     {
+      "action": "ScrollToPrevPrompt",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(ArrowUp), location: Standard }"
+    },
+    {
+      "action": "ScrollToNextPrompt",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(ArrowDown), location: Standard }"
+    },
+    {
       "action": "ToggleViMode",
       "effective": true,
       "mode": "BindingMode(0x0)",

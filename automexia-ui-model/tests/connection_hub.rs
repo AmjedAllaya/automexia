@@ -308,6 +308,13 @@ fn literal_destination_entry_replaces_catalog_semantics_and_exposes_a_focusable_
         .iter()
         .find(|node| node.id == "literal-ssh-review")
         .unwrap();
+    let heading = view
+        .accessibility_tree
+        .iter()
+        .find(|node| node.id == "connection-hub-title")
+        .unwrap();
+    assert_eq!(heading.name, "Enter a host");
+    assert_eq!(review.name, "Review host");
     assert!(review.disabled);
     assert_eq!(
         view.reading_order,
