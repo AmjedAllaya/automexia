@@ -130,7 +130,7 @@ conditions remain **unresolved for release** until reviewed integration reaches
 | Track | Phase | Implementation | Release evidence | Conclusion |
 |---|---|---|---|---|
 | Core | v0.4/S0 | **Fully implemented locally** | **Partial** | Identity, hostile-input bounds, atomic reload, and current terminal source gates are complete; stable release gates remain. |
-| Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 24-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
+| Assurance | v0.4/S1 | **Source fully implemented; release evidence partial/external** | **Partial/external** | A versioned 28-suite policy, strict commit-bound validator, deterministic test-only visual fixture, bounded comparator, five 8,352-frame visual matrices, Windows-native WGPU/CPU QA/resource evidence, separate AppVerifier Basics/low-resource phases, mutation coverage, controlled workflow, and fail-closed release dependency exist. Elevated/named-hardware, Linux/macOS native, assistive-technology, exact visual-matrix, and independent human-review evidence remains external. |
 | Performance | S2 | **Source and automation fully implemented; collecting** | **External baseline pending** | Bounded evidence normalization/composition, sample/confidence quality, exact source/operator binding, native memory metrics, independent baseline/waiver review, protected activation validation, 90-day retention, and a fail-closed release ratchet exist. Activation awaits 30 reviewed consecutive controlled-runner days. |
 | DevOps | D0 | **Partial** | **Partial** | ADR 0012 is accepted and active schema 6 ratchets immutable schemas 1/2/3/4/5 with exact M3-M5 route/tunnel, trust/status, lifecycle/receipt/reconnect, and native-manifest rules; protected approvals and real native execution remain. |
 | DevOps | D1 | **Fully implemented** | **Partial** | Four private provider-neutral crates and bounded contracts satisfy their source boundary. |
@@ -303,8 +303,9 @@ portable QA. The repository-owned comparator now bounds encoded/decoded size,
 dimensions, output, and memory; rejects one changed channel in one pixel with
 no default masks; and atomically writes an exact JSON verdict plus heatmap.
 The exact test-only `s1-standard-v1` fixture freezes public content, clock, and
-motion, while the versioned policy enumerates 1,600 cases per visual suite
-and requires independent HTTPS human review.
+motion, while the versioned policy enumerates 8,352 cases per visual suite
+across five platform/architecture suites, including high contrast, 400% scale,
+and enabled/reduced motion, and requires independent HTTPS human review.
 
 Missing or external: approved expected/actual/diff golden matrices across
 viewport/theme/font/scale/UI states, Linux/macOS native frames, and recorded
@@ -393,11 +394,13 @@ baseline, scoped cargo-mutants survivor triage, and governed cargo-vet adoption.
   days, required claims, privacy limits, exact expiring waivers, and same-runner
   comparability. Each accepted day is digest/operator traceable; the builder
   cannot activate incomplete history or let a collector accept the baseline.
-- Nightly retains normalized evidence for 90 days. Tagged release preflight now
-  requires fresh exact-commit evidence and an active baseline, and fails closed
-  on an unwaived regression. The registered `S2 controlled activation` workflow
-  uses the protected `stable-release` environment and emits a bounded digest
-  summary before activation can merge.
+- Nightly retains normalized evidence for 90 days. Tagged release preflight
+  directly requires fresh exact-commit native GUI, native WSL, S1, and active
+  S2 evidence; every dependency must report success, and the release fails
+  closed on an unwaived regression. The registered `S2 controlled activation`
+  workflow is semantically mutation-checked, uses the protected
+  `stable-release` environment, binds the source commit exactly, and emits one
+  bounded 90-day digest summary before activation can merge.
 
 External gate: the baseline fixture remains `collecting`. Thirty complete
 consecutive runs on the named Windows GPU/benchmark runner, controlled hardware

@@ -2005,14 +2005,15 @@ See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AU
 
 The remaining roadmap work is deliberately separate:
 
-- execution and approval of the exact 1,600-case raster matrix across the four
-  policy environments, plus retained Windows/Linux/macOS native frames;
+- execution and approval of five exact 8,352-case raster matrices across
+  Windows, Linux X11/Wayland, and macOS Intel/Apple Silicon, plus retained
+  Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
   a separate Automexia-owned coverage baseline;
 - executed and compared Criterion/startup/interaction/resource evidence on named
   stable hardware followed by the complete 30-day baseline;
 - elevated Windows Application Verifier/WPR evidence and named Intel/AMD/NVIDIA/
-  RDP, Linux X11/Wayland, and macOS Intel/Apple Silicon resource runs;
+  RDP, Linux Intel/AMD/NVIDIA, and macOS Intel/Apple Silicon resource runs;
 - recorded v0.4 Narrator/NVDA, VoiceOver, and Orca evidence followed by the v0.5
   renderer-independent native accessibility model; and
 - v0.5 scoped mutation testing and maintainable cargo-vet supply-chain audits.

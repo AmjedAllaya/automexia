@@ -136,8 +136,9 @@ Current assurance: **Partial**.
 
 Current assurance: **Partial**.
 
-- Raster every implemented surface at tiny through 8K layouts, 100–300% scale,
-  splits, localization, custom themes, fallback fonts and reduced motion.
+- Raster every implemented surface at tiny through 8K layouts, 100–400% scale,
+  splits, localization, dark/light/high-contrast themes, fallback fonts, and
+  enabled/reduced motion.
 - Detect clipping, overlap, z-order, focus obscuration, stale frames, missing
   glyphs and a single changed pixel with exact environment-specific goldens.
 - Independently verify model geometry, hit targets, contrast, glyph presence,
@@ -161,13 +162,13 @@ Current assurance: **Partial**.
   bottom; keyboard/query/gesture/resize transitions; malformed and over-limit
   deltas; and every modal-priority combination.
 - Independently assert the visible row window and selected index, persistent
-  idle/active thumb geometry, responsive reclamping, 100–300% physical-to-logical
+  idle/active thumb geometry, responsive reclamping, 100–400% physical-to-logical
   trackpad conversion, the 1,024-row per-event bound, palette-before-pane
   ownership, and absence of terminal scroll, mouse reporting, pane focus
   changes, and PTY input. Native physical wheel/trackpad, exact pixels, and
   platform accessibility events remain release evidence.
 - For command datetime labels, raster full ISO, duration-free, compact and
-  absent-timestamp fallbacks at tiny through 8K widths and 100–300% scale.
+  absent-timestamp fallbacks at tiny through 8K widths and 100–400% scale.
   Bind measured text and pixels to the exact result identity; reject clipping,
   prompt-context overlap, fabricated labels, stale timestamps or changed cells.
 - For saved font/appearance preferences, cover missing, zero-field, canonical,
