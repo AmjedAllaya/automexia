@@ -13,10 +13,14 @@ and release artifacts have completed protected review.
 1. Configure `f5-openssh-release` as a protected environment with independent
    required reviewers and no self-review.
 2. Set repository variable `AUTOMEXIA_F5_OPENSSH_RUNNER=1`.
-3. In that environment, set `AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE`,
-   `AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY`, and
-   `AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE` to private absolute paths on the
-   controlled host.
+3. Store the five private absolute paths as protected environment secrets:
+   `AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE`,
+   `AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY`,
+   `AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE`,
+   `AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW`, and
+   `AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE`. Repository variables are
+   rejected for these paths. The runner resolves the secret values locally;
+   they must never be printed or uploaded.
 4. Provision one clean ephemeral JIT runner for the job in the restricted
    `automexia-openssh` group. Its label must be
    `automexia-openssh-<platform>-<architecture>`, where the platform is
@@ -29,7 +33,8 @@ and release artifacts have completed protected review.
    matching host tuple.
 
 The workflow has read-only repository permission, checks out the exact digest
-without persisted credentials, runs the mutation suite, and uploads only
+without persisted credentials, runs the D0 checker and both D0/native mutation
+suites in fail-closed platform shells, and uploads only
 `target/native-openssh/summary.json`. The path-free summary contains platform,
 architecture, scenario/session counts, and binding flags; retention is 90 days.
 The private manifest, paths, fixture, SSH configuration, destinations,
@@ -42,12 +47,14 @@ and [environment protection documentation](https://docs.github.com/en/actions/re
 
 ## Direct validator use
 
-For controlled debugging, define all four inputs and run the same validator:
+For controlled debugging, define all six inputs and run the same validator:
 
 ```powershell
 $env:AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE='C:\private\m5-windows.json'
 $env:AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY='C:\private\automexia.exe'
 $env:AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE='C:\private\automexia.msi'
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW='C:\private\openssh-advisory-review.json'
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE='C:\private\openssh-package-provenance.json'
 $env:AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT='<exact-lowercase-digest>'
 python3 tools/ci/native_openssh_evidence.py --validate-environment
 ```
@@ -56,31 +63,39 @@ python3 tools/ci/native_openssh_evidence.py --validate-environment
 AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE=/private/m5-linux.json \
 AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY=/private/automexia \
 AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE=/private/automexia.tar.gz \
+AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW=/private/openssh-advisory-review.json \
+AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE=/private/openssh-package-provenance.json \
 AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT=<exact-lowercase-digest> \
 python3 tools/ci/native_openssh_evidence.py --validate-environment
 ```
 
 The validator reads one identity-stable bounded manifest snapshot. It requires
 23 ordered passing scenarios, the executing native OS and normalized
-architecture, the exact clean commit and schema-6 digest, fixed OpenSSH client
-and server version strings, and fresh no-follow SHA-256 reads of the application
-binary, package, and client. Release files are capped at 4 GiB. Symlinks,
+architecture, the exact clean commit and schema-7 digest, the exact
+`automexia --version` result, fixed OpenSSH client/server version strings, and
+fresh no-follow SHA-256 reads of the application binary/package, `ssh`, `sshd`,
+`ssh-add`, `ssh-keygen`, advisory review, and package provenance. Release files
+are capped at 4 GiB. Symlinks,
 reparse points, replacement or growth while reading, hash/version/host drift,
 real zero-sentinel baselines, WSL, synthetic evidence, failed cleanup, resource
 overflow, and redaction leaks fail closed without printing private paths.
 
-The current OpenSSH security baseline is the official [OpenSSH 10.5 release](https://www.openbsd.org/openssh/releasenotes.html),
-including agent session-binding/restricted-key behavior. The evidence contract
-also observes the upstream post-quantum default and non-post-quantum warning; it
-does not override system OpenSSH cryptographic policy.
+The current upstream security baseline is the official
+[OpenSSH 10.5 release](https://www.openbsd.org/openssh/releasenotes.html) from
+2026-08-11. Evidence must affirm the 10.5 `ssh-agent` locked-agent/session-bind
+fix and pending remote-forward cleanup fix, plus the existing restricted-key
+session binding, post-quantum default, and weak-crypto warning checks. The
+validator deliberately does not compare a vendor version string numerically:
+supported operating systems may backport fixes. Instead, the exact tool hashes,
+reviewed advisory artifact, and package-provenance artifact must support each
+affirmation. Automexia does not override system OpenSSH cryptographic policy.
 
-## Local evidence on 2026-08-24
+## Last completed full local evidence on 2026-08-24
 
 On Windows x86_64, the focused source suites passed 19 direct route/trust, 8
 tunnel, 4 UI-model, 12 Connection Hub renderer/controller, and 1 strong
-Allow-once tests. The native evidence suite passed 11 methods with one
-symlink-privilege skip; schema-6 mutations passed 10; platform workflow
-mutations passed 29; and repository-protection mutations passed 23.
+Allow-once tests. That run predates schema 7 and is retained as historical
+evidence rather than evidence for the current contract.
 
 The required full gates passed: Rustfmt, warning-denied workspace Clippy,
 Nextest with 2,070 passed and 7 skipped, and documentation tests with 64 passed
@@ -95,6 +110,28 @@ isolated target.
 The local prerequisite probe found OpenSSH for Windows 9.5p2 client tools but
 no fixed `sshd`, so no real server, tunnel, native resource, visual, or
 accessibility result is claimed from this host.
+
+## Current schema-7 local evidence on 2026-08-27
+
+The schema-7 contract checker and all 10 mutation cases pass. The schema-2
+native-evidence validator passes 12 tests with one Windows symlink-privilege
+skip, and all 35 F5 workflow mutation cases pass. These results prove the local
+contract, validator, and workflow behavior only; they do not replace the
+controlled native matrix listed below. Focused source evidence passed 79
+connectivity tests, 32 broker lifecycle tests, 4 review-worker tests, 7
+application composition tests, and 4 UI-model tests. The real planning benchmark
+measured `direct_openssh_prepare_selected` at 7.5300-7.5767 microseconds on this
+uncontrolled Windows host; it is not a named-hardware release baseline.
+
+Warning-denied workspace Clippy passed. CI-profile Nextest passed 2,270 tests
+with 7 declared skips; documentation tests passed 64 with 3 ignored. Full QA
+passed after its first run exposed and recovered a 20-KiB free-space condition.
+`cargo ready` then passed its cold isolated workspace check, Clippy, all
+workspace and documentation tests, dependency policy, application build, and
+`automexia 0.4.0` smoke on a short native C: target; the 9.44-GiB verification
+tree and 4.5-GiB temporary target were removed afterward. The first deep-path
+attempt failed with Windows linker `LNK1104`; it was investigated rather than
+retried in place or treated as passing.
 
 ## Remaining release evidence
 

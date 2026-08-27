@@ -222,10 +222,39 @@ launch or broaden its authority.
 
 ## 2026-08-26 ownership amendment
 
-The active contract is now
+At the time of this amendment, the active contract became
 `tests/fixtures/session-launch/d0-d3-contract-v6.json`. Schema 6 ratchets the
 exact schema-5 digest and changes only current source/evidence ownership paths
 from the former mixed DevOps package to `automexia-connectivity`. It does not
 change launch grammar, trust decisions, tunnel lifecycle, activation, authority,
 or native release requirements. Schemas 1-5 remain byte-for-byte hash-checked
 history. ADR 0035 owns the placement decision.
+
+## 2026-08-27 assurance amendment
+
+The active contract is now
+`tests/fixtures/session-launch/d0-d3-contract-v7.json`. Schema 7 preserves
+schemas 1-6 by exact digest and does not enable launch or widen authority. It
+closes two lifecycle evidence gaps: review request identifiers permanently fail
+closed before wraparound or reuse, and every reviewed tunnel produces one
+generated operation-scoped opaque receipt ownership reference without carrying
+the user tunnel ID, listener, target endpoint, destination, or terminal text.
+
+The native evidence manifest is schema 2. It binds the clean source commit,
+native platform/architecture, exact `automexia --version`, application binary
+and package, fixed `ssh`, `sshd`, `ssh-add`, and `ssh-keygen` hashes, plus
+identity-stable advisory-review and package-provenance artifacts. The security
+ratchet names the official OpenSSH 10.5 baseline dated 2026-08-11 and requires
+evidence for its locked-agent/session-bind and pending remote-forward cleanup
+fixes in addition to post-quantum key exchange, weak-crypto warnings, and
+restricted-key session binding. Version strings are not treated as proof of
+patch state because supported vendors may backport fixes; exact tool and
+provenance identities are required instead.
+
+The protected manual workflow now takes evidence paths only from environment
+secrets, runs the D0 checker and both mutation suites on Windows and Unix,
+checks every command result, uses exact runner/concurrency/timeout/checkout
+semantics, and uploads one path-free 90-day summary. Production activation
+remains false. ADR 0003 exact-head approvals, package-loader
+attestation/revocation, and controlled Windows/macOS/Linux OpenSSH, process,
+resource, visual, and accessibility evidence remain external prerequisites.

@@ -70,9 +70,11 @@ I/O, bounded workers, cancellation, publication, persistence, and cleanup.
 Existing provider extensions own bounded provider parsing and typed intent only.
 
 The move changes Rust paths and evidence paths, not persisted public schemas.
-Historical D0 session-launch contracts remain byte-for-byte immutable. Active
-schema 6 differs from schema 5 only by current source ownership references and
-ratchets schema 5 by exact digest.
+Historical D0 session-launch contracts remain byte-for-byte immutable. Schema 6
+is the ownership-migration contract: it differs from schema 5 only by current
+source ownership references and ratchets schema 5 by exact digest. Active schema
+7 ratchets schema 6 without changing this placement; it adds managed-session
+lifecycle and native-evidence assurances owned by ADR 0012.
 
 ## Alternatives considered
 

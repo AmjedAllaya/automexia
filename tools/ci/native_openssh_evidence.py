@@ -24,9 +24,15 @@ from typing import Any
 
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json"
+CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v7.json"
 SYNTHETIC_FIXTURE = (
-    ROOT / "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v1.json"
+    ROOT / "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v2.json"
+)
+HISTORICAL_SYNTHETIC_FIXTURES = (
+    (
+        ROOT / "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v1.json",
+        "2d2b1c8448eba5aa8149b078ef598271d3c2e4be7712dd26b8bc73b7ce1d511d",
+    ),
 )
 MAX_MANIFEST_BYTES = 262_144
 MAX_RELEASE_ARTIFACT_BYTES = 4 * 1024 * 1024 * 1024
@@ -90,10 +96,19 @@ FIXTURE_KEYS = {
 OPENSSH_KEYS = {
     "client_version",
     "server_version",
+    "client_sha256",
+    "server_sha256",
+    "ssh_add_sha256",
+    "ssh_keygen_sha256",
     "security_policy",
+    "upstream_security_baseline",
+    "advisory_review_sha256",
+    "package_provenance_sha256",
     "post_quantum_kex",
     "weak_crypto_warning",
     "agent_session_binding_restricted_key",
+    "agent_lock_session_binding_fix",
+    "pending_remote_forward_cleanup_fix",
 }
 SCENARIO_KEYS = {"id", "result", "duration_ms"}
 RESOURCE_LIMITS = {
@@ -388,7 +403,7 @@ def validate_document(
 ) -> dict[str, int | str]:
     """Validate one identity-stable manifest snapshot."""
     document = _exact_object(document, MANIFEST_KEYS, "native evidence")
-    if document["schema"] != 1 or document["evidence_kind"] != "native-openssh-release":
+    if document["schema"] != 2 or document["evidence_kind"] != "native-openssh-release":
         raise NativeOpenSshEvidenceError("native evidence identity changed")
     if not isinstance(document["synthetic"], bool):
         raise NativeOpenSshEvidenceError("synthetic must be a boolean")
@@ -455,6 +470,24 @@ def validate_document(
     openssh = _exact_object(document["openssh"], OPENSSH_KEYS, "openssh")
     client_version = _version(openssh["client_version"], "OpenSSH client version")
     server_version = _version(openssh["server_version"], "OpenSSH server version")
+    tool_hash_keys = (
+        "client_sha256",
+        "server_sha256",
+        "ssh_add_sha256",
+        "ssh_keygen_sha256",
+    )
+    provenance_hash_keys = (
+        "advisory_review_sha256",
+        "package_provenance_sha256",
+    )
+    for key in (*tool_hash_keys, *provenance_hash_keys):
+        _hash(openssh[key], f"OpenSSH {key}")
+    if not document["synthetic"] and any(
+        openssh[key] == "0" * 64 for key in (*tool_hash_keys, *provenance_hash_keys)
+    ):
+        raise NativeOpenSshEvidenceError(
+            "release OpenSSH hashes cannot use the synthetic sentinel"
+        )
     if not document["synthetic"] and (
         "synthetic" in client_version.lower() or "synthetic" in server_version.lower()
     ):
@@ -463,10 +496,14 @@ def validate_document(
         )
     if openssh["security_policy"] != "platform-supported-current-advisory-review":
         raise NativeOpenSshEvidenceError("OpenSSH security policy review is missing")
+    if openssh["upstream_security_baseline"] != "OpenSSH-10.5-2026-08-11":
+        raise NativeOpenSshEvidenceError("OpenSSH upstream security baseline changed")
     for key in (
         "post_quantum_kex",
         "weak_crypto_warning",
         "agent_session_binding_restricted_key",
+        "agent_lock_session_binding_fix",
+        "pending_remote_forward_cleanup_fix",
     ):
         if openssh[key] is not True:
             raise NativeOpenSshEvidenceError(f"OpenSSH security requirement failed: {key}")
@@ -585,7 +622,13 @@ def _fixed_candidates(platform_name: str) -> dict[str, tuple[Path, ...]]:
 
 def _fixed_executable(candidates: tuple[Path, ...]) -> Path | None:
     for candidate in candidates:
-        if candidate.is_file() and not candidate.is_symlink():
+        try:
+            metadata = candidate.lstat()
+        except OSError:
+            continue
+        if stat.S_ISREG(metadata.st_mode) and not _is_link_or_reparse(
+            candidate, metadata
+        ):
             return candidate
     return None
 
@@ -603,13 +646,38 @@ def _probe_version(executable: Path) -> str | None:
     except (OSError, subprocess.SubprocessError):
         return None
     output = completed.stdout[: MAX_VERSION_BYTES + 1]
-    if len(output) > MAX_VERSION_BYTES:
+    if completed.returncode != 0 or len(output) > MAX_VERSION_BYTES:
         return None
     value = output.decode("utf-8", "replace").strip().splitlines()
     if not value:
         return None
     candidate = value[0]
     return candidate if VERSION.fullmatch(candidate) else None
+
+
+def _probe_application_version(executable: Path) -> str | None:
+    """Read the exact clap version without starting the GUI or a shell."""
+    try:
+        completed = subprocess.run(
+            [str(executable), "--version"],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            timeout=5,
+            check=False,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+    output = completed.stdout[: MAX_VERSION_BYTES + 1]
+    if completed.returncode != 0 or len(output) > MAX_VERSION_BYTES:
+        return None
+    lines = output.decode("utf-8", "replace").strip().splitlines()
+    if len(lines) != 1:
+        return None
+    prefix = "automexia "
+    candidate = lines[0]
+    version = candidate[len(prefix) :] if candidate.startswith(prefix) else ""
+    return version if VERSION.fullmatch(version) else None
 
 
 def probe_prerequisites() -> dict[str, Any]:
@@ -649,6 +717,8 @@ def validate_controlled_environment(
     *,
     application_binary: Path,
     application_package: Path,
+    advisory_review: Path,
+    package_provenance: Path,
     expected_commit: str,
     root: Path = ROOT,
 ) -> dict[str, int | str]:
@@ -714,7 +784,31 @@ def validate_controlled_environment(
         raise NativeOpenSshEvidenceError(
             "application package does not match the release evidence"
         )
-    client_hash = release_file_sha256(client)
+    if _probe_application_version(application_binary) != application["version"]:
+        raise NativeOpenSshEvidenceError(
+            "application version does not match the release evidence"
+        )
+    tool_hashes = {
+        "ssh": "client_sha256",
+        "sshd": "server_sha256",
+        "ssh-add": "ssh_add_sha256",
+        "ssh-keygen": "ssh_keygen_sha256",
+    }
+    for tool, manifest_key in tool_hashes.items():
+        executable = executables[tool]
+        if executable is None or release_file_sha256(executable) != openssh[manifest_key]:
+            raise NativeOpenSshEvidenceError(
+                "native OpenSSH tool does not match the release evidence"
+            )
+    if release_file_sha256(advisory_review) != openssh["advisory_review_sha256"]:
+        raise NativeOpenSshEvidenceError(
+            "OpenSSH advisory review does not match the release evidence"
+        )
+    if release_file_sha256(package_provenance) != openssh["package_provenance_sha256"]:
+        raise NativeOpenSshEvidenceError(
+            "OpenSSH package provenance does not match the release evidence"
+        )
+    client_hash = openssh["client_sha256"]
     baseline = document["manual_baseline"]
     if (
         client_hash != baseline["client_sha256_before"]
@@ -727,12 +821,18 @@ def validate_controlled_environment(
     return {
         **result,
         "architecture": architecture,
-        "artifacts": 3,
+        "artifacts": 8,
         "host_bound": 1,
     }
 
 
 def validate_repository_contract(root: Path = ROOT) -> dict[str, int]:
+    for historical, expected_digest in HISTORICAL_SYNTHETIC_FIXTURES:
+        path = root / historical.relative_to(ROOT)
+        if hashlib.sha256(bounded_bytes(path)).hexdigest() != expected_digest:
+            raise NativeOpenSshEvidenceError(
+                "historical native OpenSSH evidence fixture changed"
+            )
     fixture = root / SYNTHETIC_FIXTURE.relative_to(ROOT)
     result = validate_manifest(fixture, allow_synthetic=True, root=root)
     if result["synthetic"] != 1:
@@ -759,10 +859,25 @@ def main() -> int:
             manifest = os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE")
             binary = os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY")
             package = os.environ.get("AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE")
+            advisory_review = os.environ.get(
+                "AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW"
+            )
+            package_provenance = os.environ.get(
+                "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE"
+            )
             commit = os.environ.get(
                 "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT"
             )
-            if not all((manifest, binary, package, commit)):
+            if not all(
+                (
+                    manifest,
+                    binary,
+                    package,
+                    advisory_review,
+                    package_provenance,
+                    commit,
+                )
+            ):
                 raise NativeOpenSshEvidenceError(
                     "controlled native evidence environment is incomplete"
                 )
@@ -770,6 +885,8 @@ def main() -> int:
                 Path(manifest),
                 application_binary=Path(binary),
                 application_package=Path(package),
+                advisory_review=Path(advisory_review),
+                package_provenance=Path(package_provenance),
                 expected_commit=commit,
             )
         else:

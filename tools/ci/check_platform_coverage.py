@@ -753,6 +753,9 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         and set(inputs) == {"source_commit", "platform", "architecture"}
         and inputs["platform"].get("options") == ["windows", "macos", "linux"]
         and inputs["architecture"].get("options") == ["x86_64", "aarch64"]
+        and inputs["source_commit"].get("type") == "string"
+        and inputs["platform"].get("type") == "choice"
+        and inputs["architecture"].get("type") == "choice"
         and all(
             isinstance(value, dict) and value.get("required") is True
             for value in inputs.values()
@@ -763,13 +766,21 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         workflow.get("permissions") == {"contents": "read"},
         "F5 OpenSSH assurance workflow must be read-only",
     )
+    require(
+        workflow.get("concurrency")
+        == {
+            "group": "f5-openssh-${{ inputs.source_commit }}-${{ inputs.platform }}-${{ inputs.architecture }}",
+            "cancel-in-progress": False,
+        },
+        "F5 OpenSSH assurance concurrency must bind the exact request without cancellation",
+    )
     validate = job(workflow, "validate", "f5-openssh-assurance.yml")
     runs_on = validate.get("runs-on", {})
     require(
         isinstance(runs_on, dict)
         and runs_on.get("group") == "automexia-openssh"
-        and "inputs.platform" in str(runs_on.get("labels", ""))
-        and "inputs.architecture" in str(runs_on.get("labels", "")),
+        and runs_on.get("labels")
+        == "automexia-openssh-${{ inputs.platform }}-${{ inputs.architecture }}",
         "F5 OpenSSH assurance must use the restricted self-hosted runner group",
     )
     require(
@@ -777,28 +788,65 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         "F5 OpenSSH assurance must use the protected environment",
     )
     require(
-        "AUTOMEXIA_F5_OPENSSH_RUNNER" in str(validate.get("if", "")),
+        validate.get("if") == "vars.AUTOMEXIA_F5_OPENSSH_RUNNER == '1'",
         "F5 OpenSSH assurance must remain explicitly operator-enabled",
+    )
+    require(
+        validate.get("timeout-minutes") == 40,
+        "F5 OpenSSH assurance timeout must remain exactly 40 minutes",
     )
     environment = validate.get("env", {})
     required_environment = {
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY",
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE",
-        "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE": "${{ secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE }}",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT": "${{ inputs.source_commit }}",
     }
     require(
-        isinstance(environment, dict)
-        and required_environment.issubset(environment),
+        environment == required_environment,
         "F5 OpenSSH assurance must receive the private manifest and exact artifact paths",
     )
-    source = commands(validate)
-    for fragment, message in (
-        ("test_native_openssh_evidence.py", "mutation tests"),
-        ("--validate-environment", "controlled validator"),
-        ("target/native-openssh/summary.json", "redacted summary"),
-    ):
-        require(fragment in source, f"F5 OpenSSH assurance is missing {message}")
+    validate_steps = steps(validate)
+    require(
+        validate.get("continue-on-error") is not True
+        and all(step.get("continue-on-error") is not True for step in validate_steps),
+        "F5 OpenSSH assurance must fail closed",
+    )
+    platform_steps = {
+        str(step.get("shell")): str(step.get("run", ""))
+        for step in validate_steps
+        if step.get("shell") in {"pwsh", "bash"}
+    }
+    require(
+        set(platform_steps) == {"pwsh", "bash"},
+        "F5 OpenSSH assurance must have exact Windows and Unix validation steps",
+    )
+    for shell, source in platform_steps.items():
+        for fragment, message in (
+            ("check_session_launch_d0.py", "D0 contract checker"),
+            ("test_session_launch_d0.py", "D0 mutation tests"),
+            ("test_native_openssh_evidence.py", "native evidence mutation tests"),
+            ("--validate-environment", "controlled validator"),
+            ("target/native-openssh/summary.json", "redacted summary"),
+        ):
+            require(
+                fragment in source,
+                f"F5 OpenSSH {shell} assurance is missing {message}",
+            )
+        require(
+            "|| true" not in source and "continue-on-error" not in source,
+            "F5 OpenSSH assurance must fail closed",
+        )
+    require(
+        "set -euo pipefail" in platform_steps["bash"],
+        "F5 OpenSSH Unix assurance is missing fail-closed shell settings",
+    )
+    require(
+        platform_steps["pwsh"].count("$LASTEXITCODE -ne 0") == 4,
+        "F5 OpenSSH Windows assurance must check every command exit",
+    )
     checkout = next(
         (
             step
@@ -812,6 +860,13 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         and checkout.get("with", {}).get("persist-credentials") is False
         and "inputs.source_commit" in str(checkout.get("with", {}).get("ref", "")),
         "F5 OpenSSH assurance checkout must bind the requested commit without credentials",
+    )
+    require_exact_upload(
+        validate,
+        name="f5-openssh-${{ inputs.platform }}-${{ inputs.architecture }}-summary",
+        path="target/native-openssh/summary.json",
+        retention_days=90,
+        label="F5 OpenSSH 90-day summary",
     )
 
 
