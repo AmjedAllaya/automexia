@@ -26,18 +26,47 @@ MAX_POLICY_BYTES = 128 * 1024
 MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024
 MAX_RELEASE_COMMITS = 100_000
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
-EXPECTED_EXTERNAL_IDS = {
-    "brand-rights-and-final-assets",
-    "private-conduct-contact",
-    "windows-production-signing",
-    "apple-developer-id-and-notarization",
-    "github-plan-or-public-visibility",
-    "independent-reviewer-capacity",
-    "github-actions-billing",
-    "github-security-entitlements",
-    "s1-controlled-native-visual-resource-accessibility",
-    "s2-active-thirty-day-baseline",
-    "historical-linearity-and-dco-resolution",
+EXPECTED_TAG_PATTERN = r"^v[0-9]+\.[0-9]+\.[0-9]+(?:-[0-9A-Za-z.-]+)?$"
+POLICY_KEYS = {
+    "schema",
+    "repository",
+    "default_branch",
+    "fork_provenance",
+    "release_source",
+    "hosted_repository",
+    "external_prerequisites",
+}
+FORK_KEYS = {"tag", "commit", "require_annotated_tag", "require_remote_tag"}
+SOURCE_KEYS = {
+    "tag_pattern",
+    "require_annotated_tag",
+    "require_remote_tag",
+    "require_exact_default_branch_head",
+    "require_clean_tracked_source",
+    "require_complete_history",
+    "require_linear_history",
+    "require_dco_after_fork",
+    "require_author_matching_signoff",
+}
+HOSTED_KEYS = {
+    "require_authenticated_audit",
+    "required_result",
+    "audit_secret",
+    "protected_environment",
+}
+EXTERNAL_KEYS = {"id", "owner", "evidence"}
+EXPECTED_EXTERNAL_PREREQUISITES = {
+    "brand-rights-and-final-assets": ("release-owner", "assets/brand/ASSET-MANIFEST.toml"),
+    "private-conduct-contact": ("governance-owner", "SECURITY.md"),
+    "windows-production-signing": ("release-owner", "docs/RELEASE-TRUST.md"),
+    "apple-developer-id-and-notarization": ("release-owner", "docs/RELEASE-TRUST.md"),
+    "github-plan-or-public-visibility": ("repository-owner", ".github/BRANCH-PROTECTION.md"),
+    "independent-reviewer-capacity": ("repository-owner", "CODEOWNERS"),
+    "github-actions-billing": ("repository-owner", ".github/BRANCH-PROTECTION.md"),
+    "github-security-entitlements": ("repository-owner", ".github/repository-protection.json"),
+    "s1-controlled-native-visual-resource-accessibility": ("assurance-owner", "tests/assurance/s1-assurance-policy-v1.json"),
+    "s2-active-thirty-day-baseline": ("performance-owner", "tests/assurance/performance-ratchet-policy-v1.json"),
+    "historical-linearity-and-dco-resolution": ("repository-owner", "docs/READINESS-AUDIT.md"),
 }
 SIGNOFF_RE = re.compile(
     r"(?im)^Signed-off-by:\s*[^\r\n<>]+\s*<([^\r\n<>]+)>\s*$"
@@ -97,7 +126,15 @@ def _require_mapping(policy: dict[str, object], key: str) -> dict[str, object]:
     return value
 
 
+def _require_exact_keys(
+    mapping: dict[str, object], expected: set[str], label: str
+) -> None:
+    if set(mapping) != expected:
+        fail(f"stable-release {label} keys drifted")
+
+
 def validate_policy(policy: dict[str, object]) -> None:
+    _require_exact_keys(policy, POLICY_KEYS, "policy")
     if policy.get("schema") != 1:
         fail("stable-release policy schema must be 1")
     if policy.get("repository") != "AmjedAllaya/automexia-terminal":
@@ -106,6 +143,7 @@ def validate_policy(policy: dict[str, object]) -> None:
         fail("stable-release default branch drifted")
 
     fork = _require_mapping(policy, "fork_provenance")
+    _require_exact_keys(fork, FORK_KEYS, "fork provenance")
     if fork.get("tag") != "rio-base-0.5.20-7d595af":
         fail("stable-release fork tag drifted")
     commit = fork.get("commit")
@@ -115,9 +153,10 @@ def validate_policy(policy: dict[str, object]) -> None:
     _require_bool(fork, "require_remote_tag")
 
     source = _require_mapping(policy, "release_source")
+    _require_exact_keys(source, SOURCE_KEYS, "release source")
     pattern = source.get("tag_pattern")
-    if not isinstance(pattern, str) or len(pattern) > 256:
-        fail("stable-release tag pattern is missing or oversized")
+    if pattern != EXPECTED_TAG_PATTERN:
+        fail("stable-release tag pattern drifted")
     try:
         re.compile(pattern)
     except re.error as error:
@@ -135,6 +174,7 @@ def validate_policy(policy: dict[str, object]) -> None:
         _require_bool(source, key)
 
     hosted = _require_mapping(policy, "hosted_repository")
+    _require_exact_keys(hosted, HOSTED_KEYS, "hosted repository")
     _require_bool(hosted, "require_authenticated_audit")
     if hosted.get("required_result") != "pass":
         fail("stable-release hosted audit must require pass")
@@ -150,6 +190,7 @@ def validate_policy(policy: dict[str, object]) -> None:
     for item in prerequisites:
         if not isinstance(item, dict):
             fail("stable-release external prerequisite must be an object")
+        _require_exact_keys(item, EXTERNAL_KEYS, "external prerequisite")
         identifier = item.get("id")
         owner = item.get("owner")
         evidence = item.get("evidence")
@@ -162,9 +203,12 @@ def validate_policy(policy: dict[str, object]) -> None:
             fail("stable-release external prerequisite has no owner")
         if not isinstance(evidence, str) or not evidence or Path(evidence).is_absolute():
             fail("stable-release external prerequisite has invalid evidence")
+        expected_prerequisite = EXPECTED_EXTERNAL_PREREQUISITES.get(identifier)
+        if expected_prerequisite is not None and expected_prerequisite != (owner, evidence):
+            fail(f"stable-release external prerequisite contract drifted for {identifier}")
         if not (ROOT / evidence).exists():
             fail(f"stable-release evidence authority is missing for {identifier}")
-    if identifiers != EXPECTED_EXTERNAL_IDS:
+    if identifiers != set(EXPECTED_EXTERNAL_PREREQUISITES):
         fail("stable-release external prerequisite identities drifted")
 
 
@@ -261,16 +305,26 @@ def _remote_tag_commit(root: Path, remote: str, tag: str, *, label: str) -> str:
 
 
 def _validate_dco(root: Path, base: str, expected_commit: str) -> None:
-    commits_text = _run_git(root, "rev-list", "--reverse", f"{base}..{expected_commit}")
-    commits = [line for line in commits_text.splitlines() if line]
-    if not commits or len(commits) > MAX_RELEASE_COMMITS:
-        fail("stable-release commit range is empty or exceeds its limit")
-    for commit in commits:
+    records = _run_git(
+        root,
+        "log",
+        "-z",
+        "--reverse",
+        "--format=%H%x00%ae%x00%B",
+        f"{base}..{expected_commit}",
+    ).split("\x00")
+    if records and records[-1] == "":
+        records.pop()
+    if not records or len(records) % 3 != 0:
+        fail("stable-release DCO history is empty or malformed")
+    commit_count = len(records) // 3
+    if commit_count > MAX_RELEASE_COMMITS:
+        fail("stable-release commit range exceeds its limit")
+    for index in range(0, len(records), 3):
+        commit, author_email, message = records[index : index + 3]
         if not COMMIT_RE.fullmatch(commit):
             fail("stable-release history contains an invalid commit id")
-        record = _run_git(root, "show", "-s", "--format=%ae%x00%B", commit)
-        author_email, separator, message = record.partition("\x00")
-        if not separator or not author_email:
+        if not author_email:
             fail("stable-release DCO record is malformed")
         signoffs = [email.casefold() for email in SIGNOFF_RE.findall(message)]
         if author_email.casefold() not in signoffs:
