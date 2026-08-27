@@ -507,8 +507,7 @@ fn multiple_three_row_prompts_keep_order_and_text_through_reflow() {
 fn active_three_row_prompt_restores_its_complete_path_after_extreme_reflow() {
     use crate::crosswords::grid::row::SemanticPrompt;
 
-    let path =
-        "<REDACTED_LOCAL_VALUE>";
+    let path = "<REDACTED_LOCAL_VALUE>";
     let mut grid = Grid::<Square>::new(3, 120, 512);
     grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(77));
     grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(77));
