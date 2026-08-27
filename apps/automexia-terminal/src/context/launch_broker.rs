@@ -2428,10 +2428,10 @@ mod tests {
         let lease = launch.lease();
         runner.bind_test_receipt_seed(
             lease,
-            "profile-prod",
-            "source-8",
+            ("profile-prod", "source-8"),
             &"a".repeat(64),
             DirectOpenSshDestinationKind::InventoryAlias,
+            2,
             100,
         );
         assert_eq!(
@@ -2458,6 +2458,21 @@ mod tests {
         let receipt = completion.receipt.as_ref().unwrap();
         validate_connection_receipt(receipt).unwrap();
         assert_eq!(receipt.outcome, OperationResultState::Succeeded);
+        assert_eq!(
+            receipt
+                .tunnel_ownership_references
+                .iter()
+                .map(|reference| reference.as_str())
+                .collect::<Vec<_>>(),
+            vec![
+                format!("managed-tunnel-{}-1", lease.operation_id().get()),
+                format!("managed-tunnel-{}-2", lease.operation_id().get()),
+            ]
+        );
+        let serialized = serde_json::to_string(receipt).unwrap();
+        assert!(!serialized.contains("private-target-canary"));
+        assert!(!serialized.contains("listen"));
+        assert!(!serialized.contains("target"));
         assert_eq!(runner.recent_receipts(), vec![receipt.clone()]);
         assert_eq!(
             completion.receipt_persistence,
@@ -2487,6 +2502,57 @@ mod tests {
     }
 
     #[test]
+    fn application_runner_records_maximum_opaque_tunnel_ownership_without_endpoint_data()
+    {
+        use crate::context::external_tool_runner::{
+            ExternalToolRunner, ManagedProcessOutcome,
+        };
+
+        let fixture = ExecutableFixture::new();
+        let request =
+            TestRequest::new(fixture.safe_default.clone(), "private-host-canary");
+        let broker = review_broker(&fixture, &request);
+        let runner =
+            ExternalToolRunner::review_harness(broker, fixture.safe_default.clone());
+        let launch = runner.authorize(request.submission()).unwrap();
+        let lease = launch.lease();
+        runner.bind_test_receipt_seed(
+            lease,
+            ("profile-max-tunnels", "source-max-tunnels"),
+            &"d".repeat(64),
+            DirectOpenSshDestinationKind::InventoryAlias,
+            32,
+            100,
+        );
+        runner.mark_published(lease, 7).unwrap();
+
+        let completion = runner
+            .complete_with_outcome(lease, 160, ManagedProcessOutcome::Failed)
+            .unwrap();
+        let receipt = completion.receipt.as_ref().unwrap();
+        validate_connection_receipt(receipt).unwrap();
+        assert_eq!(receipt.tunnel_ownership_references.len(), 32);
+        let references = receipt
+            .tunnel_ownership_references
+            .iter()
+            .map(|reference| reference.as_str())
+            .collect::<std::collections::HashSet<_>>();
+        assert_eq!(references.len(), 32);
+        assert!(references.contains(
+            format!("managed-tunnel-{}-1", lease.operation_id().get()).as_str()
+        ));
+        assert!(references.contains(
+            format!("managed-tunnel-{}-32", lease.operation_id().get()).as_str()
+        ));
+
+        let serialized = serde_json::to_string(receipt).unwrap();
+        for forbidden in ["private-host-canary", "listen", "target"] {
+            assert!(!serialized.contains(forbidden), "leaked {forbidden}");
+        }
+        assert!(runner.is_idle());
+    }
+
+    #[test]
     fn failed_managed_process_is_not_reported_as_success_or_reconnectable_literal() {
         use crate::context::external_tool_runner::{
             ExternalToolRunner, ManagedProcessOutcome,
@@ -2500,10 +2566,10 @@ mod tests {
         let launch = runner.authorize(request.submission()).unwrap();
         runner.bind_test_receipt_seed(
             launch.lease(),
-            "literal-connection",
-            "source-1",
+            ("literal-connection", "source-1"),
             &"b".repeat(64),
             DirectOpenSshDestinationKind::Literal,
+            0,
             100,
         );
         runner.mark_published(launch.lease(), 7).unwrap();
@@ -2538,10 +2604,10 @@ mod tests {
         let launch = runner.authorize(request.submission()).unwrap();
         runner.bind_test_receipt_seed(
             launch.lease(),
-            "literal-connection",
-            "source-1",
+            ("literal-connection", "source-1"),
             &"c".repeat(64),
             DirectOpenSshDestinationKind::Literal,
+            0,
             100,
         );
         runner.mark_published(launch.lease(), 7).unwrap();

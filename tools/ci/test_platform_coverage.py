@@ -365,6 +365,89 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "artifact paths"):
             PLATFORM.validate_f5_openssh_assurance(altered)
 
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["if"] += " || true"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "operator-enabled"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["timeout-minutes"] = 400
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "timeout"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["runs-on"]["labels"] += "-redirected"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "runner group"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["continue-on-error"] = True
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "fail closed"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["concurrency"]["cancel-in-progress"] = True
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "concurrency"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["retention-days"] = 1
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["env"][
+            "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE"
+        ] = "${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "artifact paths"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        unix = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate"])
+            if step.get("shell") == "bash"
+        )
+        unix["run"] = unix["run"].replace(
+            "python3 tools/ci/test_session_launch_d0.py", "true"
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "D0 mutation"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        for key, value in (
+            ("name", "redirected-summary"),
+            ("path", "target/private-manifest.json"),
+        ):
+            altered = copy.deepcopy(self.f5_openssh_assurance)
+            upload = next(
+                step
+                for step in PLATFORM.steps(altered["jobs"]["validate"])
+                if "upload-artifact@" in str(step.get("uses", ""))
+            )
+            upload["with"][key] = value
+            with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+                PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["steps"].append(
+            {
+                "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+                "with": {
+                    "name": "private-evidence",
+                    "path": "target/private-manifest.json",
+                    "if-no-files-found": "error",
+                    "retention-days": 1,
+                },
+            }
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
     def test_preflight_cannot_receive_raw_signing_secret(self) -> None:
         altered = copy.deepcopy(self.release)
         altered["jobs"]["preflight"]["env"]["APPLE_CERTIFICATE"] = (

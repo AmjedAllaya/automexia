@@ -263,7 +263,7 @@ cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1/schema-2/schema-3/schema-4/schema-5 immutability and schema-6's
+The checker locks schema-1 through schema-6 immutability and schema-7's
 production-disabled activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
 nine trust boundaries, four-platform resolution, authority ceiling, 23 native
@@ -1254,8 +1254,8 @@ a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
 verification phases and the application-version smoke test, then removed its
 7.79-GiB verification tree and disposable outer target.
 
-Active schema 6 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
-contract and hash-checks historical schemas 1, 2, 3, and 4. No test in this
+Active schema 7 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
+contract and hash-checks historical schemas 1 through 6. No test in this
 slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the product or treats
 `Unverified` as attested. Real OpenSSH prompts, network traffic, descendant
 cleanup, manual-SSH regression, native pixels/screen readers, and
@@ -1350,14 +1350,13 @@ endpoints, local/dynamic versus remote collision domains, loopback defaults,
 strong confirmation, config-route denial, endpoint staleness, owner-scoped
 lifecycle transitions, stale observations, terminal reversal, closure, compact
 icon/color/text/accessibility projection, disabled session grants, and
-deterministic 1/10/50 cleanup. The repository checker binds active schema 6 to
-immutable schemas 1-5 and the synthetic evidence fixture. The Python mutation
-sets cover duplicate JSON keys, oversize manifests, contract/source drift, WSL,
-synthetic release claims, missing/reordered/failed scenarios, resource cleanup,
-manual-client/disable/uninstall baselines, forbidden fields, and redaction
-canaries. Controlled-binding mutations additionally cover native OS and
-architecture drift, requested-commit drift, fixed client/server version drift,
-tampered application artifacts, linked files, path redaction, and real
+deterministic 1/10/50 cleanup. The repository checker binds active schema 7 to
+immutable schemas 1-6 and the schema-2 synthetic fixture. Mutation tests cover
+malformed or oversized manifests; contract, source, scenario, resource, WSL,
+synthetic-claim, baseline, and review-ID drift; every application, OpenSSH-tool,
+advisory, and provenance identity; the 10.5 fixes; workflow weakening; forbidden
+fields; and redaction. Controlled binding also covers native tuple, commit, and
+version drift, tampered artifacts, linked files, path redaction, and real
 zero-sentinel baselines.
 
 The safe local prerequisite probe is explicit:

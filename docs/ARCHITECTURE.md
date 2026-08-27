@@ -832,11 +832,16 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current D0/D3/M5 source status remains fail-closed. Active schema 6 freezes the
+Current D0/D3/M5 source status remains fail-closed. Active schema 7 freezes the
 M3 direct, M4 routed, and M5 configuration-free typed-tunnel grammars; fresh
 full-review/executable/endpoint binding; actual child-outcome mapping; bounded
 tunnel and receipt lifecycle; stale-source reconnect; and exact native-manifest
-rules while retaining schemas 1-5 as immutable hash-checked history. The
+rules while retaining schemas 1-6 as immutable hash-checked history. Schema 7
+also requires monotonic review identifiers that permanently exhaust before
+wraparound, one generated opaque receipt owner per reviewed tunnel, and
+schema-2 native evidence binding the application version, every fixed OpenSSH
+tool, the OpenSSH 10.5 security baseline, advisory review, and package
+provenance. The
 manual-shell baseline, package policy, nine trust boundaries, platform
 resolution, and hermetic native protocol remain unchanged. ADR 0012 is accepted
 by the project owner.

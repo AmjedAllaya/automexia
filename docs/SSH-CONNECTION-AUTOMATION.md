@@ -868,10 +868,11 @@ nonactivated.**
   descriptors use a configuration-free typed-direct grammar, loopback defaults,
   endpoint-bound strong Allow-once review, and a bounded session/generation
   lifecycle with compact accessible state.
-- [ ] **Partially done / external:** schema 6, synthetic mutations, and the
-  bounded redacted native-manifest validator pass; real Windows/macOS/Linux
-  OpenSSH, 1/10/50 resources, enable/disable/uninstall, manual-SSH, controlled
-  accessibility, and public-status execution evidence remain.
+- [ ] **Partially done / external:** active schema 7, schema-2 synthetic
+  evidence, contract/workflow mutations, and the bounded redacted
+  native-manifest validator pass; real Windows/macOS/Linux OpenSSH, 1/10/50
+  resources, enable/disable/uninstall, manual-SSH, controlled accessibility,
+  and public-status execution evidence remain.
 
 Exit gate: deterministic source tests plus controlled native OpenSSH evidence
 pass on Windows, macOS, Linux, and separately gated WSL.

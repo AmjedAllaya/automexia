@@ -781,14 +781,16 @@ rendering and terminal parser trust boundary.
 
 ### Frozen D0/D3 local baseline
 
-The active schema-6 D0/D3/M5 contract makes controls 2, 3, 7, 8, 10,
-and 11 machine-checkable without granting runtime authority; schemas 1-5 remain
+The active schema-7 D0/D3/M5 contract makes controls 2, 3, 7, 8, 10,
+and 11 machine-checkable without granting runtime authority; schemas 1-6 remain
 immutable hash-checked evidence. It preserves interactive-shell ownership of
 manual SSH, forbids download/install or substitution during startup and launch,
 and binds `automexia.devops-ssh` to an exact publisher, trusted-loader SHA-256
 identity source/size, workspace version, contract version, and reviewed/signed
 verification. Unverified or mismatched principals fail closed. Capability
 decisions bind exact operation/session/capsule/resource scope and expiry.
+Review identifiers cannot wrap or be reused, and reviewed tunnels receive
+operation-scoped opaque lifecycle receipt references without endpoint data.
 
 Nine boundary rows fix accepted/returned data, limits, cancellation, logging,
 and failure behavior. Windows, macOS, and Linux use fixed system roots, WSL

@@ -73,7 +73,7 @@ documentation, feature assurance, and a change fragment.
 |---|---|---|---|---|
 | Provider-neutral contracts | D1 | Fully done | automexia-extension-api, automexia-extension-runtime, automexia-connectivity, automexia-command-productivity, automexia-devops, automexia-ui-model; architecture gates | Hosted release evidence only |
 | Generic context and immutable capsules | D2 | Fully done | extension API/runtime plus application session/context tests | Production login/relaunch belongs to D3/D6 |
-| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 6 ratchets immutable schemas 1/2/3/4/5 with exact M3-M5 routes/tunnels, trust/status, lifecycle/receipt/reconnect, 23-scenario native-manifest rules, host/artifact binding, a protected manual workflow, and mutations | Obtain ADR 0003's two independent exact-head protected approvals/server enforcement; execute and validate real native F4/F5 manifests |
+| SSH decision and native fixture baseline | D0 | Partially done | ADR 0012 is accepted; schema 7 ratchets immutable schemas 1-6 with exact M3-M5 routes/tunnels, trust/status, monotonic review IDs, opaque tunnel receipts, lifecycle/reconnect, and schema-2 application/OpenSSH-tool/advisory/provenance binding in the protected workflow | Obtain ADR 0003's two independent exact-head protected approvals/server enforcement; execute and validate real native F4/F5 manifests |
 | Exact-argument launch broker | D3 | Partially done; nonactivated | Production-compiled fail-closed broker, bounded current-executable review worker, exact guarded PTY seam, route publication, process-group/Job Object teardown, PTY-worker joining, bounded lifecycle/audit state, approval UX, and local protected-path policy | Protected approvals/server enforcement, real loader attestation, and native OpenSSH descendant/process/resource/accessibility evidence |
 | Static OpenSSH inventory | D4 | Fully done | automexia-devops-ssh, hostile/property tests, fuzz, benchmark, assurance | Remains deliberately disabled until D5 |
 | Connection Hub model | D5.0 | Partially done | All local F2 schemas, reducers, dry-run planner, Hub/review/planner projections, fixtures, goldens, fuzz, mutations, and benchmark are implemented | ADR 0003 protected approvals and native evidence remain for D5.2; capability-free D5.1 is complete under ADR 0022 |
@@ -486,7 +486,7 @@ protected gates and F5.4 controlled native evidence.
   primary/previous receipt store, nonblocking bounded worker dispatch, restart
   recovery, and current-D4/source-revision reconnect preparation pass locally.
   Reconnect never auto-runs and always returns to fresh review and approval.
-- [x] **Fully done — source evidence:** active schema 6 plus immutable
+- [x] **Fully done — source evidence:** active schema 7 plus immutable
   schema-1/schema-2/schema-3/schema-4 hashes, hostile/exact-argv/executable-replacement/
   outcome/redaction/store recovery/saturation/restart/stale-source tests and
   assurance mutations pass.
@@ -536,11 +536,12 @@ Status: **Fully done locally; nonactivated.**
 - [x] **Fully done locally — deterministic and controlled validation:** exact fake preparation/argv/parser, hostile
   endpoints, independent collision domains, stale scope, terminal lifecycle,
   cleanup, Hub projection, decision, and 1/10/50 pure-model cases pass. Active
-  schema 6 and a bounded duplicate-key/size/redaction-aware evidence validator
+  schema 7 and a bounded duplicate-key/size/redaction-aware schema-2 evidence validator
   freeze 23 ordered scenarios. Real evidence must additionally match the
-  executing native OS/architecture, exact clean commit, fixed OpenSSH client
-  and server versions, and freshly hashed application binary, package, and
-  client. The manual-only protected runner-group workflow uploads only a
+  executing native OS/architecture, exact clean commit and application version,
+  fixed OpenSSH client/server versions, and freshly hashed application binary,
+  package, all four OpenSSH tools, advisory review, and package provenance. The
+  manual-only protected runner-group workflow uploads only a
   path-free summary. A real hermetic OpenSSH server run remains external and
   is not represented by the synthetic repository fixture.
 - [ ] **External prerequisite:** pass real system OpenSSH cases on Windows,

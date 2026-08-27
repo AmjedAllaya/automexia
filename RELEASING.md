@@ -96,7 +96,8 @@ Managed OpenSSH remains a separate feature-activation gate. Before any release
 advertises or enables D5.2/F5, configure `f5-openssh-release` as a protected
 environment with required independent reviewers and no self-review. Set the
 repository operator switch `AUTOMEXIA_F5_OPENSSH_RUNNER=1`; define the private
-manifest, application binary, and package paths as environment variables; and
+manifest, application binary, package, OpenSSH advisory review, and OpenSSH
+package-provenance paths as protected environment secrets; and
 provision one ephemeral JIT runner per job in the restricted
 `automexia-openssh` group. Runner labels must match the dispatched native
 platform and architecture. The host must contain the fixed system `ssh`,
@@ -105,9 +106,11 @@ a private loopback-only fixture, and no ambient credentials.
 
 Dispatch `F5 controlled native OpenSSH assurance` manually with the exact
 already reviewed source commit. It checks out that digest without persisted
-credentials, runs the mutation suite, and validates that the private real
-manifest matches the executing OS/architecture, clean commit, fixed OpenSSH
-versions, and freshly hashed binary/package/client. It uploads only the bounded
+credentials, runs the D0 checker and both mutation suites, and validates that
+the private real schema-2 manifest matches the executing OS/architecture, clean
+commit, exact application version/binary/package, fixed OpenSSH versions and
+all four tool hashes, the OpenSSH 10.5 controls, advisory review, and package
+provenance. It uploads only the bounded
 path-free summary for 90 days. Never upload the private manifest, fixture,
 configuration, paths, usernames, destinations, agent data, or terminal output.
 A missing runner/environment, synthetic manifest, version/hash drift, linked or

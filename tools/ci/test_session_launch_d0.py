@@ -31,7 +31,7 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "schema": 6,
+                "schema": 7,
                 "scenarios": 23,
                 "boundaries": 9,
                 "sources": 17,
@@ -125,6 +125,12 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 "source_binding", "manifest-claims-only"
             ),
             lambda d: d["native_release_evidence"]["security_checks"].pop(),
+            lambda d: d["managed_session"].__setitem__(
+                "review_request_ids", "wrapping"
+            ),
+            lambda d: d["managed_session"].__setitem__(
+                "tunnel_receipts", "empty"
+            ),
             lambda d: d["native_release_evidence"].pop("controlled_binding"),
             lambda d: d["native_release_evidence"].__setitem__(
                 "controlled_workflow", "unprotected.yml"
@@ -237,6 +243,44 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 "removed request_openssh_review",
             )
             if path.name == "external_tool_runner.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "fetch_update(Ordering::AcqRel, Ordering::Acquire",
+                "fetch_add(Ordering::Relaxed",
+            )
+            if path.name == "external_tool_runner.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "managed-tunnel-{}-{index}", "removed-tunnel-ownership"
+            )
+            if path.name == "external_tool_runner.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "application_runner_records_maximum_opaque_tunnel_ownership_without_endpoint_data",
+                "removed-maximum-tunnel-receipt-regression",
+            )
+            if path.name == "launch_broker.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "OpenSSH-10.5-2026-08-11", "removed-upstream-baseline"
+            )
+            if path.name == "native_openssh_evidence.py"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
+                "vars.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
+            )
+            if path.name == "f5-openssh-assurance.yml"
             else source
         )
         validate(

@@ -117,7 +117,7 @@ native/release claim.
 
 | Area | Status | Current evidence | Remaining exit work |
 |---|---|---|---|
-| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted; schema 6 ratchets immutable schemas 1/2/3/4/5 with exact direct/routed/tunnel argv, full trust evidence, tunnel lifecycle, recovery/status, receipt/reconnect, 23-scenario native-manifest rules, exact host/artifact binding, a protected workflow, and mutations | ADR 0003 two exact-head approvals/server enforcement and controlled real native fixture execution. |
+| D0 SSH trust/fixture contract | Partially done | ADR 0012 is accepted; schema 7 ratchets immutable schemas 1-6 with exact direct/routed/tunnel argv, full trust evidence, non-reusable review IDs, opaque per-tunnel receipt ownership, recovery/status, schema-2 native-manifest rules, exact application/OpenSSH/provenance binding, a protected workflow, and mutations | ADR 0003 two exact-head approvals/server enforcement and controlled real native fixture execution. |
 | D1 contracts and D2 immutable capsules | Fully done locally | `automexia-extension-api`, runtime, DevOps model and architecture checks | Preserve while adding real login/launch; hosted release assurance remains separate. |
 | D3 launch broker | Partially done; nonactivated | The production broker, one application runner, exact executable guard, ContextManager PTY/route seam, bounded lifecycle/audit, approval UX, and mutation checks pass locally | Production constant stays false and linked package unverified until protected approvals, attestation, descendant cleanup, and native evidence pass. |
 | D4 static OpenSSH inventory | Fully done locally | `extensions/devops-ssh`: bounded parser, canonical first-value ProxyJump chains (8 hops/2 KiB), grants, hostile/property/fuzz tests, 10,000-alias benchmark, private revisioned metadata | Deliberately remains non-executing; hosted macOS/longitudinal release proof remains external. |
@@ -378,7 +378,7 @@ gate is false and the linked extension candidate is unverified.
 | Application runner | Fully done locally; nonactivated | Router owns one shared runner; active operations stop at 50, audits at 256, route/session/lease scope is exact, completion requires publication, and shutdown reconciles. | Protected activation and native process/resource proof. |
 | PTY/route lifecycle | Fully done locally; nonactivated, native proof external | ContextManager alone consumes the guard, creates the exact PTY, inserts one independent Context, and marks the matching route/session published. Windows has bounded Job Object termination; Unix retains the waitable leader while signalling the owned process group; PTY workers join with a deadline. | Real OpenSSH descendant/listener cleanup and controlled leak/resource proof on every native platform. Durable audit remains the separate policy row below. |
 | Capability/recovery UX | Fully done locally; nonactivated, controlled evidence external | Review shows public package/launcher, target, route, risk, exact operation, scope, destination, and three accessible decisions. A capacity-one worker publishes a fresh current-executable observation before wake; the controller rejects stale results and requires a second approval. | Protected attestation/activation plus controlled pixels, screen-reader, localization, and high-scale evidence. |
-| Native OpenSSH evidence | Partially done overall; local assurance path fully done | Windows guarded-spawn/ConPTY tests pass; schema-6 validates 23 scenarios and binds the native host, exact commit, fixed OpenSSH versions, binary/package/client hashes, and protected manual workflow. | Real loopback OpenSSH on native Windows/macOS/Linux, separately gated WSL, controlled accessibility, and 1/10/50 resources. |
+| Native OpenSSH evidence | Partially done overall; local assurance path fully done | Windows guarded-spawn/ConPTY tests pass; schema 7 validates 23 scenarios and schema-2 evidence binds native host, exact commit, exact application version, application/package, all four fixed OpenSSH tools, advisory review, package provenance, and the protected manual workflow. | Real loopback OpenSSH on native Windows/macOS/Linux, separately gated WSL, controlled accessibility, and 1/10/50 resources. |
 
 The authenticated 2026-08-24 audit found one human collaborator, rulesets
 unavailable on the private Free plan, zero-step Actions billing rejection, and
@@ -514,10 +514,13 @@ by M2's external gates.
   rebuild from current D4 state; changed or missing source fails stale and every
   reconnect still requires a fresh executable/host-trust review and approval.
 - [x] **Fully done — contract and deterministic evidence:** immutable schemas
-  1-4 are retained. Active schema 6 freezes M3-M5 route/trust/status/tunnel/
-  lifecycle/native-manifest rules, preserves upstream post-quantum KEX defaults
-  and weak-crypto warnings, and is covered by pure, broker, persistence,
-  saturation, restart, redaction, mutation, and feature-assurance tests.
+  1-6 are retained. Active schema 7 freezes M3-M5 route/trust/status/tunnel/
+  lifecycle/native-manifest rules, non-reusable review identifiers, opaque
+  per-tunnel receipt ownership, the OpenSSH 10.5 security baseline, and exact
+  application/tool/provenance identity. It preserves upstream post-quantum KEX
+  defaults and weak-crypto warnings and is covered by pure, broker,
+  persistence, saturation, restart, redaction, mutation, and feature-assurance
+  tests.
 - [ ] **Not done externally / activation blocked:** obtain ADR 0003's two
   independent exact-head approvals and server enforcement; bind real loader
   attestation/revocation; then execute real native OpenSSH prompt/diagnostic,
@@ -588,7 +591,8 @@ production use, endpoint-bound fingerprints, fail-closed listener state and
 cleanup ownership, deterministic fake/native-harness contract tests, and an
 honest external gate for every native run that cannot execute locally.
 
-Evidence ledger before implementation:
+Historical evidence ledger before the M5 implementation (retained to explain
+the original gap classification):
 
 | Item | Classification | Existing owner/evidence | Missing exit proof/action |
 |---|---|---|---|
@@ -597,7 +601,7 @@ Evidence ledger before implementation:
 | Loopback default and stronger confirmation | **Partially done** | `TunnelDefinitionV1::is_loopback`, production/non-loopback planner warnings, generic NetworkListener risk | Canonicalize the safe default, require strong per-use review for remote, non-loopback, or production tunnels, expose redundant text/icon/color meaning, and bind the decision to exact endpoints. |
 | Listener lifecycle, collision, readiness, cancellation, and closure | **Not done** | ContextManager is the sole process/PTY/route owner; the OpenSSH child would own its forwarding sockets | Add a bounded generation/session-scoped pure lifecycle snapshot. Never open a competing application listener or infer readiness from terminal text; accept only owner events, reject stale/terminal reversals, and close every nonterminal tunnel when its route lease ends. |
 | Hub and session-detail projection | **Partially done** | Generic Hub review counts tunnels and blocks non-loopback review; M4 review has no tunnel cards/status | Project exact public endpoint direction, risk/confirmation, OpenSSH ownership, and planned/starting/ready/collision/cancelled/failed/closed state with compact and accessible layouts. Production remains visibly protected. |
-| Deterministic fake/mock evidence | **Partially done** | Schema-4 matrix, exact-argv broker mutations, lifecycle/receipt/reconnect tests | Ratchet schema 6, add tunnel grammar/lifecycle/collision/staleness/cleanup mutations, and validate a bounded redacted native result manifest. |
+| Deterministic fake/mock evidence | **Partially done at the time** | Schema-4 matrix, exact-argv broker mutations, lifecycle/receipt/reconnect tests | The planned schema-6 ratchet, tunnel grammar/lifecycle/collision/staleness/cleanup mutations, and bounded redacted native result manifest were subsequently delivered and then superseded by active schema 7/schema-2 evidence. |
 | Real system OpenSSH and 1/10/50 native evidence | **External prerequisite** | Four-platform scenario definition exists; CI has native Rust jobs | Execute the hermetic loopback fixture on controlled Windows/macOS/Linux runners with `ssh`, `ssh-add`, `ssh-keygen`, and `sshd`; WSL remains separately denied. This local Windows host has OpenSSH 9.5 client tools but no `sshd`, so it cannot honestly produce server/tunnel evidence and M5 cannot install the server without separate elevated authority. |
 | Disable/uninstall/manual-SSH preservation | **Partially done** | Managed activation is const-asserted false and ordinary shell lookup is untouched | Add source/policy/native assertions that the harness is opt-in, never runs at startup, never changes SSH files/services, and records before/after manual-client evidence on controlled runners. |
 
@@ -644,13 +648,15 @@ redacted manifests validate.
   state into the Hub, and terminalizes every nonterminal entry on lease close.
 - [x] **Fully done locally / external native results remain:** exact fake
   preparation/argv/parser, hostile endpoint, collision, staleness, lifecycle,
-  cleanup, decision, UI, and 1/10/50 pure-model tests pass. Active schema 6 and
-  the bounded redacted 23-scenario manifest validator reject synthetic release
-  claims. Controlled validation also rejects host/architecture/commit drift,
-  fixed OpenSSH client/server version drift, linked or changed files, artifact
-  hash drift, and real manual-baseline zero sentinels. A manual protected-
-  environment workflow targets the restricted ephemeral `automexia-openssh`
-  runner group and uploads only a path-free summary.
+  cleanup, decision, UI, zero/one/maximum tunnel receipt, and 1/10/50
+  pure-model tests pass. Active schema 7 and the bounded redacted schema-2
+  manifest validator reject synthetic release claims. Controlled validation
+  also rejects host/architecture/commit/application-version drift, fixed
+  OpenSSH client/server/agent/key-tool drift, linked or changed files,
+  application/package/advisory/provenance hash drift, and real manual-baseline
+  zero sentinels. A manual protected-environment workflow targets the
+  restricted ephemeral `automexia-openssh` runner group and uploads only a
+  path-free summary.
 - [ ] **External prerequisite:** execute the real system OpenSSH matrix for host keys, encrypted keys,
   agents, certificates, jumps, all tunnels, cancellation at DNS/connect/auth,
   offline, hostile output, exit status, and cleanup on Windows/macOS/Linux. WSL
