@@ -12,13 +12,14 @@ from typing import Any
 from native_openssh_evidence import validate_repository_contract as validate_native_evidence
 
 ROOT = Path(__file__).resolve().parents[2]
-CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json"
+CONTRACT = ROOT / "tests/fixtures/session-launch/d0-d3-contract-v7.json"
 HISTORICAL_CONTRACTS = [
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v1.json", "0d2120bd9aef13b3d75053d595356c9b844107bc9ddc98db60f01f0c779bd9d8", "schema-1"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v2.json", "eb561716075bd546268b1a3c4fdb2d3c3dceaafd5ca2f9fd7113f69c29d9ba4e", "schema-2"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v3.json", "112209b674263a6a996a119b9e9120175f0d41aed082463a3e17d1bf806c3ed1", "schema-3"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v4.json", "f96f243d7db337b84f58f39fd8bb4aaa2cbd4327fa523a2fa8572d1dbdcd70dc", "schema-4"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v5.json", "b4564430db295be8df0424999d49adb56f25c7e06ce3dd1ad5cb7c785fc76697", "schema-5"),
+    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json", "5c6accc21d5d2e7fc9f41e1a558ba2badc29cd5757ceac60dd3b9569fb8dc2aa", "schema-6"),
 ]
 MAX_EVIDENCE_BYTES = 262_144
 EXPECTED_KEYS = {
@@ -177,7 +178,7 @@ EXPECTED_NATIVE_RESOURCE_BUDGETS = {
     "peak_storage_bytes": 33554432,
 }
 EXPECTED_NATIVE_RELEASE_EVIDENCE = {
-    "schema": 1,
+    "schema": 2,
     "status": "controlled-host-artifact-validator-and-workflow-complete-real-native-results-external",
     "platforms": ["windows", "macos", "linux"],
     "architectures": ["x86_64", "aarch64"],
@@ -192,18 +193,23 @@ EXPECTED_NATIVE_RELEASE_EVIDENCE = {
     "max_release_artifact_bytes": 4294967296,
     "duplicate_keys": "reject",
     "synthetic_release_evidence": False,
-    "probe_authority": "fixed-executable-version-check-only-no-install-service-network-or-config-mutation",
-    "controlled_binding": "native-platform-and-architecture-exact-source-commit-fixed-openssh-client-and-server-versions-plus-binary-package-and-client-sha256",
+    "probe_authority": "fixed-executable-and-application-version-check-only-no-install-service-network-or-config-mutation",
+    "controlled_binding": "native-platform-and-architecture-exact-source-commit-application-version-binary-package-fixed-openssh-toolchain-and-reviewed-provenance-sha256",
     "controlled_workflow": ".github/workflows/f5-openssh-assurance.yml",
     "runner_policy": "manual-protected-environment-restricted-ephemeral-jit-no-pull-request-trigger",
     "summary_policy": "redacted-counts-and-platform-only-no-paths-or-private-manifest",
-    "source_binding": "current-git-commit-plus-application-binary-and-package-sha256",
+    "source_binding": "current-git-commit-plus-application-version-binary-and-package-sha256",
     "fixture_binding": "fixture-server-config-known-host-seed-random-seed-sha256-loopback-private",
     "security_checks": [
         "platform-current-advisory-review",
+        "openssh-10.5-upstream-baseline",
         "post-quantum-key-exchange",
         "weak-crypto-warning",
         "agent-session-binding-restricted-key",
+        "agent-lock-session-binding-fix",
+        "pending-remote-forward-cleanup-fix",
+        "all-fixed-openssh-tool-hashes",
+        "advisory-review-and-package-provenance-hashes",
     ],
     "resource_budgets": EXPECTED_NATIVE_RESOURCE_BUDGETS,
     "validator": "tools/ci/native_openssh_evidence.py",
@@ -316,7 +322,7 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
     if not isinstance(document, dict) or set(document) != EXPECTED_KEYS:
         raise SessionLaunchD0Error("D0/D3/M4 contract keys changed")
     if (document["schema"], document["phase"], document["status"]) != (
-        6, "F1/D0-D3+M3/F5.1/D5.2+M4/F5.2+M5/F5.3-F5.4", "local-managed-ssh-tunnel-source-and-native-evidence-contract-complete-native-runs-and-protected-activation-pending",
+        7, "F1/D0-D3+M3/F5.1/D5.2+M4/F5.2+M5/F5.3-F5.4", "local-managed-ssh-tunnel-source-and-schema2-native-evidence-contract-complete-native-runs-and-protected-activation-pending",
     ):
         raise SessionLaunchD0Error("D0/D3/M4 contract identity changed")
     expected_sections = {
@@ -333,7 +339,7 @@ def load_contract(path: Path = CONTRACT) -> dict[str, Any]:
         "native_release_evidence": EXPECTED_NATIVE_RELEASE_EVIDENCE,
         "trust_boundaries": EXPECTED_TRUST_BOUNDARIES,
         "native_fixture_protocol": EXPECTED_NATIVE_FIXTURE_PROTOCOL,
-        "managed_session": {"launch_binding": "fresh-full-review-equality", "argument_shape": "exact-route-specific-options-then-typed-user-port-jump-destination", "executable_identity": "reviewed-native-file-identity-revalidated-before-authorization", "user_configuration": "system-openssh-authoritative-launch-helper-risk-reviewed", "terminal_outcome": "child-exit-derived-no-close-assumption", "receipt_store": {"schema": 1, "max_records": 256, "max_bytes": 2097152, "write_owner": "bounded-connection-worker", "persistence": "private-atomic-primary-previous-recovery", "content": "provider-neutral-redacted-no-destination-or-terminal-text"}, "reconnect": "opaque-inventory-identity-current-source-only-fresh-review-and-approval", "notifications": "fixed-redacted-success-failure-status-unavailable-cancelled-and-storage-unavailable", "production_enabled": False},
+        "managed_session": {"launch_binding": "fresh-full-review-equality", "review_request_ids": "monotonic-fail-closed-before-wraparound", "argument_shape": "exact-route-specific-options-then-typed-user-port-jump-destination", "executable_identity": "reviewed-native-file-identity-revalidated-before-authorization", "user_configuration": "system-openssh-authoritative-launch-helper-risk-reviewed", "terminal_outcome": "child-exit-derived-no-close-assumption", "receipt_store": {"schema": 1, "max_records": 256, "max_bytes": 2097152, "write_owner": "bounded-connection-worker", "persistence": "private-atomic-primary-previous-recovery", "content": "provider-neutral-redacted-no-destination-endpoint-or-terminal-text"}, "tunnel_receipts": "one-opaque-operation-scoped-ownership-reference-per-reviewed-tunnel", "reconnect": "opaque-inventory-identity-current-source-only-fresh-review-and-approval", "notifications": "fixed-redacted-success-failure-status-unavailable-cancelled-and-storage-unavailable", "production_enabled": False},
         "external_prerequisites": ["protected security review", "two protected exact-head approvals", "real loader attestation and revocation", "native process-tree PTY OpenSSH accessibility and resource evidence"],
     }
     for key, expected in expected_sections.items():
@@ -370,6 +376,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "package_identity_digest_compatibility_and_verification_fail_closed",
         "platform_resolution_contract_is_fixed_and_wsl_remains_disabled",
         "linked_candidate_path_stays_fail_closed_and_redacted_without_attestation",
+        "application_runner_records_maximum_opaque_tunnel_ownership_without_endpoint_data",
         "reviewed_executable_identity_digest", "DIRECT_OPENSSH_MANAGED_OPTIONS",
         "DIRECT_OPENSSH_ROUTED_OPTIONS", "validate_direct_openssh_arguments",
     }, root)
@@ -408,6 +415,10 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "struct OpenSshReviewRuntime", "BoundedWorker<OpenSshReviewRequest>",
         "pub(crate) fn request_openssh_review",
         "pub(crate) fn take_openssh_review", "CurrentDirectOpenSshReview::new",
+        "fetch_update(Ordering::AcqRel, Ordering::Acquire",
+        "review_request_ids_fail_closed_permanently_before_wraparound",
+        "tunnel_ownership_references: (1..=seed.tunnel_count)",
+        "managed-tunnel-{}-{index}",
     }, root)
     runner_lower = runner.lower()
     runner_authority_markers = {
@@ -578,16 +589,25 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "current_source_commit", "tracked source tree is not clean", "O_NOFOLLOW",
         "synthetic sentinel", "application binary", "fixture requirement failed",
         "post_quantum_kex", "agent_session_binding_restricted_key",
+        "OpenSSH-10.5-2026-08-11", "agent_lock_session_binding_fix",
+        "pending_remote_forward_cleanup_fix", "client_sha256",
+        "server_sha256", "ssh_add_sha256", "ssh_keygen_sha256",
+        "advisory_review_sha256", "package_provenance_sha256",
+        "_probe_application_version", "[str(executable), \"--version\"]",
         "peak_cpu_millicores", "peak_log_bytes", "open_handles_delta_after",
         "owned_tunnels_after", "user_config_sha256_before", "_architecture_name",
         "validate_controlled_environment", "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY",
         "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW",
+        "AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE",
         "AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT",
     }, root)
     require_tokens(".github/workflows/f5-openssh-assurance.yml", {
         "workflow_dispatch", "permissions", "contents: read",
         "environment: f5-openssh-release", "persist-credentials: false",
-        "automexia-openssh", "--validate-environment", "retention-days: 90",
+        "automexia-openssh", "check_session_launch_d0.py",
+        "test_session_launch_d0.py", "--validate-environment",
+        "secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE", "retention-days: 90",
     }, root)
     require_tokens("tools/ci/test_native_openssh_evidence.py", {
         "test_synthetic_wsl_and_unbound_evidence_cannot_release",
@@ -595,6 +615,8 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "test_manual_baseline_and_redaction_cannot_drift",
         "test_current_source_commit_rejects_a_dirty_tracked_tree",
         "test_linked_manifest_is_rejected_when_the_platform_allows_links",
+        "test_fixed_executable_and_application_version_probe_fail_closed",
+        "tampered-provenance",
     }, root)
 
     audit_start = broker.index("pub struct LaunchAuditRecord")

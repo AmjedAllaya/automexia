@@ -84,17 +84,20 @@ owns collection, recovery, activation, and rollback.
 
 The fourth gate is S1. `AUTOMEXIA_S1_ASSURANCE_RUNNER=1` selects the controlled
 `automexia-assurance` runner and `AUTOMEXIA_S1_ASSURANCE_EVIDENCE` names its
-private redacted manifest. The job requires all 24 current-commit native,
+private redacted manifest. The job requires all 28 current-commit native,
 resource, visual, and accessibility suites plus independent review before
 preflight. Missing runner configuration, missing/stale/synthetic evidence,
 review gaps, or commit drift fail closed. Only the bounded summary is uploaded.
+Five visual suites each require 8,352 exact dark/light/high-contrast,
+100–400%-scale, viewport, surface, and enabled/reduced-motion captures.
 The full contract is in
 `docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md`.
 Managed OpenSSH remains a separate feature-activation gate. Before any release
 advertises or enables D5.2/F5, configure `f5-openssh-release` as a protected
 environment with required independent reviewers and no self-review. Set the
 repository operator switch `AUTOMEXIA_F5_OPENSSH_RUNNER=1`; define the private
-manifest, application binary, and package paths as environment variables; and
+manifest, application binary, package, OpenSSH advisory review, and OpenSSH
+package-provenance paths as protected environment secrets; and
 provision one ephemeral JIT runner per job in the restricted
 `automexia-openssh` group. Runner labels must match the dispatched native
 platform and architecture. The host must contain the fixed system `ssh`,
@@ -103,9 +106,11 @@ a private loopback-only fixture, and no ambient credentials.
 
 Dispatch `F5 controlled native OpenSSH assurance` manually with the exact
 already reviewed source commit. It checks out that digest without persisted
-credentials, runs the mutation suite, and validates that the private real
-manifest matches the executing OS/architecture, clean commit, fixed OpenSSH
-versions, and freshly hashed binary/package/client. It uploads only the bounded
+credentials, runs the D0 checker and both mutation suites, and validates that
+the private real schema-2 manifest matches the executing OS/architecture, clean
+commit, exact application version/binary/package, fixed OpenSSH versions and
+all four tool hashes, the OpenSSH 10.5 controls, advisory review, and package
+provenance. It uploads only the bounded
 path-free summary for 90 days. Never upload the private manifest, fixture,
 configuration, paths, usernames, destinations, agent data, or terminal output.
 A missing runner/environment, synthetic manifest, version/hash drift, linked or

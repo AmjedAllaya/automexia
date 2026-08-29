@@ -263,7 +263,7 @@ cargo test -p automexia-terminal --bin automexia --locked direct_openssh_review_
 cargo xtask verify architecture
 ```
 
-The checker locks schema-1/schema-2/schema-3/schema-4/schema-5 immutability and schema-6's
+The checker locks schema-1 through schema-6 immutability and schema-7's
 production-disabled activation, linked unverified principal, trusted digest source/size, exact
 version/contract/verification, manual-shell behavior, grants/audits/defaults,
 nine trust boundaries, four-platform resolution, authority ceiling, 23 native
@@ -1254,8 +1254,8 @@ a dedicated C: temporary target with 23.58 GiB free, passed all three isolated
 verification phases and the application-version smoke test, then removed its
 7.79-GiB verification tree and disposable outer target.
 
-Active schema 6 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
-contract and hash-checks historical schemas 1, 2, 3, and 4. No test in this
+Active schema 7 freezes the M3/M4 rules plus M5's typed-tunnel/native-manifest
+contract and hash-checks historical schemas 1 through 6. No test in this
 slice enables `MANAGED_SESSION_LAUNCH_ENABLED` for the product or treats
 `Unverified` as attested. Real OpenSSH prompts, network traffic, descendant
 cleanup, manual-SSH regression, native pixels/screen readers, and
@@ -1350,14 +1350,13 @@ endpoints, local/dynamic versus remote collision domains, loopback defaults,
 strong confirmation, config-route denial, endpoint staleness, owner-scoped
 lifecycle transitions, stale observations, terminal reversal, closure, compact
 icon/color/text/accessibility projection, disabled session grants, and
-deterministic 1/10/50 cleanup. The repository checker binds active schema 6 to
-immutable schemas 1-5 and the synthetic evidence fixture. The Python mutation
-sets cover duplicate JSON keys, oversize manifests, contract/source drift, WSL,
-synthetic release claims, missing/reordered/failed scenarios, resource cleanup,
-manual-client/disable/uninstall baselines, forbidden fields, and redaction
-canaries. Controlled-binding mutations additionally cover native OS and
-architecture drift, requested-commit drift, fixed client/server version drift,
-tampered application artifacts, linked files, path redaction, and real
+deterministic 1/10/50 cleanup. The repository checker binds active schema 7 to
+immutable schemas 1-6 and the schema-2 synthetic fixture. Mutation tests cover
+malformed or oversized manifests; contract, source, scenario, resource, WSL,
+synthetic-claim, baseline, and review-ID drift; every application, OpenSSH-tool,
+advisory, and provenance identity; the 10.5 fixes; workflow weakening; forbidden
+fields; and redaction. Controlled binding also covers native tuple, commit, and
+version drift, tampered artifacts, linked files, path redaction, and real
 zero-sentinel baselines.
 
 The safe local prerequisite probe is explicit:
@@ -1993,14 +1992,15 @@ See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AU
 
 The remaining roadmap work is deliberately separate:
 
-- execution and approval of the exact 1,600-case raster matrix across the four
-  policy environments, plus retained Windows/Linux/macOS native frames;
+- execution and approval of five exact 8,352-case raster matrices across
+  Windows, Linux X11/Wayland, and macOS Intel/Apple Silicon, plus retained
+  Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
   a separate Automexia-owned coverage baseline;
 - executed and compared Criterion/startup/interaction/resource evidence on named
   stable hardware followed by the complete 30-day baseline;
 - elevated Windows Application Verifier/WPR evidence and named Intel/AMD/NVIDIA/
-  RDP, Linux X11/Wayland, and macOS Intel/Apple Silicon resource runs;
+  RDP, Linux Intel/AMD/NVIDIA, and macOS Intel/Apple Silicon resource runs;
 - recorded v0.4 Narrator/NVDA, VoiceOver, and Orca evidence followed by the v0.5
   renderer-independent native accessibility model; and
 - v0.5 scoped mutation testing and maintainable cargo-vet supply-chain audits.

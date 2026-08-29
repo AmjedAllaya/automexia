@@ -23,6 +23,7 @@ class PlatformCoverageTests(unittest.TestCase):
         self.nightly = PLATFORM.load_workflow("nightly.yml")
         self.release = PLATFORM.load_workflow("release.yml")
         self.s1_assurance = PLATFORM.load_workflow("s1-assurance.yml")
+        self.s2_assurance = PLATFORM.load_workflow("s2-assurance.yml")
         self.f5_openssh_assurance = PLATFORM.load_workflow("f5-openssh-assurance.yml")
 
     def test_current_workflows_satisfy_the_contract(self) -> None:
@@ -30,6 +31,7 @@ class PlatformCoverageTests(unittest.TestCase):
         PLATFORM.validate_nightly(self.nightly)
         PLATFORM.validate_release(self.release)
         PLATFORM.validate_s1_assurance(self.s1_assurance)
+        PLATFORM.validate_s2_assurance(self.s2_assurance)
         PLATFORM.validate_f5_openssh_assurance(self.f5_openssh_assurance)
         PLATFORM.validate_macos_runtime_contract(
             PLATFORM.MACOS_BUILD_SCRIPT.read_text(encoding="utf-8")
@@ -122,6 +124,112 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "S1 assurance"):
             PLATFORM.validate_release(altered)
 
+    def test_release_preflight_cannot_bypass_any_controlled_assurance_gate(self) -> None:
+        required = {
+            "native-gui-resilience",
+            "native-wsl-resilience",
+            "performance-assurance",
+            "s1-assurance",
+        }
+        for gate in sorted(required):
+            with self.subTest(gate=gate, mutation="dependency"):
+                altered = copy.deepcopy(self.release)
+                altered["jobs"]["preflight"]["needs"].remove(gate)
+                with self.assertRaisesRegex(
+                    PLATFORM.PlatformCoverageError, "controlled assurance gates"
+                ):
+                    PLATFORM.validate_release(altered)
+
+            with self.subTest(gate=gate, mutation="success-result"):
+                altered = copy.deepcopy(self.release)
+                condition = altered["jobs"]["preflight"]["if"]
+                altered["jobs"]["preflight"]["if"] = condition.replace(
+                    f"needs.{gate}.result == 'success'", "true"
+                )
+                with self.assertRaisesRegex(
+                    PLATFORM.PlatformCoverageError, "fail closed.*controlled assurance"
+                ):
+                    PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["preflight"]["if"] += " || true"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "fail closed.*controlled assurance"
+        ):
+            PLATFORM.validate_release(altered)
+
+    def test_release_s2_ratchet_cannot_be_informational_or_unbound(self) -> None:
+        for fragment in ("--require-active", "--expected-commit $env:GITHUB_SHA"):
+            with self.subTest(fragment=fragment):
+                altered = copy.deepcopy(self.release)
+                step = PLATFORM.step_for_command(
+                    altered["jobs"]["performance-assurance"],
+                    "performance_assurance.py evaluate",
+                )
+                self.assertIsNotNone(step)
+                step["run"] = str(step["run"]).replace(fragment, "")
+                with self.assertRaisesRegex(
+                    PLATFORM.PlatformCoverageError, "S2 performance assurance"
+                ):
+                    PLATFORM.validate_release(altered)
+
+    def test_release_s1_and_s2_jobs_retain_controlled_execution_and_artifacts(self) -> None:
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["s1-assurance"]["runs-on"].remove("automexia-assurance")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "controlled assurance runner"
+        ):
+            PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["s1-assurance"]["if"] = "true"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "S1 assurance activation"
+        ):
+            PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["s1-assurance"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["name"] = "redirected-summary"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "S1 assurance summary"
+        ):
+            PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["performance-assurance"]["if"] = "true"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "S2 performance activation"
+        ):
+            PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["performance-assurance"], "collect-criterion"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace("--require-classified", "")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "S2 performance assurance"
+        ):
+            PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["performance-assurance"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["retention-days"] = 1
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "S2 performance evidence"
+        ):
+            PLATFORM.validate_release(altered)
+
     def test_s1_assurance_cannot_accept_incomplete_or_unbound_evidence(self) -> None:
         altered = copy.deepcopy(self.s1_assurance)
         step = PLATFORM.step_for_command(
@@ -133,6 +241,99 @@ class PlatformCoverageTests(unittest.TestCase):
             PLATFORM.PlatformCoverageError, "complete matrix"
         ):
             PLATFORM.validate_s1_assurance(altered)
+
+    def test_s1_assurance_workflow_remains_manual_controlled_and_bounded(self) -> None:
+        altered = copy.deepcopy(self.s1_assurance)
+        trigger_key = True if True in altered else "on"
+        altered[trigger_key]["pull_request"] = {}
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "manual dispatch"):
+            PLATFORM.validate_s1_assurance(altered)
+
+        altered = copy.deepcopy(self.s1_assurance)
+        altered["jobs"]["validate"]["runs-on"].remove("automexia-assurance")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "controlled assurance runner"
+        ):
+            PLATFORM.validate_s1_assurance(altered)
+
+        altered = copy.deepcopy(self.s1_assurance)
+        altered["jobs"]["validate"]["timeout-minutes"] = 31
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "bounded timeout"):
+            PLATFORM.validate_s1_assurance(altered)
+
+        altered = copy.deepcopy(self.s1_assurance)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["path"] = "target/s1-assurance/*.json"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "exact summary"):
+            PLATFORM.validate_s1_assurance(altered)
+
+    def test_s2_activation_must_remain_manual_protected_and_exact_commit_bound(self) -> None:
+        altered = copy.deepcopy(self.s2_assurance)
+        trigger_key = True if True in altered else "on"
+        altered[trigger_key]["pull_request"] = {}
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "manual dispatch"):
+            PLATFORM.validate_s2_assurance(altered)
+
+        altered = copy.deepcopy(self.s2_assurance)
+        altered["jobs"]["validate-active-baseline"].pop("environment")
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "protected environment"):
+            PLATFORM.validate_s2_assurance(altered)
+
+        altered = copy.deepcopy(self.s2_assurance)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["validate-active-baseline"],
+            "validate-baseline",
+        )
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace(
+            '--expected-source-commit "$GITHUB_SHA"', ""
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "exact source commit"):
+            PLATFORM.validate_s2_assurance(altered)
+
+        altered = copy.deepcopy(self.s2_assurance)
+        altered["concurrency"]["cancel-in-progress"] = True
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "serialized activation"
+        ):
+            PLATFORM.validate_s2_assurance(altered)
+
+    def test_s2_activation_cannot_drop_mutations_or_bounded_artifact_retention(self) -> None:
+        altered = copy.deepcopy(self.s2_assurance)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["validate-active-baseline"],
+            "test_performance_assurance.py",
+        )
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace(
+            "python tools/ci/test_performance_assurance.py", "true"
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "mutation suite"):
+            PLATFORM.validate_s2_assurance(altered)
+
+        altered = copy.deepcopy(self.s2_assurance)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate-active-baseline"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["retention-days"] = 1
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+            PLATFORM.validate_s2_assurance(altered)
+
+        altered = copy.deepcopy(self.s2_assurance)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate-active-baseline"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["name"] = "redirected-summary"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+            PLATFORM.validate_s2_assurance(altered)
 
     def test_f5_assurance_cannot_drop_protected_exact_artifact_binding(self) -> None:
         altered = copy.deepcopy(self.f5_openssh_assurance)
@@ -162,6 +363,89 @@ class PlatformCoverageTests(unittest.TestCase):
             "AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY"
         )
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "artifact paths"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["if"] += " || true"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "operator-enabled"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["timeout-minutes"] = 400
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "timeout"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["runs-on"]["labels"] += "-redirected"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "runner group"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["continue-on-error"] = True
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "fail closed"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["concurrency"]["cancel-in-progress"] = True
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "concurrency"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        upload = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate"])
+            if "upload-artifact@" in str(step.get("uses", ""))
+        )
+        upload["with"]["retention-days"] = 1
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["env"][
+            "AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE"
+        ] = "${{ vars.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE }}"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "artifact paths"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        unix = next(
+            step
+            for step in PLATFORM.steps(altered["jobs"]["validate"])
+            if step.get("shell") == "bash"
+        )
+        unix["run"] = unix["run"].replace(
+            "python3 tools/ci/test_session_launch_d0.py", "true"
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "D0 mutation"):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        for key, value in (
+            ("name", "redirected-summary"),
+            ("path", "target/private-manifest.json"),
+        ):
+            altered = copy.deepcopy(self.f5_openssh_assurance)
+            upload = next(
+                step
+                for step in PLATFORM.steps(altered["jobs"]["validate"])
+                if "upload-artifact@" in str(step.get("uses", ""))
+            )
+            upload["with"][key] = value
+            with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
+                PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["steps"].append(
+            {
+                "uses": "actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a",
+                "with": {
+                    "name": "private-evidence",
+                    "path": "target/private-manifest.json",
+                    "if-no-files-found": "error",
+                    "retention-days": 1,
+                },
+            }
+        )
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
             PLATFORM.validate_f5_openssh_assurance(altered)
 
     def test_preflight_cannot_receive_raw_signing_secret(self) -> None:

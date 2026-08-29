@@ -5,8 +5,8 @@ close only the contracts identified below. Native-host, controlled-hardware,
 human-review, and elapsed-time evidence remains external and must never be
 reported as passing from this Windows checkout.
 
-> 2026-08-24 follow-up: the remaining S1 source gaps are now closed by the
-> versioned 24-suite policy, strict evidence validator, deterministic visual
+> 2026-08-27 follow-up: the remaining S1 source gaps are now closed by the
+> versioned 28-suite policy, strict evidence validator, deterministic visual
 > fixture, separate AppVerifier Basics/low-resource phases, mutation coverage,
 > controlled workflow, and release dependency. The historical ledger below
 > describes the earlier S1/S2 pass. Current S1 status and exact external gates
