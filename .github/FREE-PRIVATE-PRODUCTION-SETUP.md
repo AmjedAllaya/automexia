@@ -161,7 +161,6 @@ Dependency security
 
 A branch whose name starts with `release/` additionally runs `Release candidate gate`, including the coverage regression check. This keeps routine GitHub Free usage reasonable while preserving a stronger release ceremony.
 
-<<<<<<< HEAD
 ## 7.1 Release workflow behavior on ordinary PR merges
 
 GitHub cannot filter a `pull_request: closed` trigger by **head** branch name at workflow-trigger level. Therefore GitHub may create a lightweight `Stable release` workflow run when an ordinary PR is closed or merged. For any branch that is not exactly `release/X.Y.Z`, `Authorize merged release PR` is skipped and every downstream release job, including the final artifact gate, is also skipped. The run must not publish anything and must not produce a release-gate failure.
@@ -175,8 +174,6 @@ Release gate · PR #57 · release/1.2.3 → main
 
 Only the second form can authorize a stable release.
 
-=======
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
 ## 8. Creating a release
 
 Do not manually create a `vX.Y.Z` tag.

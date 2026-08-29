@@ -30,9 +30,6 @@ This tree is a **clean replacement**, not an overlay. Major fixes relative to th
 * added a pre-build signing-readiness gate that checks credential presence without checking out repository code;
 * normalized the release source to the merged-event `GITHUB_SHA`, then verifies it is still current `main`, avoiding dependence on PR-head SHA semantics across merge methods;
 * changed release governance defaults to fail closed with one independent human approval and a distinct merger unless a solo maintainer explicitly opts out.
-<<<<<<< HEAD
 * fixed the final artifact gate so a merged non-`release/X.Y.Z` PR produces skipped/neutral release jobs instead of one failing red gate;
 * added an explicit human-readable workflow `run-name` based on PR number and source branch;
 * replaced matrix expressions in job display names with stable readable labels so skipped jobs never show literal `${{ matrix.* }}` text.
-=======
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb

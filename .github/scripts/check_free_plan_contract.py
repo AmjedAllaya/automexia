@@ -49,7 +49,6 @@ for fragment in required_release_fragments:
     if fragment not in release:
         errors.append(f'release workflow is missing required fragment: {fragment}')
 
-<<<<<<< HEAD
 
 if 'run-name: "Release gate · PR #' not in release:
     errors.append('release workflow must declare a deterministic human-readable run-name')
@@ -62,8 +61,6 @@ if not re.search(
 ):
     errors.append('release-final-gate must depend on authorize and skip non-release PRs cleanly')
 
-=======
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
 if release.count('contents: write') != 1:
     errors.append(f'release workflow must contain exactly one contents: write grant; found {release.count("contents: write")}')
 

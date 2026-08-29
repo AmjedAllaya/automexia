@@ -4,10 +4,7 @@ This directory is a complete replacement for the repository `.github/` tree. It 
 
 * Ordinary PR CI uses Linux only to conserve the free Actions allowance.
 * A stable release starts only after an **internal `release/X.Y.Z` pull request is merged into `main`**.
-<<<<<<< HEAD
 * Ordinary non-release PR closures may instantiate a lightweight release-gate run because GitHub cannot head-branch-filter the `closed` event; every release job is then skipped cleanly and nothing is published.
-=======
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
 * The release workflow reruns mandatory quality/security gates after merge, then uses native Windows/Linux/macOS runners for production artifacts.
 * No private CodeQL upload, dependency-review action, protected environment reviewer, private artifact attestation, or private ruleset is required.
 * There is intentionally **no `codeql.yml`** and no Release Drafter workflow in this edition.

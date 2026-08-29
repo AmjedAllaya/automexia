@@ -391,10 +391,7 @@ jobs:
     - name: Shell integration contracts
       run: bash tools/ci/test_shell_sources.sh
   build:
-<<<<<<< HEAD
     name: Build native release binaries
-=======
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     needs:
     - preflight
     - release-quality
@@ -493,11 +490,7 @@ jobs:
     permissions:
       contents: read
   reproducibility-linux:
-<<<<<<< HEAD
     name: Verify Linux release reproducibility
-=======
-    name: Reproducible Linux ${{ matrix.arch }} release binary
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     needs:
     - preflight
     - release-quality
@@ -590,11 +583,7 @@ jobs:
         compression-level: 0
 
   sign-windows-runtime:
-<<<<<<< HEAD
     name: Sign Windows runtime binaries
-=======
-    name: Sign Windows runtime inputs (${{ matrix.target }})
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     needs:
     - preflight
     - build
@@ -709,11 +698,7 @@ jobs:
         compression-level: 0
 
   package-windows-unsigned:
-<<<<<<< HEAD
     name: Package Windows installers without signing credentials
-=======
-    name: Package Windows without signing credentials (${{ matrix.target }})
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     needs:
     - preflight
     - sign-windows-runtime
@@ -821,11 +806,7 @@ jobs:
         compression-level: 0
 
   package-windows:
-<<<<<<< HEAD
     name: Sign final Windows installers
-=======
-    name: Sign final Windows MSI (${{ matrix.target }})
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     needs:
     - preflight
     - package-windows-unsigned
@@ -1381,11 +1362,7 @@ jobs:
         retention-days: 7
         compression-level: 0
   verify-windows-final:
-<<<<<<< HEAD
     name: Verify final Windows MSI and ZIP
-=======
-    name: Final Windows MSI and ZIP (${{ matrix.arch }})
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     needs:
     - package-windows
     strategy:
@@ -1570,10 +1547,7 @@ jobs:
   release-final-gate:
     name: Release final artifact gate
     needs:
-<<<<<<< HEAD
     - authorize
-=======
->>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
     - verify-windows-final
     - verify-macos-final
     - verify-linux-final
