@@ -1,32 +1,212 @@
-# GitHub Free private production release setup
+# GitHub Free private — production setup
 
-This configuration is designed specifically for a **private repository on GitHub Free**. It does not depend on private rulesets, protected environment reviewers, GitHub Code Security dependency review, or private artifact attestations.
+## 1. Clean installation
 
-## Release authorization
+Delete the existing `.github` directory before extracting this archive. Do **not** overlay it over an older Enterprise or CodeQL configuration. Old workflows are not deleted by ZIP extraction and would continue to run.
 
-A stable release is initiated only by merging an internal branch named exactly `release/X.Y.Z` into `main`. The release workflow validates that the PR was merged, the head repository is this repository (not a fork), the branch uses exact stable SemVer, the merged commit is still the tip of `main`, the Cargo package version matches, no tag/release exists, and the release PR did not modify the release trust pipeline itself.
+PowerShell from the repository root:
 
-The workflow creates `vX.Y.Z` only after all build/package/final-verification gates succeed. Do **not** manually create the version tag.
+```powershell
+if (Test-Path .github) { Remove-Item .github -Recurse -Force }
+Expand-Archive .\automexia-github-free-private-production.zip -DestinationPath . -Force
+Get-ChildItem .github\workflows
+```
 
-## Optional review enforcement
+The workflow list should contain only:
 
-Set repository variable `AUTOMEXIA_RELEASE_MIN_APPROVALS` to `1` or `2` for a team. Leave it `0` for a solo repository. The workflow counts distinct APPROVED reviews before proceeding. This is a useful control, but GitHub Free does not make it administrator-proof.
+```text
+ci.yml
+f5-openssh-assurance.yml
+nightly.yml
+release.yml
+s1-assurance.yml
+s2-assurance.yml
+```
 
-## Secrets
+There must be no `codeql.yml`, `workflow-security.yml`, or `release-drafter.yml`.
 
-Repository Actions secrets are supported on GitHub Free private repositories. Configure Apple/Windows signing secrets only if you use those signing paths. A Free private repository cannot isolate them behind paid environment-review gates, so only trusted maintainers should have write access.
+## 2. GitHub Actions settings
 
-## Release procedure
+In **Settings → Actions → General**:
 
-1. Update the Cargo version to `X.Y.Z`.
-2. Create `release/X.Y.Z` in this repository.
-3. Push it and open a PR targeting `main`.
-4. Wait for CI/security checks.
-5. Obtain the configured number of approvals.
-6. Merge the PR.
-7. `Stable release` automatically starts.
-8. The workflow builds, packages, verifies final artifacts, generates SBOM/checksum material, creates `vX.Y.Z`, and publishes the GitHub Release.
+* enable GitHub Actions;
+* for the broadest GitHub-Free/private compatibility, choose **Allow all actions and reusable workflows**; the repository workflows independently require immutable full-SHA pins;
+* if your account exposes **Require actions to be pinned to a full-length commit SHA**, enable it as an additional server-side control;
+* use **Read repository contents permission** as the default workflow permission;
+* keep **Allow GitHub Actions to create and approve pull requests** disabled unless you explicitly need it elsewhere.
 
-## Free-plan trust boundary
+Repository-level GitHub Free cannot make branch review/ruleset policy administrator-proof. Keep write access limited to trusted maintainers and require PRs by team convention.
 
-GitHub Free private repositories do not provide unbypassable branch/tag rulesets or protected-environment reviewers. Therefore the strongest practical free control is strict account/access hygiene: do not give write access to people who are not trusted to affect releases. For higher-assurance separation of duties, move the signer/release authority to a separate system or paid governance tier.
+## 3. Free-plan release governance variables
+
+The workflow is **secure by default** even when these variables are not created: it requires at least one independent human approval and requires the person merging the release PR to be different from the PR author. For a team, explicitly configure:
+
+```text
+AUTOMEXIA_RELEASE_MIN_APPROVALS=1   # use 2 when your team can sustain two-person review
+AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER=1
+```
+
+A solo developer must explicitly relax the two-person ceremony in **Settings → Secrets and variables → Actions → Variables**:
+
+```text
+AUTOMEXIA_RELEASE_MIN_APPROVALS=0
+AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER=0
+```
+
+This is an explicit reduction in release governance, not the default.
+
+## 4. Windows production signing
+
+Set variable:
+
+```text
+AUTOMEXIA_WINDOWS_SIGNING_BACKEND=pfx
+AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT=<exact certificate Subject>
+```
+
+For PFX signing set repository secrets:
+
+```text
+AUTOMEXIA_WINDOWS_CERTIFICATE=<base64 PFX>
+AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD=<password>
+```
+
+Or set `AUTOMEXIA_WINDOWS_SIGNING_BACKEND=azure-artifact-signing` and configure:
+
+```text
+AZURE_ARTIFACT_SIGNING_ENDPOINT
+AZURE_ARTIFACT_SIGNING_ACCOUNT
+AZURE_ARTIFACT_SIGNING_PROFILE
+```
+
+and secrets:
+
+```text
+AZURE_CLIENT_ID
+AZURE_TENANT_ID
+AZURE_SUBSCRIPTION_ID
+```
+
+The release fails **before expensive builds** when the selected signing configuration is incomplete.
+
+## 5. macOS production signing/notarization
+
+Configure repository secrets:
+
+```text
+APPLE_CERTIFICATE              # base64 Developer ID Application .p12
+APPLE_CERTIFICATE_PASSWORD
+APPLE_ID
+APPLE_PASSWORD                 # app-specific password
+APPLE_TEAM_ID
+APPLE_SIGNING_IDENTITY
+```
+
+The stable release intentionally fails closed without Apple production signing/notarization. Apple Developer membership is external to GitHub and is not included by the GitHub Free plan.
+
+## 6. Free cryptographic release checksum signing
+
+Linux archives do not have an OS-native Authenticode/Developer-ID equivalent, so the release also signs `SHA256SUMS` with a dedicated **minisign** Ed25519 release key. This is free and gives every release asset a common cryptographic integrity root.
+
+Generate this key **once on a trusted offline/local machine**, not inside GitHub Actions:
+
+```bash
+minisign -G -W -p automexia-release.pub -s automexia-release.key
+```
+
+`-W` intentionally creates an unencrypted automation key. The security boundary is the GitHub secret plus the isolated signing step; keep the original key offline as a backup and restrict repository write access.
+
+Set repository variable:
+
+```text
+AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY=<the RW... base64 line from automexia-release.pub>
+```
+
+Store the entire secret-key file as a base64 GitHub Actions secret named:
+
+```text
+AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY
+```
+
+PowerShell encoding example:
+
+```powershell
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\\automexia-release.key')) | Set-Clipboard
+```
+
+Linux/macOS encoding example:
+
+```bash
+base64 -w0 automexia-release.key
+```
+
+The release workflow reconstructs the key only in a dedicated read-only signing job, signs `SHA256SUMS`, verifies the signature using the public key, deletes the temporary key, and publishes `SHA256SUMS.minisig`. The final publication job never receives the minisign secret.
+
+Users can verify a downloaded release with:
+
+```bash
+minisign -V -P '<RW...public-key-line>' -m SHA256SUMS -x SHA256SUMS.minisig
+sha256sum -c SHA256SUMS
+```
+
+## 7. Ordinary PR CI
+
+Every PR to `main` runs only three Linux-hosted gates:
+
+```text
+Repository and workflow policy
+Rust quality and tests
+Dependency security
+```
+
+A branch whose name starts with `release/` additionally runs `Release candidate gate`, including the coverage regression check. This keeps routine GitHub Free usage reasonable while preserving a stronger release ceremony.
+
+## 8. Creating a release
+
+Do not manually create a `vX.Y.Z` tag.
+
+```powershell
+git checkout main
+git pull --ff-only origin main
+git checkout -b release/1.2.3
+# bump automexia-terminal version to 1.2.3, update Cargo.lock/changelog as needed
+git add .
+git commit -m "release: prepare 1.2.3"
+git push -u origin release/1.2.3
+```
+
+Open an **internal** PR:
+
+```text
+release/1.2.3 -> main
+```
+
+After CI/reviews, merge it. `Stable release` then:
+
+1. validates the merge event, source repository, stable SemVer, current human approvals, and distinct-merger policy;
+2. binds the release to GitHub's merged-event `GITHUB_SHA` (the resulting base-branch commit) and checks that this exact commit is still current `main`; this works with normal merge and squash-merge release PRs without trusting the release branch HEAD SHA;
+3. rejects release PRs that changed `.github/`, `tools/ci/`, `tools/xtask/`, `packaging/`, or `shell-integration/`;
+4. verifies the Cargo package version and release uniqueness;
+5. validates signing prerequisites before spending six-platform minutes;
+6. reruns full Rust quality, tests, RustSec, cargo-deny, and shell contracts after merge;
+7. builds native x64/ARM64 Windows, GNU/Linux, Intel/Apple-Silicon macOS artifacts;
+8. builds GNU/Linux on Ubuntu 22.04 to enforce the GLIBC 2.35 compatibility baseline;
+9. signs Windows, produces and notarizes a universal macOS DMG, and builds DEB/RPM/tar.gz packages;
+10. tests the exact final Windows ARM64 package on ARM64, final DMG on Intel and Apple Silicon, and Linux packages natively;
+11. performs independent Linux x64 and ARM64 reproducibility checks;
+12. generates SPDX + CycloneDX SBOMs, `release-manifest.json`, and `SHA256SUMS`;
+13. signs `SHA256SUMS` with the dedicated minisign release key;
+14. creates annotated `v1.2.3` only after all gates pass;
+15. publishes the GitHub Release.
+
+## 9. Deep assurance
+
+`nightly.yml` is manual-only in this edition. Daily scheduled fuzz/Miri/sanitizer runs can consume a private Free repository's allowance rapidly. Run **Deep assurance (manual)** before major releases when desired. The specialized S1/S2/F5 workflows are also manual/self-hosted controls.
+
+## 10. Trust boundary
+
+GitHub Free private repositories cannot technically prevent a repository administrator from changing workflows or bypassing team conventions. Repository secrets are therefore appropriate only when every person with write access is trusted with release authority. For stronger separation of duties, move signing to an external controlled signer or use a plan/platform with server-enforced protected environments/rulesets.
+
+## 11. If many jobs fail immediately
+
+Read `ACTIONS-STARTUP-TROUBLESHOOTING.md`. Failures before checkout/build normally indicate Actions permissions, account usage/billing state, or stale workflow files rather than independent Rust failures.
