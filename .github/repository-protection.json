@@ -1,20 +1,50 @@
 {
+  "schema": 2,
   "mode": "github-free-private",
-  "server_side_enforcement": "not-available-on-free-private",
-  "release_authorization": "merged internal release/X.Y.Z PR into main",
-  "minimum_release_approvals_variable": "AUTOMEXIA_RELEASE_MIN_APPROVALS",
-  "required_core_checks": [
-    "Policy and repository contracts",
-    "Native ubuntu-latest",
-    "Native windows-latest",
-    "Native macos-latest",
-    "Dependency policy",
-    "Free-plan dependency security audit",
-    "Workflow security"
+  "server_side_paid_controls_required": false,
+  "ordinary_ci": {
+    "hosted_os": [
+      "ubuntu-24.04"
+    ],
+    "required_checks": [
+      "Repository and workflow policy",
+      "Rust quality and tests",
+      "Dependency security"
+    ],
+    "release_branch_extra_check": "Release candidate gate",
+    "reason": "Reserve Windows/macOS/ARM hosted minutes for real releases."
+  },
+  "release": {
+    "trigger": "merged internal release/X.Y.Z pull request into main",
+    "same_repository_only": true,
+    "stable_semver_only": true,
+    "must_equal_current_main": true,
+    "workflow_creates_tag_after_all_gates": true,
+    "minimum_approvals_variable": "AUTOMEXIA_RELEASE_MIN_APPROVALS",
+    "distinct_merger_variable": "AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER",
+    "protected_release_pr_paths": [
+      ".github/",
+      "tools/ci/",
+      "tools/xtask/",
+      "packaging/",
+      "shell-integration/"
+    ],
+    "default_minimum_human_approvals": 1,
+    "default_require_distinct_merger": true
+  },
+  "paid_github_features_not_used": [
+    "private artifact attestations",
+    "private protected-environment reviewers",
+    "GitHub Code Security dependency review",
+    "private CodeQL result upload",
+    "private ruleset enforcement"
   ],
-  "notes": [
-    "Configure AUTOMEXIA_RELEASE_MIN_APPROVALS=1 or 2 for team repositories. GitHub Free cannot make this review requirement unbypassable.",
-    "Do not grant write access to untrusted collaborators.",
-    "Release PRs are rejected if they modify the release workflow or release trust scripts."
+  "release_platforms": [
+    "windows-2025 x86_64",
+    "windows-11-arm aarch64",
+    "ubuntu-22.04 x86_64 build baseline",
+    "ubuntu-22.04-arm aarch64 build baseline",
+    "macos-26-intel x86_64",
+    "macos-26 arm64"
   ]
 }

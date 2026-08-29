@@ -1,7 +1,13 @@
-# GitHub Free private governance
+# Governance on GitHub Free private
 
-GitHub Free private repositories do not provide the repository rulesets/environment-review model used by the Enterprise edition. This tree therefore makes no false claim of server-enforced branch or tag governance.
+This edition deliberately does not claim paid private branch/ruleset enforcement. The machine-readable local policy is `repository-protection.json`.
 
-The stable release ceremony is `release/X.Y.Z` -> pull request -> `main` -> merge -> automatic release pipeline. Set `AUTOMEXIA_RELEASE_MIN_APPROVALS` to require workflow-verified approvals when the repository has multiple maintainers.
+The strongest enforceable release ceremony available entirely inside a Free/private repository is:
 
-For strongest free operation, restrict write access to trusted maintainers, require PRs by team convention, enable 2FA/passkeys, enable Dependabot alerts/security updates, and keep signing keys outside ordinary build jobs whenever practical.
+```text
+internal release/X.Y.Z PR -> main -> merged -> post-merge validation -> release gates -> tag -> release
+```
+
+The workflow verifies current-main identity, same-repository origin, stable SemVer, version consistency, optional independent approvals, optional distinct merger, release uniqueness, protected-path separation, action SHA pinning, security/dependency gates, final native package execution, reproducibility, checksums and SBOMs.
+
+Because GitHub Free private does not provide unbypassable private rulesets/protected-environment reviewers, keep repository write/admin access limited to people who are trusted with release authority.

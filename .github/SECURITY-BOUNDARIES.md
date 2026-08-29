@@ -1,9 +1,12 @@
-# Security boundaries — GitHub Free private edition
+# Security boundaries
 
-* Stable releases are triggered only by a merged same-repository `release/X.Y.Z` pull request into `main`.
-* Release PR metadata, source SHA, current `main`, Cargo version, existing tags/releases, and optional approval count are verified before builds proceed.
-* Release PRs may not modify `.github/workflows/release.yml` or `.github/scripts/release_*`; CI/security changes must be merged separately.
-* Default workflow permissions are read-only. Only the final publication job has `contents: write`; it does not check out repository source.
-* External Actions are pinned to immutable commit SHAs and audited by the workflow-security job.
-* Paid-only private artifact attestations and dependency-review APIs are intentionally not required. SBOMs, SHA-256 manifests, cargo-audit, cargo-deny, native final-package tests, and release-manifest verification are the compensating controls.
-* GitHub Free cannot prevent an administrator or trusted writer from changing `main`/workflow policy. Account permissions therefore remain part of the trusted computing base.
+* Default workflow token permissions are read-only.
+* The Stable release workflow contains exactly one `contents: write` grant: the final publication job. That job does not check out repository source or run Cargo/project scripts.
+* External Actions must be pinned to exact 40-character commit SHAs.
+* Fork-originated `release/*` PRs cannot authorize a release. Release provenance is bound to the merged-event `GITHUB_SHA` and then required to equal the current `main` commit before expensive work begins.
+* A release PR may not modify `.github/`, `tools/ci/`, `tools/xtask/`, `packaging/`, or `shell-integration/`; trust/packaging implementation changes must land separately.
+* Stable release reruns quality and dependency-security checks after merge; it does not trust that an administrator respected PR checks.
+* Linux production binaries are built on Ubuntu 22.04-class native runners and checked against GLIBC 2.35.
+* Windows/macOS signing fails closed. Secret-bearing Windows and Apple signing jobs never check out repository source, and they do not execute the signed application while credentials are present. Final signed/notarized distributions are executed later on credential-free native runners.
+* No paid-only private GitHub artifact-attestation, Code Security dependency-review, protected-environment-review, private CodeQL-upload, or ruleset feature is required.
+* GitHub Free cannot stop a repository administrator from rewriting workflow policy. Treat every write-capable maintainer as part of the trusted computing base.
