@@ -58,17 +58,25 @@ jobs:
       - name: Validate GitHub Actions syntax and expressions
         run: actionlint -color
 
-      - name: Audit GitHub Actions security with pinned zizmor
-        uses: zizmorcore/zizmor-action@3dc1ecc9bcb9e94e9b2c709687979e1298497054
+      - name: Install pinned zizmor 1.21.0
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
-          version: '1.21.0'
-          collect: workflows
-          online-audits: 'false'
-          persona: auditor
-          min-severity: high
-          min-confidence: medium
-          advanced-security: 'false'
-          annotations: 'true'
+          tool: zizmor@1.21.0
+          fallback: none
+
+      - name: Audit GitHub Actions security with zizmor
+        shell: bash
+        run: |
+          set -euo pipefail
+          zizmor \
+            --collect workflows \
+            --strict-collection \
+            --persona auditor \
+            --min-severity high \
+            --min-confidence medium \
+            --no-online-audits \
+            --format github \
+            .
 
   quality:
     name: Rust quality and tests

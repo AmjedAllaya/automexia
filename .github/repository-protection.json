@@ -46,5 +46,17 @@
     "ubuntu-22.04-arm aarch64 build baseline",
     "macos-26-intel x86_64",
     "macos-26 arm64"
-  ]
+  ],
+  "actions_policy": {
+    "mode": "selected-actions",
+    "github_owned_actions_allowed": true,
+    "third_party_patterns": [
+      "anchore/sbom-action@*",
+      "azure/artifact-signing-action@*",
+      "azure/login@*",
+      "taiki-e/install-action@*"
+    ],
+    "full_length_sha_required": true,
+    "zizmor_delivery": "zizmor@1.21.0 via taiki-e/install-action; no zizmorcore/zizmor-action use"
+  }
 }

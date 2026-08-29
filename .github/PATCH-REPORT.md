@@ -1,5 +1,6 @@
 # Free/private production rebuild
 
+* aligned the workflow with restrictive repository-level Actions policies by installing pinned `zizmor@1.21.0` through `taiki-e/install-action` rather than invoking `zizmorcore/zizmor-action`;
 This tree is a **clean replacement**, not an overlay. Major fixes relative to the previous archive include:
 
 * removed stale private CodeQL, Release Drafter and separate workflow-security workflows;

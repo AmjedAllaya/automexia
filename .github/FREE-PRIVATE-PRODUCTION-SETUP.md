@@ -30,10 +30,22 @@ There must be no `codeql.yml`, `workflow-security.yml`, or `release-drafter.yml`
 In **Settings → Actions → General**:
 
 * enable GitHub Actions;
-* for the broadest GitHub-Free/private compatibility, choose **Allow all actions and reusable workflows**; the repository workflows independently require immutable full-SHA pins;
-* if your account exposes **Require actions to be pinned to a full-length commit SHA**, enable it as an additional server-side control;
+* choose the restrictive **Allow select actions and reusable workflows** policy (wording can vary slightly by GitHub UI);
+* allow actions created by GitHub plus only these third-party repository patterns:
+
+```text
+anchore/sbom-action@*
+azure/artifact-signing-action@*
+azure/login@*
+taiki-e/install-action@*
+```
+
+* remove obsolete patterns such as `codecov/codecov-action@*`, `release-drafter/release-drafter@*`, and `zizmorcore/zizmor-action@*` if they remain from an older configuration;
+* enable **Require actions to be pinned to a full-length commit SHA** when the setting is available;
 * use **Read repository contents permission** as the default workflow permission;
 * keep **Allow GitHub Actions to create and approve pull requests** disabled unless you explicitly need it elsewhere.
+
+The workflow does **not** invoke `zizmorcore/zizmor-action`. It installs pinned `zizmor@1.21.0` through the already-allowlisted, full-SHA-pinned `taiki-e/install-action`, then executes the CLI offline. `taiki-e/install-action` manages `zizmor` as a supported GitHub-Release tool and verifies release checksums by default.
 
 Repository-level GitHub Free cannot make branch review/ruleset policy administrator-proof. Keep write access limited to trusted maintainers and require PRs by team convention.
 

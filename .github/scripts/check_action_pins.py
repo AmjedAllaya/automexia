@@ -21,7 +21,6 @@ ALLOWED_ACTIONS = {
     'azure/artifact-signing-action',
     'azure/login',
     'taiki-e/install-action',
-    'zizmorcore/zizmor-action',
 }
 
 failures: list[str] = []

@@ -8,5 +8,6 @@ This directory is a complete replacement for the repository `.github/` tree. It 
 * The release workflow reruns mandatory quality/security gates after merge, then uses native Windows/Linux/macOS runners for production artifacts.
 * No private CodeQL upload, dependency-review action, protected environment reviewer, private artifact attestation, or private ruleset is required.
 * There is intentionally **no `codeql.yml`** and no Release Drafter workflow in this edition.
+* The workflow-security audit uses `zizmor@1.21.0` installed through the already-approved `taiki-e/install-action`; it does not require `zizmorcore/zizmor-action` in the repository Actions allowlist.
 
 Read `FREE-PRIVATE-PRODUCTION-SETUP.md` before the first release. If jobs fail before checkout/build begins, see `ACTIONS-STARTUP-TROUBLESHOOTING.md`.
