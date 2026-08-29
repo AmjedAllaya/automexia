@@ -16,6 +16,7 @@ Open your GitHub billing/usage page and verify that hosted Actions usage is avai
 
 This repository intentionally keeps normal PR CI on Linux only and reserves Windows/macOS/ARM hosted work for real stable releases to reduce that risk.
 
+<<<<<<< HEAD
 If GitHub displays this exact message:
 
 ```text
@@ -24,6 +25,8 @@ The job was not started because recent account payments have failed or your spen
 
 that is an account/billing/hosted-usage block. No workflow YAML change can start GitHub-hosted runners while that account state remains blocked. Resolve the billing/usage state, wait for an applicable Free allowance reset, or use appropriately secured self-hosted runners.
 
+=======
+>>>>>>> 4d4789b57a1952a29f7ca5d06885b90f82cdc0cb
 ## 3. Confirm this is a clean `.github` install
 
 The only workflow files in this edition must be:
