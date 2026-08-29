@@ -1,13 +1,12 @@
-name: Nightly depth
+name: Deep assurance (manual)
 on:
-  schedule:
-  - cron: 41 2 * * *
-  workflow_dispatch:
+  workflow_dispatch: {}
 permissions:
   contents: read
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
+  AUTOMEXIA_RUST_TOOLCHAIN: 1.98.0
 jobs:
   native-gui-resize-stress:
     name: Native Windows GUI resize and history latency
@@ -21,8 +20,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
-    - name: Exercise history, clones, real window, ConPTY, and renderer 
-        snapshots
+    - name: Exercise history, clones, real window, ConPTY, and renderer snapshots
       shell: pwsh
       run: cargo xtask test session-clone --native-windows
     timeout-minutes: 60
@@ -41,12 +39,10 @@ jobs:
         persist-credentials: false
     - name: Application Verifier Basics and native lifecycle stress
       shell: pwsh
-      run: tests/integration/appverifier-windows.ps1 -OutputDirectory 
-        target/native-deep/appverifier
+      run: tests/integration/appverifier-windows.ps1 -OutputDirectory target/native-deep/appverifier
     - name: WPR resource trace and bounded manifest
       shell: pwsh
-      run: tests/integration/wpr-windows.ps1 -OutputDirectory 
-        target/native-deep/wpr -DeleteTraceAfterManifest
+      run: tests/integration/wpr-windows.ps1 -OutputDirectory target/native-deep/wpr -DeleteTraceAfterManifest
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       if: always()
       with:
@@ -78,15 +74,7 @@ jobs:
       run: cargo xtask test session-clone --native-wsl
     - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
       shell: pwsh
-      run: "if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {\n\
-        \  throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'\n}\n$workspace = (& wsl.exe
-        -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()\n\
-        if ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {\n  throw 'could
-        not resolve the checked-out workspace inside WSL'\n}\n& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO
-        -- bash -lc 'set -euo pipefail; cd -- \"$1\"; command -v python3 shellcheck
-        zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace\n\
-        if ($LASTEXITCODE -ne 0) {\n  throw 'CP3.1 WSL shell lifecycle validation
-        failed'\n}\n"
+      run: "if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {\n  throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'\n}\n$workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()\nif ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {\n  throw 'could not resolve the checked-out workspace inside WSL'\n}\n& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- \"$1\"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace\nif ($LASTEXITCODE -ne 0) {\n  throw 'CP3.1 WSL shell lifecycle validation failed'\n}\n"
     timeout-minutes: 60
   fuzz:
     runs-on: ubuntu-24.04
@@ -120,9 +108,7 @@ jobs:
       with:
         tool: cargo-fuzz@0.13.1
     - name: Fuzz ${{ matrix.target }} with nightly-2026-08-25
-      run: cargo +nightly-2026-08-25 fuzz run ${{ matrix.target }} --target 
-        x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 
-        -timeout=15
+      run: cargo +nightly-2026-08-25 fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
   miri:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -132,28 +118,21 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
-    - run: rustup toolchain install nightly-2026-08-25 --profile minimal 
-        --component miri
+    - run: rustup toolchain install nightly-2026-08-25 --profile minimal --component miri
     - name: Bounded pure VT memory-safety suite
-      run: 'cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features
-        --locked simd_utf8::tests
+      run: 'cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked simd_utf8::tests
 
-        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features
-        --locked simd_base64::tests
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked simd_base64::tests
 
-        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features
-        --locked performer::parser::tests
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked performer::parser::tests
 
-        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features
-        --locked ansi::kitty_graphics_protocol::tests::test_file_transmission_medium
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_file_transmission_medium
 
-        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features
-        --locked ansi::kitty_graphics_protocol::tests::test_temp_file_transmission_medium
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_temp_file_transmission_medium
 
         '
     - name: Pure Phase 1 contracts, UI policy, and lifecycle state
-      run: 'cargo +nightly-2026-08-25 miri test -p automexia-extension-api -p automexia-ui-model
-        --lib
+      run: 'cargo +nightly-2026-08-25 miri test -p automexia-extension-api -p automexia-ui-model --lib
 
         cargo +nightly-2026-08-25 miri test -p automexia-extension-runtime --lib rebind
 
@@ -170,19 +149,15 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
-    - run: rustup toolchain install nightly-2026-08-25 --profile minimal 
-        --component rust-src
+    - run: rustup toolchain install nightly-2026-08-25 --profile minimal --component rust-src
     - env:
         RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
         RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
-      run: 'cargo +nightly-2026-08-25 test -p rio-vt --lib --no-default-features -Zbuild-std
-        --target x86_64-unknown-linux-gnu
+      run: 'cargo +nightly-2026-08-25 test -p rio-vt --lib --no-default-features -Zbuild-std --target x86_64-unknown-linux-gnu
 
-        cargo +nightly-2026-08-25 test -p automexia-image --lib -Zbuild-std --target
-        x86_64-unknown-linux-gnu
+        cargo +nightly-2026-08-25 test -p automexia-image --lib -Zbuild-std --target x86_64-unknown-linux-gnu
 
-        cargo +nightly-2026-08-25 test -p automexia-extension-runtime --lib --locked
-        -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models
+        cargo +nightly-2026-08-25 test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models
 
         '
     timeout-minutes: 90
@@ -195,13 +170,8 @@ jobs:
       with:
         persist-credentials: false
     - name: Install benchmark build dependencies
-      run: sudo apt-get update && sudo apt-get install -y glslang-tools 
-        libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev 
-        libx11-xcb-dev
-    - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p 
-        teletypewriter -p automexia-connectivity -p 
-        automexia-command-productivity -p automexia-devops-ssh -p 
-        automexia-keybindings --no-run --locked
+      run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+    - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked
   benchmarks-controlled:
     name: Execute latency benchmarks on named controlled Linux hardware
     if: vars.AUTOMEXIA_BENCHMARK_RUNNER == '1'
@@ -213,8 +183,7 @@ jobs:
     timeout-minutes: 180
     env:
       AUTOMEXIA_QA_BENCHMARKS: '1'
-      AUTOMEXIA_QA_RUN_LABEL: s2-linux-${{ github.run_id }}-${{ 
-        github.run_attempt }}
+      AUTOMEXIA_QA_RUN_LABEL: s2-linux-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -225,16 +194,7 @@ jobs:
     - name: Execute and retain Criterion measurements
       run: cargo xtask qa --full --bundle
     - name: Normalize classified latency evidence
-      run: "mkdir -p target/performance\nmeasured_at=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\
-        \npython tools/ci/performance_assurance.py collect-criterion \\\n  --criterion-root
-        \"target/qa/${AUTOMEXIA_QA_RUN_LABEL}/benchmark-target/criterion\" \\\n  --output
-        target/performance/candidate-linux.json \\\n  --commit \"$GITHUB_SHA\" \\\n\
-        \  --measured-at-utc \"$measured_at\" \\\n  --operator \"$GITHUB_ACTOR\" \\\
-        \n  --runner-class \"${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}\" \\\n\
-        \  --os linux \\\n  --arch x86_64 \\\n  --cpu \"${{ vars.AUTOMEXIA_PERFORMANCE_CPU
-        }}\" \\\n  --gpu \"${{ vars.AUTOMEXIA_PERFORMANCE_GPU }}\" \\\n  --power-mode
-        \"${{ vars.AUTOMEXIA_PERFORMANCE_POWER_MODE }}\" \\\n  --toolchain \"$(rustc
-        --version)\" \\\n  --profile criterion-release-linux \\\n  --require-classified\n"
+      run: "mkdir -p target/performance\nmeasured_at=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\npython tools/ci/performance_assurance.py collect-criterion \\\n  --criterion-root \"target/qa/${AUTOMEXIA_QA_RUN_LABEL}/benchmark-target/criterion\" \\\n  --output target/performance/candidate-linux.json \\\n  --commit \"$GITHUB_SHA\" \\\n  --measured-at-utc \"$measured_at\" \\\n  --operator \"$GITHUB_ACTOR\" \\\n  --runner-class \"${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}\" \\\n  --os linux \\\n  --arch x86_64 \\\n  --cpu \"${{ vars.AUTOMEXIA_PERFORMANCE_CPU }}\" \\\n  --gpu \"${{ vars.AUTOMEXIA_PERFORMANCE_GPU }}\" \\\n  --power-mode \"${{ vars.AUTOMEXIA_PERFORMANCE_POWER_MODE }}\" \\\n  --toolchain \"$(rustc --version)\" \\\n  --profile criterion-release-linux \\\n  --require-classified\n"
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: automexia-controlled-linux-benchmark-evidence
@@ -259,10 +219,8 @@ jobs:
     timeout-minutes: 240
     env:
       AUTOMEXIA_QA_BENCHMARKS: '1'
-      AUTOMEXIA_QA_RUN_LABEL: s2-windows-${{ github.run_id }}-${{ 
-        github.run_attempt }}
-      AUTOMEXIA_NATIVE_RESOURCE_REPORT: ${{ github.workspace 
-        }}\target\performance\native-resource.json
+      AUTOMEXIA_QA_RUN_LABEL: s2-windows-${{ github.run_id }}-${{ github.run_attempt }}
+      AUTOMEXIA_NATIVE_RESOURCE_REPORT: ${{ github.workspace }}\target\performance\native-resource.json
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
@@ -280,31 +238,12 @@ jobs:
 
         cargo xtask qa --full --bundle
 
-        if ($LASTEXITCODE -ne 0) { throw ''controlled benchmark assurance failed''
-        }
+        if ($LASTEXITCODE -ne 0) { throw ''controlled benchmark assurance failed'' }
 
         '
     - name: Normalize, compose, and evaluate S2 evidence
       shell: pwsh
-      run: "$measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')\n$toolchain
-        = (& rustc --version).Trim()\n$runner = @(\n  '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS
-        }}',\n  '--os', 'windows',\n  '--arch', 'x86_64',\n  '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU
-        }}',\n  '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',\n  '--power-mode',
-        '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',\n  '--toolchain',
-        $toolchain,\n  '--profile', 'criterion-release-native-gui'\n)\n& python tools/ci/performance_assurance.py
-        collect-native-resource `\n  --report target/performance/native-resource.json
-        `\n  --output target/performance/native-memory.json `\n  --commit $env:GITHUB_SHA
-        `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt @runner\n\
-        if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }\n\
-        & python tools/ci/performance_assurance.py collect-criterion `\n  --criterion-root
-        \"target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion\" `\n \
-        \ --supplemental target/performance/native-memory.json `\n  --output target/performance/candidate-windows.json
-        `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc
-        $measuredAt `\n  --require-classified @runner\nif ($LASTEXITCODE -ne 0) {
-        throw 'performance evidence composition failed' }\n& python tools/ci/performance_assurance.py
-        evaluate `\n  --candidate target/performance/candidate-windows.json `\n  --expected-commit
-        $env:GITHUB_SHA `\n  --output target/performance/comparison-windows.json\n\
-        if ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }\n"
+      run: "$measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')\n$toolchain = (& rustc --version).Trim()\n$runner = @(\n  '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',\n  '--os', 'windows',\n  '--arch', 'x86_64',\n  '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',\n  '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',\n  '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',\n  '--toolchain', $toolchain,\n  '--profile', 'criterion-release-native-gui'\n)\n& python tools/ci/performance_assurance.py collect-native-resource `\n  --report target/performance/native-resource.json `\n  --output target/performance/native-memory.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt @runner\nif ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }\n& python tools/ci/performance_assurance.py collect-criterion `\n  --criterion-root \"target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion\" `\n  --supplemental target/performance/native-memory.json `\n  --output target/performance/candidate-windows.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt `\n  --require-classified @runner\nif ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }\n& python tools/ci/performance_assurance.py evaluate `\n  --candidate target/performance/candidate-windows.json `\n  --expected-commit $env:GITHUB_SHA `\n  --output target/performance/comparison-windows.json\nif ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }\n"
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       if: always()
       with:
@@ -336,8 +275,7 @@ jobs:
       if: matrix.target == 'x86_64-pc-windows-msvc'
       with:
         tool: cargo-packager@0.11.8
-    - run: cargo build --release --locked -p automexia-terminal --target ${{ 
-        matrix.target }}
+    - run: cargo build --release --locked -p automexia-terminal --target ${{ matrix.target }}
     - name: Build unsigned MSI and portable ZIP
       shell: pwsh
       run: '$env:AUTOMEXIA_PACKAGE_SKIP_BUILD = ''1''
@@ -377,9 +315,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
-    - run: sudo apt-get update && sudo apt-get install -y appstream binutils 
-        desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev 
-        libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
+    - run: sudo apt-get update && sudo apt-get install -y appstream binutils desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
     - name: Require the intended native architecture
       run: test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
     - run: rustup target add ${{ matrix.target }}
@@ -392,20 +328,17 @@ jobs:
     - name: Build and smoke native release binary
       run: 'set -euo pipefail
 
-        cargo build --release --locked -p automexia-terminal --target "${{ matrix.target
-        }}"
+        cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
 
         binary="target/${{ matrix.target }}/release/automexia"
 
         "$binary" --version
 
-        required=$(readelf --version-info "$binary" | grep -oE ''GLIBC_[0-9]+(\.[0-9]+)+''
-        | sed ''s/^GLIBC_//'' | sort -Vu | tail -n 1 || true)
+        required=$(readelf --version-info "$binary" | grep -oE ''GLIBC_[0-9]+(\.[0-9]+)+'' | sed ''s/^GLIBC_//'' | sort -Vu | tail -n 1 || true)
 
         test -n "$required"
 
-        newest=$(printf ''%s\n%s\n'' "$required" "$AUTOMEXIA_LINUX_GLIBC_MAX" | sort
-        -V | tail -n 1)
+        newest=$(printf ''%s\n%s\n'' "$required" "$AUTOMEXIA_LINUX_GLIBC_MAX" | sort -V | tail -n 1)
 
         test "$newest" = "$AUTOMEXIA_LINUX_GLIBC_MAX"
 
@@ -450,11 +383,9 @@ jobs:
 
         mkdir -p target/release
 
-        lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia
-        -output target/release/automexia
+        lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia -output target/release/automexia
 
-        cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release
-        --no-build --out-dir target/package --formats app,dmg
+        cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
 
         '
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a

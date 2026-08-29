@@ -1,7 +1,5 @@
 # Toolchain policy
 
-Release workflows pin Rust stable to 1.98.0 and exploratory nightly
-checks to nightly-2026-08-25. Updates require an ordinary reviewed pull
-request, successful CI/security scans, and release-candidate validation.
-External GitHub Actions use immutable commit SHAs; human-readable
-version comments should be updated with each pin.
+Production CI uses Rust **1.98.0** explicitly in workflow jobs. Fuzzing/Miri/sanitizer commands use the date-pinned `nightly-2026-08-25` toolchain. External GitHub Actions use immutable full-SHA references; Cargo helper tools use explicit versions. Workflow linting uses actionlint 1.7.12 with its published Linux-amd64 SHA-256 checksum.
+
+Do not replace pinned versions with `latest`, moving major tags, `main`, or an unversioned installer in a production workflow.

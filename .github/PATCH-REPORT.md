@@ -1,5 +1,32 @@
-# GitHub Free private hardening patch
+# Free/private production rebuild
 
-This edition removes dependencies on private GitHub Enterprise/Code Security features and changes stable release authorization from a manually pushed `v*` tag to a successfully merged internal `release/X.Y.Z` pull request.
+This tree is a **clean replacement**, not an overlay. Major fixes relative to the previous archive include:
 
-Key controls: exact merged source validation; current-main validation; stable SemVer/Cargo version match; optional distinct approval threshold; immutable external action pins; read-only default permissions; native Windows/Linux/macOS architecture builds; final package verification; SBOMs and SHA-256 manifest; no private artifact attestations; no paid dependency-review action; a single minimal `contents: write` publication job; tag created only after all release gates pass.
+* removed stale private CodeQL, Release Drafter and separate workflow-security workflows;
+* reduced normal PR CI to Linux-only security/quality gates to conserve Free minutes;
+* made deep nightly/fuzz/Miri/sanitizer assurance manual-only;
+* retained merged internal `release/X.Y.Z` as the only stable-release authorization event;
+* added robust latest-human-review counting and optional distinct-merger enforcement;
+* added after-merge mandatory release quality/security tests;
+* pinned Rust 1.98.0 in native release/package jobs;
+* moved GNU/Linux production builds/packages to Ubuntu 22.04 / GLIBC 2.35 baseline;
+* replaced project/enterprise release-manifest coupling with a self-contained allowlist/manifest generator;
+* removed an unconditional dependency on optional hardware evidence;
+* fixed Windows MSI staging filename whitespace;
+* fixed generated final-verification shell/PowerShell blocks;
+* fixed Linux `find` grouping syntax in final verification;
+* fixed universal macOS DMG creation to stage an actual `.app` inside a DMG root;
+* kept a single isolated final `contents: write` publication job;
+* creates the annotated version tag only after final gates succeed.
+
+* added an exact six-workflow inventory contract so stale workflows fail policy validation;
+* added a reviewed external-Action repository allowlist in addition to full-SHA pin enforcement;
+* fixed publication-preparation `needs` wiring so the reproducibility result is a direct dependency;
+* added an isolated minisign checksum-signing job and published `SHA256SUMS.minisig` for Linux/common artifact integrity;
+* moved macOS universal-app execution out of the Apple-secret-bearing signing step;
+* added startup troubleshooting for Actions permission/quota failures that occur before checkout.
+* split Windows release processing into source preparation, runtime signing, unsigned packaging, final MSI signing, and native final verification so signing credentials never coexist with a repository checkout;
+* split macOS universal-app assembly from Developer-ID/notarization so Apple credentials never coexist with a source checkout or application execution;
+* added a pre-build signing-readiness gate that checks credential presence without checking out repository code;
+* normalized the release source to the merged-event `GITHUB_SHA`, then verifies it is still current `main`, avoiding dependence on PR-head SHA semantics across merge methods;
+* changed release governance defaults to fail closed with one independent human approval and a distinct merger unless a solo maintainer explicitly opts out.

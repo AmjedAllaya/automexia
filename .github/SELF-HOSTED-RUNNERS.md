@@ -1,10 +1,15 @@
-# Self-hosted runner requirements
+# Optional self-hosted assurance runners
 
-Release/assurance runners are part of the trusted computing base.
-Production runners should be ephemeral or reimaged after every job,
-assigned to a restricted runner group, unavailable to forked pull
-requests, fully patched, monitored, and used only by protected
-workflows. Remove residual workspaces, credentials, signing material,
-caches containing secrets, mounted shares, and user profiles after each
-run. Restrict outbound network destinations and interactive logon, and
-maintain an auditable software/firmware inventory.
+All specialized self-hosted assurance is optional in the GitHub-Free/private edition. The normal production release uses GitHub-hosted native runners.
+
+Optional variables activate additional controls only when you actually operate the corresponding hardened runner:
+
+```text
+AUTOMEXIA_NATIVE_GUI_RUNNER=1
+AUTOMEXIA_WSL_RUNNER=1
+AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER=1
+AUTOMEXIA_S1_ASSURANCE_RUNNER=1
+AUTOMEXIA_HARDWARE_RELEASE_RUNNER=1
+```
+
+Do not set a variable to `1` until an online runner with the exact workflow labels exists. Self-hosted release/signing runners should be dedicated, patched, non-interactive, workspace-cleaned/reimaged, and restricted to trusted repositories.
