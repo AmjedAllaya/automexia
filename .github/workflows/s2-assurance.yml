@@ -1,35 +1,28 @@
 name: S2 controlled activation
-
 on:
   workflow_dispatch:
-
 permissions:
   contents: read
-
 concurrency:
   group: s2-controlled-activation-${{ github.ref }}
   cancel-in-progress: false
-
 jobs:
   validate-active-baseline:
     name: Validate independently reviewed active S2 baseline
-    runs-on: ubuntu-latest
-    environment: stable-release
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Verify policy, mutations, source identity, and active baseline
-        run: |
-          set -euo pipefail
-          python tools/ci/performance_assurance.py check-policy
-          python tools/ci/test_performance_assurance.py
-          mkdir -p target/performance
-          python tools/ci/performance_assurance.py validate-baseline \
-            --expected-source-commit "$GITHUB_SHA" \
-            --output target/performance/s2-activation-summary.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: automexia-s2-activation-summary
-          path: target/performance/s2-activation-summary.json
-          if-no-files-found: error
-          retention-days: 90
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Verify policy, mutations, source identity, and active baseline
+      run: "set -euo pipefail\npython tools/ci/performance_assurance.py check-policy\n\
+        python tools/ci/test_performance_assurance.py\nmkdir -p target/performance\n\
+        python tools/ci/performance_assurance.py validate-baseline \\\n  --expected-source-commit
+        \"$GITHUB_SHA\" \\\n  --output target/performance/s2-activation-summary.json\n"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: automexia-s2-activation-summary
+        path: target/performance/s2-activation-summary.json
+        if-no-files-found: error
+        retention-days: 90

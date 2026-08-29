@@ -1,0 +1,45 @@
+name: Workflow security
+on:
+  pull_request: {}
+  push:
+    branches:
+    - main
+  workflow_dispatch: {}
+  schedule:
+  - cron: 17 4 * * 1
+concurrency:
+  group: workflow-security-${{ github.workflow }}-${{ 
+    github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+permissions:
+  contents: read
+jobs:
+  workflow-security:
+    name: Workflow security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+    - name: Check out repository
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Install actionlint 1.7.7
+      shell: bash
+      run: 'set -euo pipefail
+
+        go install github.com/rhysd/actionlint/cmd/actionlint@v1.7.7
+
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"'
+    - name: Validate workflow syntax and expressions
+      run: actionlint -color
+    - name: Enforce immutable action pins
+      run: python3 .github/scripts/check_action_pins.py
+    - name: Install pinned zizmor 1.21.0
+      shell: bash
+      run: 'set -euo pipefail
+
+        cargo install --locked zizmor --version 1.21.0'
+    - name: Audit workflows with zizmor
+      shell: bash
+      run: zizmor --persona auditor --min-severity high --min-confidence medium 
+        --offline .github
