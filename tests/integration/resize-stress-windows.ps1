@@ -26,6 +26,7 @@ param(
     [int64]$MaximumImageThreadGrowth = 2,
     [ValidateRange(8388608, 1073741824)]
     [int64]$MaximumImageMemoryGrowth = 134217728,
+    [switch]$ConnectionHubOnly,
     [switch]$UseCpuRenderer
 )
 
@@ -102,10 +103,17 @@ public static class AutomexiaResizeDriver {
         // PostMessage does not update Windows' keyboard state, so winit cannot
         // observe modifiers from synthetic WM_KEYDOWN messages. This helper
         // drives the real foreground input path used by a physical keyboard.
-        if (!SetForegroundWindow(hWnd)) {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+        do {
+            SetForegroundWindow(hWnd);
+            if (GetForegroundWindow() == hWnd) {
+                break;
+            }
+            System.Threading.Thread.Sleep(10);
+        } while (DateTime.UtcNow < deadline);
+        if (GetForegroundWindow() != hWnd) {
             return false;
         }
-        System.Threading.Thread.Sleep(25);
         if (control) {
             SendKeyChange(0x11, false, true);
         }
@@ -155,6 +163,18 @@ public static class AutomexiaResizeDriver {
     public static bool MovePointerToClient(IntPtr hWnd, int x, int y) {
         Point point = new Point { X = x, Y = y };
         return ClientToScreen(hWnd, ref point) && SetCursorPos(point.X, point.Y);
+    }
+
+    public static bool MovePhysicalPointerToClient(IntPtr hWnd, int x, int y) {
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) {
+            return false;
+        }
+        try {
+        return MovePointerToClient(hWnd, x, y);
+        } finally {
+            SetThreadDpiAwarenessContext(previous);
+        }
     }
 
     public static bool PostMouseWheel(
@@ -830,6 +850,206 @@ $rendererConfig
     }
     $script:testStage = 'initial resource baseline'
     $resourceBaseline = Get-AutomexiaResourceSample $process
+
+    if ($ConnectionHubOnly) {
+        $modalCaptureRoot = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+            $null
+        } else {
+            [IO.Path]::GetFullPath($ModalCaptureDirectory)
+        }
+        if ($null -ne $modalCaptureRoot) {
+            New-Item -ItemType Directory -Force -Path $modalCaptureRoot | Out-Null
+        }
+        $rendererName = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+        $setupCapturePath = if ($null -eq $modalCaptureRoot) {
+            $null
+        } else {
+            Join-Path $modalCaptureRoot "connection-hub-$rendererName.png"
+        }
+        $directCapturePath = if ($null -eq $modalCaptureRoot) {
+            $null
+        } else {
+            Join-Path $modalCaptureRoot "connection-hub-direct-$rendererName.png"
+        }
+
+        $script:testStage = 'focused connection hub setup composition'
+        $hubControl = 'open-connection-hub:focused-native-hub'
+        Send-AutomexiaTestControl $hubControl
+        $hubSetup = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (([string]$hubSetup.last_control -ne $hubControl -or
+                -not [bool]$hubSetup.connection_hub_active -or
+                [string]$hubSetup.connection_hub_route -ne 'results') -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubSetup = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetup.sequence)
+        }
+        if (-not [bool]$hubSetup.connection_hub_active -or
+            [string]$hubSetup.connection_hub_route -ne 'results') {
+            Write-Host ($hubSetup | ConvertTo-Json -Depth 8)
+            throw 'Focused native Connection Hub did not open on Results'
+        }
+        $hubSetupPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetup.sequence)
+        $terminalBefore = Get-ActiveAutomexiaPanel $hubSetupPresented
+        if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+            throw 'Could not expose Automexia for focused setup capture'
+        }
+        try {
+            Start-Sleep -Milliseconds 100
+            $setupFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $setupCapturePath)
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        }
+        if ($setupFrame.Width -lt 100 -or $setupFrame.Height -lt 100 -or
+            $setupFrame.SampleCount -lt 100 -or
+            $setupFrame.DistinctColorBuckets -lt 8 -or
+            $setupFrame.LuminanceSpread -lt 32) {
+            throw 'Focused native Connection Hub setup frame is blank or unreadable'
+        }
+
+        $script:testStage = 'focused connection hub direct-entry composition'
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x4C, $false)) {
+            throw 'Could not deliver the native Connection Hub L mnemonic'
+        }
+        $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetupPresented.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not [bool]$hubDirect.connection_hub_active -or
+                -not [bool]$hubDirect.connection_hub_literal_entry) -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+        }
+        if (-not [bool]$hubDirect.connection_hub_active -or
+            -not [bool]$hubDirect.connection_hub_literal_entry) {
+            Write-Host ($hubDirect | ConvertTo-Json -Depth 8)
+            throw 'Native L did not open the focused direct-entry editor'
+        }
+        $hubDirectPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+        if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+            throw 'Could not expose Automexia for focused direct-entry capture'
+        }
+        try {
+            Start-Sleep -Milliseconds 100
+            $directFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $directCapturePath)
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        }
+        if ($directFrame.Width -lt 100 -or $directFrame.Height -lt 100 -or
+            $directFrame.SampleCount -lt 100 -or
+            $directFrame.DistinctColorBuckets -lt 8 -or
+            $directFrame.LuminanceSpread -lt 32) {
+            throw 'Focused native Connection Hub direct frame is blank or unreadable'
+        }
+
+        $hubScale = [double]$hubDirectPresented.scale_factor
+        $logicalWidth = [double]$hubDirectPresented.window_width / $hubScale
+        $logicalHeight = [double]$hubDirectPresented.window_height / $hubScale
+        $margin = if ($logicalWidth -lt 420.0 -or $logicalHeight -lt 320.0) {
+            6.0
+        } else {
+            18.0
+        }
+        $cardWidth = [Math]::Min(840.0, [Math]::Max(1.0, $logicalWidth - $margin * 2.0))
+        $cardHeight = [Math]::Min(420.0, [Math]::Max(1.0, $logicalHeight - $margin * 2.0))
+        $cardX = [Math]::Max(0.0, ($logicalWidth - $cardWidth) * 0.5)
+        $cardY = [Math]::Max(0.0, ($logicalHeight - $cardHeight) * 0.5)
+        $inner = if ($cardWidth -lt 650.0) { 12.0 } else { 20.0 }
+        $closeX = [int][Math]::Round(($cardX + $cardWidth - $inner - 20.0) * $hubScale)
+        $closeY = [int][Math]::Round(($cardY + 32.0) * $hubScale)
+        $closeLParam = [IntPtr](($closeX -band 0xffff) -bor (($closeY -band 0xffff) -shl 16))
+        if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient(
+                $window, $closeX, $closeY) -or
+            -not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0200, [IntPtr]::Zero, $closeLParam)) {
+            throw 'Could not move to the focused direct-entry close target'
+        }
+        $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectPresented.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([string]$hubPointerReady.connection_hub_pointer_hit -ne
+                'CancelLiteralDestination' -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
+        }
+        if ([string]$hubPointerReady.connection_hub_pointer_hit -ne
+            'CancelLiteralDestination') {
+            Write-Host ($hubPointerReady | ConvertTo-Json -Depth 8)
+            throw 'The physical pointer did not resolve to direct-entry Cancel'
+        }
+        if (-not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0201, [IntPtr]1, $closeLParam) -or
+            -not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0202, [IntPtr]::Zero, $closeLParam)) {
+            throw 'Could not click the focused direct-entry close target'
+        }
+        $hubCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not [bool]$hubCancelled.connection_hub_active -or
+                [bool]$hubCancelled.connection_hub_literal_entry) -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCancelled.sequence)
+        }
+        $terminalAfterCancel = Get-ActiveAutomexiaPanel $hubCancelled
+        if (-not [bool]$hubCancelled.connection_hub_active -or
+            [bool]$hubCancelled.connection_hub_literal_entry -or
+            [string]$hubCancelled.connection_hub_route -ne 'results' -or
+            [int64]$terminalAfterCancel.route_id -ne [int64]$terminalBefore.route_id -or
+            [int]$hubCancelled.display_offset -ne [int]$hubSetupPresented.display_offset -or
+            [string]$terminalAfterCancel.raw_cursor_line_text -ne
+                [string]$terminalBefore.raw_cursor_line_text) {
+            Write-Host ($hubCancelled | ConvertTo-Json -Depth 8)
+            throw 'Native close did not cancel only direct entry or changed terminal state'
+        }
+
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+            throw 'Could not deliver Connection Hub Escape after nested cancellation'
+        }
+        $hubClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCancelled.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([bool]$hubClosed.connection_hub_active -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubClosed.sequence)
+        }
+        if ([bool]$hubClosed.connection_hub_active) {
+            throw 'Focused Connection Hub remained active after Escape'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
+            $reportPath = [IO.Path]::GetFullPath($ResourceReport)
+            $reportDirectory = [IO.Path]::GetDirectoryName($reportPath)
+            if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) {
+                New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+            }
+            $focusedReport = [ordered]@{
+                schema_version = 1
+                mode = 'connection-hub-only'
+                renderer = $rendererName
+                fixture = [string]$initial.visual_test_fixture
+                setup = [ordered]@{
+                    frame = @($setupFrame.Width, $setupFrame.Height)
+                    distinct_color_buckets = $setupFrame.DistinctColorBuckets
+                    luminance_spread = $setupFrame.LuminanceSpread
+                    artifact = if ($null -eq $setupCapturePath) { $null } else {
+                        [IO.Path]::GetFileName($setupCapturePath)
+                    }
+                }
+                direct_entry = [ordered]@{
+                    frame = @($directFrame.Width, $directFrame.Height)
+                    distinct_color_buckets = $directFrame.DistinctColorBuckets
+                    luminance_spread = $directFrame.LuminanceSpread
+                    close_cancelled_nested_only = $true
+                    terminal_state_preserved = $true
+                    artifact = if ($null -eq $directCapturePath) { $null } else {
+                        [IO.Path]::GetFileName($directCapturePath)
+                    }
+                }
+            } | ConvertTo-Json -Depth 5
+            [IO.File]::WriteAllText(
+                $reportPath, $focusedReport,
+                [Text.UTF8Encoding]::new($false))
+        }
+        Write-Host "Focused native Connection Hub $rendererName visual/input assurance passed"
+        return
+    }
 
     # Create a top-level tab through the exact Ctrl+T lifecycle. The renderer
     # snapshot is taken immediately after the control is consumed, before any
@@ -2948,6 +3168,11 @@ $rendererConfig
     } else {
         'connection-hub-wgpu.png'
     }
+    $hubDirectCaptureName = if ($UseCpuRenderer) {
+        'connection-hub-direct-cpu.png'
+    } else {
+        'connection-hub-direct-wgpu.png'
+    }
     $paletteCapturePath = if ($null -eq $modalCaptureRoot) {
         $null
     } else {
@@ -2962,6 +3187,11 @@ $rendererConfig
         $null
     } else {
         Join-Path $modalCaptureRoot $hubCaptureName
+    }
+    $hubDirectCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $hubDirectCaptureName
     }
 
     $script:testStage = 'connection hub native section navigation and composition'
@@ -3032,6 +3262,87 @@ $rendererConfig
         $hubFrame.LuminanceSpread -lt 32) {
         throw "Connection Hub composited frame is blank or unreadable: $($hubFrame.Width)x$($hubFrame.Height), buckets=$($hubFrame.DistinctColorBuckets), spread=$($hubFrame.LuminanceSpread)"
     }
+
+    $script:testStage = 'connection hub native direct-entry composition'
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x4C, $false)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject Connection Hub L mnemonic (Win32 error $code)"
+    }
+    $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPresented.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$hubDirect.connection_hub_active -or
+            -not [bool]$hubDirect.connection_hub_literal_entry) -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+    }
+    if (-not [bool]$hubDirect.connection_hub_active -or
+        -not [bool]$hubDirect.connection_hub_literal_entry) {
+        Write-Host ($hubDirect | ConvertTo-Json -Depth 8)
+        throw 'Connection Hub L did not open the direct-entry editor'
+    }
+    $hubDirectPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for direct-entry capture (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $hubDirectFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $hubDirectCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($hubDirectFrame.Width -lt 100 -or
+        $hubDirectFrame.Height -lt 100 -or
+        $hubDirectFrame.SampleCount -lt 100 -or
+        $hubDirectFrame.DistinctColorBuckets -lt 8 -or
+        $hubDirectFrame.LuminanceSpread -lt 32) {
+        throw "Connection Hub direct-entry frame is blank or unreadable: $($hubDirectFrame.Width)x$($hubDirectFrame.Height), buckets=$($hubDirectFrame.DistinctColorBuckets), spread=$($hubDirectFrame.LuminanceSpread)"
+    }
+
+    # Click the exact top-right close target through the production physical-to-
+    # logical conversion. It must cancel only the nested editor and preserve the
+    # Hub plus terminal state.
+    $hubScale = [double]$hubDirectPresented.scale_factor
+    $hubLogicalWidth = [double]$hubDirectPresented.window_width / $hubScale
+    $hubLogicalHeight = [double]$hubDirectPresented.window_height / $hubScale
+    $hubMargin = if ($hubLogicalWidth -lt 420.0 -or $hubLogicalHeight -lt 320.0) {
+        6.0
+    } else {
+        18.0
+    }
+    $hubCardWidth = [Math]::Min(840.0, [Math]::Max(1.0, $hubLogicalWidth - $hubMargin * 2.0))
+    $hubCardHeight = [Math]::Min(420.0, [Math]::Max(1.0, $hubLogicalHeight - $hubMargin * 2.0))
+    $hubCardX = [Math]::Max(0.0, ($hubLogicalWidth - $hubCardWidth) * 0.5)
+    $hubCardY = [Math]::Max(0.0, ($hubLogicalHeight - $hubCardHeight) * 0.5)
+    $hubInner = if ($hubCardWidth -lt 650.0) { 12.0 } else { 20.0 }
+    $hubCloseX = [int][Math]::Round(($hubCardX + $hubCardWidth - $hubInner - 20.0) * $hubScale)
+    $hubCloseY = [int][Math]::Round(($hubCardY + 32.0) * $hubScale)
+    $hubCloseLParam = [IntPtr](($hubCloseX -band 0xffff) -bor (($hubCloseY -band 0xffff) -shl 16))
+    if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient(
+            $window, $hubCloseX, $hubCloseY) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0200, [IntPtr]::Zero, $hubCloseLParam) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0201, [IntPtr]1, $hubCloseLParam) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0202, [IntPtr]::Zero, $hubCloseLParam)) {
+        throw 'Could not click the Connection Hub direct-entry close target'
+    }
+    $hubDirectCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectPresented.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$hubDirectCancelled.connection_hub_active -or
+            [bool]$hubDirectCancelled.connection_hub_literal_entry) -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubDirectCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectCancelled.sequence)
+    }
+    if (-not [bool]$hubDirectCancelled.connection_hub_active -or
+        [bool]$hubDirectCancelled.connection_hub_literal_entry -or
+        [string]$hubDirectCancelled.connection_hub_route -ne 'results') {
+        Write-Host ($hubDirectCancelled | ConvertTo-Json -Depth 8)
+        throw 'Direct-entry close did not cancel only the nested editor'
+    }
+    $hubPresented = $hubDirectCancelled
 
     $script:testStage = 'connection hub native dismissal and PTY isolation'
     if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
@@ -3390,6 +3701,18 @@ $rendererConfig
                     distinct_color_buckets = $hubFrame.DistinctColorBuckets
                     luminance_spread = $hubFrame.LuminanceSpread
                     section_sequence = @('results', 'workspaces', 'providers', 'results')
+                    direct_entry = [ordered]@{
+                        width = $hubDirectFrame.Width
+                        height = $hubDirectFrame.Height
+                        distinct_color_buckets = $hubDirectFrame.DistinctColorBuckets
+                        luminance_spread = $hubDirectFrame.LuminanceSpread
+                        close_cancelled_nested_only = $true
+                        artifact = if ($null -eq $hubDirectCapturePath) {
+                            $null
+                        } else {
+                            [IO.Path]::GetFileName($hubDirectCapturePath)
+                        }
+                    }
                     terminal_state_preserved = $true
                     artifact = if ($null -eq $hubCapturePath) {
                         $null

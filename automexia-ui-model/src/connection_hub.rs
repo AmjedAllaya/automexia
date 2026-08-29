@@ -816,7 +816,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         "connection-hub-title",
         AccessibilityRole::Heading,
         if request.literal_destination_entry {
-            "Review direct SSH host"
+            "Enter a host"
         } else {
             "Connection Hub"
         },
@@ -826,7 +826,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         accessibility_tree.push(AccessibilityNode::new(
             "literal-ssh-instructions",
             AccessibilityRole::Group,
-            "Enter one host or SSH alias, plus an optional user and port. URI, options, shell text, and manual jump routes are unavailable.",
+            "Host required; user and port optional. URI, options, shell text, and manual jump routes are unavailable.",
         ));
         let mut destination = AccessibilityNode::new(
             "literal-ssh-destination",
@@ -872,7 +872,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         let mut review = AccessibilityNode::new(
             "literal-ssh-review",
             AccessibilityRole::Button,
-            "Review direct SSH host",
+            "Review host",
         );
         review.focusable = true;
         review.disabled = !request.literal_destination_valid;
@@ -881,7 +881,7 @@ pub fn project_connection_hub(request: HubProjectionRequest<'_>) -> ConnectionHu
         let mut cancel = AccessibilityNode::new(
             "literal-ssh-cancel",
             AccessibilityRole::Button,
-            "Cancel direct SSH host entry",
+            "Cancel host entry",
         );
         cancel.focusable = true;
         cancel.actions = vec!["cancel".into()];
