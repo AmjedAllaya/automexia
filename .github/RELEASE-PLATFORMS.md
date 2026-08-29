@@ -1,29 +1,12 @@
-# Release platform contract (2026)
+# Release platforms
 
-This repository intentionally builds stable release executables on native GitHub-hosted
-architectures instead of cross-compiling the official binaries from one host.
+| Artifact | Native build runner | Final verification |
+|---|---|---|
+| Windows x86_64 MSVC | `windows-2025` | signed MSI/ZIP smoke during packaging |
+| Windows ARM64 MSVC | `windows-11-arm` | final signed MSI/ZIP on `windows-11-arm` |
+| Linux x86_64 GNU | `ubuntu-22.04` | packaging/install on 22.04 + final package execution on 24.04 |
+| Linux ARM64 GNU | `ubuntu-22.04-arm` | packaging/install on 22.04 ARM + final package execution on 24.04 ARM |
+| macOS Intel | `macos-26-intel` | final notarized universal DMG on Intel |
+| macOS Apple Silicon | `macos-26` | final notarized universal DMG on Apple Silicon |
 
-| Artifact target | Native build runner | Final packaging runner |
-| --- | --- | --- |
-| `x86_64-pc-windows-msvc` | `windows-2025` | `windows-2025` |
-| `aarch64-pc-windows-msvc` | `windows-11-arm` | `windows-2025` (central signing/MSI tooling) |
-| `x86_64-apple-darwin` | `macos-26-intel` | `macos-26` (universal assembly/signing) |
-| `aarch64-apple-darwin` | `macos-26` | `macos-26` |
-| `x86_64-unknown-linux-gnu` | `ubuntu-24.04` | `ubuntu-24.04` |
-| `aarch64-unknown-linux-gnu` | `ubuntu-24.04-arm` | `ubuntu-24.04-arm` |
-
-The GNU/Linux release workflow additionally fails if the final ELF requires a glibc symbol
-newer than `GLIBC_2.35`, and it records the dynamic dependency resolution from the native
-build runner. This is an explicit portability contract; change it only as a reviewed release
-policy decision.
-
-The macOS universal application is assembled only after its Intel and ARM64 slices have each
-been built and executed on their native runner. Code signing, hardened runtime validation,
-notarization, stapling, and Gatekeeper assessment remain fail-closed.
-
-Windows ARM64 binaries are likewise built and executed on native ARM64 Windows. Final MSI
-and Authenticode signing are intentionally centralized on the x64 Windows packaging runner,
-which receives the already-tested ARM64 executable as an artifact.
-
-Do not replace the explicit stable runner labels with `*-latest` in release workflows. The
-explicit labels make release-environment migrations reviewable rather than silent.
+Linux support is an explicit GNU/Linux ABI/runtime contract, not a claim that every possible Linux distribution is identical. The production ceiling is GLIBC 2.35; native desktop/audio/runtime shared libraries are still required by the application/package.
