@@ -134,7 +134,7 @@ cargo ready
 The 2026-08-31 native Windows x86_64 MSVC audit of this worktree produced the
 following bounded evidence:
 
-- complete Python discovery passed 533 tests with six platform-capability
+- complete Python discovery passed 534 tests with six platform-capability
   skips;
 - all-feature Nextest passed 2,281 tests across 91 binaries with seven declared
   skips, and the separate workspace documentation-test command passed its
@@ -149,6 +149,12 @@ following bounded evidence:
   Cargo Deny, Cargo Vet, changed-history and working-tree Gitleaks scans, two
   Semgrep rules over 620 tracked Rust files with zero findings, and three real
   scanner-canary mutations.
+
+The introduced-commit scan compares an established branch with its configured
+upstream. A new branch with no upstream uses the fetched `origin/HEAD` merge
+base. If neither exists, assurance stops with a fetch instruction; it never
+passes a lone `HEAD` revision that would silently expand to all inherited
+history.
 
 This evidence covers that exact worktree on one Windows host. It does not claim
 a successful hosted run, Linux/macOS native behavior, signing/notarization,

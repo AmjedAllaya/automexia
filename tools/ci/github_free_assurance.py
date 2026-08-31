@@ -14,6 +14,7 @@ import json
 import os
 from pathlib import Path
 import platform
+import re
 import shutil
 import subprocess
 import sys
@@ -393,10 +394,26 @@ def git_stdout(*arguments: str) -> str | None:
 def changed_commit_log_options() -> str:
     upstream = git_stdout("rev-parse", "--abbrev-ref", "--symbolic-full-name", "@{upstream}")
     if upstream is None:
-        return "HEAD"
+        # A lone revision makes `git log` traverse all reachable history. New
+        # branches therefore anchor to the fetched origin default instead of
+        # turning a pre-push delta scan into an accidental repository audit.
+        upstream = git_stdout(
+            "symbolic-ref", "--quiet", "--short", "refs/remotes/origin/HEAD"
+        )
+        if upstream is None:
+            raise AssuranceError(
+                "the branch has no upstream and origin/HEAD is unavailable; "
+                "fetch the origin default branch before secret scanning"
+            )
     merge_base = git_stdout("merge-base", "HEAD", upstream)
     head = git_stdout("rev-parse", "HEAD")
-    if merge_base is None or head is None:
+    full_sha = re.compile(r"[0-9a-f]{40}")
+    if (
+        merge_base is None
+        or head is None
+        or full_sha.fullmatch(merge_base) is None
+        or full_sha.fullmatch(head) is None
+    ):
         raise AssuranceError("could not resolve the upstream commit range for secret scanning")
     return f"{merge_base}..{head}"
 

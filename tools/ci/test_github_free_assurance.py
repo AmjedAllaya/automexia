@@ -90,9 +90,22 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         ):
             self.assertEqual(ASSURANCE.changed_commit_log_options(), f"{'a' * 40}..{'b' * 40}")
 
-    def test_changed_commit_scan_falls_back_to_head_without_an_upstream(self) -> None:
-        with mock.patch.object(ASSURANCE, "git_stdout", return_value=None):
-            self.assertEqual(ASSURANCE.changed_commit_log_options(), "HEAD")
+    def test_new_branch_scan_uses_the_remote_default_without_an_upstream(self) -> None:
+        with mock.patch.object(
+            ASSURANCE,
+            "git_stdout",
+            side_effect=[None, "origin/main", "a" * 40, "b" * 40],
+        ):
+            self.assertEqual(
+                ASSURANCE.changed_commit_log_options(),
+                f"{'a' * 40}..{'b' * 40}",
+            )
+
+    def test_new_branch_scan_fails_closed_without_a_remote_default(self) -> None:
+        with mock.patch.object(
+            ASSURANCE, "git_stdout", side_effect=[None, None]
+        ), self.assertRaisesRegex(ASSURANCE.AssuranceError, "origin/HEAD"):
+            ASSURANCE.changed_commit_log_options()
 
     def test_history_audit_entrypoint_reaches_the_pinned_full_history_scan(self) -> None:
         def command(_policy: dict[str, object], name: str, *arguments: str) -> list[str]:
