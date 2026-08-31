@@ -3141,7 +3141,8 @@ For an exact annotated tag, verify:
 - macOS Developer ID signature, hardened runtime, notarization and Gatekeeper;
 - SHA-256 checksums for every final artifact;
 - semantic CycloneDX/SPDX SBOMs matching package version/components/lockfile;
-- GitHub provenance/SBOM attestations bound to the tag and final signed files;
+- signed repository-owned release-manifest evidence bound to the tag and final
+  signed files, plus matching SBOMs;
 - Linux reproducibility job's two cold same-path x64 outputs are byte-identical;
   and
 - publication uses the exact allowlist and creates one new immutable draft
@@ -3149,7 +3150,7 @@ For an exact annotated tag, verify:
 
 Expected result: every independent verifier succeeds. Missing credentials,
 unknown/partial signing backend, digest/version drift, empty SBOM, unsigned
-resource, unprotected runner, existing release or unattested artifact blocks
+resource, unprotected runner, existing release, or release-manifest mismatch blocks
 publication. Mark this **not run** without the controlled infrastructure.
 
 ### PKG-04 — clean install, upgrade, rollback, and uninstall

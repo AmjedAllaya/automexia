@@ -234,6 +234,44 @@ After CI/reviews, merge it. `Stable release` then:
 
 `nightly.yml` is manual-only in this edition. Daily scheduled fuzz/Miri/sanitizer runs can consume a private Free repository's allowance rapidly. Run **Deep assurance (manual)** before major releases when desired. The specialized S1/S2/F5 workflows are also manual/self-hosted controls.
 
+## 9.1 Local assurance before a push
+
+On every trusted contributor machine, install and verify the free local
+assurance tools once from a clean repository checkout:
+
+```text
+cargo xtask assurance install-tools
+cargo xtask assurance initialize-vet
+cargo xtask assurance pre-push
+```
+
+The installer places all downloaded or built tools in the ignored repository
+local `.automexia-tools/` directory. It checksum-verifies Actionlint and
+Gitleaks release archives, pins Semgrep Community Edition, Cargo Audit, Cargo
+Vet, and Zizmor versions, and never stores credentials in that directory. The
+pre-push profile checks the repository readiness gate, workflow pin/policy and
+mutation contracts, Actionlint, offline Zizmor, RustSec/Cargo Deny/Cargo Vet,
+Gitleaks against introduced commits and current files, local Semgrep rules, and
+real scanner canaries. `initialize-vet` generates Cargo Vet's source-controlled
+baseline once and verifies an existing complete baseline without rewriting it;
+partial records fail closed. Inspect its generated `supply-chain/` records
+before committing them. It is a dependency-change ratchet, not a substitute for
+reviewing the imported audit criteria.
+
+Use `cargo xtask assurance audit-history-secrets` for the separate all-history
+campaign. It remains fail-closed while legacy generic-key findings await
+human-approved remediation; the regular profile does not suppress them with a
+broad allowlist. Hosted CI follows the same introduced-commit boundary using
+validated GitHub event SHAs and still scans the complete checked-out working
+tree.
+
+Use `cargo xtask assurance install-hook` only on a machine that has no existing
+pre-push hook. It refuses to replace an existing hook. `release-local` adds
+release policy checks; `deep-source` must run from Linux or a native WSL
+checkout and runs bounded Miri, sanitizer, and fuzz campaigns. These local
+profiles do not claim GitHub plan controls, native macOS/Windows accessibility,
+or signing/notarization evidence.
+
 ## 10. Trust boundary
 
 GitHub Free private repositories cannot technically prevent a repository administrator from changing workflows or bypassing team conventions. Repository secrets are therefore appropriate only when every person with write access is trusted with release authority. For stronger separation of duties, move signing to an external controlled signer or use a plan/platform with server-enforced protected environments/rulesets.

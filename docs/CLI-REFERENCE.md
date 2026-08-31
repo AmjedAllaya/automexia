@@ -170,6 +170,14 @@ has passed.
 | `cargo xtask visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH` | Compare bounded same-size PNG evidence with the reviewed tolerance/mask policy, then atomically write a heatmap and path-free JSON report. The command fails when dimensions, masks, limits, or changed-pixel ratio violate policy. |
 | `cargo xtask check` | Locked metadata, formatting, repository contracts, workspace checks, Clippy, tests, dependency policy, build, and smoke without launch. |
 | `cargo xtask ci` | Complete CI gate. |
+| `cargo xtask assurance check-policy` | Validate only the versioned GitHub-Free local assurance policy; this is also part of architecture verification. |
+| `cargo xtask assurance install-tools` | Download/build the checksum-pinned local scanner tools into ignored `.automexia-tools/` without modifying application configuration. |
+| `cargo xtask assurance initialize-vet` | Generate and immediately verify Cargo Vet's reviewable `supply-chain/` baseline. Inspect and commit it separately. |
+| `cargo xtask assurance install-hook` | Add the local pre-push profile only when no existing pre-push hook exists; it refuses replacement. |
+| `cargo xtask assurance audit-history-secrets` | Run the separate fail-closed Gitleaks campaign over all reachable history; legacy remediation requires explicit human approval. |
+| `cargo xtask assurance pre-push` | Run local readiness, workflow policy, workflow static analysis, dependency policy/Vet, introduced-commit plus working-tree secret scanning, and Semgrep before a trusted push. |
+| `cargo xtask assurance release-local` | Extend `pre-push` with release artifact and provenance policy/mutation checks. |
+| `cargo xtask assurance deep-source` | Run the bounded nightly Miri, sanitizer, and fuzz owners from a native Linux/WSL checkout. It does not claim controlled native or external release evidence. |
 | `cargo xtask qa --full [--bundle]` | Deep bounded evidence run; optional privacy-reviewed report bundle. |
 | `cargo xtask verify architecture` | Enforce dependency, threading, prompt metadata, renderer, shell, and capability boundaries. |
 | `cargo xtask verify identity` | Reject non-allowlisted user-facing Rio identity. |

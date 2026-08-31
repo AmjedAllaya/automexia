@@ -394,9 +394,11 @@ current Narrator and NVDA evidence on Windows, VoiceOver on macOS, and Orca on
 X11/Wayland for any release claim covering those environments.
 
 Security and parser boundaries require table-driven negative cases, property
-tests, coverage-guided fuzzing, duplicate-key tests, size/depth/count ceilings,
-Unicode/control/bidi cases, path traversal and link cases, cancellation,
-timeouts, redaction canaries, and exact capability/argv/environment assertions.
+tests, coverage-guided fuzzing, repeated object-member cases,
+size/depth/count ceilings, Unicode/control/bidi cases, path traversal and link
+cases, cancellation, bounded-deadline behavior, sensitive-value removal
+canaries, and exact capability decisions, argument vectors, and subprocess
+contexts.
 Seed corpora must include every historical failure. A passing fuzz smoke test
 proves only that campaign; record engine, seed, corpus digest, duration,
 executions, sanitizer, target, platform, and discovered/replayed crashes.

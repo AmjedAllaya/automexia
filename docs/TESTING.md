@@ -1077,10 +1077,56 @@ source because WiX 3 has no ARM64 MSI support. Linux package jobs install the
 exact nFPM version without a semver-incompatible `v` prefix.
 
 On this GitHub-Free/private plan, the policy job deliberately rejects a CodeQL
-workflow and private code-scanning upload. It instead runs pinned actionlint
-and offline zizmor against the workflow files, while the dependency-security
-job runs cargo audit and cargo deny. These checks do not replace a future,
-explicitly adopted code-scanning service.
+workflow and private code-scanning upload. It runs pinned actionlint and offline
+zizmor against workflow files; dependency security runs cargo audit and cargo
+deny. Before a push, contributors can run the same locally reproducible
+assurance profile:
+
+```text
+cargo xtask assurance install-tools
+cargo xtask assurance pre-push
+```
+
+Tools are pinned and installed only under the ignored repository-local
+`.automexia-tools/` cache. The profile adds Semgrep Community Edition source
+rules, Gitleaks checks of commits introduced relative to the configured
+upstream plus the working tree, a Cargo Vet trust-policy check, and real
+Semgrep/Gitleaks canaries. It has no credential, upload, or network-service
+authority beyond fetching the explicitly checksum-pinned local tool releases
+and pinned public packages during the one-time installation. Hosted CI uses
+validated event SHAs for the same introduced-commit boundary and a complete
+checkout only in the dependency-security job. Use
+`cargo xtask assurance install-hook` only when no pre-existing personal Git
+pre-push hook needs to be preserved: it refuses to overwrite one.
+
+Run `cargo xtask assurance audit-history-secrets` separately for the bounded
+full-history campaign. It intentionally fails closed on the repository's
+review-required legacy generic-key findings. Do not add broad path allowlists or
+rewrite shared history without explicit human approval; current-tree and newly
+introduced findings remain blocking in `pre-push` and `release-local`.
+
+`cargo xtask assurance release-local` adds release-manifest and provenance
+policy/mutation checks. `cargo xtask assurance deep-source` is deliberately
+Linux/WSL-only and executes the bounded nightly Miri, sanitizer, and fuzz
+owners defined by the manual nightly workflow. It cannot substitute for
+controlled Windows/macOS hardware, accessibility, signing, notarization, or
+GitHub vendor-entitlement evidence; those remain explicit external gates.
+
+The ignored `.automexia-tools/` cache is excluded from repository source and
+documentation walkers; its scanner/tool payloads are not treated as checked-in
+formats. After the one-time tool installation, run
+`cargo xtask assurance initialize-vet` to generate Cargo Vet's
+source-controlled baseline. On later runs it verifies a complete baseline
+without rewriting it; a partial baseline fails closed. Inspect every generated
+`supply-chain/` record and commit it with the policy. The baseline is a ratchet,
+not evidence that the dependency graph was independently audited;
+new or changed dependencies must receive a reviewed audit/import decision.
+
+The exact currently reviewed upstream informational warnings live in
+`.cargo/audit.toml` and are mirrored by `deny.toml`;
+`tools/ci/test_rustsec_exceptions.py` fails if either policy gains, loses, or
+fails to explain an exception. This is a temporary compatibility ledger for
+transitive renderer/font dependencies, not a general RustSec waiver.
 
 Stable release requires WSL, real-GPU, clean-install, upgrade, uninstall,
 signature, notarization, URL handler, terminfo, and migration smoke tests on
@@ -1979,11 +2025,13 @@ adds all applicable evidence below.
 Parsers for external JSON, safe SSH inventory, route graphs, policy input, file
 operations, log frames, and collaboration messages receive property and fuzz
 coverage. Pure security decisions and state machines receive scoped mutation
-testing. cargo-vet is introduced only with a named audit owner, trusted-import
+testing. Cargo Deny, Cargo Audit, and cargo-vet are all version-pinned in the
+repository-local assurance cache. cargo-vet is introduced only with a named audit owner, trusted-import
 policy, explicit criteria, ratcheted exemptions, and renewal process; it
-complements rather than replaces cargo-deny, dependency review, CodeQL, SBOMs,
-attestations, or release signing. Diagnostic Nextest retries remain reported
-flaky failures.
+complements rather than replaces cargo-deny, SBOMs, or release signing. On a
+private GitHub-Free repository, private Dependency Review and CodeQL are
+external vendor-entitlement gates rather than local claims. Diagnostic Nextest
+retries remain reported flaky failures.
 
 An adopted runtime crate also needs pinned minimal features, license/source/
 advisory/provenance review, an update owner, platform declaration, measured

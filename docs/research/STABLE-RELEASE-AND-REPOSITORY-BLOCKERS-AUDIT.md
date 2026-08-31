@@ -3,7 +3,7 @@
 Status: repository-owned enforcement fully implemented; release evidence and
 account prerequisites remain partial/external
 
-Audit date: 2026-08-27
+Audit date: 2026-08-31
 
 ## Outcome, authority, and scope
 
@@ -31,6 +31,7 @@ manufacture native or elapsed evidence.
 | Fork provenance | **Fully done** | Local and remote annotated `rio-base-0.5.20-7d595af` must peel to `7d595af583f6ef1ea6036a66b367ba1e5a84d4a2`; the missing tag was published and remotely verified on 2026-08-26 | Preserve the immutable tag |
 | Downstream history/DCO | **Fully enforced; historical evidence blocked** | One bounded 16 MiB/30-second batch traversal covers at most 100,000 commits, rejects merges, and requires an author-email-matching `Signed-off-by` trailer | Resolve the six post-fork merge commits and commit `0f3fec43ac` through an explicitly coordinated legal/history process; no automatic rewrite is authorized |
 | Local repository-protection contract | **Fully done** | Two rulesets, fourteen exact checks, selected full-SHA Actions, least-authority workflow token, security settings, ownership fallback, mutation tests | Preserve contract and mutations |
+| GitHub-Free local assurance | **Fully implemented for current changes / legacy history partial / hosted execution external** | Versioned policy, checksum-pinned isolated D-drive tools, non-overwriting pre-push hook, workflow policy mutation tests, Semgrep Community Edition canary, Gitleaks introduced-commit/current-tree checks and explicit all-history audit, Cargo Audit/Deny exception alignment, Cargo Vet ratchet, and local release/deep-source profiles | Run `pre-push` on the exact candidate; obtain human approval for legacy history remediation; restore GitHub Actions billing so matching hosted checks can report current-commit evidence |
 | Hosted repository state | **Partially done / external** | Authenticated audit/apply path is bounded and idempotent; all available settings pass | Activate controlled workflows on protected `main`; restore Actions billing; obtain ruleset-capable plan or separately approve public visibility; add two reviewers; enable visibility/entitlement-dependent security controls |
 | Stable tag repository audit | **Fully done in source** | GitHub-Free/private preflight requires a repository audit credential and `repository_protection.py audit --json`; any fail or external result blocks publication | Configure the repository secret, record the independent release review, and make the live audit all-pass |
 | Brand assets and redistribution rights | **External prerequisite** | Manifest and package checks correctly fail closed | Supply editable SVG/variants and legal rights evidence; independent reviewer sets final status |
@@ -39,7 +40,7 @@ manufacture native or elapsed evidence.
 | Apple signing and notarization | **Fully done in workflow / external credentials and host** | Developer ID signing, hardened runtime, notarytool acceptance, stapling, Gatekeeper and mounted-DMG validation | Provision Apple credentials and retain macOS controlled evidence |
 | S1 assurance | **Fully done in source / external execution** | Strict 28-suite current-commit policy, five 8,352-frame visual matrices, mutation tests, exact controlled-runner activation/timeout/fail-closed semantics, one exact 90-day path-free summary, and non-bypassable release dependency | Complete and independently review Windows/Linux/macOS native, visual, resource, and assistive-technology manifests |
 | S2 performance ratchet | **Fully done in source / collecting** | Exact 5% latency/10% memory ratchet, controlled builder, independent review, semantically checked serialized protected activation, exact 90-day summary identity, and non-bypassable controlled release job/dependency | Complete thirty consecutive comparable controlled-runner days and activate the baseline |
-| Final packages, SBOM, checksums, provenance | **Fully done in source / external execution** | Signed platform packages, semantic CycloneDX/SPDX, complete checksums, attestations, immutable publication, clean install/upgrade/uninstall and hardware trust jobs | Run successfully on the exact protected release commit |
+| Final packages, SBOM, checksums, provenance | **Fully done in source / external execution** | Signed platform packages, semantic CycloneDX/SPDX, complete checksums, repository-owned release manifest, immutable publication, clean install/upgrade/uninstall and hardware trust jobs | Run successfully on the exact protected release commit; GitHub private artifact attestations remain an external Enterprise entitlement |
 
 ## Live repository evidence
 

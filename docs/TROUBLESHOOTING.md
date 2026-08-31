@@ -14,7 +14,7 @@ Persistent integration is optional. If
 `automexia shell-integration install` is blocked, continue using the
 session-only integration and do not add an antivirus exclusion or pass
 `-ExecutionPolicy Bypass`. For a protected release, verify the MSI/ZIP
-checksum, Authenticode publisher/timestamp, and GitHub attestation as described
+checksum, Authenticode publisher/timestamp, and signed release manifest as described
 in [Release trust](RELEASE-TRUST.md), then submit only that exact public
 artifact through the antivirus vendor's official false-positive process.
 Developer builds and checked-out scripts are intentionally unsigned and should

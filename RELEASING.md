@@ -42,8 +42,11 @@ and tar.gz artifacts with X11 and Wayland support. Windows x86_64 uses
 cargo-packager 0.11.x WiX 3 backend cannot create ARM64 MSI databases. The
 Windows runner therefore needs the .NET SDK, and xtask restores the exact WiX
 5.0.2 tool from `.config/dotnet-tools.json`. The workflow also produces
-SHA-256 checksums, semantic CycloneDX/SPDX SBOMs, and GitHub provenance/SBOM
-attestations. The SBOM input combines final signed packages with the tagged
+SHA-256 checksums, semantic CycloneDX/SPDX SBOMs, and a signed
+repository-owned release manifest. On the current GitHub-Free/private plan,
+GitHub artifact attestations remain an external Enterprise entitlement and are
+not claimed by this release process. The SBOM input combines final signed
+packages with the tagged
 `Cargo.lock`; validation rejects empty documents and version/component drift.
 The workflow signs every Windows PowerShell/format resource before packaging,
 and both portable ZIPs plus the ARM64 MSI include the complete resource tree.
