@@ -13,6 +13,7 @@ errors: list[str] = []
 EXPECTED_WORKFLOWS = {
     'ci.yml',
     'f5-openssh-assurance.yml',
+    'linux-early-access.yml',
     'nightly.yml',
     'release.yml',
     's1-assurance.yml',
@@ -67,6 +68,20 @@ if release.count('contents: write') != 1:
 
 if not re.search(r'^  publish:\n(?:.*\n){0,15}?    - reproducibility-linux$', release, re.MULTILINE):
     errors.append('release publication preparation must directly depend on reproducibility-linux')
+
+linux_early_access = (wf/'linux-early-access.yml').read_text(encoding='utf-8')
+for fragment in (
+    "startsWith(github.event.pull_request.head.ref, 'release/linux/')",
+    'github.event.pull_request.head.repo.full_name == github.repository',
+    'tools/ci/public_distribution.py check-policy',
+    'permission-contents: write',
+    'permission-administration: read',
+    'repositories: automexia-releases',
+    '--stage draft',
+    '--stage published',
+):
+    if fragment not in linux_early_access:
+        errors.append(f'Linux Early Access workflow is missing free-plan fragment: {fragment}')
 
 ci = (wf/'ci.yml').read_text(encoding='utf-8')
 for fragment in (

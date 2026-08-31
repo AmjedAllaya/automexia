@@ -292,6 +292,15 @@ Current assurance: **Controlled/external**.
 - Require the protected audit to return only pass; plan, billing, reviewer,
   workflow, security-entitlement, credential, native-host, and elapsed evidence
   remain external until actually observed.
+- For Linux Early Access, generate exactly six x64/Arm64 DEB/RPM/tar packages;
+  reject links, duplicates, symbols, unowned formats, count/byte overflow, and
+  checksum/manifest drift; verify a create-once draft before publication and the
+  exact immutable GitHub asset inventory afterward.
+- Keep the public binary repository, one-hour repository-scoped GitHub App, and
+  website activation seal as independent oracles. Mutate repository scope,
+  App permissions, draft/publish ordering, immutable audit, every asset digest,
+  redirect host, trusted minisign key/signature, source commit, manifest digest,
+  wrong pinned version, and unavailable-route 404 behavior.
 
 ### command-productivity-cp0-policy
 

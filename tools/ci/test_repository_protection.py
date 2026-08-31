@@ -130,6 +130,16 @@ class RepositoryProtectionTests(unittest.TestCase):
             "s2-assurance.yml", PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS
         )
 
+    def test_linux_early_access_is_registered_without_claiming_default_branch_evidence(self) -> None:
+        self.assertEqual(
+            PROTECTION.EXPECTED_WORKFLOWS["linux-early-access.yml"],
+            "Linux Early Access release",
+        )
+        self.assertNotIn(
+            "linux-early-access.yml",
+            PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS,
+        )
+
     def test_action_policy_requires_sha_pinning_and_an_exact_allowlist(self) -> None:
         for field, value in (
             ("full_length_sha_required", False),

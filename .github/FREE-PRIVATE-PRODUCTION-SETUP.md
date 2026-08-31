@@ -17,6 +17,7 @@ The workflow list should contain only:
 ```text
 ci.yml
 f5-openssh-assurance.yml
+linux-early-access.yml
 nightly.yml
 release.yml
 s1-assurance.yml
@@ -167,6 +168,37 @@ minisign -V -P '<RW...public-key-line>' -m SHA256SUMS -x SHA256SUMS.minisig
 sha256sum -c SHA256SUMS
 ```
 
+## 6.1 Public Linux Early Access repository and GitHub App
+
+Linux Early Access publishes to the passive public repository
+`AmjedAllaya/automexia-releases`; it does not publish public assets from the
+private source repository. That repository must remain public, keep Actions
+disabled, protect `main`, enable private vulnerability reporting, and return a
+successful authenticated response from:
+
+```text
+GET /repos/AmjedAllaya/automexia-releases/immutable-releases
+```
+
+Register a GitHub App and grant only repository **Contents: read/write** and
+**Administration: read-only**. Install it only on `automexia-releases`. In this
+private source repository set:
+
+```text
+AUTOMEXIA_DISTRIBUTION_APP_CLIENT_ID          # Actions variable
+AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY        # Actions secret, PEM contents
+```
+
+The workflow mints a one-hour installation token restricted to that one
+repository. Contents write creates the draft/tag/assets; Administration read
+only checks immutable-release configuration. The App cannot change that setting,
+and the source repository's normal `GITHUB_TOKEN` remains read-only.
+
+The repository owner enables immutable releases once with administration write.
+Do not grant that write permission to the publication App. Rotate an exposed App
+private key immediately, remove the old key from the App, and rerun only a new
+patch version; never replace a published release.
+
 ## 7. Ordinary PR CI
 
 Every PR to `main` runs only three Linux-hosted gates:
@@ -245,6 +277,20 @@ After CI/reviews, merge it. `Stable release` then:
 13. signs `SHA256SUMS` with the dedicated minisign release key;
 14. creates annotated `v1.2.3` only after all gates pass;
 15. publishes the GitHub Release.
+
+### Linux Early Access only
+
+Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
+independent approval and distinct merger, `linux-early-access.yml` reruns the
+Linux release-quality gate, builds x64 and Arm64 packages natively, signs the
+public bundle, publishes one immutable prerelease in `automexia-releases`, and
+retains `website-activation.json` for 30 days. It does not publish Windows or
+macOS and does not enable the website.
+
+Review the activation handoff in the landing-page repository, set its trusted
+minisign public-key deployment variable, run its complete live-release verifier,
+review the protected preview, and only then change the Linux channel to
+available. See `docs/PUBLIC-RELEASE-DISTRIBUTION.md`.
 
 ## 9. Deep assurance
 

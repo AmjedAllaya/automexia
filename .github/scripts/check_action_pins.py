@@ -21,6 +21,7 @@ ALLOWED_ACTIONS = {
     "actions/checkout",
     "actions/download-artifact",
     "actions/upload-artifact",
+    "actions/create-github-app-token",
     "anchore/sbom-action",
     "azure/artifact-signing-action",
     "azure/login",

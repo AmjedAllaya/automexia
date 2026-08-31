@@ -675,6 +675,16 @@ def main() -> int:
             [sys.executable, "tools/ci/test_stable_release.py"],
             None,
         ),
+        (
+            "public-distribution-policy",
+            [sys.executable, "tools/ci/public_distribution.py", "check-policy"],
+            None,
+        ),
+        (
+            "public-distribution-mutations",
+            [sys.executable, "tools/ci/test_public_distribution.py"],
+            None,
+        ),
         ("rustfmt", ["cargo", "fmt", "--all", "--", "--check"], None),
         ("metadata", ["cargo", "metadata", "--locked", "--format-version", "1"], None),
         ("repository-contracts", ["cargo", "xtask", "verify", "all"], None),

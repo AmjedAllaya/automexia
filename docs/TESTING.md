@@ -63,6 +63,36 @@ checkout.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
 isolated exhaustive build artifacts behind.
 
+## Public Linux Early Access distribution
+
+Run the producer-side policy and mutations before changing packaging,
+publication, GitHub permissions, checksums, public evidence, or activation:
+
+```text
+python tools/ci/public_distribution.py check-policy
+python tools/ci/test_public_distribution.py
+python .github/scripts/check_action_pins.py
+python .github/scripts/check_free_plan_contract.py
+python tools/ci/test_free_plan_contract.py
+python tools/ci/test_repository_protection.py
+```
+
+The tests create real temporary package/bundle files and compare bytes and
+digests. They cover missing/duplicate package slots, unowned AppImage/Windows
+files, symbols, links, size/count ceilings, malformed checksum paths, one-byte
+drift, draft/immutable state, extra assets, post-upload digest changes,
+repository scope, App permission tokens, publication ordering, and deterministic
+activation handoff. They do not substitute for native hosted packaging, real
+minisign, GitHub App, immutable release, or production website evidence.
+
+The landing-page repository separately runs `pnpm downloads:check` for friendly
+and pinned 404/redirect contracts plus live-verifier mutations. When and only
+when a real release is sealed as available, its `pnpm downloads:verify:live`
+downloads the complete release, bounds every response, checks GitHub digests and
+redirect hosts, verifies exact `SHA256SUMS`, validates the trusted minisign key
+and detached signature, and compares the manifest source commit and activation
+digest. Keep its status inactive in ordinary source tests.
+
 ### Native platform ownership
 
 Cross-platform behavior is accepted on the operating system that owns the

@@ -1,5 +1,14 @@
 # Releasing Automexia Terminal
 
+Linux Early Access has a separate zero-cost public binary lane. An internal
+`release/linux/X.Y.Z` pull request activates `.github/workflows/linux-early-access.yml`
+after merge. It publishes only the exact six Linux packages and public evidence
+to `AmjedAllaya/automexia-releases`; it does not create a stable multi-platform
+release or enable the website. The complete contract, App permissions,
+activation handoff, and rollback procedure are in
+[`docs/PUBLIC-RELEASE-DISTRIBUTION.md`](docs/PUBLIC-RELEASE-DISTRIBUTION.md) and
+[ADR 0037](docs/adr/0037-public-binary-release-distribution.md).
+
 Stable releases are tag-driven from protected `main`. Run:
 
 ```text

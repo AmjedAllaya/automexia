@@ -20,7 +20,7 @@ This tree is a **clean replacement**, not an overlay. Major fixes relative to th
 * kept a single isolated final `contents: write` publication job;
 * creates the annotated version tag only after final gates succeed.
 
-* added an exact six-workflow inventory contract so stale workflows fail policy validation;
+* added an exact seven-workflow inventory contract so stale workflows fail policy validation;
 * added a reviewed external-Action repository allowlist in addition to full-SHA pin enforcement;
 * fixed publication-preparation `needs` wiring so the reproducibility result is a direct dependency;
 * added an isolated minisign checksum-signing job and published `SHA256SUMS.minisig` for Linux/common artifact integrity;
