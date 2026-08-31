@@ -69,6 +69,37 @@ if not re.search(r'^  publish:\n(?:.*\n){0,15}?    - reproducibility-linux$', re
     errors.append('release publication preparation must directly depend on reproducibility-linux')
 
 ci = (wf/'ci.yml').read_text(encoding='utf-8')
+for fragment in (
+    'tools/ci/github_free_assurance.py check-policy',
+    'tools/ci/test_github_free_assurance.py',
+    'semgrep==1.175.0',
+    'semgrep scan --config tools/ci/semgrep-rules.yml',
+    'cargo-vet@0.10.2',
+    'cargo vet --locked',
+    "GITLEAKS_VERSION: '8.30.1'",
+    "GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'",
+    'gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz',
+    'Scan introduced commits and working tree for secrets',
+    'log_opts="${BASE_SHA}..${HEAD_SHA}"',
+    'gitleaks git --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml --log-opts="$log_opts"',
+    'gitleaks dir --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml .',
+):
+    if fragment not in ci:
+        errors.append(f'CI is missing required GitHub-Free local assurance fragment: {fragment}')
+if '--log-opts=--all' in ci:
+    errors.append('ordinary CI must not rescan unresolved legacy history; use the explicit local history-audit command')
+dependency_job = re.search(
+    r'(?ms)^  dependency-security:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)',
+    ci,
+)
+if dependency_job is None or 'fetch-depth: 0' not in dependency_job.group('body'):
+    errors.append('dependency-security must fetch complete history for its validated introduced-commit range')
+quality_job = re.search(
+    r'(?ms)^  quality:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)',
+    ci,
+)
+if quality_job is None or 'fetch-depth: 0' in quality_job.group('body'):
+    errors.append('quality must keep the economical shallow checkout')
 # Ordinary PR CI must stay on Linux so Windows/macOS minutes are reserved for actual releases.
 if re.search(r'^\s*runs-on:\s*(?:windows|macos)-', ci, re.MULTILINE):
     errors.append('ordinary CI must not consume Windows/macOS hosted runners; those belong to Stable release')

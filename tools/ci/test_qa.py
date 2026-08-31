@@ -174,6 +174,10 @@ class QaRunnerTests(unittest.TestCase):
         for contract in expected:
             self.assertIn(contract, source)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-image"], 7200)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["github-free-assurance-policy"], 120)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["github-free-assurance-mutations"], 120)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["repository-walker-cache-scope"], 120)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["rustsec-exception-policy"], 120)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-pty"], 7200)
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-ssh-inventory"], 7200

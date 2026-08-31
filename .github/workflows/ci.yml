@@ -43,6 +43,12 @@ jobs:
       - name: Mutate GitHub-Free/private CI contract
         run: python3 tools/ci/test_free_plan_contract.py
 
+      - name: Validate GitHub-Free local assurance contract and mutations
+        run: |
+          set -euo pipefail
+          python3 tools/ci/github_free_assurance.py check-policy
+          python3 tools/ci/test_github_free_assurance.py
+
       - name: Validate CP0 command-productivity policy mutations
         run: |
           set -euo pipefail
@@ -105,6 +111,17 @@ jobs:
             --no-online-audits \
             --format github \
             .
+
+      - name: Install pinned Semgrep Community Edition
+        run: python3 -m pip install --disable-pip-version-check --no-input semgrep==1.175.0
+
+      - name: Scan Rust source with local Semgrep rules
+        run: >-
+          semgrep scan --config tools/ci/semgrep-rules.yml --error --metrics=off
+          --exclude tests/fixtures/free-assurance/semgrep .
+
+      - name: Prove Semgrep rules detect their canary
+        run: python3 tools/ci/test_free_security_tools.py --tool semgrep
 
   quality:
     name: Rust quality and tests
@@ -180,18 +197,58 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
+          fetch-depth: 0
           persist-credentials: false
 
       - name: Install pinned Rust security tools
         uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
-          tool: cargo-audit@0.22.0,cargo-deny@0.20.2
+          tool: cargo-audit@0.22.0,cargo-deny@0.20.2,cargo-vet@0.10.2
 
       - name: RustSec audit
         run: cargo audit --deny warnings
 
       - name: Dependency, license, and source policy
         run: cargo deny --locked --color never check --hide-inclusion-graph
+
+      - name: Dependency audit trust policy
+        run: cargo vet --locked
+
+      - name: Install Gitleaks 8.30.1 with checksum verification
+        shell: bash
+        env:
+          GITLEAKS_VERSION: '8.30.1'
+          GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$archive" | sha256sum -c -
+          tar -xzf "$archive" gitleaks
+          install -m 0755 gitleaks "$RUNNER_TEMP/gitleaks"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Scan introduced commits and working tree for secrets
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          log_opts=HEAD
+          if [[ "$EVENT_NAME" == "pull_request" || "$EVENT_NAME" == "push" ]] \
+            && [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ ! "$BASE_SHA" =~ ^0{40}$ ]] \
+            && [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            log_opts="${BASE_SHA}..${HEAD_SHA}"
+          fi
+          gitleaks git --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml --log-opts="$log_opts"
+          gitleaks dir --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml .
+
+      - name: Prove Gitleaks detects its committed canary
+        run: python3 tools/ci/test_free_security_tools.py --tool gitleaks
 
   release-candidate:
     name: Release candidate gate

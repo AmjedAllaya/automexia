@@ -95,6 +95,11 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         }
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
+        [command, scope]
+            if command == "assurance" && assurance_scope_supported(scope) =>
+        {
+            assurance(scope)
+        }
         [command, flag] if command == "qa" && flag == "--full" => qa(false),
         [command, first, second]
             if command == "qa" && first == "--full" && second == "--bundle" =>
@@ -184,7 +189,47 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+}
+
+fn assurance_scope_supported(scope: &str) -> bool {
+    matches!(
+        scope,
+        "check-policy"
+            | "install-tools"
+            | "initialize-vet"
+            | "install-hook"
+            | "audit-history-secrets"
+            | "pre-push"
+            | "release-local"
+            | "deep-source"
+    )
+}
+
+fn assurance_owns_readiness(scope: &str) -> bool {
+    matches!(scope, "pre-push" | "release-local" | "deep-source")
+}
+
+fn assurance(scope: &str) -> TaskResult {
+    let readiness_owned_here = assurance_owns_readiness(scope);
+    if readiness_owned_here {
+        // `cargo xtask assurance` is already running from target/debug/xtask.
+        // Starting the `cargo ready` alias here would try to rebuild and replace
+        // that executable on Windows. Keep readiness owned by this process and
+        // pass only a narrow completion receipt to the policy runner.
+        ready()?;
+    }
+    let program =
+        python_program().ok_or("Python 3 is required for GitHub-Free local assurance")?;
+    println!("+ {program} tools/ci/github_free_assurance.py {scope}");
+    let mut command = Command::new(program);
+    command
+        .args(["tools/ci/github_free_assurance.py", scope])
+        .current_dir(root());
+    if readiness_owned_here {
+        command.env("AUTOMEXIA_ASSURANCE_READY_DONE", "1");
+    }
+    run_command(command, "GitHub-Free local assurance policy")
 }
 
 fn root() -> PathBuf {
@@ -2292,6 +2337,8 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
+    run_python("tools/ci/test_github_free_assurance.py")?;
     run_python("tools/ci/check_feature_ownership.py")?;
     run_python("tools/ci/test_feature_ownership.py")?;
     run_python("tools/ci/check_command_productivity.py")?;
@@ -4418,9 +4465,16 @@ fn assemble_changelog(version: &str) -> TaskResult<bool> {
 }
 
 fn run_python(script: &str) -> TaskResult {
+    run_python_args(script, &[])
+}
+
+fn run_python_args(script: &str, args: &[&str]) -> TaskResult {
     let program =
         python_program().ok_or("Python 3 is required for repository policy checks")?;
-    run(program, &[script])
+    let mut command = Vec::with_capacity(args.len() + 1);
+    command.push(script);
+    command.extend_from_slice(args);
+    run(program, &command)
 }
 
 fn files_under(root: &Path) -> TaskResult<Vec<PathBuf>> {
@@ -4495,6 +4549,7 @@ mod tests {
     fn command_surface_is_stable() {
         assert!(usage().contains("dev [-- APP_ARGS...]"));
         assert!(usage().contains("ready"));
+        assert!(usage().contains("assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>"));
         assert!(usage().contains("run [-- APP_ARGS...]"));
         assert!(usage().contains("storage"));
         assert!(usage().contains("verify architecture"));
@@ -4505,6 +4560,27 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn assurance_readiness_scopes_are_explicit() {
+        let readiness_scopes = ["pre-push", "release-local", "deep-source"];
+        let non_readiness_scopes = [
+            "check-policy",
+            "install-tools",
+            "initialize-vet",
+            "install-hook",
+            "audit-history-secrets",
+        ];
+        for scope in readiness_scopes {
+            assert!(assurance_scope_supported(scope));
+            assert!(assurance_owns_readiness(scope));
+        }
+        for scope in non_readiness_scopes {
+            assert!(assurance_scope_supported(scope));
+            assert!(!assurance_owns_readiness(scope));
+        }
+        assert!(!assurance_scope_supported("unknown"));
     }
 
     #[test]

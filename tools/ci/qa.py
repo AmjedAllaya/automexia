@@ -30,6 +30,10 @@ MAX_BUNDLE_BYTES = 64 * 1024 * 1024
 DEFAULT_STEP_TIMEOUT_SECONDS = 30 * 60
 STEP_TIMEOUT_SECONDS = {
     "qa-runner-self-tests": 120,
+    "github-free-assurance-policy": 120,
+    "github-free-assurance-mutations": 120,
+    "repository-walker-cache-scope": 120,
+    "rustsec-exception-policy": 120,
     "s1-assurance-policy": 120,
     "s1-assurance-mutations": 300,
     "rustfmt": 300,
@@ -601,6 +605,26 @@ def main() -> int:
 
     commands: list[tuple[str, list[str], dict[str, str] | None]] = [
         ("qa-runner-self-tests", [sys.executable, "tools/ci/test_qa.py"], None),
+        (
+            "github-free-assurance-policy",
+            [sys.executable, "tools/ci/github_free_assurance.py", "check-policy"],
+            None,
+        ),
+        (
+            "github-free-assurance-mutations",
+            [sys.executable, "tools/ci/test_github_free_assurance.py"],
+            None,
+        ),
+        (
+            "repository-walker-cache-scope",
+            [sys.executable, "tools/ci/test_repository_walkers.py"],
+            None,
+        ),
+        (
+            "rustsec-exception-policy",
+            [sys.executable, "tools/ci/test_rustsec_exceptions.py"],
+            None,
+        ),
         (
             "feature-test-reinforcement-mutations",
             [sys.executable, "tools/ci/test_feature_test_reinforcement.py"],
