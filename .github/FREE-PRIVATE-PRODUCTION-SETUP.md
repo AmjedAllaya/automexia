@@ -177,7 +177,23 @@ Rust quality and tests
 Dependency security
 ```
 
-A branch whose name starts with `release/` additionally runs `Release candidate gate`, including the coverage regression check. This keeps routine GitHub Free usage reasonable while preserving a stronger release ceremony.
+An **internal** branch whose name is exactly `release/X.Y.Z` additionally runs:
+
+```text
+Release candidate gate                 (ubuntu-24.04)
+Release candidate Windows coverage     (windows-2025)
+```
+
+The Linux job validates origin, version, protected paths, and tag uniqueness.
+The Windows job waits for it and ordinary quality, then compares the exact PR
+commit range to the repository's `windows-x86_64-msvc` coverage baseline. The
+split prevents a Linux report from being compared to a Windows baseline and
+prevents fork PRs from consuming Windows minutes.
+
+Standard Windows-hosted time consumes the private repository's included GitHub
+Free minutes at the Windows multiplier. Keep paid overage disabled if the goal
+is a hard zero-cost ceiling; a release PR then waits when included quota is
+exhausted rather than creating a charge.
 
 ## 7.1 Release workflow behavior on ordinary PR merges
 

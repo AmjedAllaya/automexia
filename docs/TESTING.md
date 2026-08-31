@@ -56,7 +56,10 @@ explicit Windows install/repair/uninstall paths in isolated profile and
 LocalAppData fixtures, and executes the PowerShell formatter/prompt contract on
 Windows. On Unix it syntax-checks Bash and Zsh, runs ShellCheck, exercises the
 explicit installer twice in an isolated home, repairs a deliberately changed
-installed file, and executes both shell-integration suites.
+installed file, and executes both shell-integration suites. Shell discovery is
+limited to tracked and newly added non-ignored sources so ignored caches or
+private archival worktrees cannot substitute stale files for the active
+checkout.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
 isolated exhaustive build artifacts behind.
 
@@ -617,26 +620,36 @@ licenses, and dependency sources continue to be checked independently.
 
 ## Every pull request
 
-Every PR runs policy checks regardless of changed paths:
+Every PR to `main` starts three ordinary, read-only jobs on `ubuntu-24.04`:
 
-- Cargo metadata/lock consistency and `rustfmt --check`;
-- TOML, YAML, JSON, XML, shell, PowerShell, documentation, and link validation;
-- product identity, provenance/license, architecture graph, package metadata,
-  and brand-manifest verification;
-- warning-denied workspace Clippy and workspace tests on Windows, Linux, and
-  macOS;
-- QA-runner mutation tests, the deterministic Loom channel model, and the
-  headless image-rendering/resource regression on the ordinary Linux quality
-  job;
-- Linux X11-only, Wayland-only, and combined checks;
-- Windows MSVC x64 tests and ARM64 cross-check;
-- macOS x64 and ARM64 compile checks;
-- `cargo deny`, dependency audit, pinned GitHub Actions static analysis, and
-  secret-safe fork permissions;
-- versioned hosted-CI/repository-protection, feature-test-reinforcement, and
-  performance-assurance contract and mutation tests;
-- LLVM coverage with a non-decreasing recorded global baseline and at least 80%
-  line coverage on changed Automexia-owned lines.
+- **Repository and workflow policy** validates immutable Action pins, the
+  GitHub-Free contract, all repository formats and links, the complete Python
+  checker/mutation discovery suite, Actionlint, offline Zizmor, Semgrep, and
+  each scanner's committed detection canary.
+- **Rust quality and tests** runs locked all-feature formatting, warning-denied
+  Clippy, Nextest, documentation tests, deterministic Loom readiness, headless
+  image/resource regression, and shell integration contracts.
+- **Dependency security** runs RustSec, Cargo Deny, Cargo Vet, and bounded
+  Gitleaks scans over the introduced commit range and working tree.
+
+These ordinary jobs provide Linux-hosted portable evidence. They do **not**
+claim native Windows, macOS, GPU, installer, signing, notarization, screen-reader,
+or controlled-hardware behavior.
+
+An internal PR whose head is exactly `release/X.Y.Z` adds two release-only jobs:
+
+- **Release candidate gate** runs on Linux and validates same-repository origin,
+  stable SemVer/version identity, protected-path separation, and tag uniqueness.
+- **Release candidate Windows coverage** waits for ordinary quality and the
+  release-candidate gate, then generates coverage on `windows-2025` because the
+  recorded baseline is `windows-x86_64-msvc`. It binds `BASE_SHA` and `HEAD_SHA`
+  to the exact PR commits, rejects reports outside the checkout, enforces a
+  non-decreasing global baseline, and requires at least 80% coverage for changed
+  executable lines in every Automexia-owned product/extension crate.
+
+The Windows coverage job uses standard hosted minutes only for internal release
+PRs. It is within GitHub Free's included allowance while quota remains, but is
+not cost-free after an owner enables paid overage. Fork PRs cannot start it.
 
 An inherited engine file is exempt from the changed-line threshold only while
 untouched. Any engine change requires a focused regression test.
@@ -653,10 +666,11 @@ cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
 python tools/ci/check_coverage.py
 ```
 
-For pull requests, CI continues to set `BASE_SHA` and `HEAD_SHA` to the exact
-base and head commit IDs. The checker anchors Git and report paths to the
-repository root, so invoking it from a wrapper or a different directory cannot
-silently inspect the wrong checkout.
+For release pull requests, CI sets `BASE_SHA` and `HEAD_SHA` to the exact base
+and head commit IDs. The checker anchors Git and report paths to the repository
+root, rejects linked, oversized, malformed, traversing, and out-of-checkout
+evidence, and writes an atomic bounded summary. Run its independent mutations
+with `python tools/ci/test_coverage.py`.
 
 ## Terminal conformance
 
