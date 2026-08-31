@@ -48,37 +48,49 @@ class PlatformCoverageTests(unittest.TestCase):
         ):
             PLATFORM.validate_macos_runtime_contract(altered)
 
-    def test_missing_native_macos_is_rejected(self) -> None:
+    def test_ci_cannot_restore_hosted_non_free_runner(self) -> None:
+        for runner in ("windows-2025", "macos-26"):
+            with self.subTest(runner=runner):
+                altered = copy.deepcopy(self.ci)
+                altered["jobs"]["quality"]["runs-on"] = runner
+                with self.assertRaisesRegex(
+                    PLATFORM.PlatformCoverageError, "GitHub-Free Ubuntu runner"
+                ):
+                    PLATFORM.validate_ci(altered)
+
+    def test_ci_cannot_drop_its_read_only_default_or_release_candidate_gate(self) -> None:
         altered = copy.deepcopy(self.ci)
-        altered["jobs"]["native"]["strategy"]["matrix"]["os"].remove("macos-latest")
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "Ubuntu, Windows, and macOS"):
+        altered["permissions"] = {}
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "CI must default to contents: read only"
+        ):
             PLATFORM.validate_ci(altered)
 
-    def test_missing_wayland_only_variant_is_rejected(self) -> None:
         altered = copy.deepcopy(self.ci)
-        matrix = altered["jobs"]["linux-features"]["strategy"]["matrix"]["include"]
-        altered["jobs"]["linux-features"]["strategy"]["matrix"]["include"] = [
-            item for item in matrix if item["features"] != "wayland"
-        ]
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "Wayland-only"):
+        altered["jobs"]["release-candidate"]["if"] = "true"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "limited to release pull requests"
+        ):
             PLATFORM.validate_ci(altered)
 
-    def test_windows_shell_contract_cannot_move_to_an_unrelated_host(self) -> None:
-        altered = copy.deepcopy(self.ci)
-        step = PLATFORM.step_for_command(altered["jobs"]["native"], "test_powershell.ps1")
-        self.assertIsNotNone(step)
-        step["if"] = "runner.os == 'Linux'"
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "runner.os == 'Windows'"):
-            PLATFORM.validate_ci(altered)
-
-    def test_librio_c_abi_gate_cannot_leave_native_linux(self) -> None:
+    def test_ci_cannot_drop_command_productivity_mutations(self) -> None:
         altered = copy.deepcopy(self.ci)
         step = PLATFORM.step_for_command(
-            altered["jobs"]["native"], "test_librio_c_api.sh"
+            altered["jobs"]["policy"], "test_command_productivity.py"
         )
         self.assertIsNotNone(step)
-        step["if"] = "runner.os == 'macOS'"
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "runner.os == 'Linux'"):
+        step["run"] = "echo skipped"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "test_command_productivity"):
+            PLATFORM.validate_ci(altered)
+
+    def test_ci_cannot_drop_shell_contract_smoke(self) -> None:
+        altered = copy.deepcopy(self.ci)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["quality"], "test_shell_sources.sh"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = "echo skipped"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "test_shell_sources"):
             PLATFORM.validate_ci(altered)
 
     def test_missing_release_architecture_is_rejected(self) -> None:
@@ -96,9 +108,9 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "controlled self-hosted"):
             PLATFORM.validate_nightly(altered)
 
-    def test_native_clippy_cannot_drop_all_feature_coverage(self) -> None:
+    def test_ci_quality_cannot_drop_all_feature_clippy(self) -> None:
         altered = copy.deepcopy(self.ci)
-        step = PLATFORM.step_for_command(altered["jobs"]["native"], "cargo clippy")
+        step = PLATFORM.step_for_command(altered["jobs"]["quality"], "cargo clippy")
         self.assertIsNotNone(step)
         step["run"] = str(step["run"]).replace(" --all-features", "")
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "all-features"):
@@ -115,7 +127,22 @@ class PlatformCoverageTests(unittest.TestCase):
     def test_release_cannot_restore_global_write_permissions(self) -> None:
         altered = copy.deepcopy(self.release)
         altered["permissions"] = {"contents": "write", "id-token": "write"}
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "contents: read"):
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "read-only contents"):
+            PLATFORM.validate_release(altered)
+
+    def test_release_cannot_drop_review_read_or_publication_write_boundary(self) -> None:
+        altered = copy.deepcopy(self.release)
+        altered["permissions"] = {"contents": "read"}
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "pull-request permissions"
+        ):
+            PLATFORM.validate_release(altered)
+
+        altered = copy.deepcopy(self.release)
+        altered["jobs"]["publish-release"]["permissions"] = {"contents": "read"}
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "immutable publication"
+        ):
             PLATFORM.validate_release(altered)
 
     def test_release_cannot_bypass_complete_s1_assurance(self) -> None:
@@ -271,7 +298,7 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "exact summary"):
             PLATFORM.validate_s1_assurance(altered)
 
-    def test_s2_activation_must_remain_manual_protected_and_exact_commit_bound(self) -> None:
+    def test_s2_activation_must_remain_manual_free_and_exact_commit_bound(self) -> None:
         altered = copy.deepcopy(self.s2_assurance)
         trigger_key = True if True in altered else "on"
         altered[trigger_key]["pull_request"] = {}
@@ -279,8 +306,10 @@ class PlatformCoverageTests(unittest.TestCase):
             PLATFORM.validate_s2_assurance(altered)
 
         altered = copy.deepcopy(self.s2_assurance)
-        altered["jobs"]["validate-active-baseline"].pop("environment")
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "protected environment"):
+        altered["jobs"]["validate-active-baseline"]["environment"] = "stable-release"
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "unavailable private protected environment"
+        ):
             PLATFORM.validate_s2_assurance(altered)
 
         altered = copy.deepcopy(self.s2_assurance)
@@ -299,6 +328,15 @@ class PlatformCoverageTests(unittest.TestCase):
         altered["concurrency"]["cancel-in-progress"] = True
         with self.assertRaisesRegex(
             PLATFORM.PlatformCoverageError, "serialized activation"
+        ):
+            PLATFORM.validate_s2_assurance(altered)
+
+        altered = copy.deepcopy(self.s2_assurance)
+        altered["jobs"]["validate-active-baseline"]["env"] = {
+            "UNEXPECTED_SECRET": "secrets.example"
+        }
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "must not consume repository secrets"
         ):
             PLATFORM.validate_s2_assurance(altered)
 
@@ -335,7 +373,7 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "90-day"):
             PLATFORM.validate_s2_assurance(altered)
 
-    def test_f5_assurance_cannot_drop_protected_exact_artifact_binding(self) -> None:
+    def test_f5_assurance_cannot_drop_free_exact_artifact_binding(self) -> None:
         altered = copy.deepcopy(self.f5_openssh_assurance)
         altered["jobs"]["validate"]["runs-on"]["group"] = "shared"
         with self.assertRaisesRegex(
@@ -352,9 +390,16 @@ class PlatformCoverageTests(unittest.TestCase):
             PLATFORM.validate_f5_openssh_assurance(altered)
 
         altered = copy.deepcopy(self.f5_openssh_assurance)
-        altered["jobs"]["validate"].pop("environment")
+        altered["jobs"]["validate"]["environment"] = "f5-openssh-release"
         with self.assertRaisesRegex(
-            PLATFORM.PlatformCoverageError, "protected environment"
+            PLATFORM.PlatformCoverageError, "unavailable private protected environment"
+        ):
+            PLATFORM.validate_f5_openssh_assurance(altered)
+
+        altered = copy.deepcopy(self.f5_openssh_assurance)
+        altered["jobs"]["validate"]["permissions"] = {"contents": "write"}
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "must not elevate"
         ):
             PLATFORM.validate_f5_openssh_assurance(altered)
 
@@ -450,10 +495,10 @@ class PlatformCoverageTests(unittest.TestCase):
 
     def test_preflight_cannot_receive_raw_signing_secret(self) -> None:
         altered = copy.deepcopy(self.release)
-        altered["jobs"]["preflight"]["env"]["APPLE_CERTIFICATE"] = (
-            "${{ secrets.APPLE_CERTIFICATE }}"
+        altered["jobs"]["preflight"].setdefault("env", {})["APPLE_CERTIFICATE"] = (
+            "secrets.apple_certificate"
         )
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "presence flag"):
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "raw signing secrets"):
             PLATFORM.validate_release(altered)
 
     def test_publish_cannot_download_unsigned_build_intermediates(self) -> None:
@@ -478,37 +523,39 @@ class PlatformCoverageTests(unittest.TestCase):
         altered = copy.deepcopy(self.release)
         signing = next(
             step
-            for step in PLATFORM.steps(altered["jobs"]["package-windows"])
+            for step in PLATFORM.steps(altered["jobs"]["sign-windows-runtime"])
             if "artifact-signing-action@" in str(step.get("uses", ""))
-            and step.get("with", {}).get("files-folder-filter") == "exe"
+            and step.get("with", {}).get("files-folder-filter") == "exe,ps1,ps1xml"
         )
         signing["with"]["files-folder"] = "staged"
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "isolated flat"):
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "isolated signing-input"):
             PLATFORM.validate_release(altered)
 
     def test_windows_release_cannot_drop_script_signing(self) -> None:
         altered = copy.deepcopy(self.release)
-        windows = altered["jobs"]["package-windows"]
-        windows["steps"] = [
-            step
-            for step in windows["steps"]
-            if step.get("name") != "Sign PowerShell assets with Azure Artifact Signing"
-        ]
+        signing = PLATFORM.step_for_command(
+            altered["jobs"]["sign-windows-runtime"], "Set-AuthenticodeSignature"
+        )
+        self.assertIsNotNone(signing)
+        signing["run"] = str(signing["run"]).replace(
+            "Set-AuthenticodeSignature", "Set-UntrustedAuthenticodeSignature"
+        )
         with self.assertRaisesRegex(
-            PLATFORM.PlatformCoverageError, "EXE, scripts, and MSI|PowerShell asset"
+            PLATFORM.PlatformCoverageError, "PowerShell asset"
         ):
             PLATFORM.validate_release(altered)
 
     def test_publication_cannot_overwrite_or_skip_immutability(self) -> None:
         altered = copy.deepcopy(self.release)
-        publish = altered["jobs"]["publish"]
-        for step in publish["steps"]:
-            if step.get("name") == "Require immutable GitHub releases":
-                step["run"] = "echo skipped"
-            if step.get("name") == "Publish protected-tag assets":
-                step["run"] = 'gh release upload "$GITHUB_REF_NAME" --clobber'
+        publication = PLATFORM.step_for_command(
+            altered["jobs"]["publish-release"], "gh release upload"
+        )
+        self.assertIsNotNone(publication)
+        publication["run"] = str(publication["run"]).replace(
+            "gh release upload", "gh release upload --clobber", 1
+        )
         with self.assertRaisesRegex(
-            PLATFORM.PlatformCoverageError, "immutable-releases|overwrite"
+            PLATFORM.PlatformCoverageError, "immutable publication"
         ):
             PLATFORM.validate_release(altered)
 
@@ -559,9 +606,9 @@ class PlatformCoverageTests(unittest.TestCase):
         publish["steps"] = [
             step
             for step in publish["steps"]
-            if "sbom-path" not in step.get("with", {})
+            if "anchore/sbom-action@" not in str(step.get("uses", ""))
         ]
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "SBOM attestations"):
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "SBOM generation"):
             PLATFORM.validate_release(altered)
 
     def test_macos_release_cannot_use_deep_signing(self) -> None:

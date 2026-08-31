@@ -33,10 +33,11 @@ all_text = '\n'.join(p.read_text(encoding='utf-8') for p in sorted([*wf.glob('*.
 for needle, reason in [
     ('actions/attest@', 'private GitHub artifact attestations are paid-only'),
     ('actions/dependency-review-action@', 'private dependency review is paid-only'),
-    ('environment: stable-release', 'protected private environment reviewers are paid-only'),
 ]:
     if needle in all_text:
         errors.append(f'{reason}: found {needle!r}')
+if re.search(r'^\s*environment\s*:', all_text, re.MULTILINE):
+    errors.append('private GitHub environments are unavailable on the Free/private edition')
 
 release = (wf/'release.yml').read_text(encoding='utf-8')
 required_release_fragments = [

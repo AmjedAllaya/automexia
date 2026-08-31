@@ -384,8 +384,9 @@ OpenSSH client/server versions, and no-follow identity-stable SHA-256 reads of
 the application binary, application package, and OpenSSH client. Files are
 capped at 4 GiB; links, replacement/growth while hashing, zero-sentinel real
 baselines, and path-bearing output fail closed. The manual-only F5 workflow has
-read-only repository permission, a protected environment, credential-free
-exact-commit checkout, and a restricted ephemeral runner group. Only its
+read-only repository permission, no GitHub private-environment dependency,
+credential-free exact-commit checkout, and a restricted ephemeral runner group.
+Only its
 path-free summary is uploaded. Controlled real OpenSSH, resource, and
 accessibility runs remain external release evidence and do not enable the broker.
 

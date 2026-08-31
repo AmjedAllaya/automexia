@@ -40,8 +40,24 @@ jobs:
       - name: Enforce GitHub-Free/private CI contract
         run: python3 .github/scripts/check_free_plan_contract.py
 
+      - name: Mutate GitHub-Free/private CI contract
+        run: python3 tools/ci/test_free_plan_contract.py
+
       - name: Validate CP0 command-productivity policy mutations
-        run: python tools/ci/test_command_productivity.py
+        run: |
+          set -euo pipefail
+          # CP5.0 standalone matcher research gates
+          python tools/ci/test_command_productivity.py
+          python tools/ci/test_devops_alias_spec.py
+          python tools/ci/test_command_productivity_cp1.py
+          python tools/ci/test_command_productivity_cp22.py
+          python tools/ci/test_command_productivity_cp30.py
+          python tools/ci/test_command_productivity_cp31.py
+          python tools/ci/test_command_productivity_cp32.py
+          python tools/ci/test_command_productivity_cp33.py
+          python tools/ci/test_command_productivity_cp50.py
+          python tools/ci/test_command_productivity_cp51.py
+          python tools/ci/test_command_productivity_cp56.py
 
       - name: Install actionlint 1.7.12 with checksum verification
         shell: bash

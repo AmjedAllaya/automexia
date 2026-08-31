@@ -8,12 +8,14 @@ grant process, PTY, network, listener, filesystem, or credential authority.
 ## Controlled workflow
 
 Use `F5 controlled native OpenSSH assurance` only after the exact source commit
-and release artifacts have completed protected review.
+and release artifacts have completed independent review recorded outside the
+workflow.
 
-1. Configure `f5-openssh-release` as a protected environment with independent
-   required reviewers and no self-review.
+1. On GitHub Free/private, keep write and self-hosted-runner access restricted
+   to release-authorized maintainers. Record independent review before manual
+   dispatch; private environment reviewers are unavailable on this plan.
 2. Set repository variable `AUTOMEXIA_F5_OPENSSH_RUNNER=1`.
-3. Store the five private absolute paths as protected environment secrets:
+3. Store the five private evidence paths as repository secrets:
    `AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE`,
    `AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY`,
    `AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE`,
@@ -50,21 +52,23 @@ and [environment protection documentation](https://docs.github.com/en/actions/re
 For controlled debugging, define all six inputs and run the same validator:
 
 ```powershell
-$env:AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE='C:\private\m5-windows.json'
-$env:AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY='C:\private\automexia.exe'
-$env:AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE='C:\private\automexia.msi'
-$env:AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW='C:\private\openssh-advisory-review.json'
-$env:AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE='C:\private\openssh-package-provenance.json'
+$evidenceRoot = Join-Path $PWD 'controlled-evidence'
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE=(Join-Path $evidenceRoot 'm5-windows.json')
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY=(Join-Path $evidenceRoot 'automexia.exe')
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE=(Join-Path $evidenceRoot 'automexia.msi')
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW=(Join-Path $evidenceRoot 'openssh-advisory-review.json')
+$env:AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE=(Join-Path $evidenceRoot 'openssh-package-provenance.json')
 $env:AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT='<exact-lowercase-digest>'
 python3 tools/ci/native_openssh_evidence.py --validate-environment
 ```
 
 ```sh
-AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE=/private/m5-linux.json \
-AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY=/private/automexia \
-AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE=/private/automexia.tar.gz \
-AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW=/private/openssh-advisory-review.json \
-AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE=/private/openssh-package-provenance.json \
+evidence_root=./controlled-evidence
+AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE="$evidence_root/m5-linux.json" \
+AUTOMEXIA_QA_NATIVE_OPENSSH_BINARY="$evidence_root/automexia" \
+AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE="$evidence_root/automexia.tar.gz" \
+AUTOMEXIA_QA_NATIVE_OPENSSH_ADVISORY_REVIEW="$evidence_root/openssh-advisory-review.json" \
+AUTOMEXIA_QA_NATIVE_OPENSSH_PACKAGE_PROVENANCE="$evidence_root/openssh-package-provenance.json" \
 AUTOMEXIA_QA_NATIVE_OPENSSH_EXPECTED_COMMIT=<exact-lowercase-digest> \
 python3 tools/ci/native_openssh_evidence.py --validate-environment
 ```

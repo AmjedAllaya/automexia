@@ -49,6 +49,12 @@ The workflow does **not** invoke `zizmorcore/zizmor-action`. It installs pinned 
 
 Repository-level GitHub Free cannot make branch review/ruleset policy administrator-proof. Keep write access limited to trusted maintainers and require PRs by team convention.
 
+The release-only authenticated repository audit remains deliberately
+fail-closed and reports an external manual-governance prerequisite on this
+plan. Do not replace it with an environment, ruleset, or paid security product:
+record the independent review and verify the repository settings before a
+release owner proceeds.
+
 ## 3. Free-plan release governance variables
 
 The workflow is **secure by default** even when these variables are not created: it requires at least one independent human approval and requires the person merging the release PR to be different from the PR author. For a team, explicitly configure:

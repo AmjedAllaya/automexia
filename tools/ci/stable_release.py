@@ -21,7 +21,7 @@ from typing import NoReturn
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "tests/assurance/stable-release-policy-v1.json"
 RELEASE_WORKFLOW = ROOT / ".github/workflows/release.yml"
-EXPECTED_POLICY_SHA256 = "b04f07dc25af975721246fe8ff29b88061fcdd77e0b79d8890aebdbdbc82fd5a"
+EXPECTED_POLICY_SHA256 = "e101a331835fbef397a9465f64dd4b3f3343215c2fe7bd6f463de5e800188b9d"
 MAX_POLICY_BYTES = 128 * 1024
 MAX_GIT_OUTPUT_BYTES = 16 * 1024 * 1024
 MAX_RELEASE_COMMITS = 100_000
@@ -52,7 +52,7 @@ HOSTED_KEYS = {
     "require_authenticated_audit",
     "required_result",
     "audit_secret",
-    "protected_environment",
+    "github_free_private_manual_governance",
 }
 EXTERNAL_KEYS = {"id", "owner", "evidence"}
 EXPECTED_EXTERNAL_PREREQUISITES = {
@@ -60,7 +60,7 @@ EXPECTED_EXTERNAL_PREREQUISITES = {
     "private-conduct-contact": ("governance-owner", "SECURITY.md"),
     "windows-production-signing": ("release-owner", "docs/RELEASE-TRUST.md"),
     "apple-developer-id-and-notarization": ("release-owner", "docs/RELEASE-TRUST.md"),
-    "github-plan-or-public-visibility": ("repository-owner", ".github/BRANCH-PROTECTION.md"),
+    "github-free-private-manual-governance": ("repository-owner", ".github/BRANCH-PROTECTION.md"),
     "independent-reviewer-capacity": ("repository-owner", "CODEOWNERS"),
     "github-actions-billing": ("repository-owner", ".github/BRANCH-PROTECTION.md"),
     "github-security-entitlements": ("repository-owner", ".github/repository-protection.json"),
@@ -135,8 +135,8 @@ def _require_exact_keys(
 
 def validate_policy(policy: dict[str, object]) -> None:
     _require_exact_keys(policy, POLICY_KEYS, "policy")
-    if policy.get("schema") != 1:
-        fail("stable-release policy schema must be 1")
+    if policy.get("schema") != 2:
+        fail("stable-release policy schema must be 2")
     if policy.get("repository") != "AmjedAllaya/automexia-terminal":
         fail("stable-release repository identity drifted")
     if policy.get("default_branch") != "main":
@@ -180,8 +180,7 @@ def validate_policy(policy: dict[str, object]) -> None:
         fail("stable-release hosted audit must require pass")
     if hosted.get("audit_secret") != "AUTOMEXIA_REPOSITORY_AUDIT_TOKEN":
         fail("stable-release audit credential name drifted")
-    if hosted.get("protected_environment") != "stable-release":
-        fail("stable-release protected environment drifted")
+    _require_bool(hosted, "github_free_private_manual_governance")
 
     prerequisites = policy.get("external_prerequisites")
     if not isinstance(prerequisites, list) or len(prerequisites) != 11:
@@ -223,13 +222,12 @@ def validate_release_workflow(
     if len(workflow.encode("utf-8")) > 512 * 1024:
         fail("stable-release workflow exceeds its byte limit")
     required = {
-        "protected environment": "environment: stable-release",
         "audit credential": "AUTOMEXIA_REPOSITORY_AUDIT_TOKEN",
         "source policy": "python tools/ci/stable_release.py check-policy",
         "source mutation tests": "python tools/ci/test_stable_release.py",
         "source validation": "python tools/ci/stable_release.py validate-source",
-        "exact source commit": '--expected-commit "$GITHUB_SHA"',
-        "exact release tag": '--release-tag "$GITHUB_REF_NAME"',
+        "exact source commit": '--expected-commit "$RELEASE_COMMIT"',
+        "exact release tag": '--release-tag "$tag"',
         "repository audit": "python tools/ci/repository_protection.py audit --json",
     }
     for label, token in required.items():
@@ -241,8 +239,8 @@ def validate_release_workflow(
     if preflight_match is None:
         fail("stable-release workflow has no preflight job")
     body = preflight_match.group("body")
-    if "environment: stable-release" not in body:
-        fail("stable-release preflight is outside its protected environment")
+    if re.search(r"(?m)^\s*environment\s*:", workflow):
+        fail("stable-release workflow must not depend on private GitHub environments")
     if "GH_TOKEN: ${{ secrets.AUTOMEXIA_REPOSITORY_AUDIT_TOKEN }}" not in body:
         fail("stable-release preflight does not bind the audit credential")
     if "fetch-depth: 0" not in body:

@@ -51,21 +51,21 @@ host-provided. The required evidence is:
 
 | Surface | Required host and checks |
 |---|---|
-| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize, clone, WSL, and image gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
-| Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
-| Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
-| WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
-| macOS windows, Metal/WGPU, universal application, signing, and notarization | Native Intel/Apple-Silicon macOS jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
+| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every pull request runs locked, all-feature Clippy, Nextest, and doctests on the GitHub-Free Ubuntu runner. This portable gate is necessary but does not establish native Windows or macOS behavior. |
+| Windows shells, ConPTY, WGPU/CPU | Controlled Windows release/assurance runners own PowerShell, resize, clone, WSL, image, and final-package gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
+| Bash/Zsh install, repair, prompt metadata, and listing behavior | The ordinary Ubuntu quality job runs bash tools/ci/test_shell_sources.sh. The script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home; controlled macOS evidence remains separately required. |
+| Linux display adapters | The ordinary Ubuntu gate checks portable all-feature Rust behavior. Controlled release jobs validate Linux package/install behavior; X11/Wayland and compositor evidence remains separately scoped and is not inferred from a generic build. |
+| WSL launch and clone routing | A controlled Windows runner with an installed WSL distribution runs cargo xtask test session-clone --native-wsl; Linux source/build artifacts stay on the WSL filesystem rather than /mnt/<drive>. |
+| macOS windows, Metal/WGPU, universal application, signing, and notarization | Controlled Intel/Apple-Silicon macOS release jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
 
 Exact WGPU/CPU, PowerShell, neutral CMD, and native WSL result evidence is in
 [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md).
 
-The native CI job intentionally enables every Cargo feature on all three host
-families. Platform-specific code must use target configuration, not rely on a
-feature being absent from one host. A platform result is reported as
-`external` or `not run` when its required host, credentials, display server, or
-hardware is unavailable; it must never be inferred from a different OS.
+The ordinary CI quality job intentionally enables every Cargo feature on its
+Ubuntu host. Platform-specific code must use target configuration, not rely on a
+feature being absent from one host. A platform result is reported as external or
+not run when its required host, credentials, display server, or hardware is
+unavailable; it must never be inferred from a different OS.
 
 ## Enforced feature assurance ledger
 

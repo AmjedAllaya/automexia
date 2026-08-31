@@ -34,7 +34,6 @@ jobs:
   validate:
     name: Bind private native evidence to the approved host and artifacts
     if: vars.AUTOMEXIA_F5_OPENSSH_RUNNER == '1'
-    environment: f5-openssh-release
     runs-on:
       group: automexia-openssh
       labels: automexia-openssh-${{ inputs.platform }}-${{ inputs.architecture }}

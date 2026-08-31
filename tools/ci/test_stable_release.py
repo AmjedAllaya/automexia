@@ -109,6 +109,13 @@ class StableReleaseTests(unittest.TestCase):
         with self.assertRaisesRegex(stable_release.ReleaseError, "tag pattern drifted"):
             stable_release.validate_policy(policy)
 
+        policy = stable_release.load_policy()
+        policy["hosted_repository"]["github_free_private_manual_governance"] = False
+        with self.assertRaisesRegex(
+            stable_release.ReleaseError, "github_free_private_manual_governance"
+        ):
+            stable_release.validate_policy(policy)
+
     def test_external_prerequisite_owner_and_evidence_cannot_be_redirected(self) -> None:
         policy = stable_release.load_policy()
         policy["external_prerequisites"][0]["owner"] = "different-owner"
@@ -290,6 +297,22 @@ class StableReleaseTests(unittest.TestCase):
             path = Path(temporary) / "release.yml"
             path.write_text(workflow, encoding="utf-8")
             with self.assertRaisesRegex(stable_release.ReleaseError, "repository audit"):
+                stable_release.validate_release_workflow(policy, path)
+
+    def test_workflow_cannot_restore_private_environment_dependency(self) -> None:
+        policy = stable_release.load_policy()
+        workflow = stable_release.RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        workflow = workflow.replace(
+            "  preflight:\n",
+            "  preflight:\n    environment: stable-release\n",
+            1,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "release.yml"
+            path.write_text(workflow, encoding="utf-8")
+            with self.assertRaisesRegex(
+                stable_release.ReleaseError, "private GitHub environments"
+            ):
                 stable_release.validate_release_workflow(policy, path)
 
 

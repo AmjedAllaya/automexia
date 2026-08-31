@@ -100,8 +100,9 @@ execution; writable workflow permissions; weakened runner labels or activation
 conditions; unbounded time; fail-open steps; and redirected summaries. The
 standalone S1 workflow additionally freezes manual dispatch, the exact evidence
 variable, one exact 90-day summary, and the controlled runner. The S2 activation
-workflow freezes serialized per-ref activation, protected environment,
-exact-commit and mutation checks, timeout, fail-closed steps, exact artifact
+workflow freezes serialized per-ref activation, GitHub-Free
+private-environment exclusion, exact-commit and mutation checks, timeout,
+fail-closed steps, exact artifact
 identity, and 90-day retention. The architecture verifier also rejects loss of
 the fixture, policy, validator, or release requirements.
 

@@ -604,7 +604,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
     }, root)
     require_tokens(".github/workflows/f5-openssh-assurance.yml", {
         "workflow_dispatch", "permissions", "contents: read",
-        "environment: f5-openssh-release", "persist-credentials: false",
+        "AUTOMEXIA_F5_OPENSSH_RUNNER", "persist-credentials: false",
         "automexia-openssh", "check_session_launch_d0.py",
         "test_session_launch_d0.py", "--validate-environment",
         "secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE", "retention-days: 90",

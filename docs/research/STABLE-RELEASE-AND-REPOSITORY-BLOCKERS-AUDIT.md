@@ -32,7 +32,7 @@ manufacture native or elapsed evidence.
 | Downstream history/DCO | **Fully enforced; historical evidence blocked** | One bounded 16 MiB/30-second batch traversal covers at most 100,000 commits, rejects merges, and requires an author-email-matching `Signed-off-by` trailer | Resolve the six post-fork merge commits and commit `0f3fec43ac` through an explicitly coordinated legal/history process; no automatic rewrite is authorized |
 | Local repository-protection contract | **Fully done** | Two rulesets, fourteen exact checks, selected full-SHA Actions, least-authority workflow token, security settings, ownership fallback, mutation tests | Preserve contract and mutations |
 | Hosted repository state | **Partially done / external** | Authenticated audit/apply path is bounded and idempotent; all available settings pass | Activate controlled workflows on protected `main`; restore Actions billing; obtain ruleset-capable plan or separately approve public visibility; add two reviewers; enable visibility/entitlement-dependent security controls |
-| Stable tag repository audit | **Fully done in source** | Protected `stable-release` preflight requires a private audit credential and `repository_protection.py audit --json`; any fail or external result blocks publication | Configure the protected environment secret and make the live audit all-pass |
+| Stable tag repository audit | **Fully done in source** | GitHub-Free/private preflight requires a repository audit credential and `repository_protection.py audit --json`; any fail or external result blocks publication | Configure the repository secret, record the independent release review, and make the live audit all-pass |
 | Brand assets and redistribution rights | **External prerequisite** | Manifest and package checks correctly fail closed | Supply editable SVG/variants and legal rights evidence; independent reviewer sets final status |
 | Private conduct-reporting contact | **External prerequisite** | Release preflight rejects the marker | Governance owner supplies a private monitored address |
 | Windows signing | **Fully done in workflow / external credentials** | Exact Azure Artifact Signing or PFX backend, timestamp, subject, executable/MSI/PowerShell verification, package smoke | Provision verified identity/profile or certificate secrets and retain signed native evidence |
@@ -91,7 +91,8 @@ boundaries.
 
 No new runtime dependency was adopted. The implementation wraps the existing
 Git executable with exact argument arrays and reuses the existing authenticated
-GitHub audit, release workflow, protected environment, and QA registries.
+GitHub audit, release workflow, GitHub-Free manual-governance contract, and QA
+registries.
 
 ## Verification and rollback
 

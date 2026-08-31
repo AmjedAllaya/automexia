@@ -46,6 +46,7 @@ jobs:
         RELEASE_COMMIT: ${{ github.sha }}
         MIN_APPROVALS: ${{ vars.AUTOMEXIA_RELEASE_MIN_APPROVALS || '1' }}
         PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
         MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
         REQUIRE_DISTINCT_MERGER: ${{ vars.AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER || '1' }}
       run: |
@@ -59,6 +60,7 @@ jobs:
         }
         version="${PR_BRANCH#release/}"
         [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing merged commit SHA' >&2; exit 1; }
+        [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing pull-request head SHA' >&2; exit 1; }
         min="${MIN_APPROVALS:-0}"
         [[ "$min" =~ ^[0-9]+$ ]] || { echo 'AUTOMEXIA_RELEASE_MIN_APPROVALS must be an integer' >&2; exit 1; }
         [[ "${REQUIRE_DISTINCT_MERGER:-0}" =~ ^[01]$ ]] || { echo 'AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER must be 0 or 1' >&2; exit 1; }
@@ -67,28 +69,10 @@ jobs:
           exit 1
         fi
         if (( min > 0 )); then
-          gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" > "$RUNNER_TEMP/reviews.json"
-          approvals="$(python3 - "$RUNNER_TEMP/reviews.json" "$PR_AUTHOR" <<'PY2'
-        import json, sys
-        pages=json.load(open(sys.argv[1], encoding='utf-8'))
-        author=sys.argv[2].casefold()
-        reviews=[]
-        for page in pages:
-            reviews.extend(page if isinstance(page, list) else [])
-        latest={}
-        for review in sorted(reviews, key=lambda r: (r.get('submitted_at') or '', int(r.get('id') or 0))):
-            user=review.get('user') or {}
-            login=(user.get('login') or '').strip()
-            if not login or login.casefold()==author or user.get('type')=='Bot' or login.endswith('[bot]'):
-                continue
-            state=(review.get('state') or '').upper()
-            if state in {'APPROVED', 'CHANGES_REQUESTED', 'DISMISSED'}:
-                latest[login.casefold()] = (login, state)
-        approved=sorted(login for login,state in latest.values() if state=='APPROVED')
-        print(len(approved))
-        print('Approved humans: ' + (', '.join(approved) if approved else '(none)'), file=sys.stderr)
-        PY2
-        )"
+          approvals="$(
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" |
+              python3 tools/ci/check_pr_policy.py --count-approvals "$PR_AUTHOR" "$PR_HEAD_SHA"
+          )"
           (( approvals >= min )) || { echo "Release needs $min current human approvals; found $approvals" >&2; exit 1; }
         fi
         echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -323,7 +307,7 @@ jobs:
         VERSION: ${{ needs.authorize.outputs.version }}
         RELEASE_COMMIT: ${{ needs.authorize.outputs.commit }}
         PR_NUMBER: ${{ github.event.pull_request.number }}
-        GH_TOKEN: ${{ github.token }}
+        GH_TOKEN: ${{ secrets.AUTOMEXIA_REPOSITORY_AUDIT_TOKEN }}
       run: |
         set -euo pipefail
         git fetch --no-tags origin main
@@ -349,8 +333,12 @@ jobs:
         if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
           echo "Tag v$VERSION already exists" >&2; exit 1
         fi
+        python tools/ci/stable_release.py check-policy
+        python tools/ci/test_stable_release.py
+        python tools/ci/repository_protection.py audit --json
         python3 .github/scripts/check_action_pins.py
         python3 .github/scripts/check_free_plan_contract.py
+        python3 tools/ci/test_free_plan_contract.py
   release-quality:
     name: Release quality and dependency gate
     needs: preflight
@@ -1576,6 +1564,12 @@ jobs:
     permissions:
       contents: write
     steps:
+    - name: Check out exact source with complete history for provenance validation
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        fetch-depth: 0
+        persist-credentials: false
     - name: Download verified publication bundle
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       with:
@@ -1651,6 +1645,9 @@ jobs:
             -f ref="refs/tags/$tag" \
             -f sha="$tag_object" >/dev/null
         fi
+        python tools/ci/stable_release.py validate-source \
+          --expected-commit "$RELEASE_COMMIT" \
+          --release-tag "$tag"
 
         gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes --title "Automexia Terminal $VERSION"
         mapfile -d '' assets < <(find publish -maxdepth 1 -type f -print0 | sort -z)
