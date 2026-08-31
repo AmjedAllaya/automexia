@@ -16,11 +16,15 @@ import check_session_launch_d0 as policy
 class SessionLaunchD0ContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # Load the canonical contract once; every mutation starts from an isolated
+        # deep copy so cases cannot weaken one another.
         cls.contract = json.loads(policy.bounded_text(policy.CONTRACT))
 
     def validate_mutation(self, mutate) -> None:
         document = copy.deepcopy(self.contract)
         mutate(document)
+        # Re-enter the bounded file parser instead of validating an in-memory
+        # object, preserving decoding, duplicate-key, and schema coverage.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "contract.json"
             path.write_text(json.dumps(document), encoding="utf-8")

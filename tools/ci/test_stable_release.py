@@ -15,6 +15,8 @@ import stable_release
 
 class StableReleaseTests(unittest.TestCase):
     def git(self, root: Path, *args: str) -> str:
+        # Keep Git invocation typed and shell-free; these tests also exercise the
+        # production gate's process and redaction boundary.
         completed = subprocess.run(
             ["git", *args],
             cwd=root,
@@ -26,6 +28,8 @@ class StableReleaseTests(unittest.TestCase):
         return completed.stdout.strip()
 
     def fixture(self) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
+        # A local bare origin makes remote-head/tag checks real and deterministic,
+        # without network access or mutation of the contributor's repository.
         temporary = tempfile.TemporaryDirectory()
         outer = Path(temporary.name)
         remote = outer / "origin.git"
@@ -138,6 +142,8 @@ class StableReleaseTests(unittest.TestCase):
             f"{second}\0release@example.invalid\0"
             "fix: second\n\nSigned-off-by: Release Tester <release@example.invalid>\0"
         )
+        # Mock only process execution here; the assertion below independently
+        # freezes the exact bounded format and revision range passed to Git.
         with mock.patch.object(stable_release, "_run_git", return_value=output) as run:
             stable_release._validate_dco(Path("."), "0" * 40, second)
         run.assert_called_once_with(

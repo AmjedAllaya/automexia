@@ -110,6 +110,8 @@ def valid_manifest() -> dict[str, object]:
         ),
     }
 
+    # Build the complete synthetic matrix from policy rather than duplicating its
+    # suite list; mutations therefore detect policy/evidence drift in either owner.
     suites = []
     for suite in policy["required_suites"]:
         coverage = suite["coverage"]
@@ -136,6 +138,8 @@ def valid_manifest() -> dict[str, object]:
             }
         )
 
+    # Human review applies only to visible and assistive-technology evidence;
+    # native resource and resilience suites remain machine-verifiable.
     manual_suite_ids = [
         suite["id"]
         for suite in policy["required_suites"]
@@ -175,6 +179,8 @@ def valid_manifest() -> dict[str, object]:
 
 class S1AssuranceTests(unittest.TestCase):
     def validate(self, document: dict[str, object], **kwargs: object):
+        # Re-enter the bounded evidence-file parser for every mutation so schema,
+        # duplicate-key, file identity, and semantic checks stay in the test path.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "evidence.json"
             path.write_text(json.dumps(document), encoding="utf-8")

@@ -38,6 +38,8 @@ VALID_NAMES = (
 
 class ReleaseTrustTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Use small, distinct artifact bytes: inventory digests can then prove
+        # package identity without expensive release-sized fixture archives.
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.packages = self.root / "packages"
@@ -58,6 +60,8 @@ class ReleaseTrustTests(unittest.TestCase):
         (final / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def prepare_final(self, name: str = "final") -> Path:
+        # Assemble the same final-directory boundary consumed by publication;
+        # validation must not rely on intermediate build directories.
         final = self.root / name
         final.mkdir()
         for source in self.packages.iterdir():
@@ -69,6 +73,8 @@ class ReleaseTrustTests(unittest.TestCase):
             final / "release-trust-benchmark.json",
             self.policy,
         )
+        # Both SBOM formats describe the same minimum viable component graph so
+        # semantic validation, rather than file presence, is the oracle.
         components = [
             ("automexia-terminal", "0.4.0"),
             *[(f"dependency-{index}", f"1.0.{index}") for index in range(1, 10)],

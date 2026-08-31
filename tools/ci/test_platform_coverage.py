@@ -19,6 +19,8 @@ SPEC.loader.exec_module(PLATFORM)
 
 class PlatformCoverageTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Keep one canonical snapshot of each workflow per test; individual
+        # mutations use deep copies so a failure cannot contaminate the next case.
         self.ci = PLATFORM.load_workflow("ci.yml")
         self.nightly = PLATFORM.load_workflow("nightly.yml")
         self.release = PLATFORM.load_workflow("release.yml")
@@ -158,6 +160,8 @@ class PlatformCoverageTests(unittest.TestCase):
             "performance-assurance",
             "s1-assurance",
         }
+        # Dependency wiring and the success predicate are separate fail-closed
+        # controls, so remove each one independently for every controlled gate.
         for gate in sorted(required):
             with self.subTest(gate=gate, mutation="dependency"):
                 altered = copy.deepcopy(self.release)
@@ -271,6 +275,7 @@ class PlatformCoverageTests(unittest.TestCase):
 
     def test_s1_assurance_workflow_remains_manual_controlled_and_bounded(self) -> None:
         altered = copy.deepcopy(self.s1_assurance)
+        # PyYAML 1.1 can materialize an unquoted workflow `on` key as True.
         trigger_key = True if True in altered else "on"
         altered[trigger_key]["pull_request"] = {}
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "manual dispatch"):
@@ -593,6 +598,8 @@ class PlatformCoverageTests(unittest.TestCase):
 
     def test_windows_release_scanner_cannot_drop_bounds_or_add_exclusions(self) -> None:
         source = PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
+        # Mutate one independent scanner invariant at a time so a broad textual
+        # match cannot hide a missing bound, allowlist, digest, or identity check.
         for original, replacement, message in (
             ("MaximumArchiveEntries", "UnboundedEntries", "MaximumArchiveEntries"),
             ("$expectedPackageNames", "$unreviewedPackages", "expectedPackageNames"),

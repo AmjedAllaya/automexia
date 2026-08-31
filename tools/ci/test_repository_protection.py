@@ -23,6 +23,8 @@ SPEC.loader.exec_module(PROTECTION)
 
 class RepositoryProtectionTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Each mutation starts from the repository policy as shipped; deep copies
+        # below ensure a rejected weakening never leaks into another test.
         self.policy = PROTECTION.load_policy()
 
     def test_current_policy_and_workflows_satisfy_the_contract(self) -> None:
@@ -38,6 +40,8 @@ class RepositoryProtectionTests(unittest.TestCase):
             PROTECTION.parse_json('{"schema": 1, "schema": 2}')
 
     def test_codeowners_requires_a_valid_repository_wide_owner(self) -> None:
+        # A narrow path rule is not a fallback owner: release-sensitive files can
+        # appear anywhere, so the parser must retain an explicit repository-wide rule.
         self.assertEqual(
             PROTECTION.parse_codeowners("# fallback\n* @AmjedAllaya\n"),
             ["@AmjedAllaya"],

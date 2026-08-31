@@ -98,6 +98,8 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         def command(_policy: dict[str, object], name: str, *arguments: str) -> list[str]:
             return [name, *arguments]
 
+        # Tool execution is mocked, but CLI routing and the full-history argument
+        # remain observable; separate scanner canaries exercise the real binary.
         with mock.patch.object(ASSURANCE, "load_policy", return_value=self.policy), mock.patch.object(
             ASSURANCE, "tool_command", side_effect=command
         ), mock.patch.object(ASSURANCE, "run") as runner:
@@ -140,6 +142,8 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
     def test_cargo_vet_initialization_is_idempotent_but_rejects_partial_records(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
+            # Exercise all three storage states: absent, complete, and partial.
+            # Partial supply-chain records must never be silently regenerated.
             with mock.patch.object(ASSURANCE, "ROOT", root), mock.patch.object(
                 ASSURANCE,
                 "tool_command",
@@ -180,6 +184,8 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.assertIn("*.rs", command)
         for excluded in (".automexia-tools", ".automexia-private", "target"):
             self.assertIn(excluded, command)
+        # Semgrep receives an isolated short-path environment on Windows, while
+        # repository caches and generated output remain outside the scan corpus.
         temporary_environment = run.call_args.kwargs["extra_environment"]
         self.assertEqual(set(temporary_environment), {"TMP", "TEMP", "TMPDIR", "PATH"})
         self.assertEqual(

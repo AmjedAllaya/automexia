@@ -22,6 +22,8 @@ ROOT = MODULE_PATH.parents[2]
 
 class RuntimeTrustTests(unittest.TestCase):
     def read(self, path: str) -> str:
+        # Source mutations deliberately traverse the checker-facing repository
+        # text; they are not substitutes for runtime tests of the owning adapters.
         return (ROOT / path).read_text(encoding="utf-8")
 
     def test_current_repository_satisfies_the_contract(self) -> None:
