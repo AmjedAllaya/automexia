@@ -1305,7 +1305,8 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
             && ci.contains("RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)")
-            && ci.contains("python3 tools/ci/test_qa.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
+            && qa.contains("python-contract-mutations")
             && ci.contains("glslang-tools")
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
@@ -1316,7 +1317,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     require(
         qa.contains("feature-test-reinforcement-mutations")
             && ci.contains("python tools/ci/check_feature_test_reinforcement.py")
-            && ci.contains("python tools/ci/test_feature_test_reinforcement.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && repository_validator.contains("validate_feature_test_reinforcement")
             && root()
                 .join("tests/assurance/feature-test-reinforcement-v1.json")
@@ -1360,7 +1361,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && performance_baseline.contains("\"status\": \"collecting\"")
             && qa.contains("performance-assurance-mutations")
             && qa.contains("run_dir / \"benchmark-target\"")
-            && ci.contains("python tools/ci/test_performance_assurance.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && nightly_workflow.contains("performance-controlled-windows")
             && nightly_workflow.contains("retention-days: 90")
             && nightly_workflow.contains("--operator")
@@ -4640,6 +4641,11 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn phase_zero_assurance_contract_self_verifies() {
+        verify_phase_zero_assurance().unwrap();
     }
 
     #[cfg(target_os = "windows")]

@@ -411,8 +411,7 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "cp50-research-benchmark",
         },
         ".github/workflows/ci.yml": {
-            "test_command_productivity_cp50.py",
-            "CP5.0 standalone matcher research gates",
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
         },
         "tests/assurance/feature-matrix.json": {
             "command-productivity-cp50-research",

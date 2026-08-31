@@ -163,7 +163,10 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
     wiring = {
         "tools/xtask/src/main.rs": {"completion::dispatch", "completion COMMAND [OPTIONS]"},
         "tools/ci/validate_repository.py": {"validate_command_productivity_cp1"},
-        ".github/workflows/ci.yml": {"test_command_productivity_cp1.py", "fish"},
+        ".github/workflows/ci.yml": {
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
+            "fish",
+        },
         "docs/COMMAND-PRODUCTIVITY.md": {"CP1 status", "cargo xtask completion doctor"},
         "docs/TESTING.md": {"Command-productivity CP1"},
         "tools/ci/measure_completion_adapter.py": {

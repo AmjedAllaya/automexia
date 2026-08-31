@@ -71,7 +71,9 @@ if not re.search(r'^  publish:\n(?:.*\n){0,15}?    - reproducibility-linux$', re
 ci = (wf/'ci.yml').read_text(encoding='utf-8')
 for fragment in (
     'tools/ci/github_free_assurance.py check-policy',
-    'tools/ci/test_github_free_assurance.py',
+    'tools/ci/validate_repository.py',
+    "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
+    'PyYAML==6.0.3',
     'semgrep==1.175.0',
     'semgrep scan --config tools/ci/semgrep-rules.yml',
     'cargo-vet@0.10.2',
@@ -100,9 +102,22 @@ quality_job = re.search(
 )
 if quality_job is None or 'fetch-depth: 0' in quality_job.group('body'):
     errors.append('quality must keep the economical shallow checkout')
-# Ordinary PR CI must stay on Linux so Windows/macOS minutes are reserved for actual releases.
-if re.search(r'^\s*runs-on:\s*(?:windows|macos)-', ci, re.MULTILINE):
-    errors.append('ordinary CI must not consume Windows/macOS hosted runners; those belong to Stable release')
+# Ordinary PR CI stays on Linux. The sole standard-hosted Windows exception is
+# release-only coverage because the recorded non-regression baseline is MSVC.
+ci_jobs = {
+    match.group('name'): match.group('body')
+    for match in re.finditer(
+        r'(?ms)^  (?P<name>[A-Za-z0-9_-]+):\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)',
+        ci,
+    )
+}
+for job_name, body in ci_jobs.items():
+    runner = re.search(r'^    runs-on:\s*((?:windows|macos)-[^\s#]+)', body, re.MULTILINE)
+    if runner and not (job_name == 'release-candidate-coverage' and runner.group(1) == 'windows-2025'):
+        errors.append(
+            'only release-candidate-coverage may use the standard hosted Windows runner; '
+            f'{job_name} uses {runner.group(1)}'
+        )
 
 nightly = (wf/'nightly.yml').read_text(encoding='utf-8')
 if re.search(r'^\s*schedule:\s*$', nightly, re.MULTILINE):

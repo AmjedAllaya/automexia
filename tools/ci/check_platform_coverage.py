@@ -139,12 +139,13 @@ def validate_ci(workflow: dict[str, Any]) -> None:
     quality = job(workflow, "quality", "ci.yml")
     dependency_security = job(workflow, "dependency-security", "ci.yml")
     release_candidate = job(workflow, "release-candidate", "ci.yml")
+    release_coverage = job(workflow, "release-candidate-coverage", "ci.yml")
 
     for name, value, timeout in (
         ("policy", policy, 30),
         ("quality", quality, 90),
         ("dependency-security", dependency_security, 30),
-        ("release-candidate", release_candidate, 120),
+        ("release-candidate", release_candidate, 30),
     ):
         require(
             value.get("runs-on") == "ubuntu-24.04",
@@ -159,16 +160,47 @@ def validate_ci(workflow: dict[str, Any]) -> None:
             f"CI {name} must be read-only",
         )
 
+    require(
+        release_coverage.get("runs-on") == "windows-2025",
+        "CI release-candidate-coverage must use the Windows coverage runner that matches the baseline",
+    )
+    require(
+        release_coverage.get("timeout-minutes") == 120,
+        "CI release-candidate-coverage must retain its 120-minute timeout",
+    )
+    require(
+        release_coverage.get("permissions") == {"contents": "read"},
+        "CI release-candidate-coverage must be read-only",
+    )
+    require(
+        set(release_coverage.get("needs", [])) == {"quality", "release-candidate"},
+        "CI release-candidate-coverage must wait for quality and release-candidate validation",
+    )
+    expected_coverage_environment = {
+        "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+        "COVERAGE_PLATFORM": "windows-x86_64-msvc",
+        "LCOV_FILE": "target/coverage/lcov.info",
+        "COVERAGE_SUMMARY": "target/coverage/summary.json",
+    }
+    require(
+        release_coverage.get("env") == expected_coverage_environment,
+        "CI release-candidate-coverage must retain its exact coverage evidence environment",
+    )
+
     policy_commands = commands(policy)
     for fragment in (
         "check_action_pins.py",
         "check_free_plan_contract.py",
-        "test_free_plan_contract.py",
-        "test_command_productivity.py",
+        "validate_repository.py",
         "actionlint -color",
         "zizmor",
     ):
         require(fragment in policy_commands, f"CI policy is missing {fragment!r}")
+    require(
+        "python3 -m unittest discover -s tools/ci -p 'test_*.py'" in policy_commands,
+        "CI policy must execute the complete Python CI contract suite",
+    )
 
     quality_commands = commands(quality)
     for fragment in (
@@ -184,20 +216,40 @@ def validate_ci(workflow: dict[str, Any]) -> None:
     for fragment in ("cargo audit --deny warnings", "cargo deny --locked"):
         require(fragment in dependency_commands, f"CI dependency security is missing {fragment!r}")
 
+    release_condition = (
+        "${{ github.event_name == 'pull_request' && "
+        "startsWith(github.head_ref, 'release/') && "
+        "github.event.pull_request.head.repo.full_name == github.repository }}"
+    )
     require(
-        str(release_candidate.get("if", ""))
-        == "${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}",
+        str(release_candidate.get("if", "")) == release_condition,
         "CI release-candidate validation must remain limited to release pull requests",
+    )
+    require(
+        str(release_coverage.get("if", "")) == release_condition,
+        "CI release coverage must remain limited to internal release pull requests",
     )
     candidate_commands = commands(release_candidate)
     for fragment in (
         "Release PRs must originate from this repository, never a fork.",
         "Release branch must be exactly release/X.Y.Z.",
-        "check_coverage.py",
     ):
         require(
             fragment in candidate_commands,
             f"CI release-candidate validation is missing {fragment!r}",
+        )
+    require(
+        "check_coverage.py" not in candidate_commands,
+        "CI release-candidate validation must not compare a Linux report to the Windows baseline",
+    )
+    coverage_commands = commands(release_coverage)
+    for fragment in (
+        "cargo llvm-cov --workspace --locked --lcov",
+        "python tools/ci/check_coverage.py",
+    ):
+        require(
+            fragment in coverage_commands,
+            f"CI release coverage is missing {fragment!r}",
         )
 
 

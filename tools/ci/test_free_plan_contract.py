@@ -57,11 +57,6 @@ class FreePlanContractTests(unittest.TestCase):
                 "private GitHub artifact attestations",
             ),
             (
-                "workflows/ci.yml",
-                "\n    runs-on: windows-2025\n",
-                "ordinary CI must not consume Windows/macOS",
-            ),
-            (
                 "workflows/nightly.yml",
                 "\nschedule:\n  - cron: '0 0 * * *'\n",
                 "manual-only",
@@ -72,6 +67,27 @@ class FreePlanContractTests(unittest.TestCase):
                 completed = self.run_checker((relative, addition))
                 self.assertNotEqual(completed.returncode, 0)
                 self.assertIn(expected, completed.stderr)
+
+    def test_only_the_release_coverage_job_may_use_a_hosted_windows_runner(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / ".github", root / ".github")
+            workflow = root / ".github" / "workflows" / "ci.yml"
+            source = workflow.read_text(encoding="utf-8")
+            source = source.replace(
+                "  quality:\n", "  unexpected-windows:\n    runs-on: windows-2025\n  quality:\n", 1
+            )
+            workflow.write_text(source, encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(CHECKER)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("only release-candidate-coverage", completed.stderr)
 
     def test_required_local_assurance_scanners_cannot_be_removed(self) -> None:
         completed = self.run_checker(

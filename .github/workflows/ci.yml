@@ -40,39 +40,11 @@ jobs:
       - name: Enforce GitHub-Free/private CI contract
         run: python3 .github/scripts/check_free_plan_contract.py
 
-      - name: Mutate GitHub-Free/private CI contract
-        run: python3 tools/ci/test_free_plan_contract.py
-
-      - name: Validate GitHub-Free local assurance contract and mutations
+      - name: Validate repository-owned assurance policies
         run: |
           set -euo pipefail
-          python3 tools/ci/github_free_assurance.py check-policy
-          python3 tools/ci/test_github_free_assurance.py
-
-      - name: Validate CP0 command-productivity policy mutations
-        run: |
-          set -euo pipefail
-          # CP5.0 standalone matcher research gates
-          python tools/ci/test_command_productivity.py
-          python tools/ci/test_devops_alias_spec.py
-          python tools/ci/test_command_productivity_cp1.py
-          python tools/ci/test_command_productivity_cp22.py
-          python tools/ci/test_command_productivity_cp30.py
-          python tools/ci/test_command_productivity_cp31.py
-          python tools/ci/test_command_productivity_cp32.py
-          python tools/ci/test_command_productivity_cp33.py
-          python tools/ci/test_command_productivity_cp50.py
-          python tools/ci/test_command_productivity_cp51.py
-          python tools/ci/test_command_productivity_cp56.py
-
-      - name: Validate feature-test reinforcement policy and mutations
-        run: |
-          set -euo pipefail
+          python tools/ci/github_free_assurance.py check-policy
           python tools/ci/check_feature_test_reinforcement.py
-          python tools/ci/test_feature_test_reinforcement.py
-
-      - name: Validate S2 performance-assurance mutations
-        run: python tools/ci/test_performance_assurance.py
 
       - name: Install actionlint 1.7.12 with checksum verification
         shell: bash
@@ -112,8 +84,16 @@ jobs:
             --format github \
             .
 
-      - name: Install pinned Semgrep Community Edition
-        run: python3 -m pip install --disable-pip-version-check --no-input semgrep==1.175.0
+      - name: Install pinned Python assurance tools
+        run: >-
+          python3 -m pip install --disable-pip-version-check --no-input
+          PyYAML==6.0.3 semgrep==1.175.0
+
+      - name: Validate all repository formats and CI contracts
+        run: python3 tools/ci/validate_repository.py
+
+      - name: Execute the complete Python CI contract and mutation suite
+        run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
       - name: Scan Rust source with local Semgrep rules
         run: >-
@@ -252,9 +232,9 @@ jobs:
 
   release-candidate:
     name: Release candidate gate
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') }}
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
@@ -291,20 +271,47 @@ jobs:
             exit 1
           fi
 
-      - name: Install Linux coverage dependencies
-        run: >-
-          sudo apt-get update && sudo apt-get install -y --no-install-recommends
-          glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
-          libwayland-dev libx11-xcb-dev
+  release-candidate-coverage:
+    name: Release candidate Windows coverage
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    needs:
+      - quality
+      - release-candidate
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      COVERAGE_PLATFORM: windows-x86_64-msvc
+      LCOV_FILE: target/coverage/lcov.info
+      COVERAGE_SUMMARY: target/coverage/summary.json
+    steps:
+      - name: Check out release candidate with complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned Rust coverage toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:AUTOMEXIA_RUST_TOOLCHAIN --profile minimal --component llvm-tools-preview
+          if ($LASTEXITCODE -ne 0) { throw 'Rust coverage toolchain installation failed' }
+          rustup default $env:AUTOMEXIA_RUST_TOOLCHAIN
+          if ($LASTEXITCODE -ne 0) { throw 'Rust coverage toolchain activation failed' }
 
       - name: Install pinned coverage tool
         uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
           tool: cargo-llvm-cov@0.6.18
 
-      - name: Enforce coverage regression baseline
-        shell: bash
+      - name: Enforce commit-bound Windows coverage regression baseline
+        shell: pwsh
         run: |
-          set -euo pipefail
-          cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
+          New-Item -ItemType Directory -Force -Path target/coverage | Out-Null
+          cargo llvm-cov --workspace --locked --lcov --output-path $env:LCOV_FILE
+          if ($LASTEXITCODE -ne 0) { throw 'coverage collection failed' }
           python tools/ci/check_coverage.py
+          if ($LASTEXITCODE -ne 0) { throw 'coverage policy failed' }

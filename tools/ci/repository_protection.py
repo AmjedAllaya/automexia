@@ -447,7 +447,8 @@ def validate_github_free_private_policy(policy: dict[str, Any]) -> dict[str, int
     actual_checks = {
         str(value.get("name", ""))
         for name, value in ci.get("jobs", {}).items()
-        if isinstance(value, dict) and name != "release-candidate"
+        if isinstance(value, dict)
+        and name not in {"release-candidate", "release-candidate-coverage"}
     }
     require(
         actual_checks == expected_checks,

@@ -251,8 +251,8 @@ class AliasSpecificationTests(unittest.TestCase):
                 content = (ROOT / relative).read_text(encoding="utf-8")
                 if relative == ".github/workflows/ci.yml":
                     content = content.replace(
-                        "test_devops_alias_spec.py",
-                        "missing_alias_spec_test.py",
+                        "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
+                        "python3 -m unittest discover -s tools/ci -p 'test_none.py'",
                     )
                 destination.write_text(content, encoding="utf-8")
             with self.assertRaisesRegex(POLICY.AliasSpecError, "ci.yml"):
