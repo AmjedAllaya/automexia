@@ -306,6 +306,29 @@ exists, and tests that merely duplicate implementation. Use bounded readiness,
 fixed seeds, explicit fake clocks/processes/filesystems, and invariant assertions.
 Claim only the operating systems and architectures that actually ran natively.
 
+#### Comment test intent strategically
+
+Test names and assertions should make the observable behavior clear. Add concise
+comments only where they preserve reasoning that is not obvious from the code:
+
+- why a fixture has a particular shape, boundary value, ordering, or identity;
+- which real user path, historical failure, threat, or authority boundary a
+  mutation reproduces;
+- which dependency or host observation is mocked and which independent oracle
+  still proves the result;
+- why cleanup, redaction, forbidden-side-effect, atomicity, concurrency, or
+  resource assertions are essential;
+- why a native setup phase must occur in that order or retain a sentinel.
+
+Prefer one comment on a shared helper or scenario block over repeating the same
+explanation in every test. Do not narrate syntax, restate a test name or
+assertion, add mechanical `Arrange`/`Act`/`Assert` labels, or use comments to
+compensate for unclear names and oversized helpers. Exact scanner, parser, and
+golden fixtures may intentionally remain uncommented when comments would change
+the bytes under test. Preserve existing comments unless their contract changes;
+when behavior changes, update nearby comments in the same patch and review them
+for stale claims, confidential data, and machine-local identifiers.
+
 ### 7.1 Apply the anti-escape assurance protocol
 
 Tests reduce risk but cannot prove that arbitrary software has no defects. Never

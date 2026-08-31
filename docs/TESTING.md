@@ -33,6 +33,24 @@ remain non-mutating. Persistent changes require the explicit
 and PowerShell execution policy is never bypassed by the application or local
 verification commands.
 
+### Writing readable tests
+
+A test's name and assertions own the visible behavior. Comments are reserved for
+reasoning that a future maintainer could otherwise remove accidentally: fixture
+identity and boundary choices, the real regression path, trust or authority
+limits, why a dependency is mocked, the independent oracle, forbidden side
+effects, and cleanup or resource-lifetime invariants. Native scripts also mark
+important setup, evidence-publication, and cleanup phases when their ordering is
+part of the guarantee.
+
+Comments should explain **why**, not translate the next line into prose. Put a
+single explanation on a shared fixture, mutation loop, or phase instead of
+duplicating it across cases. Avoid mechanical `Arrange`/`Act`/`Assert` labels and
+do not require a comment count: simple tests are clearer without filler. Preserve
+useful existing comments and update them with the behavior they describe. Exact
+scanner canaries, parser bytes, raster goldens, and other byte-sensitive fixtures
+may intentionally omit comments when any added text would alter the test input.
+
 The complete gate also parses every repository PowerShell source, exercises the
 explicit Windows install/repair/uninstall paths in isolated profile and
 LocalAppData fixtures, and executes the PowerShell formatter/prompt contract on
