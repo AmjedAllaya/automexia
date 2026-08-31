@@ -8,6 +8,11 @@ result/
 
 target/
 
+# Locally bootstrapped GitHub-Free assurance tools. These are deliberately
+# outside Cargo's source and build outputs so they can be pinned, verified, and
+# removed without affecting an application build.
+/.automexia-tools/
+
 # Private product research and unreleased implementation plans. This directory
 # is local-only and must never be staged or committed.
 /.automexia-private/

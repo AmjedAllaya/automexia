@@ -34,8 +34,8 @@ contexts:
 users:
   - name: {user}
     user:
-      token: never-retain-this-token
-      client-key-data: bmV2ZXItcmV0YWluLXRoaXMta2V5
+      token: <fixture-token>
+      client-key-data: <fixture-key-data>
       exec:
         apiVersion: client.authentication.k8s.io/v1
         command: kubelogin

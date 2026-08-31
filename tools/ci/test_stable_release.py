@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
@@ -86,7 +87,8 @@ class StableReleaseTests(unittest.TestCase):
                 stable_release.load_policy(path)
 
     def test_failed_git_command_returns_redacted_release_error(self) -> None:
-        with tempfile.TemporaryDirectory() as temporary:
+        isolated_parent = Path(stable_release.ROOT.anchor) if os.name == "nt" else None
+        with tempfile.TemporaryDirectory(prefix="automexia-non-repository-", dir=isolated_parent) as temporary:
             with self.assertRaisesRegex(
                 stable_release.ReleaseError, 'git rev-parse operation failed'
             ):

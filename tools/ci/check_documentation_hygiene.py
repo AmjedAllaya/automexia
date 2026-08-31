@@ -10,7 +10,13 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED_PARTS = {".git", ".cargo-packager", ".automexia-private", "target"}
+EXCLUDED_PARTS = {
+    ".git",
+    ".cargo-packager",
+    ".automexia-private",
+    ".automexia-tools",
+    "target",
+}
 MAX_MARKDOWN_BYTES = 8 * 1024 * 1024
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")

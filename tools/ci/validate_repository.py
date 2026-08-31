@@ -78,7 +78,13 @@ from stable_release import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED_PARTS = {".git", ".cargo-packager", ".automexia-private", "target"}
+EXCLUDED_PARTS = {
+    ".git",
+    ".cargo-packager",
+    ".automexia-private",
+    ".automexia-tools",
+    "target",
+}
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 ACTION_USE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
 

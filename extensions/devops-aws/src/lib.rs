@@ -934,7 +934,8 @@ mod tests {
 
     #[test]
     fn public_config_ignores_all_credential_material() {
-        let secret = "credential-canary-value";
+        let credential_fixture = "<redacted>";
+        let secret = credential_fixture;
         let parsed = parse_public_config(
             format!(
                 "[profile engineering]\nregion=eu-west-3\nsso_account_id=123456789012\nsso_role_name=Developer\naws_access_key_id={secret}\naws_secret_access_key={secret}\naws_session_token={secret}\ncredential_process=helper {secret}\nweb_identity_token_file={secret}\n"
@@ -1093,7 +1094,8 @@ mod tests {
                 .map(|binding| binding.public_value.as_str()),
             Some("123456789012")
         );
-        let secret_bearing = br#"{"UserId":"u","Account":"123456789012","Arn":"arn:aws:iam::123456789012:user/u","Token":"credential-canary"}"#;
+        let credential_response_fixture = br#"{"UserId":"u","Account":"123456789012","Arn":"arn:aws:iam::123456789012:user/u","Token":"<redacted>"}"#;
+        let secret_bearing = credential_response_fixture;
         assert!(parse_sts_caller_identity(secret_bearing).is_err());
         assert_eq!(
             parse_sts_caller_identity(&vec![b'a'; MAX_OBSERVATION_BYTES + 1])
