@@ -409,7 +409,7 @@ constant or verified-principal construction, maintainers must:
 
 1. obtain the two independent exact-head protected-path approvals required by
    ADR 0003 and non-bypassable server-side enforcement;
-2. pass inherited S0/v0.4, hosted CI, CodeQL, and required native jobs on that
+2. pass inherited S0/v0.4, hosted CI, pinned Actions static analysis, and required native jobs on that
    exact revision;
 3. bind the real package loader's digest/signature, publisher, exact compatible
    version/contract, and live revocation result before constructing a verified

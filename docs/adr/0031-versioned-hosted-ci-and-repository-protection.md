@@ -43,7 +43,8 @@ redacted findings.
 
 `main` has no bypass actor and requires pull requests, linear squash-only
 history, signed commits, resolved conversations, current CODEOWNER review,
-last-push approval, stale-review dismissal, and the exact CI/CodeQL check set.
+last-push approval, stale-review dismissal, and the exact CI and Actions-static-
+analysis check set.
 The repository policy check separately requires two distinct non-author,
 non-bot approvals bound to the exact pull-request head for protected paths.
 Release tags matching `v*` reject deletion and non-fast-forward updates.
@@ -53,9 +54,10 @@ declared default-branch evidence workflow has a latest `main` run that executed
 successfully, belongs to the exact current `main` commit, and is at most seven
 days old. A skipped-only run, stale run, different commit, missing run, or zero-
 step billing rejection cannot pass. The stable-release workflow is required to
-remain active but is not a routine default-branch evidence workflow. The pinned
-advanced CodeQL workflow remains the sole CodeQL owner; default setup must not
-be enabled in parallel.
+remain active but is not a routine default-branch evidence workflow. On the
+GitHub-Free/private plan, pinned actionlint and offline zizmor own workflow
+static analysis; CodeQL and private code-scanning uploads remain deliberately
+absent.
 
 The repository permits GitHub-owned Actions plus an exact list of required
 third-party actions, with full commit-SHA enforcement. Default workflow tokens
@@ -85,9 +87,9 @@ Stable tag preflight now consumes the separate digest-pinned stable-release
 source policy. Before packaging it requires an annotated local and remote tag at
 the exact remote `main` head, the annotated published Rio fork tag at the audited
 base, complete clean linear downstream history, and author-matching DCO trailers.
-The protected `stable-release` environment supplies a read-only repository audit
-credential, and preflight accepts only an all-pass authenticated audit. Exit 1
-drift and exit 2 external prerequisites both block publication. This adds no
+The release workflow consumes a minimally scoped repository audit credential
+from repository secrets, and preflight accepts only an all-pass authenticated
+audit. Exit 1 drift and exit 2 external prerequisites both block publication. This adds no
 runtime authority and does not permit visibility, billing, plan, collaborator,
 credential, security-entitlement, or history changes.
 

@@ -171,11 +171,17 @@ def validate_release(workflow: dict[str, Any]) -> None:
     jobs = workflow.get("jobs")
     require(isinstance(jobs, dict), "release workflow has no jobs")
     windows = jobs.get("package-windows")
+    unsigned_windows = jobs.get("package-windows-unsigned")
+    runtime_signing = jobs.get("sign-windows-runtime")
     publish = jobs.get("publish")
+    publish_release = jobs.get("publish-release")
     reproducibility = jobs.get("reproducibility-linux")
     require(
         isinstance(windows, dict)
+        and isinstance(unsigned_windows, dict)
+        and isinstance(runtime_signing, dict)
         and isinstance(publish, dict)
+        and isinstance(publish_release, dict)
         and isinstance(reproducibility, dict),
         "release trust jobs are missing",
     )
@@ -185,42 +191,59 @@ def validate_release(workflow: dict[str, Any]) -> None:
         "publication must depend on independent cold-build reproducibility evidence",
     )
 
-    windows_steps = workflow_steps(windows)
+    runtime_steps = workflow_steps(runtime_signing)
     script_signers = [
         step
-        for step in windows_steps
+        for step in runtime_steps
         if "azure/artifact-signing-action@" in str(step.get("uses", ""))
-        and step.get("with", {}).get("files-folder") == "shell-integration"
+        and step.get("with", {}).get("files-folder") == "signing-input"
     ]
     require(
         len(script_signers) == 1
-        and script_signers[0].get("with", {}).get("files-folder-filter") == "ps1,ps1xml"
+        and script_signers[0].get("with", {}).get("files-folder-filter") == "exe,ps1,ps1xml"
         and script_signers[0].get("with", {}).get("files-folder-recurse") is True,
         "Windows release must recursively sign PowerShell assets before packaging",
     )
-    names = [str(step.get("name", "")) for step in windows_steps]
+    runtime_names = [str(step.get("name", "")) for step in runtime_steps]
     require(
-        names.index("Verify signed PowerShell assets")
-        < names.index("Build MSI and signed portable ZIP"),
-        "PowerShell asset verification must precede Windows package creation",
+        runtime_names.index("Verify every signed runtime input without executing it")
+        < runtime_names.index("Upload signed runtime inputs"),
+        "PowerShell runtime inputs must be verified before publication to packaging",
     )
-    windows_commands = workflow_commands(windows)
+    runtime_commands = workflow_commands(runtime_signing)
     require(
-        "Set-AuthenticodeSignature" in windows_commands
-        and "TimeStamperCertificate" in windows_commands,
+        "Set-AuthenticodeSignature" in runtime_commands
+        and "TimeStamperCertificate" in runtime_commands,
         "PFX signing and timestamp verification for PowerShell assets are missing",
     )
-
-    publish_commands = workflow_commands(publish)
+    unsigned_commands = workflow_commands(unsigned_windows)
     require(
-        "immutable-releases" in publish_commands,
-        "publication must require GitHub immutable releases",
+        "sign-windows-runtime" in unsigned_windows.get("needs", [])
+        and "Download signed runtime inputs" in [
+            str(step.get("name", "")) for step in workflow_steps(unsigned_windows)
+        ]
+        and "Get-AuthenticodeSignature" in unsigned_commands,
+        "Windows packaging must consume and revalidate isolated signed runtime inputs",
     )
     require(
-        "--clobber" not in publish_commands
-        and "Refusing to modify an existing release" in publish_commands,
+        "package-windows-unsigned" in windows.get("needs", []),
+        "final Windows installer signing must consume the credential-free package output",
+    )
+
+    publish_release_commands = workflow_commands(publish_release)
+    require(
+        "sign-release-bundle" in publish_release.get("needs", [])
+        and 'gh release create "$tag"' in publish_release_commands
+        and 'gh release upload "$tag"' in publish_release_commands,
+        "publication must create the release only from the signed immutable bundle",
+    )
+    require(
+        "--clobber" not in publish_release_commands
+        and "refusing mutation" in publish_release_commands
+        and 'gh release view "$tag"' in publish_release_commands,
         "publication must reject existing releases and asset overwrites",
     )
+    publish_commands = workflow_commands(publish)
     require(
         "sbom-input/Cargo.lock" in publish_commands,
         "SBOM generation must include the locked Rust dependency graph",

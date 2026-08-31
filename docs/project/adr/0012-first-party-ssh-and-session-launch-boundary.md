@@ -193,7 +193,7 @@ authority is reachable while the activation gate is false.
 The project owner's acceptance of this ADR records the architectural decision;
 it does not enable the capability or satisfy ADR 0003's protected-path rule.
 Remaining activation evidence includes two independent exact-head approvals;
-green hosted S0/release/CodeQL gates; real package-loader
+green hosted S0/release/Actions-static-analysis gates; real package-loader
 attestation/revocation; current executable and identity observation; execution
 of the native matrix on Windows/Linux/macOS/WSL; redaction across every listed
 surface; and controlled 1/10/50-session process, PTY, renderer, performance, and

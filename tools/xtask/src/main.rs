@@ -1259,7 +1259,8 @@ fn verify_phase_zero_assurance() -> TaskResult {
             )
             && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
-            && ci.contains("python tools/ci/test_qa.py")
+            && ci.contains("RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)")
+            && ci.contains("python3 tools/ci/test_qa.py")
             && ci.contains("glslang-tools")
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
@@ -1324,7 +1325,6 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && release_workflow.contains("--expected-commit")
             && release_workflow.contains("--require-active")
             && s2_workflow.contains("name: S2 controlled activation")
-            && s2_workflow.contains("environment: stable-release")
             && s2_workflow.contains("validate-baseline")
             && s2_workflow.contains("--expected-source-commit")
             && s2_workflow.contains("retention-days: 90")
@@ -1337,21 +1337,24 @@ fn verify_phase_zero_assurance() -> TaskResult {
         "S1/S2 visual, benchmark, source binding, baseline review, waiver, nightly, activation, or fail-closed release assurance drifted",
     )?;
 
-    let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;
+    let free_plan_contract =
+        read(&root().join(".github/scripts/check_free_plan_contract.py"))?;
     require(
-        codeql_workflow.contains("workflow_dispatch:")
-            && codeql_workflow.contains("actions: read")
-            && codeql_workflow.contains("github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
-            && codeql_workflow.contains("github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
-            && codeql_workflow.contains("github.event.repository.private && 'never' || 'always'")
-            && codeql_workflow.contains("codeql-results/**/*.sarif")
-            && codeql_workflow.contains("if-no-files-found: error"),
-        "CodeQL must be dispatchable, pinned to v4, upload findings when entitled, and retain private-repository SARIF without requiring GitHub Code Security",
+        !root().join(".github/workflows/codeql.yml").exists()
+            && free_plan_contract.contains("EXPECTED_WORKFLOWS")
+            && free_plan_contract.contains("private GitHub environments are unavailable")
+            && free_plan_contract.contains("forbidden/stale workflow exists")
+            && ci.contains("check_free_plan_contract.py")
+            && ci.contains("actionlint -color")
+            && ci.contains("zizmor"),
+        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint and offline zizmor checks",
     )?;
     require(
-        nightly_workflow.contains("cargo +nightly fuzz run")
+        nightly_workflow.contains("cargo +nightly-2026-08-25 fuzz run")
             && nightly_workflow.contains("--component rust-src")
-            && nightly_workflow.contains("sanitizer: [address, thread]")
+            && nightly_workflow.contains("sanitizer:")
+            && nightly_workflow.contains("- address")
+            && nightly_workflow.contains("- thread")
             && nightly_workflow.contains("MIRIFLAGS: -Zmiri-disable-isolation")
             && nightly_workflow.contains("timeout-minutes: 30")
             && nightly_workflow.contains("--locked simd_utf8::tests")
@@ -1359,16 +1362,15 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && nightly_workflow.contains("--locked performer::parser::tests")
             && nightly_workflow.contains("test_temp_file_transmission_medium")
             && nightly_workflow.contains("--target x86_64-unknown-linux-gnu")
-            && nightly_workflow.contains("tool: cross@0.2.5")
             && nightly_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
             && nightly_workflow.contains("$(go env GOPATH)/bin")
             && release_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
             && release_workflow.contains("$(go env GOPATH)/bin"),
-        "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer jobs, and expose the pinned Go-based nFPM tool",
+        "Nightly/release workflows must use the pinned nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer configurations, and expose the pinned Go-based nFPM tool",
     )?;
     require(
         nightly_workflow.contains(
-            "cargo +nightly test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
+            "cargo +nightly-2026-08-25 test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
         ),
         "ASan/TSan must exercise bounded extension worker lifecycle tests without running Loom's scheduler model",
     )?;
@@ -3104,10 +3106,10 @@ fn verify_architecture() -> TaskResult {
             && read(&root().join("automexia-image/src/lib.rs"))?
                 .contains("bytes.len() as u64 > MAX_FILE_BYTES")
             && nightly.contains("image_decoder")
-            && nightly.contains("rustup toolchain install nightly --profile minimal")
-            && nightly.contains("cargo +nightly fuzz run")
+            && nightly.contains("rustup toolchain install nightly-2026-08-25 --profile minimal")
+            && nightly.contains("cargo +nightly-2026-08-25 fuzz run")
             && nightly.contains("-rss_limit_mb=768 -timeout=15")
-            && nightly.contains("cargo +nightly test -p automexia-image --lib")
+            && nightly.contains("cargo +nightly-2026-08-25 test -p automexia-image --lib")
             && xtask_source.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX")
             && xtask_source.contains("fuzz_workspace/corpus")
             && xtask_source.contains("source_root=$1")

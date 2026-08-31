@@ -59,6 +59,15 @@ jobs:
           python tools/ci/test_command_productivity_cp51.py
           python tools/ci/test_command_productivity_cp56.py
 
+      - name: Validate feature-test reinforcement policy and mutations
+        run: |
+          set -euo pipefail
+          python tools/ci/check_feature_test_reinforcement.py
+          python tools/ci/test_feature_test_reinforcement.py
+
+      - name: Validate S2 performance-assurance mutations
+        run: python tools/ci/test_performance_assurance.py
+
       - name: Install actionlint 1.7.12 with checksum verification
         shell: bash
         env:
@@ -143,6 +152,17 @@ jobs:
 
       - name: Workspace unit and integration tests
         run: cargo nextest run --workspace --all-features --locked --profile ci
+
+      - name: QA runner contract mutations
+        run: python3 tools/ci/test_qa.py
+
+      - name: Deterministic Loom channel model
+        run: cargo test -p corcovado --test loom_channel_readiness --locked
+        env:
+          RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)
+
+      - name: Image rendering and resource regression
+        run: cargo xtask test image-rendering
 
       - name: Workspace documentation tests
         run: cargo test --workspace --all-features --doc --locked

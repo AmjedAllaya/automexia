@@ -519,6 +519,16 @@ class PlatformCoverageTests(unittest.TestCase):
         with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "reproducibility"):
             PLATFORM.validate_release(altered)
 
+    def test_reproducibility_cannot_replace_the_canonical_cold_build_contract(self) -> None:
+        altered = copy.deepcopy(self.release)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["reproducibility-linux"], "check_reproducible_build.sh"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = "echo skipped"
+        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "cold native"):
+            PLATFORM.validate_release(altered)
+
     def test_windows_executable_signing_cannot_escape_isolated_input(self) -> None:
         altered = copy.deepcopy(self.release)
         signing = next(

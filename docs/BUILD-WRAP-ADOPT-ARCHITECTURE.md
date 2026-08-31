@@ -617,7 +617,7 @@ Every adopted crate or external adapter requires:
   unchanged when the extension is absent.
 
 Keep Proptest, Loom, Criterion, Insta, cargo-nextest, fuzzing, sanitizers,
-Clippy, cargo-deny, dependency review, CodeQL, SBOMs, attestations, PTY tests,
+Clippy, cargo-deny, dependency review, plan-appropriate static analysis, SBOMs, attestations, PTY tests,
 and native platform matrices. Add `cargo-vet` only with named audit ownership
 and a ratcheted exemptions policy. Add `cargo-mutants` first to pure security
 decisions and state machines such as native-wins, production-deny,

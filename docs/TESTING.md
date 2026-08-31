@@ -51,7 +51,7 @@ host-provided. The required evidence is:
 
 | Surface | Required host and checks |
 |---|---|
-| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every pull request runs locked, all-feature Clippy, Nextest, and doctests on the GitHub-Free Ubuntu runner. This portable gate is necessary but does not establish native Windows or macOS behavior. |
+| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every pull request runs locked, all-feature Clippy, Nextest, documentation tests, QA-runner mutation tests, the deterministic Loom channel model, and headless image-rendering assurance on the GitHub-Free Ubuntu runner. This portable gate is necessary but does not establish native Windows or macOS behavior. |
 | Windows shells, ConPTY, WGPU/CPU | Controlled Windows release/assurance runners own PowerShell, resize, clone, WSL, image, and final-package gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
 | Bash/Zsh install, repair, prompt metadata, and listing behavior | The ordinary Ubuntu quality job runs bash tools/ci/test_shell_sources.sh. The script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home; controlled macOS evidence remains separately required. |
 | Linux display adapters | The ordinary Ubuntu gate checks portable all-feature Rust behavior. Controlled release jobs validate Linux package/install behavior; X11/Wayland and compositor evidence remains separately scoped and is not inferred from a generic build. |
@@ -395,7 +395,8 @@ cargo xtask test image-decoder-fuzz --seconds 120
 cargo xtask verify architecture
 ```
 
-The required PR command covers every enabled raster codec, exact RGBA and
+The required PR CI gate runs the same headless image-rendering command. It covers
+every enabled raster codec, exact RGBA and
 straight-alpha behavior, supported/unsupported extensions, URL/control/symlink
 rejection, quoted and bare paths, WSL mapping, file/dimension/pixel/allocation
 limits, malformed/truncated/mutated input storms, no small-image upscale,
@@ -415,7 +416,8 @@ WGPU/CPU dimensions and luminance distributions. Protocol rendering and local
 quick look remain separate contracts; native Linux/macOS evidence follows the
 matrix in [image previews](IMAGE-PREVIEWS.md).
 
-The decoder fuzz command installs/uses explicit nightly on Unix. On Windows it
+The decoder fuzz command installs/uses the pinned nightly-2026-08-25 toolchain
+on Unix. On Windows it
 uses WSL because cargo-fuzz/libFuzzer does not support native Windows; this
 avoids misleading `clang_rt.asan_dynamic` DLL failures. It fuzzes both bounded
 decode and visible-path tokenization. The runner copies the current source tree
@@ -423,8 +425,9 @@ once from Windows into a disposable WSL-native `/tmp` workspace, excluding
 `.git`, the workspace target, and generated fuzz target, corpus, and
 artifact directories; all Cargo build, corpus, and target I/O then
 stays under `/tmp`. It caps RSS/input time and removes the complete staged
-campaign on exit. Nightly CI separately installs nightly, invokes every target
-with `cargo +nightly fuzz`, and runs pure decoder tests under ASan and TSan.
+campaign on exit. Nightly CI separately installs nightly-2026-08-25, invokes
+every target with `cargo +nightly-2026-08-25 fuzz`, and runs pure decoder tests
+under ASan and TSan.
 The 2026-08-14 Windows-to-WSL decoder campaign completed 544,609 executions
 over 121 seconds without a crash or sanitizer finding (2,504 coverage edges,
 5,383 features, 1,161 final corpus entries, and 357 MiB peak RSS). These are
@@ -576,8 +579,9 @@ and cleanup all resolve the same directory consistently.
 
 The local gate validates all checks that can run on the current host. GitHub CI
 keeps separate native and cross-platform jobs for operating-system matrices,
-coverage, CodeQL, dependency review, fuzzing, sanitizers, and controlled
-hardware that one contributor machine cannot reproduce.
+coverage, GitHub Actions static analysis, dependency review, fuzzing,
+sanitizers, and controlled hardware that one contributor machine cannot
+reproduce.
 
 Cargo creates a test executable for each applicable library, binary, integration
 target, and documentation target. Therefore, `test result: ok. 0 passed; 0
@@ -603,11 +607,16 @@ Every PR runs policy checks regardless of changed paths:
   and brand-manifest verification;
 - warning-denied workspace Clippy and workspace tests on Windows, Linux, and
   macOS;
+- QA-runner mutation tests, the deterministic Loom channel model, and the
+  headless image-rendering/resource regression on the ordinary Linux quality
+  job;
 - Linux X11-only, Wayland-only, and combined checks;
 - Windows MSVC x64 tests and ARM64 cross-check;
 - macOS x64 and ARM64 compile checks;
-- `cargo deny`, dependency review, CodeQL, and secret-safe fork permissions;
-- versioned hosted-CI/repository-protection contract and mutation tests;
+- `cargo deny`, dependency audit, pinned GitHub Actions static analysis, and
+  secret-safe fork permissions;
+- versioned hosted-CI/repository-protection, feature-test-reinforcement, and
+  performance-assurance contract and mutation tests;
 - LLVM coverage with a non-decreasing recorded global baseline and at least 80%
   line coverage on changed Automexia-owned lines.
 
@@ -1048,7 +1057,10 @@ cargo bench -p automexia-keybindings --bench registry --locked -- --noplot
 tests plus the frontend registry, command-palette, inspector, compatibility
 action, export, migration, zoom/equalize, topology-history, and VT bounded-
 selection owners before byte-verifying generated artifacts and references.
-Hosted Linux nightly runs both Ghostty fuzzers; mutation gates freeze wiring.
+Hosted Linux nightly runs the three relevant bounded fuzz targets:
+ecosystem_bundle, ghostty_keybindings, and ghostty_migration. Mutation gates
+parse and freeze that matrix semantically, so a harmless YAML formatting change
+cannot hide a missing target.
 Native evidence uses a private exact-commit manifest and QA keeps only a
 redacted summary. Missing evidence is not a pass. Scenarios, benchmarks, the
 Windows fuzz failure, and cleanup are in the
@@ -1064,11 +1076,11 @@ MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5
 source because WiX 3 has no ARM64 MSI support. Linux package jobs install the
 exact nFPM version without a semver-incompatible `v` prefix.
 
-CodeQL runs in no-build Rust mode. Public repositories upload SARIF to GitHub
-code scanning. When the repository is private without GitHub Code Security,
-the same analysis runs with upload disabled and retains its SARIF as a private
-14-day workflow artifact for maintainer review instead of failing on an
-unavailable entitlement.
+On this GitHub-Free/private plan, the policy job deliberately rejects a CodeQL
+workflow and private code-scanning upload. It instead runs pinned actionlint
+and offline zizmor against the workflow files, while the dependency-security
+job runs cargo audit and cargo deny. These checks do not replace a future,
+explicitly adopted code-scanning service.
 
 Stable release requires WSL, real-GPU, clean-install, upgrade, uninstall,
 signature, notarization, URL handler, terminfo, and migration smoke tests on
@@ -1115,8 +1127,10 @@ binds that evidence to the exact Windows packages, version, and configured
 publisher. Controlled GUI/PTY and WSL smoke use the final packaged Windows and
 Linux portable archives. macOS release CI independently proves
 hardened runtime, absence of `get-task-allow`, accepted notarization, staple
-validation, and Gatekeeper acceptance. A release-only Linux job compares two
-fresh cold builds byte for byte and records durations/hash/size; publication
+validation, and Gatekeeper acceptance. The release-only Linux x64 and ARM64 jobs
+invoke the canonical `tools/ci/check_reproducible_build.sh` contract to compare
+two fresh cold source builds byte for byte and publish a per-architecture
+duration/hash/size receipt; publication
 also requires repository immutable releases and refuses pre-existing assets.
 These native/external trust decisions cannot be claimed from local unsigned
 builds. The complete contract and false-positive response are in

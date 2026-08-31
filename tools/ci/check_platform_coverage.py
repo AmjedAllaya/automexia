@@ -634,13 +634,30 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
 
     reproducibility = job(workflow, "reproducibility-linux", "release.yml")
+    reproducibility_commands = commands(reproducibility)
+    reproducibility_uploads = [
+        step
+        for step in steps(reproducibility)
+        if "actions/upload-artifact@" in str(step.get("uses", ""))
+    ]
     require(
-        "cmp --silent" in commands(reproducibility)
+        "check_reproducible_build.sh" in reproducibility_commands
+        and "reproducibility-${{ matrix.arch }}.json" in reproducibility_commands
         and {
             ("ubuntu-22.04", "x86_64"),
             ("ubuntu-22.04-arm", "aarch64"),
         }.issubset(matrix_pairs(reproducibility, "runner", "arch")),
         "release reproducibility must compare cold native x86_64 and ARM64 Linux builds",
+    )
+    require(
+        any(
+            step.get("with", {}).get("name")
+            == "release-reproducibility-${{ matrix.arch }}"
+            and step.get("with", {}).get("path")
+            == "trust/evidence/reproducibility-${{ matrix.arch }}.json"
+            for step in reproducibility_uploads
+        ),
+        "release reproducibility must retain a per-architecture cold-build receipt",
     )
 
     publish = job(workflow, "publish", "release.yml")

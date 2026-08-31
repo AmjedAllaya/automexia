@@ -516,20 +516,20 @@ jobs:
         rustup toolchain install "$AUTOMEXIA_RUST_TOOLCHAIN" --profile minimal
         rustup target add "${{ matrix.target }}" --toolchain "$AUTOMEXIA_RUST_TOOLCHAIN"
         rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
-    - name: Build twice and compare byte-for-byte
+    - name: Verify two independent cold source builds
       shell: bash
       run: |
         set -euo pipefail
-        export SOURCE_DATE_EPOCH="$(git show -s --format=%ct HEAD)"
-        export RUSTFLAGS="--remap-path-prefix=$PWD=/usr/src/automexia -C link-arg=-Wl,--build-id=none"
-        for n in one two; do
-          CARGO_TARGET_DIR="$RUNNER_TEMP/target-$n" cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
-        done
-        one="$RUNNER_TEMP/target-one/${{ matrix.target }}/release/automexia"
-        two="$RUNNER_TEMP/target-two/${{ matrix.target }}/release/automexia"
-        test -x "$one" && test -x "$two"
-        sha256sum "$one" "$two"
-        cmp --silent "$one" "$two"
+        tools/ci/check_reproducible_build.sh \
+          "trust/evidence/reproducibility-${{ matrix.arch }}.json"
+    - name: Upload cold-build reproducibility evidence
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-reproducibility-${{ matrix.arch }}
+        path: trust/evidence/reproducibility-${{ matrix.arch }}.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
   prepare-windows-package-inputs:
     name: Prepare Windows signing inputs
     needs:
