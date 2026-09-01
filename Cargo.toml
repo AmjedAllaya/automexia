@@ -157,8 +157,8 @@ time = { version = "=0.3.55", default-features = false, features = ["std", "pars
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
 wasmtime = { version = "48.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
-wit-parser = "=0.254.0"
-wat = "=1.254.0"
+wit-parser = "=0.258.0"
+wat = "=1.258.0"
 
 [profile.release]
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%

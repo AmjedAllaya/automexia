@@ -154,7 +154,7 @@ features = [
 [target.'cfg(all(unix, not(any(target_os = "redox", target_family = "wasm", target_os = "macos"))))'.dependencies]
 ahash = { version = "0.8.7", features = ["no-rng"], optional = true }
 bytemuck = { version = "1.13.1", default-features = false, optional = true }
-calloop = "0.13.0"
+calloop = "0.14.4"
 zbus = { workspace = true, features = ["blocking"] }
 libc = { workspace = true }
 memmap2 = { workspace = true, optional = true }
@@ -168,7 +168,7 @@ rustix = { version = "1.1.4", default-features = false, features = [
 sctk = { package = "smithay-client-toolkit", version = "0.19.2", default-features = false, features = [
     "calloop",
 ], optional = true }
-sctk-adwaita = { version = "=0.10.1", default-features = false, optional = true }
+sctk-adwaita = { version = "=0.12.0", default-features = false, optional = true }
 wayland-backend = { version = "0.3.10", default-features = false, features = [
     "client_system",
 ], optional = true }
