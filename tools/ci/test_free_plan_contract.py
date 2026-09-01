@@ -65,6 +65,20 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
 
+    def run_checker_without_manifest(self) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            self.populate_contract_root(root)
+            (root / "sugarloaf" / "Cargo.toml").unlink()
+            return subprocess.run(
+                [sys.executable, str(CHECKER)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+
     def run_checker(self, mutation: tuple[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
@@ -270,8 +284,13 @@ class FreePlanContractTests(unittest.TestCase):
     def test_image_rendering_linux_backends_cannot_be_removed(self) -> None:
         # The hosted regression occurred only in the stand-alone Sugarloaf
         # command because the preceding workspace build had hidden this edge.
-        complete = 'features = ["x11", "wayland"]'
-        for weakened in ('features = ["x11"]', 'features = ["wayland"]'):
+        complete = 'rio-window = { workspace = true, features = ["x11", "wayland"] }'
+        for weakened in (
+            'rio-window = { workspace = true, features = ["x11"] }',
+            'rio-window = { workspace = true, features = ["wayland"] }',
+            "",
+            f"{complete}\n{complete}",
+        ):
             with self.subTest(weakened=weakened):
                 completed = self.run_checker_with_manifest_replacement(
                     complete, weakened
@@ -280,6 +299,17 @@ class FreePlanContractTests(unittest.TestCase):
                 self.assertIn(
                     "image-rendering Linux platform contract", completed.stderr
                 )
+
+        missing = self.run_checker_without_manifest()
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("image-rendering Linux platform contract", missing.stderr)
+
+    def test_image_rendering_backend_order_is_not_a_textual_contract(self) -> None:
+        completed = self.run_checker_with_manifest_replacement(
+            'features = ["x11", "wayland"]',
+            'features = ["wayland", "x11"]',
+        )
+        self.assertEqual(completed.returncode, 0, completed.stderr)
 
 
 if __name__ == "__main__":

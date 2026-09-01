@@ -177,12 +177,12 @@ roots from changing underneath a shared persistent target.
 
 ### Current local evidence
 
-The 2026-08-31 native Windows x86_64 MSVC audit of this worktree produced the
+The 2026-09-01 native Windows x86_64 MSVC audit of this worktree produced the
 following bounded evidence:
 
-- complete Python discovery passed 534 tests with six platform-capability
+- complete Python discovery passed 552 tests with six platform-capability
   skips;
-- all-feature Nextest passed 2,281 tests across 91 binaries with seven declared
+- all-feature Nextest passed 2,284 tests across 91 binaries with seven declared
   skips, and the separate workspace documentation-test command passed its
   applicable doctests;
 - the finite Loom channel model, renderer-neutral image suite, Bash/Zsh/Fish
@@ -202,10 +202,11 @@ base. If neither exists, assurance stops with a fetch instruction; it never
 passes a lone `HEAD` revision that would silently expand to all inherited
 history.
 
-This evidence covers that exact worktree on one Windows host. It does not claim
-a successful hosted run, Linux/macOS native behavior, signing/notarization,
-controlled GPU/hardware, long fuzz/resource campaigns, or human accessibility
-review. Those remain the explicit gates in the status table above.
+This evidence covers that exact worktree on one Windows host. It does not
+replace a successful hosted run on the exact release commit, Linux/macOS native
+behavior, signing/notarization, controlled GPU/hardware, long fuzz/resource
+campaigns, or human accessibility review. Those remain the explicit gates in
+the status table above.
 
 Release maintainers additionally follow `.github/FREE-PRIVATE-PRODUCTION-SETUP.md`,
 `RELEASING.md`, and `docs/RELEASE-TRUST.md`. A local pass does not replace the
