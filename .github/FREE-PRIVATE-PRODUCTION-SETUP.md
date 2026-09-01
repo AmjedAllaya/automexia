@@ -343,8 +343,13 @@ The installer places all downloaded or built tools in the ignored repository
 local `.automexia-tools/` directory. It checksum-verifies Actionlint and
 Gitleaks release archives, pins Semgrep Community Edition, Cargo Audit, Cargo
 Vet, and Zizmor versions, and never stores credentials in that directory. The
-pre-push profile checks the repository readiness gate, workflow pin/policy and
-mutation contracts, Actionlint, offline Zizmor, RustSec/Cargo Deny/Cargo Vet,
+Cargo-based tools compile and unpack their dependency sources below a bounded
+disposable short path on the same drive, then publish only the resulting
+executable atomically into the local cache. This keeps deeply nested Windows
+worktrees below the MSVC linker and C-header path ceilings; the disposable
+build tree is removed after success or failure.
+The pre-push profile checks the repository readiness gate, workflow pin/policy
+and mutation contracts, Actionlint, offline Zizmor, RustSec/Cargo Deny/Cargo Vet,
 Gitleaks against introduced commits and current files, local Semgrep rules, and
 real scanner canaries. `initialize-vet` generates Cargo Vet's source-controlled
 baseline once and verifies an existing complete baseline without rewriting it;

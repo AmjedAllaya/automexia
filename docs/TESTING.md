@@ -1192,6 +1192,15 @@ checkout only in the dependency-security job. Use
 `cargo xtask assurance install-hook` only when no pre-existing personal Git
 pre-push hook needs to be preserved: it refuses to overwrite one.
 
+On Windows, Cargo-based assurance tools compile and unpack dependency sources
+in a same-drive disposable short path before their bounded executable is
+atomically moved into `.automexia-tools/bin`. The deep-worktree regression in
+`tools/ci/test_github_free_assurance.py` independently checks the build-root,
+publication, and cleanup contracts. This avoids both the MSVC `LNK1104` linker
+failure and generated C-header lookup failures that occur when build or registry
+paths inherit a deeply nested checkout; it does not move the persistent cache
+or source checkout outside the selected drive.
+
 Run `cargo xtask assurance audit-history-secrets` separately for the bounded
 full-history campaign. It intentionally fails closed on the repository's
 review-required legacy generic-key findings. Do not add broad path allowlists or

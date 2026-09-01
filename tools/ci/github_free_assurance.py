@@ -288,6 +288,45 @@ def download_binary(policy: dict[str, Any], name: str, download: Download) -> No
     destination.chmod(destination.stat().st_mode | 0o700)
 
 
+def install_cargo_tool(policy: dict[str, Any], package: str) -> None:
+    if package not in {"cargo-audit", "cargo-deny", "cargo-vet", "zizmor"}:
+        raise AssuranceError(f"unsupported Cargo assurance tool {package!r}")
+    destination = tool_path(policy, package)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    build_parent = Path(ROOT.anchor) if os.name == "nt" else cache_root(policy)
+    with tempfile.TemporaryDirectory(
+        prefix="automexia-tool-build-", dir=build_parent
+    ) as raw_build_root:
+        build_root = Path(raw_build_root)
+        run(
+            [
+                "cargo",
+                "install",
+                "--root",
+                str(build_root),
+                "--target-dir",
+                str(build_root / "target"),
+                "--locked",
+                "--version",
+                REQUIRED_TOOLS[package],
+                package,
+            ],
+            f"install {package}",
+            policy,
+            timeout=45 * 60,
+            extra_environment={"CARGO_HOME": str(build_root / "cargo-home")},
+        )
+        built = build_root / "bin" / executable(package)
+        try:
+            built_size = built.stat().st_size
+        except OSError as error:
+            raise AssuranceError(f"installed {package} binary is unavailable") from error
+        if built_size <= 0 or built_size > MAX_TOOL_BINARY_BYTES:
+            raise AssuranceError(f"installed {package} binary has an invalid size")
+        os.replace(built, destination)
+    destination.chmod(destination.stat().st_mode | 0o700)
+
+
 def install_tools(policy: dict[str, Any]) -> None:
     cache = cache_root(policy)
     cache.mkdir(parents=True, exist_ok=True)
@@ -297,7 +336,7 @@ def install_tools(policy: dict[str, Any]) -> None:
     for package in ("cargo-audit", "cargo-deny", "cargo-vet", "zizmor"):
         name = package
         if not tool_path(policy, name).is_file():
-            run(["cargo", "install", "--root", str(cache), "--target-dir", str(cache / "install-target" / package), "--locked", "--version", REQUIRED_TOOLS[package], package], f"install {package}", policy, timeout=45 * 60)
+            install_cargo_tool(policy, package)
     semgrep_binary = tool_path(policy, "semgrep")
     venv = cache / "semgrep-venv"
     semgrep_python = venv / ("Scripts" if os.name == "nt" else "bin") / executable("python")

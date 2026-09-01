@@ -317,6 +317,11 @@ Current assurance: **Controlled/external**.
 - Exercise the same native packaging graph through a credential-free manual
   rehearsal that retains an explicit non-release marker and cannot read secrets,
   sign, publish, tag, or emit activation evidence.
+- Exercise local assurance-tool installation from a deliberately deep Windows
+  worktree. Require a disposable same-drive short build and dependency-source
+  root, bounded atomic executable publication into the ignored cache, and
+  cleanup after the build; never accept skipping a scanner because MSVC cannot
+  link output or resolve generated headers through a long path.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
   release attestation and verify each local asset against it. Mutate repository

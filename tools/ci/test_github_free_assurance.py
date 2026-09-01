@@ -261,6 +261,51 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                 self.assertRegex(download.sha256, r"^[0-9a-f]{64}$")
                 self.assertLessEqual(ASSURANCE.MAX_TOOL_BINARY_BYTES, ASSURANCE.MAX_TOOL_ARCHIVE_BYTES)
 
+    def test_cargo_tool_install_uses_disposable_short_build_paths(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            deep_root = Path(temporary).joinpath(*(["nested"] * 12))
+            deep_root.mkdir(parents=True)
+            build_roots: list[Path] = []
+
+            def install_fixture(
+                command: list[str],
+                _label: str,
+                policy: dict[str, object],
+                **kwargs: object,
+            ) -> None:
+                self.assertEqual(policy, self.policy)
+                install_root = Path(command[command.index("--root") + 1])
+                target_dir = Path(command[command.index("--target-dir") + 1])
+                build_roots.append(install_root)
+                self.assertEqual(target_dir.parent, install_root)
+                if os.name == "nt":
+                    self.assertEqual(install_root.parent, Path(ASSURANCE.ROOT.anchor))
+                    self.assertNotIn(ASSURANCE.cache_root(self.policy), install_root.parents)
+                else:
+                    # Keep publication on one filesystem so atomic replacement
+                    # cannot degrade into an unsupported cross-device move.
+                    self.assertEqual(install_root.parent, ASSURANCE.cache_root(self.policy))
+                self.assertEqual(
+                    kwargs["extra_environment"],
+                    {"CARGO_HOME": str(install_root / "cargo-home")},
+                )
+                binary = install_root / "bin" / ASSURANCE.executable("cargo-audit")
+                binary.parent.mkdir(parents=True)
+                binary.write_bytes(b"pinned-cargo-tool")
+
+            # The historical failure occurred only after MSVC received the full
+            # worktree/cache/dependency path. The fake compiler independently
+            # proves that publication uses its short root and cleans it afterward.
+            with mock.patch.object(ASSURANCE, "ROOT", deep_root), mock.patch.object(
+                ASSURANCE, "run", side_effect=install_fixture
+            ):
+                ASSURANCE.install_cargo_tool(self.policy, "cargo-audit")
+                installed = ASSURANCE.tool_path(self.policy, "cargo-audit")
+                self.assertEqual(installed.read_bytes(), b"pinned-cargo-tool")
+
+            self.assertEqual(len(build_roots), 1)
+            self.assertFalse(build_roots[0].exists())
+
     def test_checksum_pinned_zip_and_tar_members_extract_to_the_isolated_cache(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
