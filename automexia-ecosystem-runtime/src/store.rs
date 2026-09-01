@@ -993,12 +993,21 @@ fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, StoreError> {
             "managed Windows paths cannot contain NUL",
         ));
     }
-    // Rust accepts either separator in ordinary drive paths, while the Win32
-    // verbatim namespace deliberately performs no slash normalization.
+    // Normalize before adding the verbatim prefix, which deliberately performs
+    // neither separator nor dot-segment normalization.
     for unit in &mut wide {
         if *unit == b'/' as u16 {
             *unit = b'\\' as u16;
         }
+    }
+    if wide
+        .split(|unit| *unit == b'\\' as u16)
+        .any(|segment| segment == [b'.' as u16] || segment == [b'.' as u16, b'.' as u16])
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidRoot,
+            "managed Windows paths cannot contain dot segments",
+        ));
     }
     match prefix {
         Prefix::Disk(_) => {
@@ -1354,10 +1363,12 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
-    fn windows_acl_paths_reject_relative_and_remote_namespaces() {
+    fn windows_acl_paths_reject_relative_remote_and_dot_segments() {
         for path in [
             Path::new("relative"),
             Path::new(r"\\server\share\ecosystem"),
+            Path::new(r"D:\ecosystem\..\escape"),
+            Path::new(r"D:\ecosystem\.\local"),
         ] {
             assert_eq!(
                 windows_local_wide_path(path).unwrap_err().code,

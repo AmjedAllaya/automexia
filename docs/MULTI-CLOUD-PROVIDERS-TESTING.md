@@ -103,12 +103,13 @@ candidate is validated by the canonical M11 kubeconfig parser before an opaque
 handle is published. A real-path regression creates a connection root beyond
 260 UTF-16 units, proves a protected single-user DACL through an independent
 descriptor query, then publishes, revalidates, resolves, and revokes the
-transient. Relative and UNC ACL namespaces fail closed without echoing private
-paths. The same cold-readiness discovery added focused long-path ACL/atomic-
+transient. Relative, UNC, and `.`/`..` ACL namespaces fail closed without
+echoing private paths. The same cold-readiness discovery added focused long-path ACL/atomic-
 recovery coverage to the adjacent Quick Actions, SSH metadata, and ecosystem
 stores. A full Nextest run then caught a forward separator inside an existing
 hostile staging fixture; the verbatim-path encoder now normalizes ordinary
-Windows separators before the ACL call, and that exact recovery test passes.
+Windows separators before the ACL call and rejects dot segments before adding
+the prefix, and those exact recovery tests pass.
 The first full-QA run also exposed a stable-release mutation fixture that
 assumed the temporary directory was outside the checkout. With the required
 D-drive temporary root under `target/`, Git walked upward and found the real

@@ -151,6 +151,7 @@ REQUIRED_SOURCE_TOKENS = {
         "Prefix::Disk(_)",
         "Prefix::VerbatimDisk(_)",
         "if *unit == b'/' as u16",
+        "segment == [b'.' as u16]",
         "SetNamedSecurityInfoW",
         "GetNamedSecurityInfoW",
         "PROTECTED_DACL_SECURITY_INFORMATION",
@@ -200,7 +201,7 @@ REQUIRED_TESTS = {
     },
     "apps/automexia-terminal/src/automexia/private_fs.rs": {
         "long_local_connection_paths_pass_native_acl_revalidation",
-        "native_acl_path_conversion_rejects_relative_and_remote_paths",
+        "native_acl_path_conversion_rejects_relative_remote_and_dot_segments",
     },
 }
 REQUIRED_FUZZ_TOKENS = {

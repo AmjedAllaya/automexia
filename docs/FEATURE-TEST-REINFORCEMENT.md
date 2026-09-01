@@ -656,8 +656,8 @@ Current assurance: **Partial; source contract implemented, real cluster gate ext
 - Reject YAML bombs, duplicates, merge keys, links, replacement, secrets,
   ambiguity, stale/tampered transients, capsule-revision mismatch,
   pre-existing private-root collision, cross-session data, user-file changes,
-  legacy-length Windows ACL paths, mixed separators, and relative or remote ACL
-  namespaces.
+  legacy-length Windows ACL paths, mixed separators, and relative, remote, or
+  dot-segment ACL namespaces.
 - Run native kubectl/oc/plugin/cloud-transient/product/Quick-Action/revoke/
   expiry/cleanup flows on disposable clusters with resource and accessibility proof.
 - Keep the Kubernetes parser as the OpenShift/cloud-transient performance owner

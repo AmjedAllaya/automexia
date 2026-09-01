@@ -465,12 +465,18 @@ fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, PrivateFsError> {
     if wide.contains(&0) {
         return Err(PrivateFsError::new(PrivateFsErrorCode::InvalidRoot));
     }
-    // Rust accepts either separator in ordinary drive paths, while the Win32
-    // verbatim namespace deliberately performs no slash normalization.
+    // Normalize before adding the verbatim prefix, which deliberately performs
+    // neither separator nor dot-segment normalization.
     for unit in &mut wide {
         if *unit == b'/' as u16 {
             *unit = b'\\' as u16;
         }
+    }
+    if wide
+        .split(|unit| *unit == b'\\' as u16)
+        .any(|segment| segment == [b'.' as u16] || segment == [b'.' as u16, b'.' as u16])
+    {
+        return Err(PrivateFsError::new(PrivateFsErrorCode::InvalidRoot));
     }
     match prefix {
         Prefix::Disk(_) => {
@@ -671,10 +677,12 @@ mod tests {
     }
 
     #[test]
-    fn native_acl_path_conversion_rejects_relative_and_remote_paths() {
+    fn native_acl_path_conversion_rejects_relative_remote_and_dot_segments() {
         for path in [
             Path::new("relative"),
             Path::new(r"\\server\share\connections"),
+            Path::new(r"D:\connections\..\escape"),
+            Path::new(r"D:\connections\.\local"),
         ] {
             assert_eq!(
                 windows_local_wide_path(path).unwrap_err().code(),

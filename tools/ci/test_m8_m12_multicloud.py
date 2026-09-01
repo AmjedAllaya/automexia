@@ -75,6 +75,7 @@ class M8M12ContractTests(unittest.TestCase):
             ("provider_transients.rs", "reserve_manager_root_with", "apps/automexia-terminal"),
             ("provider_transients.rs", "record.binding.capsule_revision != capsule_revision", "apps/automexia-terminal"),
             ("private_fs.rs", "windows_local_wide_path", "apps/automexia-terminal"),
+            ("private_fs.rs", "segment == [b'.' as u16]", "apps/automexia-terminal"),
         ]
         for file_name, token, parent in cases:
             with self.subTest(file_name=file_name, parent=parent):
@@ -107,7 +108,7 @@ class M8M12ContractTests(unittest.TestCase):
             ("Cargo.toml", "required-features = [\"multicloud-provider-inputs\"]"),
             ("provider.rs", "aws_public_config_128_profiles_and_sso_sessions"),
             ("provider_transients.rs", "fn long_local_paths_publish_revalidate_and_revoke_real_provider_transients("),
-            ("private_fs.rs", "fn native_acl_path_conversion_rejects_relative_and_remote_paths("),
+            ("private_fs.rs", "fn native_acl_path_conversion_rejects_relative_remote_and_dot_segments("),
         )
         for file_name, token in removals:
             with self.subTest(file_name=file_name, token=token):
