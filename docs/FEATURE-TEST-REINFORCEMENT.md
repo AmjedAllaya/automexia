@@ -618,33 +618,43 @@ Current assurance: **Controlled/external activation**.
 Current assurance: **Partial; source contract implemented, real provider gate external**.
 
 - Expand profile/SSO/STS/region/role/account/SSM/EKS/version/output/revision/
-  freshness boundaries and hostile credential/cycle/stale/replacement cases.
+  freshness boundaries, including named/legacy SSO-region binding, and hostile
+  credential/duplicate-key/cycle/stale/replacement cases.
 - Run controlled disposable-account AWS CLI login/status/SSM/EKS/product/
   Quick-Action/transient/cleanup flows.
 - Bind exact CLI/argv/capabilities/capsule/public parse/pixels/accessibility/
   resources and prove no global configuration mutation.
+- Freeze parser, product, transient, benchmark, fuzz, S1 and nonactivation
+  owners with `check_m8_m12_multicloud.py` and its mutation suite.
 
 ### provider-azure-m9-source
 
 Current assurance: **Partial; source contract implemented, real provider gate external**.
 
 - Expand account/tenant/subscription/cloud/identity/login/Bastion/AKS/version/
-  JSON/revision/freshness boundaries and hostile secret/stale/global cases.
+  JSON/revision/freshness boundaries, including literal/escaped duplicate
+  account and CLI-version keys and the CLI's actual platform-default
+  broker/browser behavior.
 - Run controlled disposable-subscription Azure CLI login/status/Bastion/AKS/
   product/Quick-Action/transient/cleanup flows.
 - Bind exact CLI/capsule/AAD/public parse/pixels/accessibility/resources and no
   global account mutation.
+- Share the M8-M12 semantic checker, fuzz target, transient lifecycle and S1
+  provider scenarios rather than relying on test counts.
 
 ### provider-gcp-m10-source
 
 Current assurance: **Partial; source contract implemented, real provider gate external**.
 
 - Expand configuration/account/project/region/zone/login/IAP/GKE/version/INI/
-  revision/freshness boundaries and hostile credential/stale/ambient cases.
+  revision/freshness boundaries and hostile credential/duplicate-section/
+  case-insensitive-duplicate-key/pre-section/stale/ambient cases.
 - Run controlled disposable-project gcloud login/status/IAP/GKE/product/
   Quick-Action/transient/cleanup flows.
 - Bind exact CLI/capsule/public parse/opaque references/pixels/accessibility/
   resources and no global configuration or ADC mutation.
+- Require the shared M8-M12 checker, mutations and parser fuzz target in hosted
+  CI and full QA.
 
 ### provider-kubernetes-openshift-m11-source
 
@@ -653,9 +663,15 @@ Current assurance: **Partial; source contract implemented, real cluster gate ext
 - Cover source/document/node/depth/alias/anchor/scalar/comment/cluster/context/
   user/namespace/TLS/plugin/OpenShift limits.
 - Reject YAML bombs, duplicates, merge keys, links, replacement, secrets,
-  ambiguity, stale/tampered transient, cross-session data and user-file changes.
+  ambiguity, stale/tampered transients, capsule-revision mismatch,
+  pre-existing private-root collision, cross-session data, user-file changes,
+  legacy-length Windows ACL paths, mixed separators, and relative or remote ACL
+  namespaces.
 - Run native kubectl/oc/plugin/cloud-transient/product/Quick-Action/revoke/
   expiry/cleanup flows on disposable clusters with resource and accessibility proof.
+- Keep the Kubernetes parser as the OpenShift/cloud-transient performance owner
+  and freeze that reuse plus long-local-path publication/revalidation/revocation
+  through the M8-M12 contract checker.
 
 ### provider-teleport-m12-source
 
@@ -667,6 +683,8 @@ Current assurance: **Partial; source contract implemented, real organization gat
   expired/replaced/timeout/child/cache/revoke/cleanup defects.
 - Run controlled disposable-organization tsh login/status/ssh/kube/product/
   Quick-Action/expiry/revoke/cleanup with exact resources and accessibility.
+- Reject duplicate JSON before generic-value collapse and require cleared relay,
+  agent, auth, relogin and access-request ambient paths in the shared checker.
 
 ## Mandatory execution and reporting
 

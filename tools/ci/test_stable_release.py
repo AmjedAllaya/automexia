@@ -87,10 +87,15 @@ class StableReleaseTests(unittest.TestCase):
 
     def test_failed_git_command_returns_redacted_release_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            # Establish a repository boundary with no HEAD. Temporary roots may
+            # deliberately live under the checkout, where Git would otherwise
+            # walk upward and make this failure-path test pass accidentally.
+            self.git(root, "init", "--quiet")
             with self.assertRaisesRegex(
-                stable_release.ReleaseError, 'git rev-parse operation failed'
+                stable_release.ReleaseError, "git rev-parse operation failed"
             ):
-                stable_release._run_git(Path(temporary), 'rev-parse', 'HEAD')
+                stable_release._run_git(root, "rev-parse", "HEAD")
 
     def test_external_prerequisite_identity_cannot_be_substituted(self) -> None:
         policy = stable_release.load_policy()

@@ -7,6 +7,71 @@ lifecycle are product-connected locally, but a source or UI test is not evidence
 that a real provider, network, credential cache, connection, cluster, or native
 process tree ran.
 
+## M8-M12 stable-release semantic and hostile-input gate
+
+Run the phase contract before broader provider tests:
+
+```text
+python tools/ci/check_m8_m12_multicloud.py
+python tools/ci/test_m8_m12_multicloud.py
+cargo test -p automexia-devops-aws -p automexia-devops-azure -p automexia-devops-gcp -p automexia-devops-kubernetes -p automexia-devops-openshift -p automexia-devops-teleport --locked
+cargo check --manifest-path fuzz/Cargo.toml --bin multicloud_provider_inputs --no-default-features --features multicloud-provider-inputs --locked
+cargo bench -p automexia-devops-aws --bench provider --locked
+```
+
+The checker freezes nine source owners, 27 named real-path regressions, 17
+numeric limits, six independently disabled providers, five parser benchmarks,
+the shared fuzz target, S1 provider scenarios, hosted CI/full-QA wiring, and
+OpenBao nonimplementation. Its mutation suite removes parser defenses,
+nonactivation, regressions, fuzz coverage, benchmark identities, S1 coverage,
+and CI wiring to prove each fails closed. The dedicated
+`multicloud-provider-inputs` feature excludes unrelated renderer, windowing,
+terminal-app, image, ecosystem, and PTY fuzz dependencies from focused builds;
+the default `all-targets` feature preserves every existing fuzz workflow.
+
+The hostile-input regressions cover AWS profile/session/key ambiguity and exact
+SSO-region endpoint binding, Azure literal and escaped duplicate account and
+CLI-version JSON keys, GCP case-insensitive duplicate keys and entries before a
+section, strict AWS STS and Teleport status JSON, Kubernetes YAML/JSON budgets,
+and M11 transient tamper, root collision, capsule-revision isolation, capacity,
+revoke, cleanup, protected Windows ACL validation, local paths beyond 260
+UTF-16 units, ordinary/mixed Windows separator normalization, and relative/
+remote namespace rejection. The fuzz target calls the real public parser entry points;
+it does not inject parsed state.
+
+The 2026-08-27 Windows x86_64 campaign used `cargo-fuzz 0.13.1`, Rust
+`1.99.0-nightly (ba28ff76f 2026-08-13)`, LLVM 23.1.0, AddressSanitizer, seed
+`20260827`, a 1,048,577-byte maximum input, a 1,024 MiB RSS limit, and a
+15-second per-input timeout. It completed 10,000 executions in two seconds with
+4,304 covered edges, 6,392 feature edges, peak 223 MiB RSS, no crash artifact,
+and a minimized 426-file/1,471-byte corpus whose sorted name-and-SHA-256
+manifest digest was
+`4f3b649903188a8fbd0515e86a80c272a191d7348e6c4721270fbb69d7e8fc7d`.
+This bounded campaign is evidence only for that engine, seed, corpus, sanitizer,
+host, and duration.
+
+On Windows, MSVC can reject generated archive/object paths when a checkout is
+deep. Use a short target directory on the same intended drive and ensure the
+Visual Studio `clang_rt.asan_dynamic-x86_64.dll` directory is present on
+`PATH`; do not copy product sources or corpus data to another drive. The first
+attempt without nightly failed before compilation, the long-target attempts
+failed in MASM/linking, and the missing-ASan-runtime attempt stopped before its
+first input. Those failures remain part of the evidence history rather than
+being counted as passing campaigns.
+
+The Windows x86_64 100-sample maximum AWS configuration benchmark exercised
+128 profiles and 128 named SSO sessions and measured 1.1213-1.1633 ms. It
+reported six outliers (one low mild, three high mild, two high severe). This is
+same-host local evidence, not a controlled release ratchet.
+
+S1 now requires `connection-hub-providers-review` for every native, visual, and
+accessibility environment and `connection-hub-providers-replacement` for every
+native-resource environment. Adding the visual surface produces 9,504 exact
+captures per visual environment (3 themes × 6 scales × 8 viewports × 33
+surfaces × 2 motion profiles). These entries define missing evidence; they do
+not claim that external GPU, screen-reader, cloud-account, or packaged-artifact
+runs occurred.
+
 ## M8-M12 cached provider product and M11 private lifecycle
 
 Run the product-boundary evidence with:
@@ -29,13 +94,28 @@ session/higher-revision replacement, exact revoke, and runtime shutdown.
 
 The M11 manager is the only app-owned private output lifecycle. Its Windows
 fixtures cover all six accepted provider relations, valid/invalid/oversized/
-expired data, cross-session and stale-generation denial, post-publication tamper,
-path/debug/secret canaries, provider/session revoke, shutdown/drop, and 64
+expired data, cross-session, stale-capsule-revision and stale-generation denial,
+pre-existing manager-root collision, post-publication tamper, path/debug/secret
+canaries, provider/session revoke, shutdown/drop, and 64
 repeated full-capacity cycles (1,024 files). Files are capped at 1 MiB, active
 handles at 16, stale recovery at 64 roots/files older than 24 hours, and every
 candidate is validated by the canonical M11 kubeconfig parser before an opaque
-handle is published. The Unix symlink case is compiled but did not run on the
-Windows host.
+handle is published. A real-path regression creates a connection root beyond
+260 UTF-16 units, proves a protected single-user DACL through an independent
+descriptor query, then publishes, revalidates, resolves, and revokes the
+transient. Relative and UNC ACL namespaces fail closed without echoing private
+paths. The same cold-readiness discovery added focused long-path ACL/atomic-
+recovery coverage to the adjacent Quick Actions, SSH metadata, and ecosystem
+stores. A full Nextest run then caught a forward separator inside an existing
+hostile staging fixture; the verbatim-path encoder now normalizes ordinary
+Windows separators before the ACL call, and that exact recovery test passes.
+The first full-QA run also exposed a stable-release mutation fixture that
+assumed the temporary directory was outside the checkout. With the required
+D-drive temporary root under `target/`, Git walked upward and found the real
+repository. The fixture now initializes an empty nested repository boundary,
+so `rev-parse HEAD` deterministically exercises the redacted failure path on
+inside- and outside-checkout temporary roots.
+The Unix symlink case is compiled but did not run on the Windows host.
 
 A Windows x86_64 optimized 100-sample run of the six-provider cached projection
 measured 4.8751-4.9453 microseconds, with 12 high-side outliers (eight mild, four
@@ -58,7 +138,7 @@ cargo test -p automexia-terminal gcp_is_independently_registered_and_disabled --
 cargo bench -p automexia-devops-gcp --bench provider --locked
 ```
 
-Eight Windows x86_64 tests cover the disabled least-privilege manifest;
+Nine Windows x86_64 tests cover the disabled least-privilege manifest;
 256 KiB/64-section/512-entry/4 KiB-field limits; duplicate, invalid UTF-8,
 hostile, external-credential/token-key, and caller-created metadata rejection;
 exact named-configuration user browser/remote login and public project/IAM

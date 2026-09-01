@@ -434,7 +434,7 @@ fn apply_private_permissions(
     path: &Path,
     _directory: bool,
 ) -> Result<(), InventoryError> {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, ptr};
+    use std::ptr;
     use windows_sys::Win32::{
         Foundation::{CloseHandle, LocalFree, GENERIC_ALL},
         Security::{
@@ -529,10 +529,7 @@ fn apply_private_permissions(
         )));
     }
     let acl = LocalAcl(raw_acl);
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let result = unsafe {
         SetNamedSecurityInfoW(
             wide.as_ptr(),
@@ -550,6 +547,54 @@ fn apply_private_permissions(
         )));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, InventoryError> {
+    use std::{
+        os::windows::ffi::OsStrExt as _,
+        path::{Component, Prefix},
+    };
+
+    let prefix = match path.components().next() {
+        Some(Component::Prefix(prefix)) if path.is_absolute() => prefix.kind(),
+        _ => {
+            return Err(InventoryError::Persistence(
+                "private metadata root must be an absolute local Windows drive path"
+                    .into(),
+            ));
+        }
+    };
+    let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.contains(&0) {
+        return Err(InventoryError::Persistence(
+            "private metadata path contains an unsupported NUL".into(),
+        ));
+    }
+    // Rust accepts either separator in ordinary drive paths, while the Win32
+    // verbatim namespace deliberately performs no slash normalization.
+    for unit in &mut wide {
+        if *unit == b'/' as u16 {
+            *unit = b'\\' as u16;
+        }
+    }
+    match prefix {
+        Prefix::Disk(_) => {
+            wide.splice(
+                0..0,
+                [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16],
+            );
+        }
+        Prefix::VerbatimDisk(_) => {}
+        _ => {
+            return Err(InventoryError::Persistence(
+                "private metadata root must be an absolute local Windows drive path"
+                    .into(),
+            ));
+        }
+    }
+    wide.push(0);
+    Ok(wide)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -705,5 +750,37 @@ mod tests {
         let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
         store.save(&sample()).unwrap();
         assert_eq!(store.load().unwrap(), sample());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_local_metadata_paths_keep_private_acl_and_atomic_recovery() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store =
+            MetadataStore::new(temporary.path().join("p".repeat(180)).join("devops-ssh"))
+                .unwrap();
+        assert!(store.path().to_string_lossy().len() > 260);
+        store.save(&sample()).unwrap();
+        let next = store.compare_and_swap(0, &sample()).unwrap();
+        assert_eq!(next.revision, 1);
+        assert_eq!(store.load().unwrap(), next);
+        assert!(store.previous_path().is_file());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_acl_paths_reject_relative_and_remote_namespaces() {
+        for path in [
+            Path::new("relative"),
+            Path::new(r"\\server\share\devops-ssh"),
+        ] {
+            let error = windows_local_wide_path(path).unwrap_err().to_string();
+            assert!(error.contains("absolute local Windows drive path"));
+            assert!(!error.contains(&path.to_string_lossy().to_string()));
+        }
+        let mixed = Path::new(r"D:\ssh").join("metadata/recovery");
+        assert!(!windows_local_wide_path(&mixed)
+            .unwrap()
+            .contains(&(b'/' as u16)));
     }
 }

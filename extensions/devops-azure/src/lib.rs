@@ -13,12 +13,13 @@ use automexia_command_productivity::actions::{
     ProviderActionSpec, RiskClass,
 };
 use automexia_connectivity::connections::{
-    validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
-    ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
-    ProviderBrowserPolicy, ProviderCapsule, ProviderContextFreshness,
-    ProviderContextProvenance, ProviderContextTemplate, ProviderIsolationBinding,
-    ProviderIsolationStrategy, ProviderKind, ProviderProvenanceKind,
-    ProviderScopeBinding, TransportDescriptor, CONNECTION_SCHEMA_VERSION,
+    from_json_slice_without_duplicate_keys, validate_provider_auth_operation, AuthState,
+    EnvironmentRisk, OpaqueReference, ProviderAuthOperation, ProviderAuthOperationKind,
+    ProviderBrowserFlow, ProviderBrowserPolicy, ProviderCapsule,
+    ProviderContextFreshness, ProviderContextProvenance, ProviderContextTemplate,
+    ProviderIsolationBinding, ProviderIsolationStrategy, ProviderKind,
+    ProviderProvenanceKind, ProviderScopeBinding, TransportDescriptor,
+    CONNECTION_SCHEMA_VERSION,
 };
 use automexia_extension_api::{
     BoundedText, Capability, CapabilityRequest, ExecutableId, ExtensionId,
@@ -302,9 +303,10 @@ pub fn parse_public_accounts(
             "account_json",
         ));
     }
-    let document: Value = serde_json::from_slice(bytes).map_err(|_| {
-        AzureAdapterError::new(AzureAdapterErrorCode::MalformedJson, "account_json")
-    })?;
+    let document: Value =
+        from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
+            AzureAdapterError::new(AzureAdapterErrorCode::MalformedJson, "account_json")
+        })?;
     let mut nodes = 0;
     inspect_json(&document, 0, &mut nodes)?;
     let values = document.as_array().ok_or_else(|| {
@@ -340,9 +342,10 @@ pub fn parse_public_account(
             "account_json",
         ));
     }
-    let document: Value = serde_json::from_slice(bytes).map_err(|_| {
-        AzureAdapterError::new(AzureAdapterErrorCode::MalformedJson, "account_json")
-    })?;
+    let document: Value =
+        from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
+            AzureAdapterError::new(AzureAdapterErrorCode::MalformedJson, "account_json")
+        })?;
     let mut nodes = 0;
     inspect_json(&document, 0, &mut nodes)?;
     account_from_value(&document)
@@ -531,9 +534,16 @@ fn operation(
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AzureLoginFlow {
-    SystemBroker,
-    ExternalBrowser,
+    CliDefaultInteractive,
     DeviceCode,
+}
+
+pub const fn azure_cli_default_browser_flow() -> ProviderBrowserFlow {
+    if cfg!(windows) {
+        ProviderBrowserFlow::SystemBroker
+    } else {
+        ProviderBrowserFlow::ExternalBrowser
+    }
 }
 
 pub fn build_login(
@@ -554,8 +564,7 @@ pub fn build_login(
         "none".into(),
     ];
     let browser_flow = match flow {
-        AzureLoginFlow::SystemBroker => ProviderBrowserFlow::SystemBroker,
-        AzureLoginFlow::ExternalBrowser => ProviderBrowserFlow::ExternalBrowser,
+        AzureLoginFlow::CliDefaultInteractive => azure_cli_default_browser_flow(),
         AzureLoginFlow::DeviceCode => {
             arguments.push("--use-device-code".into());
             ProviderBrowserFlow::DeviceCode
@@ -852,18 +861,21 @@ fn parse_version_components(value: &str) -> Option<[u32; 4]> {
     if value.len() > 4_096 || value.chars().any(unsafe_character) {
         return None;
     }
-    let document = serde_json::from_str::<Value>(value).ok();
-    let version = document
-        .as_ref()
-        .and_then(|document| document.get("azure-cli"))
-        .and_then(Value::as_str)
-        .or_else(|| {
-            value.split_whitespace().find(|part| {
-                part.bytes()
-                    .next()
-                    .is_some_and(|byte| byte.is_ascii_digit())
-            })
-        })?;
+    let trimmed = value.trim_start();
+    let document = if trimmed.starts_with('{') {
+        Some(from_json_slice_without_duplicate_keys::<Value>(value.as_bytes()).ok()?)
+    } else {
+        None
+    };
+    let version = if let Some(document) = document.as_ref() {
+        document.get("azure-cli").and_then(Value::as_str)?
+    } else {
+        value.split_whitespace().find(|part| {
+            part.bytes()
+                .next()
+                .is_some_and(|byte| byte.is_ascii_digit())
+        })?
+    };
     let mut components = [0_u32; 4];
     let mut count = 0;
     for (index, component) in version.trim_matches(',').split('.').enumerate() {
@@ -1022,19 +1034,24 @@ mod tests {
                 .code(),
             AzureAdapterErrorCode::UnsafePublicField
         );
+        let duplicate_key = account_json(&format!(r#","id":"{SUBSCRIPTION}""#));
+        assert!(parse_public_accounts(duplicate_key.as_bytes()).is_err());
+        let escaped_duplicate_key =
+            account_json(&format!(r#","\u0069d":"{SUBSCRIPTION}""#));
+        assert!(parse_public_accounts(escaped_duplicate_key.as_bytes()).is_err());
     }
 
     #[test]
     fn login_and_status_are_exact_capsule_scoped_and_do_not_mutate_defaults() {
-        let broker = build_login(
+        let interactive = build_login(
             &capsule(),
             OperationId::new(21),
-            AzureLoginFlow::SystemBroker,
+            AzureLoginFlow::CliDefaultInteractive,
         )
         .unwrap();
-        assert_eq!(broker.browser.flow, ProviderBrowserFlow::SystemBroker);
+        assert_eq!(interactive.browser.flow, azure_cli_default_browser_flow());
         assert_eq!(
-            broker
+            interactive
                 .arguments
                 .iter()
                 .map(BoundedText::as_str)
@@ -1049,13 +1066,6 @@ mod tests {
             device.arguments.last().map(BoundedText::as_str),
             Some("--use-device-code")
         );
-        let browser = build_login(
-            &capsule(),
-            OperationId::new(24),
-            AzureLoginFlow::ExternalBrowser,
-        )
-        .unwrap();
-        assert_eq!(browser.browser.flow, ProviderBrowserFlow::ExternalBrowser);
         let status = build_account_observation(&capsule(), OperationId::new(23)).unwrap();
         let arguments = status
             .arguments
@@ -1179,6 +1189,9 @@ mod tests {
         assert!(azure_cli_defaults_to_wam_on_windows("azure-cli 2.61.0"));
         assert!(azure_cli_defaults_to_wam_on_windows(
             r#"{"azure-cli":"2.61.0","azure-cli-core":"2.61.0"}"#
+        ));
+        assert!(!azure_cli_defaults_to_wam_on_windows(
+            r#"{"azure-cli":"2.31.0","azure-cli":"2.61.0"}"#
         ));
         assert!(!azure_cli_defaults_to_wam_on_windows("azure-cli 2.60.9"));
         assert!(!azure_cli_supports_bastion(&"x".repeat(4_097)));

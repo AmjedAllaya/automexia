@@ -126,6 +126,16 @@ fn hostile_oversized_ambient_and_secret_status_fail_closed() {
         parse_public_status(b"{").unwrap_err().code(),
         TeleportAdapterErrorCode::MalformedStatus
     );
+    for duplicate in [
+        br#"{"active":null,"active":null,"profiles":[],"environment":{}}"#.as_slice(),
+        br#"{"active":null,"\u0061ctive":null,"profiles":[],"environment":{}}"#
+            .as_slice(),
+    ] {
+        assert_eq!(
+            parse_public_status(duplicate).unwrap_err().code(),
+            TeleportAdapterErrorCode::MalformedStatus
+        );
+    }
 
     let nodes = std::iter::repeat_n("null", MAX_STATUS_NODES)
         .collect::<Vec<_>>()

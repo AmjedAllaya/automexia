@@ -238,7 +238,7 @@ class AliasSpecificationTests(unittest.TestCase):
                 content = (ROOT / relative).read_text(encoding="utf-8")
                 if relative == "docs/ROADMAP.md":
                     content = content.replace("DEVOPS-ALIASES.md", "missing.md")
-                destination.write_text(content, encoding="utf-8")
+                destination.write_bytes(content.encode("utf-8"))
             with self.assertRaisesRegex(POLICY.AliasSpecError, "ROADMAP.md"):
                 POLICY.validate_wiring(root)
 
@@ -254,7 +254,7 @@ class AliasSpecificationTests(unittest.TestCase):
                         "test_devops_alias_spec.py",
                         "missing_alias_spec_test.py",
                     )
-                destination.write_text(content, encoding="utf-8")
+                destination.write_bytes(content.encode("utf-8"))
             with self.assertRaisesRegex(POLICY.AliasSpecError, "ci.yml"):
                 POLICY.validate_wiring(root)
 

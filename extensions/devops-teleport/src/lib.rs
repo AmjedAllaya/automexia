@@ -13,13 +13,13 @@ use automexia_command_productivity::actions::{
     ProviderActionSpec, RiskClass,
 };
 use automexia_connectivity::connections::{
-    validate_provider_auth_operation, validate_provider_context, AuthState,
-    EnvironmentRisk, OpaqueReference, ProviderAuthOperation, ProviderAuthOperationKind,
-    ProviderBrowserFlow, ProviderBrowserPolicy, ProviderCapsule,
-    ProviderContextFreshness, ProviderContextProvenance, ProviderContextTemplate,
-    ProviderIsolationBinding, ProviderIsolationStrategy, ProviderKind,
-    ProviderProvenanceKind, ProviderScopeBinding, TransportDescriptor,
-    CONNECTION_SCHEMA_VERSION,
+    from_json_slice_without_duplicate_keys, validate_provider_auth_operation,
+    validate_provider_context, AuthState, EnvironmentRisk, OpaqueReference,
+    ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
+    ProviderBrowserPolicy, ProviderCapsule, ProviderContextFreshness,
+    ProviderContextProvenance, ProviderContextTemplate, ProviderIsolationBinding,
+    ProviderIsolationStrategy, ProviderKind, ProviderProvenanceKind,
+    ProviderScopeBinding, TransportDescriptor, CONNECTION_SCHEMA_VERSION,
 };
 use automexia_extension_api::{
     BoundedText, Capability, CapabilityRequest, ExecutableId, ExtensionId,
@@ -512,12 +512,12 @@ pub fn parse_public_status(
             "status",
         ));
     }
-    let value: Value = serde_json::from_slice(bytes).map_err(|_| {
+    let value: Value = from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         TeleportAdapterError::new(TeleportAdapterErrorCode::MalformedStatus, "status")
     })?;
     let mut nodes = 0;
     scan_json(&value, 0, &mut nodes)?;
-    let raw: RawStatus = serde_json::from_slice(bytes).map_err(|_| {
+    let raw: RawStatus = from_json_slice_without_duplicate_keys(bytes).map_err(|_| {
         TeleportAdapterError::new(TeleportAdapterErrorCode::MalformedStatus, "status")
     })?;
     if !raw.environment.is_empty() {

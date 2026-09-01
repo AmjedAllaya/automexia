@@ -2445,6 +2445,7 @@ fn verify_architecture() -> TaskResult {
                 "automexia-connectivity",
                 "automexia-extension-api",
                 "configparser",
+                "criterion",
                 "serde",
                 "serde_json",
             ],

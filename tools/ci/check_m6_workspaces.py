@@ -156,7 +156,7 @@ REQUIRED_VISUAL_SURFACES = {
     "connection-hub-workspace-restore",
     "connection-hub-workspace-broadcast",
 }
-REQUIRED_VISUAL_CAPTURE_COUNT = 9_216
+REQUIRED_VISUAL_CAPTURE_COUNT = 9_504
 
 
 class M6ContractError(ValueError):

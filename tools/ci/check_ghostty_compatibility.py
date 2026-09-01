@@ -161,7 +161,9 @@ def validate_gate_sources(sources: dict[str, str]) -> None:
     _require_tokens(
         sources["nightly"],
         (
-            "ecosystem_bundle, ghostty_keybindings, ghostty_migration]",
+            "ecosystem_bundle",
+            "ghostty_keybindings",
+            "ghostty_migration",
             "-p automexia-keybindings --no-run --locked",
         ),
         "nightly compatibility jobs",

@@ -2210,13 +2210,14 @@ provider-specific and native gates belong to D6.1-D6.5.
 ```text
 cargo test -p automexia-devops-aws --locked
 cargo clippy -p automexia-devops-aws --all-targets --all-features --locked -- -D warnings
+cargo bench -p automexia-devops-aws --bench provider --locked
 ```
 
-Ten Windows x86_64 tests cover disabled least privilege; 1 MiB/128-profile
-hostile/duplicate/secret bounds; exact capsule-scoped SSO/STS; strict 64 KiB
-identity; AWS CLI 2.22+/plugin 1.1.17+ floors; SSM cleanup; and EKS dry-run. No
-AWS tool/network/cache/session/cluster/native provider fixture ran. D3 activation into
-M11 runtime ingestion, accessibility/resources, packaging, and release remain external.
+Twelve Windows x86_64 tests cover bounded duplicate-safe public configuration,
+named/legacy SSO-region binding, exact SSO/STS/SSM/EKS contracts, and redaction.
+The 100-sample 128-profile/128-session benchmark measured 1.1213-1.1633 ms.
+Provider tools, networks, native fixtures, D3 activation, and release evidence
+remain external.
 
 ## M9 Azure adapter source contracts
 
@@ -2226,13 +2227,15 @@ cargo clippy -p automexia-devops-azure --all-targets --all-features --locked -- 
 cargo test -p automexia-terminal azure_is_independently_registered_and_disabled --lib --locked
 ```
 
-Eight Windows x86_64 tests cover disabled least privilege; 256 KiB/128-account/
-4,096-node/depth-32 bounds; secret/duplicate/hostile rejection; exact capsule-
-scoped broker/browser/device and subscription status without global mutation;
-AAD-only tree-cancelled Bastion; opaque AKS output; CLI floors, redaction, and a 473.69–478.86 µs 128-account Criterion target. No
-Azure tool/auth/network/cache/Bastion/AKS/PTY/filesystem/native provider fixture
-ran. D3 activation into M11 runtime ingestion, accessibility/resources, packaging, and
-release remain external.
+Nine Windows x86_64 tests cover bounded duplicate-safe account/version JSON,
+CLI-default interactive/device login, subscription status, AAD-only Bastion,
+opaque AKS output, and redaction. The 128-account benchmark measured
+473.69-478.86 µs. Provider tools, networks, native fixtures, D3 activation, and
+release evidence remain external.
+
+The shared M8-M12 stable-release checker, mutation suite, fuzz compilation,
+benchmarks, product lifecycle, and explicit external evidence are documented in
+[Multi-cloud provider adapter testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-stable-release-semantic-and-hostile-input-gate).
 
 ## CP3.3 native imports and trusted workspace task bridges
 

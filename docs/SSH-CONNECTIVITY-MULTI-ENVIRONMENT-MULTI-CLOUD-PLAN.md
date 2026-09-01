@@ -2,7 +2,7 @@
 
 Status: authoritative detailed implementation plan and evidence ledger.
 
-Last reconciled: 2026-08-25.
+Last reconciled: 2026-08-27.
 
 The [Connectivity and command-productivity focus roadmap](CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md)
 remains the owner of canonical phase order and phase status. This document is
@@ -127,10 +127,10 @@ native/release claim.
 | F5 managed OpenSSH | Partially done overall; F5.1-F5.3 and the F5.4 local assurance path are complete nonactivated | Exact direct/routed/tunnel argv; typed endpoints; trust/review/lifecycle; 23-scenario validator; native host, commit, OpenSSH, and artifact binding; protected manual workflow; receipts; reconnect; and compact tunnel state pass locally | Protected activation/attestation, actual status execution, real OpenSSH/forced cleanup, native resources/accessibility, and validated F5.4 real manifests remain. |
 | F6 recipes and remote declarative workspaces | Partially done overall; review/edit source and product surface complete locally | Accepted ADR 0023; strict duplicate-name-safe ingress; schema-2 editor with separated migration/recovery; exact dependent fingerprints; independently revalidated recipe/broadcast reviews; checked lifecycle clocks; terminal per-target expiry; large-library bounded restore; public preview-first CLI; worker-published immutable snapshot; Hub catalog/review routes; semantic checker/mutations; fuzz, integration, benchmark, and explicit 28-suite S1 policy | ADR 0012/D3/M5 protected activation, managed execution adapters, real OpenSSH/PTY/process/handle/socket cleanup, and executed controlled native/resource/accessibility/9,216-frame visual/release evidence remain. |
 | D6.0/M7 provider-neutral authentication and capsule orchestration | Fully done locally | Bounded strict schemas, immutable provider contexts, 19-state lifecycle, generation/session isolation, exact allow-once review, redacted receipts/audits, passive-status migration, fuzz/mutation/benchmark evidence | M8-M11 and M12 Teleport source/cached review plus M11 private lifecycle are locally complete and nonactivated; real official-CLI/native execution evidence and OpenBao remain external/not done. |
-| D6.1/M8 AWS | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-aws`; bounded public profiles; exact SSO/STS/SSM/EKS dry-run contracts; cached six-provider Hub catalog/review; strict capsule replacement; focused source/product tests | D3 activation/attestation and controlled real official-tool/native/resource/accessibility/release evidence remain. |
-| D6.2/M9 Azure | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-azure`; bounded public account JSON; exact tenant-scoped login/account observation; AAD-only Bastion; AKS private transient lifecycle; cached Hub review; focused source/product tests | D3 activation/attestation and controlled real Azure/native/resource/accessibility/release evidence remain. |
-| D6.3/M10 Google Cloud | Partially done overall; local source and cached product review fully done, execution nonactivated | Independent `automexia-devops-gcp`; bounded named public config; exact per-command login/project observation; opaque federation; scope-bound IAP; GKE private transient lifecycle; cached Hub review; focused tests/benchmarks | D3 activation/attestation and controlled real Google/native/resource/accessibility/release evidence remain. |
-| D6.4/M11 Kubernetes/OpenShift | Partially done overall; local source, private transient lifecycle, and cached product review fully done, execution nonactivated | Independent packages; bounded exact-source YAML/JSON parse/merge; default-denied exec; exact isolated kubectl/oc plans; app-owned private no-follow transient allocation/validation/revalidation/revoke/cleanup; focused lifecycle/UI tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled resource/accessibility/release evidence remain. |
+| D6.1/M8 AWS | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Named/legacy SSO-region binding; strict duplicate profile/session/key and JSON denial; exact SSO/STS/SSM/EKS dry run; cached Hub review; M11 lifecycle; parser benchmark, shared fuzz, semantic checker/mutations and S1 scenarios | D3 activation/attestation and controlled real official-tool/native/resource/accessibility/release evidence remain. |
+| D6.2/M9 Azure | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Duplicate-safe public account and CLI-version JSON; CLI-default broker/browser plus device code; exact tenant/account observation; AAD-only Bastion; AKS lifecycle; benchmark, shared fuzz, checker/mutations and S1 scenarios | D3 activation/attestation and controlled real Azure/native/resource/accessibility/release evidence remain. |
+| D6.3/M10 Google Cloud | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Strict named config with duplicate-key/pre-section denial; exact per-command login/project observation; opaque federation; scope-bound IAP; GKE lifecycle; benchmark, shared fuzz, checker/mutations and S1 scenarios | D3 activation/attestation and controlled real Google/native/resource/accessibility/release evidence remain. |
+| D6.4/M11 Kubernetes/OpenShift | Partially done overall; local source, private transient lifecycle, and cached product review fully done, execution nonactivated | Independent packages; bounded exact-source YAML/JSON parse/merge; default-denied exec; exact isolated kubectl/oc plans; app-owned private no-follow transient allocation/validation/revalidation/revoke/cleanup with fresh-root and capsule/session/revision/generation isolation; focused lifecycle/UI tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled resource/accessibility/release evidence remain. |
 | D6.5/M12 Teleport/OpenBao | Partially done overall | Teleport source and cached product review are fully done locally and nonactivated; OpenBao is **Not done** and ADR 0024 remains proposed/unaccepted | Activate and prove Teleport only through D3/native release gates; accept ADR 0024 before any OpenBao code. |
 | Provider-aware Quick Actions (CP4/F13) | Fully done locally at the product-integrated nonactivating boundary; partially done overall | Seven provider projections, retained cached-product handoff, exact route/session/revision publication, idempotence/revocation, cached search, final revalidation, accessible context, production confirmation, fuzz/benchmark/policy evidence | Approved provider refresh/capsule production, exact provider execution, OpenBao, and real native/provider/accessibility/release evidence remain. |
 
@@ -809,11 +809,13 @@ external.
   1 MiB parser reads only named profile plus public region/account/role/source
   hints from supplied granted bytes. Credential, token, `credential_process`,
   web-identity file, SSO cache, unknown, and endpoint fields are never retained;
-  duplicate profiles, hostile text, invalid UTF-8, oversize input, and more than
-  128 profiles fail closed.
+  duplicate profiles, named SSO sessions or case-insensitive keys, hostile text,
+  invalid UTF-8, oversize input, and more than 128 profiles fail closed. Named
+  and legacy SSO regions are public-only and conflicts fail closed.
 - [x] **Fully done locally** - Exact M7 operations cover AWS CLI IAM Identity
   Center PKCE and deliberate device-code login plus regional STS
-  `get-caller-identity`. Profile, region, account/role, provenance, freshness,
+  `get-caller-identity`. SSO OIDC and device endpoints use the bound
+  `sso_region`, never the service region. Profile, region, account/role, provenance, freshness,
   risk, configuration reference, browser origin, executable, ordered arguments,
   network host, session, capsule, revision, timeout, and allow-once capabilities
   are bound. The strict 64 KiB STS decoder accepts only public caller identity
@@ -827,13 +829,16 @@ external.
 - [x] **Fully done locally** - EKS produces only a reviewed `--dry-run` intent
   for M11 private transient ingestion. It never names or merges the user
   kubeconfig and never changes current context.
-- [x] **Fully done locally** - Ten deterministic tests cover public profile
+- [x] **Fully done locally** - Twelve deterministic tests cover public profile
   extraction, credential canaries, duplicate/oversize rejection, PKCE/device
   selection, exact STS args/capabilities, strict output, explicit AWS CLI 2.22+
   PKCE and Session Manager plugin 1.1.17+ floors, truthful failure states,
   production risk, capsule isolation, SSM plugin/PTY/tree cleanup, EKS no-write,
-  redacted debug/JSON, and disabled least-privilege manifest. Locked tests,
-  warning-denied Clippy, and formatting pass on Windows x86_64.
+  redacted debug/JSON, duplicate keys, and disabled least-privilege manifest.
+  A 128-profile/session benchmark, shared parser fuzz target, semantic checker
+  and mutations now freeze this path. Its Windows x86_64 100-sample result was
+  1.1213-1.1633 ms with six outliers; this is local same-host evidence, not a
+  release ratchet.
 - [x] **Fully done locally** - Publish validated public AWS contexts through the
   app-owned immutable six-provider snapshot. The Providers catalog and review
   expose cached identity/scope/freshness/risk with pointer, keyboard, responsive,
@@ -866,11 +871,13 @@ AKS ingestion is fully implemented locally; external evidence remains.
 - [x] **Fully done locally:** parse at most 256 KiB, 128 public Azure account
   records, 4,096 JSON nodes, depth 32, and 4 KiB public fields from exact
   caller-supplied `az account list --output json` bytes. Normalize GUIDs, reject
-  duplicates/hostile text/secret-token keys, and retain only subscription,
+  duplicate subscriptions plus literal/escaped duplicate account or CLI-version
+  JSON keys, hostile text/secret-token keys, and retain only subscription,
   tenant, cloud, state, default flag, public identity, and identity kind.
 - [x] **Fully done locally:** construct exact capsule/session/revision-bound
-  `az login --tenant ... --output none` system-broker, browser, and device-code operations
-  plus `az account show --subscription ... --output json`. No operation uses
+  `az login --tenant ... --output none` CLI-default interactive and device-code operations.
+  The interactive policy is Windows WAM/system broker and browser elsewhere.
+  Status uses `az account show --subscription ... --output json`. No operation uses
   hidden `az account set`, shell evaluation, inherited environment isolation,
   password/client-secret flags, or token/cache reads.
 - [x] **Fully done locally:** pin tenant, subscription, cloud, public identity,
@@ -884,8 +891,9 @@ AKS ingestion is fully implemented locally; external evidence remains.
 - [x] **Fully done locally:** build AKS credentials as an opaque private-output
   intent split around `--file`; only M11 may resolve the private transient path.
   No user kubeconfig/current context/path is named or mutated.
-- [x] **Fully done locally:** eight parser/secret/complexity/argv/capability/
-  isolation/Bastion/AKS/version/failure/redaction tests, app registration,
+- [x] **Fully done locally:** nine parser/secret/complexity/argv/capability/
+  isolation/Bastion/AKS/version/failure/redaction tests, shared parser fuzz,
+  semantic checker/mutations, S1 provider scenarios, app registration,
   warning-denied Clippy, formatting, architecture/identity, and repository
   policy gates pass on Windows x86_64. The 128-account Criterion target measured
   473.69–478.86 µs over 100 samples; eight high-side outliers were reported.
@@ -915,7 +923,8 @@ GKE ingestion is fully implemented locally; external evidence remains.
   default with exact process/network declarations and separate app registration.
 - [x] **Fully done locally:** parse one exact named configuration with 256 KiB,
   64-section, 512-entry, and 4 KiB-field limits. Retain only account/project/
-  region/zone, reject duplicates/invalid UTF-8/hostile values and credential,
+  region/zone, reject duplicate sections, case-insensitive duplicate keys,
+  entries before a section, invalid UTF-8/hostile values and credential,
   token, secret, password, private-key, login-config, or token-file keys.
 - [x] **Fully done locally:** pin configuration/account/project/region/zone,
   provenance/freshness/risk and use `--configuration` on every exact operation.
@@ -931,8 +940,9 @@ GKE ingestion is fully implemented locally; external evidence remains.
   gcloud-owned SSH-key/OS Login behavior. Execution remains false behind D3.
 - [x] **Fully done locally:** build GKE credentials only with an opaque M11-owned
   private `KUBECONFIG` environment reference; never name or merge user config.
-- [x] **Fully done locally:** eight focused tests, app registration, warning-
-  denied all-target Clippy, formatting, and a near-limit Criterion target pass on
+- [x] **Fully done locally:** nine focused tests, app registration, warning-
+  denied all-target Clippy, formatting, shared parser fuzz, semantic checker/
+  mutations, S1 provider scenarios, and a near-limit Criterion target pass on
   Windows x86_64. The benchmark measured 444.00–460.66 µs over 100 samples and
   reported 9 high-side outliers.
 - [x] **Fully done locally:** the app-owned Providers catalog/review publishes
@@ -990,14 +1000,21 @@ remains the capsule authority and D3 remains the only future execution boundary.
 - [x] **Fully done locally:** the application is the sole private transient-file
   owner. It creates no-follow private files below its exact connection root,
   accepts at most 16 active 1 MiB documents, validates generated kubeconfig before
-  publication, binds opaque handles to provider/capsule/session/generation/source
-  revision, detects post-publication tamper, and cleans on expiry, revoke,
+  publication, atomically reserves a fresh manager root rather than adopting a
+  collision, binds opaque handles to provider/capsule/session/capsule revision/
+  generation/source revision, detects post-publication tamper, and cleans on expiry, revoke,
   provider disable, session revoke, shutdown, and drop. Recovery examines at
   most 64 stale roots/files and never exposes paths through public/debug state.
 - [x] **Fully done locally:** the cached six-provider Hub catalog/review adds
   Kubernetes and OpenShift rows with compact identity/scope/freshness/risk,
   responsive pointer/keyboard focus, accessible status announcements, and no
   process/network/PTY/input authority.
+- [x] **Fully done locally:** the shared M8-M12 fuzz target drives the canonical
+  kubeconfig parser, while the 900 KiB Kubernetes benchmark remains the single
+  parser performance owner reused by OpenShift and all cloud transients. The
+  focused fuzz feature excludes renderer/terminal dependencies, its 10,000-run
+  Windows ASan campaign completed without crash artifacts, and the semantic
+  checker freezes M11 source, transient, product, fuzz, S1 and CI ownership.
 - [ ] **Partially done/external:** protected D3 product activation, real
   `kubectl`/`oc` and EKS/AKS/GKE/OpenShift fixtures, plugin execution, forced
   child teardown, Unix native no-follow checks, sustained
@@ -1024,6 +1041,9 @@ external prerequisite pending ADR 0024 acceptance.
   cluster, user, roles, logins, Kubernetes hints, freshness/expiry, and
   provenance. It never reads `~/.tsh`, certificate contents, tokens, identity
   files, agent material, or inherited provider state.
+- [x] **Fully done locally:** status JSON rejects literal or escaped duplicate
+  keys before generic-value collapse; exact plans clear Teleport relay/auth/
+  agent overrides and force no agent addition, no relogin, and no access request.
 - [x] **Fully done locally:** deterministic contracts cover bytes/nodes/depth/
   profile totals, benign-field discard, sensitive/major-version drift, expiry,
   revocation, offline/cancelled/MFA states,

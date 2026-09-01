@@ -77,7 +77,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, openssh_inventory, config_migration, semantic_classification, label_sanitization, quick_action_projection, quick_action_packs, quick_action_imports, connection_planning, ecosystem_bundle, ghostty_keybindings, ghostty_migration]
+        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, openssh_inventory, config_migration, semantic_classification, label_sanitization, quick_action_projection, quick_action_packs, quick_action_imports, connection_planning, ecosystem_bundle, ghostty_keybindings, ghostty_migration, multicloud_provider_inputs]
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - name: Install the nightly compiler required by libFuzzer
@@ -86,7 +86,11 @@ jobs:
         with:
           tool: cargo-fuzz@0.13.1
       - name: Fuzz ${{ matrix.target }} with nightly
+        if: matrix.target != 'multicloud_provider_inputs'
         run: cargo +nightly fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
+      - name: Fuzz isolated multi-cloud parsers with nightly
+        if: matrix.target == 'multicloud_provider_inputs'
+        run: cargo +nightly fuzz run --no-default-features --features multicloud-provider-inputs multicloud_provider_inputs --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15 -max_len=1048577
 
   miri:
     runs-on: ubuntu-latest

@@ -2,7 +2,7 @@
 
 Status: active M8-M12 implementation ledger and execution plan.
 
-Last reconciled: 2026-08-25.
+Last reconciled: 2026-08-27.
 
 This page turns the provider portion of the
 [SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md)
@@ -29,7 +29,10 @@ native host is available as assumed evidence.
 ### Measurable acceptance criteria
 
 - Each provider is a separate disabled-by-default first-party extension with
-  only exact process and network capabilities.
+  exact reviewed capabilities. AWS, Azure, GCP, and Teleport declare process and
+  network; Kubernetes/OpenShift additionally declare bounded exact-source
+  filesystem review. None owns a process, socket, credential, PTY, shell, or
+  implicit Enter path.
 - Parser inputs are exact user-granted bytes with byte, record, field, nesting,
   and hostile-text limits. Tokens, private keys, credential caches, certificate
   contents, and secret-bearing fields are rejected or omitted.
@@ -51,11 +54,11 @@ native host is available as assumed evidence.
 
 | Slice | Current status | Existing evidence | Missing exit evidence |
 |---|---|---|---|
-| M8 / D6.1 AWS | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded extension; exact SSO/STS/SSM/EKS-dry-run; strict capsule replacement; six-provider cached Hub catalog/review; M11 private ingestion; source/product tests and product benchmark | D3 activation and controlled real AWS/native/resource/accessibility/release evidence |
-| M9 / D6.2 Azure | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded extension; exact tenant login/account, AAD-only Bastion, AKS private transient lifecycle; cached Hub review; source/product tests | D3 activation and controlled real Azure/native/resource/accessibility/release evidence |
-| M10 / D6.3 Google Cloud | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded extension; exact per-command user/project, opaque federation, scope-bound IAP, GKE private transient lifecycle; cached Hub review; source/product tests and benchmarks | D3 activation and controlled real Google/native/resource/accessibility/release evidence |
-| M11 / D6.4 Kubernetes/OpenShift | Partially done overall; source, cached product review, and private transient lifecycle fully done locally, execution nonactivated | Independent packages; bounded typed parse/merge; default-denied exec; exact kubectl/oc plans; app-owned 16-file/1 MiB no-follow validate/revalidate/revoke/cleanup lifecycle; product UI/lifecycle/security tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled cleanup/resources/accessibility/release evidence |
-| M12.1 / D6.5 Teleport | Partially done overall; source and cached product review fully done locally, execution nonactivated | Independent bounded exact adapter plus one cached Teleport Hub row/review with capsule invalidation, disabled action, and no PTY input; source/product tests and benchmarks | D3 activation/attestation, real `tsh`/proxy/browser/MFA/cache/certificate/agent/PTY, native cleanup/resources/accessibility/packaging/signing/release evidence |
+| M8 / D6.1 AWS | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Named/legacy SSO-region binding; duplicate profile/session/key denial; exact SSO/STS/SSM/EKS-dry-run; strict JSON identity; six-provider cached review; M11 private ingestion; maximum parser benchmark, shared fuzz, semantic checker/mutations and S1 scenarios | D3 activation and controlled real AWS/native/resource/accessibility/release evidence |
+| M9 / D6.2 Azure | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Duplicate-safe public account and CLI-version JSON; CLI-default Windows broker/non-Windows browser policy plus device code; exact tenant/account, AAD-only Bastion, AKS private lifecycle; benchmark, shared fuzz, semantic checker/mutations and S1 scenarios | D3 activation and controlled real Azure/native/resource/accessibility/release evidence |
+| M10 / D6.3 Google Cloud | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Case-insensitive duplicate-key/pre-section denial; exact per-command user/project, opaque federation, scope-bound IAP, GKE private lifecycle; benchmark, shared fuzz, semantic checker/mutations and S1 scenarios | D3 activation and controlled real Google/native/resource/accessibility/release evidence |
+| M11 / D6.4 Kubernetes/OpenShift | Partially done overall; source, cached product review, and private transient lifecycle fully done locally, execution nonactivated | Independent packages; bounded typed parse/merge; default-denied exec; exact kubectl/oc plans; app-owned 16-file/1 MiB no-follow validate/revalidate/revoke/cleanup lifecycle with fresh-root reservation, capsule/session/revision/generation isolation, and protected Windows ACL revalidation on local paths beyond 260 UTF-16 units; product UI/lifecycle/security tests and benchmarks | D3 activation, real clients/clusters/plugins, Unix native no-follow, controlled cleanup/resources/accessibility/release evidence |
+| M12.1 / D6.5 Teleport | Partially done overall; stable local source and cached product review fully done, execution nonactivated | Strict duplicate-safe bounded status; cleared Teleport relay/auth/agent ambient state; relogin/request denial; cached row/review with invalidation and no PTY input; benchmark, shared fuzz, semantic checker/mutations and S1 scenarios | D3 activation/attestation, real `tsh`/proxy/browser/MFA/cache/certificate/agent/PTY, native cleanup/resources/accessibility/packaging/signing/release evidence |
 | M12.2 / D6.5 OpenBao | Not done; external prerequisite | Provider-neutral enum only; product publication rejects it | Accept ADR 0024 for token-helper/certificate-file custody, then implement and prove a separate adapter |
 
 M11 now adopts [`serde-saphyr` 1.1.0](https://docs.rs/serde-saphyr/1.1.0/serde_saphyr/) with deserialization only: MIT OR
@@ -69,6 +72,49 @@ background scan path.
 M7 is fully implemented at its authority-free model boundary and is preserved.
 The application launch broker remains nonactivated; adapters therefore produce
 reviewable operations and connection intents but cannot silently execute them.
+
+### 2026-08-27 stable-release re-audit
+
+The source/roadmap comparison found six real-path defects that the older
+provider tests did not detect: AWS SSO network authority used the service region
+instead of the named SSO session region; AWS/GCP INI keys could be overwritten
+ambiguously; Azure public-account and CLI-version JSON could collapse duplicate
+object keys before validation; a restarted process could adopt a pre-existing
+private transient root after a process-ID/sequence collision; and transient
+handles stored capsule revision without enforcing it. Tests reproducing those
+exact supplied-byte, operation, and filesystem paths failed first, then the
+owning adapters and lifecycle were corrected. Teleport and AWS CLI JSON now
+also use the shared duplicate-rejecting decoder.
+
+The cold readiness run also reproduced a Windows privacy failure under the
+repository's deliberately long D-drive temporary root. Rust filesystem calls
+created the objects, but four private-storage owners passed legacy-length paths
+to native ACL APIs. The app connection/private-transient path, Quick Actions,
+SSH metadata, and ecosystem store now validate absolute local-drive namespaces,
+use verbatim Win32 paths, reject relative/UNC namespaces, and keep errors
+redacted. Ordinary Windows forward separators are normalized before entering
+the verbatim namespace; this was required by the existing hostile staging-name
+recovery case and is frozen by the negative namespace regressions. Real paths
+beyond 260 UTF-16 units cover protected one-user DACL
+application/revalidation, provider publication/revalidation/revocation, and
+atomic recovery. The multi-cloud checker directly freezes the app-owned
+connection/private-transient scenarios; adjacent owners keep focused regression
+coverage and are exercised by the full readiness suite.
+
+The assurance gap was broader than those fixes. M8-M12 had no semantic phase
+checker, shared parser fuzz target, AWS maximum parser benchmark, or provider-
+specific S1 native/resource/visual/accessibility scenarios. The new frozen
+contract and mutation suite cover nine source owners, 27 named regressions, 17
+limits, six providers, five benchmarks, the shared fuzz target, CI/QA wiring,
+nonactivation, and the explicit OpenBao exclusion. The S1 visual matrix grows
+from 9,216 to 9,504 exact captures per claimed visual environment. These are
+requirements and local contracts, not fabricated native/provider results.
+The provider fuzz target now has a focused optional-dependency feature and a
+separate nightly job so its sanitizer build does not pull renderer/windowing/
+terminal dependencies. A Windows ASan campaign completed 10,000 executions
+with no crash artifact; its exact compiler, seed, limits, corpus digest,
+coverage, RSS, and failed setup attempts are recorded in the provider testing
+guide.
 
 ## Build, wrap, or adopt decision
 
@@ -175,11 +221,14 @@ model tests.
 
 - AWS CLI 2.22+ defaults IAM Identity Center login to PKCE and supports an
   explicit device-code flow; STS `get-caller-identity` exposes public caller
-  identity. Session Manager requires its official plugin. EKS
+  identity. The OIDC/device endpoint is bound to the SSO session's `sso_region`,
+  which can differ from the service profile region. Session Manager requires its official plugin. EKS
   `update-kubeconfig` merges files and changes current context unless redirected
   or used with `--dry-run`.
-- Azure CLI 2.61+ uses Windows Web Account Manager by default and supports
-  browser/device-code login; Azure now requires MFA for human CLI identities.
+- Azure CLI 2.61+ uses Windows Web Account Manager by default; non-Windows
+  interactive login uses the browser, and device code remains explicit. The
+  adapter therefore exposes CLI-default interactive or device code rather than
+  two indistinguishable interactive commands. Azure now requires MFA for human CLI identities.
   `az account set` changes global selection and is forbidden. Bastion native
   SSH requires Standard-or-higher Bastion and Azure CLI 2.32+.
 - A gcloud named configuration can be scoped to one command with
@@ -228,6 +277,9 @@ validation/revalidation/tamper/revoke/shutdown, 1,024-file repeated cleanup, and
 responsive cached product review. Teleport adds status byte/node/depth/profile limits, schema and major-
 version drift, exact proxy/cluster/user matching, expiry, revocation, agent and
 environment isolation, stale capsule/session/revision rejection, and redaction.
+`check_m8_m12_multicloud.py` and its mutation suite now freeze the complete
+source/test/fuzz/benchmark/S1/CI ownership graph and fail if OpenBao or execution
+is silently enabled.
 
 After focused crate tests, run warning-denied Clippy per changed owner,
 architecture/identity/repository validation, dependency policy, benchmarks for

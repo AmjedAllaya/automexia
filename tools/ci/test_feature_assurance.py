@@ -29,8 +29,8 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreaterEqual(counts["features"], 12)
         self.assertGreaterEqual(counts["components"], 20)
         self.assertGreater(counts["evidence"], counts["features"] * 9)
-        self.assertEqual(counts["benchmarks"], 18)
-        self.assertEqual(counts["fuzz_targets"], 17)
+        self.assertEqual(counts["benchmarks"], 19)
+        self.assertEqual(counts["fuzz_targets"], 18)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 
     def test_benchmark_inventory_ignores_private_and_generated_copies_only(self) -> None:

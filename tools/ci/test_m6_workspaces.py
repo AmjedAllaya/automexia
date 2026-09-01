@@ -177,7 +177,7 @@ class M6ContractTests(unittest.TestCase):
             if path.name == "s1-assurance-policy-v1.json":
                 document = json.loads(source)
                 suite = next(item for item in document["required_suites"] if item["domain"] == "visual")
-                suite["coverage"]["capture_count"] = 9_215
+                suite["coverage"]["capture_count"] = 9_503
                 source = json.dumps(document)
             return source
 

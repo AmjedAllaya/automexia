@@ -606,19 +606,12 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), StoreError> {
 
 #[cfg(windows)]
 fn replace_file(source: &Path, destination: &Path) -> Result<(), StoreError> {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt as _};
     use windows_sys::Win32::Storage::FileSystem::{
         MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
     };
 
-    let source = OsStr::new(source)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
-    let destination = OsStr::new(destination)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let source = windows_local_wide_path(source)?;
+    let destination = windows_local_wide_path(destination)?;
     // SAFETY: both paths are owned NUL-terminated UTF-16 buffers and the flags
     // request an atomic same-volume replacement with write-through semantics.
     if unsafe {
@@ -858,7 +851,7 @@ fn apply_private_permissions(path: &Path, directory: bool) -> Result<(), StoreEr
 
 #[cfg(windows)]
 fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreError> {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt as _, ptr};
+    use std::ptr;
     use windows_sys::Win32::{
         Foundation::{CloseHandle, LocalFree, GENERIC_ALL},
         Security::{
@@ -893,17 +886,20 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
         }
     }
 
-    let denied = || {
+    let denied = |stage: &str, result: Option<u32>| {
+        let suffix = result.map_or_else(String::new, |code| format!(" (error {code})"));
         StoreError::new(
             StoreErrorCode::PrivatePermissions,
-            "failed to enforce a protected current-user-only Windows ACL",
+            format!(
+                "failed to enforce a protected current-user-only Windows ACL at {stage}{suffix}"
+            ),
         )
     };
     let mut raw_token = ptr::null_mut();
     // SAFETY: output storage is valid and the returned handle is owned by Handle.
     if unsafe { OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut raw_token) } == 0
     {
-        return Err(denied());
+        return Err(denied("OpenProcessToken", None));
     }
     let token = Handle(raw_token);
     let mut required = 0;
@@ -912,7 +908,7 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
         GetTokenInformation(token.0, TokenUser, ptr::null_mut(), 0, &mut required);
     }
     if required == 0 {
-        return Err(denied());
+        return Err(denied("GetTokenInformation size", None));
     }
     let mut buffer = vec![0u8; required as usize];
     // SAFETY: the byte buffer has the size returned by the probe.
@@ -926,7 +922,7 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
         )
     } == 0
     {
-        return Err(denied());
+        return Err(denied("GetTokenInformation value", None));
     }
     // SAFETY: TOKEN_USER may be unaligned in the byte buffer; the buffer
     // remains alive until the ACL has been installed.
@@ -947,14 +943,12 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
     let mut raw_acl = ptr::null_mut();
     // SAFETY: all inputs have the exact Windows layouts and raw_acl is an
     // owned output released by LocalAcl.
-    if unsafe { SetEntriesInAclW(1, &access, ptr::null(), &mut raw_acl) } != 0 {
-        return Err(denied());
+    let result = unsafe { SetEntriesInAclW(1, &access, ptr::null(), &mut raw_acl) };
+    if result != 0 {
+        return Err(denied("SetEntriesInAclW", Some(result)));
     }
     let acl = LocalAcl(raw_acl);
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     // SAFETY: wide is NUL-terminated and the ACL remains live for the call.
     let result = unsafe {
         SetNamedSecurityInfoW(
@@ -967,10 +961,62 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
             ptr::null(),
         )
     };
-    if result != 0 || !private_permissions_are_safe(path)? {
-        return Err(denied());
+    if result != 0 {
+        return Err(denied("SetNamedSecurityInfoW", Some(result)));
+    }
+    if !private_permissions_are_safe(path)? {
+        return Err(denied("post-write verification", None));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, StoreError> {
+    use std::{
+        os::windows::ffi::OsStrExt as _,
+        path::{Component, Prefix},
+    };
+
+    let prefix = match path.components().next() {
+        Some(Component::Prefix(prefix)) if path.is_absolute() => prefix.kind(),
+        _ => {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidRoot,
+                "managed Windows paths must be absolute local drive paths",
+            ))
+        }
+    };
+    let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.contains(&0) {
+        return Err(StoreError::new(
+            StoreErrorCode::InvalidRoot,
+            "managed Windows paths cannot contain NUL",
+        ));
+    }
+    // Rust accepts either separator in ordinary drive paths, while the Win32
+    // verbatim namespace deliberately performs no slash normalization.
+    for unit in &mut wide {
+        if *unit == b'/' as u16 {
+            *unit = b'\\' as u16;
+        }
+    }
+    match prefix {
+        Prefix::Disk(_) => {
+            wide.splice(
+                0..0,
+                [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16],
+            );
+        }
+        Prefix::VerbatimDisk(_) => {}
+        _ => {
+            return Err(StoreError::new(
+                StoreErrorCode::InvalidRoot,
+                "managed Windows paths must stay on a local drive",
+            ))
+        }
+    };
+    wide.push(0);
+    Ok(wide)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -983,7 +1029,7 @@ fn apply_private_permissions(_path: &Path, _directory: bool) -> Result<(), Store
 
 #[cfg(windows)]
 fn private_permissions_are_safe(path: &Path) -> Result<bool, StoreError> {
-    use std::{ffi::OsStr, mem, os::windows::ffi::OsStrExt as _, ptr};
+    use std::{mem, ptr};
     use windows_sys::Win32::{
         Foundation::LocalFree,
         Security::{
@@ -1004,10 +1050,7 @@ fn private_permissions_are_safe(path: &Path) -> Result<bool, StoreError> {
         }
     }
 
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let mut acl = ptr::null_mut();
     let mut descriptor = ptr::null_mut();
     // SAFETY: the path is NUL-terminated and all requested outputs are valid.
@@ -1278,6 +1321,53 @@ mod tests {
         assert!(private_permissions_are_safe(&root).unwrap());
         assert!(private_permissions_are_safe(&root.join("packages")).unwrap());
         assert!(private_permissions_are_safe(&root.join("staging")).unwrap());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_local_store_paths_keep_private_acl_and_atomic_recovery() {
+        let temporary = tempfile::tempdir().unwrap();
+        let long_parent = temporary.path().join("p".repeat(180));
+        fs::create_dir(&long_parent).unwrap();
+        let root = long_parent.join("ecosystem");
+        let mut store = PackageStore::open(&root).unwrap();
+        store
+            .install_verified(
+                &verified("example.extension", "1.0.0", 'a', 10),
+                10_000_000,
+                10,
+            )
+            .unwrap();
+        drop(store);
+
+        let recovered = PackageStore::open(&root).unwrap();
+        assert_eq!(recovered.installed().len(), 1);
+        assert!(private_permissions_are_safe(&root).unwrap());
+        assert!(
+            root.join("packages/example.extension/1.0.0")
+                .to_string_lossy()
+                .encode_utf16()
+                .count()
+                > 260
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_acl_paths_reject_relative_and_remote_namespaces() {
+        for path in [
+            Path::new("relative"),
+            Path::new(r"\\server\share\ecosystem"),
+        ] {
+            assert_eq!(
+                windows_local_wide_path(path).unwrap_err().code,
+                StoreErrorCode::InvalidRoot
+            );
+        }
+        let mixed = Path::new(r"D:\store").join("staging/not-an-install");
+        assert!(!windows_local_wide_path(&mixed)
+            .unwrap()
+            .contains(&(b'/' as u16)));
     }
 
     #[cfg(unix)]

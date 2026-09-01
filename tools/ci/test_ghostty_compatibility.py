@@ -52,8 +52,13 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
             ("xtask", "keybindings::verify()?;", ""),
             (
                 "nightly",
-                "ecosystem_bundle, ghostty_keybindings, ghostty_migration]",
-                "ecosystem_bundle]",
+                "ghostty_keybindings",
+                "removed_keybinding_target",
+            ),
+            (
+                "nightly",
+                "ghostty_migration",
+                "removed_migration_target",
             ),
             (
                 "nightly",
