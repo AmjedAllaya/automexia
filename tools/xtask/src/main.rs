@@ -2345,6 +2345,23 @@ fn product_identity() -> TaskResult<ProductIdentity> {
     })
 }
 
+const POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS: &[&str] = &[
+    "$integrationScript = Join-Path $PSScriptRoot 'test_shell_integration.ps1'",
+    "$integrationLifecycle = & powershell.exe -NoLogo -NoProfile -NonInteractive",
+    "-File $integrationScript 2>&1 | Out-String",
+    "if ($LASTEXITCODE -ne 0)",
+    "captured child process",
+    "SetUserVar=automexia_shell_user=",
+    "SetUserVar=automexia_shell_path=",
+    "$integrationLifecycle = $null",
+];
+
+fn powershell_test_output_is_redacted(source: &str) -> bool {
+    POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+}
+
 fn verify_architecture() -> TaskResult {
     run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
     run_python("tools/ci/test_github_free_assurance.py")?;
@@ -2971,6 +2988,11 @@ fn verify_architecture() -> TaskResult {
     )?;
     let powershell_view =
         read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;
+    let powershell_test = read(&root().join("tools/ci/test_powershell.ps1"))?;
+    require(
+        powershell_test_output_is_redacted(&powershell_test),
+        "PowerShell integration assurance can publish live shell identity bytes into CI logs",
+    )?;
     require(
         powershell_view.contains("<Label>Mode</Label>")
             && powershell_view.contains("<Label>Last Modified</Label>")
@@ -4680,6 +4702,19 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn powershell_test_output_redaction_markers_are_independently_required() {
+        let source = read(&root().join("tools/ci/test_powershell.ps1")).unwrap();
+        assert!(powershell_test_output_is_redacted(&source));
+        for marker in POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_test_output_is_redacted(&weakened),
+                "removing {marker:?} must fail the redaction contract"
+            );
+        }
     }
 
     #[test]

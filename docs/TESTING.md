@@ -54,7 +54,11 @@ may intentionally omit comments when any added text would alter the test input.
 The complete gate also parses every repository PowerShell source, exercises the
 explicit Windows install/repair/uninstall paths in isolated profile and
 LocalAppData fixtures, and executes the PowerShell formatter/prompt contract on
-Windows. On Unix it syntax-checks Bash and Zsh, runs ShellCheck, exercises the
+Windows. The wrapper captures the real OSC shell-identity stream, asserts its
+user and path fields internally, and discards it so local identities do not
+enter CI or pre-push logs. Generated CMD identity fixtures use stable fictional
+values rather than the contributor's account or executable path. On Unix it
+syntax-checks Bash and Zsh, runs ShellCheck, exercises the
 explicit installer twice in an isolated home, repairs a deliberately changed
 installed file, and executes both shell-integration suites. Shell discovery is
 limited to tracked and newly added non-ignored sources so ignored caches or

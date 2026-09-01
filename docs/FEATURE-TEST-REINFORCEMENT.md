@@ -226,6 +226,10 @@ external**.
 - Require real PowerShell, CMD, Bash, Zsh, Fish and WSL PTY bytes; exact prompt,
   result and boundary ownership; visible text; geometry; pixels; accessibility;
   and no stale, duplicated or borrowed surface.
+- Capture real PowerShell identity OSC bytes from a child process and prove the
+  user/path fields exist without publishing their values to CI or hook logs.
+  Generate CMD identity fixtures from stable fictional values rather than the
+  contributor's live account or executable path.
 - Exercise previous/next navigation from live prompt, output, wrapped prompt,
   first/last boundary and no-mark states. Prove one-command directionality,
   selected-pane isolation, zero PTY writes, mode suppression, palette parity,
