@@ -94,10 +94,10 @@
       "test_layers": ["unit-contract", "boundary-table", "property-fuzz", "integration", "native-e2e", "visual-pixel", "accessibility", "recovery-migration", "release-artifact", "mutation-checker"],
       "oracles": ["exact-state", "byte-exact", "model-invariant", "side-effect-absence", "native-process-tree", "pixel-exact", "accessibility-tree-event", "storage-roundtrip", "artifact-identity"],
       "interaction_partners": ["windows-tabs-sessions-input", "identity-config-migration"],
-      "needed_tests": ["Boundary profile matrices for every imported action, platform deviation, collision, unsupported command, version migration, and classic fallback", "Negative hostile JSON, duplicate binding, stale profile, tampered provenance, partial migration, and rollback cases", "Native key injection and compatibility-inspector flows on Windows, Linux, and macOS with exact action and pixel oracles"],
+      "needed_tests": ["Boundary profile matrices for every imported action, platform deviation, collision, unsupported command, version migration, and classic fallback", "Negative hostile JSON, duplicate binding, stale profile, tampered provenance, partial migration, and rollback cases", "Native source and include symlink or reparse-point rejection with exact role-specific diagnostics and no imported state or write side effect", "Native key injection and compatibility-inspector flows on Windows, Linux, and macOS with exact action and pixel oracles"],
       "verification_reinforcements": ["Diff generated actions and bindings byte-for-byte against pinned provenance and explicit deviations", "Round-trip enable, disable, migrate, downgrade, rollback, and uninstall without changing unrelated bindings"],
       "checker_reinforcements": ["Reject unowned Ghostty actions, missing platform variants, stale generated docs, absent fuzz seeds, or profile changes without migration tests"],
-      "evidence_owners": ["fuzz/fuzz_targets/ghostty_keybindings.rs", "fuzz/fuzz_targets/ghostty_migration.rs", "tests/fixtures/keybindings/ghostty/1.3.1/manifest.json"],
+      "evidence_owners": ["apps/automexia-terminal/src/automexia/ghostty_migration.rs", "fuzz/fuzz_targets/ghostty_keybindings.rs", "fuzz/fuzz_targets/ghostty_migration.rs", "tests/fixtures/keybindings/ghostty/1.3.1/manifest.json"],
       "exit_criteria": ["Each supported platform maps real native key events to the declared action set", "Unexecuted compositor, keyboard-layout, or accessibility combinations remain external"]
     },
     {

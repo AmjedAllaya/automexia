@@ -99,6 +99,15 @@ as the class of failure; it did not report a failed product assertion. The
 bounded replacement keeps coverage intact instead of retrying an identical
 resource-unbounded run.
 
+The first bounded hosted run passed Clippy and artifact reclamation, then
+exposed a separate Linux-native Ghostty migration regression: link rejection
+failed only because its diagnostic said `non-symlink` while the security
+contract required the explicit words `symbolic link`. The owning implementation
+now emits one stable role-specific diagnostic for source, include, and
+destination links. A platform-neutral assertion freezes the message, while the
+real Unix symlink test remains the independent filesystem oracle; the rejection
+itself was not removed or relaxed.
+
 ## Coverage contract
 
 The baseline in `.github/coverage-baseline.json` is platform-specific. Only a

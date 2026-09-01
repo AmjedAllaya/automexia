@@ -206,6 +206,9 @@ Current assurance: **Partial**.
   command, version migration and classic fallback.
 - Fuzz hostile/duplicate/stale/tampered profiles and test partial migration,
   downgrade, rollback and uninstall without changing unrelated bindings.
+- Exercise real source and include symlinks on Unix and reparse points on
+  Windows; require exact role-specific rejection diagnostics and no imported
+  state or write side effect.
 - Inject real native key events and inspect action, UI, pixel and accessibility
   results on every owning platform.
 
