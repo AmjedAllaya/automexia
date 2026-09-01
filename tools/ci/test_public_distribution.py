@@ -568,6 +568,18 @@ class PublicDistributionTests(unittest.TestCase):
                 "        run: cargo clean\n",
                 1,
             ),
+            "native package build parallelism": workflow.replace(
+                "      AUTOMEXIA_VERSION: ${{ needs.authorize.outputs.version }}\n"
+                "      CARGO_BUILD_JOBS: '1'\n",
+                "      AUTOMEXIA_VERSION: ${{ needs.authorize.outputs.version }}\n"
+                "      CARGO_BUILD_JOBS: '2'\n",
+                1,
+            ),
+            "native package release debug info": workflow.replace(
+                "      CARGO_PROFILE_RELEASE_DEBUG: '0'\n",
+                "      CARGO_PROFILE_RELEASE_DEBUG: '1'\n",
+                1,
+            ),
             "credential leak into rehearsal": workflow.replace(
                 "\n  assemble:",
                 "\n      - run: echo '${{ secrets.TEST_PRIVATE_KEY }}'\n\n  assemble:",
@@ -615,6 +627,8 @@ class PublicDistributionTests(unittest.TestCase):
             workflow.index('gh release verify "$tag"'),
             workflow.index("activation-handoff"),
         )
+        self.assertEqual(workflow.count("CARGO_BUILD_JOBS: '1'"), 2)
+        self.assertEqual(workflow.count("CARGO_PROFILE_RELEASE_DEBUG: '0'"), 1)
 
 
 if __name__ == "__main__":

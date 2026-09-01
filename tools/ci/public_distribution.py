@@ -701,6 +701,7 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
 
     authorize = job_body("authorize")
     quality = job_body("quality")
+    package = job_body("package")
     rehearsal = job_body("rehearsal")
     assemble = job_body("assemble")
     publish = job_body("publish")
@@ -725,6 +726,13 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
     for label, token in resource_contract.items():
         if quality.count(token) != 1:
             fail(f"release quality job must enforce {label}")
+    package_resource_contract = {
+        "single build job": "CARGO_BUILD_JOBS: '1'",
+        "disabled release debug info": "CARGO_PROFILE_RELEASE_DEBUG: '0'",
+    }
+    for label, token in package_resource_contract.items():
+        if package.count(token) != 1:
+            fail(f"native package job must enforce {label}")
     source_cache_contract = {
         "Cargo registry source cache": "~/.cargo/registry",
         "Cargo Git source cache": "~/.cargo/git",

@@ -322,6 +322,10 @@ Current assurance: **Controlled/external**.
   cache only Cargo registry/Git sources under a `Cargo.lock` identity, and clean
   lint artifacts before all-feature tests. Mutate each limit, cleanup position,
   cache pin/path/identity, and reject compiled-target caching.
+- Reproduce the hosted Arm64 package-runner shutdown and require every native
+  package job to use one Cargo build job without release debug data. Mutate both
+  limits independently, and keep the rehearsal partial until x64 and Arm64 pass
+  natively for the exact workflow commit.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
   release attestation and verify each local asset against it from the complete

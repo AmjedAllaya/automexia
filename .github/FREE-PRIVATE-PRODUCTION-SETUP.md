@@ -319,6 +319,12 @@ clean boundary between all-target Clippy and all-feature tests. Do not add
 rejects those changes because the first real rehearsal exhausted the linker
 after retaining the lint graph.
 
+Each native x64/Arm64 package job also uses one Cargo build job and disables
+release debug data. The policy mutation suite rejects either limit being
+weakened. This follows a real corrected-quality rehearsal in which x64 passed
+but the hosted Arm64 runner shut down during compilation with status 143; only a
+new successful rehearsal counts as native package evidence.
+
 Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
 independent approval and distinct merger, `linux-early-access.yml` reruns the
 Linux release-quality gate, builds x64 and Arm64 packages natively, signs the

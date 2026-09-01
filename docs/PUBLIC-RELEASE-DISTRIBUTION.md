@@ -82,7 +82,8 @@ public release and not signing evidence.
 The resource envelope is part of the checked release contract, not an optional
 optimization. Workflow mutations must fail when concurrency or debug artifacts
 increase, cleanup is removed or moved after tests, the source-cache action or
-lockfile identity changes, or compiled `target` artifacts enter the cache.
+lockfile identity changes, compiled `target` artifacts enter the cache, or the
+native package job loses its single build job or disabled release debug data.
 
 The first real credential-free dispatch on 2026-09-01 (run `33518978466`)
 correctly failed closed before packaging or publication when `rust-lld`
@@ -90,6 +91,13 @@ encountered a runner resource failure while linking `rio-vt` examples after the
 all-target Clippy build. The bounded quality-job fix was added from that real
 reproduction. A fresh hosted run must pass before native rehearsal evidence is
 claimed.
+
+The corrected quality workflow then passed authorization, quality, and x64
+packaging in run `33533659547`. Its Arm64 package job was terminated twice by a
+hosted-runner shutdown while compiling, with exit status 143 rather than a Rust,
+package, or test failure. The native package job now also limits Cargo to one
+build job and disables release debug data. This is a tested mitigation, not a
+passing Arm64 result; a new exact-commit rehearsal remains required.
 
 ## One-time external configuration still required
 

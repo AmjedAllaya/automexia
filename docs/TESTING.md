@@ -92,6 +92,8 @@ complete uploaded-asset attestation loop to one asset. They also increase build
 or test concurrency, restore debug artifacts, remove or reorder the post-Clippy
 cleanup, alter the pinned source cache, detach its identity from `Cargo.lock`,
 or cache compiled `target` artifacts; each mutation must fail closed.
+The native package-job mutations separately remove its one-build-job limit or
+restore release debug data; either change must fail before a rehearsal runs.
 Repository-governance mutations independently weaken visibility,
 passive-feature settings, immutability, bypass actors, reference scopes,
 approvals, code-owner review, merge mode, required commit signatures, and tag
@@ -112,8 +114,12 @@ registry/Git-only cache keyed by `Cargo.lock`, and `cargo clean` between
 all-target Clippy and the all-feature test build. The initial real dispatch,
 run `33518978466` on 2026-09-01, exposed a linker resource failure before this
 envelope existed and correctly skipped every package/publication job. That run
-is regression evidence, not a pass; the corrected workflow still requires a
-successful hosted rerun.
+is regression evidence, not a pass. A later corrected-quality rehearsal, run
+`33533659547`, passed authorization, quality, and x64 packaging, but GitHub
+shut down the Arm64 runner twice during compilation with status 143. The package
+job is now independently bounded to one Cargo build job with release debug data
+disabled. That mitigation still requires a successful hosted rerun and does not
+turn the interrupted Arm64 attempt into passing evidence.
 
 On 2026-09-01, the authenticated live public-archive payload passed
 `verify-repository`: visibility and passive-feature settings, immutable releases,
