@@ -607,7 +607,13 @@ def validate_public_repository_governance(
         return indexed
 
     main_rules = rules_by_type(main_ruleset, "Protect main", "branch", ["~DEFAULT_BRANCH"])
-    for required in ("deletion", "non_fast_forward", "required_linear_history", "pull_request"):
+    for required in (
+        "deletion",
+        "non_fast_forward",
+        "required_linear_history",
+        "required_signatures",
+        "pull_request",
+    ):
         if required not in main_rules:
             fail(f"Protect main ruleset is missing {required}")
     review = main_rules["pull_request"].get("parameters")
@@ -731,6 +737,13 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
     activation = workflow.find("activation-handoff")
     if not published < release_attestation < asset_attestation < activation:
         fail("release and asset attestations must be verified before website activation")
+    if re.search(
+        r'(?ms)for asset in "\$\{assets\[@\]\}"; do\s+'
+        r'gh release verify-asset "\$tag" "\$asset" '
+        r'--repo "\$PUBLIC_REPOSITORY" --format json >/dev/null\s+done',
+        publish,
+    ) is None:
+        fail("every uploaded release asset must receive attestation verification")
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:

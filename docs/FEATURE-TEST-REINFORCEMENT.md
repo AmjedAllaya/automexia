@@ -319,9 +319,12 @@ Current assurance: **Controlled/external**.
   sign, publish, tag, or emit activation evidence.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
-  release attestation and verify each local asset against it. Mutate repository
-  scope, App permissions, rehearsal isolation, public-job gates, API version,
-  live repository settings, branch/tag rules and bypass actors, attestation
+  release attestation and verify each local asset against it from the complete
+  uploaded-asset loop. Require cryptographically signed future public-archive
+  `main` commits independently of DCO trailers. Mutate repository scope, App
+  permissions, rehearsal isolation, public-job gates, API version, live
+  repository settings, branch/tag rules, signed-commit enforcement, bypass
+  actors, attestation
   commands, draft/publish ordering, immutable audit, every asset digest, redirect
   host, trusted minisign key/signature, source commit, manifest digest, wrong
   pinned version, and unavailable-route 404 behavior.

@@ -87,11 +87,12 @@ repository scope, App permission tokens, publication ordering, and deterministic
 activation handoff. Workflow mutations also remove the manual rehearsal trigger,
 change its non-public gate, inject a secret reference, weaken the signing and
 publishing gates, change the GitHub API version, skip the live repository
-governance audit, and remove release-level or per-asset attestation verification;
-each mutation must fail closed. Repository-governance mutations independently
-weaken visibility, passive-feature settings, immutability, bypass actors,
-reference scopes, approvals, code-owner review, merge mode, and tag rewrite
-rules. They do not
+governance audit, remove release-level attestation verification, or reduce the
+complete uploaded-asset attestation loop to one asset; each mutation must fail
+closed. Repository-governance mutations independently weaken visibility,
+passive-feature settings, immutability, bypass actors, reference scopes,
+approvals, code-owner review, merge mode, required commit signatures, and tag
+rewrite rules. They do not
 substitute for native hosted packaging, real minisign, GitHub App, immutable
 release, cryptographic GitHub release attestation, or production website
 evidence.
@@ -104,11 +105,11 @@ activation handoff is a policy failure.
 
 On 2026-09-01, the authenticated live public-archive payload passed
 `verify-repository`: visibility and passive-feature settings, immutable releases,
-the no-bypass `Protect main` review ruleset, and the non-rewritable `Protect
-release tags` ruleset matched the checked-in contract. This verifies current
-repository governance only; no release exists yet, and it is not evidence for a
-GitHub App, release key, native hosted package run, attestation, or website
-deployment.
+the no-bypass `Protect main` review/signature ruleset, and the non-rewritable
+`Protect release tags` ruleset matched the checked-in contract. This verifies
+current repository governance only; no release exists yet, and it is not
+evidence for a GitHub App, release key, native hosted package run, attestation,
+or website deployment.
 
 Workflow static analysis uses the same checksum-pinned actionlint 1.7.12 and
 ShellCheck 0.11.0 binaries locally and in hosted CI. The ShellCheck path is

@@ -108,12 +108,22 @@ or reduced-review path was introduced.
 The public repository already exists, is public, has immutable releases and
 private vulnerability reporting enabled, has Actions, issues, Projects, and its
 wiki disabled, and protects `main` with code-owner review, last-push approval,
-linear history, resolved conversations, administrator enforcement, and no
+linear history, required cryptographic commit signatures, resolved
+conversations, administrator enforcement, and no
 force-push/deletion. Active no-bypass rulesets separately protect default-branch
 changes and reject deletion, update, or non-fast-forward changes to `v*` tags.
 Its passive archive metadata is already present on `main`; the additional
 support-policy hardening remains behind the required independent review rather
 than bypassing the repository's own rule.
+
+The archive's original foundation commit predates the corrected repository-local
+identity and contains a malformed author/sign-off address, so GitHub correctly
+reports that historical commit as unsigned. It is not executable release
+content, and rewriting protected published history would create more provenance
+risk than it removes. The exception remains explicit; future archive commits use
+the verified noreply identity, a valid DCO trailer, reviewed squash merging, and
+the required-signatures rule. DCO sign-off and GitHub cryptographic verification
+remain separate claims.
 
 ## Rollback and incidents
 

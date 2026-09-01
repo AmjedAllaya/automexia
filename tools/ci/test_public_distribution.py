@@ -142,6 +142,7 @@ def repository_governance() -> dict[str, dict[str, object]]:
                         "allowed_merge_methods": ["squash"],
                     },
                 },
+                {"type": "required_signatures"},
             ],
         },
         "tag": {
@@ -184,6 +185,7 @@ class PublicDistributionTests(unittest.TestCase):
             "merge commit": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
                 "allowed_merge_methods", ["squash", "merge"]
             ),
+            "unsigned main": lambda state: state["main"]["rules"].pop(4),
             "tag scope": lambda state: state["tag"]["conditions"]["ref_name"].__setitem__(
                 "include", ["refs/tags/latest"]
             ),
@@ -504,6 +506,11 @@ class PublicDistributionTests(unittest.TestCase):
             "asset attestation": workflow.replace(
                 'gh release verify-asset "$tag" "$asset"',
                 'echo "asset not verified"',
+                1,
+            ),
+            "partial asset attestation": workflow.replace(
+                'for asset in "${assets[@]}"; do',
+                'for asset in "${assets[0]}"; do',
                 1,
             ),
             "credential leak into rehearsal": workflow.replace(

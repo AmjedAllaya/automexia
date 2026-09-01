@@ -181,8 +181,9 @@ sha256sum -c SHA256SUMS
 Linux Early Access publishes to the passive public repository
 `AmjedAllaya/automexia-releases`; it does not publish public assets from the
 private source repository. That repository must remain public, keep Actions
-disabled, protect `main`, protect `v*` release tags, enable private vulnerability
-reporting, and return a successful authenticated response from:
+disabled, protect `main` with required cryptographic commit signatures, protect
+`v*` release tags, enable private vulnerability reporting, and return a
+successful authenticated response from:
 
 ```text
 GET /repos/AmjedAllaya/automexia-releases/immutable-releases
