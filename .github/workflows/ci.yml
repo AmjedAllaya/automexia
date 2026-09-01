@@ -1,9 +1,10 @@
 name: CI
 
 on:
+  pull_request:
+    branches: [main]
   push:
     branches: [main]
-  pull_request:
   workflow_dispatch:
 
 permissions:
@@ -13,298 +14,327 @@ env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
   RUST_BACKTRACE: 1
+  AUTOMEXIA_RUST_TOOLCHAIN: '1.98.0'
+
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   policy:
-    name: Policy and repository contracts
-    runs-on: ubuntu-latest
+    name: Repository and workflow policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
-      pull-requests: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           fetch-depth: 0
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+          persist-credentials: false
+
+      - name: Enforce immutable external Action pins
+        run: python3 .github/scripts/check_action_pins.py
+
+      - name: Enforce GitHub-Free/private CI contract
+        run: python3 .github/scripts/check_free_plan_contract.py
+
+      - name: Validate repository-owned assurance policies
+        run: |
+          set -euo pipefail
+          python tools/ci/github_free_assurance.py check-policy
+          python tools/ci/check_feature_test_reinforcement.py
+
+      - name: Install actionlint 1.7.12 and ShellCheck 0.11.0 with checksum verification
+        shell: bash
+        env:
+          ACTIONLINT_VERSION: '1.7.12'
+          ACTIONLINT_SHA256: '8aca8db96f1b94770f1b0d72b6dddcb1ebb8123cb3712530b08cc387b349a3d8'
+          SHELLCHECK_VERSION: '0.11.0'
+          SHELLCHECK_SHA256: 'b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6'
+        run: |
+          set -euo pipefail
+          actionlint_archive="actionlint_${ACTIONLINT_VERSION}_linux_amd64.tar.gz"
+          shellcheck_archive="shellcheck-v${SHELLCHECK_VERSION}.linux.x86_64.tar.gz"
+          curl --fail --silent --show-error --location --output "$actionlint_archive" \
+            "https://github.com/rhysd/actionlint/releases/download/v${ACTIONLINT_VERSION}/${actionlint_archive}"
+          curl --fail --silent --show-error --location --output "$shellcheck_archive" \
+            "https://github.com/koalaman/shellcheck/releases/download/v${SHELLCHECK_VERSION}/${shellcheck_archive}"
+          printf '%s  %s\n' "$ACTIONLINT_SHA256" "$actionlint_archive" | sha256sum -c -
+          printf '%s  %s\n' "$SHELLCHECK_SHA256" "$shellcheck_archive" | sha256sum -c -
+          tar -xzf "$actionlint_archive" actionlint
+          tar -xzf "$shellcheck_archive" "shellcheck-v${SHELLCHECK_VERSION}/shellcheck"
+          install -m 0755 actionlint "$RUNNER_TEMP/actionlint"
+          install -m 0755 "shellcheck-v${SHELLCHECK_VERSION}/shellcheck" "$RUNNER_TEMP/shellcheck"
+
+      - name: Validate GitHub Actions syntax and expressions
+        run: |
+          "$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"
+
+      - name: Install pinned zizmor 1.21.0
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-          key: policy-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-      - name: Install repository format validators
-        run: sudo apt-get update && sudo apt-get install -y python3-yaml shellcheck zsh fish
-      - name: Repository contracts
-        run: cargo xtask verify all
-      - name: Validate TOML, YAML, JSON, XML, and desktop metadata
-        run: python tools/ci/validate_repository.py
-      - name: Command productivity CP0 policy mutation tests
-        run: python tools/ci/test_command_productivity.py
-      - name: Command productivity CP1 activation mutation tests
-        run: python tools/ci/test_command_productivity_cp1.py
-      - name: Command productivity CP5.0 research mutation tests
-        run: python tools/ci/test_command_productivity_cp50.py
-      - name: Command productivity CP5.1 accepted-contract mutation tests
-        run: python tools/ci/test_command_productivity_cp51.py
-      - name: Command productivity CP5.1-CP5.6 source mutation tests
-        run: python tools/ci/test_command_productivity_cp56.py
-      - name: CP5.0 standalone matcher research gates
+          tool: zizmor@1.21.0
+          fallback: none
+
+      - name: Audit GitHub Actions security with zizmor
+        shell: bash
         run: |
-          cargo fmt --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml -- --check
-          cargo clippy --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --all-targets --locked -- -D warnings
-          cargo test --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --locked
-          cargo run --release --manifest-path tools/research/cp5-matcher-benchmark/Cargo.toml --locked --quiet
-      - name: Command productivity CP2.2 activation mutation tests
-        run: python tools/ci/test_command_productivity_cp22.py
-      - name: Command productivity CP3.0 projection mutation tests
-        run: python tools/ci/test_command_productivity_cp30.py
-      - name: Command productivity CP3.1 persistence mutation tests
-        run: python tools/ci/test_command_productivity_cp31.py
-      - name: Command productivity CP3.2 provider-pack mutation tests
-        run: python tools/ci/test_command_productivity_cp32.py
-      - name: Command productivity CP3.3 import and task-bridge mutation tests
-        run: python tools/ci/test_command_productivity_cp33.py
-      - name: Provider-aware Quick Actions CP4 contract and mutation tests
-        run: |
-          python tools/ci/check_provider_quick_actions_cp4.py
-          python tools/ci/test_provider_quick_actions_cp4.py
-      - name: Connection Hub F2 contract and mutation tests
-        run: |
-          python tools/ci/check_connection_hub_f2.py
-          python tools/ci/test_connection_hub_f2.py
-      - name: M6 declarative workspace contract and mutation tests
-        run: |
-          python tools/ci/check_m6_workspaces.py
-          python tools/ci/test_m6_workspaces.py
-      - name: M8-M12 multi-cloud contract and mutation tests
+          set -euo pipefail
+          zizmor \
+            --collect workflows \
+            --strict-collection \
+            --persona auditor \
+            --min-severity high \
+            --min-confidence medium \
+            --no-online-audits \
+            --format github \
+            .
+
+      - name: Install pinned Python assurance tools
+        run: >-
+          python3 -m pip install --disable-pip-version-check --no-input
+          PyYAML==6.0.3 semgrep==1.175.0
+
+      - name: Validate all repository formats and CI contracts
+        run: python3 tools/ci/validate_repository.py
+
+      - name: Execute the complete Python CI contract and mutation suite
+        run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
+
+      - name: Verify M8-M12 multi-cloud evidence wiring
         run: |
           python tools/ci/check_m8_m12_multicloud.py
           python tools/ci/test_m8_m12_multicloud.py
-      - name: Implemented CP2-CP3.3 and planned CP4+ alias mutation tests
-        run: python tools/ci/test_devops_alias_spec.py
-      - name: Completion adapter benchmark contract tests
-        run: python tools/ci/test_measure_completion_adapter.py
-      - name: QA evidence runner contracts
-        run: python tools/ci/test_qa.py
-      - name: Stabilization performance policy and mutation tests
-        run: |
-          python tools/ci/performance_assurance.py check-policy
-          python tools/ci/test_performance_assurance.py
-      - name: Cross-platform workflow coverage regression tests
-        run: |
-          python tools/ci/check_platform_coverage.py
-          python tools/ci/test_platform_coverage.py
-      - name: Repository protection contract and mutation tests
-        run: |
-          python tools/ci/repository_protection.py check
-          python tools/ci/test_repository_protection.py
-      - name: Runtime and release trust mutation tests
-        run: |
-          python tools/ci/check_runtime_trust.py
-          python tools/ci/test_runtime_trust.py
-      - name: Release trust policy and artifact mutation tests
-        run: |
-          python tools/ci/release_trust.py --check-policy
-          python tools/ci/test_release_trust.py
-      - name: Feature assurance traceability regression tests
-        run: |
-          python tools/ci/check_feature_assurance.py
-          python tools/ci/test_feature_assurance.py
-          python tools/ci/check_feature_test_reinforcement.py
-          python tools/ci/test_feature_test_reinforcement.py
-      - name: Documentation source-registry coverage tests
-        run: |
-          python tools/ci/check_documentation_coverage.py
-          python tools/ci/test_documentation_coverage.py
-      - name: Documentation integrity tests
-        run: |
-          python tools/ci/test_documentation_hygiene.py
-          python tools/ci/test_repository_aligned_docs.py
-      - name: Roadmap phase-audit coverage tests
-        run: |
-          python tools/ci/check_phase_implementation_audit.py
-          python tools/ci/test_phase_implementation_audit.py
-      - name: Pull-request documentation policy tests
-        run: python tools/ci/test_pr_policy.py
-      - name: Shell syntax
-        run: bash tools/ci/test_shell_sources.sh
-      - name: PowerShell syntax
-        shell: pwsh
-        run: tools/ci/test_powershell.ps1 -SyntaxOnly
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: lychee@0.20.1
-      - name: Markdown links
-        run: lychee --offline --no-progress '**/*.md'
-      - name: Collect approvals
-        if: github.event_name == 'pull_request'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          approvals=$(gh api "repos/${GITHUB_REPOSITORY}/pulls/${{ github.event.pull_request.number }}/reviews" --paginate --slurp |
-            python tools/ci/check_pr_policy.py --format-approvals)
-          echo "APPROVAL_LOGINS=$approvals" >> "$GITHUB_ENV"
-      - name: PR title, DCO, documentation, changelog, and protected reviews
-        if: github.event_name == 'pull_request'
-        env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_TITLE: ${{ github.event.pull_request.title }}
-          PR_LABELS: ${{ join(github.event.pull_request.labels.*.name, ',') }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-        run: python tools/ci/check_pr_policy.py
 
-  native:
-    name: Native ${{ matrix.os }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
+      - name: Scan Rust source with local Semgrep rules
+        run: >-
+          semgrep scan --config tools/ci/semgrep-rules.yml --error --metrics=off
+          --exclude tests/fixtures/free-assurance/semgrep .
+
+      - name: Prove Semgrep rules detect their canary
+        run: python3 tools/ci/test_free_security_tools.py --tool semgrep
+
+  quality:
+    name: Rust quality and tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      # Private GitHub Free runners expose a small 2-CPU/8-GiB/14-GB envelope.
+      # Keep the runner service responsive while compiling the full feature graph.
+      CARGO_BUILD_JOBS: '1'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      NEXTEST_TEST_THREADS: '1'
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
-      - name: Install macOS shell validator
-        if: runner.os == 'macOS'
-        run: brew install shellcheck fish
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+
+      - name: Install pinned Rust toolchain
+        shell: bash
+        run: |
+          set -euo pipefail
+          rustup toolchain install "$AUTOMEXIA_RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+          rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
+
+      - name: Install native Linux build dependencies
+        run: >-
+          sudo apt-get update && sudo apt-get install -y --no-install-recommends
+          glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev
+          libwayland-dev libx11-xcb-dev shellcheck zsh fish
+
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
         with:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: native-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
+          key: ci-linux-${{ hashFiles('Cargo.lock') }}
+
+      - name: Install pinned test runner
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
           tool: cargo-nextest@0.9.137
-      - run: cargo fmt --all -- --check
-      - run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+
+      - name: Rust clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Reclaim lint artifacts before the all-feature test build
+        run: cargo clean
+
       - name: Workspace unit and integration tests
         run: cargo nextest run --workspace --all-features --locked --profile ci
-      - name: Workspace documentation tests
-        run: cargo test --workspace --all-features --doc --locked
-      - name: Native Unix shell install, repair, and prompt contracts
-        if: runner.os == 'Linux' || runner.os == 'macOS'
-        run: bash tools/ci/test_shell_sources.sh
-      - name: CP5 native Bash enable and editor bridge
-        if: runner.os == 'Linux'
-        run: python3 tools/ci/test_cp5_native_shell_bridge.py
-      - name: CP5 native Zsh and Fish enable and editor bridges
-        if: runner.os == 'Linux' || runner.os == 'macOS'
-        run: python3 tools/ci/test_cp5_native_shell_adapters.py
-      - name: CP5 native PowerShell handle and status bridge
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: tools/ci/test_cp5_native_powershell_bridge.ps1
-      - name: Native librio C ABI compile, link, and runtime smoke
-        if: runner.os == 'Linux'
-        run: bash tools/ci/test_librio_c_api.sh
-      - name: Finite channel readiness model
-        if: runner.os == 'Linux'
+
+      - name: QA runner contract mutations
+        run: python3 tools/ci/test_qa.py
+
+      - name: Deterministic Loom channel model
+        run: cargo test -p corcovado --test loom_channel_readiness --locked
         env:
           RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)
-        run: cargo test -p corcovado --test loom_channel_readiness --locked
-      - name: Phase 1 extension lifecycle and isolation models
-        if: runner.os == 'Linux'
-        run: cargo test -p automexia-extension-runtime --lib --locked
-      - name: Image rendering security, resilience, and performance contracts
-        if: runner.os == 'Linux'
+
+      - name: Image rendering and resource regression
         run: cargo xtask test image-rendering
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: nextest-junit-${{ runner.os }}
-          path: target/nextest/ci/junit.xml
-          if-no-files-found: error
-          retention-days: 14
-      - name: Deterministic prompt resize and history-repaint stress
-        if: runner.os == 'Windows'
-        run: cargo xtask test resize-stress
-      - name: Session-clone descriptors, bindings, isolation, and Windows quoting
-        if: runner.os == 'Windows'
-        run: cargo xtask test session-clone
-      - name: Native PowerShell and CMD integration contracts
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: tools/ci/test_powershell.ps1
-      - if: runner.os == 'Linux'
-        run: cargo doc --workspace --no-deps --locked
 
-  linux-features:
-    name: Linux ${{ matrix.features }}
-    runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        include:
-          - features: x11
-            args: --no-default-features --features x11
-          - features: wayland
-            args: --no-default-features --features wayland
-          - features: x11-wayland
-            args: --features x11,wayland
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
-      - run: cargo check -p automexia-terminal --all-targets --locked ${{ matrix.args }}
+      - name: Workspace documentation tests
+        run: cargo test --workspace --all-features --doc --locked
 
-  cross-checks:
-    name: Cross-check ${{ matrix.target }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-          - os: macos-latest
-            target: x86_64-apple-darwin
-          - os: macos-latest
-            target: aarch64-apple-darwin
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup target add ${{ matrix.target }}
-      - run: cargo check -p automexia-terminal --locked --target ${{ matrix.target }}
+      - name: Shell integration syntax and contract smoke
+        run: bash tools/ci/test_shell_sources.sh
 
-  coverage:
-    name: Coverage
-    if: github.event_name == 'pull_request'
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-llvm-cov@0.6.21
-      - run: cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
-      - env:
-          BASE_SHA: ${{ github.event.pull_request.base.sha }}
-          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          COVERAGE_PLATFORM: windows-x86_64-msvc
-        run: python tools/ci/check_coverage.py
-      - uses: codecov/codecov-action@0fb7174895f61a3b6b78fc075e0cd60383518dac # v5
-        with:
-          files: lcov.info
-          fail_ci_if_error: false
-
-  dependencies:
-    name: Dependency policy
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-deny@0.20.2
-      - run: cargo deny --locked --color never check --hide-inclusion-graph
-
-  dependency-review:
-    name: Dependency review
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
+  dependency-security:
+    name: Dependency security
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     permissions:
       contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/dependency-review-action@a1d282b36b6f3519aa1f3fc636f609c47dddb294 # v5.0.0
+      - name: Check out repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
-          fail-on-severity: moderate
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned Rust security tools
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        with:
+          tool: cargo-audit@0.22.0,cargo-deny@0.20.2,cargo-vet@0.10.2
+
+      - name: RustSec audit
+        run: cargo audit --deny warnings
+
+      - name: Dependency, license, and source policy
+        run: cargo deny --locked --color never check --hide-inclusion-graph
+
+      - name: Dependency audit trust policy
+        run: cargo vet --locked
+
+      - name: Install Gitleaks 8.30.1 with checksum verification
+        shell: bash
+        env:
+          GITLEAKS_VERSION: '8.30.1'
+          GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'
+        run: |
+          set -euo pipefail
+          archive="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl --fail --silent --show-error --location --output "$archive" \
+            "https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}/${archive}"
+          printf '%s  %s\n' "$GITLEAKS_SHA256" "$archive" | sha256sum -c -
+          tar -xzf "$archive" gitleaks
+          install -m 0755 gitleaks "$RUNNER_TEMP/gitleaks"
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+
+      - name: Scan introduced commits and working tree for secrets
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha || github.event.before }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -euo pipefail
+          log_opts=HEAD
+          if [[ "$EVENT_NAME" == "pull_request" || "$EVENT_NAME" == "push" ]] \
+            && [[ "$BASE_SHA" =~ ^[0-9a-f]{40}$ ]] \
+            && [[ ! "$BASE_SHA" =~ ^0{40}$ ]] \
+            && [[ "$HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]; then
+            log_opts="${BASE_SHA}..${HEAD_SHA}"
+          fi
+          gitleaks git --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml --log-opts="$log_opts"
+          gitleaks dir --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml .
+
+      - name: Prove Gitleaks detects its committed canary
+        run: python3 tools/ci/test_free_security_tools.py --tool gitleaks
+
+  release-candidate:
+    name: Release candidate gate
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Check out release candidate
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Validate internal release branch, SemVer, version, and protected paths
+        shell: bash
+        env:
+          HEAD_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+          HEAD_BRANCH: ${{ github.head_ref }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          set -euo pipefail
+          [[ "$HEAD_REPO" == "$GITHUB_REPOSITORY" ]] || { echo 'Release PRs must originate from this repository, never a fork.' >&2; exit 1; }
+          [[ "$HEAD_BRANCH" =~ ^release/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || { echo 'Release branch must be exactly release/X.Y.Z.' >&2; exit 1; }
+          version="${HEAD_BRANCH#release/}"
+          rustup toolchain install "$AUTOMEXIA_RUST_TOOLCHAIN" --profile minimal
+          rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
+          actual="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version' | head -1)"
+          [[ "$actual" == "$version" ]] || { echo "release/$version does not match automexia-terminal version '$actual'." >&2; exit 1; }
+          git diff --name-only "$BASE_SHA...$HEAD_SHA" > "$RUNNER_TEMP/release-files.txt"
+          if grep -Eq '^(\.github/|tools/ci/|tools/xtask/|packaging/|shell-integration/)' "$RUNNER_TEMP/release-files.txt"; then
+            echo 'A release PR may not modify CI/release trust, packaging, shell-integration, or xtask implementation. Merge those changes separately before cutting the release.' >&2
+            cat "$RUNNER_TEMP/release-files.txt" >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/v$version" >/dev/null 2>&1; then
+            echo "Tag v$version already exists." >&2
+            exit 1
+          fi
+
+  release-candidate-coverage:
+    name: Release candidate Windows coverage
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    needs:
+      - quality
+      - release-candidate
+    runs-on: windows-2025
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    env:
+      BASE_SHA: ${{ github.event.pull_request.base.sha }}
+      HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+      COVERAGE_PLATFORM: windows-x86_64-msvc
+      LCOV_FILE: target/coverage/lcov.info
+      COVERAGE_SUMMARY: target/coverage/summary.json
+    steps:
+      - name: Check out release candidate with complete history
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Install pinned Rust coverage toolchain
+        shell: pwsh
+        run: |
+          rustup toolchain install $env:AUTOMEXIA_RUST_TOOLCHAIN --profile minimal --component llvm-tools-preview
+          if ($LASTEXITCODE -ne 0) { throw 'Rust coverage toolchain installation failed' }
+          rustup default $env:AUTOMEXIA_RUST_TOOLCHAIN
+          if ($LASTEXITCODE -ne 0) { throw 'Rust coverage toolchain activation failed' }
+
+      - name: Install pinned coverage tool
+        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        with:
+          tool: cargo-llvm-cov@0.6.18
+
+      - name: Enforce commit-bound Windows coverage regression baseline
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path target/coverage | Out-Null
+          cargo llvm-cov --workspace --locked --lcov --output-path $env:LCOV_FILE
+          if ($LASTEXITCODE -ne 0) { throw 'coverage collection failed' }
+          python tools/ci/check_coverage.py
+          if ($LASTEXITCODE -ne 0) { throw 'coverage policy failed' }

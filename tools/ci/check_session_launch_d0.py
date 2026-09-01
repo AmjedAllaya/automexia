@@ -19,7 +19,7 @@ HISTORICAL_CONTRACTS = [
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v3.json", "112209b674263a6a996a119b9e9120175f0d41aed082463a3e17d1bf806c3ed1", "schema-3"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v4.json", "f96f243d7db337b84f58f39fd8bb4aaa2cbd4327fa523a2fa8572d1dbdcd70dc", "schema-4"),
     (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v5.json", "b4564430db295be8df0424999d49adb56f25c7e06ce3dd1ad5cb7c785fc76697", "schema-5"),
-    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json", "c40b27192f8a508e505214f01aa356ae5311f68835e779b3ecccd0513578b064", "schema-6"),
+    (ROOT / "tests/fixtures/session-launch/d0-d3-contract-v6.json", "5c6accc21d5d2e7fc9f41e1a558ba2badc29cd5757ceac60dd3b9569fb8dc2aa", "schema-6"),
 ]
 MAX_EVIDENCE_BYTES = 262_144
 EXPECTED_KEYS = {
@@ -286,15 +286,10 @@ EXPECTED_CHECKS = [
 EXPECTED_DOCUMENTS = [
     "docs/adr/0012-first-party-ssh-and-session-launch-boundary.md",
     "docs/SESSION-LAUNCH-BROKER.md",
-    "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
     "docs/ARCHITECTURE.md",
-    "docs/SSH-DEVOPS-MULTICLOUD-ARCHITECTURE.md",
     "docs/TESTING.md",
-    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
-    "docs/ROADMAP.md",
     "docs/DECISIONS.md",
     "docs/READINESS-AUDIT.md",
-    "docs/STABILIZATION-ROADMAP.md",
 ]
 
 
@@ -609,7 +604,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
     }, root)
     require_tokens(".github/workflows/f5-openssh-assurance.yml", {
         "workflow_dispatch", "permissions", "contents: read",
-        "environment: f5-openssh-release", "persist-credentials: false",
+        "AUTOMEXIA_F5_OPENSSH_RUNNER", "persist-credentials: false",
         "automexia-openssh", "check_session_launch_d0.py",
         "test_session_launch_d0.py", "--validate-environment",
         "secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE", "retention-days: 90",

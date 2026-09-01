@@ -1,0 +1,44 @@
+{
+  "schema": 1,
+  "owner": "tools/ci/github_free_assurance.py",
+  "tool_cache": ".automexia-tools",
+  "profiles": {
+    "pre-push": [
+      "repository-ready",
+      "free-plan-contract",
+      "workflow-static-analysis",
+      "dependency-security",
+      "dependency-vetting",
+      "secret-scan",
+      "local-sast",
+      "scanner-canaries"
+    ],
+    "release-local": [
+      "pre-push",
+      "release-policy"
+    ],
+    "deep-source": [
+      "pre-push",
+      "miri",
+      "sanitizers",
+      "fuzz"
+    ]
+  },
+  "tools": {
+    "actionlint": "1.7.12",
+    "cargo-audit": "0.22.0",
+    "cargo-deny": "0.20.2",
+    "cargo-vet": "0.10.2",
+    "gitleaks": "8.30.1",
+    "semgrep": "1.175.0",
+    "shellcheck": "0.11.0",
+    "zizmor": "1.21.0"
+  },
+  "external_gates": [
+    "GitHub Actions billing or spending authorization",
+    "private-repository CodeQL and dependency-review entitlement",
+    "branch rulesets and protected environments",
+    "release signing, notarization, and controlled native hardware evidence",
+    "human-approved remediation of legacy full-history secret-scan findings"
+  ]
+}

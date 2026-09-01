@@ -37,6 +37,23 @@ class DocumentationCoverageTests(unittest.TestCase):
                 "configuration reference", {"scrollback-history-limit"}, "other"
             )
 
+    def test_grouped_assurance_usage_expands_to_documented_subcommands(self) -> None:
+        commands = COVERAGE.xtask_commands()
+        self.assertEqual(
+            {command for command in commands if command.startswith("assurance ")},
+            {
+                "assurance check-policy",
+                "assurance install-tools",
+                "assurance initialize-vet",
+                "assurance install-hook",
+                "assurance audit-history-secrets",
+                "assurance pre-push",
+                "assurance release-local",
+                "assurance deep-source",
+            },
+        )
+        self.assertNotIn("install-tools", commands)
+
     def test_missing_binding_action_is_rejected(self) -> None:
         with self.assertRaisesRegex(
             COVERAGE.DocumentationCoverageError, "previewselectedimage"

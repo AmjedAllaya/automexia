@@ -129,8 +129,8 @@ start a process, create a PTY, connect, broadcast, or send Enter.
 | `automexia workspaces restore <id> --generation <n> [--json]` | Review exact current profile bindings for a fresh restore generation. Reconnect and resume stay off. |
 | `automexia workspaces recipe-plan --profile <id> --generation <n> [--no-hooks] [--context <file>] [--json]` | Review the authoritative ordered typed plan. `--no-hooks` is explicit recovery intent; context JSON is bounded and strict. |
 | `automexia workspaces broadcast <id> --command-file <file> [--arm-duration-ms <n>] [--json]` | Review one bounded single-line exact command and exact targets from a regular file. The command is never accepted as an argument and execution stays off. |
-| `automexia workspaces migrate [--json]` | Preview an in-memory migration of the primary schema-1 document; add `--apply --expected-revision <library>` to persist by CAS. A previous-generation recovery candidate fails with `recovery_required`. |
-| `automexia workspaces recover <previous-revision> [--json]` | Explicitly preview an available previous generation; add `--apply` only when the primary is absent or rejected. This is the only command that consumes previous-generation recovery state. |
+| `automexia workspaces migrate [--json]` | Preview an in-memory schema migration; add `--apply --expected-revision <library>` to persist by CAS. |
+| `automexia workspaces recover <previous-revision> [--json]` | Preview an available previous generation; add `--apply` only when the primary is absent or rejected. |
 | `automexia workspaces doctor [--json]` | Report load/recovery state and the D3/M5 activation blockers without probing the network or tools. |
 
 There is still no public managed `connect`, `run`, or `tunnel` command. Continue
@@ -170,6 +170,14 @@ has passed.
 | `cargo xtask visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH` | Compare bounded same-size PNG evidence with the reviewed tolerance/mask policy, then atomically write a heatmap and path-free JSON report. The command fails when dimensions, masks, limits, or changed-pixel ratio violate policy. |
 | `cargo xtask check` | Locked metadata, formatting, repository contracts, workspace checks, Clippy, tests, dependency policy, build, and smoke without launch. |
 | `cargo xtask ci` | Complete CI gate. |
+| `cargo xtask assurance check-policy` | Validate only the versioned GitHub-Free local assurance policy; this is also part of architecture verification. |
+| `cargo xtask assurance install-tools` | Download/build the checksum-pinned local scanner tools into ignored `.automexia-tools/` without modifying application configuration. |
+| `cargo xtask assurance initialize-vet` | Generate and immediately verify Cargo Vet's reviewable `supply-chain/` baseline. Inspect and commit it separately. |
+| `cargo xtask assurance install-hook` | Add the local pre-push profile only when no existing pre-push hook exists; it refuses replacement. |
+| `cargo xtask assurance audit-history-secrets` | Run the separate fail-closed Gitleaks campaign over all reachable history; legacy remediation requires explicit human approval. |
+| `cargo xtask assurance pre-push` | Run local readiness, workflow policy, workflow static analysis, dependency policy/Vet, introduced-commit plus working-tree secret scanning, and Semgrep before a trusted push. |
+| `cargo xtask assurance release-local` | Extend `pre-push` with release artifact and provenance policy/mutation checks. |
+| `cargo xtask assurance deep-source` | Run the bounded nightly Miri, sanitizer, and fuzz owners from a native Linux/WSL checkout. It does not claim controlled native or external release evidence. |
 | `cargo xtask qa --full [--bundle]` | Deep bounded evidence run; optional privacy-reviewed report bundle. |
 | `cargo xtask verify architecture` | Enforce dependency, threading, prompt metadata, renderer, shell, and capability boundaries. |
 | `cargo xtask verify identity` | Reject non-allowlisted user-facing Rio identity. |

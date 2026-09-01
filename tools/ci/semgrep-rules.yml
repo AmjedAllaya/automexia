@@ -1,0 +1,26 @@
+rules:
+  - id: automexia-rust-shell-evaluation
+    languages: [rust]
+    severity: ERROR
+    message: Structured process actions must not invoke a shell evaluator.
+    metadata:
+      category: security
+      technology: [rust]
+      confidence: HIGH
+    patterns:
+      - pattern-either:
+          - pattern: Command::new("sh").arg("-c")
+          - pattern: Command::new("bash").arg("-c")
+          - pattern: Command::new("zsh").arg("-c")
+          - pattern: Command::new("cmd").arg("/c")
+          - pattern: Command::new("powershell").arg("-Command")
+          - pattern: Command::new("pwsh").arg("-Command")
+  - id: automexia-rust-secret-literal
+    languages: [rust]
+    severity: ERROR
+    message: Do not commit credential-like string literals.
+    metadata:
+      category: security
+      technology: [rust]
+      confidence: HIGH
+    pattern-regex: '(?im)^\s*(?:let|const)\s+[A-Za-z0-9_]*(?:api_?key|secret|password|token)[A-Za-z0-9_]*\s*(?::[^=;]+)?=\s*(?:b?r#{0,8})?"'

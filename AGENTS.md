@@ -57,6 +57,31 @@ the first failure; investigate it and record the cause.
   and PowerShell expression evaluation for structured actions.
 - Keep credentials in platform or external credential stores. Persist opaque
   references, never secret material, whenever possible.
+- Never persist, commit, publish, or quote confidential, private, or
+  machine-local information in any repository artifact. This applies to source
+  code, tests, fixtures, snapshots, goldens, examples, comments, documentation,
+  screenshots, recordings, logs, reports, benchmarks, generated files, change
+  fragments, commit messages, pull requests, and handoff text.
+- Forbidden local information includes real usernames, personal names that are
+  not intentionally public project metadata, machine or device names, hostnames,
+  home/profile directories, absolute checkout/workspace/project-folder paths,
+  environment-variable values, internal domains or IP addresses, account or
+  tenant identifiers, cluster or project names, credentials, tokens, cookies,
+  private history, and copied shell/provider output that can identify a person,
+  computer, organization, or environment.
+- Never derive persistent examples or test data from live values such as
+  `USERNAME`, `USER`, `COMPUTERNAME`, `HOSTNAME`, `HOME`, `USERPROFILE`, `PWD`,
+  the current working directory, Git configuration, shell metadata, provider
+  configuration, or command output. Tests that need host paths must create
+  isolated temporary paths at runtime and must not snapshot the real values.
+- Use clearly fictional, stable placeholders such as `alice`, `devbox`,
+  `example.invalid`, documented test-network addresses, and repository-relative
+  paths. Redact sensitive values before showing command output or diagnostics;
+  never repeat a discovered value merely to explain that it was removed.
+- Before handoff, committing, or pushing, scan every changed, staged, untracked,
+  generated, and newly referenced artifact for secrets and local identifiers.
+  Treat any verified leak as a blocking failure, remove it without weakening the
+  behavior or test, re-run the scan, and keep scan reports fully redacted.
 - Bound input bytes, decoded dimensions, recursion, file counts, queues, cache
   size, history, concurrency, time, retries, logs, and persisted storage.
 - Preserve pane, tab, route, session, and generation isolation. Cancel obsolete
@@ -281,6 +306,29 @@ exists, and tests that merely duplicate implementation. Use bounded readiness,
 fixed seeds, explicit fake clocks/processes/filesystems, and invariant assertions.
 Claim only the operating systems and architectures that actually ran natively.
 
+#### Comment test intent strategically
+
+Test names and assertions should make the observable behavior clear. Add concise
+comments only where they preserve reasoning that is not obvious from the code:
+
+- why a fixture has a particular shape, boundary value, ordering, or identity;
+- which real user path, historical failure, threat, or authority boundary a
+  mutation reproduces;
+- which dependency or host observation is mocked and which independent oracle
+  still proves the result;
+- why cleanup, redaction, forbidden-side-effect, atomicity, concurrency, or
+  resource assertions are essential;
+- why a native setup phase must occur in that order or retain a sentinel.
+
+Prefer one comment on a shared helper or scenario block over repeating the same
+explanation in every test. Do not narrate syntax, restate a test name or
+assertion, add mechanical `Arrange`/`Act`/`Assert` labels, or use comments to
+compensate for unclear names and oversized helpers. Exact scanner, parser, and
+golden fixtures may intentionally remain uncommented when comments would change
+the bytes under test. Preserve existing comments unless their contract changes;
+when behavior changes, update nearby comments in the same patch and review them
+for stale claims, confidential data, and machine-local identifiers.
+
 ### 7.1 Apply the anti-escape assurance protocol
 
 Tests reduce risk but cannot prove that arbitrary software has no defects. Never
@@ -369,9 +417,11 @@ current Narrator and NVDA evidence on Windows, VoiceOver on macOS, and Orca on
 X11/Wayland for any release claim covering those environments.
 
 Security and parser boundaries require table-driven negative cases, property
-tests, coverage-guided fuzzing, duplicate-key tests, size/depth/count ceilings,
-Unicode/control/bidi cases, path traversal and link cases, cancellation,
-timeouts, redaction canaries, and exact capability/argv/environment assertions.
+tests, coverage-guided fuzzing, repeated object-member cases,
+size/depth/count ceilings, Unicode/control/bidi cases, path traversal and link
+cases, cancellation, bounded-deadline behavior, sensitive-value removal
+canaries, and exact capability decisions, argument vectors, and subprocess
+contexts.
 Seed corpora must include every historical failure. A passing fuzz smoke test
 proves only that campaign; record engine, seed, corpus digest, duration,
 executions, sanitizer, target, platform, and discovered/replayed crashes.
@@ -612,6 +662,9 @@ durations, and evidence actually exercised.
 - [ ] Small coherent implementation preserves hot paths and unrelated work.
 - [ ] Focused, domain, security, performance/resource, native, visual, and full gates run as applicable.
 - [ ] Results re-audited; failures fixed and affected checks rerun.
+- [ ] Changed, staged, untracked, and generated artifacts contain no secrets,
+  machine names, usernames, profile paths, absolute workspace/project paths, or
+  other private environment values; redacted scans verify this claim.
 - [ ] Guides, references, architecture/ADR, testing, roadmap/audit, navigation, and changelog updated as applicable.
 - [ ] Final claims distinguish local evidence from external validation.
 - [ ] Authorized changes are grouped, DCO-signed, pushed, and remote-verified.

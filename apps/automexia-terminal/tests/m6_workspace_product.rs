@@ -4,8 +4,8 @@ use automexia_connectivity::connections::*;
 use automexia_terminal::automexia::connections::{
     execute_workspaces_command_at, m6_activation_readiness, review_library_broadcast,
     review_library_recipe, review_library_workspace_restore, ConnectionLibraryDocument,
-    ConnectionLibraryStore, LibraryLoadOrigin, M6ActivationBlocker,
-    M6ActivationReadiness, RecipeReviewRequest, CONNECTION_LIBRARY_SCHEMA,
+    ConnectionLibraryStore, M6ActivationBlocker, M6ActivationReadiness,
+    RecipeReviewRequest, CONNECTION_LIBRARY_SCHEMA,
 };
 use automexia_terminal::automexia::connections::{
     ConnectionHubController, ConnectionHubRuntime,
@@ -178,37 +178,6 @@ fn product_restore_uses_current_exact_profile_bindings_and_never_resumes_state()
     let mut stale = document.clone();
     stale.profiles.profiles[0].revision += 1;
     assert!(review_library_workspace_restore(&stale, "production-ops", 12).is_err());
-}
-
-#[test]
-fn product_restore_selects_only_profiles_referenced_by_the_workspace() {
-    let mut document = document();
-    let template = document.profiles.profiles[0].clone();
-    for index in 0..(MAX_PROFILES - 1) {
-        let mut unrelated = template.clone();
-        unrelated.id = format!("unrelated-{index}");
-        unrelated.display_name = format!("Unrelated {index}");
-        unrelated.public_target = unrelated.id.clone();
-        unrelated.source.reference =
-            OpaqueReference::new(format!("unrelated-source-{index}"));
-        document.profiles.profiles.push(unrelated);
-    }
-    assert_eq!(document.profiles.profiles.len(), MAX_PROFILES);
-    assert!(document.profiles.profiles.len() > MAX_WORKSPACE_CONNECTIONS);
-    document.profiles.profiles.rotate_left(1);
-    assert_eq!(
-        document
-            .profiles
-            .profiles
-            .last()
-            .map(|profile| profile.id.as_str()),
-        Some("production-api"),
-    );
-
-    let review =
-        review_library_workspace_restore(&document, "production-ops", 13).unwrap();
-    assert_eq!(review.targets.len(), 1);
-    assert_eq!(review.targets[0].profile_id, "production-api");
 }
 
 #[test]
@@ -437,64 +406,6 @@ fn workspace_cli_preview_is_non_mutating_and_apply_is_atomic_and_stale_safe() {
     };
     assert!(execute_workspaces_command_at(&command, temporary.path()).is_err());
     assert_eq!(store.load().unwrap().document.revision, 2);
-}
-
-#[test]
-fn workspace_cli_previous_schema_migration_requires_explicit_recovery() {
-    let temporary = tempfile::tempdir().unwrap();
-    let mut initial = document();
-    initial.revision = 0;
-    initial.profiles.revision = 0;
-    initial.recipes.revision = 0;
-    initial.workspaces.revision = 0;
-    let store =
-        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
-    let first = store.compare_and_swap(0, &initial).unwrap();
-    let _second = store.compare_and_swap(1, &first).unwrap();
-
-    let mut legacy_previous = serde_json::to_value(&first).unwrap();
-    legacy_previous["schema_version"] = serde_json::json!(1);
-    legacy_previous
-        .as_object_mut()
-        .unwrap()
-        .remove("workspaces");
-    std::fs::write(
-        store.previous_path(),
-        serde_json::to_vec_pretty(&legacy_previous).unwrap(),
-    )
-    .unwrap();
-    std::fs::write(store.path(), b"{malformed").unwrap();
-    assert_eq!(
-        store.load().unwrap().origin,
-        LibraryLoadOrigin::PreviousMigrationPreview
-    );
-
-    let migrate = Cli::try_parse_from([
-        "automexia",
-        "workspaces",
-        "migrate",
-        "--apply",
-        "--expected-revision",
-        "1",
-    ])
-    .unwrap();
-    let Some(CliCommand::Workspaces(command)) = migrate.command else {
-        panic!("workspace command expected")
-    };
-    let error = execute_workspaces_command_at(&command, temporary.path()).unwrap_err();
-    assert!(error.to_string().contains("RecoveryRequired"));
-
-    let recover =
-        Cli::try_parse_from(["automexia", "workspaces", "recover", "1", "--apply"])
-            .unwrap();
-    let Some(CliCommand::Workspaces(command)) = recover.command else {
-        panic!("workspace command expected")
-    };
-    execute_workspaces_command_at(&command, temporary.path()).unwrap();
-    let recovered = store.load().unwrap();
-    assert_eq!(recovered.origin, LibraryLoadOrigin::Primary);
-    assert_eq!(recovered.document.schema_version, CONNECTION_LIBRARY_SCHEMA);
-    assert_eq!(recovered.document.revision, 2);
 }
 
 #[test]

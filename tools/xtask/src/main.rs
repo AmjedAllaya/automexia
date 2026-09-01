@@ -17,12 +17,29 @@ type TaskResult<T = ()> = Result<T, String>;
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
 const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
-const VERIFICATION_TARGET_ROOT_ENV: &str = "AUTOMEXIA_VERIFY_TARGET_ROOT";
-const WINDOWS_MAX_VERIFICATION_TARGET_UTF16: usize = 160;
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
 const DEFAULT_TARGET_WARN_GIB: u64 = 12;
+const WORKSPACE_CHECK_ARGS: &[&str] = &[
+    "check",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+];
+const WORKSPACE_CLIPPY_ARGS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+    "--",
+    "-D",
+    "warnings",
+];
+const WORKSPACE_TEST_ARGS: &[&str] =
+    &["test", "--workspace", "--all-features", "--locked"];
 
 #[derive(Debug)]
 struct ProductIdentity {
@@ -97,6 +114,11 @@ fn dispatch(args: Vec<String>) -> TaskResult {
         }
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
+        [command, scope]
+            if command == "assurance" && assurance_scope_supported(scope) =>
+        {
+            assurance(scope)
+        }
         [command, flag] if command == "qa" && flag == "--full" => qa(false),
         [command, first, second]
             if command == "qa" && first == "--full" && second == "--bundle" =>
@@ -186,7 +208,47 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+}
+
+fn assurance_scope_supported(scope: &str) -> bool {
+    matches!(
+        scope,
+        "check-policy"
+            | "install-tools"
+            | "initialize-vet"
+            | "install-hook"
+            | "audit-history-secrets"
+            | "pre-push"
+            | "release-local"
+            | "deep-source"
+    )
+}
+
+fn assurance_owns_readiness(scope: &str) -> bool {
+    matches!(scope, "pre-push" | "release-local" | "deep-source")
+}
+
+fn assurance(scope: &str) -> TaskResult {
+    let readiness_owned_here = assurance_owns_readiness(scope);
+    if readiness_owned_here {
+        // `cargo xtask assurance` is already running from target/debug/xtask.
+        // Starting the `cargo ready` alias here would try to rebuild and replace
+        // that executable on Windows. Keep readiness owned by this process and
+        // pass only a narrow completion receipt to the policy runner.
+        ready()?;
+    }
+    let program =
+        python_program().ok_or("Python 3 is required for GitHub-Free local assurance")?;
+    println!("+ {program} tools/ci/github_free_assurance.py {scope}");
+    let mut command = Command::new(program);
+    command
+        .args(["tools/ci/github_free_assurance.py", scope])
+        .current_dir(root());
+    if readiness_owned_here {
+        command.env("AUTOMEXIA_ASSURANCE_READY_DONE", "1");
+    }
+    run_command(command, "GitHub-Free local assurance policy")
 }
 
 fn root() -> PathBuf {
@@ -714,43 +776,17 @@ struct VerificationTarget {
 impl VerificationTarget {
     fn prepare() -> TaskResult<Self> {
         require_native_wsl_workspace("the exhaustive verification gate")?;
-        let generation = SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
-            .as_nanos();
-        let name = verification_target_name(std::process::id(), generation);
-        let default_parent = canonical_target_dir()?;
-        let selected_parent = select_verification_parent(
-            &default_parent,
-            env::var_os(VERIFICATION_TARGET_ROOT_ENV).as_deref(),
-            &name,
-            cfg!(target_os = "windows"),
-        )?;
-        fs::create_dir_all(&selected_parent).map_err(|error| {
-            format!(
-                "could not create verification target root {}: {error}",
-                selected_parent.display()
-            )
-        })?;
-        require(
-            !path_is_reparse_point(&selected_parent)?,
-            "refusing to use a symlink/reparse-point verification target root",
-        )?;
-        let parent = selected_parent
-            .canonicalize()
-            .map(normalize_canonical_path)
-            .map_err(|error| {
-                format!(
-                    "could not resolve verification target root {}: {error}",
-                    selected_parent.display()
-                )
-            })?;
-        select_verification_parent(&parent, None, &name, cfg!(target_os = "windows"))?;
+        let parent = canonical_target_dir()?;
         ensure_free_space(
             &parent,
             configured_gib("AUTOMEXIA_VERIFY_MIN_FREE_GIB", DEFAULT_VERIFY_MIN_FREE_GIB)?,
             "the exhaustive isolated verification gate",
         )?;
+        let generation = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map_err(|error| format!("system clock is before the Unix epoch: {error}"))?
+            .as_nanos();
+        let name = verification_target_name(std::process::id(), generation);
         let path = verified_target_child(&parent, &name)?;
         fs::create_dir(&path).map_err(|error| {
             format!(
@@ -833,36 +869,6 @@ fn is_verification_target_name(name: &OsStr) -> bool {
         && !generation.is_empty()
         && process_id.bytes().all(|byte| byte.is_ascii_digit())
         && generation.bytes().all(|byte| byte.is_ascii_digit())
-}
-
-fn select_verification_parent(
-    default_parent: &Path,
-    configured_parent: Option<&OsStr>,
-    child_name: &str,
-    windows: bool,
-) -> TaskResult<PathBuf> {
-    let parent = match configured_parent {
-        Some(configured) => {
-            let configured = PathBuf::from(configured);
-            require(
-                configured.is_absolute(),
-                &format!("{VERIFICATION_TARGET_ROOT_ENV} must be an absolute path"),
-            )?;
-            configured
-        }
-        None => default_parent.to_owned(),
-    };
-    let child = verified_target_child(&parent, child_name)?;
-    if windows {
-        let utf16_units = child.to_string_lossy().encode_utf16().count();
-        require(
-            utf16_units <= WINDOWS_MAX_VERIFICATION_TARGET_UTF16,
-            &format!(
-                "verification target path is {utf16_units} UTF-16 code units; the MSVC-safe ceiling is {WINDOWS_MAX_VERIFICATION_TARGET_UTF16}. Set {VERIFICATION_TARGET_ROOT_ENV} to a short absolute directory on the intended drive"
-            ),
-        )?;
-    }
-    Ok(parent)
 }
 
 fn environment_truthy(variable: &str) -> bool {
@@ -1264,10 +1270,7 @@ fn check_in(target: &Path) -> TaskResult {
     verify_all()?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])?;
-    run_cargo_in(
-        target,
-        &["check", "--workspace", "--all-targets", "--locked"],
-    )
+    run_cargo_in(target, WORKSPACE_CHECK_ARGS)
 }
 
 fn verify_all() -> TaskResult {
@@ -1317,7 +1320,9 @@ fn verify_phase_zero_assurance() -> TaskResult {
             )
             && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
-            && ci.contains("python tools/ci/test_qa.py")
+            && ci.contains("RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
+            && qa.contains("python-contract-mutations")
             && ci.contains("glslang-tools")
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
@@ -1328,7 +1333,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     require(
         qa.contains("feature-test-reinforcement-mutations")
             && ci.contains("python tools/ci/check_feature_test_reinforcement.py")
-            && ci.contains("python tools/ci/test_feature_test_reinforcement.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && repository_validator.contains("validate_feature_test_reinforcement")
             && root()
                 .join("tests/assurance/feature-test-reinforcement-v1.json")
@@ -1372,7 +1377,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && performance_baseline.contains("\"status\": \"collecting\"")
             && qa.contains("performance-assurance-mutations")
             && qa.contains("run_dir / \"benchmark-target\"")
-            && ci.contains("python tools/ci/test_performance_assurance.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && nightly_workflow.contains("performance-controlled-windows")
             && nightly_workflow.contains("retention-days: 90")
             && nightly_workflow.contains("--operator")
@@ -1382,7 +1387,6 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && release_workflow.contains("--expected-commit")
             && release_workflow.contains("--require-active")
             && s2_workflow.contains("name: S2 controlled activation")
-            && s2_workflow.contains("environment: stable-release")
             && s2_workflow.contains("validate-baseline")
             && s2_workflow.contains("--expected-source-commit")
             && s2_workflow.contains("retention-days: 90")
@@ -1395,21 +1399,27 @@ fn verify_phase_zero_assurance() -> TaskResult {
         "S1/S2 visual, benchmark, source binding, baseline review, waiver, nightly, activation, or fail-closed release assurance drifted",
     )?;
 
-    let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;
+    let free_plan_contract =
+        read(&root().join(".github/scripts/check_free_plan_contract.py"))?;
     require(
-        codeql_workflow.contains("workflow_dispatch:")
-            && codeql_workflow.contains("actions: read")
-            && codeql_workflow.contains("github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
-            && codeql_workflow.contains("github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7")
-            && codeql_workflow.contains("github.event.repository.private && 'never' || 'always'")
-            && codeql_workflow.contains("codeql-results/**/*.sarif")
-            && codeql_workflow.contains("if-no-files-found: error"),
-        "CodeQL must be dispatchable, pinned to v4, upload findings when entitled, and retain private-repository SARIF without requiring GitHub Code Security",
+        !root().join(".github/workflows/codeql.yml").exists()
+            && free_plan_contract.contains("EXPECTED_WORKFLOWS")
+            && free_plan_contract.contains("private GitHub environments are unavailable")
+            && free_plan_contract.contains("forbidden/stale workflow exists")
+            && ci.contains("check_free_plan_contract.py")
+            && ci.contains("SHELLCHECK_VERSION: '0.11.0'")
+            && ci.contains(
+                "\"$RUNNER_TEMP/actionlint\" -color -shellcheck \"$RUNNER_TEMP/shellcheck\"",
+            )
+            && ci.contains("zizmor"),
+        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint, ShellCheck, and offline zizmor checks",
     )?;
     require(
-        nightly_workflow.contains("cargo +nightly fuzz run")
+        nightly_workflow.contains("cargo +nightly-2026-08-25 fuzz run")
             && nightly_workflow.contains("--component rust-src")
-            && nightly_workflow.contains("sanitizer: [address, thread]")
+            && nightly_workflow.contains("sanitizer:")
+            && nightly_workflow.contains("- address")
+            && nightly_workflow.contains("- thread")
             && nightly_workflow.contains("MIRIFLAGS: -Zmiri-disable-isolation")
             && nightly_workflow.contains("timeout-minutes: 30")
             && nightly_workflow.contains("--locked simd_utf8::tests")
@@ -1417,16 +1427,15 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && nightly_workflow.contains("--locked performer::parser::tests")
             && nightly_workflow.contains("test_temp_file_transmission_medium")
             && nightly_workflow.contains("--target x86_64-unknown-linux-gnu")
-            && nightly_workflow.contains("tool: cross@0.2.5")
             && nightly_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
             && nightly_workflow.contains("$(go env GOPATH)/bin")
             && release_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
             && release_workflow.contains("$(go env GOPATH)/bin"),
-        "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer jobs, and expose the pinned Go-based nFPM tool",
+        "Nightly/release workflows must use the pinned nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer configurations, and expose the pinned Go-based nFPM tool",
     )?;
     require(
         nightly_workflow.contains(
-            "cargo +nightly test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
+            "cargo +nightly-2026-08-25 test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
         ),
         "ASan/TSan must exercise bounded extension worker lifecycle tests without running Loom's scheduler model",
     )?;
@@ -1678,24 +1687,13 @@ fn ci_in(target: &Path) -> TaskResult {
     println!("==> verification phase 1/3: workspace checks");
     check_in(target)?;
     println!("==> verification phase 2/3: warning-denied Clippy");
-    run_cargo_in(
-        target,
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
+    run_cargo_in(target, WORKSPACE_CLIPPY_ARGS)?;
     println!(
         "==> verification phase 3/3: workspace tests (a cold isolated target can compile for several minutes)"
     );
     run_cargo_summarized_in(
         target,
-        &["test", "--workspace", "--locked"],
+        WORKSPACE_TEST_ARGS,
         "workspace unit, integration, and documentation tests passed",
     )
 }
@@ -2348,6 +2346,8 @@ fn product_identity() -> TaskResult<ProductIdentity> {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
+    run_python("tools/ci/test_github_free_assurance.py")?;
     run_python("tools/ci/check_feature_ownership.py")?;
     run_python("tools/ci/test_feature_ownership.py")?;
     run_python("tools/ci/check_command_productivity.py")?;
@@ -3163,10 +3163,10 @@ fn verify_architecture() -> TaskResult {
             && read(&root().join("automexia-image/src/lib.rs"))?
                 .contains("bytes.len() as u64 > MAX_FILE_BYTES")
             && nightly.contains("image_decoder")
-            && nightly.contains("rustup toolchain install nightly --profile minimal")
-            && nightly.contains("cargo +nightly fuzz run")
+            && nightly.contains("rustup toolchain install nightly-2026-08-25 --profile minimal")
+            && nightly.contains("cargo +nightly-2026-08-25 fuzz run")
             && nightly.contains("-rss_limit_mb=768 -timeout=15")
-            && nightly.contains("cargo +nightly test -p automexia-image --lib")
+            && nightly.contains("cargo +nightly-2026-08-25 test -p automexia-image --lib")
             && xtask_source.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX")
             && xtask_source.contains("fuzz_workspace/corpus")
             && xtask_source.contains("source_root=$1")
@@ -4475,9 +4475,16 @@ fn assemble_changelog(version: &str) -> TaskResult<bool> {
 }
 
 fn run_python(script: &str) -> TaskResult {
+    run_python_args(script, &[])
+}
+
+fn run_python_args(script: &str, args: &[&str]) -> TaskResult {
     let program =
         python_program().ok_or("Python 3 is required for repository policy checks")?;
-    run(program, &[script])
+    let mut command = Vec::with_capacity(args.len() + 1);
+    command.push(script);
+    command.extend_from_slice(args);
+    run(program, &command)
 }
 
 fn files_under(root: &Path) -> TaskResult<Vec<PathBuf>> {
@@ -4552,6 +4559,7 @@ mod tests {
     fn command_surface_is_stable() {
         assert!(usage().contains("dev [-- APP_ARGS...]"));
         assert!(usage().contains("ready"));
+        assert!(usage().contains("assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>"));
         assert!(usage().contains("run [-- APP_ARGS...]"));
         assert!(usage().contains("storage"));
         assert!(usage().contains("verify architecture"));
@@ -4562,6 +4570,58 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn assurance_readiness_scopes_are_explicit() {
+        let readiness_scopes = ["pre-push", "release-local", "deep-source"];
+        let non_readiness_scopes = [
+            "check-policy",
+            "install-tools",
+            "initialize-vet",
+            "install-hook",
+            "audit-history-secrets",
+        ];
+        for scope in readiness_scopes {
+            assert!(assurance_scope_supported(scope));
+            assert!(assurance_owns_readiness(scope));
+        }
+        for scope in non_readiness_scopes {
+            assert!(assurance_scope_supported(scope));
+            assert!(!assurance_owns_readiness(scope));
+        }
+        assert!(!assurance_scope_supported("unknown"));
+    }
+
+    #[test]
+    fn local_workspace_gate_covers_every_feature_like_hosted_ci() {
+        assert_eq!(
+            WORKSPACE_CHECK_ARGS,
+            &[
+                "check",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_CLIPPY_ARGS,
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_TEST_ARGS,
+            &["test", "--workspace", "--all-features", "--locked"]
+        );
     }
 
     #[test]
@@ -4621,6 +4681,11 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn phase_zero_assurance_contract_self_verifies() {
+        verify_phase_zero_assurance().unwrap();
     }
 
     #[cfg(target_os = "windows")]
@@ -4807,43 +4872,6 @@ mod tests {
         )));
         assert!(verified_target_child(&parent, "../outside").is_err());
         assert!(verified_target_child(&parent, "nested/child").is_err());
-    }
-
-    #[test]
-    fn verification_target_requires_a_short_absolute_windows_parent() {
-        let name = verification_target_name(42, 1234);
-        let short = Path::new("D:/amx-ready");
-        assert_eq!(
-            select_verification_parent(short, None, &name, true).unwrap(),
-            short
-        );
-
-        let long = PathBuf::from(format!("D:/{}", "nested-segment/".repeat(12)));
-        let error = select_verification_parent(&long, None, &name, true).unwrap_err();
-        assert!(error.contains("AUTOMEXIA_VERIFY_TARGET_ROOT"));
-        assert!(error.contains("MSVC"));
-
-        assert_eq!(
-            select_verification_parent(
-                &long,
-                Some(OsStr::new("D:/amx-ready")),
-                &name,
-                true,
-            )
-            .unwrap(),
-            short
-        );
-        assert!(select_verification_parent(
-            &long,
-            Some(OsStr::new("relative/verify")),
-            &name,
-            true,
-        )
-        .is_err());
-        assert_eq!(
-            select_verification_parent(&long, None, &name, false).unwrap(),
-            long
-        );
     }
 
     #[test]

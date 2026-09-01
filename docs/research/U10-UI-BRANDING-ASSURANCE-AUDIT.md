@@ -29,7 +29,7 @@ reports remain ignored, private evidence.
 | Shared brand hierarchy, contrast, redundant meaning, targets, density, and responsive geometry | **Fully done** | `renderer/ui_theme.rs` and the U0-U9.4 roadmap owners; focused layout, hit-test, contrast, privacy, modal, and interaction tests | Preserve source and focused tests |
 | Completed-command branding across short and long output | **Fully done** | Stable pane-local result IDs and following-prompt boundaries in `rio-vt`; visible-anchor deduplication in `renderer/mod.rs`; parser-to-visible regressions at seven viewport heights; full source eviction, silent, newline-only, repaint, reuse, and reflow tests | Preserve exactly-one boundary and no paint-time history scan |
 | Current Windows WGPU and CPU automated evidence | **Fully done for this local host** | Both complete drivers passed eight base PowerShell cases, seven dynamic viewport-boundary cases, CMD, resize, history, fullscreen, multi-window, timestamp identity/label, glyph-pixel, contrast, and resource assertions | Preserve private captures/reports; independent visual review and the controlled matrix remain external |
-| Deterministic visual and evidence infrastructure | **Fully done** | One-pixel comparator, five exact 9,216-case visual-suite matrices, 28-suite policy, mutation tests, redaction/freshness/commit binding, controlled workflow, and stable-tag `--require-complete` enforcement | Preserve fail-closed policy and exact current-commit binding |
+| Deterministic visual and evidence infrastructure | **Fully done** | One-pixel comparator, five exact 8,352-case visual-suite matrices, 28-suite policy, mutation tests, redaction/freshness/commit binding, controlled workflow, and stable-tag `--require-complete` enforcement | Preserve fail-closed policy and exact current-commit binding |
 | Current Windows WGPU and CPU complete visual/resource run | **Partially done** | Both automated drivers passed on this Windows x86_64 host and retained private reports/captures; the captures have not received independent human approval | Review the exact frames and rerun the controlled Windows GPU/RDP matrix for release evidence |
 | Linux and macOS native/visual/resource evidence | **External prerequisite** | Policy and runners are specified; no current controlled artifacts were produced on this Windows host | Run Linux X11, Linux Wayland, macOS Intel, and macOS Apple Silicon suites for the exact commit |
 | Assistive-technology delivery | **External prerequisite** | Renderer-neutral names, states, keyboard paths, focus, contrast, and limitations are documented; v0.4 does not claim a complete native accessibility tree | Independently review Narrator, NVDA, VoiceOver, Orca X11, and Orca Wayland sessions |
@@ -109,7 +109,7 @@ handoff rather than this stable audit page.
 - [ ] Retain Linux X11 and Wayland native/visual suites plus Intel, AMD, and
   NVIDIA resource suites.
 - [ ] Retain macOS Intel and Apple Silicon native/resource/visual suites.
-- [ ] Approve all five exact 9,216-capture visual matrices for the same commit.
+- [ ] Approve all five exact 8,352-capture visual matrices for the same commit.
 - [ ] Approve Narrator, NVDA, VoiceOver, Orca X11, and Orca Wayland tasks.
 - [ ] Ensure visual/accessibility reviewers are independent of the operator and
   use the required HTTPS review records.

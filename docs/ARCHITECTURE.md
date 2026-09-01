@@ -384,8 +384,9 @@ OpenSSH client/server versions, and no-follow identity-stable SHA-256 reads of
 the application binary, application package, and OpenSSH client. Files are
 capped at 4 GiB; links, replacement/growth while hashing, zero-sentinel real
 baselines, and path-bearing output fail closed. The manual-only F5 workflow has
-read-only repository permission, a protected environment, credential-free
-exact-commit checkout, and a restricted ephemeral runner group. Only its
+read-only repository permission, no GitHub private-environment dependency,
+credential-free exact-commit checkout, and a restricted ephemeral runner group.
+Only its
 path-free summary is uploaded. Controlled real OpenSSH, resource, and
 accessibility runs remain external release evidence and do not enable the broker.
 
@@ -414,13 +415,6 @@ malformed/oversized input, and exhausted bounded fresh-ID attempts fail closed.
 Workspace transfer preserves only redacted topology and assigns fresh local IDs;
 it never transfers live connection bindings.
 
-All M6 document ingress uses the connectivity-owned strict JSON adapter before
-Serde conversion. It rejects duplicate object member names after escape
-decoding at every nesting level and rejects trailing data; typed validators then
-enforce schema, size, count, graph, and identifier contracts. This avoids
-parser-dependent duplicate-key interpretation without creating a second schema
-or persistence owner.
-
 A reviewed recipe run retains the fixed ten-stage order but may omit empty
 stages. `NoHooks` removes recipe-origin steps and resequences only the trusted
 planner resolve/connect steps. The review boundary independently revalidates
@@ -429,10 +423,7 @@ forged resolved plan cannot downgrade privilege. Runtime state is monotonic and
 per generation: every step has a bounded deadline, automatic retries require the
 existing idempotent/noninteractive/nonmutating/cancellation-safe declaration,
 and cancellation, shutdown, or connection replacement terminalizes obsolete
-work. The reducer does not trust a publicly constructible review: it revalidates
-the exact review fingerprint, revisions, generation, omitted-hook count, stage
-policy, step fingerprints, and exact all-false authority ceiling. Checked time
-arithmetic and start/deadline ordering reject overflow and clock reversal.
+work.
 
 Remote initialization does not expose a shell command string. It carries typed
 working-directory, public-environment, `sudo`/`doas` user-switch, and
@@ -450,13 +441,6 @@ only per-target digest/outcome diagnostics. It never requests Enter. Structured
 UI projections use redundant icon/color/text state, exact preview, alert/switch/
 textbox semantics, and deterministic focus restoration without owning pixels or
 execution.
-
-Broadcast follows the same independent-review rule. The fingerprint includes
-review time, command digest/length, exact ordered target set, duration,
-production-confirmation derivation, and all-false authority flags. Expiry
-terminalizes and audits every pending target. Application restore fingerprints
-only profiles referenced by the selected workspace, preserving the model's
-128-binding ceiling without imposing it on unrelated library inventory.
 
 The application composes, but does not duplicate, those authorities:
 `connections::workspaces` binds current library fingerprints to restore, recipe,
@@ -849,16 +833,11 @@ for the exact OpenSSH tools they use. The extension itself has no direct-network
 capability: the approved OpenSSH child connects exactly as it would when typed
 in a shell. Arbitrary process/network access and third-party use remain denied.
 
-Current D0/D3/M5 source status remains fail-closed. Active schema 7 freezes the
+Current D0/D3/M5 source status remains fail-closed. Active schema 6 freezes the
 M3 direct, M4 routed, and M5 configuration-free typed-tunnel grammars; fresh
 full-review/executable/endpoint binding; actual child-outcome mapping; bounded
 tunnel and receipt lifecycle; stale-source reconnect; and exact native-manifest
-rules while retaining schemas 1-6 as immutable hash-checked history. Schema 7
-also requires monotonic review identifiers that permanently exhaust before
-wraparound, one generated opaque receipt owner per reviewed tunnel, and
-schema-2 native evidence binding the application version, every fixed OpenSSH
-tool, the OpenSSH 10.5 security baseline, advisory review, and package
-provenance. The
+rules while retaining schemas 1-5 as immutable hash-checked history. The
 manual-shell baseline, package policy, nine trust boundaries, platform
 resolution, and hermetic native protocol remain unchanged. ADR 0012 is accepted
 by the project owner.
@@ -1180,57 +1159,23 @@ and stable activation remain forbidden until its exact release gates pass.
   source-prompt scrollback eviction preserve exactly one lifecycle owner.
   The renderer consumes only visible source/boundary anchors, deduplicates by
   result ID, rejects stale generations and never scans retained history during
-  paint. Silent completion publishes no empty visual surface.
+  paint. It formats the stable datetime without a clock or timezone lookup on
+  the render path. Silent completion publishes no empty visual surface.
 
 ### Planned semantic diagnostic navigation boundary
 
-The proposed post-v0.4 DN0-DN6
-[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md) is not
-implemented or authorized. Proposed
-[ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) keeps it as a
-generic, on-demand terminal workflow rather than a DevOps-only feature.
+Semantic diagnostic navigation is planned and is not an authorized runtime
+capability. The terminal may own bounded, on-demand navigation over retained
+terminal state, while generic classification runs outside terminal locks and
+reviewed domain detectors remain optional extension contributions.
 
-The selected grid and trusted shell semantic metadata remain canonical. Current
-OSC 133 result metadata and the following-prompt boundary identify one completed
-prompt lifecycle across viewport and source-row eviction; they deliberately do
-not store text or define a durable complete command-output region. DN1 therefore
-navigates failed-command actions to the exact prompt/input anchor and keeps
-unknown shell status neutral.
-Failed command, diagnostic class, severity, provenance, and confidence remain
-separate types.
-
-`Crosswords` would own only bounded normalized logical-line batches, content-free
-positions, viewport movement, and resize/reflow/overwrite/eviction signals. It
-would not own structured-log, Python, Rust, compiler, provider, extension, or
-user-pattern meaning. One route `Context` would own one navigator, its request
-and cancellation generations, at most one coalesced continuation, an optional
-256-entry content-free cache, cleanup, and publication. Pure built-in detectors
-would begin in an app-owned diagnostics module and run outside the terminal lock.
-The renderer would consume one renderer-neutral content-free highlight and
-perform no scan or classification.
-
-Generic scanning would occur only after an explicit action. Under the terminal
-lock it would copy at most one bounded transient logical-text batch plus
-positions, release the lock, classify outside it, revalidate every route/session/
-buffer/layout/request/detector/filter generation, and either publish the nearest
-result or enqueue one low-priority route continuation. It would never run from
-paint, input, PTY parsing, resize, startup, a worker per pane, or a continuous
-history index. Transient text would be discarded and excluded from caches,
-metrics, persistence, crash evidence, and renderer snapshots.
-
-DN1 would reuse prompt identity rather than introducing global logical-line IDs.
-DN2 anchors would be valid only for exact generations. Reflow may remap the
-small cache through an existing exact remap when proven and measured; otherwise
-it clears the cache and rescans on demand. A general line identity needs a later
-accepted decision if multiple features justify its global memory/reflow cost.
-
-No default shortcut, public setting, feature-ledger entry, detector extension
-capability, or runtime dependency exists. DN3 begins only with bounded structured
-severity, conservative anchored Error/Fatal text, and section reconstruction.
-Specialized formats, user patterns, and extension contributions remain later,
-separately evidenced slices. Alternate screens are unsupported; selection and
-search styling remain visually dominant; disable/close/resize/reflow/eviction
-
+The feature must not continuously index scrollback, persist terminal content,
+perform network or provider work, change the prompt, send PTY input, or execute a
+command. Work is generation-scoped, cancellable, resource-bounded, and safe to
+disable. The public [feature summary](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md) and
+[proposed ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) own the
+published direction. Exact algorithms, data structures, and limits remain in the
+ignored internal design until implementation review.
 ## Interactive performance invariants
 
 - On Windows, `CSI ?9001h` switches keyboard delivery to ConPTY's Win32 input
@@ -1380,6 +1325,19 @@ stream-hashed, SBOM-scanned, attested, and checksum-verified as the exact bytes
 users receive. See [Release trust](RELEASE-TRUST.md) and
 [ADR 0016](adr/0016-final-artifact-release-trust.md).
 
+Public Linux Early Access is a release-system boundary, never terminal runtime
+or extension behavior. The private source workflow owns native package creation,
+exact allowlisting, SBOM/checksum/signature evidence, and a source-commit-bound
+manifest. A passive public GitHub repository owns immutable binary delivery. The
+landing page owns friendly and version-pinned redirects plus an independent
+activation seal and live verifier. A one-hour GitHub App token is restricted to
+the binary repository. The release owner also requires GitHub's signed release
+attestation and verifies each local asset against it before creating an
+activation handoff. A credential-free manual path exercises native packaging but
+has no signing or publication authority. Network, credential, filesystem,
+provider, PTY, renderer, and startup paths in the application are unchanged. See
+[ADR 0037](adr/0037-public-binary-release-distribution.md).
+
 ## Repository enforcement boundary
 
 The repository is an external security authority, not an implication of local
@@ -1508,223 +1466,62 @@ Orchestration extension below. Neither decision activates or weakens the other.
 
 ## Proposed situation-aware production operations boundary
 
-PO0 is a detailed documentation/research/checker proposal only and PO1-PO8 are
-not implemented. The
-[canonical specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md),
-[exact proposed contracts and 2026 decisions](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md),
-[UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md),
-[testing contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), and
-[proposed ADR 0034](adr/0034-situation-aware-production-operations.md) add no
-dependency, process, provider capability, watcher, investigation view, live-log
-controller, managed diagnostic session, setting, journal, UI, model, or execution
-authority.
+Situation-aware production guidance is planned and adds no current provider,
+process, watcher, incident, journal, model, or execution authority. If accepted,
+it belongs in the independently enabled DevOps/SRE extension and composes the
+existing environment-context, completion, diagnostic, review, and session owners.
+The terminal core remains provider-neutral.
 
-If accepted, the feature composes existing owners rather than creating a second
-terminal or DevOps stack:
+Evidence collection must be explicit, bounded, freshness-aware, cancellable, and
+isolated per route and environment. Recommendations remain deterministic,
+inspectable, and distinct from approval or execution. Production mutations use
+typed requests, exact executable and argument review, revalidation, explicit
+confirmation, observation, and recovery. A model cannot grant authority.
 
-- CP1 remains the immediate shell-native fallback and CP5 remains the sole
-  authenticated editor-state, suggestion-surface, and replacement-only insertion
-  owner;
-- D2 Environment Capsules and D6 provider adapters remain the source of bounded
-  route-scoped public context and freshness;
-- a new private pure operation model would own only versioned passports,
-  knowledge/evidence quality, observations, change/ownership records,
-  explanations, cohort/comparison/network/SLO records, resource/dependency
-  edges, assessments, recommendations, intents, typed actions, safety decisions,
-  preflight, one-use grants, verification predicates, monitor and managed-session
-  state, and content-minimized receipts;
-- the DevOps/SRE extension and separately installed Kubernetes, cloud, GitOps,
-  observability, incident, identity, and service-catalog adapters would map
-  bounded external evidence into that model;
-- the desktop application remains the only composition, review, one-use
-  confirmation, execution-handoff, publication, and route-lifecycle owner; and
-- the existing D3 ExternalToolRunner/session broker remains the only future
-  exact-executable/argv and child-lifecycle path.
-
-The product may present one coherent `Investigate` experience, but there is no
-single mutable “Ops Engine.” Six capability families compose through the pure
-model: provenance/change, resource explanation, comparison, network diagnosis,
-incident evidence, and managed diagnostic sessions. Provider adapters retain
-their own I/O and lifecycle; the app owns route composition; CP5 owns completion;
-DN owns terminal diagnostic navigation; D3/provider brokers own execution and
-children/listeners. The conceptual Context/Evidence/Action planes are a design
-aid, not new runtime authorities.
-
-The provisional implementation map keeps every concern in one owner:
-
-| Concern | Proposed owner | Required boundary |
-|---|---|---|
-| Typed passports, evidence, graphs, candidates, preflight and operation states | New private pure `automexia-operations-model` crate | No UI, I/O, persistence, credential, process, provider, shell, PTY, or model dependency. |
-| Kubernetes/cloud/GitOps/identity/observability mapping and lifecycle | DevOps/SRE `operations` service plus separately gated provider adapters | Bounded public inputs, exact scope/quota/deadline/cancellation, redaction, immutable generations, no per-key work. |
-| Change, field ownership, drift, resource explanation, cohort/revision, scheduling, network-path and SLO mappings | Pure domain rules plus the relevant separately gated adapter | Structured facts and source references only; no raw manifests/Secrets/time series, causal overclaim, scheduler/GitOps/SLO replacement, or active probe. |
-| Live multi-source log view | App-owned PO5 stream controller fed by separately gated log adapters | Memory-only bounded per-source records, backpressure/gaps, no evidence-cache or persistence ownership, no concatenated global log. |
-| Terminal diagnostic/time handoff | Existing DN owner publishes a bounded content-free marker/anchor reference to the app | No terminal-history access by provider/DevOps adapters; no timestamp fabrication or second scanner. |
-| Managed Kubernetes port forward, active probe and debug session | Existing activated D3/provider broker plus app-owned PO6 operation lifecycle | Exact target/vantage/image/profile/listener, one-use grant, external authorization/admission, bounded traffic/time, descendants/listeners/temporary-resource cleanup; no new runner. |
-| Route composition, refresh scheduling, preflight coordination, focus and operation lifecycle | Desktop application `automexia::operations` controller | Sole composition root; rejects stale route/context/evidence/policy/editor generations and owns cleanup. |
-| Renderer-neutral surface, accessibility and responsive projection | Existing UI model with a production-operations projection module | Pure hierarchy/geometry/semantics; hidden or stale surfaces own no input, hit target, focus node, or live announcement. |
-| Situation candidate display and authenticated editor replacement | Existing CP5 controller, list and editor bridge | No competing popup/controller; replacement only, never Enter or shell evaluation. |
-| Exact execution and descendants | Existing activated D3/provider broker | Structured executable/request and exact arguments only; one reviewed operation, final revalidation, observation/stabilization/verification, receipt and cleanup. |
-| Optional incident persistence | Application-owned private storage adapter behind PO5 opt-in | Content-minimized versioned records, protected atomic writes, retention, recovery, export, disable and uninstall. |
-
-The exact provisional crate/module and surface-to-controller mapping remains
-subject to PO0 owner review; it is not evidence that these modules exist.
-
-The pure model has no renderer, window, PTY, shell, filesystem, persistence,
-process, network, credential, provider SDK, or model dependency. Display text,
-Events, logs, telemetry, labels, annotations, runbooks, and provider responses
-are untrusted bounded data and never become arguments. Executable identity and
-exact argv stay typed separately.
-
-The adapter strategy is hybrid without creating a second authority. Explicit
-one-shot observations and familiar inserted commands reuse the existing
-exact-argv provider adapters. Sustained Kubernetes list/watch may use a
-maintained relist-aware client only inside the optional first-party adapter after
-its dependency, TLS, proxy, exec-plugin, MSRV, binary-size, resource, lifecycle,
-platform and rollback review. Cloud SDKs are not adopted by default. External
-GitOps, IAM, policy and observability systems remain semantic authorities and
-return only bounded normalized records.
-
-PO5 live logs follow a separate bounded stream path and publish only immutable
-per-source projections with visible gap state. PO6 diagnostic sessions follow a
-separate reviewed-session path to the existing broker. Neither path feeds raw
-content or handles into the evidence graph, pure rules, CP5, or renderer.
-
-The data path is explicit refresh or a bounded adapter-owned observation,
-validation and normalization, a route-scoped immutable evidence graph,
-deterministic assessment/recommendation, registered typed action, hard gates,
-explainable lexicographic ranking, immutable UI projection, CP5 insertion without
-Enter, and, if separately activated, current preflight plus D3 handoff.
-Publication revalidates route, passport, resource UID, evidence, policy, and
-editor generations. Context change, cancellation, revocation, adapter loss,
-route close, uninstall, or shutdown rejects stale work and joins or releases the
-owning resources.
-
-Action authority is deliberately split into four visible contracts:
-
-- **Native shell insertion** and **reviewed insertion** may replace only the
-  authenticated editor span. The shell owns a later Enter and Automexia cannot
-  enforce preflight, policy, observation, verification, receipt, or recovery over
-  what the user subsequently edits or runs manually.
-- **Managed operation** exists only after PO6 plus D3/provider activation. The
-  application owns final revalidation of a one-use exact-action grant and sends
-  one typed action to the broker, then owns observation, stabilization,
-  regression detection, verification, cancellation, receipt, and a separately
-  reviewed recovery proposal.
-- **Managed diagnostic session** uses the same final review and one-use grant
-  boundary, but its typed session descriptor additionally binds endpoint or
-  vantage, image/profile, lifetime, traffic and cleanup. It never becomes a
-  pane-wide mutation grant or a second process/listener owner.
-- Policy may remove or disable PO-provided mutation candidates and managed
-  actions. It cannot prevent a user from typing the same native command directly
-  into an unrestricted shell; product copy and audit claims must never imply
-  otherwise.
-
-No path may silently fall back from managed execution to text insertion, treat a
-manual shell result as managed evidence, or publish a managed success from
-process exit alone.
-
-Automexia-managed production mutations fail closed on stale/unknown context,
-authorization, policy, change-window, GitOps ownership, impact, target, or
-recovery. Active diagnostic sessions also fail closed on unknown target,
-authorization, admission, listener/vantage, image/profile, lifetime or cleanup
-ownership. A production lock freezes the reviewed identity rather than the external
-environment. Kubernetes ownership uses owner-reference kind/name/UID chains,
-not inferred names. Restart, rollback, scale, or failover is never inferred from
-an unhealthy Pod alone; missing or conflicting evidence yields diagnosis or
-refusal.
-
-Provider work is forbidden on typing, PTY, resize, renderer, and startup hot
-paths. PO0 proposes one active generation per pane, bounded candidates and
-frames, namespace-scoped list/watch or polling, shared identical-scope watches,
-process-wide query/object/memory/stream/session ceilings, no raw log/time-series
-evidence cache, memory-only bounded PO5 live logs, no evidence disk cache by
-default, content-minimized session receipts, cancellation, parked idle watchers,
-and CP1 fallback. The proposed values are now frozen for review by the strict
-PO0 machine-contract digest and mutation checker, but they are not accepted
-guarantees until ADR/owner approval and real resource evidence support them.
-
-Initial ranking is model-free. A later optional small local tie-breaker can only
-reorder candidates that already passed deterministic validation and cannot
-create a command, target, capability, approval, or execution request. The
-separate LLM Orchestration extension remains optional and neither the core nor a
-domain extension depends on it.
-
+The public [product summary](SITUATION-AWARE-PRODUCTION-OPERATIONS.md),
+[contract principles](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md),
+[experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md),
+[assurance summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), and
+[proposed ADR 0034](adr/0034-situation-aware-production-operations.md) own the
+published direction. Exact schemas, ranking rules, provider playbooks, state
+machines, limits, and implementation sequence remain local pending review.
 ## Proposed optional LLM Orchestration boundary
 
-LO0 is implemented only as documentation, a proposed ADR, and an evidence plan.
-It adds no workflow-model crate, model/provider dependency, model download,
-action registry, plan executor, MCP mapping, product surface, or runtime
-authority. See the canonical
-[LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md),
-[testing plan](LLM-ORCHESTRATION-TESTING.md), and
-[proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md).
+General LLM workflow support is planned only as a separately installed extension.
+The terminal core, DevOps/SRE features, Automation Studio, diagnostic navigation,
+and future creative extensions remain useful without a model, account, network
+connection, or paid API.
 
-Cross-domain orchestration requires a private pure `automexia-workflow-model`
-below domain extensions and the optional orchestrator. It would own only
-versioned action descriptors, workflow plans, canonical digests, one-run grants,
-structured results, and content-minimized receipts. It has no filesystem,
-process, network, provider, credential, renderer, window, PTY, persistence, or
-model authority. Existing DevOps action types migrate through compatibility
-adapters rather than becoming the universal owner.
+The optional extension owns provider selection and workflow composition. It may
+request only user-approved, versioned capabilities; selected context, provider,
+data destination, cost, retention, target, and risk remain reviewable. Model
+output is untrusted typed data and cannot execute, grant authority, type into the
+PTY, or bypass policy and confirmation.
 
-The desktop application remains the only composition and execution root. It
-builds the current action registry from enabled extensions, independently
-validates and classifies every candidate plan, presents review, grants one exact
-plan digest, revalidates each step, and invokes existing domain brokers. The LLM
-extension owns model/provider adapters, explicit intent, planning, explanation,
-and bounded replanning only. Domain extensions never depend on it and remain
-complete when it is absent, disabled, offline, crashed, or uninstalled.
-
-Model function/tool syntax may transport a candidate plan but never an executable
-callback. No arbitrary shell, implicit Enter, direct provider tool, ambient MCP
-passthrough, or unattended high-risk execution exists in the initial boundary.
-A local or self-hosted endpoint is the first direction; remote adapters are
-explicit choices inside the optional extension, with no required paid API and no
-silent local-to-remote or provider fallback.
-
+The public [extension summary](LLM-ORCHESTRATION-EXTENSION.md),
+[assurance summary](LLM-ORCHESTRATION-TESTING.md), and
+[proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) own the
+published direction. Exact provider, workflow, budget, and delivery contracts
+remain local until implementation review.
 ## Proposed Automation Studio and DevOps/SRE composition boundary
 
-Automation Studio is an AS0 proposal, not a current file editor or runtime.
-[Proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md)
-keeps it as an optional first-party foundation extension embedded beside terminal
-panes, while DevOps/SRE remains a separate domain extension that also works in
-terminal-only mode. A DevOps/SRE Pack is metadata-only convenience; it never
-becomes a capability principal or merges package lifecycle.
+Automation Studio is planned as an independently enabled, in-terminal editor
+extension after the first stable release and before the video-editing extension.
+It is neither a mandatory core component nor an editor embedded inside the
+DevOps/SRE extension. One Studio owner provides editing, recovery, and reviewed
+run surfaces; domain extensions may contribute language and workflow knowledge
+through stable contracts.
 
-The application composition root would own one canonical document service,
-workspace trust, native editor-surface host, language-tool broker, existing
-ExternalToolRunner/session broker, opaque credential references, and redacted
-receipts. Studio owns disposable editor views and presentation. DevOps/SRE owns
-domain templates, public target/risk context, typed plans, and result
-interpretation. Neither receives direct filesystem, process, network,
-credential, provider, renderer, window, accessibility-platform, or PTY handles.
+File, process, language-service, and network work remains capability-gated and
+off terminal hot paths. Script execution uses typed executables and arguments,
+with bounded resources, explicit workspace trust, cancellation, crash recovery,
+disable, uninstall, and external-editor fallback.
 
-CodeMirror 6 and Wry are conditional AS0 candidates, not dependencies approved
-by this page. The native proof must cover the actual Automexia window stack on
-Windows, macOS, Linux X11, and Linux Wayland/GTK, including focus, IME, scaling,
-accessibility, GPU, packaging, crash, and cleanup. Language features would use a
-bounded core LSP 3.18 broker; DAP remains a separately gated later capability.
-
-Future script/tool execution accepts a saved canonical document revision and a
-typed intent that binds exact executable/argv, working directory, Environment
-Capsule, target, opaque secret references, risk, limits, review/plan generation,
-capability, and expiry. Final revalidation is mandatory. There is no command
-string, shell evaluation, implicit Enter, or input to an existing PTY.
-
-The complete ownership, trust, lifecycle, platform, lightweight-profile, and
-AS0-AS6 sequence lives in
-[Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md); its future
-evidence ladder is [Automation Studio testing](AUTOMATION-STUDIO-TESTING.md).
-
-AS0 feasibility may proceed without production integration before the first
-stable v0.4 release. AS1-AS2 follow that release, and the evidenced minimal
-Studio precedes a dedicated video-editing extension. This does not make video a
-Studio add-on: both may reuse generic core-owned workspace, file, task,
-progress, cancellation, recovery, and lifecycle services, while video owns its
-media project, preview, timeline, render, CPU/GPU, and storage boundaries and
-does not depend on Studio editor/webview/LSP internals.
-
-
+The public [architecture summary](AUTOMATION-STUDIO-ARCHITECTURE.md),
+[assurance summary](AUTOMATION-STUDIO-TESTING.md), and
+[proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) own
+the published direction. The dependency decision, internal topology, exact
+limits, and implementation phases remain local until review.
 ## Accessibility boundary
 
 The v0.4 keyboard/focus/contrast/scaling contract, custom-surface inventory,

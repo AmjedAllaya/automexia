@@ -30,7 +30,7 @@ class Cp30ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         self.assertEqual(
             policy.validate_repository(),
-            {"model_files": 5, "shells": 5, "tests": 13, "documents": 5},
+            {"model_files": 5, "shells": 5, "tests": 13, "documents": 3},
         )
 
     def test_resource_expansion_is_rejected(self) -> None:

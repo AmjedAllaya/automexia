@@ -22,6 +22,8 @@ def sha256(value: bytes) -> str:
 
 
 def valid_manifest(*, synthetic: bool = True) -> dict[str, object]:
+    # This fixture deliberately satisfies every contract field. Mutation tests
+    # remove one guarantee at a time and always re-enter the on-disk parser.
     return {
         "schema": 2,
         "evidence_kind": "native-openssh-release",
@@ -153,6 +155,8 @@ def write_manifest(root: Path, document: dict[str, object]) -> Path:
 
 class NativeOpenSshEvidenceTests(unittest.TestCase):
     def validate(self, document: dict[str, object], *, allow_synthetic: bool = True):
+        # Validate serialized bytes instead of calling an internal object checker;
+        # duplicate/size/decoding and file-identity rules belong to this boundary.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "manifest.json"
             path.write_text(json.dumps(document), encoding="utf-8")
@@ -256,6 +260,8 @@ class NativeOpenSshEvidenceTests(unittest.TestCase):
             ),
         ]
         for mutate in mutations:
+            # Preserve the known-good release document while proving each source,
+            # artifact, fixture, and security binding fails independently.
             changed = copy.deepcopy(document)
             mutate(changed)
             with mock.patch.object(
@@ -431,6 +437,8 @@ class NativeOpenSshEvidenceTests(unittest.TestCase):
         expected_commit = "2" * 40
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
+            # Real bytes provide the independent digest oracle. Mocks below replace
+            # only host observations that cannot be made portably in this suite.
             values = {
                 "binary": b"application-binary",
                 "package": b"application-package",
@@ -503,6 +511,8 @@ class NativeOpenSshEvidenceTests(unittest.TestCase):
                 evidence, "load_manifest", wraps=evidence.load_manifest
             ) as load_manifest:
                 result = validate()
+            # The public summary must prove binding without disclosing controlled
+            # artifact paths from the private assurance workspace.
             self.assertEqual(load_manifest.call_count, 1)
             self.assertEqual(result["host_bound"], 1)
             self.assertEqual(result["artifacts"], 8)

@@ -52,19 +52,21 @@ short path to reach a useful first workspace:
 | Look up every config key/default | [Configuration reference](reference/configuration.md) |
 | Understand the technical design | [Architecture overview](developer/architecture.md), [detailed architecture contract](ARCHITECTURE.md) |
 | Audit where every implemented feature belongs | [Implemented feature ownership audit](FEATURE-OWNERSHIP-AUDIT.md), [ADR 0035](adr/0035-core-domain-and-optional-extension-ownership.md) |
-| Review the proposed embedded script editor and DevOps/SRE extension design | [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing and evidence contract](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
-| Review the optional LLM Orchestration architecture | [LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md), [testing and evidence contract](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
-| Review the proposed error-section and failed-command navigation design | [Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [proposed ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) |
-| Review the proposed production investigation, situation-aware completion, incident, and managed-operations design | [Production Operations specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [exact PO0 contracts and 2026 decisions](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [testing and evidence contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), [proposed ADR 0034](adr/0034-situation-aware-production-operations.md) |
-| Run verification or understand release gates | [Testing overview](developer/testing-release.md), [complete testing and evidence contract](TESTING.md), [per-feature reinforcement plan](FEATURE-TEST-REINFORCEMENT.md) |
+| Understand the planned in-terminal script editor | [Automation Studio summary](AUTOMATION-STUDIO-ARCHITECTURE.md), [assurance summary](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
+| Understand the separate optional LLM Orchestration extension | [LLM Orchestration summary](LLM-ORCHESTRATION-EXTENSION.md), [assurance summary](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
+| Understand planned error-section navigation | [Semantic Diagnostic Navigator summary](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [proposed ADR 0032](adr/0032-bounded-semantic-diagnostic-navigation.md) |
+| Understand planned production investigation and situation-aware guidance | [Production Operations summary](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [public contract principles](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [assurance summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), [proposed ADR 0034](adr/0034-situation-aware-production-operations.md) |
+| Run verification or understand release gates | [Testing overview](developer/testing-release.md), [CI implementation audit](CI-ASSURANCE.md), [complete testing and evidence contract](TESTING.md), [per-feature reinforcement plan](FEATURE-TEST-REINFORCEMENT.md) |
+| Run the GitHub-Free local security and release profiles | [Testing and assurance](TESTING.md#nightly-and-release-depth), [GitHub-Free private setup](../.github/FREE-PRIVATE-PRODUCTION-SETUP.md#91-local-assurance-before-a-push) |
+| Understand Linux Early Access packaging and public downloads | [Public release distribution](PUBLIC-RELEASE-DISTRIBUTION.md), [release trust](RELEASE-TRUST.md), [ADR 0037](adr/0037-public-binary-release-distribution.md) |
 | Audit completed-output grouping and its validation incident | [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md) |
 | Review UI branding implementation and exact U10 release evidence | [UI branding roadmap](UI-BRANDING-ROADMAP.md), [U10 assurance audit](research/U10-UI-BRANDING-ASSURANCE-AUDIT.md) |
-| Configure or audit controlled F5 native OpenSSH evidence | [F5 native OpenSSH assurance](F5-NATIVE-OPENSSH-ASSURANCE.md), [D0/D3/D5 and stable-release completion audit](research/D0-D3-D5-MANAGED-SSH-AND-STABLE-RELEASE-AUDIT.md) |
+| Configure or audit controlled F5 native OpenSSH evidence | [F5 native OpenSSH assurance](F5-NATIVE-OPENSSH-ASSURANCE.md) |
 | Audit stable-release blockers or restore hosted CI and repository protection | [Section 12 completion audit](research/STABLE-RELEASE-AND-REPOSITORY-BLOCKERS-AUDIT.md), [repository protection guide](../.github/BRANCH-PROTECTION.md), [ADR 0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) |
-| Review stabilization/S1/S2 status and external evidence | [Stabilization roadmap](STABILIZATION-ROADMAP.md), [S1 native/visual/resource/accessibility audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md), [S2 release-ratchet completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md), [historical S1/S2 implementation audit](research/S1-S2-IMPLEMENTATION-AUDIT.md) |
-| See future work / decision history | [Canonical roadmap](ROADMAP.md), [canonical decision index](DECISIONS.md), [condensed project overview](project/roadmap.md) |
-| Review reconciled research and proposals | [Aligned research/proposal pack](../automexia_docs_repository_aligned/README.md) - non-authoritative until integrated into a canonical owner |
-| Follow the detailed SSH and multi-cloud implementation phases | [SSH, connectivity, multi-environment, and multi-cloud plan](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md), [provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
+| Review stabilization status and external evidence | [Stabilization direction](STABILIZATION-ROADMAP.md), [S1 native/visual/resource/accessibility audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md), [S2 release-ratchet completion audit](research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md), [historical S1/S2 implementation audit](research/S1-S2-IMPLEMENTATION-AUDIT.md) |
+| See future direction / decision history | [Public roadmap](ROADMAP.md), [canonical decision index](DECISIONS.md), [condensed project overview](project/roadmap.md) |
+| Understand what is public and what stays local | [Public/private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md) |
+| Understand SSH and multi-cloud direction | [SSH and multi-cloud delivery summary](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md), [provider status summary](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 
 ## What is available today
 
@@ -93,20 +95,20 @@ runtime, CP6 model suggestions, and optional LLM orchestration authority.
 | Typed Quick Actions and opt-in aliases | **Implemented locally; release evidence still gated** | [Shell and command productivity](guide/shell-productivity.md) |
 | Provider-aware Quick Actions (CP4) | **Product-integrated and nonactivating; provider refresh/execution not activated** | [Commands and shell](user-guide/commands-and-shell.md#provider-aware-quick-actions), [CP4 audit](PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md), [testing](TESTING.md#m13-provider-aware-quick-actions) |
 | Optional Automexia autocomplete surface | **Accepted source work partial overall; CP5.1-CP5.4 source/local models and CP5.5 inert bridge source done, preview disabled, native release gates open** | [CP5 testing](CP5-SUGGESTION-TESTING.md), [CP5 implementation audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md), [accepted ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md), [CP5.0 research](research/CP5-AUTOCOMPLETE-RESEARCH.md) |
-| Semantic diagnostic and failed-command navigation | **DN0 design partially done; no action, detector, setting, or product UI exists** | [Proposed specification](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [Roadmap](ROADMAP.md#post-v04-semantic-diagnostic-navigation-dn0-dn6) |
-| Situation-aware production operations and investigation | **PO0 detailed proposal/checker only; passports, explain/change/compare/network/SLO views, situation-aware candidates, Incident Mode, managed operations/diagnostic sessions, runbooks, cross-environment comparison, and all PO1-PO8 runtime behavior are not implemented** | [Proposed specification](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [exact proposed contracts](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [detailed UX/build blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), [Roadmap](ROADMAP.md#post-v051-situation-aware-production-operations-po0-po8) |
+| Semantic diagnostic and failed-command navigation | **Planned; no general action, detector, setting, or product UI exists** | [Public summary](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md), [Roadmap](ROADMAP.md) |
+| Situation-aware production operations and investigation | **Planned; no production-guidance runtime or managed operation exists** | [Public summary](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [contract principles](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [experience](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md), [Roadmap](ROADMAP.md) |
 | Static OpenSSH inventory, read-only Hub, and disabled direct-review preparation | **Implemented locally; release evidence gated; no launch authority** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md) |
 | Connection Hub records, pending selected-host review, and dry-run models | **Implemented locally; authority disabled** | [Remote connections](guide/remote-connections.md) |
-| Recipes and multi-environment workspace review (M6) | **Hardened CLI and Hub review/editor surface implemented; execution disabled by D3/M5 gates** | [Connection automation](SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation), [workspace guide](user-guide/connection-hub-and-ssh.md#review-only-workspaces-and-broadcast), [stable-release audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md), [M6 roadmap](ROADMAP.md) |
-| Managed OpenSSH sessions | **Source and assurance path implemented locally; production activation and real native evidence blocked** | [Remote connections](guide/remote-connections.md), [F5 assurance](F5-NATIVE-OPENSSH-ASSURANCE.md), [completion audit](research/D0-D3-D5-MANAGED-SSH-AND-STABLE-RELEASE-AUDIT.md), [Roadmap](ROADMAP.md) |
-| AWS provider source contracts | **Stable local contract implemented, not activated; real provider/native/release evidence external** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M8 testing](TESTING.md#m8-aws-adapter-source-contracts), [stable provider gate](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-stable-release-semantic-and-hostile-input-gate) |
-| Azure provider source contracts | **Stable local contract implemented, not activated; real provider/native/release evidence external** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M9 testing](TESTING.md#m9-azure-adapter-source-contracts), [stable provider gate](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-stable-release-semantic-and-hostile-input-gate) |
+| Recipes and multi-environment workspace review | **CLI and Hub review/editor foundations implemented; execution remains gated** | [Connection automation](SSH-CONNECTION-AUTOMATION.md), [workspace guide](user-guide/connection-hub-and-ssh.md#review-only-workspaces-and-broadcast), [Roadmap](ROADMAP.md) |
+| Managed OpenSSH sessions | **Planned** | [Remote connections](guide/remote-connections.md), [Roadmap](ROADMAP.md) |
+| AWS provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M8 testing](TESTING.md#m8-aws-adapter-source-contracts) |
+| Azure provider source contracts | **Implemented internally, not activated** | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [M9 testing](TESTING.md#m9-azure-adapter-source-contracts) |
 | Google Cloud provider source contracts | **Implemented internally, not activated** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m10-google-cloud-adapter-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 | Kubernetes/OpenShift source contracts | **Implemented internally, not activated** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m11-kubernetes-and-openshift-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 | Teleport adapter / OpenBao adapter | **Teleport implemented internally, not activated / OpenBao blocked on ADR 0024** | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m12-teleport-source-contracts), [Provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
 | Public extension SDK, sandbox, and CP6 selected-input model suggestions | **Accepted source implementation complete locally; activation/downloads/provider calls disabled; native/release gates open** | [Safety boundary](ECOSYSTEM-PLATFORM.md), [testing](ECOSYSTEM-PLATFORM-TESTING.md), [implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md), [accepted ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md) |
-| Optional LLM Orchestration extension | **LO0 documentation proposal only; LO1-LO5 and all runtime behavior not implemented** | [Specification](LLM-ORCHESTRATION-EXTENSION.md), [testing](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
-| Embedded Automation Studio file editor, language servers, and DevOps/SRE script execution | **Architecture and test proposal only; no implementation or product UI** | [Architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
+| Optional LLM Orchestration extension | **Planned; no runtime behavior is implemented** | [Public summary](LLM-ORCHESTRATION-EXTENSION.md), [testing](LLM-ORCHESTRATION-TESTING.md), [proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
+| Embedded Automation Studio file editor, language services, and DevOps/SRE script execution | **Planned after the first stable release; no implementation or product UI** | [Public summary](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing](AUTOMATION-STUDIO-TESTING.md), [proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
 | Specialized workflow extensions, including media and video | **Research direction only; no product runtime or editing claim** | [Product vision](PRODUCT-VISION.md#long-term-direction), [Roadmap](ROADMAP.md#future-specialized-workflow-domains) |
 
 ## Where Automexia is heading
@@ -129,26 +131,26 @@ extensions, and no orchestration runtime exists today. The
 [roadmap](ROADMAP.md) owns sequencing and the [feature catalog](FEATURES.md)
 owns availability.
 
-The planned product order is the first stable terminal, shared extension and
-DevOps foundations, a small neutral workflow contract, a minimal Studio release,
-then a dedicated video-editing extension. Orchestration may proceed after the
-neutral contract is proven, independently of Studio and video. Research may
-overlap, but video remains a separate domain built on generic workspace and task
-services rather than Studio-specific editor or LLM code.
+The broad order is the first stable terminal, mature DevOps and extension
+foundations, diagnostic and production-awareness workflows, an optional
+Automation Studio release, and then dedicated creative extensions such as video
+editing. Optional LLM Orchestration can evolve independently after the shared
+capability and review boundaries are proven. Research may overlap, but no domain
+becomes a hidden dependency of another.
 
 
 ## Documentation model
 
-The set intentionally separates six kinds of information:
+The set intentionally separates six kinds of public information:
 
 - **User Guide** pages teach practical use, choices, commands, shortcuts, and end-to-end workflows.
 - **Guide** pages explain deeper product behavior and specialized workflows without becoming exact schema tables.
 - **Reference** pages contain exact settings, bindings, commands, defaults, and limits.
 - **Developer** pages explain architecture, security boundaries, testing, and release trust.
-- **Project** pages summarize roadmap and decision history for readers. The complete machine-enforced status register and ADR set remain the canonical owners linked above; project summaries are not instructions for current product behavior.
-- **Research/proposal pack** pages preserve evidence, alternatives, and candidate plans. They are inputs to canonical documentation and ADR review, not product instructions or implementation proof.
+- **Project** pages summarize high-level roadmap and decision history for readers; they are not instructions for current product behavior.
+- **Public proposals** explain user value and safety boundaries without exposing exact unreleased algorithms, provider recipes, state machines, or execution ledgers.
 
-The original documentation mixed these roles heavily. The [source consolidation map](project/source-map.md) records that reorganization and the later restoration of detailed, machine-enforced owners; it is a provenance map, not a competing authority list.
+The original documentation mixed these roles heavily. The [source consolidation map](project/source-map.md) records that reorganization, while the [public/private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md) defines what must stay out of version control.
 
 ## CP3.3 evidence
 

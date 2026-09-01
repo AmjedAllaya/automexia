@@ -1093,10 +1093,9 @@ def validate_documents(root: Path = ROOT) -> dict[str, int]:
     require_text(
         root / "docs/STABILIZATION-ROADMAP.md",
         {
-            "### CP0 implementation ledger",
-            "CP0 result: satisfied",
-            "14 hard ceilings",
-            "11-case hostile corpus",
+            "## Command productivity delivery track",
+            "[Command Productivity](COMMAND-PRODUCTIVITY.md)",
+            "current implemented contract and release limitations",
         },
     )
     return {"documents": 5}
@@ -1112,7 +1111,7 @@ def validate_wiring(root: Path = ROOT) -> dict[str, int]:
             'run_python("tools/ci/check_command_productivity.py")?',
         },
         ".github/workflows/ci.yml": {
-            "python tools/ci/test_command_productivity.py",
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
         },
         "tools/ci/test_command_productivity.py": {
             "cp0-hostile-mutations-v1.json",

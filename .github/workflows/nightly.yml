@@ -1,350 +1,406 @@
-name: Nightly depth
-
+name: Deep assurance (manual)
 on:
-  schedule:
-    - cron: '41 2 * * *'
-  workflow_dispatch:
-
+  workflow_dispatch: {}
 permissions:
   contents: read
-
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-
+  AUTOMEXIA_RUST_TOOLCHAIN: 1.98.0
 jobs:
   native-gui-resize-stress:
     name: Native Windows GUI resize and history latency
     if: vars.AUTOMEXIA_NATIVE_GUI_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-gpu]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-gpu
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Exercise history, clones, real window, ConPTY, and renderer snapshots
-        shell: pwsh
-        run: cargo xtask test session-clone --native-windows
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Exercise history, clones, real window, ConPTY, and renderer snapshots
+      shell: pwsh
+      run: cargo xtask test session-clone --native-windows
+    timeout-minutes: 60
   native-windows-deep:
     name: Windows AppVerifier, WPR, and resource lifetime
     if: vars.AUTOMEXIA_WINDOWS_DEEP_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-elevated]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-gpu
+    - automexia-elevated
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Application Verifier Basics and native lifecycle stress
-        shell: pwsh
-        run: tests/integration/appverifier-windows.ps1 -OutputDirectory target/native-deep/appverifier
-      - name: WPR resource trace and bounded manifest
-        shell: pwsh
-        run: tests/integration/wpr-windows.ps1 -OutputDirectory target/native-deep/wpr -DeleteTraceAfterManifest
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: automexia-windows-deep-evidence
-          path: |
-            target/native-deep/**/*.json
-            target/native-deep/**/*.xml
-          if-no-files-found: error
-          retention-days: 7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Application Verifier Basics and native lifecycle stress
+      shell: pwsh
+      run: tests/integration/appverifier-windows.ps1 -OutputDirectory target/native-deep/appverifier
+    - name: WPR resource trace and bounded manifest
+      shell: pwsh
+      run: tests/integration/wpr-windows.ps1 -OutputDirectory target/native-deep/wpr -DeleteTraceAfterManifest
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      if: always()
+      with:
+        name: automexia-windows-deep-evidence
+        path: 'target/native-deep/**/*.json
 
+          target/native-deep/**/*.xml
+
+          '
+        if-no-files-found: error
+        retention-days: 7
+    timeout-minutes: 60
   native-wsl-session-clone:
     name: Native WSL session clone
     if: vars.AUTOMEXIA_WSL_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-wsl]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-wsl
     env:
       AUTOMEXIA_TEST_WSL_DISTRO: ${{ vars.AUTOMEXIA_TEST_WSL_DISTRO }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Clone the configured WSL distro without a PowerShell fallback
-        shell: pwsh
-        run: cargo xtask test session-clone --native-wsl
-      - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {
-            throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'
-          }
-          $workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()
-          if ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {
-            throw 'could not resolve the checked-out workspace inside WSL'
-          }
-          & wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- "$1"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace
-          if ($LASTEXITCODE -ne 0) {
-            throw 'CP3.1 WSL shell lifecycle validation failed'
-          }
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Clone the configured WSL distro without a PowerShell fallback
+      shell: pwsh
+      run: cargo xtask test session-clone --native-wsl
+    - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
+      shell: pwsh
+      run: "if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {\n  throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'\n}\n$workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()\nif ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {\n  throw 'could not resolve the checked-out workspace inside WSL'\n}\n& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- \"$1\"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace\nif ($LASTEXITCODE -ne 0) {\n  throw 'CP3.1 WSL shell lifecycle validation failed'\n}\n"
+    timeout-minutes: 60
   fuzz:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     strategy:
       fail-fast: false
       matrix:
-        target: [vt_parser, osc_metadata, control_string_bounds, image_decoder, openssh_inventory, config_migration, semantic_classification, label_sanitization, quick_action_projection, quick_action_packs, quick_action_imports, connection_planning, ecosystem_bundle, ghostty_keybindings, ghostty_migration, multicloud_provider_inputs]
+        target:
+        - vt_parser
+        - osc_metadata
+        - control_string_bounds
+        - image_decoder
+        - openssh_inventory
+        - config_migration
+        - semantic_classification
+        - label_sanitization
+        - quick_action_projection
+        - quick_action_packs
+        - quick_action_imports
+        - connection_planning
+        - ecosystem_bundle
+        - ghostty_keybindings
+        - ghostty_migration
+        - multicloud_provider_inputs
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install the nightly compiler required by libFuzzer
-        run: rustup toolchain install nightly --profile minimal
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-fuzz@0.13.1
-      - name: Fuzz ${{ matrix.target }} with nightly
-        if: matrix.target != 'multicloud_provider_inputs'
-        run: cargo +nightly fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
-      - name: Fuzz isolated multi-cloud parsers with nightly
-        if: matrix.target == 'multicloud_provider_inputs'
-        run: cargo +nightly fuzz run --no-default-features --features multicloud-provider-inputs multicloud_provider_inputs --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15 -max_len=1048577
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Install the nightly-2026-08-25 compiler required by libFuzzer
+      run: rustup toolchain install nightly-2026-08-25 --profile minimal
+    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+      with:
+        tool: cargo-fuzz@0.13.1
+    - name: Fuzz ${{ matrix.target }} with nightly-2026-08-25
+      if: matrix.target != 'multicloud_provider_inputs'
+      run: cargo +nightly-2026-08-25 fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
+    - name: Fuzz isolated multi-cloud parsers with nightly-2026-08-25
+      if: matrix.target == 'multicloud_provider_inputs'
+      run: cargo +nightly-2026-08-25 fuzz run --no-default-features --features multicloud-provider-inputs multicloud_provider_inputs --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15 -max_len=1048577
   miri:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
-      # rio-vt intentionally tests bounded temporary-file image transports.
-      # Miri still checks UB; the ephemeral runner supplies the filesystem sandbox.
       MIRIFLAGS: -Zmiri-disable-isolation
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install nightly --profile minimal --component miri
-      - name: Bounded pure VT memory-safety suite
-        run: |
-          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked simd_utf8::tests
-          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked simd_base64::tests
-          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked performer::parser::tests
-          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_file_transmission_medium
-          cargo +nightly miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_temp_file_transmission_medium
-      - name: Pure Phase 1 contracts, UI policy, and lifecycle state
-        run: |
-          cargo +nightly miri test -p automexia-extension-api -p automexia-ui-model --lib
-          cargo +nightly miri test -p automexia-extension-runtime --lib rebind
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - run: rustup toolchain install nightly-2026-08-25 --profile minimal --component miri
+    - name: Bounded pure VT memory-safety suite
+      run: 'cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked simd_utf8::tests
 
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked simd_base64::tests
+
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked performer::parser::tests
+
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_file_transmission_medium
+
+        cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked ansi::kitty_graphics_protocol::tests::test_temp_file_transmission_medium
+
+        '
+    - name: Pure Phase 1 contracts, UI policy, and lifecycle state
+      run: 'cargo +nightly-2026-08-25 miri test -p automexia-extension-api -p automexia-ui-model --lib
+
+        cargo +nightly-2026-08-25 miri test -p automexia-extension-runtime --lib rebind
+
+        '
   sanitizers:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
-        sanitizer: [address, thread]
+        sanitizer:
+        - address
+        - thread
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup toolchain install nightly --profile minimal --component rust-src
-      - env:
-          RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
-          RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
-        run: |
-          cargo +nightly test -p rio-vt --lib --no-default-features -Zbuild-std --target x86_64-unknown-linux-gnu
-          cargo +nightly test -p automexia-image --lib -Zbuild-std --target x86_64-unknown-linux-gnu
-          cargo +nightly test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - run: rustup toolchain install nightly-2026-08-25 --profile minimal --component rust-src
+    - env:
+        RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+        RUSTDOCFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
+      run: 'cargo +nightly-2026-08-25 test -p rio-vt --lib --no-default-features -Zbuild-std --target x86_64-unknown-linux-gnu
 
+        cargo +nightly-2026-08-25 test -p automexia-image --lib -Zbuild-std --target x86_64-unknown-linux-gnu
+
+        cargo +nightly-2026-08-25 test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models
+
+        '
+    timeout-minutes: 90
   benchmark-build:
     name: Benchmark targets compile
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 45
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install benchmark build dependencies
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
-      - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - name: Install benchmark build dependencies
+      run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+    - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked
   benchmarks-controlled:
     name: Execute latency benchmarks on named controlled Linux hardware
     if: vars.AUTOMEXIA_BENCHMARK_RUNNER == '1'
-    runs-on: [self-hosted, Linux, X64, automexia-benchmark]
+    runs-on:
+    - self-hosted
+    - Linux
+    - X64
+    - automexia-benchmark
     timeout-minutes: 180
     env:
       AUTOMEXIA_QA_BENCHMARKS: '1'
       AUTOMEXIA_QA_RUN_LABEL: s2-linux-${{ github.run_id }}-${{ github.run_attempt }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
-      - name: Execute and retain Criterion measurements
-        run: cargo xtask qa --full --bundle
-      - name: Normalize classified latency evidence
-        run: |
-          mkdir -p target/performance
-          measured_at="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
-          python tools/ci/performance_assurance.py collect-criterion \
-            --criterion-root "target/qa/${AUTOMEXIA_QA_RUN_LABEL}/benchmark-target/criterion" \
-            --output target/performance/candidate-linux.json \
-            --commit "$GITHUB_SHA" \
-            --measured-at-utc "$measured_at" \
-            --operator "$GITHUB_ACTOR" \
-            --runner-class "${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}" \
-            --os linux \
-            --arch x86_64 \
-            --cpu "${{ vars.AUTOMEXIA_PERFORMANCE_CPU }}" \
-            --gpu "${{ vars.AUTOMEXIA_PERFORMANCE_GPU }}" \
-            --power-mode "${{ vars.AUTOMEXIA_PERFORMANCE_POWER_MODE }}" \
-            --toolchain "$(rustc --version)" \
-            --profile criterion-release-linux \
-            --require-classified
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: automexia-controlled-linux-benchmark-evidence
-          path: |
-            target/performance/candidate-linux.json
-            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}/benchmark-target/criterion/**
-            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
-          if-no-files-found: error
-          retention-days: 90
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+      with:
+        tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
+    - name: Execute and retain Criterion measurements
+      run: cargo xtask qa --full --bundle
+    - name: Normalize classified latency evidence
+      run: "mkdir -p target/performance\nmeasured_at=\"$(date -u +'%Y-%m-%dT%H:%M:%SZ')\"\npython tools/ci/performance_assurance.py collect-criterion \\\n  --criterion-root \"target/qa/${AUTOMEXIA_QA_RUN_LABEL}/benchmark-target/criterion\" \\\n  --output target/performance/candidate-linux.json \\\n  --commit \"$GITHUB_SHA\" \\\n  --measured-at-utc \"$measured_at\" \\\n  --operator \"$GITHUB_ACTOR\" \\\n  --runner-class \"${{ vars.AUTOMEXIA_PERFORMANCE_RUNNER_CLASS }}\" \\\n  --os linux \\\n  --arch x86_64 \\\n  --cpu \"${{ vars.AUTOMEXIA_PERFORMANCE_CPU }}\" \\\n  --gpu \"${{ vars.AUTOMEXIA_PERFORMANCE_GPU }}\" \\\n  --power-mode \"${{ vars.AUTOMEXIA_PERFORMANCE_POWER_MODE }}\" \\\n  --toolchain \"$(rustc --version)\" \\\n  --profile criterion-release-linux \\\n  --require-classified\n"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: automexia-controlled-linux-benchmark-evidence
+        path: 'target/performance/candidate-linux.json
 
+          target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}/benchmark-target/criterion/**
+
+          target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
+
+          '
+        if-no-files-found: error
+        retention-days: 90
   performance-controlled-windows:
     name: Collect complete S2 latency and memory evidence
     if: vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-benchmark]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-gpu
+    - automexia-benchmark
     timeout-minutes: 240
     env:
       AUTOMEXIA_QA_BENCHMARKS: '1'
       AUTOMEXIA_QA_RUN_LABEL: s2-windows-${{ github.run_id }}-${{ github.run_attempt }}
       AUTOMEXIA_NATIVE_RESOURCE_REPORT: ${{ github.workspace }}\target\performance\native-resource.json
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
-      - name: Execute native GUI resource stress and controlled benchmarks
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path target/performance | Out-Null
-          cargo xtask test resize-stress --native-gui
-          if ($LASTEXITCODE -ne 0) { throw 'native resource assurance failed' }
-          cargo xtask qa --full --bundle
-          if ($LASTEXITCODE -ne 0) { throw 'controlled benchmark assurance failed' }
-      - name: Normalize, compose, and evaluate S2 evidence
-        shell: pwsh
-        run: |
-          $measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-          $toolchain = (& rustc --version).Trim()
-          $runner = @(
-            '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',
-            '--os', 'windows',
-            '--arch', 'x86_64',
-            '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',
-            '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',
-            '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',
-            '--toolchain', $toolchain,
-            '--profile', 'criterion-release-native-gui'
-          )
-          & python tools/ci/performance_assurance.py collect-native-resource `
-            --report target/performance/native-resource.json `
-            --output target/performance/native-memory.json `
-            --commit $env:GITHUB_SHA `
-            --operator $env:GITHUB_ACTOR `
-            --measured-at-utc $measuredAt @runner
-          if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }
-          & python tools/ci/performance_assurance.py collect-criterion `
-            --criterion-root "target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion" `
-            --supplemental target/performance/native-memory.json `
-            --output target/performance/candidate-windows.json `
-            --commit $env:GITHUB_SHA `
-            --operator $env:GITHUB_ACTOR `
-            --measured-at-utc $measuredAt `
-            --require-classified @runner
-          if ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }
-          & python tools/ci/performance_assurance.py evaluate `
-            --candidate target/performance/candidate-windows.json `
-            --expected-commit $env:GITHUB_SHA `
-            --output target/performance/comparison-windows.json
-          if ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: automexia-s2-windows-performance-evidence
-          path: |
-            target/performance/*.json
-            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}/benchmark-target/criterion/**
-            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
-          if-no-files-found: error
-          retention-days: 90
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+      with:
+        tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
+    - name: Execute native GUI resource stress and controlled benchmarks
+      shell: pwsh
+      run: 'New-Item -ItemType Directory -Force -Path target/performance | Out-Null
+
+        cargo xtask test resize-stress --native-gui
+
+        if ($LASTEXITCODE -ne 0) { throw ''native resource assurance failed'' }
+
+        cargo xtask qa --full --bundle
+
+        if ($LASTEXITCODE -ne 0) { throw ''controlled benchmark assurance failed'' }
+
+        '
+    - name: Normalize, compose, and evaluate S2 evidence
+      shell: pwsh
+      run: "$measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')\n$toolchain = (& rustc --version).Trim()\n$runner = @(\n  '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',\n  '--os', 'windows',\n  '--arch', 'x86_64',\n  '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',\n  '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',\n  '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',\n  '--toolchain', $toolchain,\n  '--profile', 'criterion-release-native-gui'\n)\n& python tools/ci/performance_assurance.py collect-native-resource `\n  --report target/performance/native-resource.json `\n  --output target/performance/native-memory.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt @runner\nif ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }\n& python tools/ci/performance_assurance.py collect-criterion `\n  --criterion-root \"target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion\" `\n  --supplemental target/performance/native-memory.json `\n  --output target/performance/candidate-windows.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt `\n  --require-classified @runner\nif ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }\n& python tools/ci/performance_assurance.py evaluate `\n  --candidate target/performance/candidate-windows.json `\n  --expected-commit $env:GITHUB_SHA `\n  --output target/performance/comparison-windows.json\nif ($LASTEXITCODE -ne 0) { throw 'performance comparison failed' }\n"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      if: always()
+      with:
+        name: automexia-s2-windows-performance-evidence
+        path: 'target/performance/*.json
+
+          target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}/benchmark-target/criterion/**
+
+          target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
+
+          '
+        if-no-files-found: error
+        retention-days: 90
   unsigned-windows:
-    name: Unsigned Windows ${{ matrix.target }}
-    runs-on: windows-latest
+    name: Unsigned Windows release-candidate builds
+    runs-on: windows-2025
     strategy:
       fail-fast: false
       matrix:
-        target: [x86_64-pc-windows-msvc, aarch64-pc-windows-msvc]
+        target:
+        - x86_64-pc-windows-msvc
+        - aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup target add ${{ matrix.target }}
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        with:
-          tool: cargo-packager@0.11.8
-      - run: cargo build --release --locked -p automexia-terminal --target ${{ matrix.target }}
-      - name: Build unsigned MSI and portable ZIP
-        shell: pwsh
-        run: |
-          $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
-          cargo xtask package --target ${{ matrix.target }}
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: automexia-nightly-${{ matrix.target }}
-          path: |
-            target/package/${{ matrix.target }}/*.msi
-            target/package/${{ matrix.target }}/*.zip
-          if-no-files-found: error
-          retention-days: 7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - run: rustup target add ${{ matrix.target }}
+    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+      if: matrix.target == 'x86_64-pc-windows-msvc'
+      with:
+        tool: cargo-packager@0.11.8
+    - run: cargo build --release --locked -p automexia-terminal --target ${{ matrix.target }}
+    - name: Build unsigned MSI and portable ZIP
+      shell: pwsh
+      run: '$env:AUTOMEXIA_PACKAGE_SKIP_BUILD = ''1''
 
+        cargo xtask package --target ${{ matrix.target }}
+
+        '
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: automexia-nightly-${{ matrix.target }}
+        path: 'target/package/${{ matrix.target }}/*.msi
+
+          target/package/${{ matrix.target }}/*.zip
+
+          '
+        if-no-files-found: error
+        retention-days: 7
+    timeout-minutes: 90
   unsigned-linux:
-    name: Unsigned Linux ${{ matrix.target }}
-    runs-on: ubuntu-latest
+    name: Unsigned Linux release-candidate builds
+    runs-on: ${{ matrix.runner }}
+    env:
+      AUTOMEXIA_LINUX_GLIBC_MAX: '2.35'
     strategy:
       fail-fast: false
       matrix:
         include:
-          - target: x86_64-unknown-linux-gnu
-            arch: amd64
-          - target: aarch64-unknown-linux-gnu
-            arch: arm64
+        - runner: ubuntu-24.04
+          expected_runner_arch: X64
+          target: x86_64-unknown-linux-gnu
+          arch: amd64
+        - runner: ubuntu-24.04-arm
+          expected_runner_arch: ARM64
+          target: aarch64-unknown-linux-gnu
+          arch: arm64
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: sudo apt-get update && sudo apt-get install -y appstream desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
-      - run: rustup target add ${{ matrix.target }}
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cross@0.2.5
-      - name: Install pinned nFPM
-        run: |
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Build release binary
-        run: |
-          if [[ "${{ matrix.target }}" == aarch64-* ]]; then
-            cross build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
-          else
-            cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
-          fi
-      - name: Build unsigned DEB, RPM, and portable archive
-        run: |
-          export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
-          cargo xtask package --target "${{ matrix.target }}"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: automexia-nightly-${{ matrix.target }}
-          path: |
-            target/package/${{ matrix.target }}/*.deb
-            target/package/${{ matrix.target }}/*.rpm
-            target/package/${{ matrix.target }}/*.tar.gz
-          if-no-files-found: error
-          retention-days: 7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - run: sudo apt-get update && sudo apt-get install -y appstream binutils desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
+    - name: Require the intended native architecture
+      run: test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
+    - run: rustup target add ${{ matrix.target }}
+    - name: Install pinned nFPM
+      run: 'go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
 
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+        '
+    - name: Build and smoke native release binary
+      run: 'set -euo pipefail
+
+        cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
+
+        binary="target/${{ matrix.target }}/release/automexia"
+
+        "$binary" --version
+
+        required=$(readelf --version-info "$binary" | grep -oE ''GLIBC_[0-9]+(\.[0-9]+)+'' | sed ''s/^GLIBC_//'' | sort -Vu | tail -n 1 || true)
+
+        test -n "$required"
+
+        newest=$(printf ''%s\n%s\n'' "$required" "$AUTOMEXIA_LINUX_GLIBC_MAX" | sort -V | tail -n 1)
+
+        test "$newest" = "$AUTOMEXIA_LINUX_GLIBC_MAX"
+
+        ldd_output=$(ldd "$binary" 2>&1 || true)
+
+        ! grep -q ''not found'' <<<"$ldd_output"
+
+        '
+    - name: Build unsigned DEB, RPM, and portable archive
+      run: 'export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
+
+        cargo xtask package --target "${{ matrix.target }}"
+
+        '
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: automexia-nightly-${{ matrix.target }}
+        path: 'target/package/${{ matrix.target }}/*.deb
+
+          target/package/${{ matrix.target }}/*.rpm
+
+          target/package/${{ matrix.target }}/*.tar.gz
+
+          '
+        if-no-files-found: error
+        retention-days: 7
+    timeout-minutes: 90
   unsigned-macos:
     name: Unsigned macOS universal
-    runs-on: macos-latest
+    runs-on: macos-26
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-packager@0.11.8
-      - run: |
-          cargo build --release --locked -p automexia-terminal --target x86_64-apple-darwin
-          cargo build --release --locked -p automexia-terminal --target aarch64-apple-darwin
-          mkdir -p target/release
-          lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia -output target/release/automexia
-          cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: automexia-nightly-macos-universal
-          path: |
-            target/package/*.app
-            target/package/*.dmg
-          if-no-files-found: error
-          retention-days: 7
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+    - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
+    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+      with:
+        tool: cargo-packager@0.11.8
+    - run: 'cargo build --release --locked -p automexia-terminal --target x86_64-apple-darwin
+
+        cargo build --release --locked -p automexia-terminal --target aarch64-apple-darwin
+
+        mkdir -p target/release
+
+        lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia -output target/release/automexia
+
+        cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
+
+        '
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: automexia-nightly-macos-universal
+        path: 'target/package/*.app
+
+          target/package/*.dmg
+
+          '
+        if-no-files-found: error
+        retention-days: 7
+    timeout-minutes: 90

@@ -22,6 +22,8 @@ ROOT = MODULE_PATH.parents[2]
 
 class RuntimeTrustTests(unittest.TestCase):
     def read(self, path: str) -> str:
+        # Source mutations deliberately traverse the checker-facing repository
+        # text; they are not substitutes for runtime tests of the owning adapters.
         return (ROOT / path).read_text(encoding="utf-8")
 
     def test_current_repository_satisfies_the_contract(self) -> None:
@@ -125,12 +127,21 @@ class RuntimeTrustTests(unittest.TestCase):
     def test_unsigned_script_packaging_is_rejected(self) -> None:
         workflow = yaml.safe_load(self.read(".github/workflows/release.yml"))
         altered = copy.deepcopy(workflow)
-        altered["jobs"]["package-windows"]["steps"] = [
+        altered["jobs"]["sign-windows-runtime"]["steps"] = [
             step
-            for step in altered["jobs"]["package-windows"]["steps"]
-            if step.get("name") != "Sign PowerShell assets with Azure Artifact Signing"
+            for step in altered["jobs"]["sign-windows-runtime"]["steps"]
+            if step.get("name") != "Sign runtime inputs with Azure Artifact Signing"
         ]
         with self.assertRaisesRegex(TRUST.RuntimeTrustError, "recursively sign"):
+            TRUST.validate_release(altered)
+
+    def test_packaging_cannot_bypass_isolated_signed_runtime_inputs(self) -> None:
+        workflow = yaml.safe_load(self.read(".github/workflows/release.yml"))
+        altered = copy.deepcopy(workflow)
+        altered["jobs"]["package-windows-unsigned"]["needs"].remove(
+            "sign-windows-runtime"
+        )
+        with self.assertRaisesRegex(TRUST.RuntimeTrustError, "revalidate"):
             TRUST.validate_release(altered)
 
     def test_publication_cannot_bypass_cold_build_comparison(self) -> None:
@@ -140,16 +151,32 @@ class RuntimeTrustTests(unittest.TestCase):
         with self.assertRaisesRegex(TRUST.RuntimeTrustError, "cold-build reproducibility"):
             TRUST.validate_release(altered)
 
+    def test_cold_build_evidence_must_use_the_canonical_script(self) -> None:
+        workflow = yaml.safe_load(self.read(".github/workflows/release.yml"))
+        altered = copy.deepcopy(workflow)
+        for step in altered["jobs"]["reproducibility-linux"]["steps"]:
+            if step.get("name") == "Verify two independent cold source builds":
+                step["run"] = "echo skipped"
+                break
+        else:
+            self.fail("canonical cold-build step missing from release workflow fixture")
+        with self.assertRaisesRegex(TRUST.RuntimeTrustError, "cold-build reproducibility"):
+            TRUST.validate_release(altered)
+
     def test_mutable_or_overwriting_publication_is_rejected(self) -> None:
         workflow = yaml.safe_load(self.read(".github/workflows/release.yml"))
         altered = copy.deepcopy(workflow)
-        publish = altered["jobs"]["publish"]
-        for step in publish["steps"]:
-            if step.get("name") == "Require immutable GitHub releases":
-                step["run"] = "echo skipped"
-            if step.get("name") == "Publish protected-tag assets":
-                step["run"] = 'gh release upload "$GITHUB_REF_NAME" --clobber'
-        with self.assertRaisesRegex(TRUST.RuntimeTrustError, "immutable releases"):
+        publish_release = altered["jobs"]["publish-release"]
+        for step in publish_release["steps"]:
+            if step.get("name") == "Create immutable version tag and publish verified release":
+                step["run"] = str(step["run"]).replace(
+                    'gh release upload "$tag"',
+                    'gh release upload "$tag" --clobber',
+                )
+                break
+        else:
+            self.fail("final publication step missing from release workflow fixture")
+        with self.assertRaisesRegex(TRUST.RuntimeTrustError, "asset overwrites"):
             TRUST.validate_release(altered)
 
     def test_package_only_sbom_input_is_rejected(self) -> None:

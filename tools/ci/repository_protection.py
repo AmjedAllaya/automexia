@@ -31,19 +31,15 @@ CODEOWNER_LOGIN = re.compile(
 EXPECTED_REPOSITORY = "AmjedAllaya/automexia-terminal"
 EXPECTED_WORKFLOWS = {
     "ci.yml": "CI",
-    "codeql.yml": "CodeQL",
     "f5-openssh-assurance.yml": "F5 controlled native OpenSSH assurance",
-    "nightly.yml": "Nightly depth",
-    "release-drafter.yml": "Release Drafter",
+    "linux-early-access.yml": "Linux Early Access release",
+    "nightly.yml": "Deep assurance (manual)",
     "release.yml": "Stable release",
     "s1-assurance.yml": "S1 controlled assurance",
     "s2-assurance.yml": "S2 controlled activation",
 }
 EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS = [
     "ci.yml",
-    "codeql.yml",
-    "nightly.yml",
-    "release-drafter.yml",
 ]
 EXPECTED_REPOSITORY_SETTINGS = {
     "allow_auto_merge": False,
@@ -395,7 +391,181 @@ def validate_action_allowlist(actions: dict[str, Any]) -> int:
     return len(patterns)
 
 
+def validate_github_free_private_policy(policy: dict[str, Any]) -> dict[str, int]:
+    """Validate the no-cost private-repository contract without paid controls."""
+    expected_keys = {
+        "actions_policy",
+        "mode",
+        "ordinary_ci",
+        "paid_github_features_not_used",
+        "release",
+        "release_platforms",
+        "schema",
+        "server_side_paid_controls_required",
+    }
+    require(
+        set(policy) == expected_keys,
+        "GitHub-Free/private policy top-level keys drifted",
+    )
+    require(
+        policy.get("schema") == 2 and policy.get("mode") == "github-free-private",
+        "GitHub-Free/private policy identity drifted",
+    )
+    require(
+        policy.get("server_side_paid_controls_required") is False,
+        "GitHub-Free/private policy must not require paid server-side controls",
+    )
+
+    ordinary = policy.get("ordinary_ci")
+    require(isinstance(ordinary, dict), "ordinary_ci must be an object")
+    require(
+        set(ordinary)
+        == {
+            "hosted_os",
+            "reason",
+            "release_branch_extra_check",
+            "required_checks",
+        },
+        "ordinary_ci keys drifted",
+    )
+    require(
+        ordinary.get("hosted_os") == ["ubuntu-24.04"],
+        "ordinary CI must use only the GitHub-Free Ubuntu runner",
+    )
+    expected_checks = {
+        "Repository and workflow policy",
+        "Rust quality and tests",
+        "Dependency security",
+    }
+    required_checks = ordinary.get("required_checks")
+    require(
+        isinstance(required_checks, list)
+        and set(required_checks) == expected_checks
+        and len(required_checks) == len(expected_checks),
+        "GitHub-Free ordinary required checks drifted",
+    )
+    ci = workflow("ci.yml")
+    actual_checks = {
+        str(value.get("name", ""))
+        for name, value in ci.get("jobs", {}).items()
+        if isinstance(value, dict)
+        and name not in {"release-candidate", "release-candidate-coverage"}
+    }
+    require(
+        actual_checks == expected_checks,
+        "GitHub-Free ordinary required checks must match ci.yml",
+    )
+    require(
+        ordinary.get("release_branch_extra_check") == "Release candidate gate",
+        "GitHub-Free release candidate check drifted",
+    )
+    require(
+        isinstance(ordinary.get("reason"), str) and ordinary["reason"],
+        "GitHub-Free ordinary CI must retain its bounded-runner rationale",
+    )
+
+    release = policy.get("release")
+    require(isinstance(release, dict), "release policy must be an object")
+    expected_release = {
+        "default_minimum_human_approvals": 1,
+        "default_require_distinct_merger": True,
+        "distinct_merger_variable": "AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER",
+        "minimum_approvals_variable": "AUTOMEXIA_RELEASE_MIN_APPROVALS",
+        "must_equal_current_main": True,
+        "same_repository_only": True,
+        "stable_semver_only": True,
+        "trigger": "merged internal release/X.Y.Z pull request into main",
+        "workflow_creates_tag_after_all_gates": True,
+    }
+    for key, expected in expected_release.items():
+        require(release.get(key) == expected, f"GitHub-Free release {key} drifted")
+    protected_paths = release.get("protected_release_pr_paths")
+    require(
+        protected_paths
+        == [
+            ".github/",
+            "tools/ci/",
+            "tools/xtask/",
+            "packaging/",
+            "shell-integration/",
+        ],
+        "GitHub-Free protected release paths drifted",
+    )
+    require(
+        set(release) == set(expected_release) | {"protected_release_pr_paths"},
+        "GitHub-Free release policy keys drifted",
+    )
+
+    paid_features = policy.get("paid_github_features_not_used")
+    require(
+        paid_features
+        == [
+            "private artifact attestations",
+            "private protected-environment reviewers",
+            "GitHub Code Security dependency review",
+            "private CodeQL result upload",
+            "private ruleset enforcement",
+        ],
+        "GitHub-Free excluded feature inventory drifted",
+    )
+    require(
+        policy.get("release_platforms")
+        == [
+            "windows-2025 x86_64",
+            "windows-11-arm aarch64",
+            "ubuntu-22.04 x86_64 build baseline",
+            "ubuntu-22.04-arm aarch64 build baseline",
+            "macos-26-intel x86_64",
+            "macos-26 arm64",
+        ],
+        "GitHub-Free release platform inventory drifted",
+    )
+
+    actions_policy = policy.get("actions_policy")
+    expected_patterns = [
+        "anchore/sbom-action@*",
+        "azure/artifact-signing-action@*",
+        "azure/login@*",
+        "taiki-e/install-action@*",
+    ]
+    require(
+        isinstance(actions_policy, dict)
+        and actions_policy
+        == {
+            "mode": "selected-actions",
+            "github_owned_actions_allowed": True,
+            "third_party_patterns": expected_patterns,
+            "full_length_sha_required": True,
+            "zizmor_delivery": (
+                "zizmor@1.21.0 via taiki-e/install-action; "
+                "no zizmorcore/zizmor-action use"
+            ),
+        },
+        "GitHub-Free selected Action policy drifted",
+    )
+    uses = workflow_action_uses()
+    require(uses, "workflows must use at least one pinned Action")
+    for action in uses:
+        require(
+            FULL_ACTION_PIN.fullmatch(action) is not None,
+            f"Action is not SHA pinned: {action}",
+        )
+        owner = action.split("/", 1)[0].casefold()
+        if owner not in {"actions", "github"}:
+            require(
+                any(fnmatch.fnmatchcase(action, pattern) for pattern in expected_patterns),
+                f"third-party Action is absent from the GitHub-Free allowlist: {action}",
+            )
+    return {
+        "action_patterns": len(expected_patterns),
+        "required_checks": len(expected_checks),
+        "rulesets": 0,
+    }
+
+
 def validate_policy(policy: dict[str, Any]) -> dict[str, int]:
+    if policy.get("mode") == "github-free-private":
+        return validate_github_free_private_policy(policy)
     expected_keys = {
         "actions",
         "default_branch",
@@ -1193,6 +1363,22 @@ def main() -> int:
                 f"{counts['codeowners']} CODEOWNERS identities"
             )
             return 0
+        if policy.get("mode") == "github-free-private":
+            if args.command == "apply":
+                raise ProtectionPolicyError(
+                    "GitHub-Free/private governance must be configured manually; "
+                    "this tool will not simulate unavailable paid controls"
+                )
+            findings = [
+                Finding(
+                    "github-free-manual-governance",
+                    "external",
+                    "independent release review and authenticated repository audit "
+                    "remain external on GitHub Free/private",
+                )
+            ]
+            render_findings(findings, args.as_json)
+            return exit_for_findings(findings)
         if args.command == "apply":
             if REPOSITORY_NAME.fullmatch(args.confirm_repository) is None:
                 parser.error("--confirm-repository must be an owner/repository name")

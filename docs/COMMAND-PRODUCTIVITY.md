@@ -992,29 +992,19 @@ Otherwise CP1 native completion remains the shipped solution.
 
 #### PO cross-track — situation-aware production candidates
 
-The planned PO track does not widen CP5's accepted source boundary. CP5 remains
-the editor and presentation owner; PO contributes only typed, route-bound,
-already-cached operational candidates after its own future capability, privacy,
-freshness, policy, and resource gates pass. No provider, observability, GitOps,
-identity, policy, or cluster request is triggered by a keystroke.
+Planned production guidance does not widen CP5's accepted source boundary. CP5
+remains the completion editor and presentation owner. A future DevOps/SRE
+extension may contribute bounded, route-scoped, already-collected candidates
+only after its independent context, freshness, policy, privacy, resource, and
+release gates pass. No provider or cluster request may be triggered by a
+keystroke.
 
-A PO candidate must preserve CP5's authenticated route/generation/replacement
-span, local privacy, cancellation, candidate/message ceilings, accessibility,
-insert-without-Enter behavior, and CP1 fallback. It additionally binds the
-environment passport, exact resource UID/target, evidence and policy revisions,
-risk, expiry, supporting/contradicting evidence, evidence quality and explicit
-unknowns, impact, verification, and recovery. Final selection still inserts native command text
-only; a separate app-owned preflight and confirmation is required before any
-future execution.
-
-The requested Kubernetes rollout ranking, production context lock, change/
-ownership/drift, resource explanation, healthy and environment comparison,
-network/SLO diagnosis, dependency graph, GitOps/JIT awareness, Incident Mode,
-live-log/time/DN handoff, managed operation/diagnostic sessions, journal, and
-runbook packs are specified in
-[Situation-Aware Production Operations](SITUATION-AWARE-PRODUCTION-OPERATIONS.md).
-They are PO1-PO8 planned behavior, not CP5 implementation or current completion
-sources.
+Any future candidate preserves authenticated replacement, cancellation,
+accessibility, insert-without-Enter behavior, and native completion fallback.
+Selection remains separate from reviewed execution. The public
+[Situation-Aware Production Operations summary](SITUATION-AWARE-PRODUCTION-OPERATIONS.md)
+owns the broad direction; exact ranking fields and provider behavior remain in
+the ignored internal design until implementation review.
 
 ### CP6 — ecosystem integration
 
@@ -1049,8 +1039,8 @@ call, or execution authority exists.
 CP6 is not the multi-extension orchestration architecture. The separately
 proposed [LLM Orchestration extension](LLM-ORCHESTRATION-EXTENSION.md) may later
 propose bounded typed workflow plans, but core-owned policy, review, one-run
-grants and ordinary action brokers remain authoritative. Its LO0-LO5 phases,
-ADR 0033 acceptance and machine contract are independent gates; they do not
+grants and ordinary action brokers remain authoritative. Its separate decision,
+implementation, and release gates do not
 weaken or silently replace this CP6 no-tool boundary.
 
 ## Verification matrix

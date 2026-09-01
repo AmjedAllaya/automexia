@@ -56,8 +56,10 @@ SBOM input contains the final package directory plus the exact `Cargo.lock`
 used by the tagged build, not unsigned build outputs. Validation requires
 complete SPDX/CycloneDX metadata, at least ten components, Cargo PURLs, the
 exact `automexia-terminal` version, and agreement between both formats;
-header-only/empty documents fail. GitHub provenance and SBOM attestations bind
-the final packages to the protected workflow.
+header-only/empty documents fail. The release manifest, checksums, signed
+package evidence, and SBOMs bind the final packages to the reviewed release
+process. GitHub provenance/SBOM attestations for this private repository are an
+external Enterprise entitlement and are not claimed by the GitHub-Free flow.
 
 Publication is create-once. The publish job calls GitHub's immutable-releases
 endpoint and fails unless the repository has immutable releases enabled. It
@@ -125,8 +127,30 @@ the staple, and asks Gatekeeper to assess both the DMG and mounted application.
 
 Linux packages retain the platform-native model: deterministic DEB/RPM/tar.gz
 payloads, clean install/uninstall validation, exact SHA-256 checksums, SBOMs,
-and GitHub attestations. Distribution-repository signing is a future channel
-concern and must not be inferred from the GitHub release signature contract.
+and a signed repository-owned release manifest. GitHub artifact attestations
+for this private repository are an external Enterprise entitlement. Distribution-
+repository signing is a future channel concern and must not be inferred from
+the GitHub release signature contract.
+
+Linux Early Access additionally uses the separate public binary archive
+`AmjedAllaya/automexia-releases`. Its private-source workflow publishes exactly
+six Linux packages plus checksums, a detached minisign signature and public key,
+two SBOMs, public guidance/notices, and a source-commit-bound distribution
+manifest. A repository-scoped one-hour GitHub App token receives contents write
+and administration read only after the signed bundle passes local verification.
+The draft is byte/digest checked before publication and the immutable release is
+checked again afterward. GitHub's signed release attestation and every local
+asset are then verified before website activation evidence is emitted. The
+public archive has Actions, issues, Projects, and the wiki disabled, active
+default-branch and `v*` tag rulesets, and no product source or debug symbols in
+Git history.
+
+The website remains fail-closed after publication. It activates only with the
+exact source commit and manifest SHA-256, then independently re-downloads all
+assets, verifies GitHub asset digests, `SHA256SUMS`, the trusted minisign key and
+signature, the distribution manifest, and approved redirect hosts. See
+[Public release distribution](PUBLIC-RELEASE-DISTRIBUTION.md) and
+[ADR 0037](adr/0037-public-binary-release-distribution.md).
 
 The tag workflow additionally builds Linux x64 twice from fresh `git archive`
 trees at one canonical temporary path with `SOURCE_DATE_EPOCH`, UTC locale,
@@ -153,21 +177,21 @@ spctl --assess --type execute --verbose=4 /Volumes/Automexia/Automexia.app
 xcrun stapler validate automexia-terminal-0.4.0-universal.dmg
 ```
 
-With the GitHub CLI, verify source provenance with:
-
-```text
-gh attestation verify <artifact> --repo AmjedAllaya/automexia-terminal
-```
+For releases produced under the GitHub-Free/private plan, also inspect the
+published signed repository-owned release manifest and confirm that its tag,
+commit, asset names, sizes, and SHA-256 digests agree with the release assets,
+`SHA256SUMS`, and SBOMs. The controlled release verifier checks this evidence
+before publication; a GitHub artifact attestation is not claimed.
 
 Do not treat a checksum alone as publisher authentication; compare it with the
 checksum published by the protected workflow and verify the platform signature
-or GitHub attestation.
+and repository-owned release-manifest evidence.
 
 ## False-positive response
 
 1. Stop distribution of the affected artifact without deleting evidence.
 2. Reproduce on a clean, fully updated host and verify its SHA-256, signature,
-   timestamp, provenance attestation, and release tag.
+   timestamp, release-manifest evidence, and release tag.
 3. Inspect the release workflow and dependency/SBOM delta. If provenance is
    missing or a signature differs from the expected publisher, treat the event
    as a potential security incident and use the currently available private
@@ -193,7 +217,7 @@ Pull requests run the policy validator and hostile mutation suite. The release
 workflow adds signature/notarization checks, final-asset inventory validation,
 controlled malware scanning, clean package tests, SBOM creation, checksum
 verification, cold-build reproducibility, immutable publication, and
-attestations. `release-trust-benchmark.json` measures streaming digest
+signed repository-owned release manifests. `release-trust-benchmark.json` measures streaming digest
 throughput for the exact release set; Defender scan duration and two cold-build
 durations are recorded separately. These are release-pipeline measurements and
 add no runtime work to Automexia.

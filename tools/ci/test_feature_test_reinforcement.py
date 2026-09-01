@@ -22,6 +22,8 @@ SPEC.loader.exec_module(REINFORCEMENT)
 class FeatureTestReinforcementTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # Keep the canonical ledger immutable; every test mutates a deep copy and
+        # proves the checker rejects one missing assurance dimension.
         cls.document = json.loads(REINFORCEMENT.DEFAULT_CONTRACT.read_text(encoding="utf-8"))
 
     def validate(self, document: dict) -> dict[str, int]:
@@ -117,6 +119,8 @@ class FeatureTestReinforcementTests(unittest.TestCase):
         original = REINFORCEMENT.DEFAULT_CONTRACT
         with tempfile.TemporaryDirectory(dir=REINFORCEMENT.ROOT) as directory:
             root = Path(directory)
+            # Test channel tolerance and masking separately: either mechanism could
+            # otherwise conceal the exact one-pixel regression this policy guards.
             policy = root / "visual.json"
             policy.write_text(
                 json.dumps(

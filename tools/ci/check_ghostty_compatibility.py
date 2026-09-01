@@ -9,6 +9,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
+import yaml
+
 
 ROOT = Path(__file__).resolve().parents[2]
 FIXTURE_ROOT = Path("tests/fixtures/keybindings/ghostty/1.3.1")
@@ -23,6 +25,9 @@ EXPECTED_ARTIFACTS = {
     "provenance.json",
     "windows-adapted.json",
 }
+GHOSTTY_FUZZ_TARGETS = frozenset(
+    {"ecosystem_bundle", "ghostty_keybindings", "ghostty_migration"}
+)
 
 
 class GhosttyCompatibilityError(ValueError):
@@ -137,6 +142,22 @@ def _require_before(source: str, first: str, second: str, label: str) -> None:
         )
 
 
+def _nightly_fuzz_targets(source: str) -> set[str]:
+    try:
+        workflow = yaml.safe_load(source)
+    except yaml.YAMLError as error:
+        raise GhosttyCompatibilityError("nightly workflow is not valid YAML") from error
+    if not isinstance(workflow, dict):
+        raise GhosttyCompatibilityError("nightly workflow is not a mapping")
+    jobs = workflow.get("jobs")
+    fuzz = jobs.get("fuzz") if isinstance(jobs, dict) else None
+    matrix = fuzz.get("strategy", {}).get("matrix") if isinstance(fuzz, dict) else None
+    targets = matrix.get("target") if isinstance(matrix, dict) else None
+    if not isinstance(targets, list) or not all(isinstance(target, str) for target in targets):
+        raise GhosttyCompatibilityError("nightly fuzz target matrix is missing")
+    return set(targets)
+
+
 def validate_gate_sources(sources: dict[str, str]) -> None:
     _require_tokens(
         sources["profile"],
@@ -158,14 +179,13 @@ def validate_gate_sources(sources: dict[str, str]) -> None:
         ("generated_outputs_with_classic", 'outputs.insert("automexia-classic-windows.json"'),
         "fixture generator",
     )
+    if not GHOSTTY_FUZZ_TARGETS.issubset(_nightly_fuzz_targets(sources["nightly"])):
+        raise GhosttyCompatibilityError(
+            "nightly compatibility fuzz targets are incomplete"
+        )
     _require_tokens(
         sources["nightly"],
-        (
-            "ecosystem_bundle",
-            "ghostty_keybindings",
-            "ghostty_migration",
-            "-p automexia-keybindings --no-run --locked",
-        ),
+        ("-p automexia-keybindings --no-run --locked",),
         "nightly compatibility jobs",
     )
     _require_tokens(
@@ -244,7 +264,7 @@ def validate_repository() -> dict[str, Any]:
     return {
         "version": EXPECTED_VERSION,
         "fixture_artifacts": len(manifest["artifacts"]),
-        "nightly_fuzz_targets": 2,
+        "nightly_fuzz_targets": len(GHOSTTY_FUZZ_TARGETS),
         "external_native_platforms": 3,
     }
 

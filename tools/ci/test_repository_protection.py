@@ -7,6 +7,8 @@ import copy
 import datetime as dt
 import importlib.util
 from pathlib import Path
+import subprocess
+import sys
 import tempfile
 import unittest
 
@@ -21,14 +23,16 @@ SPEC.loader.exec_module(PROTECTION)
 
 class RepositoryProtectionTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Each mutation starts from the repository policy as shipped; deep copies
+        # below ensure a rejected weakening never leaks into another test.
         self.policy = PROTECTION.load_policy()
 
     def test_current_policy_and_workflows_satisfy_the_contract(self) -> None:
         counts = PROTECTION.validate_repository(self.policy)
 
-        self.assertEqual(counts["rulesets"], 2)
-        self.assertGreaterEqual(counts["required_checks"], 14)
-        self.assertGreaterEqual(counts["action_patterns"], 6)
+        self.assertEqual(counts["rulesets"], 0)
+        self.assertEqual(counts["required_checks"], 3)
+        self.assertEqual(counts["action_patterns"], 4)
         self.assertGreaterEqual(counts["codeowners"], 1)
 
     def test_duplicate_json_keys_fail_closed(self) -> None:
@@ -36,6 +40,8 @@ class RepositoryProtectionTests(unittest.TestCase):
             PROTECTION.parse_json('{"schema": 1, "schema": 2}')
 
     def test_codeowners_requires_a_valid_repository_wide_owner(self) -> None:
+        # A narrow path rule is not a fallback owner: release-sensitive files can
+        # appear anywhere, so the parser must retain an explicit repository-wide rule.
         self.assertEqual(
             PROTECTION.parse_codeowners("# fallback\n* @AmjedAllaya\n"),
             ["@AmjedAllaya"],
@@ -57,47 +63,44 @@ class RepositoryProtectionTests(unittest.TestCase):
 
     def test_repository_identity_cannot_drift(self) -> None:
         altered = copy.deepcopy(self.policy)
-        altered["repository"] = "someone/else"
+        altered["schema"] = 3
 
-        with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "repository identity"):
+        with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "policy identity"):
             PROTECTION.validate_policy(altered)
 
-    def test_main_ruleset_cannot_gain_a_bypass(self) -> None:
+    def test_paid_server_controls_cannot_be_required(self) -> None:
         altered = copy.deepcopy(self.policy)
-        altered["rulesets"][0]["bypass_actors"] = [
-            {"actor_id": 5, "actor_type": "RepositoryRole", "bypass_mode": "always"}
-        ]
+        altered["server_side_paid_controls_required"] = True
 
-        with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "bypass"):
+        with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "must not require"):
             PROTECTION.validate_policy(altered)
 
-    def test_main_ruleset_cannot_drop_pull_requests_or_signatures(self) -> None:
-        for rule_type in ("pull_request", "required_signatures"):
+    def test_release_policy_cannot_drop_exact_head_controls(self) -> None:
+        for key, value in (
+            ("same_repository_only", False),
+            ("must_equal_current_main", False),
+            ("default_minimum_human_approvals", 0),
+        ):
             altered = copy.deepcopy(self.policy)
-            altered["rulesets"][0]["rules"] = [
-                rule for rule in altered["rulesets"][0]["rules"]
-                if rule["type"] != rule_type
-            ]
-            with self.subTest(rule=rule_type), self.assertRaisesRegex(
-                PROTECTION.ProtectionPolicyError, rule_type
+            altered["release"][key] = value
+            with self.subTest(key=key), self.assertRaisesRegex(
+                PROTECTION.ProtectionPolicyError, "GitHub-Free release"
             ):
                 PROTECTION.validate_policy(altered)
 
     def test_required_checks_cannot_drift_from_workflow_job_names(self) -> None:
         altered = copy.deepcopy(self.policy)
-        altered["hosted_ci"]["required_pull_request_checks"].remove(
-            "Native windows-latest"
-        )
+        altered["ordinary_ci"]["required_checks"].pop()
 
         with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "required checks"):
             PROTECTION.validate_policy(altered)
 
-    def test_default_branch_evidence_workflow_set_cannot_drift(self) -> None:
+    def test_ordinary_ci_cannot_restore_non_free_runner(self) -> None:
         altered = copy.deepcopy(self.policy)
-        altered["hosted_ci"]["default_branch_evidence_workflows"] = ["ci.yml"]
+        altered["ordinary_ci"]["hosted_os"] = ["windows-2025"]
 
         with self.assertRaisesRegex(
-            PROTECTION.ProtectionPolicyError, "default-branch evidence workflows"
+            PROTECTION.ProtectionPolicyError, "GitHub-Free Ubuntu runner"
         ):
             PROTECTION.validate_policy(altered)
 
@@ -127,33 +130,41 @@ class RepositoryProtectionTests(unittest.TestCase):
             "s2-assurance.yml", PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS
         )
 
+    def test_linux_early_access_is_registered_without_claiming_default_branch_evidence(self) -> None:
+        self.assertEqual(
+            PROTECTION.EXPECTED_WORKFLOWS["linux-early-access.yml"],
+            "Linux Early Access release",
+        )
+        self.assertNotIn(
+            "linux-early-access.yml",
+            PROTECTION.EXPECTED_DEFAULT_BRANCH_EVIDENCE_WORKFLOWS,
+        )
+
     def test_action_policy_requires_sha_pinning_and_an_exact_allowlist(self) -> None:
         for field, value in (
-            ("sha_pinning_required", False),
-            ("allowed_actions", "all"),
+            ("full_length_sha_required", False),
+            ("mode", "all-actions"),
         ):
             altered = copy.deepcopy(self.policy)
-            altered["actions"]["permissions"][field] = value
+            altered["actions_policy"][field] = value
             with self.subTest(field=field), self.assertRaisesRegex(
-                PROTECTION.ProtectionPolicyError, "Actions permissions"
+                PROTECTION.ProtectionPolicyError, "selected Action policy"
             ):
                 PROTECTION.validate_policy(altered)
 
-    def test_workflow_tokens_cannot_approve_pull_requests(self) -> None:
+    def test_action_allowlist_cannot_drop_a_used_third_party_action(self) -> None:
         altered = copy.deepcopy(self.policy)
-        altered["actions"]["workflow_permissions"][
-            "can_approve_pull_request_reviews"
-        ] = True
+        altered["actions_policy"]["third_party_patterns"].pop()
 
-        with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "workflow token"):
+        with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "selected Action policy"):
             PROTECTION.validate_policy(altered)
 
-    def test_security_features_remain_fail_closed_when_available(self) -> None:
+    def test_excluded_paid_features_cannot_drift(self) -> None:
         altered = copy.deepcopy(self.policy)
-        altered["security"]["secret_scanning"] = "optional"
+        altered["paid_github_features_not_used"].pop()
 
         with self.assertRaisesRegex(
-            PROTECTION.ProtectionPolicyError, "security feature policy|secret scanning"
+            PROTECTION.ProtectionPolicyError, "excluded feature inventory"
         ):
             PROTECTION.validate_policy(altered)
 
@@ -164,6 +175,18 @@ class RepositoryProtectionTests(unittest.TestCase):
         )
 
         self.assertEqual(result, "external-plan")
+
+    def test_free_private_audit_remains_external_and_fail_closed(self) -> None:
+        completed = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "audit", "--json"],
+            cwd=MODULE_PATH.parents[2],
+            capture_output=True,
+            text=True,
+            timeout=30,
+            check=False,
+        )
+        self.assertEqual(completed.returncode, 2)
+        self.assertIn("github-free-manual-governance", completed.stdout)
 
     def test_zero_step_payment_rejection_is_not_a_ci_failure(self) -> None:
         result = PROTECTION.classify_hosted_job(
@@ -217,10 +240,12 @@ class RepositoryProtectionTests(unittest.TestCase):
         )
 
     def test_selected_actions_apply_payload_remains_an_array(self) -> None:
-        payload = PROTECTION.selected_actions_apply_payload(self.policy)
+        payload = self.policy["actions_policy"]
 
-        self.assertIsInstance(payload["patterns_allowed"], list)
-        self.assertEqual(payload["patterns_allowed"], sorted(payload["patterns_allowed"]))
+        self.assertIsInstance(payload["third_party_patterns"], list)
+        self.assertEqual(
+            payload["third_party_patterns"], sorted(payload["third_party_patterns"])
+        )
 
     def test_hosted_success_must_belong_to_the_protected_head(self) -> None:
         current = "a" * 40
@@ -232,23 +257,13 @@ class RepositoryProtectionTests(unittest.TestCase):
         self.assertFalse(PROTECTION.hosted_run_matches_head({}, current))
 
     def test_remote_findings_distinguish_drift_and_external_prerequisites(self) -> None:
-        findings = PROTECTION.evaluate_remote_snapshot(
-            self.policy,
-            PROTECTION.synthetic_compliant_snapshot(self.policy)
-            | {
-                "rulesets_availability": "external-plan",
-                "human_reviewer_count": 1,
-                "hosted_ci": "external-billing",
-            },
+        self.assertEqual(
+            PROTECTION.classify_api_error(
+                403,
+                "Upgrade to GitHub Pro or make this repository public to enable this feature.",
+            ),
+            "external-plan",
         )
-
-        statuses = {finding.identifier: finding.status for finding in findings}
-        self.assertEqual(statuses["rulesets"], "external")
-        self.assertEqual(statuses["reviewer-capacity"], "external")
-        self.assertEqual(statuses["hosted-ci"], "external")
-        self.assertNotIn("pass", {statuses[key] for key in statuses if key in {
-            "rulesets", "reviewer-capacity", "hosted-ci"
-        }})
 
 
 if __name__ == "__main__":

@@ -24,6 +24,8 @@ class Cp51ContractTests(unittest.TestCase):
         )
 
     def assert_rejected(self, mutate) -> None:  # type: ignore[no-untyped-def]
+        # Route every mutation through the production validator while keeping
+        # the parsed canonical contract immutable for the next scenario.
         changed = deepcopy(self.document)
         mutate(changed)
         with self.assertRaises(checker.Cp51Error):
@@ -157,6 +159,8 @@ class Cp51ContractTests(unittest.TestCase):
         )
 
     def test_fish_collision_and_truthful_fallbacks_are_frozen(self) -> None:
+        # Resolve rows by stable shell identity rather than array position; the
+        # assertion is about each shell contract, not incidental fixture order.
         fish = next(
             index
             for index, row in enumerate(self.document["shell_matrix"])

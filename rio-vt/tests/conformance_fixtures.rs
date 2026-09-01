@@ -110,7 +110,7 @@ fn prompts_created_while_narrow_survive_grow_reflow_without_detaching() {
         128,
     );
     let mut processor = Processor::default();
-    let path = "/mnt/d/workstation/projects/business-project/custom_terminal/automexia-terminal/standalone";
+    let path = "<REDACTED_LOCAL_VALUE>";
 
     let initial = format!(
         "\x1b]1337;SetUserVar=automexia_prompt_active=MQ==\x07\

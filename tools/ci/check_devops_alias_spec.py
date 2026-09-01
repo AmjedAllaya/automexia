@@ -14,7 +14,10 @@ ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "tests/fixtures/command-productivity/cp2-cp3-alias-spec-v1.json"
 MAX_POLICY_BYTES = 65_536
 MAX_APPLICATION_SOURCE_BYTES = 131_072
-MAX_DOCUMENT_BYTES = 131_072
+# The consolidated contributor testing guide is intentionally broader than the
+# alias contract. Keep repository-document reads bounded while allowing that
+# authoritative guide to grow independently of the compact machine contract.
+MAX_DOCUMENT_BYTES = 262_144
 
 SHELLS = {
     "powershell": ["windows", "linux", "macos"],
@@ -290,7 +293,7 @@ WIRING = {
     "docs/FEATURES.md": "DEVOPS-ALIASES.md",
     "docs/SHELL-INTEGRATION.md": "DEVOPS-ALIASES.md",
     "docs/COMMAND-PRODUCTIVITY.md": "DEVOPS-ALIASES.md",
-    ".github/workflows/ci.yml": "test_devops_alias_spec.py",
+    ".github/workflows/ci.yml": "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
     "docs/index.md": "DEVOPS-ALIASES.md",
     "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md": (
         "DEVOPS-ALIASES.md"

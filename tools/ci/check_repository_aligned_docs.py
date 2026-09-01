@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Validate the non-authoritative repository-aligned documentation pack."""
+"""Validate the documentation boundary, including the retired research pack."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from check_documentation_hygiene import (
 
 ROOT = Path(__file__).resolve().parents[2]
 PACK_PATH = "automexia_docs_repository_aligned"
+PRIVATE_PATH = ".automexia-private"
+POLICY_PATH = Path("docs/PRIVATE-DOCUMENTATION-POLICY.md")
 MANIFEST_NAME = "MANIFEST.json"
 MAX_MANIFEST_BYTES = 4 * 1024 * 1024
 MAX_PACK_FILE_BYTES = 4 * 1024 * 1024
@@ -36,10 +38,19 @@ FORBIDDEN_NONHISTORICAL_TEXT = (
     "sandboxed extensions use wasmtime and versioned wit interfaces.",
     "use a supported tokio lts minor for core control-plane code",
 )
+PRIVATE_LINK = re.compile(
+    r"\]\([^\n)]*\.automexia-private(?:[/\\]|%2f)", re.IGNORECASE
+)
+REQUIRED_POLICY_HEADINGS = (
+    "## Public documentation",
+    "## Local-only documentation",
+    "## Never document in the repository",
+    "## Publication review",
+)
 
 
 class DocumentationPackError(ValueError):
-    """The repository-aligned documentation pack is inconsistent."""
+    """The public/private documentation boundary is inconsistent."""
 
 
 def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
@@ -224,7 +235,111 @@ def validate_baseline_documents(pack: Path, baseline: str) -> None:
         raise DocumentationPackError(f"pack README is missing reconciled terms: {missing}")
 
 
+def private_boundary_is_enabled(root: Path) -> bool:
+    private = root / PRIVATE_PATH
+    policy = root / POLICY_PATH
+    ignore = root / ".gitignore"
+    if private.exists() or private.is_symlink() or policy.exists() or policy.is_symlink():
+        return True
+    if ignore.is_file() and not ignore.is_symlink():
+        try:
+            return PRIVATE_PATH in ignore.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            return True
+    return False
+
+
+def validate_private_boundary(root: Path) -> dict[str, int]:
+    legacy = root / PACK_PATH
+    if legacy.exists() or legacy.is_symlink():
+        raise DocumentationPackError(
+            f"legacy public research pack must remain removed: {PACK_PATH}"
+        )
+
+    private = root / PRIVATE_PATH
+    if private.is_symlink():
+        raise DocumentationPackError(
+            f"private documentation workspace must not be a symbolic link: {PRIVATE_PATH}"
+        )
+
+    ignore = root / ".gitignore"
+    if ignore.is_symlink() or not ignore.is_file():
+        raise DocumentationPackError(".gitignore is missing or linked")
+    try:
+        rules = [
+            line.strip()
+            for line in ignore.read_text(encoding="utf-8").splitlines()
+            if line.strip()
+        ]
+    except UnicodeDecodeError as error:
+        raise DocumentationPackError(".gitignore is not strict UTF-8") from error
+    if f"/{PRIVATE_PATH}/" not in rules:
+        raise DocumentationPackError(
+            f".gitignore must contain the exact local-only rule /{PRIVATE_PATH}/"
+        )
+    negations = [
+        rule
+        for rule in rules
+        if rule.startswith("!") and PRIVATE_PATH.casefold() in rule.casefold()
+    ]
+    if negations:
+        raise DocumentationPackError(
+            f"private documentation ignore rule is negated: {negations}"
+        )
+
+    policy = root / POLICY_PATH
+    if policy.is_symlink() or not policy.is_file():
+        raise DocumentationPackError(f"public boundary policy is missing: {POLICY_PATH}")
+    try:
+        policy_text = policy.read_text(encoding="utf-8")
+    except UnicodeDecodeError as error:
+        raise DocumentationPackError("public boundary policy is not strict UTF-8") from error
+    missing = [heading for heading in REQUIRED_POLICY_HEADINGS if heading not in policy_text]
+    if missing:
+        raise DocumentationPackError(
+            f"public/private documentation policy is missing headings: {missing}"
+        )
+
+    public_count = 0
+    excluded_roots = {PRIVATE_PATH, ".git", "target", "artifacts"}
+    for path in root.rglob("*.md"):
+        relative = path.relative_to(root)
+        if relative.parts and relative.parts[0] in excluded_roots:
+            continue
+        if path.is_symlink():
+            raise DocumentationPackError(
+                f"public Markdown must not be a symbolic link: {relative.as_posix()}"
+            )
+        if not path.is_file():
+            continue
+        payload = path.read_bytes()
+        if len(payload) > MAX_PACK_FILE_BYTES:
+            raise DocumentationPackError(
+                f"public documentation file exceeds byte limit: {relative.as_posix()}"
+            )
+        try:
+            text = payload.decode("utf-8")
+        except UnicodeDecodeError as error:
+            raise DocumentationPackError(
+                f"public documentation is not strict UTF-8: {relative.as_posix()}"
+            ) from error
+        if PACK_PATH.casefold() in text.casefold():
+            raise DocumentationPackError(
+                "public documentation references removed internal research pack: "
+                f"{relative.as_posix()}"
+            )
+        if PRIVATE_LINK.search(text):
+            raise DocumentationPackError(
+                "public documentation links into the ignored private workspace: "
+                f"{relative.as_posix()}"
+            )
+        public_count += 1
+    return {"files": public_count, "historical": 0, "duplicates": 0}
+
+
 def validate(root: Path = ROOT) -> dict[str, int]:
+    if private_boundary_is_enabled(root):
+        return validate_private_boundary(root)
     pack = root / PACK_PATH
     if pack.is_symlink() or not pack.is_dir():
         raise DocumentationPackError(f"missing documentation pack {PACK_PATH}")
@@ -280,7 +395,7 @@ def main() -> int:
         return 0
     counts = validate()
     print(
-        "PASS: repository-aligned documentation is coherent "
+        "PASS: documentation boundary is coherent "
         f"(files={counts['files']}, historical={counts['historical']}, "
         f"duplicates={counts['duplicates']})"
     )
@@ -291,5 +406,5 @@ if __name__ == "__main__":
     try:
         raise SystemExit(main())
     except DocumentationPackError as error:
-        print(f"repository-aligned documentation validation failed: {error}", file=sys.stderr)
+        print(f"documentation boundary validation failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error

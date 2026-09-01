@@ -54,6 +54,15 @@ class DocumentationHygieneTests(unittest.TestCase):
         with self.assertRaisesRegex(CHECKER.DocumentationHygieneError, "unclosed"):
             self.validate_payload(b"# Page\n\n```text\nvalue\n")
 
+    def test_private_workspace_is_excluded(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "page.md").write_bytes(b"# Public\n")
+            private = root / ".automexia-private"
+            private.mkdir()
+            (private / "draft.md").write_bytes(b"# Private\r\n")
+            self.assertEqual(CHECKER.validate(root), {"files": 1, "lines": 1})
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -9,11 +9,10 @@ use serde::{Deserialize, Serialize};
 
 use super::validation::{validate_identifier, validate_resolved_step_policy};
 use super::{
-    planner::hash_serializable, ActionRisk, AuthorityKind, AuthorityState,
-    AutomationAction, ConnectionModelError, ConnectionModelErrorCode, ExecutionStage,
-    FailurePolicy, OpaqueReference, PlanStepOriginKind, PrivilegeMethod,
-    ResolvedConnectionPlan, ResolvedPlanStep, RetryPolicy, CONNECTION_SCHEMA_VERSION,
-    MAX_PLAN_STEPS,
+    planner::hash_serializable, ActionRisk, AuthorityState, AutomationAction,
+    ConnectionModelError, ConnectionModelErrorCode, ExecutionStage, FailurePolicy,
+    OpaqueReference, PlanStepOriginKind, PrivilegeMethod, ResolvedConnectionPlan,
+    ResolvedPlanStep, RetryPolicy, CONNECTION_SCHEMA_VERSION, MAX_PLAN_STEPS,
 };
 
 fn error(
@@ -55,31 +54,7 @@ struct RecipeRunFingerprint<'a> {
     connection_generation: u64,
     mode: RecipeRunMode,
     steps: &'a [ResolvedPlanStep],
-    omitted_hook_count: usize,
     source_approval_fingerprint: &'a str,
-}
-
-fn lowercase_digest_is_valid(value: &str) -> bool {
-    value.len() == 64
-        && value
-            .bytes()
-            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
-}
-
-fn disabled_authority_ceiling_is_valid(authorities: &[AuthorityState]) -> bool {
-    let expected = [
-        AuthorityKind::Process,
-        AuthorityKind::Network,
-        AuthorityKind::Provider,
-        AuthorityKind::Credential,
-        AuthorityKind::Pty,
-        AuthorityKind::Listener,
-    ];
-    authorities.len() == expected.len()
-        && authorities
-            .iter()
-            .zip(expected)
-            .all(|(state, authority)| state.authority == authority && !state.enabled)
 }
 
 fn validate_resolved_plan(
@@ -96,9 +71,13 @@ fn validate_resolved_plan(
         || plan.profile_revision == 0
         || plan.steps.is_empty()
         || plan.steps.len() > MAX_PLAN_STEPS
-        || !lowercase_digest_is_valid(&plan.approval_fingerprint)
+        || plan.approval_fingerprint.len() != 64
+        || !plan
+            .approval_fingerprint
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
         || plan.execution_enabled
-        || !disabled_authority_ceiling_is_valid(&plan.authority_ceiling)
+        || plan.authority_ceiling.iter().any(|state| state.enabled)
     {
         return Err(error(
             ConnectionModelErrorCode::InvalidPolicy,
@@ -162,7 +141,6 @@ pub fn review_recipe_run(
         connection_generation,
         mode,
         steps: &steps,
-        omitted_hook_count,
         source_approval_fingerprint: &plan.approval_fingerprint,
     })?;
     Ok(ReviewedRecipeRun {
@@ -179,92 +157,6 @@ pub fn review_recipe_run(
         execution_enabled: false,
         authority_ceiling: plan.authority_ceiling.clone(),
     })
-}
-
-pub fn validate_reviewed_recipe_run(
-    reviewed: &ReviewedRecipeRun,
-) -> Result<(), ConnectionModelError> {
-    if reviewed.schema_version != CONNECTION_SCHEMA_VERSION {
-        return Err(error(
-            ConnectionModelErrorCode::UnsupportedVersion,
-            "recipe_run.schema_version",
-            "reviewed recipe-run schema is unsupported",
-        ));
-    }
-    validate_identifier(&reviewed.profile_id, "recipe_run.profile_id")?;
-    let total_steps = reviewed
-        .steps
-        .len()
-        .checked_add(reviewed.omitted_hook_count)
-        .ok_or_else(|| {
-            error(
-                ConnectionModelErrorCode::LimitExceeded,
-                "recipe_run.steps",
-                "reviewed recipe-run step count overflowed",
-            )
-        })?;
-    if reviewed.profile_revision == 0
-        || reviewed.connection_generation == 0
-        || reviewed.steps.is_empty()
-        || total_steps > MAX_PLAN_STEPS
-        || !lowercase_digest_is_valid(&reviewed.source_approval_fingerprint)
-        || !lowercase_digest_is_valid(&reviewed.approval_fingerprint)
-        || !reviewed.review_required
-        || reviewed.execution_enabled
-        || !disabled_authority_ceiling_is_valid(&reviewed.authority_ceiling)
-        || (reviewed.mode == RecipeRunMode::ReviewedHooks
-            && reviewed.omitted_hook_count != 0)
-    {
-        return Err(error(
-            ConnectionModelErrorCode::InvalidPolicy,
-            "recipe_run",
-            "reviewed recipe-run policy or limits are invalid",
-        ));
-    }
-    let mut previous_stage = ExecutionStage::Resolve;
-    for (index, step) in reviewed.steps.iter().enumerate() {
-        validate_identifier(&step.id, "recipe_run.steps.id")?;
-        let origin_is_valid = match step.origin {
-            PlanStepOriginKind::Planner => step.recipe_id.is_none(),
-            PlanStepOriginKind::Recipe => {
-                step.recipe_id.as_deref().is_some_and(|recipe_id| {
-                    validate_identifier(recipe_id, "recipe_run.recipe_id").is_ok()
-                })
-            }
-        };
-        if usize::from(step.sequence) != index
-            || (index == 0 && step.stage != ExecutionStage::Resolve)
-            || step.stage < previous_stage
-            || !origin_is_valid
-            || (reviewed.mode == RecipeRunMode::NoHooks
-                && step.origin != PlanStepOriginKind::Planner)
-        {
-            return Err(error(
-                ConnectionModelErrorCode::InvalidPolicy,
-                "recipe_run.steps",
-                "reviewed recipe-run sequence, stage, or origin is invalid",
-            ));
-        }
-        validate_resolved_step_policy(step)?;
-        previous_stage = step.stage;
-    }
-    let expected = hash_serializable(&RecipeRunFingerprint {
-        profile_id: &reviewed.profile_id,
-        profile_revision: reviewed.profile_revision,
-        connection_generation: reviewed.connection_generation,
-        mode: reviewed.mode,
-        steps: &reviewed.steps,
-        omitted_hook_count: reviewed.omitted_hook_count,
-        source_approval_fingerprint: &reviewed.source_approval_fingerprint,
-    })?;
-    if expected != reviewed.approval_fingerprint {
-        return Err(error(
-            ConnectionModelErrorCode::InvalidFingerprint,
-            "recipe_run.approval_fingerprint",
-            "reviewed recipe-run fingerprint does not match its contents",
-        ));
-    }
-    Ok(())
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -383,7 +275,6 @@ pub enum RecipeStepState {
     Pending,
     Running {
         attempt: u8,
-        started_at_ms: u64,
         deadline_at_ms: u64,
         total_deadline_at_ms: u64,
     },
@@ -585,8 +476,8 @@ pub fn apply_recipe_run_event(
     reviewed: &ReviewedRecipeRun,
     event: RecipeRunEvent,
 ) -> Result<(), ConnectionModelError> {
-    validate_reviewed_recipe_run(reviewed)?;
-    if lifecycle.approval_fingerprint != reviewed.approval_fingerprint
+    if reviewed.approval_fingerprint.len() != 64
+        || lifecycle.approval_fingerprint != reviewed.approval_fingerprint
         || reviewed.execution_enabled
         || !reviewed.review_required
         || lifecycle.steps.len() != reviewed.steps.len()
@@ -626,15 +517,7 @@ pub fn apply_recipe_run_event(
                         } => total_deadline_ms,
                         RetryPolicy::Never => reviewed.steps[index].timeout_ms,
                     };
-                    let total_deadline_at_ms =
-                        now_ms.checked_add(total).ok_or_else(|| {
-                            error(
-                                ConnectionModelErrorCode::LimitExceeded,
-                                "recipe_run.deadline",
-                                "recipe-run total deadline overflowed",
-                            )
-                        })?;
-                    (1, total_deadline_at_ms)
+                    (1, now_ms.saturating_add(total))
                 }
                 RecipeStepState::RetryWaiting {
                     attempt,
@@ -652,18 +535,10 @@ pub fn apply_recipe_run_event(
                 }
             };
             let deadline_at_ms = now_ms
-                .checked_add(reviewed.steps[index].timeout_ms)
-                .ok_or_else(|| {
-                    error(
-                        ConnectionModelErrorCode::LimitExceeded,
-                        "recipe_run.deadline",
-                        "recipe-run step deadline overflowed",
-                    )
-                })?
+                .saturating_add(reviewed.steps[index].timeout_ms)
                 .min(total_deadline_at_ms);
             lifecycle.steps[index] = RecipeStepState::Running {
                 attempt,
-                started_at_ms: now_ms,
                 deadline_at_ms,
                 total_deadline_at_ms,
             };
@@ -677,11 +552,7 @@ pub fn apply_recipe_run_event(
             let index = event_index(lifecycle, reviewed, generation, sequence)?;
             if !matches!(
                 lifecycle.steps[index],
-                RecipeStepState::Running {
-                    started_at_ms,
-                    deadline_at_ms,
-                    ..
-                } if now_ms >= started_at_ms && now_ms <= deadline_at_ms
+                RecipeStepState::Running { deadline_at_ms, .. } if now_ms <= deadline_at_ms
             ) {
                 return Err(error(
                     ConnectionModelErrorCode::InvalidTransition,
@@ -703,9 +574,8 @@ pub fn apply_recipe_run_event(
             let index = event_index(lifecycle, reviewed, generation, sequence)?;
             let RecipeStepState::Running {
                 attempt,
-                started_at_ms,
-                deadline_at_ms,
                 total_deadline_at_ms,
+                ..
             } = lifecycle.steps[index]
             else {
                 return Err(error(
@@ -714,13 +584,6 @@ pub fn apply_recipe_run_event(
                     "recipe-run failure requires an active step",
                 ));
             };
-            if now_ms < started_at_ms || now_ms > deadline_at_ms {
-                return Err(error(
-                    ConnectionModelErrorCode::InvalidTransition,
-                    "recipe_run.step",
-                    "recipe-run failure timestamp is outside the active step",
-                ));
-            }
             let retry = match reviewed.steps[index].retry_policy {
                 RetryPolicy::Automatic {
                     max_attempts,
@@ -755,13 +618,7 @@ pub fn apply_recipe_run_event(
                 _ => None,
             };
             if let Some(delay_ms) = retry {
-                let ready_at_ms = now_ms.checked_add(delay_ms).ok_or_else(|| {
-                    error(
-                        ConnectionModelErrorCode::LimitExceeded,
-                        "recipe_run.retry",
-                        "recipe-run retry deadline overflowed",
-                    )
-                })?;
+                let ready_at_ms = now_ms.saturating_add(delay_ms);
                 if ready_at_ms < total_deadline_at_ms {
                     lifecycle.steps[index] = RecipeStepState::RetryWaiting {
                         attempt: attempt.saturating_add(1),

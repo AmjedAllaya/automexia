@@ -1620,7 +1620,8 @@ mod tests {
 
     #[test]
     fn provider_process_does_not_inherit_ambient_secret_environment() {
-        const SECRET: &str = "AUTOMEXIA_CP1_SECRET_FIXTURE";
+        const SENSITIVE_FIXTURE: &str = "<redacted>";
+        const SECRET: &str = SENSITIVE_FIXTURE;
         env::set_var(SECRET, "must-not-reach-provider");
         #[cfg(windows)]
         let probe =
@@ -1742,7 +1743,7 @@ mod tests {
     #[test]
     fn config_roots_are_absolute_and_macos_matches_the_product_contract() {
         #[cfg(windows)]
-        let home = PathBuf::from(r"C:\Users\amjed");
+        let home = PathBuf::from(r"C:\Users\alice");
         #[cfg(not(windows))]
         let home = PathBuf::from("/Users/amjed");
         let mac =

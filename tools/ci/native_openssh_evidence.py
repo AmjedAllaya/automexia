@@ -31,7 +31,7 @@ SYNTHETIC_FIXTURE = (
 HISTORICAL_SYNTHETIC_FIXTURES = (
     (
         ROOT / "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v1.json",
-        "2d2b1c8448eba5aa8149b078ef598271d3c2e4be7712dd26b8bc73b7ce1d511d",
+        "bea3d0a4c76f988ac344311fc453288207baefe531898a932ed7723e60e591c4",
     ),
 )
 MAX_MANIFEST_BYTES = 262_144

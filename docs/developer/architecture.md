@@ -166,7 +166,7 @@ until native fixture evidence exists. See [ADR 0026](../adr/0026-versioned-ghost
 - **v0.5.0:** mature provider-neutral boundaries, reviewed production system-OpenSSH path, Connection Hub, and locally completed command-productivity work after required evidence.
 - **v0.5.1:** separately enabled multi-cloud/orchestrator adapters.
 - **v0.6+:** evaluate public extension distribution/sandboxing and CP6 selected-input model suggestions only after first-party boundaries are proven.
-- **Post-foundation:** evaluate the separately installed LLM Orchestration extension through LO0-LO5. Models may propose typed plans, while the app retains registry, policy, review, one-run grants, execution and receipts; terminal and domain crates remain model-free.
+- **Post-foundation:** evaluate a separately installed LLM Orchestration extension. Models may propose typed plans, while the app retains registry, policy, review, approval and execution authority; terminal and domain crates remain model-free.
 
 The exact status is maintained in [Roadmap](../project/roadmap.md); version labels in this architecture describe ownership boundaries, not a promise that planned work is already active.
 

@@ -78,7 +78,13 @@ from stable_release import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED_PARTS = {".git", ".cargo-packager", "target"}
+EXCLUDED_PARTS = {
+    ".git",
+    ".cargo-packager",
+    ".automexia-private",
+    ".automexia-tools",
+    "target",
+}
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 ACTION_USE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
 
@@ -316,7 +322,7 @@ def validate() -> None:
 
     counts["Markdown"] = validate_markdown_links()
     counts["Markdown hygiene"] = validate_documentation_hygiene()
-    counts["aligned documentation pack"] = validate_repository_aligned_docs()
+    counts["public/private documentation boundary"] = validate_repository_aligned_docs()
     counts["pinned Actions"] = validate_action_pins()
 
     validate_repository_workflows()
@@ -377,8 +383,8 @@ def validate() -> None:
     ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
     counts["ecosystem D7/CP6 accepted source"] = ecosystem_d7_cp6_counts["source_files"]
     production_operations_po0_counts = validate_production_operations_po0()
-    counts["Production Operations PO0 proposal"] = (
-        production_operations_po0_counts["traceability"]
+    counts["Production Operations public planning boundary"] = (
+        production_operations_po0_counts["documents"]
     )
     session_launch_d0_counts = validate_session_launch_d0()
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]

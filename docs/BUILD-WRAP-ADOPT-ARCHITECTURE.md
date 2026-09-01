@@ -431,7 +431,7 @@ Exact format, rule, provider, policy, lifecycle, dependency and ceiling
 decisions are in the non-activating
 [PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md).
 The exact product surfaces, interaction rules and implementation map are in the
-[Production Operations UX and implementation blueprint](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
+[Production Operations experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
 PO0 approves no dependency.
 
 The build/wrap/adopt boundary applies only to Automexia-owned actions. Native and
@@ -587,7 +587,7 @@ D7/CP6 acceptance and LO0 acceptance are separate. D7 now adds reduced-feature W
 | **Protected credential slice** | Opaque reference/state models | Exact `keyring-core` stores plus `secrecy`/`zeroize` only if an ADR proves custody unavoidable | Agents, FIDO, Teleport, OpenBao, Smallstep, and external vaults remain primary |
 | **Protected feature milestones** | `rusqlite` storage worker; Cedar local-policy adapter | `openssh-sftp-client`, `serialport`, direct provider SDKs only after feature-specific proof | Mosh, Git, SOPS/age, Upterm, tmux/Zellij, rclone/rsync remain external |
 | **D7 ecosystem accepted source** | Pure WIT/capability/lifecycle/consent models and app denial adapter | Reduced-feature Wasmtime Component Model, Ed25519 verification, strict manual ZIP ingestion and WIT parsing; no default WASI | Public distribution/SDK, component/provider activation, model inference and collaboration relay remain separately gated |
-| **LLM Orchestration LO0-LO5** | Pure workflow model, registry/policy/review/execution composition after acceptance | Optional orchestrator and reviewed local/remote provider adapters | Inference endpoints remain user/organization owned initially; MCP and embedded inference deferred |
+| **Optional LLM Orchestration** | Reviewable typed workflow proposals after a separate accepted decision | Optional orchestrator and reviewed local/remote provider adapters | Inference endpoints remain user/organization owned initially |
 | **Automation Studio AS0-AS4** | Document/trust/surface/LSP brokers and typed saved-revision run intent after acceptance | CodeMirror-based Studio, DevOps/SRE and starter language/tool add-ons | System webviews and installed supported language servers/tools; Wry remains conditional on native proof |
 | **Deferred/rejected** | None | External Telnet adapter only if policy and demand justify it | Native primary SSH engine, password vault, embedded provider login, second shell-line editor or terminal UI framework |
 
@@ -617,7 +617,7 @@ Every adopted crate or external adapter requires:
   unchanged when the extension is absent.
 
 Keep Proptest, Loom, Criterion, Insta, cargo-nextest, fuzzing, sanitizers,
-Clippy, cargo-deny, dependency review, CodeQL, SBOMs, attestations, PTY tests,
+Clippy, cargo-deny, dependency review, plan-appropriate static analysis, SBOMs, attestations, PTY tests,
 and native platform matrices. Add `cargo-vet` only with named audit ownership
 and a ratcheted exemptions policy. Add `cargo-mutants` first to pure security
 decisions and state machines such as native-wins, production-deny,

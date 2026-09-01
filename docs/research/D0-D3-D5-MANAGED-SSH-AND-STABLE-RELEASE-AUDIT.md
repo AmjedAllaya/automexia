@@ -55,7 +55,8 @@ No dependency or capability boundary was added.
 4. The F5 workflow checker accepted substring conditions such as an appended
    `|| true`, loose runner labels, unbounded timeout drift, variable-backed
    private paths, and artifact drift. The checker now validates exact trigger,
-   inputs, concurrency, condition, runner, protected environment, secret-backed
+   inputs, concurrency, condition, runner, GitHub-Free private-environment
+   exclusion, secret-backed
    paths, timeout, checkout, platform command sets, fail-closed behavior, and
    one exact summary upload. Mutations prove each weakening fails.
 
@@ -118,7 +119,8 @@ explicit required security outcomes.
   listeners, tunnels, tasks, routes, cache/log/storage, and zero final cleanup.
 - Complete native visual and Narrator/NVDA, VoiceOver, and Orca evidence plus
   independent review.
-- Complete the ordinary stable-release blockers: protected workflow integration
+- Complete the ordinary stable-release blockers: GitHub-Free manual-governance
+  integration
   on `main`, S1 controlled evidence, 30 reviewed S2 days and activation, final
   signing/notarization/package evidence, and authenticated repository audit.
 

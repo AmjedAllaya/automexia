@@ -14,6 +14,8 @@ if ([string]::IsNullOrWhiteSpace($ExpectedPublisher)) {
     throw 'ExpectedPublisher must be the exact subject of the approved public code-signing certificate'
 }
 
+# Freeze the exact public package inventory before any extraction or scanning;
+# unexpected sidecars and missing architectures must fail at the outer boundary.
 $packages = @(Get-ChildItem -LiteralPath $artifactRoot -File)
 $msiPackages = @($packages | Where-Object Extension -eq '.msi')
 $zipPackages = @($packages | Where-Object Extension -eq '.zip')
@@ -40,6 +42,8 @@ $scanRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'automexia-release-scan-{0}' -f [guid]::NewGuid().ToString('N'))
 [IO.Directory]::CreateDirectory($scanRoot) | Out-Null
 $temporaryRoots.Add($scanRoot)
+# Scan isolated copies so Defender cannot remediate or otherwise mutate the final
+# release artifacts that later publication steps consume.
 foreach ($package in $packages) {
     Copy-Item -LiteralPath $package.FullName -Destination $scanRoot
 }
@@ -50,6 +54,8 @@ function Assert-TrustedSignature {
         [bool]$RecordEvidence = $true
     )
 
+    # Status alone is insufficient: publisher, timestamp, and code-signing EKU
+    # jointly bind the file to the approved release identity.
     $signature = Get-AuthenticodeSignature -LiteralPath $Path
     if ($signature.Status -ne 'Valid' -or $null -eq $signature.SignerCertificate) {
         throw "Authenticode validation failed for $Path with status $($signature.Status)"
@@ -86,6 +92,8 @@ function Expand-TrustedPortableArchive {
         $totalExpandedBytes = [int64]0
         $entryCount = 0
         $fileEntries = [System.Collections.Generic.List[string]]::new()
+        # Validate traversal, entry count, and expanded size before extracting an
+        # entry, keeping hostile archives inside a bounded temporary root.
         foreach ($entry in $archive.Entries) {
             $entryCount++
             if ($entryCount -gt $MaximumArchiveEntries) {
@@ -210,6 +218,8 @@ try {
         throw "Defender security intelligence is $([math]::Round($signatureAge.TotalHours, 1)) hours old"
     }
 
+    # The background job supplies a hard timeout around the native scanner, whose
+    # command has no cancellable in-process API.
     $scanner = Find-DefenderScanner
     $startedAt = Get-Date
     $scanJob = Start-Job -ScriptBlock {
@@ -256,12 +266,14 @@ try {
     }
     $evidenceParent = Split-Path -Parent $EvidencePath
     if ($evidenceParent) { New-Item -ItemType Directory -Force -Path $evidenceParent | Out-Null }
+    # Publish evidence atomically only after signatures and the complete scan pass.
     $temporaryEvidence = "$EvidencePath.$PID.tmp"
     $evidence | ConvertTo-Json -Depth 4 | Set-Content -LiteralPath $temporaryEvidence -Encoding utf8
     Move-Item -LiteralPath $temporaryEvidence -Destination $EvidencePath -Force
     Write-Host "PASS: $($signatures.Count) timestamped signatures match the approved publisher; Defender scanned $($packages.Count) packages in $scanMilliseconds ms"
 }
 finally {
+    # Cleanup owns both an interrupted scan job and every extracted/copied artifact.
     if ($null -ne $scanJob) {
         Stop-Job -Job $scanJob -ErrorAction SilentlyContinue
         Remove-Job -Job $scanJob -Force -ErrorAction SilentlyContinue

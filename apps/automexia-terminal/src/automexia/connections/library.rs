@@ -13,12 +13,12 @@ use std::{
 };
 
 use automexia_connectivity::connections::{
-    fingerprint_profile, fingerprint_recipe, from_json_slice_without_duplicate_keys,
-    validate_profile_document, validate_recipe_document, validate_workspace,
-    validate_workspace_document, AutomationRecipeDocumentV1, AutomationRecipeV1,
-    ConnectionProfileDocumentV1, ConnectionProfileV1, ConnectionSource, EnvironmentKind,
-    EnvironmentRisk, IdentityKind, OpaqueReference, SourceKind, TransportDescriptor,
-    WorkspaceDocumentV1, WorkspaceIntentV1, MAX_PROFILES, MAX_RECIPES, MAX_WORKSPACES,
+    fingerprint_profile, fingerprint_recipe, validate_profile_document,
+    validate_recipe_document, validate_workspace, validate_workspace_document,
+    AutomationRecipeDocumentV1, AutomationRecipeV1, ConnectionProfileDocumentV1,
+    ConnectionProfileV1, ConnectionSource, EnvironmentKind, EnvironmentRisk,
+    IdentityKind, OpaqueReference, SourceKind, TransportDescriptor, WorkspaceDocumentV1,
+    WorkspaceIntentV1, MAX_PROFILES, MAX_RECIPES, MAX_WORKSPACES,
 };
 use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use serde::{Deserialize, Serialize};
@@ -922,8 +922,8 @@ fn read_optional_bytes(
             _ => ReadFailure::Fatal(map_private_fs(error)),
         })?
         .ok_or_else(|| ReadFailure::Fatal(LibraryError::new(LibraryErrorCode::Io)))?;
-    let mut document: ConnectionLibraryDocument =
-        from_json_slice_without_duplicate_keys(&bytes).map_err(|_| {
+    let mut document: ConnectionLibraryDocument = serde_json::from_slice(&bytes)
+        .map_err(|_| {
             ReadFailure::Recoverable(LibraryError::new(LibraryErrorCode::Malformed))
         })?;
     let migrated = match document.schema_version {
@@ -1269,7 +1269,7 @@ fn build_import_preview(
     if bytes.len() > MAX_CONNECTION_LIBRARY_BYTES {
         return Err(LibraryError::new(LibraryErrorCode::TooLarge));
     }
-    let transfer: LibraryTransferDocument = from_json_slice_without_duplicate_keys(bytes)
+    let transfer: LibraryTransferDocument = serde_json::from_slice(bytes)
         .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))?;
     if transfer.schema_version != CONNECTION_LIBRARY_SCHEMA || !transfer.redacted {
         return Err(LibraryError::new(LibraryErrorCode::TransferRejected));

@@ -196,6 +196,11 @@ def approval_records_from_review_pages(pages: object) -> str:
     return ",".join(sorted(records, key=str.casefold))
 
 
+def approval_count_from_review_pages(pages: object, author: str, head: str) -> int:
+    records = approval_records_from_review_pages(pages)
+    return len(independent_approval_logins(records, author, head))
+
+
 def format_approvals_from_stdin() -> int:
     payload = sys.stdin.buffer.read(MAX_REVIEW_PAYLOAD_BYTES + 1)
     if len(payload) > MAX_REVIEW_PAYLOAD_BYTES:
@@ -204,6 +209,20 @@ def format_approvals_from_stdin() -> int:
     try:
         pages = json.loads(payload)
         print(approval_records_from_review_pages(pages))
+    except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
+        print(f"invalid approval review payload: {error}", file=sys.stderr)
+        return 1
+    return 0
+
+
+def count_approvals_from_stdin(author: str, head: str) -> int:
+    payload = sys.stdin.buffer.read(MAX_REVIEW_PAYLOAD_BYTES + 1)
+    if len(payload) > MAX_REVIEW_PAYLOAD_BYTES:
+        print("approval review payload exceeds the byte limit", file=sys.stderr)
+        return 1
+    try:
+        pages = json.loads(payload)
+        print(approval_count_from_review_pages(pages, author, head))
     except (json.JSONDecodeError, UnicodeDecodeError, ValueError) as error:
         print(f"invalid approval review payload: {error}", file=sys.stderr)
         return 1
@@ -304,6 +323,8 @@ def main() -> int:
 if __name__ == "__main__":
     if sys.argv[1:] == ["--format-approvals"]:
         raise SystemExit(format_approvals_from_stdin())
+    if len(sys.argv) == 4 and sys.argv[1] == "--count-approvals":
+        raise SystemExit(count_approvals_from_stdin(sys.argv[2], sys.argv[3]))
     if sys.argv[1:]:
         print("unsupported arguments", file=sys.stderr)
         raise SystemExit(2)

@@ -378,28 +378,28 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "test_command_productivity_cp50.py",
         },
         "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md": {
-            "P1 - execute CP5.0 native autocomplete research",
-            "Status: Fully done",
+            "Status: public summary. Detailed execution sequencing is maintained privately.",
+            "source foundations for typed Quick Actions, completion",
         },
         "docs/ROADMAP.md": {
-            "**Fully done** | CP5.0",
-            "**Partially done** | CP5.1-CP5.6",
+            "Complete release evidence for command productivity",
+            "Some capabilities may exist in source but remain disabled or release-gated",
         },
         "docs/PHASE-IMPLEMENTATION-AUDIT.md": {
-            "CP5.0 — autocomplete research",
-            "**Fully implemented at the research boundary.**",
+            "Command productivity foundations",
+            "Feature documentation and source tests remain authoritative",
         },
         "docs/STABILIZATION-ROADMAP.md": {
-            "CP5.0 research — **Fully done**",
-            "CP5.1 bridge",
+            "## Command productivity delivery track",
+            "current implemented contract and release limitations",
         },
         "docs/COMMAND-PRODUCTIVITY-COMPATIBILITY.md": {
             "CP5.0 fully done",
             "CP5.1-CP5.4 are fully implemented at their source/local boundaries",
         },
         "docs/project/roadmap.md": {
-            "CP5.0",
-            "**Fully implemented at research boundary**",
+            "Command productivity",
+            "remaining native and release evidence",
         },
         "docs/index.md": {
             "Accepted source work partial overall",
@@ -411,8 +411,7 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "cp50-research-benchmark",
         },
         ".github/workflows/ci.yml": {
-            "test_command_productivity_cp50.py",
-            "CP5.0 standalone matcher research gates",
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
         },
         "tests/assurance/feature-matrix.json": {
             "command-productivity-cp50-research",

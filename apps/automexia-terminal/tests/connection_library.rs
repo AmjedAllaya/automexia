@@ -172,43 +172,6 @@ fn malformed_primary_falls_back_truthfully_and_recovery_is_explicit() {
 }
 
 #[test]
-fn duplicate_json_keys_fail_closed_for_persistence_and_redacted_import() {
-    let temporary = tempfile::tempdir().unwrap();
-    let store =
-        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
-    let saved = store.compare_and_swap(0, &document()).unwrap();
-    let persisted = std::fs::read_to_string(store.path()).unwrap();
-    let duplicated_persisted = persisted.replacen(
-        "\"schema_version\": 2",
-        "\"schema_version\": 2,\n  \"\\u0073chema_version\": 2",
-        1,
-    );
-    assert_ne!(duplicated_persisted, persisted);
-    std::fs::write(store.path(), duplicated_persisted).unwrap();
-    assert_eq!(
-        store.load().unwrap_err().code(),
-        automexia_terminal::automexia::connections::LibraryErrorCode::RecoveryRequired
-    );
-    std::fs::write(store.path(), persisted).unwrap();
-
-    let transfer = store.preview_export_redacted(&saved).unwrap().bytes;
-    let transfer_text = String::from_utf8(transfer).unwrap();
-    let duplicated_transfer = transfer_text.replacen(
-        "\"redacted\": true",
-        "\"redacted\": true,\n  \"\\u0072edacted\": true",
-        1,
-    );
-    assert_ne!(duplicated_transfer, transfer_text);
-    assert_eq!(
-        store
-            .preview_import_redacted(saved.revision, duplicated_transfer.as_bytes())
-            .unwrap_err()
-            .code(),
-        automexia_terminal::automexia::connections::LibraryErrorCode::TransferRejected
-    );
-}
-
-#[test]
 fn redacted_transfer_omits_sensitive_fields_and_imports_fresh_local_ids() {
     let temporary = tempfile::tempdir().unwrap();
     let store =

@@ -131,75 +131,126 @@ def require_exact_upload(
 
 
 def validate_ci(workflow: dict[str, Any]) -> None:
-    native = job(workflow, "native", "ci.yml")
     require(
-        {"ubuntu-latest", "windows-latest", "macos-latest"}.issubset(
-            matrix_values(native, "os")
-        ),
-        "native CI must test Ubuntu, Windows, and macOS",
+        workflow.get("permissions") == {"contents": "read"},
+        "CI must default to contents: read only",
     )
-    require(str(native.get("runs-on")) == "${{ matrix.os }}", "native CI must run on matrix.os")
-    native_commands = commands(native)
+    policy = job(workflow, "policy", "ci.yml")
+    quality = job(workflow, "quality", "ci.yml")
+    dependency_security = job(workflow, "dependency-security", "ci.yml")
+    release_candidate = job(workflow, "release-candidate", "ci.yml")
+    release_coverage = job(workflow, "release-candidate-coverage", "ci.yml")
+
+    for name, value, timeout in (
+        ("policy", policy, 30),
+        ("quality", quality, 90),
+        ("dependency-security", dependency_security, 30),
+        ("release-candidate", release_candidate, 30),
+    ):
+        require(
+            value.get("runs-on") == "ubuntu-24.04",
+            f"CI {name} must remain on the GitHub-Free Ubuntu runner",
+        )
+        require(
+            value.get("timeout-minutes") == timeout,
+            f"CI {name} must retain its {timeout}-minute timeout",
+        )
+        require(
+            value.get("permissions") == {"contents": "read"},
+            f"CI {name} must be read-only",
+        )
+
+    require(
+        release_coverage.get("runs-on") == "windows-2025",
+        "CI release-candidate-coverage must use the Windows coverage runner that matches the baseline",
+    )
+    require(
+        release_coverage.get("timeout-minutes") == 120,
+        "CI release-candidate-coverage must retain its 120-minute timeout",
+    )
+    require(
+        release_coverage.get("permissions") == {"contents": "read"},
+        "CI release-candidate-coverage must be read-only",
+    )
+    require(
+        set(release_coverage.get("needs", [])) == {"quality", "release-candidate"},
+        "CI release-candidate-coverage must wait for quality and release-candidate validation",
+    )
+    expected_coverage_environment = {
+        "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+        "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+        "COVERAGE_PLATFORM": "windows-x86_64-msvc",
+        "LCOV_FILE": "target/coverage/lcov.info",
+        "COVERAGE_SUMMARY": "target/coverage/summary.json",
+    }
+    require(
+        release_coverage.get("env") == expected_coverage_environment,
+        "CI release-candidate-coverage must retain its exact coverage evidence environment",
+    )
+
+    policy_commands = commands(policy)
+    for fragment in (
+        "check_action_pins.py",
+        "check_free_plan_contract.py",
+        "validate_repository.py",
+        '"$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"',
+        "zizmor",
+    ):
+        require(fragment in policy_commands, f"CI policy is missing {fragment!r}")
+    require(
+        "python3 -m unittest discover -s tools/ci -p 'test_*.py'" in policy_commands,
+        "CI policy must execute the complete Python CI contract suite",
+    )
+
+    quality_commands = commands(quality)
     for fragment in (
         "cargo fmt --all -- --check",
         "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings",
         "cargo nextest run --workspace --all-features --locked --profile ci",
         "cargo test --workspace --all-features --doc --locked",
-    ):
-        require(fragment in native_commands, f"native CI is missing {fragment!r}")
-
-    require_step_condition(
-        native,
         "bash tools/ci/test_shell_sources.sh",
-        ("runner.os == 'Linux'", "runner.os == 'macOS'"),
-    )
-    require_step_condition(
-        native, "tools/ci/test_powershell.ps1", ("runner.os == 'Windows'",)
-    )
-    require_step_condition(
-        native, "tools/ci/test_librio_c_api.sh", ("runner.os == 'Linux'",)
-    )
-    power_shell = step_for_command(native, "tools/ci/test_powershell.ps1")
-    require(
-        str((power_shell or {}).get("shell", "")).lower() == "pwsh",
-        "the Windows PowerShell/CMD contract must run under pwsh",
-    )
-    for fragment in (
-        "cargo xtask test resize-stress",
-        "cargo xtask test session-clone",
     ):
-        require_step_condition(native, fragment, ("runner.os == 'Windows'",))
+        require(fragment in quality_commands, f"CI quality is missing {fragment!r}")
 
-    linux_features = job(workflow, "linux-features", "ci.yml")
-    feature_matrix = linux_features.get("strategy", {}).get("matrix", {}).get("include", [])
-    actual_features = {
-        (str(item.get("features")), str(item.get("args")))
-        for item in feature_matrix
-        if isinstance(item, dict)
-    }
-    expected_features = {
-        ("x11", "--no-default-features --features x11"),
-        ("wayland", "--no-default-features --features wayland"),
-        ("x11-wayland", "--features x11,wayland"),
-    }
-    require(
-        expected_features.issubset(actual_features),
-        "Linux CI must check X11-only, Wayland-only, and combined features",
-    )
-    require(
-        "cargo check -p automexia-terminal --all-targets --locked" in commands(linux_features),
-        "Linux display-feature checks must cover all frontend targets with the lockfile",
-    )
+    dependency_commands = commands(dependency_security)
+    for fragment in ("cargo audit --deny warnings", "cargo deny --locked"):
+        require(fragment in dependency_commands, f"CI dependency security is missing {fragment!r}")
 
-    cross = job(workflow, "cross-checks", "ci.yml")
-    require(
-        {
-            ("windows-latest", "aarch64-pc-windows-msvc"),
-            ("macos-latest", "x86_64-apple-darwin"),
-            ("macos-latest", "aarch64-apple-darwin"),
-        }.issubset(matrix_pairs(cross, "os", "target")),
-        "cross-check CI must retain Windows ARM64 and both macOS architecture targets",
+    release_condition = (
+        "${{ github.event_name == 'pull_request' && "
+        "startsWith(github.head_ref, 'release/') && "
+        "github.event.pull_request.head.repo.full_name == github.repository }}"
     )
+    require(
+        str(release_candidate.get("if", "")) == release_condition,
+        "CI release-candidate validation must remain limited to release pull requests",
+    )
+    require(
+        str(release_coverage.get("if", "")) == release_condition,
+        "CI release coverage must remain limited to internal release pull requests",
+    )
+    candidate_commands = commands(release_candidate)
+    for fragment in (
+        "Release PRs must originate from this repository, never a fork.",
+        "Release branch must be exactly release/X.Y.Z.",
+    ):
+        require(
+            fragment in candidate_commands,
+            f"CI release-candidate validation is missing {fragment!r}",
+        )
+    require(
+        "check_coverage.py" not in candidate_commands,
+        "CI release-candidate validation must not compare a Linux report to the Windows baseline",
+    )
+    coverage_commands = commands(release_coverage)
+    for fragment in (
+        "cargo llvm-cov --workspace --locked --lcov",
+        "python tools/ci/check_coverage.py",
+    ):
+        require(
+            fragment in coverage_commands,
+            f"CI release coverage is missing {fragment!r}",
+        )
 
 
 def validate_nightly(workflow: dict[str, Any]) -> None:
@@ -253,17 +304,23 @@ def validate_nightly(workflow: dict[str, Any]) -> None:
 
 def validate_release(workflow: dict[str, Any]) -> None:
     require(
-        workflow.get("permissions") == {"contents": "read"},
-        "release workflow must default to contents: read only",
+        workflow.get("permissions")
+        == {"contents": "read", "pull-requests": "read"},
+        "release workflow must default to read-only contents and pull-request permissions",
     )
     for job_name, value in workflow["jobs"].items():
         permissions = value.get("permissions", {})
-        if job_name != "publish":
+        if isinstance(permissions, dict) and permissions.get("contents") == "write":
             require(
-                not isinstance(permissions, dict)
-                or permissions.get("contents") != "write",
+                job_name == "publish-release",
                 f"release job {job_name} must not receive contents: write",
             )
+
+    publish_release = job(workflow, "publish-release", "release.yml")
+    require(
+        publish_release.get("permissions") == {"contents": "write"},
+        "only immutable publication may receive contents: write",
+    )
 
     assurance = job(workflow, "s1-assurance", "release.yml")
     assurance_commands = commands(assurance)
@@ -373,118 +430,168 @@ def validate_release(workflow: dict[str, Any]) -> None:
 
     preflight = job(workflow, "preflight", "release.yml")
     preflight_needs = {str(item) for item in preflight.get("needs", [])}
-    controlled_assurance_gates = {
+    controlled_assurance_gates = (
         "native-gui-resilience",
         "native-wsl-resilience",
         "performance-assurance",
         "s1-assurance",
+    )
+    required_preflight_gates = {
+        "authorize",
+        "signing-readiness",
+        *controlled_assurance_gates,
     }
     require(
-        controlled_assurance_gates.issubset(preflight_needs),
-        "release preflight controlled assurance gates must include native GUI, "
-        "native WSL, S2, and S1 assurance",
+        required_preflight_gates.issubset(preflight_needs),
+        "release preflight controlled assurance gates must include authorization, "
+        "signing readiness, native GUI, native WSL, S2, and S1 assurance",
     )
     preflight_condition = str(preflight.get("if", ""))
     expected_preflight_condition = " && ".join(
-        f"needs.{gate}.result == 'success'"
-        for gate in (
-            "native-gui-resilience",
-            "native-wsl-resilience",
-            "performance-assurance",
-            "s1-assurance",
+        (
+            "always()",
+            "needs.authorize.result == 'success'",
+            "needs.signing-readiness.result == 'success'",
+            *(
+                f"(needs.{gate}.result == 'success' || "
+                f"needs.{gate}.result == 'skipped')"
+                for gate in controlled_assurance_gates
+            ),
         )
     )
     require(
         preflight_condition == expected_preflight_condition,
         "release preflight must fail closed for every controlled assurance gate",
     )
-    preflight_environment = preflight.get("env", {})
-    for name in (
-        "AUTOMEXIA_WINDOWS_CERTIFICATE",
-        "AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD",
-        "AZURE_CLIENT_ID",
-        "AZURE_TENANT_ID",
-        "AZURE_SUBSCRIPTION_ID",
-        "APPLE_CERTIFICATE",
-        "APPLE_CERTIFICATE_PASSWORD",
-        "APPLE_ID",
-        "APPLE_PASSWORD",
-        "APPLE_TEAM_ID",
-        "APPLE_SIGNING_IDENTITY",
-    ):
-        value = str(preflight_environment.get(name, ""))
-        require(
-            "configured" in value and "!= ''" in value,
-            f"release preflight must receive only a presence flag for {name}",
-        )
+    require(
+        "secrets." not in str(preflight.get("env", {})),
+        "release preflight must not receive raw signing secrets",
+    )
 
     build = job(workflow, "build", "release.yml")
     require(
         {
-            ("windows-latest", "x86_64-pc-windows-msvc"),
-            ("windows-latest", "aarch64-pc-windows-msvc"),
-            ("macos-latest", "x86_64-apple-darwin"),
-            ("macos-latest", "aarch64-apple-darwin"),
-            ("ubuntu-latest", "x86_64-unknown-linux-gnu"),
-            ("ubuntu-latest", "aarch64-unknown-linux-gnu"),
+            ("windows-2025", "x86_64-pc-windows-msvc"),
+            ("windows-11-arm", "aarch64-pc-windows-msvc"),
+            ("macos-26-intel", "x86_64-apple-darwin"),
+            ("macos-26", "aarch64-apple-darwin"),
+            ("ubuntu-22.04", "x86_64-unknown-linux-gnu"),
+            ("ubuntu-22.04-arm", "aarch64-unknown-linux-gnu"),
         }.issubset(matrix_pairs(build, "os", "target")),
         "release builds must retain both architectures for Windows, macOS, and Linux",
+    )
+
+    signed_runtime = job(workflow, "sign-windows-runtime", "release.yml")
+    signed_runtime_needs = {str(item) for item in signed_runtime.get("needs", [])}
+    require(
+        {"preflight", "build", "prepare-windows-package-inputs"}.issubset(
+            signed_runtime_needs
+        ),
+        "Windows runtime signing must consume the exact preflighted binary and package inputs",
+    )
+    require(
+        signed_runtime.get("permissions")
+        == {"contents": "read", "id-token": "write"},
+        "Windows runtime signing must have read-only contents and OIDC only",
+    )
+    signed_runtime_commands = commands(signed_runtime)
+    signed_runtime_actions = actions(signed_runtime)
+    runtime_signing = [
+        step
+        for step in steps(signed_runtime)
+        if "azure/artifact-signing-action@" in str(step.get("uses", ""))
+    ]
+    require(
+        len(runtime_signing) == 1
+        and runtime_signing[0].get("with", {}).get("files-folder") == "signing-input"
+        and runtime_signing[0].get("with", {}).get("files-folder-filter")
+        == "exe,ps1,ps1xml"
+        and runtime_signing[0].get("with", {}).get("files-folder-recurse") is True,
+        "Windows executable signing must consume the isolated signing-input directory",
+    )
+    require(
+        "Set-AuthenticodeSignature" in signed_runtime_commands,
+        "Windows runtime signing must timestamp-sign every distributed PowerShell asset",
+    )
+    require(
+        any("azure/login@" in value for value in signed_runtime_actions),
+        "Windows runtime signing must use OIDC Azure login",
+    )
+
+    unsigned_windows = job(workflow, "package-windows-unsigned", "release.yml")
+    require(
+        {"preflight", "sign-windows-runtime"}.issubset(
+            {str(item) for item in unsigned_windows.get("needs", [])}
+        )
+        and "AUTOMEXIA_PACKAGE_SKIP_BUILD" in commands(unsigned_windows)
+        and "secrets." not in str(unsigned_windows.get("env", {})),
+        "Windows packaging must consume signed inputs without signing credentials",
     )
 
     windows = job(workflow, "package-windows", "release.yml")
     windows_commands = commands(windows)
     windows_actions = actions(windows)
-    require("test_windows_installer.ps1" in windows_commands, "Windows release must run install/upgrade/uninstall smoke")
+    require(
+        {"preflight", "package-windows-unsigned"}.issubset(
+            {str(item) for item in windows.get("needs", [])}
+        )
+        and windows.get("permissions")
+        == {"contents": "read", "id-token": "write"},
+        "Windows final MSI signing must be isolated behind the unsigned package gate",
+    )
     for fragment in (
         "signtool verify /pa /all /v /tw",
         "AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT",
         "TimeStamperCertificate",
     ):
         require(fragment in windows_commands, f"Windows release trust is missing {fragment!r}")
-    require(
-        sum("azure/artifact-signing-action@" in value for value in windows_actions) == 3,
-        "Windows release must support Azure Artifact Signing for EXE, scripts, and MSI",
-    )
-    executable_signing = [
+    msi_signing = [
         step
         for step in steps(windows)
         if "azure/artifact-signing-action@" in str(step.get("uses", ""))
-        and step.get("with", {}).get("files-folder-filter") == "exe"
     ]
     require(
-        len(executable_signing) == 1
-        and executable_signing[0].get("with", {}).get("files-folder") == "signing-input",
-        "Windows executable signing must consume the isolated flat signing-input directory",
-    )
-    script_signing = [
-        step
-        for step in steps(windows)
-        if "azure/artifact-signing-action@" in str(step.get("uses", ""))
-        and step.get("with", {}).get("files-folder") == "shell-integration"
-    ]
-    require(
-        len(script_signing) == 1
-        and script_signing[0].get("with", {}).get("files-folder-filter") == "ps1,ps1xml"
-        and script_signing[0].get("with", {}).get("files-folder-recurse") is True
-        and "Set-AuthenticodeSignature" in windows_commands,
-        "Windows release must timestamp-sign every distributed PowerShell asset",
+        len(msi_signing) == 1
+        and msi_signing[0].get("with", {}).get("files-folder") == "unsigned"
+        and msi_signing[0].get("with", {}).get("files-folder-filter") == "msi",
+        "Windows release must sign the final MSI from the isolated unsigned directory",
     )
     require(
         any("azure/login@" in value for value in windows_actions),
-        "Windows Artifact Signing must use OIDC Azure login",
+        "Windows final MSI signing must use OIDC Azure login",
     )
     windows_uploads = [
         step for step in steps(windows) if "actions/upload-artifact@" in str(step.get("uses", ""))
     ]
     require(
         any(
-            "signed/*.msi" in str(step.get("with", {}).get("path", ""))
-            and "signed/*.zip" in str(step.get("with", {}).get("path", ""))
-            and "signed/*\n" not in str(step.get("with", {}).get("path", ""))
+            step.get("with", {}).get("name") == "packages-${{ matrix.artifact }}"
+            and "unsigned/*.msi" in str(step.get("with", {}).get("path", ""))
+            and "unsigned/*.zip" in str(step.get("with", {}).get("path", ""))
             for step in windows_uploads
         ),
         "Windows release upload must contain only final MSI and ZIP packages",
     )
+
+    verify_windows = job(workflow, "verify-windows-final", "release.yml")
+    require(
+        {
+            ("windows-2025", "x86_64"),
+            ("windows-11-arm", "aarch64"),
+        }.issubset(matrix_pairs(verify_windows, "runner", "arch")),
+        "final Windows verification must retain native x86_64 and ARM64 runners",
+    )
+    verify_windows_commands = commands(verify_windows)
+    for fragment in (
+        "Start-Process msiexec.exe",
+        "Get-AuthenticodeSignature",
+        "MSI uninstall failed",
+        "portable executable signature",
+    ):
+        require(
+            fragment in verify_windows_commands,
+            f"final Windows verification is missing {fragment!r}",
+        )
 
     macos = job(workflow, "package-macos", "release.yml")
     macos_commands = commands(macos)
@@ -560,34 +667,67 @@ def validate_release(workflow: dict[str, Any]) -> None:
         "controlled hardware smoke must consume final packages, not unsigned build intermediates",
     )
 
+    final_gate = job(workflow, "release-final-gate", "release.yml")
+    require(
+        {
+            "authorize",
+            "verify-windows-final",
+            "verify-macos-final",
+            "verify-linux-final",
+            "reproducibility-linux",
+            "hardware-smoke",
+        }.issubset({str(item) for item in final_gate.get("needs", [])}),
+        "release final gate must depend on every native verification, reproducibility, and controlled hardware smoke",
+    )
+    require(
+        "always()" in str(final_gate.get("if", ""))
+        and "needs.authorize.result == 'success'" in str(final_gate.get("if", "")),
+        "release final gate must fail closed after authorization",
+    )
+
+    reproducibility = job(workflow, "reproducibility-linux", "release.yml")
+    reproducibility_commands = commands(reproducibility)
+    reproducibility_uploads = [
+        step
+        for step in steps(reproducibility)
+        if "actions/upload-artifact@" in str(step.get("uses", ""))
+    ]
+    require(
+        "check_reproducible_build.sh" in reproducibility_commands
+        and "reproducibility-${{ matrix.arch }}.json" in reproducibility_commands
+        and {
+            ("ubuntu-22.04", "x86_64"),
+            ("ubuntu-22.04-arm", "aarch64"),
+        }.issubset(matrix_pairs(reproducibility, "runner", "arch")),
+        "release reproducibility must compare cold native x86_64 and ARM64 Linux builds",
+    )
+    require(
+        any(
+            step.get("with", {}).get("name")
+            == "release-reproducibility-${{ matrix.arch }}"
+            and step.get("with", {}).get("path")
+            == "trust/evidence/reproducibility-${{ matrix.arch }}.json"
+            for step in reproducibility_uploads
+        ),
+        "release reproducibility must retain a per-architecture cold-build receipt",
+    )
+
     publish = job(workflow, "publish", "release.yml")
     dependencies = {str(item) for item in publish.get("needs", [])}
     require(
         {
+            "preflight",
             "reproducibility-linux",
             "package-windows",
             "package-macos",
             "package-linux",
-            "hardware-smoke",
+            "release-final-gate",
         }.issubset(dependencies),
-        "publication must depend on reproducibility, every platform package, and controlled hardware smoke",
+        "publication assembly must depend on reproducibility, every package, and the final artifact gate",
     )
-    reproducibility = job(workflow, "reproducibility-linux", "release.yml")
     require(
-        "check_reproducible_build.sh" in commands(reproducibility)
-        and any(
-            step.get("with", {}).get("name") == "release-evidence-reproducibility"
-            for step in steps(reproducibility)
-        ),
-        "release reproducibility must compare cold builds and retain evidence",
-    )
-    publish_permissions = publish.get("permissions", {})
-    require(
-        isinstance(publish_permissions, dict)
-        and publish_permissions.get("contents") == "write"
-        and publish_permissions.get("id-token") == "write"
-        and publish_permissions.get("attestations") == "write",
-        "publish alone must receive release, OIDC, and attestation write permissions",
+        publish.get("permissions") == {"contents": "read"},
+        "publication assembly must remain read-only",
     )
     downloads = [
         step for step in steps(publish) if "actions/download-artifact@" in str(step.get("uses", ""))
@@ -598,32 +738,48 @@ def validate_release(workflow: dict[str, Any]) -> None:
     )
     publish_commands = commands(publish)
     for fragment in (
-        "release_trust.py",
-        "--verify-final",
-        "--expected-windows-publisher",
-        "immutable-releases",
+        "build_release_manifest.py",
+        "--copy-packages",
+        "--include-sbom",
         "sbom-input/Cargo.lock",
-        "Refusing to modify an existing release",
         "release-assets/*.msi",
         "release-assets/*.tar.gz",
     ):
-        require(fragment in publish_commands or fragment in str(publish), f"publication trust is missing {fragment!r}")
+        require(
+            fragment in publish_commands or fragment in str(publish),
+            f"publication assembly is missing {fragment!r}",
+        )
     require(
         "--clobber" not in publish_commands,
-        "publication must never overwrite existing release assets",
+        "publication assembly must never overwrite existing release assets",
     )
     publish_actions = actions(publish)
     require(
         sum("anchore/sbom-action@" in value for value in publish_actions) == 2,
         "final packages require SPDX and CycloneDX SBOM generation",
     )
-    attest_steps = [
-        step for step in steps(publish) if "actions/attest@" in str(step.get("uses", ""))
-    ]
+
+    signed_bundle = job(workflow, "sign-release-bundle", "release.yml")
     require(
-        len(attest_steps) == 2
-        and any("sbom-path" in step.get("with", {}) for step in attest_steps),
-        "final packages require separate provenance and SBOM attestations",
+        {"publish", "preflight"}.issubset(
+            {str(item) for item in signed_bundle.get("needs", [])}
+        )
+        and signed_bundle.get("permissions") == {"contents": "read"}
+        and "minisign -S" in commands(signed_bundle)
+        and "RELEASE_MINISIGN_SECRET_KEY" in str(signed_bundle),
+        "release checksum signing must consume the verified read-only publication bundle",
+    )
+
+    publication_dependencies = {str(item) for item in publish_release.get("needs", [])}
+    publication_commands = commands(publish_release)
+    require(
+        {"sign-release-bundle", "preflight"}.issubset(publication_dependencies)
+        and "gh release create" in publication_commands
+        and "gh release upload" in publication_commands
+        and "gh release edit" in publication_commands
+        and "refusing mutation" in publication_commands
+        and "--clobber" not in publication_commands,
+        "immutable publication must consume the signed bundle without overwriting releases",
     )
 
 
@@ -703,12 +859,20 @@ def validate_s2_assurance(workflow: dict[str, Any]) -> None:
     )
     validate = job(workflow, "validate-active-baseline", "s2-assurance.yml")
     require(
-        validate.get("runs-on") == "ubuntu-latest",
-        "S2 activation validation runner must remain explicit",
+        validate.get("runs-on") == "ubuntu-24.04",
+        "S2 activation validation runner must remain on the GitHub-Free Ubuntu runner",
     )
     require(
-        validate.get("environment") == "stable-release",
-        "S2 activation must use the protected environment",
+        "environment" not in validate,
+        "S2 activation must not depend on an unavailable private protected environment",
+    )
+    require(
+        "secrets." not in str(validate.get("env", {})),
+        "S2 activation must not consume repository secrets",
+    )
+    require(
+        validate.get("permissions") in (None, {"contents": "read"}),
+        "S2 activation must not elevate its read-only permissions",
     )
     timeout = validate.get("timeout-minutes")
     require(
@@ -784,8 +948,12 @@ def validate_f5_openssh_assurance(workflow: dict[str, Any]) -> None:
         "F5 OpenSSH assurance must use the restricted self-hosted runner group",
     )
     require(
-        validate.get("environment") == "f5-openssh-release",
-        "F5 OpenSSH assurance must use the protected environment",
+        "environment" not in validate,
+        "F5 OpenSSH assurance must not depend on an unavailable private protected environment",
+    )
+    require(
+        validate.get("permissions") in (None, {"contents": "read"}),
+        "F5 OpenSSH assurance must not elevate its read-only permissions",
     )
     require(
         validate.get("if") == "vars.AUTOMEXIA_F5_OPENSSH_RUNNER == '1'",

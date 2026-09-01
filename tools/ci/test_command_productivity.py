@@ -557,7 +557,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 path.write_text(content, encoding="utf-8")
             with self.assertRaisesRegex(
                 POLICY.CommandProductivityError,
-                "test_command_productivity.py",
+                "unittest discover",
             ):
                 POLICY.validate_wiring(root)
 

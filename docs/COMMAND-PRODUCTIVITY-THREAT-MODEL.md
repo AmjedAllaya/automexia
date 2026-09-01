@@ -283,7 +283,7 @@ the documented CP5.5/CP5.6 gates pass.
   [machine contract](../tests/fixtures/ecosystem/d7-cp6-ecosystem-contract-v1.json);
   it permits neither tools nor workflows, and runtime still requires acceptance
   and protected implementation. Optional cross-extension LLM workflow
-  orchestration is a later independent LO0-LO5 boundary under proposed
+  orchestration is a later independent optional-extension boundary under proposed
   [ADR 0033](adr/0033-optional-llm-orchestration-extension.md).
 
 ## Mandatory review triggers

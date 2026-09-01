@@ -330,9 +330,18 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         {"connection_plan_validate_64_steps", "connection_plan_resolve_64_steps", "m6_workspace_and_broadcast_planning"},
         root,
     )
+    public_summaries = {
+        "docs/PHASE-IMPLEMENTATION-AUDIT.md",
+        "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
+    }
     for relative in document["documents"]:
         source = bounded_text(root / relative)
-        if "F2" not in source and "D5.0" not in source:
+        if relative in public_summaries:
+            if "Connection Hub" not in " ".join(source.split()):
+                raise F2ContractError(
+                    f"{relative} does not identify the Connection Hub boundary"
+                )
+        elif "F2" not in source and "D5.0" not in source:
             raise F2ContractError(f"{relative} does not identify F2/D5.0")
     return {
         "models": len(document["model_files"]),

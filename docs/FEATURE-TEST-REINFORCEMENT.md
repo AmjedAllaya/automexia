@@ -136,9 +136,8 @@ Current assurance: **Partial**.
 
 Current assurance: **Partial**.
 
-- Raster every implemented surface at tiny through 8K layouts, 100–400% scale,
-  splits, localization, dark/light/high-contrast themes, fallback fonts, and
-  enabled/reduced motion.
+- Raster every implemented surface at tiny through 8K layouts, 100–300% scale,
+  splits, localization, custom themes, fallback fonts and reduced motion.
 - Detect clipping, overlap, z-order, focus obscuration, stale frames, missing
   glyphs and a single changed pixel with exact environment-specific goldens.
 - Independently verify model geometry, hit targets, contrast, glyph presence,
@@ -162,13 +161,13 @@ Current assurance: **Partial**.
   bottom; keyboard/query/gesture/resize transitions; malformed and over-limit
   deltas; and every modal-priority combination.
 - Independently assert the visible row window and selected index, persistent
-  idle/active thumb geometry, responsive reclamping, 100–400% physical-to-logical
+  idle/active thumb geometry, responsive reclamping, 100–300% physical-to-logical
   trackpad conversion, the 1,024-row per-event bound, palette-before-pane
   ownership, and absence of terminal scroll, mouse reporting, pane focus
   changes, and PTY input. Native physical wheel/trackpad, exact pixels, and
   platform accessibility events remain release evidence.
 - For command datetime labels, raster full ISO, duration-free, compact and
-  absent-timestamp fallbacks at tiny through 8K widths and 100–400% scale.
+  absent-timestamp fallbacks at tiny through 8K widths and 100–300% scale.
   Bind measured text and pixels to the exact result identity; reject clipping,
   prompt-context overlap, fabricated labels, stale timestamps or changed cells.
 - For saved font/appearance preferences, cover missing, zero-field, canonical,
@@ -207,6 +206,9 @@ Current assurance: **Partial**.
   command, version migration and classic fallback.
 - Fuzz hostile/duplicate/stale/tampered profiles and test partial migration,
   downgrade, rollback and uninstall without changing unrelated bindings.
+- Exercise real source and include symlinks on Unix and reparse points on
+  Windows; require exact role-specific rejection diagnostics and no imported
+  state or write side effect.
 - Inject real native key events and inspect action, UI, pixel and accessibility
   results on every owning platform.
 
@@ -264,6 +266,13 @@ Current assurance: **Partial**.
   cancellation, stale generation and GPU-loss paths.
 - Execute native renderer/fallback pixel, placement, scale, split, scroll,
   resize, cache eviction and repeated resource-cleanup matrices.
+- Execute the exact stand-alone image/resource command on hosted Linux.
+  Sugarloaf's development graph must request both X11 and Wayland, while
+  rio-backend must forward each enabled backend to its optional rio-window
+  bridge. An earlier workspace-wide all-feature build is not evidence because
+  Cargo resolver v2 deliberately does not preserve that unrelated feature
+  union. The free-plan contract parses both dependency graphs and independently
+  mutates every required backend edge away.
 
 ### shell-integration-listings
 
@@ -274,6 +283,14 @@ Current assurance: **Partial; short command fixtures are insufficient**.
   height boundaries.
 - Test prompt collisions, partial markers, stale status, profile tamper, nested
   shells, resize repaint, install, repair, rollback and uninstall.
+- On Zsh, inject an insecure ambient completion directory into a detached
+  non-interactive session. Prove the contract ignores it without prompting,
+  never registers its canary, and fails when safe-ignore mode is mutated away;
+  the shipped adapter must still never invoke `compinit`.
+- On Bash, exercise the real generated-alias reload with private, linked,
+  over-limit, tampered, interrupted, and collision fixtures. Measure 25 native
+  reloads after five warmups against the 50 ms p95 ceiling, repeat the run, and
+  mutation-check the batched directory-mode and combined file-mode/size probes.
 - Require native PowerShell/CMD/Bash/Zsh/Fish/WSL/Linux/macOS bytes, history,
   completion, result pixels, accessibility and performance evidence.
 
@@ -293,6 +310,21 @@ Current assurance: **Controlled/external**.
 - Require the protected audit to return only pass; plan, billing, reviewer,
   workflow, security-entitlement, credential, native-host, and elapsed evidence
   remain external until actually observed.
+- For Linux Early Access, generate exactly six x64/Arm64 DEB/RPM/tar packages;
+  reject links, duplicates, symbols, unowned formats, count/byte overflow, and
+  checksum/manifest drift; verify a create-once draft before publication and the
+  exact immutable GitHub asset inventory afterward.
+- Exercise the same native packaging graph through a credential-free manual
+  rehearsal that retains an explicit non-release marker and cannot read secrets,
+  sign, publish, tag, or emit activation evidence.
+- Keep the public binary repository, one-hour repository-scoped GitHub App, and
+  website activation seal as independent oracles. Require GitHub's signed
+  release attestation and verify each local asset against it. Mutate repository
+  scope, App permissions, rehearsal isolation, public-job gates, API version,
+  live repository settings, branch/tag rules and bypass actors, attestation
+  commands, draft/publish ordering, immutable audit, every asset digest, redirect
+  host, trusted minisign key/signature, source commit, manifest digest, wrong
+  pinned version, and unavailable-route 404 behavior.
 
 ### command-productivity-cp0-policy
 
@@ -412,58 +444,25 @@ Current assurance: **Partially enforced; preview disabled**.
 
 ### situation-aware-production-operations-po0-proposal
 
-Current assurance: **Planned/proposal only**.
+Current assurance: **Planned; no runtime authority**.
 
-- The strict proposed PO0 JSON contract, canonical digest, semantic checker,
-  mutation suite and current-source nonactivation scan now enforce the
-  documentation boundary. They cover exact formats, all 17 record payloads,
-  freshness/ranking/policy/provider values, all 37 action phase/effect/authority
-  profiles, lifecycle/settings/journal/resource/accessibility/traceability
-  values. They do not prove a provider, UI, runtime, native or release path.
-- Run `python tools/ci/check_production_operations_po0.py` and
-  `python tools/ci/test_production_operations_po0.py` before broader repository
-  validation. Any accepted contract revision must deliberately update the
-  canonical digest and its semantic mutations.
-
-- Boundary-check route/passport/resource UID/evidence/policy/editor generations;
-  evidence-quality/knowledge states; change/ownership/drift, explanation,
-  cohort/revision/environment comparison, network-vantage and SLO boundaries;
-  deterministic hard gates, refusal, risk and ranking; adapter capabilities;
-  Kubernetes ownership/cause matrices; preflight; Incident hypotheses/time/log/
-  DN handoff; journal; one-action observe/stabilize/verify/recover; managed
-  port-forward/probe/debug sessions; declarative packs; limits; fallback and cleanup.
-- Exercise the exact six-surface hierarchy and its shortest read-only, reviewed-
-  insertion, managed-action, stale/refused, cancel/failure and recovery journeys.
-  Assert comfortable/compact/minimal projection order, at-most-five two-line
-  situation rows, one primary action, safe exit, progressive detail, stable
-  selection, focus restoration, plain uncertainty, and no hidden-surface input
-  or accessibility ownership.
-- Independently distinguish native insertion, reviewed insertion, managed
-  operation and managed diagnostic-session scope. Mutate false claims that
-  shell-owned Enter is policy-governed, monitored or receipted; missing PO6
-  activation/final revalidation; inherited session authority; silent managed-to-
-  shell fallback; process-exit-only success; or automatic recovery.
-- Measure instrumented and predefined moderated tasks with action/focus/error/
-  backtrack/cancel/time distributions. Reject fabricated participant scope,
-  cherry-picked averages, missing narrow/keyboard/screen-reader journeys, and
-  screenshot-only usability claims.
-- Mutate stale/cross-pane publication, name-based retargeting, poisoned telemetry,
-  command injection, secret leakage, authorization/GitOps/JIT/policy bypass,
-  false dry-run, blast-radius relaxation, automatic Enter/execution/retry,
-  false causality, wrong cohort/vantage, log/time-gap hiding, listener/debug
-  privilege or cleanup weakening, cross-environment authority merging, arbitrary
-  runbook scripts, per-key I/O, raw evidence persistence, hidden model authority
-  and uninstall residue.
-- Require independent exact editor-byte, argv, resource UID, provider authority,
-  external state, process/network/storage tree, side-effect-absence, pixel,
-  accessibility, focus/input, interaction-efficiency, moderated-usability, and
-  resource/latency oracles plus real controlled provider and
-  native fixtures before any phase claim.
-- Continuously prove that PO0 adds no provider capability, watcher, completion
-  source, investigation view, live-log controller, managed diagnostic session,
-  setting, UI, journal, model, process, network request or execution authority.
-  CP1 remains the fallback and PO1-PO8 remain not implemented.
-
+- Preserve deterministic tests for context isolation, evidence freshness,
+  uncertainty, policy, ranking, refusal, typed targets, approval separation,
+  cancellation, stale-result rejection, fallback, and cleanup.
+- Exercise read-only investigation, reviewed insertion, mutating-action review,
+  failure, recovery, narrow layouts, keyboard-only use, focus restoration, high
+  contrast, reduced motion, and native screen-reader behavior.
+- Assert forbidden side effects: no per-keystroke provider work, implicit Enter,
+  automatic execution or retry, secret persistence, cross-environment authority,
+  stale retargeting, unreviewed scripts, hidden model authority, or uninstall
+  residue.
+- Require independent evidence for exact editor bytes, executable and arguments,
+  resource identity, provider authority, external state, process/network/storage
+  effects, pixels, accessibility, resources, latency, and complete native
+  workflows before any release claim.
+- Exact private scenarios, schemas, counts, provider matrices, UX state machines,
+  thresholds, and phase recipes remain outside the public repository until the
+  corresponding behavior is implemented and approved for publication.
 ### ecosystem-d7-cp6-proposal
 
 Current assurance: **Accepted source partially enforced; activation external**.
@@ -479,7 +478,7 @@ Current assurance: **Accepted source partially enforced; activation external**.
   30-day evidence before public SDK/download, component or provider activation.
 - Continuously reject contract/acceptance/dependency drift, ambient imports,
   extraction shortcuts, authority changes, selected-content logging, false
-  native claims, and any coupling to the separate LO0-LO5 workflow track.
+  native claims, and any coupling to the separate optional orchestration track.
 ### contributor-automation-quality-policy
 
 Current assurance: **Partial**.
@@ -556,10 +555,9 @@ Current assurance: **Partial**.
   process/network/login/PTY paths.
 - Drive native C/W/P section switching and L/F action mnemonics in both cases,
   keyboard, pointer/picker equivalence, modified/search/nested-surface rejection,
-  PTY side-effect absence, focus, spacious 840×500 setup and focused 840×420
-  direct-entry geometry, responsive field stacking, 44/40-pixel targets,
-  functional nested cancellation, exact shared-brand pixels, contrast, scale,
-  theme, screen-reader, restart and revoke flows.
+  PTY side-effect absence, focus, compact 680×380 geometry, 40-pixel targets,
+  exact shared-brand pixels, contrast, scale, theme, screen-reader, restart and
+  revoke flows.
 
 ### connection-hub-f3-library
 
@@ -576,19 +574,12 @@ Current assurance: **Partial**.
 
 Current assurance: **Partial**.
 
-- Cross windows/panes/split-depth/profiles/recipes/stages/retries/checked
-  deadlines, libraries larger than one workspace binding set, restore/
-  broadcast/layout limits and 128-connection restore performance.
-- Reject cycles, dangling bindings, forged reviewed-run/broadcast fingerprints,
-  literal/escaped/nested duplicate JSON keys, unsafe retry, clock reversal or
-  overflow, stale review, cross-workspace targets, hidden scripts, secrets,
-  implicit Enter, previous-generation migration misuse and execution.
-- Require `check_m6_workspaces.py` plus its mutation suite to freeze the pure
-  model, application composition, activation blockers, real-path tests, fuzz,
-  benchmark, S1 matrix and CI/full-QA wiring.
-- Run native review/edit/restore/broadcast-preview and expiry flows with
-  responsive exact pixels, accessibility, persistence, replacement and
-  no-execution evidence. These controlled native gates remain external.
+- Cross windows/panes/split-depth/profiles/recipes/stages/retries/deadlines/
+  restore/broadcast/layout limits.
+- Reject cycles, dangling bindings, forged risk, unsafe retry, stale review,
+  cross-workspace targets, hidden scripts, secrets, implicit Enter and execution.
+- Run native review/edit/restore/broadcast-preview, responsive pixel,
+  accessibility, persistence, replacement and no-execution flows.
 
 ### provider-auth-m7-capsules
 

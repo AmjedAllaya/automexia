@@ -33,14 +33,96 @@ remain non-mutating. Persistent changes require the explicit
 and PowerShell execution policy is never bypassed by the application or local
 verification commands.
 
+### Writing readable tests
+
+A test's name and assertions own the visible behavior. Comments are reserved for
+reasoning that a future maintainer could otherwise remove accidentally: fixture
+identity and boundary choices, the real regression path, trust or authority
+limits, why a dependency is mocked, the independent oracle, forbidden side
+effects, and cleanup or resource-lifetime invariants. Native scripts also mark
+important setup, evidence-publication, and cleanup phases when their ordering is
+part of the guarantee.
+
+Comments should explain **why**, not translate the next line into prose. Put a
+single explanation on a shared fixture, mutation loop, or phase instead of
+duplicating it across cases. Avoid mechanical `Arrange`/`Act`/`Assert` labels and
+do not require a comment count: simple tests are clearer without filler. Preserve
+useful existing comments and update them with the behavior they describe. Exact
+scanner canaries, parser bytes, raster goldens, and other byte-sensitive fixtures
+may intentionally omit comments when any added text would alter the test input.
+
 The complete gate also parses every repository PowerShell source, exercises the
 explicit Windows install/repair/uninstall paths in isolated profile and
 LocalAppData fixtures, and executes the PowerShell formatter/prompt contract on
 Windows. On Unix it syntax-checks Bash and Zsh, runs ShellCheck, exercises the
 explicit installer twice in an isolated home, repairs a deliberately changed
-installed file, and executes both shell-integration suites.
+installed file, and executes both shell-integration suites. Shell discovery is
+limited to tracked and newly added non-ignored sources so ignored caches or
+private archival worktrees cannot substitute stale files for the active
+checkout.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
-isolated exhaustive build artifacts behind.
+isolated exhaustive build artifacts behind. The check, Clippy, and workspace
+test phases all enable every workspace feature, matching the hosted Rust quality
+gate instead of relying on default-feature coverage.
+
+## Public Linux Early Access distribution
+
+Run the producer-side policy and mutations before changing packaging,
+publication, GitHub permissions, checksums, public evidence, or activation:
+
+```text
+python tools/ci/public_distribution.py check-policy
+python tools/ci/test_public_distribution.py
+python .github/scripts/check_action_pins.py
+python .github/scripts/check_free_plan_contract.py
+python tools/ci/test_free_plan_contract.py
+python tools/ci/test_repository_protection.py
+```
+
+The tests create real temporary package/bundle files and compare bytes and
+digests. They cover missing/duplicate package slots, unowned AppImage/Windows
+files, symbols, links, size/count ceilings, malformed checksum paths, one-byte
+drift, draft/immutable state, extra assets, post-upload digest changes,
+repository scope, App permission tokens, publication ordering, and deterministic
+activation handoff. Workflow mutations also remove the manual rehearsal trigger,
+change its non-public gate, inject a secret reference, weaken the signing and
+publishing gates, change the GitHub API version, skip the live repository
+governance audit, and remove release-level or per-asset attestation verification;
+each mutation must fail closed. Repository-governance mutations independently
+weaken visibility, passive-feature settings, immutability, bypass actors,
+reference scopes, approvals, code-owner review, merge mode, and tag rewrite
+rules. They do not
+substitute for native hosted packaging, real minisign, GitHub App, immutable
+release, cryptographic GitHub release attestation, or production website
+evidence.
+
+A manual workflow dispatch is the credential-free native rehearsal. It must
+produce only the six unsigned packages, the manifest, and the explicit
+`REHEARSAL-NOT-A-PUBLIC-RELEASE.txt` marker in a seven-day private artifact. A
+rehearsal that reads a secret, signs, publishes, creates a tag, or emits an
+activation handoff is a policy failure.
+
+On 2026-09-01, the authenticated live public-archive payload passed
+`verify-repository`: visibility and passive-feature settings, immutable releases,
+the no-bypass `Protect main` review ruleset, and the non-rewritable `Protect
+release tags` ruleset matched the checked-in contract. This verifies current
+repository governance only; no release exists yet, and it is not evidence for a
+GitHub App, release key, native hosted package run, attestation, or website
+deployment.
+
+Workflow static analysis uses the same checksum-pinned actionlint 1.7.12 and
+ShellCheck 0.11.0 binaries locally and in hosted CI. The ShellCheck path is
+explicit: a missing host installation cannot silently reduce local workflow
+coverage. Mutation tests reject removal or version drift, while the real lint
+run covers every checked-in workflow shell block.
+
+The landing-page repository separately runs `pnpm downloads:check` for friendly
+and pinned 404/redirect contracts plus live-verifier mutations. When and only
+when a real release is sealed as available, its `pnpm downloads:verify:live`
+downloads the complete release, bounds every response, checks GitHub digests and
+redirect hosts, verifies exact `SHA256SUMS`, validates the trusted minisign key
+and detached signature, and compares the manifest source commit and activation
+digest. Keep its status inactive in ordinary source tests.
 
 ### Native platform ownership
 
@@ -51,21 +133,21 @@ host-provided. The required evidence is:
 
 | Surface | Required host and checks |
 |---|---|
-| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every PR runs locked, all-feature Clippy, Nextest, and doctests on native Windows, Ubuntu Linux, and macOS. |
-| Windows shells, ConPTY, WGPU/CPU | Native Windows runs PowerShell, resize, clone, WSL, and image gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
-| Bash/Zsh install, repair, prompt metadata, and listing behavior | Native Linux and macOS run `bash tools/ci/test_shell_sources.sh`; the script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home. |
-| Linux display adapters | Ubuntu checks the frontend separately with X11-only, Wayland-only, and combined features. Release jobs additionally validate DEB and RPM metadata/install behavior; this does not imply that every downstream Linux distribution has been manually certified. |
-| WSL launch and clone routing | Native Windows plus an installed WSL distribution runs `cargo xtask test session-clone --native-wsl`; Linux source/build artifacts stay on the WSL filesystem rather than `/mnt/<drive>`. |
-| macOS windows, Metal/WGPU, universal application, signing, and notarization | Native Intel/Apple-Silicon macOS jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
+| Portable Rust, metadata, configuration, bindings, and renderer-neutral layout | Every pull request runs locked, all-feature Clippy, Nextest, documentation tests, QA-runner mutation tests, the deterministic Loom channel model, and headless image-rendering assurance on the GitHub-Free Ubuntu runner. This portable gate is necessary but does not establish native Windows or macOS behavior. |
+| Windows shells, ConPTY, WGPU/CPU | Controlled Windows release/assurance runners own PowerShell, resize, clone, WSL, image, and final-package gates. Resize stress proves base and viewport-boundary PowerShell, neutral CMD, stable result ownership, glyph/blank pixels, bounded geometry, branded opacity/motion, and no vertical rail. |
+| Bash/Zsh install, repair, prompt metadata, and listing behavior | The ordinary Ubuntu quality job runs bash tools/ci/test_shell_sources.sh. The script uses only Bash 3.2/BSD-compatible temporary-file semantics and tests an isolated home; controlled macOS evidence remains separately required. |
+| Linux display adapters | The ordinary Ubuntu gate checks portable all-feature Rust behavior. Controlled release jobs validate Linux package/install behavior; X11/Wayland and compositor evidence remains separately scoped and is not inferred from a generic build. |
+| WSL launch and clone routing | A controlled Windows runner with an installed WSL distribution runs cargo xtask test session-clone --native-wsl; Linux source/build artifacts stay on the WSL filesystem rather than /mnt/<drive>. |
+| macOS windows, Metal/WGPU, universal application, signing, and notarization | Controlled Intel/Apple-Silicon macOS release jobs own compilation and tests. Controlled macOS hardware owns GUI, VoiceOver, Gatekeeper, notarization, and final artifact evidence. |
 
 Exact WGPU/CPU, PowerShell, neutral CMD, and native WSL result evidence is in
 [Command-result surface assurance](COMMAND-RESULT-ASSURANCE.md).
 
-The native CI job intentionally enables every Cargo feature on all three host
-families. Platform-specific code must use target configuration, not rely on a
-feature being absent from one host. A platform result is reported as
-`external` or `not run` when its required host, credentials, display server, or
-hardware is unavailable; it must never be inferred from a different OS.
+The ordinary CI quality job intentionally enables every Cargo feature on its
+Ubuntu host. Platform-specific code must use target configuration, not rely on a
+feature being absent from one host. A platform result is reported as external or
+not run when its required host, credentials, display server, or hardware is
+unavailable; it must never be inferred from a different OS.
 
 ## Enforced feature assurance ledger
 
@@ -395,7 +477,8 @@ cargo xtask test image-decoder-fuzz --seconds 120
 cargo xtask verify architecture
 ```
 
-The required PR command covers every enabled raster codec, exact RGBA and
+The required PR CI gate runs the same headless image-rendering command. It covers
+every enabled raster codec, exact RGBA and
 straight-alpha behavior, supported/unsupported extensions, URL/control/symlink
 rejection, quoted and bare paths, WSL mapping, file/dimension/pixel/allocation
 limits, malformed/truncated/mutated input storms, no small-image upscale,
@@ -415,7 +498,8 @@ WGPU/CPU dimensions and luminance distributions. Protocol rendering and local
 quick look remain separate contracts; native Linux/macOS evidence follows the
 matrix in [image previews](IMAGE-PREVIEWS.md).
 
-The decoder fuzz command installs/uses explicit nightly on Unix. On Windows it
+The decoder fuzz command installs/uses the pinned nightly-2026-08-25 toolchain
+on Unix. On Windows it
 uses WSL because cargo-fuzz/libFuzzer does not support native Windows; this
 avoids misleading `clang_rt.asan_dynamic` DLL failures. It fuzzes both bounded
 decode and visible-path tokenization. The runner copies the current source tree
@@ -423,8 +507,9 @@ once from Windows into a disposable WSL-native `/tmp` workspace, excluding
 `.git`, the workspace target, and generated fuzz target, corpus, and
 artifact directories; all Cargo build, corpus, and target I/O then
 stays under `/tmp`. It caps RSS/input time and removes the complete staged
-campaign on exit. Nightly CI separately installs nightly, invokes every target
-with `cargo +nightly fuzz`, and runs pure decoder tests under ASan and TSan.
+campaign on exit. Nightly CI separately installs nightly-2026-08-25, invokes
+every target with `cargo +nightly-2026-08-25 fuzz`, and runs pure decoder tests
+under ASan and TSan.
 The 2026-08-14 Windows-to-WSL decoder campaign completed 544,609 executions
 over 121 seconds without a crash or sanitizer finding (2,504 coverage edges,
 5,383 features, 1,161 final corpus entries, and 357 MiB peak RSS). These are
@@ -563,8 +648,6 @@ variables exist for unusual build hosts:
 - `AUTOMEXIA_VERIFY_MIN_FREE_GIB` (default `12`);
 - `AUTOMEXIA_BUILD_MIN_FREE_GIB` (default `4`);
 - `AUTOMEXIA_TARGET_WARN_GIB` (default `12`);
-- `AUTOMEXIA_VERIFY_TARGET_ROOT` selects a short absolute directory for
-  disposable exhaustive-verification artifacts;
 - `AUTOMEXIA_KEEP_VERIFY_TARGET=1` retains verification output for deliberate
   diagnosis instead of deleting it.
 
@@ -574,18 +657,13 @@ not `target` build products.
 
 To validate another checkout or filesystem, provide an absolute or
 invocation-relative `CARGO_TARGET_DIR`; build, smoke, launch, storage preflight,
-and cleanup all resolve the same directory consistently. On Windows, the
-generated verification target must remain at most 160 UTF-16 code units so
-MSVC-owned files retain path headroom. If a deeply nested checkout exceeds that
-ceiling, `cargo ready` fails before compiling and names
-`AUTOMEXIA_VERIFY_TARGET_ROOT`; set it to a short absolute directory on the
-intended drive, for example `D:\amx-ready`. Only exact generated
-`automexia-verification-v1-*` children are removed.
+and cleanup all resolve the same directory consistently.
 
 The local gate validates all checks that can run on the current host. GitHub CI
 keeps separate native and cross-platform jobs for operating-system matrices,
-coverage, CodeQL, dependency review, fuzzing, sanitizers, and controlled
-hardware that one contributor machine cannot reproduce.
+coverage, GitHub Actions static analysis, dependency review, fuzzing,
+sanitizers, and controlled hardware that one contributor machine cannot
+reproduce.
 
 Cargo creates a test executable for each applicable library, binary, integration
 target, and documentation target. Therefore, `test result: ok. 0 passed; 0
@@ -603,21 +681,36 @@ licenses, and dependency sources continue to be checked independently.
 
 ## Every pull request
 
-Every PR runs policy checks regardless of changed paths:
+Every PR to `main` starts three ordinary, read-only jobs on `ubuntu-24.04`:
 
-- Cargo metadata/lock consistency and `rustfmt --check`;
-- TOML, YAML, JSON, XML, shell, PowerShell, documentation, and link validation;
-- product identity, provenance/license, architecture graph, package metadata,
-  and brand-manifest verification;
-- warning-denied workspace Clippy and workspace tests on Windows, Linux, and
-  macOS;
-- Linux X11-only, Wayland-only, and combined checks;
-- Windows MSVC x64 tests and ARM64 cross-check;
-- macOS x64 and ARM64 compile checks;
-- `cargo deny`, dependency review, CodeQL, and secret-safe fork permissions;
-- versioned hosted-CI/repository-protection contract and mutation tests;
-- LLVM coverage with a non-decreasing recorded global baseline and at least 80%
-  line coverage on changed Automexia-owned lines.
+- **Repository and workflow policy** validates immutable Action pins, the
+  GitHub-Free contract, all repository formats and links, the complete Python
+  checker/mutation discovery suite, Actionlint, offline Zizmor, Semgrep, and
+  each scanner's committed detection canary.
+- **Rust quality and tests** runs locked all-feature formatting, warning-denied
+  Clippy, Nextest, documentation tests, deterministic Loom readiness, headless
+  image/resource regression, and shell integration contracts.
+- **Dependency security** runs RustSec, Cargo Deny, Cargo Vet, and bounded
+  Gitleaks scans over the introduced commit range and working tree.
+
+These ordinary jobs provide Linux-hosted portable evidence. They do **not**
+claim native Windows, macOS, GPU, installer, signing, notarization, screen-reader,
+or controlled-hardware behavior.
+
+An internal PR whose head is exactly `release/X.Y.Z` adds two release-only jobs:
+
+- **Release candidate gate** runs on Linux and validates same-repository origin,
+  stable SemVer/version identity, protected-path separation, and tag uniqueness.
+- **Release candidate Windows coverage** waits for ordinary quality and the
+  release-candidate gate, then generates coverage on `windows-2025` because the
+  recorded baseline is `windows-x86_64-msvc`. It binds `BASE_SHA` and `HEAD_SHA`
+  to the exact PR commits, rejects reports outside the checkout, enforces a
+  non-decreasing global baseline, and requires at least 80% coverage for changed
+  executable lines in every Automexia-owned product/extension crate.
+
+The Windows coverage job uses standard hosted minutes only for internal release
+PRs. It is within GitHub Free's included allowance while quota remains, but is
+not cost-free after an owner enables paid overage. Fork PRs cannot start it.
 
 An inherited engine file is exempt from the changed-line threshold only while
 untouched. Any engine change requires a focused regression test.
@@ -634,10 +727,11 @@ cargo llvm-cov --workspace --locked --lcov --output-path lcov.info
 python tools/ci/check_coverage.py
 ```
 
-For pull requests, CI continues to set `BASE_SHA` and `HEAD_SHA` to the exact
-base and head commit IDs. The checker anchors Git and report paths to the
-repository root, so invoking it from a wrapper or a different directory cannot
-silently inspect the wrong checkout.
+For release pull requests, CI sets `BASE_SHA` and `HEAD_SHA` to the exact base
+and head commit IDs. The checker anchors Git and report paths to the repository
+root, rejects linked, oversized, malformed, traversing, and out-of-checkout
+evidence, and writes an atomic bounded summary. Run its independent mutations
+with `python tools/ci/test_coverage.py`.
 
 ## Terminal conformance
 
@@ -1056,7 +1150,10 @@ cargo bench -p automexia-keybindings --bench registry --locked -- --noplot
 tests plus the frontend registry, command-palette, inspector, compatibility
 action, export, migration, zoom/equalize, topology-history, and VT bounded-
 selection owners before byte-verifying generated artifacts and references.
-Hosted Linux nightly runs both Ghostty fuzzers; mutation gates freeze wiring.
+Hosted Linux nightly runs the three relevant bounded fuzz targets:
+ecosystem_bundle, ghostty_keybindings, and ghostty_migration. Mutation gates
+parse and freeze that matrix semantically, so a harmless YAML formatting change
+cannot hide a missing target.
 Native evidence uses a private exact-commit manifest and QA keeps only a
 redacted summary. Missing evidence is not a pass. Scenarios, benchmarks, the
 Windows fuzz failure, and cleanup are in the
@@ -1072,11 +1169,57 @@ MSI uses cargo-packager/WiX 3; ARM64 uses the pinned repository-owned WiX 5
 source because WiX 3 has no ARM64 MSI support. Linux package jobs install the
 exact nFPM version without a semver-incompatible `v` prefix.
 
-CodeQL runs in no-build Rust mode. Public repositories upload SARIF to GitHub
-code scanning. When the repository is private without GitHub Code Security,
-the same analysis runs with upload disabled and retains its SARIF as a private
-14-day workflow artifact for maintainer review instead of failing on an
-unavailable entitlement.
+On this GitHub-Free/private plan, the policy job deliberately rejects a CodeQL
+workflow and private code-scanning upload. It runs pinned actionlint and offline
+zizmor against workflow files; dependency security runs cargo audit and cargo
+deny. Before a push, contributors can run the same locally reproducible
+assurance profile:
+
+```text
+cargo xtask assurance install-tools
+cargo xtask assurance pre-push
+```
+
+Tools are pinned and installed only under the ignored repository-local
+`.automexia-tools/` cache. The profile adds Semgrep Community Edition source
+rules, Gitleaks checks of commits introduced relative to the configured
+upstream plus the working tree, a Cargo Vet trust-policy check, and real
+Semgrep/Gitleaks canaries. It has no credential, upload, or network-service
+authority beyond fetching the explicitly checksum-pinned local tool releases
+and pinned public packages during the one-time installation. Hosted CI uses
+validated event SHAs for the same introduced-commit boundary and a complete
+checkout only in the dependency-security job. Use
+`cargo xtask assurance install-hook` only when no pre-existing personal Git
+pre-push hook needs to be preserved: it refuses to overwrite one.
+
+Run `cargo xtask assurance audit-history-secrets` separately for the bounded
+full-history campaign. It intentionally fails closed on the repository's
+review-required legacy generic-key findings. Do not add broad path allowlists or
+rewrite shared history without explicit human approval; current-tree and newly
+introduced findings remain blocking in `pre-push` and `release-local`.
+
+`cargo xtask assurance release-local` adds release-manifest and provenance
+policy/mutation checks. `cargo xtask assurance deep-source` is deliberately
+Linux/WSL-only and executes the bounded nightly Miri, sanitizer, and fuzz
+owners defined by the manual nightly workflow. It cannot substitute for
+controlled Windows/macOS hardware, accessibility, signing, notarization, or
+GitHub vendor-entitlement evidence; those remain explicit external gates.
+
+The ignored `.automexia-tools/` cache is excluded from repository source and
+documentation walkers; its scanner/tool payloads are not treated as checked-in
+formats. After the one-time tool installation, run
+`cargo xtask assurance initialize-vet` to generate Cargo Vet's
+source-controlled baseline. On later runs it verifies a complete baseline
+without rewriting it; a partial baseline fails closed. Inspect every generated
+`supply-chain/` record and commit it with the policy. The baseline is a ratchet,
+not evidence that the dependency graph was independently audited;
+new or changed dependencies must receive a reviewed audit/import decision.
+
+The exact currently reviewed upstream informational warnings live in
+`.cargo/audit.toml` and are mirrored by `deny.toml`;
+`tools/ci/test_rustsec_exceptions.py` fails if either policy gains, loses, or
+fails to explain an exception. This is a temporary compatibility ledger for
+transitive renderer/font dependencies, not a general RustSec waiver.
 
 Stable release requires WSL, real-GPU, clean-install, upgrade, uninstall,
 signature, notarization, URL handler, terminfo, and migration smoke tests on
@@ -1123,8 +1266,10 @@ binds that evidence to the exact Windows packages, version, and configured
 publisher. Controlled GUI/PTY and WSL smoke use the final packaged Windows and
 Linux portable archives. macOS release CI independently proves
 hardened runtime, absence of `get-task-allow`, accepted notarization, staple
-validation, and Gatekeeper acceptance. A release-only Linux job compares two
-fresh cold builds byte for byte and records durations/hash/size; publication
+validation, and Gatekeeper acceptance. The release-only Linux x64 and ARM64 jobs
+invoke the canonical `tools/ci/check_reproducible_build.sh` contract to compare
+two fresh cold source builds byte for byte and publish a per-architecture
+duration/hash/size receipt; publication
 also requires repository immutable releases and refuses pre-existing assets.
 These native/external trust decisions cannot be claimed from local unsigned
 builds. The complete contract and false-positive response are in
@@ -1831,6 +1976,13 @@ exact baseline/source process pairs after five warmups and computes p95 from
 paired registration overhead. Linux/macOS CI
 installs Bash/Zsh/Fish validators; Windows CI runs PowerShell/CMD integration.
 
+The native Bash contract also measures 25 generated-alias reloads after five
+warmups and requires the 20-sample p95 to stay within 50 ms while linked,
+over-limit, interrupted, tampered, and collision fixtures retain fail-closed
+behavior. The detached Zsh regression injects a world-writable ambient `fpath`,
+proves its completion canary is never registered, and mutation-tests that
+removing `compinit` safe-ignore mode reproduces the non-interactive failure.
+
 Windows source contracts also prohibit module-dependent hashing on installer
 integrity checks and the PowerShell completion startup path; both use the
 platform SHA-256 API directly.
@@ -1928,38 +2080,26 @@ AS0 is proposal-only; AS1-AS6 are not implemented. The complete future gate is
 
 ## Situation-Aware Production Operations evidence gate
 
-PO0 is a proposal/checker only; PO1-PO8 are not implemented. The separate
-environment-passport/route-lock; change/ownership/drift, resource/scheduler,
-cohort/revision/environment, passive-network/SLO and dependency evidence;
-Kubernetes situation/ranking; editor-byte/no-Enter;
-permission/GitOps/JIT/policy preflight; Incident hypothesis/time/live-log/
-Diagnostic-Navigator-handoff/journal; execute-observe-stabilize-verify-recover;
-port-forward/probe/debug; organization-pack; provider; security; fuzz/model;
-visual/accessibility; native; resource/storage; rollback/disable/uninstall;
-package; and external evidence ladder is maintained
-in [Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md).
-Exact surface, responsive, focus, ownership-path/session-kind, usability, and accessibility
-requirements are owned by the
-[Production Operations experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md).
-The dedicated testing plan applies them separately to shell-owned insertion,
-PO6 managed execution and PO6 managed diagnostic sessions; this index does not
-duplicate that contract.
+Situation-aware Production Operations is a public direction only. No provider
+collection, watcher, investigation view, completion source, model, managed
+session, execution path, setting, or persistence ships. The future assurance
+categories and publication gates are summarized in
+[Situation-Aware Production Operations testing](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md);
+the [experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md) describes
+the intended interaction principles. Exact unreleased scenarios, schemas,
+provider matrices, limits, state machines, and phase recipes remain local until
+implementation and publication review.
 
-That plan does not activate CP5, provider collection, a watcher, investigation
-view, live-log controller, managed diagnostic session, completion source, LLM,
-model, D3 runner, or any product behavior. CP1 remains the
-fallback and all phase-specific external provider/native evidence stays open.
-
-The non-activating
-[PO0 contract](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md) is checked with:
+The non-activating public planning boundary is checked with:
 
 ```text
 python tools/ci/check_production_operations_po0.py
 python tools/ci/test_production_operations_po0.py
 ```
 
-They prove proposal integrity and current source-marker absence only; all
-runtime, provider, native and release evidence stays external.
+They prove planned-status language, absence of private planning artifacts, and
+current source-marker absence only; all runtime, provider, native and release
+evidence stays external.
 
 ## External-tool and adopted-dependency assurance
 
@@ -1985,11 +2125,13 @@ adds all applicable evidence below.
 Parsers for external JSON, safe SSH inventory, route graphs, policy input, file
 operations, log frames, and collaboration messages receive property and fuzz
 coverage. Pure security decisions and state machines receive scoped mutation
-testing. cargo-vet is introduced only with a named audit owner, trusted-import
+testing. Cargo Deny, Cargo Audit, and cargo-vet are all version-pinned in the
+repository-local assurance cache. cargo-vet is introduced only with a named audit owner, trusted-import
 policy, explicit criteria, ratcheted exemptions, and renewal process; it
-complements rather than replaces cargo-deny, dependency review, CodeQL, SBOMs,
-attestations, or release signing. Diagnostic Nextest retries remain reported
-flaky failures.
+complements rather than replaces cargo-deny, SBOMs, or release signing. On a
+private GitHub-Free repository, private Dependency Review and CodeQL are
+external vendor-entitlement gates rather than local claims. Diagnostic Nextest
+retries remain reported flaky failures.
 
 An adopted runtime crate also needs pinned minimal features, license/source/
 advisory/provenance review, an update owner, platform declaration, measured
@@ -2012,7 +2154,7 @@ See the [S1 assurance audit](research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AU
 
 The remaining roadmap work is deliberately separate:
 
-- execution and approval of five exact 9,216-case raster matrices across
+- execution and approval of five exact 8,352-case raster matrices across
   Windows, Linux X11/Wayland, and macOS Intel/Apple Silicon, plus retained
   Windows/Linux/macOS native frames;
 - broader pure-state Proptest/Loom models, longer persisted fuzz campaigns, and
@@ -2089,43 +2231,57 @@ cargo clippy -p automexia-ui-model --all-targets --all-features --locked -- -D w
 cargo clippy -p automexia-terminal --test connection_library --locked -- -D warnings
 python tools/ci/check_connection_hub_f2.py
 python tools/ci/test_connection_hub_f2.py
-python tools/ci/check_m6_workspaces.py
-python tools/ci/test_m6_workspaces.py
-python tools/ci/s1_assurance.py check-policy
-python tools/ci/test_s1_assurance.py
-python tools/ci/check_feature_test_reinforcement.py
-python tools/ci/test_feature_test_reinforcement.py
-cargo check --manifest-path fuzz/Cargo.toml --locked --bin connection_planning
 cargo xtask verify architecture
 cargo bench -p automexia-connectivity --bench connection_planning --locked -- workspace_validate_16_windows_64_panes_128_connections --noplot --sample-size 30
-cargo bench -p automexia-connectivity --bench connection_planning --locked -- workspace_parse_strict_json_16_windows_64_panes_128_connections --noplot --sample-size 30
 cargo bench -p automexia-connectivity --bench connection_planning --locked -- broadcast_review_50_targets --noplot --sample-size 30
-cargo bench -p automexia-connectivity --bench connection_planning --locked -- connection_plan_workspace_restore_128_connections --noplot --sample-size 30
 ```
 
-The M6 checker is semantic rather than file-count based. It freezes exact limits,
-the all-false authority ceiling, D3/M5 blockers, strict duplicate-name-safe JSON
-ingress, checked review and time integrity, terminal broadcast expiry,
-referenced-profile-only restore, explicit migration/recovery ownership, named
-real-path regressions, fuzz and benchmark owners, CI wiring, and the applicable
-S1 policy inventory. Its mutations delete or weaken each of those facts and must
-fail closed.
+Local Windows x86_64 evidence on 2026-08-22 passed 9 planner, 6 automation, 10
+workspace, 15 Hub-model, and 10 Connection Library integration tests plus all
+three focused warning-denied Clippy commands. Coverage includes a deliberately
+failing then fixed forged-privilege review regression, exact stage/risk policy,
+no-hooks, retry/deadline/cancel/generation/shutdown, hostile/cycle/stale binding,
+clone/rebind/restore, schema-1 migration preview, CAS/recovery/rollback, atomic
+dependent revisions/fingerprints, redacted topology transfer, semantic focus and
+armed state, and 1,000 repeated generations at the maximum 50 targets. The F2/M6
+mutation checker passed with 9 required source models and 51 named tests; the
+architecture verifier passed. The workspace parsers are registered in the
+connection-planning fuzz target.
 
-The current S1 policy has 28 suites. Every native/resource/accessibility suite
-contains an M6 workflow; every visual suite includes catalog, restore, and
-broadcast surfaces. The exact visual matrix is therefore 9,216 captures per
-suite (3 themes × 6 scales × 8 viewports × 32 surfaces × 2 motion modes). This
-source policy does not substitute for executing and independently reviewing the
-controlled frames and assistive-technology sessions on the release commit.
+The required final gates also passed on Windows x86_64 on 2026-08-23:
+`cargo fmt --all -- --check`; warning-denied workspace Clippy; Nextest with
+1,847 passed and 7 skipped tests across 54 binaries; workspace documentation
+tests with 64 passed and 3 ignored examples; and `python3 tools/ci/qa.py --full`.
+Full QA additionally passed resize stress, session-clone lifecycle, Loom, and
+dependency policy; its ignored local report is
+`target/qa/20260822T220242Z-35148/report.html`. The first `cargo ready` preflight
+correctly refused to proceed with only 7.07 GiB free on D:. A later clean run
+exposed the existing completion-provider pipe-holder test's timing-only cleanup
+check while every M6 suite passed. Investigation replaced fire-and-forget group
+termination with synchronous descendant reaping and made the regression assert
+that no descendant survives to emit output. The focused regression, Nextest,
+full QA, and a final readiness run then passed. Final readiness used a fresh C:
+target with 24.71 GiB free and passed the isolated check, Clippy, workspace
+unit/integration/doc tests, dependency policy, fresh application build, and
+`automexia 0.4.0` smoke. Both exact temporary targets and the 7.83 GiB
+verification generation were removed. The original D: target could not be
+purged because Windows retained the running Automexia executable, so that
+reproducible cache remains a local storage warning, not an M6 correctness
+failure.
 
-Historical 2026-08-22 through 2026-08-25 Windows x86_64 focused/full-gate counts,
-same-host Criterion ranges, a corrected descendant-reaping regression, clean-
-target readiness, and storage limitations remain preserved in the
-[phase audit](PHASE-IMPLEMENTATION-AUDIT.md).
-The current evidence-led source classification, six corrected integrity gaps,
-and exact controlled/native exit criteria are in the
-[M6/F6 stable-release audit](research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
-ADR 0023 review/edit is active; execution and D3/M5 evidence remain gated.
+On 2026-08-25, Criterion measured maximum workspace validation (16 windows,
+64 panes, 128 connections) at 28.873–33.842 µs with 7/30 high outliers and
+50-target broadcast review at 16.454–16.915 µs with 3/30 high outliers. These
+fresh same-host runs have no established release ratchet or named-hardware
+baseline, so they are recorded as uncontrolled evidence, not an improvement.
+
+Windows x86_64 evidence on 2026-08-25 passes 9 product and 6 interaction tests,
+workspace formatting/Clippy, 2,095 Nextest cases (7 skipped), 64 doc tests (3
+ignored), full QA, and clean-target `cargo ready`. It covers CLI/CAS/recovery/
+limits, current reviews, worker/modal isolation, responsive/accessibility state,
+and no PTY input; two guards failed before correction. ADR 0023 review/edit is
+active. Execution, native cleanup/resources/accessibility, and hosted evidence
+remain D3/M5 gates.
 
 ## M7 provider-neutral authentication and capsule isolation
 

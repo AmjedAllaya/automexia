@@ -33,13 +33,14 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertEqual(counts["fuzz_targets"], 18)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 
-    def test_benchmark_inventory_ignores_private_and_generated_copies_only(self) -> None:
+    def test_benchmark_inventory_ignores_private_generated_and_local_tool_copies(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             product = root / "crate" / "benches" / "real.rs"
             private = root / ".automexia-private" / "copy" / "benches" / "real.rs"
+            local_tools = root / ".automexia-tools" / "copy" / "benches" / "real.rs"
             generated = root / "target" / "copy" / "benches" / "real.rs"
-            for path in (product, private, generated):
+            for path in (product, private, local_tools, generated):
                 path.parent.mkdir(parents=True, exist_ok=True)
                 path.write_text("fn main() {}\n", encoding="utf-8")
 

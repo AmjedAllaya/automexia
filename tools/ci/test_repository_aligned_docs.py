@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regression tests for the repository-aligned documentation pack."""
+"""Regression tests for legacy pack integrity and the private-doc boundary."""
 
 from __future__ import annotations
 
@@ -208,6 +208,71 @@ class RepositoryAlignedDocumentationTests(unittest.TestCase):
             readme.write_bytes((readme.read_text(encoding="utf-8") + "\n### Skipped\n").encode("utf-8"))
             self.refresh_entry(pack, "README.md")
             with self.assertRaisesRegex(CHECKER.DocumentationPackError, "skips"):
+                CHECKER.validate(root)
+
+    @staticmethod
+    def create_private_boundary(root: Path) -> None:
+        (root / ".gitignore").write_text(
+            "/.automexia-private/\n", encoding="utf-8"
+        )
+        policy = root / CHECKER.POLICY_PATH
+        policy.parent.mkdir(parents=True)
+        policy.write_text(
+            "# Boundary\n\n"
+            "## Public documentation\n\nPublic behavior.\n\n"
+            "## Local-only documentation\n\nUnreleased detail.\n\n"
+            "## Never document in the repository\n\nNo secrets.\n\n"
+            "## Publication review\n\nReview before sharing.\n",
+            encoding="utf-8",
+        )
+        (policy.parent / "index.md").write_text(
+            "# Documentation\n", encoding="utf-8"
+        )
+
+    def test_private_boundary_passes_and_skips_local_content(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            private = root / CHECKER.PRIVATE_PATH
+            private.mkdir()
+            (private / "internal.md").write_text(
+                f"# Internal\n\n{CHECKER.PACK_PATH}\n", encoding="utf-8"
+            )
+            counts = CHECKER.validate(root)
+            self.assertEqual(counts["files"], 2)
+            self.assertEqual(counts["historical"], 0)
+            self.assertEqual(counts["duplicates"], 0)
+
+    def test_private_boundary_rejects_legacy_public_pack(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            (root / CHECKER.PACK_PATH).mkdir()
+            with self.assertRaisesRegex(
+                CHECKER.DocumentationPackError, "must remain removed"
+            ):
+                CHECKER.validate(root)
+
+    def test_private_boundary_rejects_negated_ignore_rule(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            with (root / ".gitignore").open("a", encoding="utf-8") as target:
+                target.write("!/.automexia-private/README.md\n")
+            with self.assertRaisesRegex(CHECKER.DocumentationPackError, "negated"):
+                CHECKER.validate(root)
+
+    def test_private_boundary_rejects_public_link_to_private_content(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            (root / "docs" / "index.md").write_text(
+                "# Documentation\n\n[Internal](../.automexia-private/README.md)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                CHECKER.DocumentationPackError, "links into the ignored"
+            ):
                 CHECKER.validate(root)
 
 if __name__ == "__main__":

@@ -11,7 +11,7 @@ Acceptance: ADR 0029 and the exact contract digest were accepted on 2026-08-25 f
 
 The local result is a private, capability-free policy crate plus an explicit local-package/runtime adapter. A person can inspect a signed local package, review its exact identity and access, install it disabled into private atomic storage, review a signed action pack, and remove or disable owned package state. The optional CP6 path can build a consent snapshot from explicitly selected text and validate a typed explanation or suggestion. It cannot call a provider, use tools, press Enter, start a process, write a file, access credentials, read a terminal grid, or execute a component.
 
-The work does not publish a public SDK or registry, activate a downloader, add startup or typing network activity, enable broad WASI, replace the PTY/session/editor/renderer/process owners, or authorize the separate LO0-LO5 orchestration proposal. Built-in first-party extensions and CP1-CP3 remain the fallback.
+The work does not publish a public SDK or registry, activate a downloader, add startup or typing network activity, enable broad WASI, replace the PTY/session/editor/renderer/process owners, or authorize the separate optional orchestration proposal. Built-in first-party extensions and CP1-CP3 remain the fallback.
 
 The accepted logical world identifier is automexia:ecosystem/suggestion@1. The valid WIT source world is named extension because WIT package interfaces and worlds share one item namespace and the contract also requires the imported suggestion interface. The acceptance receipt freezes this syntax mapping without modifying the accepted contract.
 

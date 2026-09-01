@@ -202,7 +202,23 @@ def xtask_commands(root: Path = ROOT) -> set[str]:
     match = re.search(r'"usage: cargo xtask <([^\"]+)>"', source)
     if not match:
         raise DocumentationCoverageError("could not find xtask usage registry")
-    return {item.strip() for item in re.split(r"\|(?=[a-z])", match.group(1))}
+    usage = match.group(1)
+    assurance = re.search(r"assurance <([^>]+)>", usage)
+    if assurance is None:
+        raise DocumentationCoverageError("xtask usage is missing the assurance scope registry")
+    commands = {
+        item.strip()
+        for item in re.split(
+            r"\|(?=[a-z])", usage.replace(assurance.group(0), "assurance")
+        )
+    }
+    commands.remove("assurance")
+    commands.update(
+        f"assurance {scope.strip()}"
+        for scope in assurance.group(1).split("|")
+        if scope.strip()
+    )
+    return commands
 
 
 def require_tokens(owner: str, expected: set[str], content: str) -> int:

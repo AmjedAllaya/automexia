@@ -33,7 +33,7 @@ REQUIRED_SURFACES = {
     "shell-integration",
     "tools/xtask",
 }
-EXCLUDED_TREE_PARTS = {".git", ".automexia-private", "target"}
+EXCLUDED_TREE_PARTS = {".git", ".automexia-private", ".automexia-tools", "target"}
 
 
 class AssuranceError(ValueError):

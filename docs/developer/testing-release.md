@@ -31,6 +31,13 @@ Focused `cargo xtask test ...` commands exist for subsystems such as resize stre
 
 ## Pull-request assurance
 
+Ordinary hosted pull requests use three read-only `ubuntu-24.04` jobs: policy,
+Rust quality/tests, and dependency security. The policy job runs the complete
+`tools/ci/test_*.py` discovery suite rather than a manually selected subset.
+Windows/macOS native evidence is not inferred from these Linux jobs. Internal
+`release/X.Y.Z` pull requests add Linux release validation and Windows/MSVC
+coverage bound to the exact base/head commits.
+
 Every pull request should cover the behavior at the lowest deterministic level that can fail meaningfully:
 
 - locked all-feature compilation, Clippy, tests/doctests/Nextest according to platform ownership;
@@ -64,13 +71,13 @@ Performance claims are not established by one development-host benchmark. The pr
 
 The S2 source and automation ratchet is fully implemented but remains in **collecting** state. `tools/ci/performance_assurance.py` requires clean exact-commit evidence, an allowlisted operator and runner identity, 50-10,000 Criterion samples at exact 95% confidence with bounded intervals, and the existing native Windows private-byte/working-set report. Bounded no-follow reads reject linked/special/changed files, duplicate keys or identities, unsafe path/token-like text, non-finite values, unknown release metrics, stale/future evidence, and oversized or deep discovery trees.
 
-Nightly retains normalized controlled evidence for 90 days. `build-baseline` creates an active file only from 30-90 complete consecutive days whose per-day timestamps, operators, and canonical evidence digests are traceable. The HTTPS-linked acceptance must occur within seven days of the final measurement and be made by someone who collected none of the days. `S2 controlled activation` then validates the clean exact-source baseline through the protected `stable-release` environment and retains a bounded digest summary.
+Nightly retains normalized controlled evidence for 90 days. `build-baseline` creates an active file only from 30-90 complete consecutive days whose per-day timestamps, operators, and canonical evidence digests are traceable. The HTTPS-linked acceptance must occur within seven days of the final measurement and be made by someone who collected none of the days. `S2 controlled activation` is then dispatched manually after that independent review, validates the clean exact-source baseline on the GitHub-Free Ubuntu runner, and retains a bounded digest summary. GitHub Free/private cannot enforce the reviewer separation server-side.
 
 Tagged releases run `evaluate --require-active --expected-commit <tag-commit>` with fresh evidence. A waiver is exact to candidate, metric, accepted-baseline digest, and maximum regression; expires within 30 days; and requires an HTTPS record plus an approver independent of the candidate operator. The checked-in collecting template therefore blocks publication until elapsed evidence and independent review exist; local benchmark numbers remain observations, not universal guarantees. Follow the complete collection, activation, failure, and rollback procedure in the [S2 completion audit](../research/S2-RELEASE-RATCHET-COMPLETION-AUDIT.md).
 
 ## Build-artifact lifecycle
 
-Fast application builds retain their normal incremental target. Exhaustive verification uses an isolated direct-child target with incremental compilation disabled and removes it after normal success or failure, unless the contributor explicitly keeps it for diagnosis. Windows/MSVC and WSL/Linux toolchains stay on their native filesystems and do not share `target/` directories. A deeply nested Windows checkout fails early when the generated path would exceed the 160-UTF-16-unit MSVC-safe ceiling; set `AUTOMEXIA_VERIFY_TARGET_ROOT` to a short absolute directory on the intended drive. Use `cargo storage` before deleting and `cargo purge` for owned workspace artifacts.
+Fast application builds retain their normal incremental target. Exhaustive verification uses an isolated direct-child target with incremental compilation disabled and removes it after normal success or failure, unless the contributor explicitly keeps it for diagnosis. Windows/MSVC and WSL/Linux toolchains stay on their native filesystems and do not share `target/` directories. Use `cargo storage` before deleting and `cargo purge` for owned workspace artifacts.
 
 ## Release artifact trust
 
@@ -128,12 +135,6 @@ same-host Criterion noise, and limitations are in
 [M6 testing](../TESTING.md#m6-typed-automation-and-multi-environment-workspaces).
 The accepted product boundary adds real temp-store CLI/CAS/recovery/hostile-file
 integration plus Hub worker/controller/keyboard/pointer/responsive/no-PTY tests.
-The dedicated M6 checker and mutation suite enforce exact limits and all-false
-authority, strict duplicate-name-safe JSON ingress, checked review lifecycle,
-terminal target expiry, large-library restore, migration/recovery separation,
-fuzz/benchmark ownership, CI wiring, and every applicable S1 suite. The source
-classification and controlled-evidence exit criteria are recorded in the
-[M6/F6 stable-release audit](../research/M6-F6-WORKSPACES-STABLE-RELEASE-AUDIT.md).
 These results activate review and editing only; they do not prove or enable
 native managed OpenSSH/PTY/process/resource/accessibility behavior.
 

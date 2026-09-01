@@ -19,6 +19,8 @@ class Cp33ContractTests(unittest.TestCase):
         cls.contract = json.loads(policy.bounded_text(policy.CONTRACT))
 
     def validate_mutation(self, mutate) -> None:
+        # Serialize the changed document and re-enter through the bounded file
+        # parser, rather than validating a privileged in-memory object.
         document = copy.deepcopy(self.contract)
         mutate(document)
         with tempfile.TemporaryDirectory() as directory:
@@ -35,7 +37,7 @@ class Cp33ContractTests(unittest.TestCase):
                 "task_runners": 3,
                 "commands": 6,
                 "tests": 14,
-                "documents": 12,
+                "documents": 9,
             },
         )
 
@@ -75,6 +77,8 @@ class Cp33ContractTests(unittest.TestCase):
         original = policy.bounded_text
 
         def mutated(path, maximum=policy.MAX_POLICY_BYTES):
+            # Fault injection happens after the real bounded read, preserving
+            # path and size behavior while removing one required source marker.
             source = original(path, maximum)
             replacements = {
                 "imports.rs": ("parse_git_inventory", "removed_git_parser"),

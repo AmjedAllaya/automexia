@@ -29,7 +29,7 @@ is collected. Those are external prerequisites, not missing repository code.
 | Application Verifier | Partially implemented | **Fully implemented as source.** Exact-target refusal, elevation, Basics, separately bounded `/faults` low-resource phase, 64 MiB log limit, failure detection, redaction, distinct reports, and `finally` cleanup are enforced. | An elevated clean run with private reviewed XML on a controlled Windows host. |
 | WPR | Fully implemented as a wrapper | Preserved: exact binary, elevation, trace ceiling, private ETL, redacted manifest, cancellation, and optional ETL deletion. | Elevated threshold/manual trace and review. |
 | Deterministic visual hooks | Not implemented | **Fully implemented.** Exact fixture `s1-standard-v1` freezes the clock at `12:34`, disables animation, injects fixed public DevOps facts, uses existing readiness/capture hooks, and is absent without an opt-in feature. | None for source; matrix captures remain external. |
-| Visual matrices and review | Partially implemented | **Fully specified and enforced.** Five platform/display suites each require the exact 9,216-capture theme/scale/viewport/surface/motion cross product, one-channel/one-pixel rejection, and independent HTTPS-linked review. High contrast, 400% scale, reduced motion, both macOS architectures, and the post-audit U10 surfaces are explicit. | Actual approved captures for Windows, Linux X11/Wayland, and macOS Intel/Apple Silicon. |
+| Visual matrices and review | Partially implemented | **Fully specified and enforced.** Five platform/display suites each require the exact 8,352-capture theme/scale/viewport/surface/motion cross product, one-channel/one-pixel rejection, and independent HTTPS-linked review. High contrast, 400% scale, reduced motion, both macOS architectures, and the post-audit U10 surfaces are explicit. | Actual approved captures for Windows, Linux X11/Wayland, and macOS Intel/Apple Silicon. |
 | Accessibility baseline | Partially implemented | **Fully implemented at the v0.4 source boundary.** Keyboard/focus/contrast/scale/reduced-motion contracts and limitations remain; the S1 policy requires Narrator, NVDA, VoiceOver, and Orca on both X11 and Wayland with independent review. | Controlled assistive-technology sessions. The full native semantic tree remains deliberately deferred to v0.5 ADR 0013. |
 | One release evidence authority | Not implemented | **Fully implemented.** A bounded schema validates exact environments, suites, coverage, tools, artifacts, privacy, freshness, clean commit binding, redaction canaries, and review independence. Missing evidence is `external` in local QA and fatal under `--require-complete`. | Populate the private controlled-runner manifest. |
 | Release enforcement | Not implemented | **Fully implemented.** Manual controlled assurance and stable-tag workflows validate policy/mutations and require a complete current-commit manifest before preflight. | Configure the controlled runner and private evidence path. |
@@ -88,7 +88,7 @@ suites require independent review. The stable-tag workflow uses
 - policy/commit/review binding and missing-suite behavior;
 - failed, duplicate, unexpected, stale, future, oversized, and synthetic data;
 - exact environment capabilities and coverage;
-- the 9,216-capture visual cross product, one-pixel policy, and independent review;
+- the 8,352-capture visual cross product, one-pixel policy, and independent review;
 - Narrator/NVDA/VoiceOver/Orca requirements;
 - privacy, redaction, artifact, symlink, duplicate-key, and clean-worktree rules;
 - deterministic visual fixture and separate AppVerifier low-resource source
@@ -100,8 +100,9 @@ execution; writable workflow permissions; weakened runner labels or activation
 conditions; unbounded time; fail-open steps; and redirected summaries. The
 standalone S1 workflow additionally freezes manual dispatch, the exact evidence
 variable, one exact 90-day summary, and the controlled runner. The S2 activation
-workflow freezes serialized per-ref activation, protected environment,
-exact-commit and mutation checks, timeout, fail-closed steps, exact artifact
+workflow freezes serialized per-ref activation, GitHub-Free
+private-environment exclusion, exact-commit and mutation checks, timeout,
+fail-closed steps, exact artifact
 identity, and 90-day retention. The architecture verifier also rejects loss of
 the fixture, policy, validator, or release requirements.
 

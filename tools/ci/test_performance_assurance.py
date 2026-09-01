@@ -56,9 +56,13 @@ def metric(metric_id: str, claim: str, family: str, point: float) -> dict[str, o
 
 class PerformanceAssuranceTests(unittest.TestCase):
     def setUp(self) -> None:
+        # All evidence is written below an isolated root, preventing machine-local
+        # paths or an earlier test's reports from becoming part of the oracle.
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.policy = PERF.load_policy()
+        # Derive fixtures from the live policy so every required claim is present
+        # while policy-drift tests remain independent of hard-coded claim lists.
         self.metric_templates = sorted(
             [
                 metric(
@@ -81,6 +85,8 @@ class PerformanceAssuranceTests(unittest.TestCase):
         return path
 
     def active_baseline(self, *, days: int = 30) -> dict[str, object]:
+        # Produce consecutive, distinct daily evidence: repeating one candidate
+        # would not exercise the baseline campaign's identity and date checks.
         start = dt.date(2026, 7, 1)
         entries = []
         for offset in range(days):
@@ -146,6 +152,8 @@ class PerformanceAssuranceTests(unittest.TestCase):
 
     @staticmethod
     def write_criterion_sample(path: Path, samples: int = 100) -> None:
+        # Use Criterion's persisted sample shape so collection crosses the same
+        # decoding and quality boundary as a real benchmark run.
         path.write_text(
             json.dumps(
                 {
@@ -427,6 +435,8 @@ class PerformanceAssuranceTests(unittest.TestCase):
 
         linked = self.root / "linked-report.json"
         original = self.write_json("original-report.json", {"preserve": True})
+        # A hard link is an alias to existing data; atomic replacement must reject
+        # it rather than modifying a file outside the intended report identity.
         os.link(original, linked)
         with self.assertRaisesRegex(PERF.AssuranceError, "linked"):
             PERF.write_report(linked, report)
@@ -529,6 +539,8 @@ class PerformanceAssuranceTests(unittest.TestCase):
             )
 
     def test_native_resource_report_normalizes_only_allowlisted_memory(self) -> None:
+        # The native report contains useful diagnostic fields, but release ratchets
+        # may publish only the explicitly allowlisted memory measurements.
         sample = {
             "timestamp_utc": "2026-08-23T10:00:00Z",
             "handle_count": 100,
