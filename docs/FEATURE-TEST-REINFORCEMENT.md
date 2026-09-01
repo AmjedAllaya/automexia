@@ -326,6 +326,10 @@ Current assurance: **Controlled/external**.
   package job to use one Cargo build job without release debug data. Mutate both
   limits independently, and keep the rehearsal partial until x64 and Arm64 pass
   natively for the exact workflow commit.
+- Execute the committed-secret canary with hostile pre-push `GIT_DIR`, worktree,
+  index, object, config, and prefix variables. Require a disposable repository,
+  redacted detection, and identical parent HEAD, status, and local repository
+  configuration after cleanup.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
   release attestation and verify each local asset against it from the complete

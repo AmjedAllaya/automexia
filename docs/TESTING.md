@@ -1211,6 +1211,13 @@ checkout only in the dependency-security job. Use
 `cargo xtask assurance install-hook` only when no pre-existing personal Git
 pre-push hook needs to be preserved: it refuses to overwrite one.
 
+The real Gitleaks committed-canary repository is also isolated from every
+caller-local Git variable. This matters in `pre-push`, where Git exports the
+current repository context to hooks. The canary regression injects that exact
+ambient context and independently requires the parent HEAD, status, and local
+repository configuration to remain byte-for-byte unchanged after the temporary
+repository is removed.
+
 Run `cargo xtask assurance audit-history-secrets` separately for the bounded
 full-history campaign. It intentionally fails closed on the repository's
 review-required legacy generic-key findings. Do not add broad path allowlists or

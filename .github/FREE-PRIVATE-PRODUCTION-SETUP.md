@@ -367,6 +367,12 @@ partial records fail closed. Inspect its generated `supply-chain/` records
 before committing them. It is a dependency-change ratchet, not a substitute for
 reviewing the imported audit criteria.
 
+Scanner canaries must never inherit `GIT_DIR`, `GIT_WORK_TREE`, index, object,
+config, prefix, or replacement state from the calling hook. The Gitleaks canary
+creates and commits only inside its temporary repository, then proves the
+caller's HEAD, worktree status, and local repository configuration did not
+change.
+
 Use `cargo xtask assurance audit-history-secrets` for the separate all-history
 campaign. It remains fail-closed while legacy generic-key findings await
 human-approved remediation; the regular profile does not suppress them with a
