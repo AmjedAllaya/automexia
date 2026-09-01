@@ -188,6 +188,8 @@ REQUIRED: dict[str, tuple[str, ...]] = {
         "app_route_exchange_returns_bound_status_and_rejects_oversized_input",
         "newer_publication_supersedes_waiter_and_route_limit_is_exact",
         "app_route_exchange_reads_submission_and_writes_exact_authenticated_reply",
+        "publication_from_submission",
+        "SUGGESTION_SERVICE_TEST_SLOT",
         "wait_publication",
     ),
     "tools/ci/test_cp5_native_powershell_bridge.ps1": (

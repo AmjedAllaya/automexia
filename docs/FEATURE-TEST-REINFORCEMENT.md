@@ -435,6 +435,9 @@ Current assurance: **Partially enforced; preview disabled**.
 - Mutate endpoint security, stale acceptance, privacy, forbidden transport/
   process/Enter, default shell sourcing, shortcut collisions, false completion,
   visual occlusion, lifecycle cleanup, and activation constraints.
+- Keep pure publication-mailbox spoof/supersession tests independent of worker
+  scheduling; serialize only real service owners inside their test binary and
+  repeat the all-feature publication path without relaxing product deadlines.
 - Add native Linux/macOS/WSL peer/churn/crash/sleep fixtures; signed-helper and
   native replacement fixtures for quotes, multiline, selection, Unicode and IME;
   pixel goldens and controlled screen readers; named-hardware latency/allocation/

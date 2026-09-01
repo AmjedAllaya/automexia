@@ -45,6 +45,13 @@ build, and benchmark compilation. The PR/nightly split remains:
 | Accessibility | Listbox/option names, keyboard-only navigation, coalesced announcements, icon-plus-text semantics | Controlled NVDA/Narrator, VoiceOver and Orca sessions before stable activation |
 | Resources/security | Bounded allocation/queue/cache/message tests, fuzz/property corpus, dependency policy, no log/crash/telemetry/extension leakage | ASan/TSan/Miri where supported, sustained fuzz, process/task/pipe/socket/file/GPU/storage leak and 30-day performance baselines |
 
+Publication tests keep the product's 250 ms source deadline unchanged. Pure
+mailbox spoofing, dismissal, supersession, saturation, and kill scenarios build
+deterministic ranked publications directly, while the real service and endpoint
+paths are serialized within their test binary so harness CPU contention cannot
+masquerade as a product timeout. The all-feature publication binary is also a
+required focused repetition target after concurrency or readiness changes.
+
 After each bridge operation, tests assert the shell/editor buffer, cursor,
 selection, quoting mode, generation, and history remain authoritative; the
 terminal grid is never the source. Accepting a candidate must revalidate the
@@ -142,3 +149,14 @@ rollback, accessibility-tool sessions, 1,000-cycle real endpoint/resource
 campaigns, successful hosted three-OS jobs, and longitudinal evidence before
 runtime activation or a stable-release claim. Those gates are not silently
 treated as passing.
+
+## 2026-09-01 readiness regression evidence
+
+The exhaustive all-feature readiness gate exposed one non-product test race:
+five suggestion-publication scenarios could compete for the same host scheduler
+while independently enforcing the real 250 ms source deadline. The pure mailbox
+scenarios now avoid the worker deadline entirely, the remaining real service
+owners are serialized only inside the test binary, and the deadline itself was
+not increased. The exact all-feature binary then passed once and passed twenty
+additional consecutive repetitions. This focused result supplements rather
+than replaces the complete contributor gate.
