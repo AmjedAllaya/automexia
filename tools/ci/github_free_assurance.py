@@ -41,6 +41,7 @@ REQUIRED_TOOLS = {
     "cargo-vet": "0.10.2",
     "gitleaks": "8.30.1",
     "semgrep": "1.175.0",
+    "shellcheck": "0.11.0",
     "zizmor": "1.21.0",
 }
 
@@ -205,6 +206,13 @@ def platform_downloads(policy: dict[str, Any]) -> dict[str, Download]:
         "darwin-x64": Download("https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_amd64.tar.gz", "5b44c3bc2255115c9b69e30efc0fecdf498fdb63c5d58e17084fd5f16324c644", "actionlint"),
         "darwin-arm64": Download("https://github.com/rhysd/actionlint/releases/download/v1.7.12/actionlint_1.7.12_darwin_arm64.tar.gz", "aba9ced2dee8d27fecca3dc7feb1a7f9a52caefa1eb46f3271ea66b6e0e6953f", "actionlint"),
     }
+    shellcheck = {
+        "windows-x64": Download("https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.zip", "8a4e35ab0b331c85d73567b12f2a444df187f483e5079ceffa6bda1faa2e740e", "shellcheck.exe"),
+        "linux-x64": Download("https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.x86_64.tar.gz", "b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6", "shellcheck-v0.11.0/shellcheck"),
+        "linux-arm64": Download("https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.linux.aarch64.tar.gz", "68a8133197a50beb8803f8d42f9908d1af1c5540d4bb05fdfca8c1fa47decefc", "shellcheck-v0.11.0/shellcheck"),
+        "darwin-x64": Download("https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.x86_64.tar.gz", "c2c15e08df0e8fbc374c335b230a7ee958c313fa5714817a59aa59f1aa594f51", "shellcheck-v0.11.0/shellcheck"),
+        "darwin-arm64": Download("https://github.com/koalaman/shellcheck/releases/download/v0.11.0/shellcheck-v0.11.0.darwin.aarch64.tar.gz", "339b930feb1ea764467013cc1f72d09cd6b869ebf1013296ba9055ab2ffbd26f", "shellcheck-v0.11.0/shellcheck"),
+    }
     gitleaks = {
         "windows-x64": Download("https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_windows_x64.zip", "d29144deff3a68aa93ced33dddf84b7fdc26070add4aa0f4513094c8332afc4e", "gitleaks.exe"),
         "linux-x64": Download("https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz", "551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb", "gitleaks"),
@@ -213,7 +221,11 @@ def platform_downloads(policy: dict[str, Any]) -> dict[str, Download]:
         "darwin-arm64": Download("https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_darwin_arm64.tar.gz", "b40ab0ae55c505963e365f271a8d3846efbc170aa17f2607f13df610a9aeb6a5", "gitleaks"),
     }
     try:
-        return {"actionlint": actionlint[key], "gitleaks": gitleaks[key]}
+        return {
+            "actionlint": actionlint[key],
+            "gitleaks": gitleaks[key],
+            "shellcheck": shellcheck[key],
+        }
     except KeyError as error:
         raise AssuranceError(f"no checksum-pinned assurance tool archive exists for {key}") from error
 
@@ -251,6 +263,7 @@ def download_binary(policy: dict[str, Any], name: str, download: Download) -> No
                     member = source.getinfo(download.member)
                     if member.is_dir() or member.file_size <= 0 or member.file_size > MAX_TOOL_BINARY_BYTES:
                         raise AssuranceError(f"{name} archive member is invalid")
+                    member_size = member.file_size
                     with source.open(member) as input_file, extracted.open("wb") as output:
                         shutil.copyfileobj(input_file, output, length=1024 * 1024)
             else:
@@ -258,6 +271,7 @@ def download_binary(policy: dict[str, Any], name: str, download: Download) -> No
                     member = source.getmember(download.member)
                     if not member.isfile() or member.size <= 0 or member.size > MAX_TOOL_BINARY_BYTES:
                         raise AssuranceError(f"{name} archive member is invalid")
+                    member_size = member.size
                     input_file = source.extractfile(member)
                     if input_file is None:
                         raise AssuranceError(f"{name} archive member cannot be read")
@@ -265,7 +279,7 @@ def download_binary(policy: dict[str, Any], name: str, download: Download) -> No
                         shutil.copyfileobj(input_file, output, length=1024 * 1024)
         except (KeyError, OSError, tarfile.TarError, zipfile.BadZipFile) as error:
             raise AssuranceError(f"{name} archive cannot be safely extracted") from error
-        if extracted.stat().st_size != member.file_size:
+        if extracted.stat().st_size != member_size:
             raise AssuranceError(f"{name} extracted byte count changed")
         os.replace(extracted, destination)
     destination.chmod(destination.stat().st_mode | 0o700)
@@ -362,7 +376,7 @@ def required_tools(steps: Iterable[str]) -> set[str]:
     tools: set[str] = set()
     for step in steps:
         if step == "workflow-static-analysis":
-            tools.update(("actionlint", "zizmor"))
+            tools.update(("actionlint", "shellcheck", "zizmor"))
         elif step == "dependency-security":
             tools.update(("cargo-audit", "cargo-deny"))
         elif step == "dependency-vetting":
@@ -429,7 +443,18 @@ def run_step(policy: dict[str, Any], step: str) -> None:
         run([sys.executable, ".github/scripts/check_free_plan_contract.py"], "GitHub-Free workflow policy", policy, timeout=180)
         run([sys.executable, "tools/ci/test_free_plan_contract.py"], "GitHub-Free workflow mutation tests", policy, timeout=180)
     elif step == "workflow-static-analysis":
-        run(tool_command(policy, "actionlint", "-color"), "GitHub Actions syntax", policy, timeout=180)
+        run(
+            tool_command(
+                policy,
+                "actionlint",
+                "-color",
+                "-shellcheck",
+                str(tool_path(policy, "shellcheck")),
+            ),
+            "GitHub Actions syntax and shell semantics",
+            policy,
+            timeout=180,
+        )
         run(
             tool_command(
                 policy,

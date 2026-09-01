@@ -108,6 +108,12 @@ repository governance only; no release exists yet, and it is not evidence for a
 GitHub App, release key, native hosted package run, attestation, or website
 deployment.
 
+Workflow static analysis uses the same checksum-pinned actionlint 1.7.12 and
+ShellCheck 0.11.0 binaries locally and in hosted CI. The ShellCheck path is
+explicit: a missing host installation cannot silently reduce local workflow
+coverage. Mutation tests reject removal or version drift, while the real lint
+run covers every checked-in workflow shell block.
+
 The landing-page repository separately runs `pnpm downloads:check` for friendly
 and pinned 404/redirect contracts plus live-verifier mutations. When and only
 when a real release is sealed as available, its `pnpm downloads:verify:live`

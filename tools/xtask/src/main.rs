@@ -1391,9 +1391,12 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && free_plan_contract.contains("private GitHub environments are unavailable")
             && free_plan_contract.contains("forbidden/stale workflow exists")
             && ci.contains("check_free_plan_contract.py")
-            && ci.contains("actionlint -color")
+            && ci.contains("SHELLCHECK_VERSION: '0.11.0'")
+            && ci.contains(
+                "\"$RUNNER_TEMP/actionlint\" -color -shellcheck \"$RUNNER_TEMP/shellcheck\"",
+            )
             && ci.contains("zizmor"),
-        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint and offline zizmor checks",
+        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint, ShellCheck, and offline zizmor checks",
     )?;
     require(
         nightly_workflow.contains("cargo +nightly-2026-08-25 fuzz run")

@@ -4,12 +4,15 @@
 from __future__ import annotations
 
 import copy
+import hashlib
 import importlib.util
 import json
 import os
 import sys
+import tarfile
 import tempfile
 import unittest
+import zipfile
 from unittest import mock
 from pathlib import Path
 
@@ -80,7 +83,19 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
 
     def test_profile_step_tool_mapping_cannot_omit_a_scanner(self) -> None:
         tools = ASSURANCE.required_tools(ASSURANCE.expand_profile(self.policy, "pre-push"))
-        self.assertEqual(tools, {"actionlint", "zizmor", "cargo-audit", "cargo-deny", "cargo-vet", "gitleaks", "semgrep"})
+        self.assertEqual(tools, {"actionlint", "shellcheck", "zizmor", "cargo-audit", "cargo-deny", "cargo-vet", "gitleaks", "semgrep"})
+
+    def test_actionlint_always_uses_the_pinned_shellcheck_binary(self) -> None:
+        def command(_policy: dict[str, object], name: str, *arguments: str) -> list[str]:
+            return [name, *arguments]
+
+        with mock.patch.object(ASSURANCE, "tool_command", side_effect=command), mock.patch.object(
+            ASSURANCE, "run"
+        ) as runner:
+            ASSURANCE.run_step(self.policy, "workflow-static-analysis")
+        actionlint = runner.call_args_list[0].args[0]
+        self.assertEqual(actionlint[0:3], ["actionlint", "-color", "-shellcheck"])
+        self.assertEqual(actionlint[3], str(ASSURANCE.tool_path(self.policy, "shellcheck")))
 
     def test_changed_commit_scan_is_bounded_to_the_upstream_range(self) -> None:
         with mock.patch.object(
@@ -218,12 +233,43 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
 
     def test_tool_downloads_are_checksum_pinned_and_bounded(self) -> None:
         downloads = ASSURANCE.platform_downloads(self.policy)
-        self.assertEqual(set(downloads), {"actionlint", "gitleaks"})
+        self.assertEqual(set(downloads), {"actionlint", "gitleaks", "shellcheck"})
         for name, download in downloads.items():
             with self.subTest(tool=name):
                 self.assertTrue(download.url.startswith("https://github.com/"))
                 self.assertRegex(download.sha256, r"^[0-9a-f]{64}$")
                 self.assertLessEqual(ASSURANCE.MAX_TOOL_BINARY_BYTES, ASSURANCE.MAX_TOOL_ARCHIVE_BYTES)
+
+    def test_checksum_pinned_zip_and_tar_members_extract_to_the_isolated_cache(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            payload = b"bounded-tool-fixture"
+            archives = (
+                ("tool.zip", "shellcheck.exe"),
+                ("tool.tar.gz", "shellcheck-v0.11.0/shellcheck.exe"),
+            )
+            for archive_name, member_name in archives:
+                with self.subTest(archive=archive_name):
+                    archive = root / archive_name
+                    if archive.suffix == ".zip":
+                        with zipfile.ZipFile(archive, "w") as output:
+                            output.writestr(member_name, payload)
+                    else:
+                        source = root / "shellcheck.exe"
+                        source.write_bytes(payload)
+                        with tarfile.open(archive, "w:gz") as output:
+                            output.add(source, arcname=member_name)
+                    download = ASSURANCE.Download(
+                        archive.as_uri(),
+                        hashlib.sha256(archive.read_bytes()).hexdigest(),
+                        member_name,
+                    )
+                    with mock.patch.object(ASSURANCE, "ROOT", root):
+                        ASSURANCE.download_binary(self.policy, "shellcheck", download)
+                        self.assertEqual(
+                            ASSURANCE.tool_path(self.policy, "shellcheck").read_bytes(),
+                            payload,
+                        )
 
     def test_actionlint_self_hosted_labels_are_exactly_declared(self) -> None:
         config = (ROOT / ".github/actionlint.yaml").read_text(encoding="utf-8")

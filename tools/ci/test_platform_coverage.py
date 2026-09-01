@@ -134,6 +134,20 @@ class PlatformCoverageTests(unittest.TestCase):
         ):
             PLATFORM.validate_ci(altered)
 
+    def test_hosted_policy_cannot_silently_disable_shellcheck(self) -> None:
+        altered = copy.deepcopy(self.ci)
+        policy = altered["jobs"]["policy"]
+        step = PLATFORM.step_for_command(policy, "-color -shellcheck")
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace(
+            '-shellcheck "$RUNNER_TEMP/shellcheck"',
+            "-shellcheck=",
+        )
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "shellcheck"
+        ):
+            PLATFORM.validate_ci(altered)
+
     def test_complete_ci_mutation_discovery_cannot_be_narrowed(self) -> None:
         altered = copy.deepcopy(self.ci)
         step = PLATFORM.step_for_command(

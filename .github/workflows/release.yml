@@ -1256,11 +1256,15 @@ jobs:
           --version "${{ needs.preflight.outputs.version }}" \
           --commit "${{ needs.preflight.outputs.commit }}" \
           --include-sbom
+        checksum_manifest="$(mktemp "$RUNNER_TEMP/automexia-sha256.XXXXXX")"
+        trap 'rm -f -- "$checksum_manifest"' EXIT
         (
           cd release-assets
-          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS
-          sha256sum -c SHA256SUMS
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > "$checksum_manifest"
+          sha256sum -c "$checksum_manifest"
+          mv "$checksum_manifest" SHA256SUMS
         )
+        trap - EXIT
     - name: Upload immutable publication bundle
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:

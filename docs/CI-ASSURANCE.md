@@ -44,9 +44,11 @@ dedicated jobs.
 - `.github/scripts/check_action_pins.py` bounds workflow count/bytes, rejects
   linked files, mutable refs, Docker actions, and unreviewed repositories.
   `tools/ci/test_action_pins.py` mutates every branch.
-- `.github/scripts/check_free_plan_contract.py` freezes the six-workflow
+- `.github/scripts/check_free_plan_contract.py` freezes the seven-workflow
   inventory, excludes paid-only private features, and permits a standard hosted
-  Windows runner only for `release-candidate-coverage`.
+  Windows runner only for `release-candidate-coverage`. It also freezes the
+  checksum-pinned ShellCheck installation and explicit actionlint integration so
+  workflow shell diagnostics cannot disappear on a contributor platform.
 - `tools/ci/check_platform_coverage.py` parses workflow YAML and validates job
   graphs, permissions, timeouts, runners, evidence environments, signing,
   packaging, and final publication dependencies. Its mutation suite removes or
@@ -68,7 +70,9 @@ dedicated jobs.
   `github_free_assurance.py` remain the typed policy/evidence owners for their
   respective external boundaries.
 
-The hosted policy job and local full QA both run:
+The hosted policy job and local pre-push profile both run actionlint 1.7.12 with
+an explicit checksum-pinned ShellCheck 0.11.0 path. The full Python policy layer
+also runs:
 
 ```text
 python -m unittest discover -s tools/ci -p "test_*.py"

@@ -193,7 +193,7 @@ def validate_ci(workflow: dict[str, Any]) -> None:
         "check_action_pins.py",
         "check_free_plan_contract.py",
         "validate_repository.py",
-        "actionlint -color",
+        '"$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"',
         "zizmor",
     ):
         require(fragment in policy_commands, f"CI policy is missing {fragment!r}")

@@ -118,6 +118,26 @@ class FreePlanContractTests(unittest.TestCase):
             )
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("GitHub-Free local assurance", completed.stderr)
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / ".github", root / ".github")
+            workflow = root / ".github" / "workflows" / "ci.yml"
+            workflow.write_text(
+                workflow.read_text(encoding="utf-8").replace(
+                    "SHELLCHECK_VERSION: '0.11.0'", "SHELLCHECK_VERSION: '0.0.0'", 1
+                ),
+                encoding="utf-8",
+            )
+            completed = subprocess.run(
+                [sys.executable, str(CHECKER)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("GitHub-Free local assurance", completed.stderr)
 
     def test_ordinary_ci_cannot_be_changed_back_to_all_history_scanning(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:

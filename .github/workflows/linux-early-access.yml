@@ -92,9 +92,11 @@ jobs:
           python3 tools/ci/test_public_distribution.py
           python3 .github/scripts/check_action_pins.py
           python3 .github/scripts/check_free_plan_contract.py
-          echo "commit=$EVENT_COMMIT" >> "$GITHUB_OUTPUT"
-          echo "publish=$publish" >> "$GITHUB_OUTPUT"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
+          {
+            echo "commit=$EVENT_COMMIT"
+            echo "publish=$publish"
+            echo "version=$version"
+          } >> "$GITHUB_OUTPUT"
 
   quality:
     name: Linux release quality gate
