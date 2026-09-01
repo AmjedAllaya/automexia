@@ -206,6 +206,9 @@ Current assurance: **Partial**.
   command, version migration and classic fallback.
 - Fuzz hostile/duplicate/stale/tampered profiles and test partial migration,
   downgrade, rollback and uninstall without changing unrelated bindings.
+- Exercise real source and include symlinks on Unix and reparse points on
+  Windows; require exact role-specific rejection diagnostics and no imported
+  state or write side effect.
 - Inject real native key events and inspect action, UI, pixel and accessibility
   results on every owning platform.
 
@@ -263,6 +266,13 @@ Current assurance: **Partial**.
   cancellation, stale generation and GPU-loss paths.
 - Execute native renderer/fallback pixel, placement, scale, split, scroll,
   resize, cache eviction and repeated resource-cleanup matrices.
+- Execute the exact stand-alone image/resource command on hosted Linux.
+  Sugarloaf's development graph must request both X11 and Wayland, while
+  rio-backend must forward each enabled backend to its optional rio-window
+  bridge. An earlier workspace-wide all-feature build is not evidence because
+  Cargo resolver v2 deliberately does not preserve that unrelated feature
+  union. The free-plan contract parses both dependency graphs and independently
+  mutates every required backend edge away.
 
 ### shell-integration-listings
 
@@ -273,6 +283,14 @@ Current assurance: **Partial; short command fixtures are insufficient**.
   height boundaries.
 - Test prompt collisions, partial markers, stale status, profile tamper, nested
   shells, resize repaint, install, repair, rollback and uninstall.
+- On Zsh, inject an insecure ambient completion directory into a detached
+  non-interactive session. Prove the contract ignores it without prompting,
+  never registers its canary, and fails when safe-ignore mode is mutated away;
+  the shipped adapter must still never invoke `compinit`.
+- On Bash, exercise the real generated-alias reload with private, linked,
+  over-limit, tampered, interrupted, and collision fixtures. Measure 25 native
+  reloads after five warmups against the 50 ms p95 ceiling, repeat the run, and
+  mutation-check the batched directory-mode and combined file-mode/size probes.
 - Require native PowerShell/CMD/Bash/Zsh/Fish/WSL/Linux/macOS bytes, history,
   completion, result pixels, accessibility and performance evidence.
 
@@ -292,6 +310,21 @@ Current assurance: **Controlled/external**.
 - Require the protected audit to return only pass; plan, billing, reviewer,
   workflow, security-entitlement, credential, native-host, and elapsed evidence
   remain external until actually observed.
+- For Linux Early Access, generate exactly six x64/Arm64 DEB/RPM/tar packages;
+  reject links, duplicates, symbols, unowned formats, count/byte overflow, and
+  checksum/manifest drift; verify a create-once draft before publication and the
+  exact immutable GitHub asset inventory afterward.
+- Exercise the same native packaging graph through a credential-free manual
+  rehearsal that retains an explicit non-release marker and cannot read secrets,
+  sign, publish, tag, or emit activation evidence.
+- Keep the public binary repository, one-hour repository-scoped GitHub App, and
+  website activation seal as independent oracles. Require GitHub's signed
+  release attestation and verify each local asset against it. Mutate repository
+  scope, App permissions, rehearsal isolation, public-job gates, API version,
+  live repository settings, branch/tag rules and bypass actors, attestation
+  commands, draft/publish ordering, immutable audit, every asset digest, redirect
+  host, trusted minisign key/signature, source commit, manifest digest, wrong
+  pinned version, and unavailable-route 404 behavior.
 
 ### command-productivity-cp0-policy
 

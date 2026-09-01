@@ -114,6 +114,8 @@ process. The report preserves nearby comments and classifies exact,
 translated, unsupported, and unsafe entries. Apply refuses to overwrite an
 existing typed section, validates the resulting Automexia configuration,
 creates a recoverable backup, and publishes atomically only after `--confirm`.
+Source and include links fail with a stable, role-specific diagnostic that names
+the symbolic-link boundary without echoing the private path.
 
 ## Exact interaction behavior
 

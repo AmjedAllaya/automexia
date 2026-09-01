@@ -21,6 +21,25 @@ const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
 const DEFAULT_TARGET_WARN_GIB: u64 = 12;
+const WORKSPACE_CHECK_ARGS: &[&str] = &[
+    "check",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+];
+const WORKSPACE_CLIPPY_ARGS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+    "--",
+    "-D",
+    "warnings",
+];
+const WORKSPACE_TEST_ARGS: &[&str] =
+    &["test", "--workspace", "--all-features", "--locked"];
 
 #[derive(Debug)]
 struct ProductIdentity {
@@ -1251,10 +1270,7 @@ fn check_in(target: &Path) -> TaskResult {
     verify_all()?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])?;
-    run_cargo_in(
-        target,
-        &["check", "--workspace", "--all-targets", "--locked"],
-    )
+    run_cargo_in(target, WORKSPACE_CHECK_ARGS)
 }
 
 fn verify_all() -> TaskResult {
@@ -1305,7 +1321,8 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
             && ci.contains("RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)")
-            && ci.contains("python3 tools/ci/test_qa.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
+            && qa.contains("python-contract-mutations")
             && ci.contains("glslang-tools")
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
@@ -1316,7 +1333,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     require(
         qa.contains("feature-test-reinforcement-mutations")
             && ci.contains("python tools/ci/check_feature_test_reinforcement.py")
-            && ci.contains("python tools/ci/test_feature_test_reinforcement.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && repository_validator.contains("validate_feature_test_reinforcement")
             && root()
                 .join("tests/assurance/feature-test-reinforcement-v1.json")
@@ -1360,7 +1377,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && performance_baseline.contains("\"status\": \"collecting\"")
             && qa.contains("performance-assurance-mutations")
             && qa.contains("run_dir / \"benchmark-target\"")
-            && ci.contains("python tools/ci/test_performance_assurance.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && nightly_workflow.contains("performance-controlled-windows")
             && nightly_workflow.contains("retention-days: 90")
             && nightly_workflow.contains("--operator")
@@ -1390,9 +1407,12 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && free_plan_contract.contains("private GitHub environments are unavailable")
             && free_plan_contract.contains("forbidden/stale workflow exists")
             && ci.contains("check_free_plan_contract.py")
-            && ci.contains("actionlint -color")
+            && ci.contains("SHELLCHECK_VERSION: '0.11.0'")
+            && ci.contains(
+                "\"$RUNNER_TEMP/actionlint\" -color -shellcheck \"$RUNNER_TEMP/shellcheck\"",
+            )
             && ci.contains("zizmor"),
-        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint and offline zizmor checks",
+        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint, ShellCheck, and offline zizmor checks",
     )?;
     require(
         nightly_workflow.contains("cargo +nightly-2026-08-25 fuzz run")
@@ -1667,24 +1687,13 @@ fn ci_in(target: &Path) -> TaskResult {
     println!("==> verification phase 1/3: workspace checks");
     check_in(target)?;
     println!("==> verification phase 2/3: warning-denied Clippy");
-    run_cargo_in(
-        target,
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
+    run_cargo_in(target, WORKSPACE_CLIPPY_ARGS)?;
     println!(
         "==> verification phase 3/3: workspace tests (a cold isolated target can compile for several minutes)"
     );
     run_cargo_summarized_in(
         target,
-        &["test", "--workspace", "--locked"],
+        WORKSPACE_TEST_ARGS,
         "workspace unit, integration, and documentation tests passed",
     )
 }
@@ -4584,6 +4593,37 @@ mod tests {
     }
 
     #[test]
+    fn local_workspace_gate_covers_every_feature_like_hosted_ci() {
+        assert_eq!(
+            WORKSPACE_CHECK_ARGS,
+            &[
+                "check",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_CLIPPY_ARGS,
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_TEST_ARGS,
+            &["test", "--workspace", "--all-features", "--locked"]
+        );
+    }
+
+    #[test]
     fn path_probe_finds_tools_without_invoking_a_version_flag() {
         assert!(command_on_path("cargo"));
         assert!(!command_on_path("automexia-tool-that-cannot-exist-7f8332"));
@@ -4640,6 +4680,11 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn phase_zero_assurance_contract_self_verifies() {
+        verify_phase_zero_assurance().unwrap();
     }
 
     #[cfg(target_os = "windows")]

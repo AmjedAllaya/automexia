@@ -293,7 +293,7 @@ WIRING = {
     "docs/FEATURES.md": "DEVOPS-ALIASES.md",
     "docs/SHELL-INTEGRATION.md": "DEVOPS-ALIASES.md",
     "docs/COMMAND-PRODUCTIVITY.md": "DEVOPS-ALIASES.md",
-    ".github/workflows/ci.yml": "test_devops_alias_spec.py",
+    ".github/workflows/ci.yml": "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
     "docs/index.md": "DEVOPS-ALIASES.md",
     "docs/adr/0015-shell-native-completion-and-typed-quick-actions.md": (
         "DEVOPS-ALIASES.md"

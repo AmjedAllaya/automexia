@@ -73,8 +73,9 @@ user profiles.
 
 `cargo ready` is the required contributor command. It includes tool and
 structured-file validation, all Automexia verification scopes, package metadata,
-rustfmt, locked workspace checks, warning-denied Clippy, workspace tests,
-dependency policy, a debug build, and executable identity smoke.
+rustfmt, locked all-feature workspace checks, warning-denied all-feature Clippy,
+all-feature workspace tests, dependency policy, a debug build, and executable
+identity smoke.
 Compilation-heavy checks run with incremental compilation disabled inside an
 isolated target that is deleted on both success and ordinary failure. This
 keeps a complete contributor gate from permanently multiplying workspace
@@ -127,10 +128,13 @@ python tools/ci/test_feature_test_reinforcement.py
 
 ## Reviews and merging
 
-`main` requires passing checks, resolved conversations, one approval, and the
-applicable CODEOWNERS approval. Protected release, signing, security,
-capability, provenance, policy, and audited-engine-base paths require two
-approvals. Stale approvals are dismissed. Maintainers squash-merge and delete
+The versioned project policy requires passing checks, resolved conversations,
+one approval, and the applicable CODEOWNERS approval. Protected release,
+signing, security, capability, provenance, policy, and audited-engine-base paths
+require two approvals. On a private repository using GitHub Free these review
+and ruleset requirements are a maintainer convention because GitHub does not
+server-enforce them; the authenticated release audit therefore fails closed
+until the required external governance is available. Maintainers squash-merge and delete
 the source branch; force pushes to `main` are prohibited.
 
 Security reports must follow `SECURITY.md`, not public issues.

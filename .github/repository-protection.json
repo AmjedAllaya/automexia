@@ -12,7 +12,7 @@
       "Dependency security"
     ],
     "release_branch_extra_check": "Release candidate gate",
-    "reason": "Reserve Windows/macOS/ARM hosted minutes for real releases."
+    "reason": "Routine pull requests stay on Linux; Windows coverage and native platform minutes are reserved for internal release work."
   },
   "release": {
     "trigger": "merged internal release/X.Y.Z pull request into main",

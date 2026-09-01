@@ -175,6 +175,7 @@ class QaRunnerTests(unittest.TestCase):
             self.assertIn(contract, source)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-image"], 7200)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["github-free-assurance-policy"], 120)
+        self.assertEqual(QA.STEP_TIMEOUT_SECONDS["python-contract-mutations"], 600)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["github-free-assurance-mutations"], 120)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["repository-walker-cache-scope"], 120)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["rustsec-exception-policy"], 120)
@@ -191,6 +192,17 @@ class QaRunnerTests(unittest.TestCase):
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-quick-action-store"], 7200
         )
+
+    def test_local_qa_discovers_the_complete_python_contract_suite(self) -> None:
+        source = MODULE_PATH.read_text(encoding="utf-8")
+        for token in (
+            '"python-contract-mutations"',
+            '"unittest"',
+            '"discover"',
+            '"tools/ci"',
+            '"test_*.py"',
+        ):
+            self.assertIn(token, source)
 
 
 if __name__ == "__main__":

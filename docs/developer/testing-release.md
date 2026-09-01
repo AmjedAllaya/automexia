@@ -31,6 +31,13 @@ Focused `cargo xtask test ...` commands exist for subsystems such as resize stre
 
 ## Pull-request assurance
 
+Ordinary hosted pull requests use three read-only `ubuntu-24.04` jobs: policy,
+Rust quality/tests, and dependency security. The policy job runs the complete
+`tools/ci/test_*.py` discovery suite rather than a manually selected subset.
+Windows/macOS native evidence is not inferred from these Linux jobs. Internal
+`release/X.Y.Z` pull requests add Linux release validation and Windows/MSVC
+coverage bound to the exact base/head commits.
+
 Every pull request should cover the behavior at the lowest deterministic level that can fail meaningfully:
 
 - locked all-feature compilation, Clippy, tests/doctests/Nextest according to platform ownership;

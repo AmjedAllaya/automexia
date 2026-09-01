@@ -32,6 +32,7 @@ EXPECTED_REPOSITORY = "AmjedAllaya/automexia-terminal"
 EXPECTED_WORKFLOWS = {
     "ci.yml": "CI",
     "f5-openssh-assurance.yml": "F5 controlled native OpenSSH assurance",
+    "linux-early-access.yml": "Linux Early Access release",
     "nightly.yml": "Deep assurance (manual)",
     "release.yml": "Stable release",
     "s1-assurance.yml": "S1 controlled assurance",
@@ -447,7 +448,8 @@ def validate_github_free_private_policy(policy: dict[str, Any]) -> dict[str, int
     actual_checks = {
         str(value.get("name", ""))
         for name, value in ci.get("jobs", {}).items()
-        if isinstance(value, dict) and name != "release-candidate"
+        if isinstance(value, dict)
+        and name not in {"release-candidate", "release-candidate-coverage"}
     }
     require(
         actual_checks == expected_checks,

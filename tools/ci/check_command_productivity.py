@@ -1111,7 +1111,7 @@ def validate_wiring(root: Path = ROOT) -> dict[str, int]:
             'run_python("tools/ci/check_command_productivity.py")?',
         },
         ".github/workflows/ci.yml": {
-            "python tools/ci/test_command_productivity.py",
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
         },
         "tools/ci/test_command_productivity.py": {
             "cp0-hostile-mutations-v1.json",

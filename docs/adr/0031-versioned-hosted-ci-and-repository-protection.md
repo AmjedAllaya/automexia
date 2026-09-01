@@ -121,3 +121,25 @@ and reruns the exact protected commit. Private vulnerability reporting and
 secret scanning remain accurately external until their visibility/entitlement
 conditions are met. Product capability activation and stable release continue
 to fail closed while any of those gates remains.
+
+## 2026-08-31 complete mutation and coverage amendment
+
+The ordinary policy job now runs the complete Python checker/mutation discovery
+suite after pinned PyYAML and Semgrep installation. Local full QA owns the same
+discovery command, so a newly added `tools/ci/test_*.py` file is not omitted by
+an independently maintained allowlist. Per-feature checkers verify that semantic
+discovery command instead of relying on comments or selected test filenames.
+
+Release coverage is a separate internal-release-only `windows-2025` job. The
+recorded baseline is `windows-x86_64-msvc`; comparing it with the former Linux
+report was invalid, and the old job did not provide the environment variables
+required by the checker. Coverage now waits for ordinary quality and release
+validation, binds the exact PR base/head commits, normalizes sources against the
+checkout, covers every Automexia-owned crate/extension, bounds hostile reports,
+and publishes no raw source evidence.
+
+The stable-release manifest builder now requires exactly one artifact for every
+declared OS/architecture/package slot, exact SPDX/CycloneDX names and identities,
+regular unlinked bounded files, deterministic hashes, and atomic manifest
+replacement. Direct mutation suites cover this builder, Action pinning,
+coverage, and vendored-license walking.

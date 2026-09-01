@@ -222,6 +222,13 @@ These are not source defects and must not be bypassed:
 7. Controlled Windows AppVerifier/WPR, cross-platform GPU/render capture, and
    native assistive-technology infrastructure have not been observed. Their
    v0.4 baseline jobs and redacted artifacts must run on the declared hosts.
+8. The public Linux distribution implementation and passive public repository
+   are complete at the source/setup boundary, but no package is published. A
+   real minisign key, repository-scoped GitHub App installation, available
+   Actions minutes, native x64/Arm64 package jobs, immutable post-upload check,
+   landing-page live verification, protected preview, production deployment,
+   and signed-out route smoke remain external gates. The website must stay
+   `coming-soon` until all of them pass for one exact commit.
 
 Stable v0.4.0 remains blocked until every item above and every protected native
 release job is complete. Unsigned artifacts from this audit are verification

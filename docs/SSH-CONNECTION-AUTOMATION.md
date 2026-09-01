@@ -10,7 +10,8 @@ route, review host trust, and open a session with minimal ceremony. Reusable
 workflows may add preparation, connection, remote setup, verification, and
 cleanup, but every stage remains visible and cancellable.
 
-The Connection Hub is the visual home for inventory and connection review.
+The Connection Hub is the visual home for the F2/D5.0 inventory and connection
+review boundary.
 Command-first users can reach the same records and actions from the palette and
 terminal workflow. Neither path stores private keys or bypasses the user's
 native SSH configuration.

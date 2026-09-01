@@ -163,7 +163,10 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
     wiring = {
         "tools/xtask/src/main.rs": {"completion::dispatch", "completion COMMAND [OPTIONS]"},
         "tools/ci/validate_repository.py": {"validate_command_productivity_cp1"},
-        ".github/workflows/ci.yml": {"test_command_productivity_cp1.py", "fish"},
+        ".github/workflows/ci.yml": {
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
+            "fish",
+        },
         "docs/COMMAND-PRODUCTIVITY.md": {"CP1 status", "cargo xtask completion doctor"},
         "docs/TESTING.md": {"Command-productivity CP1"},
         "tools/ci/measure_completion_adapter.py": {
@@ -190,6 +193,10 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "Test-AutomexiaAbsoluteWindowsPath", "Assert-AutomexiaOwnedFile",
             "Remove-AutomexiaOwnedFile",
         },
+        "shell-integration/bash/automexia.bash": {
+            "__automexia_alias_real_private_directories",
+            "stat -c '%a %s'", "stat -f '%Lp %z'",
+        },
         "tools/ci/test_shell_sources.sh": {
             "stale-owned-source-line", "relative-root", "config-link",
             "Application Support/io.github.AmjedAllaya.AutomexiaTerminal",
@@ -198,7 +205,8 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "interrupted refresh", "4097",
         },
         "tools/ci/test_zsh_integration.zsh": {
-            "interrupted refresh", "4097",
+            "interrupted refresh", "4097", "compinit -i -D",
+            "automexia-test-insecure-canary",
         },
         "tools/ci/test_fish_integration.fish": {
             "interrupted refresh", "4097",

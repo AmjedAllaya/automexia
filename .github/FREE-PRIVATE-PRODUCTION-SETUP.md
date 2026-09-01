@@ -17,6 +17,7 @@ The workflow list should contain only:
 ```text
 ci.yml
 f5-openssh-assurance.yml
+linux-early-access.yml
 nightly.yml
 release.yml
 s1-assurance.yml
@@ -72,6 +73,14 @@ AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER=0
 ```
 
 This is an explicit reduction in release governance, not the default.
+
+Those two variables apply only to the multi-platform stable-release workflow.
+The Linux Early Access workflow deliberately does not read them: public Linux
+publication always requires a current approval of the exact pull-request head
+and a merger distinct from the pull-request author. On the current private
+GitHub Free source repository, server-enforced branch protection is unavailable;
+until a second trusted reviewer exists, public Linux publication remains an
+external prerequisite rather than silently weakening this rule.
 
 ## 4. Windows production signing
 
@@ -167,6 +176,51 @@ minisign -V -P '<RW...public-key-line>' -m SHA256SUMS -x SHA256SUMS.minisig
 sha256sum -c SHA256SUMS
 ```
 
+## 6.1 Public Linux Early Access repository and GitHub App
+
+Linux Early Access publishes to the passive public repository
+`AmjedAllaya/automexia-releases`; it does not publish public assets from the
+private source repository. That repository must remain public, keep Actions
+disabled, protect `main`, protect `v*` release tags, enable private vulnerability
+reporting, and return a successful authenticated response from:
+
+```text
+GET /repos/AmjedAllaya/automexia-releases/immutable-releases
+```
+
+Register a GitHub App and grant only repository **Contents: read/write** and
+**Administration: read-only**. Install it only on `automexia-releases`. In this
+private source repository set:
+
+```text
+AUTOMEXIA_DISTRIBUTION_APP_CLIENT_ID          # Actions variable
+AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY        # Actions secret, PEM contents
+```
+
+The workflow mints a one-hour installation token restricted to that one
+repository. Contents write creates the draft/tag/assets; Administration read
+only checks immutable-release configuration. The App cannot change that setting,
+and the source repository's normal `GITHUB_TOKEN` remains read-only.
+
+The repository owner enables immutable releases once with administration write.
+Do not grant that write permission to the publication App. Rotate an exposed App
+private key immediately, remove the old key from the App, and rerun only a new
+patch version; never replace a published release.
+
+The public archive uses active no-bypass rulesets in addition to legacy branch
+protection: `Protect main` requires squash-only reviewed changes with code-owner,
+last-push, stale-review, linear-history, and resolved-thread controls; `Protect
+release tags` rejects deletion, update, and non-fast-forward changes to `v*`.
+Issues, Projects, the wiki, and Actions remain disabled. Repository topics,
+description, homepage, distribution notice, security policy, and support policy
+are public metadata only.
+
+Every publication fetches the live repository, immutable-release, default-branch
+ruleset, and release-tag ruleset payloads using the pinned GitHub API. The
+repository-owned validator rejects visibility, interactive-feature, merge-mode,
+scope, bypass, approval, review, linear-history, or tag-rewrite drift before any
+tag or draft is created.
+
 ## 7. Ordinary PR CI
 
 Every PR to `main` runs only three Linux-hosted gates:
@@ -177,7 +231,23 @@ Rust quality and tests
 Dependency security
 ```
 
-A branch whose name starts with `release/` additionally runs `Release candidate gate`, including the coverage regression check. This keeps routine GitHub Free usage reasonable while preserving a stronger release ceremony.
+An **internal** branch whose name is exactly `release/X.Y.Z` additionally runs:
+
+```text
+Release candidate gate                 (ubuntu-24.04)
+Release candidate Windows coverage     (windows-2025)
+```
+
+The Linux job validates origin, version, protected paths, and tag uniqueness.
+The Windows job waits for it and ordinary quality, then compares the exact PR
+commit range to the repository's `windows-x86_64-msvc` coverage baseline. The
+split prevents a Linux report from being compared to a Windows baseline and
+prevents fork PRs from consuming Windows minutes.
+
+Standard Windows-hosted time consumes the private repository's included GitHub
+Free minutes at the Windows multiplier. Keep paid overage disabled if the goal
+is a hard zero-cost ceiling; a release PR then waits when included quota is
+exhausted rather than creating a charge.
 
 ## 7.1 Release workflow behavior on ordinary PR merges
 
@@ -229,6 +299,30 @@ After CI/reviews, merge it. `Stable release` then:
 13. signs `SHA256SUMS` with the dedicated minisign release key;
 14. creates annotated `v1.2.3` only after all gates pass;
 15. publishes the GitHub Release.
+
+### Linux Early Access only
+
+Before provisioning signing keys or a GitHub App, dispatch `Linux Early Access
+release` manually from the exact candidate ref and provide the Cargo workspace
+version as `X.Y.Z`. This credential-free rehearsal runs the native package jobs,
+assembles only the six unsigned packages plus the manifest, and retains a
+seven-day private artifact containing
+`REHEARSAL-NOT-A-PUBLIC-RELEASE.txt`. It cannot read release secrets, mint an App
+token, sign, publish, create a tag, or emit a website activation handoff.
+
+Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
+independent approval and distinct merger, `linux-early-access.yml` reruns the
+Linux release-quality gate, builds x64 and Arm64 packages natively, signs the
+public bundle, publishes one immutable prerelease in `automexia-releases`, and
+uses GitHub's current versioned API plus `gh release verify` and
+`gh release verify-asset` for all sixteen assets before retaining
+`website-activation.json` for 30 days. It does not publish Windows or macOS and
+does not enable the website.
+
+Review the activation handoff in the landing-page repository, set its trusted
+minisign public-key deployment variable, run its complete live-release verifier,
+review the protected preview, and only then change the Linux channel to
+available. See `docs/PUBLIC-RELEASE-DISTRIBUTION.md`.
 
 ## 9. Deep assurance
 

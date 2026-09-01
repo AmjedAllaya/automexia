@@ -132,6 +132,26 @@ for this private repository are an external Enterprise entitlement. Distribution
 repository signing is a future channel concern and must not be inferred from
 the GitHub release signature contract.
 
+Linux Early Access additionally uses the separate public binary archive
+`AmjedAllaya/automexia-releases`. Its private-source workflow publishes exactly
+six Linux packages plus checksums, a detached minisign signature and public key,
+two SBOMs, public guidance/notices, and a source-commit-bound distribution
+manifest. A repository-scoped one-hour GitHub App token receives contents write
+and administration read only after the signed bundle passes local verification.
+The draft is byte/digest checked before publication and the immutable release is
+checked again afterward. GitHub's signed release attestation and every local
+asset are then verified before website activation evidence is emitted. The
+public archive has Actions, issues, Projects, and the wiki disabled, active
+default-branch and `v*` tag rulesets, and no product source or debug symbols in
+Git history.
+
+The website remains fail-closed after publication. It activates only with the
+exact source commit and manifest SHA-256, then independently re-downloads all
+assets, verifies GitHub asset digests, `SHA256SUMS`, the trusted minisign key and
+signature, the distribution manifest, and approved redirect hosts. See
+[Public release distribution](PUBLIC-RELEASE-DISTRIBUTION.md) and
+[ADR 0037](adr/0037-public-binary-release-distribution.md).
+
 The tag workflow additionally builds Linux x64 twice from fresh `git archive`
 trees at one canonical temporary path with `SOURCE_DATE_EPOCH`, UTC locale,
 incremental compilation disabled, stable build IDs, and source-path remapping.

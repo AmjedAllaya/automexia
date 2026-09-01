@@ -1325,6 +1325,19 @@ stream-hashed, SBOM-scanned, attested, and checksum-verified as the exact bytes
 users receive. See [Release trust](RELEASE-TRUST.md) and
 [ADR 0016](adr/0016-final-artifact-release-trust.md).
 
+Public Linux Early Access is a release-system boundary, never terminal runtime
+or extension behavior. The private source workflow owns native package creation,
+exact allowlisting, SBOM/checksum/signature evidence, and a source-commit-bound
+manifest. A passive public GitHub repository owns immutable binary delivery. The
+landing page owns friendly and version-pinned redirects plus an independent
+activation seal and live verifier. A one-hour GitHub App token is restricted to
+the binary repository. The release owner also requires GitHub's signed release
+attestation and verifies each local asset against it before creating an
+activation handoff. A credential-free manual path exercises native packaging but
+has no signing or publication authority. Network, credential, filesystem,
+provider, PTY, renderer, and startup paths in the application are unchanged. See
+[ADR 0037](adr/0037-public-binary-release-distribution.md).
+
 ## Repository enforcement boundary
 
 The repository is an external security authority, not an implication of local

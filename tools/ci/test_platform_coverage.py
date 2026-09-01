@@ -75,14 +75,89 @@ class PlatformCoverageTests(unittest.TestCase):
         ):
             PLATFORM.validate_ci(altered)
 
-    def test_ci_cannot_drop_command_productivity_mutations(self) -> None:
-        altered = copy.deepcopy(self.ci)
-        step = PLATFORM.step_for_command(
-            altered["jobs"]["policy"], "test_command_productivity.py"
+    def test_release_coverage_is_bound_to_the_windows_baseline_and_exact_commits(self) -> None:
+        coverage = self.ci["jobs"]["release-candidate-coverage"]
+        self.assertEqual(coverage["runs-on"], "windows-2025")
+        self.assertEqual(
+            set(coverage["needs"]), {"quality", "release-candidate"}
         )
+        self.assertEqual(
+            coverage["env"],
+            {
+                "BASE_SHA": "${{ github.event.pull_request.base.sha }}",
+                "HEAD_SHA": "${{ github.event.pull_request.head.sha }}",
+                "COVERAGE_PLATFORM": "windows-x86_64-msvc",
+                "LCOV_FILE": "target/coverage/lcov.info",
+                "COVERAGE_SUMMARY": "target/coverage/summary.json",
+            },
+        )
+        self.assertNotIn(
+            "check_coverage.py",
+            PLATFORM.commands(self.ci["jobs"]["release-candidate"]),
+        )
+
+    def test_release_coverage_cannot_drift_to_an_unmatched_runner_or_evidence(self) -> None:
+        cases = (
+            ("runs-on", "ubuntu-24.04", "Windows coverage runner"),
+            ("timeout-minutes", 0, "120-minute timeout"),
+        )
+        for key, value, expected in cases:
+            with self.subTest(key=key):
+                altered = copy.deepcopy(self.ci)
+                altered["jobs"]["release-candidate-coverage"][key] = value
+                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, expected):
+                    PLATFORM.validate_ci(altered)
+
+        for variable in (
+            "BASE_SHA",
+            "HEAD_SHA",
+            "COVERAGE_PLATFORM",
+            "LCOV_FILE",
+            "COVERAGE_SUMMARY",
+        ):
+            with self.subTest(variable=variable):
+                altered = copy.deepcopy(self.ci)
+                del altered["jobs"]["release-candidate-coverage"]["env"][variable]
+                with self.assertRaisesRegex(
+                    PLATFORM.PlatformCoverageError, "coverage evidence environment"
+                ):
+                    PLATFORM.validate_ci(altered)
+
+    def test_hosted_policy_must_execute_the_complete_python_contract_suite(self) -> None:
+        altered = copy.deepcopy(self.ci)
+        policy = altered["jobs"]["policy"]
+        step = PLATFORM.step_for_command(policy, "unittest discover")
         self.assertIsNotNone(step)
         step["run"] = "echo skipped"
-        with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "test_command_productivity"):
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "complete Python CI contract suite"
+        ):
+            PLATFORM.validate_ci(altered)
+
+    def test_hosted_policy_cannot_silently_disable_shellcheck(self) -> None:
+        altered = copy.deepcopy(self.ci)
+        policy = altered["jobs"]["policy"]
+        step = PLATFORM.step_for_command(policy, "-color -shellcheck")
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace(
+            '-shellcheck "$RUNNER_TEMP/shellcheck"',
+            "-shellcheck=",
+        )
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "shellcheck"
+        ):
+            PLATFORM.validate_ci(altered)
+
+    def test_complete_ci_mutation_discovery_cannot_be_narrowed(self) -> None:
+        altered = copy.deepcopy(self.ci)
+        step = PLATFORM.step_for_command(
+            altered["jobs"]["policy"], "unittest discover"
+        )
+        self.assertIsNotNone(step)
+        step["run"] = str(step["run"]).replace("test_*.py", "test_coverage.py")
+        with self.assertRaisesRegex(
+            PLATFORM.PlatformCoverageError, "complete Python CI contract suite"
+        ):
             PLATFORM.validate_ci(altered)
 
     def test_ci_cannot_drop_shell_contract_smoke(self) -> None:
