@@ -206,7 +206,14 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.assertNotIn("-m", command)
 
     def test_local_sast_is_bounded_to_rust_source_and_excludes_local_caches(self) -> None:
-        with mock.patch.object(ASSURANCE, "run") as run:
+        def command(_policy: dict[str, object], name: str, *arguments: str) -> list[str]:
+            return [name, *arguments]
+
+        # Command construction is the contract under test. Mock the executable
+        # lookup so a clean CI checkout proves scope without a populated tool cache.
+        with mock.patch.object(ASSURANCE, "tool_command", side_effect=command), mock.patch.object(
+            ASSURANCE, "run"
+        ) as run:
             ASSURANCE.run_step(self.policy, "local-sast")
         command = run.call_args.args[0]
         self.assertIn("*.rs", command)
