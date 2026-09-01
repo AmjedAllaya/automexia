@@ -83,6 +83,22 @@ out of a hand-maintained list. Platform-specific `.ps1`, shell, native GUI,
 hardware, fuzz, sanitizer, and packaging tests remain explicit because their
 environments are not portable Python unit-test environments.
 
+The ordinary Rust job preserves complete all-feature Clippy, Nextest, and
+documentation coverage within the standard private GitHub Free Linux runner.
+That runner currently provides 2 CPUs, 8 GiB of memory, and 14 GB of storage.
+The job therefore uses one Cargo build worker, one Nextest worker, disables
+disposable dev/test debug information, and removes Clippy artifacts before the
+separate all-feature test build. The free-plan checker and mutation suite reject
+weakened limits, missing cleanup, and cleanup reordered outside the
+Clippy-to-Nextest boundary.
+
+This envelope was added after the exact 2026-09-01 hosted commit passed
+all-feature Clippy but lost runner communication during the test build. GitHub's
+failure annotation identified CPU, memory, network, or runner-process starvation
+as the class of failure; it did not report a failed product assertion. The
+bounded replacement keeps coverage intact instead of retrying an identical
+resource-unbounded run.
+
 ## Coverage contract
 
 The baseline in `.github/coverage-baseline.json` is platform-specific. Only a

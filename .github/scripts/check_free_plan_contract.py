@@ -130,6 +130,45 @@ quality_job = re.search(
 )
 if quality_job is None or 'fetch-depth: 0' in quality_job.group('body'):
     errors.append('quality must keep the economical shallow checkout')
+if quality_job is not None:
+    quality_body = quality_job.group('body')
+    required_resource_environment = {
+        'CARGO_BUILD_JOBS': '1',
+        'CARGO_PROFILE_DEV_DEBUG': '0',
+        'CARGO_PROFILE_TEST_DEBUG': '0',
+        'NEXTEST_TEST_THREADS': '1',
+    }
+    for name, value in required_resource_environment.items():
+        assignments = re.findall(
+            rf'(?m)^[ \t]*{re.escape(name)}:[^\n]*$',
+            quality_body,
+        )
+        if assignments != [f"      {name}: '{value}'"]:
+            errors.append(
+                'quality resource envelope must keep exactly one job-level '
+                f"{name}='{value}' assignment"
+            )
+    clippy_position = quality_body.find(
+        'run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings'
+    )
+    clean_position = quality_body.find('run: cargo clean')
+    nextest_position = quality_body.find(
+        'run: cargo nextest run --workspace --all-features --locked --profile ci'
+    )
+    clean_commands = re.findall(
+        r'(?m)^[ \t]*run:[ \t]*cargo clean[ \t]*$',
+        quality_body,
+    )
+    if not (
+        clippy_position >= 0
+        and clean_commands == ['        run: cargo clean']
+        and clean_position > clippy_position
+        and nextest_position > clean_position
+    ):
+        errors.append(
+            'quality resource envelope must reclaim Clippy artifacts before '
+            'the all-feature Nextest build'
+        )
 # Ordinary PR CI stays on Linux. The sole standard-hosted Windows exception is
 # release-only coverage because the recorded non-regression baseline is MSVC.
 ci_jobs = {

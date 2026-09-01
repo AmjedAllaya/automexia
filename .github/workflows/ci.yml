@@ -117,6 +117,13 @@ jobs:
     timeout-minutes: 90
     permissions:
       contents: read
+    env:
+      # Private GitHub Free runners expose a small 2-CPU/8-GiB/14-GB envelope.
+      # Keep the runner service responsive while compiling the full feature graph.
+      CARGO_BUILD_JOBS: '1'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      NEXTEST_TEST_THREADS: '1'
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -154,6 +161,9 @@ jobs:
 
       - name: Rust clippy
         run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+
+      - name: Reclaim lint artifacts before the all-feature test build
+        run: cargo clean
 
       - name: Workspace unit and integration tests
         run: cargo nextest run --workspace --all-features --locked --profile ci

@@ -18,6 +18,25 @@ TEST_TEMP_PARENT = Path(ROOT.anchor) if os.name == "nt" else None
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def run_checker_with_replacement(
+        self, old: str, new: str
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            shutil.copytree(ROOT / ".github", root / ".github")
+            workflow = root / ".github" / "workflows" / "ci.yml"
+            source = workflow.read_text(encoding="utf-8")
+            self.assertIn(old, source)
+            workflow.write_text(source.replace(old, new, 1), encoding="utf-8")
+            return subprocess.run(
+                [sys.executable, str(CHECKER)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+
     def run_checker(self, mutation: tuple[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
@@ -183,6 +202,42 @@ class FreePlanContractTests(unittest.TestCase):
             )
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("fetch complete history", completed.stderr)
+
+    def test_quality_job_resource_envelope_cannot_be_weakened(self) -> None:
+        # A real hosted run exhausted its free private-runner envelope while
+        # linking the all-feature test graph. Each mutation must fail closed.
+        cases = (
+            ("CARGO_BUILD_JOBS: '1'", "CARGO_BUILD_JOBS: '2'"),
+            ("CARGO_PROFILE_DEV_DEBUG: '0'", "CARGO_PROFILE_DEV_DEBUG: '1'"),
+            ("CARGO_PROFILE_TEST_DEBUG: '0'", "CARGO_PROFILE_TEST_DEBUG: '1'"),
+            ("NEXTEST_TEST_THREADS: '1'", "NEXTEST_TEST_THREADS: '2'"),
+            ("run: cargo clean", "run: echo skip-clean"),
+            (
+                "      CARGO_BUILD_JOBS: '1'\n",
+                "      CARGO_BUILD_JOBS: '1'\n      CARGO_BUILD_JOBS: '1'\n",
+            ),
+        )
+        for old, new in cases:
+            with self.subTest(setting=old):
+                completed = self.run_checker_with_replacement(old, new)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn("resource envelope", completed.stderr)
+
+        ordered_steps = (
+            "      - name: Reclaim lint artifacts before the all-feature test build\n"
+            "        run: cargo clean\n\n"
+            "      - name: Workspace unit and integration tests\n"
+            "        run: cargo nextest run --workspace --all-features --locked --profile ci\n"
+        )
+        reordered_steps = (
+            "      - name: Workspace unit and integration tests\n"
+            "        run: cargo nextest run --workspace --all-features --locked --profile ci\n\n"
+            "      - name: Reclaim lint artifacts before the all-feature test build\n"
+            "        run: cargo clean\n"
+        )
+        completed = self.run_checker_with_replacement(ordered_steps, reordered_steps)
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("resource envelope", completed.stderr)
 
 
 if __name__ == "__main__":
