@@ -13,6 +13,7 @@ import subprocess
 import sys
 import tempfile
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -21,6 +22,34 @@ assert SPEC and SPEC.loader
 ASSURANCE = importlib.util.module_from_spec(SPEC)
 sys.modules[SPEC.name] = ASSURANCE
 SPEC.loader.exec_module(ASSURANCE)
+
+ASSURANCE_GIT_LOCAL_ENVIRONMENT = (
+    "GIT_ALTERNATE_OBJECT_DIRECTORIES",
+    "GIT_CONFIG",
+    "GIT_CONFIG_PARAMETERS",
+    "GIT_CONFIG_COUNT",
+    "GIT_OBJECT_DIRECTORY",
+    "GIT_DIR",
+    "GIT_WORK_TREE",
+    "GIT_IMPLICIT_WORK_TREE",
+    "GIT_GRAFT_FILE",
+    "GIT_INDEX_FILE",
+    "GIT_NO_REPLACE_OBJECTS",
+    "GIT_REPLACE_REF_BASE",
+    "GIT_PREFIX",
+    "GIT_SHALLOW_FILE",
+    "GIT_COMMON_DIR",
+)
+
+
+def isolated_git_environment() -> dict[str, str]:
+    environment = os.environ.copy()
+    for name in ASSURANCE_GIT_LOCAL_ENVIRONMENT:
+        environment.pop(name, None)
+    for name in tuple(environment):
+        if name.startswith(("GIT_CONFIG_KEY_", "GIT_CONFIG_VALUE_")):
+            environment.pop(name)
+    return environment
 
 
 def installed_command(name: str) -> list[str] | None:
@@ -52,19 +81,38 @@ def execute_once(
     )
 
 
-def execute(command: list[str], *, cwd: Path) -> subprocess.CompletedProcess[str]:
+def execute(
+    command: list[str],
+    *,
+    cwd: Path,
+    environment: dict[str, str] | None = None,
+) -> subprocess.CompletedProcess[str]:
     if Path(command[0]).stem.lower() != "semgrep":
-        return execute_once(command, cwd=cwd)
+        return execute_once(command, cwd=cwd, environment=environment)
     temporary_parent = Path(ROOT.anchor) if os.name == "nt" else None
     with tempfile.TemporaryDirectory(prefix="automexia-semgrep-canary-", dir=temporary_parent) as temporary:
-        environment = os.environ.copy()
-        environment["PATH"] = str(Path(command[0]).parent) + os.pathsep + environment.get("PATH", "")
+        semgrep_environment = (
+            os.environ.copy() if environment is None else environment.copy()
+        )
+        semgrep_environment["PATH"] = str(Path(command[0]).parent) + os.pathsep + semgrep_environment.get("PATH", "")
         for name in ("TMP", "TEMP", "TMPDIR"):
-            environment[name] = temporary
-        return execute_once(command, cwd=cwd, environment=environment)
+            semgrep_environment[name] = temporary
+        return execute_once(command, cwd=cwd, environment=semgrep_environment)
 
 
 class FreeSecurityToolTests(unittest.TestCase):
+    def test_temporary_git_canary_drops_the_callers_repository_context(self) -> None:
+        ambient = {
+            name: f"caller-{index}"
+            for index, name in enumerate(ASSURANCE_GIT_LOCAL_ENVIRONMENT)
+        }
+        ambient["AUTOMEXIA_CANARY_SENTINEL"] = "preserved"
+        with mock.patch.dict(os.environ, ambient, clear=True):
+            environment = isolated_git_environment()
+        for name in ASSURANCE_GIT_LOCAL_ENVIRONMENT:
+            self.assertNotIn(name, environment)
+        self.assertEqual(environment["AUTOMEXIA_CANARY_SENTINEL"], "preserved")
+
     def test_semgrep_detects_the_shell_evaluator_canary_and_ignores_safe_argv(self) -> None:
         command = installed_command("semgrep")
         if command is None:
@@ -97,26 +145,44 @@ class FreeSecurityToolTests(unittest.TestCase):
             self.skipTest("Gitleaks is not installed; run cargo xtask assurance install-tools")
         temporary_root = ROOT / ".automexia-tools" / "tmp"
         temporary_root.mkdir(parents=True, exist_ok=True)
+        parent_head = execute(["git", "rev-parse", "HEAD"], cwd=ROOT)
+        parent_status = execute(["git", "status", "--porcelain=v1", "-uno"], cwd=ROOT)
+        self.assertEqual(parent_head.returncode, 0, parent_head.stderr)
+        self.assertEqual(parent_status.returncode, 0, parent_status.stderr)
         with tempfile.TemporaryDirectory(prefix="automexia-gitleaks-", dir=temporary_root) as temporary:
             repository = Path(temporary)
+            repository_environment = isolated_git_environment()
             for command_line in (
                 ["git", "init", "--quiet"],
                 ["git", "config", "user.email", "test@example.invalid"],
                 ["git", "config", "user.name", "Automexia Scanner Test"],
             ):
-                completed = execute(command_line, cwd=repository)
+                completed = execute(
+                    command_line,
+                    cwd=repository,
+                    environment=repository_environment,
+                )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
             canary = "gh" + "p_" + ("A1b2C3d4E5f6G7h8I9" + "j0K1l2M3n4O5p6Q7r8")
             (repository / "canary.txt").write_text(f"token={canary}\n", encoding="utf-8")
             for command_line in (["git", "add", "canary.txt"], ["git", "commit", "--quiet", "-m", "scanner canary"]):
-                completed = execute(command_line, cwd=repository)
+                completed = execute(
+                    command_line,
+                    cwd=repository,
+                    environment=repository_environment,
+                )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
             detected = execute(
                 [*command, "git", "--redact", "--no-banner", "--config", str(ROOT / ".gitleaks.toml"), "--log-opts=--all"],
                 cwd=repository,
+                environment=repository_environment,
             )
             self.assertEqual(detected.returncode, 1)
             self.assertNotIn(canary, detected.stdout + detected.stderr)
+        current_head = execute(["git", "rev-parse", "HEAD"], cwd=ROOT)
+        current_status = execute(["git", "status", "--porcelain=v1", "-uno"], cwd=ROOT)
+        self.assertEqual(current_head.stdout, parent_head.stdout)
+        self.assertEqual(current_status.stdout, parent_status.stdout)
 
     def test_gitleaks_excludes_private_local_directory_before_content_scanning(self) -> None:
         command = installed_command("gitleaks")
@@ -146,6 +212,7 @@ def main() -> int:
     if arguments.tool in {"all", "semgrep"}:
         suite.addTest(FreeSecurityToolTests("test_semgrep_detects_the_shell_evaluator_canary_and_ignores_safe_argv"))
     if arguments.tool in {"all", "gitleaks"}:
+        suite.addTest(FreeSecurityToolTests("test_temporary_git_canary_drops_the_callers_repository_context"))
         suite.addTest(FreeSecurityToolTests("test_gitleaks_detects_a_committed_canary_without_leaking_it"))
         suite.addTest(FreeSecurityToolTests("test_gitleaks_excludes_private_local_directory_before_content_scanning"))
     return 0 if unittest.TextTestRunner(verbosity=2).run(suite).wasSuccessful() else 1

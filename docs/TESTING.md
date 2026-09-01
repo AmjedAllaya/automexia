@@ -1208,6 +1208,12 @@ executables short is insufficient. The runtime root is removed after each
 bounded scanner group; the repository source and ignored tool cache remain in
 place.
 
+The real Gitleaks committed-canary repository is also isolated from every
+caller-local Git variable. This matters in `pre-push`, where Git exports the
+current repository context to hooks. The canary regression injects that exact
+ambient context and independently requires the parent HEAD and status to remain
+byte-for-byte unchanged after the temporary repository is removed.
+
 Run `cargo xtask assurance audit-history-secrets` separately for the bounded
 full-history campaign. It intentionally fails closed on the repository's
 review-required legacy generic-key findings. Do not add broad path allowlists or

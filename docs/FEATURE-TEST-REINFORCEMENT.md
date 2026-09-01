@@ -326,6 +326,9 @@ Current assurance: **Controlled/external**.
   Require their nested registry, advisory-database, and temporary runtime paths
   to use a shared disposable same-drive short root, and prove cleanup after the
   scanner group without weakening or disabling network-backed policy checks.
+- Execute the committed-secret canary with hostile pre-push `GIT_DIR`, worktree,
+  index, object, config, and prefix variables. Require a disposable repository,
+  redacted detection, and identical parent HEAD/status after cleanup.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
   release attestation and verify each local asset against it. Mutate repository
