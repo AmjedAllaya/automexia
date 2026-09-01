@@ -322,6 +322,10 @@ Current assurance: **Controlled/external**.
   root, bounded atomic executable publication into the ignored cache, and
   cleanup after the build; never accept skipping a scanner because MSVC cannot
   link output or resolve generated headers through a long path.
+- Exercise Cargo Audit, Cargo Deny, and Cargo Vet from the same deep worktree.
+  Require their nested registry, advisory-database, and temporary runtime paths
+  to use a shared disposable same-drive short root, and prove cleanup after the
+  scanner group without weakening or disabling network-backed policy checks.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
   release attestation and verify each local asset against it. Mutate repository

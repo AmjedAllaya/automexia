@@ -23,8 +23,9 @@ import tempfile
 import urllib.error
 import urllib.request
 import zipfile
+from contextlib import contextmanager
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Iterator
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -166,6 +167,26 @@ def process_environment(
     environment["PIP_NO_INPUT"] = "1"
     environment["PIP_CACHE_DIR"] = str(cache / "pip-cache")
     return environment
+
+
+@contextmanager
+def cargo_scanner_environment() -> Iterator[dict[str, str]]:
+    """Keep nested Cargo security caches below Win32's practical path limit."""
+    if os.name != "nt":
+        yield {}
+        return
+    with tempfile.TemporaryDirectory(
+        prefix="automexia-assurance-run-", dir=Path(ROOT.anchor)
+    ) as temporary:
+        runtime_root = Path(temporary)
+        cargo_home = runtime_root / "cargo-home"
+        cargo_home.mkdir()
+        yield {
+            "CARGO_HOME": str(cargo_home),
+            "TMP": str(runtime_root),
+            "TEMP": str(runtime_root),
+            "TMPDIR": str(runtime_root),
+        }
 
 
 def run(command: list[str], label: str, policy: dict[str, Any], *, timeout: int = MAX_COMMAND_TIMEOUT_SECONDS, extra_environment: dict[str, str] | None = None, isolate_cargo_home: bool = True) -> None:
@@ -528,10 +549,12 @@ def run_step(policy: dict[str, Any], step: str) -> None:
             timeout=180,
         )
     elif step == "dependency-security":
-        run(tool_command(policy, "cargo-audit", "audit", "--deny", "warnings"), "RustSec dependency audit", policy, timeout=15 * 60)
-        run(tool_command(policy, "cargo-deny", "--locked", "--color", "never", "check", "--hide-inclusion-graph"), "dependency/license/source policy", policy, timeout=15 * 60)
+        with cargo_scanner_environment() as environment:
+            run(tool_command(policy, "cargo-audit", "audit", "--deny", "warnings"), "RustSec dependency audit", policy, timeout=15 * 60, extra_environment=environment)
+            run(tool_command(policy, "cargo-deny", "--locked", "--color", "never", "check", "--hide-inclusion-graph"), "dependency/license/source policy", policy, timeout=15 * 60, extra_environment=environment)
     elif step == "dependency-vetting":
-        run(tool_command(policy, "cargo-vet", "--locked"), "dependency audit trust policy", policy, timeout=15 * 60)
+        with cargo_scanner_environment() as environment:
+            run(tool_command(policy, "cargo-vet", "--locked"), "dependency audit trust policy", policy, timeout=15 * 60, extra_environment=environment)
     elif step == "secret-scan":
         log_options = changed_commit_log_options()
         run(tool_command(policy, "gitleaks", "git", "--redact", "--no-banner", "--timeout=900", "--max-target-megabytes=16", "--config", ".gitleaks.toml", f"--log-opts={log_options}"), "introduced-commit secret scan", policy, timeout=15 * 60)

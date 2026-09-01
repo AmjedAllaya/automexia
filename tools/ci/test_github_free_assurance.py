@@ -154,6 +154,48 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.assertEqual(commands[0][0], "cargo-audit")
         self.assertEqual(commands[1][0], "cargo-deny")
 
+    def test_dependency_scanners_use_one_disposable_short_windows_cargo_home(self) -> None:
+        if os.name != "nt":
+            self.skipTest("the historical path exhaustion is Windows-specific")
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            deep_root = Path(temporary).joinpath(*(["nested"] * 12))
+            deep_root.mkdir(parents=True)
+            cargo_homes: list[Path] = []
+
+            def command(
+                _policy: dict[str, object], name: str, *arguments: str
+            ) -> list[str]:
+                return [name, *arguments]
+
+            def capture_run(
+                _command: list[str],
+                _label: str,
+                _policy: dict[str, object],
+                **kwargs: object,
+            ) -> None:
+                environment = kwargs["extra_environment"]
+                assert isinstance(environment, dict)
+                cargo_home = Path(environment["CARGO_HOME"])
+                cargo_homes.append(cargo_home)
+                self.assertEqual(cargo_home.parent.parent, Path(ASSURANCE.ROOT.anchor))
+                self.assertNotIn(ASSURANCE.cache_root(self.policy), cargo_home.parents)
+                for name in ("TMP", "TEMP", "TMPDIR"):
+                    self.assertEqual(Path(environment[name]), cargo_home.parent)
+
+            # Cargo Deny clones an advisory Git repository below CARGO_HOME. A
+            # deep worktree once exhausted Win32 path space only after that
+            # clone began, so both scanners must share one short-lived root.
+            with mock.patch.object(ASSURANCE, "ROOT", deep_root), mock.patch.object(
+                ASSURANCE, "tool_command", side_effect=command
+            ), mock.patch.object(ASSURANCE, "run", side_effect=capture_run):
+                ASSURANCE.run_step(self.policy, "dependency-security")
+                ASSURANCE.run_step(self.policy, "dependency-vetting")
+
+            self.assertEqual(len(cargo_homes), 3)
+            self.assertEqual(cargo_homes[0], cargo_homes[1])
+            for cargo_home in cargo_homes:
+                self.assertFalse(cargo_home.parent.exists())
+
     def test_deep_source_profile_fails_closed_off_linux(self) -> None:
         with mock.patch.object(ASSURANCE.platform, "system", return_value="Windows"):
             with self.assertRaisesRegex(ASSURANCE.AssuranceError, "native Linux checkout"):

@@ -1201,6 +1201,13 @@ failure and generated C-header lookup failures that occur when build or registry
 paths inherit a deeply nested checkout; it does not move the persistent cache
 or source checkout outside the selected drive.
 
+The pre-push dependency scanners also share a separate, same-drive short-lived
+Cargo home on Windows. Cargo Audit, Cargo Deny, and Cargo Vet can create nested
+registry or advisory Git paths after installation, so keeping only their
+executables short is insufficient. The runtime root is removed after each
+bounded scanner group; the repository source and ignored tool cache remain in
+place.
+
 Run `cargo xtask assurance audit-history-secrets` separately for the bounded
 full-history campaign. It intentionally fails closed on the repository's
 review-required legacy generic-key findings. Do not add broad path allowlists or

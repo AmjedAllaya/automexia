@@ -348,6 +348,11 @@ disposable short path on the same drive, then publish only the resulting
 executable atomically into the local cache. This keeps deeply nested Windows
 worktrees below the MSVC linker and C-header path ceilings; the disposable
 build tree is removed after success or failure.
+On Windows the RustSec, Cargo Deny, and Cargo Vet execution groups additionally
+use one disposable same-drive short Cargo home for nested registry and advisory
+Git paths. This runtime root is removed after the bounded group; no global Cargo
+configuration is changed and the repository-local tool executables remain
+isolated.
 The pre-push profile checks the repository readiness gate, workflow pin/policy
 and mutation contracts, Actionlint, offline Zizmor, RustSec/Cargo Deny/Cargo Vet,
 Gitleaks against introduced commits and current files, local Semgrep rules, and
