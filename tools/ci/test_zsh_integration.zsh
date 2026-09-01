@@ -15,7 +15,11 @@ printf '%064d\n%s\n' 0 "$kubectl_digest" >"$completion_root/kubectl.zsh.sha256"
 print -r -- 'compdef _gnu_generic docker' >"$completion_root/docker.zsh"
 sha256sum "$completion_root/docker.zsh" | awk '{print $1}' >"$completion_root/docker.zsh.sha256"
 autoload -Uz compinit
-compinit -D
+# Hosted runners execute this contract non-interactively and can expose
+# unrelated, insecure entries through their ambient fpath. Skip those entries
+# instead of prompting (which cannot succeed without a terminal); the
+# Automexia fixtures below remain digest-verified before they are sourced.
+compinit -i -D
 compdef _files docker
 alias_generation=$(
   python3 "$root/tools/ci/create_cp31_alias_fixture.py" \

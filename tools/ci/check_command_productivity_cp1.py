@@ -201,7 +201,7 @@ def validate_sources(root: Path = ROOT) -> dict[str, int]:
             "interrupted refresh", "4097",
         },
         "tools/ci/test_zsh_integration.zsh": {
-            "interrupted refresh", "4097",
+            "interrupted refresh", "4097", "compinit -i -D",
         },
         "tools/ci/test_fish_integration.fish": {
             "interrupted refresh", "4097",
