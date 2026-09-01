@@ -30,10 +30,10 @@ def package_names() -> tuple[str, ...]:
         f"automexia-terminal-{VERSION}-aarch64-pc-windows-msvc.msi",
         f"automexia-terminal-{VERSION}-aarch64-pc-windows-msvc.zip",
         f"automexia-terminal-{VERSION}-universal.dmg",
-        f"automexia-terminal_{VERSION}_amd64.deb",
+        f"automexia-terminal_{VERSION}-1_amd64.deb",
         f"automexia-terminal-{VERSION}-1.x86_64.rpm",
         f"automexia-terminal-{VERSION}-x86_64-unknown-linux-gnu.tar.gz",
-        f"automexia-terminal_{VERSION}_arm64.deb",
+        f"automexia-terminal_{VERSION}-1_arm64.deb",
         f"automexia-terminal-{VERSION}-1.aarch64.rpm",
         f"automexia-terminal-{VERSION}-aarch64-unknown-linux-gnu.tar.gz",
     )

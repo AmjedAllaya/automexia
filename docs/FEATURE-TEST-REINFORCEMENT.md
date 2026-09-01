@@ -330,6 +330,10 @@ Current assurance: **Controlled/external**.
   package job to use one Cargo build job without release debug data. Mutate both
   limits independently, and keep the rehearsal partial until x64 and Arm64 pass
   natively for the exact workflow commit.
+- Reproduce the hosted aggregation failure after both native package jobs pass.
+  Feed the exact nFPM DEB/RPM/tar filenames into the public manifest, derive the
+  shared DEB/RPM revision from the bounded package configuration, and reject a
+  missing, duplicate, non-positive, or independently hard-coded revision.
 - Execute the committed-secret canary with hostile pre-push `GIT_DIR`, worktree,
   index, object, config, and prefix variables. Require a disposable repository,
   redacted detection, and identical parent HEAD, status, and local repository
