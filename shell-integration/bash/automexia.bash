@@ -285,23 +285,33 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
     fi
   }
 
-  __automexia_alias_private_mode() {
-    local path=$1 mode
-    mode=$(command stat -c '%a' "$path" 2>/dev/null) ||
-      mode=$(command stat -f '%Lp' "$path" 2>/dev/null) || return 1
-    [[ $mode =~ ^[0-7]{3,4}$ ]] || return 1
-    (( (8#$mode & 077) == 0 ))
+  __automexia_alias_real_private_directories() {
+    local output path mode count=0
+    for path in "$@"; do
+      [[ -d $path && ! -L $path ]] || return 1
+    done
+    output=$(command stat -c '%a' "$@" 2>/dev/null) ||
+      output=$(command stat -f '%Lp' "$@" 2>/dev/null) || return 1
+    while IFS= read -r mode; do
+      [[ $mode =~ ^[0-7]{3,4}$ ]] || return 1
+      (( (8#$mode & 077) == 0 )) || return 1
+      count=$((count + 1))
+    done <<<"$output"
+    (( count == $# ))
   }
 
   __automexia_alias_real_private_directory() {
-    [[ -d $1 && ! -L $1 ]] && __automexia_alias_private_mode "$1"
+    __automexia_alias_real_private_directories "$1"
   }
 
   __automexia_alias_real_private_file() {
-    local path=$1 maximum=$2
+    local path=$1 maximum=$2 output mode size extra
     [[ -f $path && ! -L $path ]] || return 1
-    __automexia_alias_private_mode "$path" || return 1
-    [[ $(command wc -c <"$path") -le $maximum ]]
+    output=$(command stat -c '%a %s' "$path" 2>/dev/null) ||
+      output=$(command stat -f '%Lp %z' "$path" 2>/dev/null) || return 1
+    read -r mode size extra <<<"$output"
+    [[ -z $extra && $mode =~ ^[0-7]{3,4}$ && $size =~ ^[0-9]+$ ]] || return 1
+    (( (8#$mode & 077) == 0 && size <= maximum ))
   }
 
   __automexia_alias_consent() {
@@ -382,14 +392,13 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
       __automexia_alias_reason="config-root"
       return 1
     }
-    for line in "$__automexia_alias_config_root/generated" \
-      "$__automexia_alias_root" "$__automexia_alias_root/generations"; do
-      __automexia_alias_real_private_directory "$line" || {
-        __automexia_alias_state=unsafe-permissions
-        __automexia_alias_reason=directory
-        return 1
-      }
-    done
+    __automexia_alias_real_private_directories \
+      "$__automexia_alias_config_root/generated" \
+      "$__automexia_alias_root" "$__automexia_alias_root/generations" || {
+      __automexia_alias_state=unsafe-permissions
+      __automexia_alias_reason=directory
+      return 1
+    }
 
     pointer=$__automexia_alias_root/current
     __automexia_alias_real_private_file "$pointer" 80 || {

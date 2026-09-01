@@ -1,8 +1,15 @@
 # Public Linux Early Access distribution
 
-Status: **source and public-repository setup complete; release externally gated**.
-No package or website route is active until the real signed release workflow and
-landing-page activation checks pass.
+Status: **implementation, passive-archive governance, and inactive website
+integration complete; release externally gated**. No package or website route
+is active until the real signed release workflow and landing-page activation
+checks pass.
+
+The authenticated 2026-09-01 audit confirmed the merged website configuration
+contains the exact six-package contract with a null activation seal. The live
+supported routes and the deliberately unsupported AppImage route all return a
+non-cacheable 404 without a redirect. This is correct pre-release behavior, not
+evidence that a package has shipped.
 
 ## Public contract
 
@@ -71,11 +78,10 @@ public release and not signing evidence.
 
 ## One-time external configuration still required
 
-The 2026-09-01 authenticated audit found zero configured Actions variables,
-zero configured Actions secrets, and zero independent non-administrator push
-reviewers in the private source repository. The first public Linux release is
-therefore correctly blocked; no placeholder credential or reduced-review path
-was introduced.
+The 2026-09-01 authenticated re-audit found zero configured Actions variables,
+zero configured Actions secrets, and no independent release approval. The first
+public Linux release is therefore correctly blocked; no placeholder credential
+or reduced-review path was introduced.
 
 - Generate and protect the real minisign release key; configure
   `AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY` and
@@ -91,6 +97,10 @@ was introduced.
 - Ensure included GitHub Actions minutes are available. Keep paid overage off if
   a hard zero-cost ceiling is required.
 - Run the real release workflow and retain its exact package/native evidence.
+- Complete the required independent review and merge the remaining
+  public-archive metadata hardening change. The terminal and website
+  integrations are merged by this change and must remain inactive until the
+  handoff is verified.
 - Copy the generated activation handoff into the landing-page review, set its
   trusted minisign public-key variable, run the live verifier, deploy, and test
   every friendly and pinned route from a signed-out browser.
@@ -101,6 +111,9 @@ wiki disabled, and protects `main` with code-owner review, last-push approval,
 linear history, resolved conversations, administrator enforcement, and no
 force-push/deletion. Active no-bypass rulesets separately protect default-branch
 changes and reject deletion, update, or non-fast-forward changes to `v*` tags.
+Its passive archive metadata is already present on `main`; the additional
+support-policy hardening remains behind the required independent review rather
+than bypassing the repository's own rule.
 
 ## Rollback and incidents
 

@@ -124,6 +124,29 @@ headless consumers. The free-plan checker parses both manifest contracts, and
 its mutation suite proves that removing any required edge fails before another
 hosted run can be dispatched. Published dependency authority is unchanged.
 
+That exact hosted run then passed the focused image/resource graph and
+documentation tests before the Unix shell smoke exposed a separate
+non-interactive Zsh failure. The runner's ambient `fpath` contained insecure
+completion directories, so a plain `compinit -D` attempted to ask for a
+decision through a terminal the CI process did not own. The harness now uses
+Zsh's documented [`compinit -i` safe-ignore
+mode](https://zsh.sourceforge.io/Doc/Release/Completion-System.html#Use-of-compinit),
+which silently removes insecure entries rather than trusting them. A native
+regression injects a world-writable completion directory, proves its canary is
+never registered, runs without a controlling terminal, and mutation-checks that
+removing `-i` reproduces the failure. Automexia's shipped Zsh adapter remains
+native-first and never invokes `compinit`.
+
+The same shell gate exposed a WSL-specific Bash alias-reload regression. Three
+pre-fix 25-sample runs reported 91 ms, 66 ms, and 75 ms p95 against the 50 ms
+budget because each reload launched separate metadata and byte-count processes
+for every bounded path. The adapter now batches directory modes and obtains each
+file's mode and size from one GNU/BSD `stat` invocation while preserving the
+existing symlink, type, private-permission, size, digest, and tamper decisions.
+Three repeated native WSL runs reported 38 ms, 37 ms, and 45 ms p95. The real
+shell test remains the performance oracle, while the CP1 checker and mutation
+suite prevent removal of the batching and portable combined-metadata contract.
+
 ## Coverage contract
 
 The baseline in `.github/coverage-baseline.json` is platform-specific. Only a
@@ -185,7 +208,7 @@ roots from changing underneath a shared persistent target.
 The 2026-09-01 native Windows x86_64 MSVC audit of this worktree produced the
 following bounded evidence:
 
-- complete Python discovery passed 552 tests with six platform-capability
+- complete Python discovery passed 556 tests with seven platform-capability
   skips;
 - all-feature Nextest passed 2,284 tests across 91 binaries with seven declared
   skips, and the separate workspace documentation-test command passed its

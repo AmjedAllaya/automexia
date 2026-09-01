@@ -1,7 +1,7 @@
 #!/usr/bin/env zsh
 set -eu
 
-root=${0:A:h:h:h}
+root=${AUTOMEXIA_TEST_ROOT:-${0:A:h:h:h}}
 export TERM_PROGRAM=Automexia
 fixture=$(mktemp -d)
 trap 'rm -rf "$fixture"' EXIT
@@ -20,6 +20,9 @@ autoload -Uz compinit
 # instead of prompting (which cannot succeed without a terminal); the
 # Automexia fixtures below remain digest-verified before they are sourced.
 compinit -i -D
+# `compinit -i` must remove an insecure ambient fpath entry rather than loading
+# its registrations. The native Python regression injects this exact canary.
+(( ! ${+_comps[automexia-test-insecure-canary]} ))
 compdef _files docker
 alias_generation=$(
   python3 "$root/tools/ci/create_cp31_alias_fixture.py" \

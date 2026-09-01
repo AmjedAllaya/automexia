@@ -283,6 +283,14 @@ Current assurance: **Partial; short command fixtures are insufficient**.
   height boundaries.
 - Test prompt collisions, partial markers, stale status, profile tamper, nested
   shells, resize repaint, install, repair, rollback and uninstall.
+- On Zsh, inject an insecure ambient completion directory into a detached
+  non-interactive session. Prove the contract ignores it without prompting,
+  never registers its canary, and fails when safe-ignore mode is mutated away;
+  the shipped adapter must still never invoke `compinit`.
+- On Bash, exercise the real generated-alias reload with private, linked,
+  over-limit, tampered, interrupted, and collision fixtures. Measure 25 native
+  reloads after five warmups against the 50 ms p95 ceiling, repeat the run, and
+  mutation-check the batched directory-mode and combined file-mode/size probes.
 - Require native PowerShell/CMD/Bash/Zsh/Fish/WSL/Linux/macOS bytes, history,
   completion, result pixels, accessibility and performance evidence.
 

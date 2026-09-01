@@ -6,6 +6,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -65,6 +66,50 @@ class Cp1PolicyTests(unittest.TestCase):
                 "shell-integration/completion/zsh/automexia-completion.zsh",
                 "disabled _comps source $file",
             )
+
+    def test_zsh_noninteractive_security_contract_cannot_be_weakened(self) -> None:
+        original_bounded_text = POLICY.bounded_text
+        contract_path = ROOT / "tools/ci/test_zsh_integration.zsh"
+        for removed in ("compinit -i -D", "automexia-test-insecure-canary"):
+            with self.subTest(removed=removed):
+                def mutated_bounded_text(path, limit, label):
+                    text = original_bounded_text(path, limit, label)
+                    if Path(path).resolve() == contract_path.resolve():
+                        self.assertIn(removed, text)
+                        return text.replace(removed, "")
+                    return text
+
+                with mock.patch.object(
+                    POLICY, "bounded_text", side_effect=mutated_bounded_text
+                ):
+                    with self.assertRaisesRegex(POLICY.Cp1Error, "CP1 wiring"):
+                        POLICY.validate_sources(ROOT)
+
+    def test_bash_permission_probe_batching_cannot_be_weakened(self) -> None:
+        original_bounded_text = POLICY.bounded_text
+        contract_path = ROOT / "shell-integration/bash/automexia.bash"
+        required = (
+            "__automexia_alias_real_private_directories",
+            "stat -c '%a %s'",
+            "stat -f '%Lp %z'",
+        )
+        for removed in required:
+            with self.subTest(removed=removed):
+                def mutated_bounded_text(path, limit, label):
+                    text = original_bounded_text(path, limit, label)
+                    if Path(path).resolve() == contract_path.resolve():
+                        self.assertIn(removed, text)
+                        return text.replace(removed, "")
+                    return text
+
+                # The native latency regression proves the real effect; this
+                # mutation guard prevents a source edit from silently restoring
+                # the redundant subprocess probes that caused it.
+                with mock.patch.object(
+                    POLICY, "bounded_text", side_effect=mutated_bounded_text
+                ):
+                    with self.assertRaisesRegex(POLICY.Cp1Error, "CP1 wiring"):
+                        POLICY.validate_sources(ROOT)
 
 
 if __name__ == "__main__":

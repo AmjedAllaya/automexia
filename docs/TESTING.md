@@ -1976,6 +1976,13 @@ exact baseline/source process pairs after five warmups and computes p95 from
 paired registration overhead. Linux/macOS CI
 installs Bash/Zsh/Fish validators; Windows CI runs PowerShell/CMD integration.
 
+The native Bash contract also measures 25 generated-alias reloads after five
+warmups and requires the 20-sample p95 to stay within 50 ms while linked,
+over-limit, interrupted, tampered, and collision fixtures retain fail-closed
+behavior. The detached Zsh regression injects a world-writable ambient `fpath`,
+proves its completion canary is never registered, and mutation-tests that
+removing `compinit` safe-ignore mode reproduces the non-interactive failure.
+
 Windows source contracts also prohibit module-dependent hashing on installer
 integrity checks and the PowerShell completion startup path; both use the
 platform SHA-256 API directly.
