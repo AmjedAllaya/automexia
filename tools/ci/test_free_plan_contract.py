@@ -18,12 +18,21 @@ TEST_TEMP_PARENT = Path(ROOT.anchor) if os.name == "nt" else None
 
 
 class FreePlanContractTests(unittest.TestCase):
+    @staticmethod
+    def populate_contract_root(root: Path) -> None:
+        shutil.copytree(ROOT / ".github", root / ".github")
+        (root / "sugarloaf").mkdir()
+        shutil.copy2(
+            ROOT / "sugarloaf" / "Cargo.toml",
+            root / "sugarloaf" / "Cargo.toml",
+        )
+
     def run_checker_with_replacement(
         self, old: str, new: str
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
-            shutil.copytree(ROOT / ".github", root / ".github")
+            self.populate_contract_root(root)
             workflow = root / ".github" / "workflows" / "ci.yml"
             source = workflow.read_text(encoding="utf-8")
             self.assertIn(old, source)
@@ -37,10 +46,29 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
 
+    def run_checker_with_manifest_replacement(
+        self, old: str, new: str
+    ) -> subprocess.CompletedProcess[str]:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            self.populate_contract_root(root)
+            manifest = root / "sugarloaf" / "Cargo.toml"
+            source = manifest.read_text(encoding="utf-8")
+            self.assertIn(old, source)
+            manifest.write_text(source.replace(old, new, 1), encoding="utf-8")
+            return subprocess.run(
+                [sys.executable, str(CHECKER)],
+                cwd=root,
+                capture_output=True,
+                text=True,
+                timeout=30,
+                check=False,
+            )
+
     def run_checker(self, mutation: tuple[str, str] | None = None) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
-            shutil.copytree(ROOT / ".github", root / ".github")
+            self.populate_contract_root(root)
             if mutation is not None:
                 relative, addition = mutation
                 path = root / ".github" / relative
@@ -238,6 +266,20 @@ class FreePlanContractTests(unittest.TestCase):
         completed = self.run_checker_with_replacement(ordered_steps, reordered_steps)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("resource envelope", completed.stderr)
+
+    def test_image_rendering_linux_backends_cannot_be_removed(self) -> None:
+        # The hosted regression occurred only in the stand-alone Sugarloaf
+        # command because the preceding workspace build had hidden this edge.
+        complete = 'features = ["x11", "wayland"]'
+        for weakened in ('features = ["x11"]', 'features = ["wayland"]'):
+            with self.subTest(weakened=weakened):
+                completed = self.run_checker_with_manifest_replacement(
+                    complete, weakened
+                )
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(
+                    "image-rendering Linux platform contract", completed.stderr
+                )
 
 
 if __name__ == "__main__":

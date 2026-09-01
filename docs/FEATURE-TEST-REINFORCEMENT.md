@@ -266,6 +266,12 @@ Current assurance: **Partial**.
   cancellation, stale generation and GPU-loss paths.
 - Execute native renderer/fallback pixel, placement, scale, split, scroll,
   resize, cache eviction and repeated resource-cleanup matrices.
+- Execute the exact stand-alone Sugarloaf image-overlay command on hosted Linux.
+  Its own development graph must request both X11 and Wayland; an earlier
+  workspace-wide all-feature build is not evidence because Cargo resolver v2
+  deliberately does not preserve that unrelated feature union. The free-plan
+  contract parses this dependency edge and independently mutates each backend
+  away.
 
 ### shell-integration-listings
 

@@ -108,6 +108,17 @@ destination links. A platform-neutral assertion freezes the message, while the
 real Unix symlink test remains the independent filesystem oracle; the rejection
 itself was not removed or relaxed.
 
+The successor hosted run passed the complete all-feature Linux workspace suite,
+including that real symlink path, and the deterministic Loom model. It then
+exposed a distinct test-graph defect in `cargo xtask test image-rendering`:
+Sugarloaf's stand-alone test invocation inherited `rio-window` with workspace
+defaults disabled, so neither Linux display backend was selected. The earlier
+workspace build had hidden the missing edge through feature unification.
+Sugarloaf now explicitly requests X11 and Wayland for its development-only
+window dependency. The free-plan checker parses that manifest contract, and its
+mutation suite proves that removing either backend fails before another hosted
+run can be dispatched. Runtime and published dependency authority are unchanged.
+
 ## Coverage contract
 
 The baseline in `.github/coverage-baseline.json` is platform-specific. Only a

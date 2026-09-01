@@ -5,6 +5,7 @@ from pathlib import Path
 import json
 import re
 import sys
+import tomllib
 
 root = Path('.github')
 wf = root / 'workflows'
@@ -168,6 +169,35 @@ if quality_job is not None:
         errors.append(
             'quality resource envelope must reclaim Clippy artifacts before '
             'the all-feature Nextest build'
+        )
+
+# `cargo xtask test image-rendering` intentionally invokes Sugarloaf as a
+# stand-alone package. Resolver v2 must not borrow display-backend features from
+# the earlier workspace-wide build, so the test-only window dependency owns the
+# Linux features needed by that real command.
+sugarloaf_manifest_path = Path('sugarloaf/Cargo.toml')
+try:
+    sugarloaf_manifest = tomllib.loads(
+        sugarloaf_manifest_path.read_text(encoding='utf-8')
+    )
+except (OSError, tomllib.TOMLDecodeError) as error:
+    errors.append(f'image-rendering Linux platform contract is unreadable: {error}')
+else:
+    rio_window_dev = sugarloaf_manifest.get('dev-dependencies', {}).get('rio-window')
+    required_linux_backends = {'x11', 'wayland'}
+    configured_features = (
+        set(rio_window_dev.get('features', []))
+        if isinstance(rio_window_dev, dict)
+        else set()
+    )
+    if not (
+        isinstance(rio_window_dev, dict)
+        and rio_window_dev.get('workspace') is True
+        and required_linux_backends.issubset(configured_features)
+    ):
+        errors.append(
+            'image-rendering Linux platform contract requires Sugarloaf\'s '
+            'workspace rio-window dev-dependency with x11 and wayland features'
         )
 # Ordinary PR CI stays on Linux. The sole standard-hosted Windows exception is
 # release-only coverage because the recorded non-regression baseline is MSVC.
