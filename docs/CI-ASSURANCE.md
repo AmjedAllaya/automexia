@@ -115,9 +115,14 @@ Sugarloaf's stand-alone test invocation inherited `rio-window` with workspace
 defaults disabled, so neither Linux display backend was selected. The earlier
 workspace build had hidden the missing edge through feature unification.
 Sugarloaf now explicitly requests X11 and Wayland for its development-only
-window dependency. The free-plan checker parses that manifest contract, and its
-mutation suite proves that removing either backend fails before another hosted
-run can be dispatched. Runtime and published dependency authority are unchanged.
+window dependency. The next hosted run passed that owner and exposed the same
+hidden edge in the command's later stand-alone rio-backend test: its default
+window bridge forwarded the platform features only to rio-vt, not to the
+optional rio-window dependency. rio-backend now forwards X11 and Wayland to
+both owners whenever that window bridge is active while preserving lean
+headless consumers. The free-plan checker parses both manifest contracts, and
+its mutation suite proves that removing any required edge fails before another
+hosted run can be dispatched. Published dependency authority is unchanged.
 
 ## Coverage contract
 

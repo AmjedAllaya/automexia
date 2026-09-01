@@ -21,11 +21,12 @@ class FreePlanContractTests(unittest.TestCase):
     @staticmethod
     def populate_contract_root(root: Path) -> None:
         shutil.copytree(ROOT / ".github", root / ".github")
-        (root / "sugarloaf").mkdir()
-        shutil.copy2(
-            ROOT / "sugarloaf" / "Cargo.toml",
-            root / "sugarloaf" / "Cargo.toml",
-        )
+        for package in ("sugarloaf", "rio-backend"):
+            (root / package).mkdir()
+            shutil.copy2(
+                ROOT / package / "Cargo.toml",
+                root / package / "Cargo.toml",
+            )
 
     def run_checker_with_replacement(
         self, old: str, new: str
@@ -47,12 +48,15 @@ class FreePlanContractTests(unittest.TestCase):
             )
 
     def run_checker_with_manifest_replacement(
-        self, old: str, new: str
+        self,
+        old: str,
+        new: str,
+        manifest_path: str = "sugarloaf/Cargo.toml",
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
             self.populate_contract_root(root)
-            manifest = root / "sugarloaf" / "Cargo.toml"
+            manifest = root / manifest_path
             source = manifest.read_text(encoding="utf-8")
             self.assertIn(old, source)
             manifest.write_text(source.replace(old, new, 1), encoding="utf-8")
@@ -65,11 +69,13 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
 
-    def run_checker_without_manifest(self) -> subprocess.CompletedProcess[str]:
+    def run_checker_without_manifest(
+        self, manifest_path: str = "sugarloaf/Cargo.toml"
+    ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
             self.populate_contract_root(root)
-            (root / "sugarloaf" / "Cargo.toml").unlink()
+            (root / manifest_path).unlink()
             return subprocess.run(
                 [sys.executable, str(CHECKER)],
                 cwd=root,
@@ -310,6 +316,37 @@ class FreePlanContractTests(unittest.TestCase):
             'features = ["wayland", "x11"]',
         )
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_rio_backend_linux_features_must_reach_optional_window(self) -> None:
+        cases = (
+            (
+                'x11 = ["rio-vt/x11", "rio-window?/x11"]',
+                'x11 = ["rio-vt/x11"]',
+            ),
+            (
+                'wayland = ["rio-vt/wayland", "rio-window?/wayland"]',
+                'wayland = ["rio-vt/wayland"]',
+            ),
+            (
+                'default = ["renderer", "wayland", "x11", "rio-window", "graphics"]',
+                'default = ["renderer", "wayland", "x11", "graphics"]',
+            ),
+        )
+        for complete, weakened in cases:
+            with self.subTest(weakened=weakened):
+                completed = self.run_checker_with_manifest_replacement(
+                    complete,
+                    weakened,
+                    "rio-backend/Cargo.toml",
+                )
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertIn(
+                    "image-rendering rio-backend contract", completed.stderr
+                )
+
+        missing = self.run_checker_without_manifest("rio-backend/Cargo.toml")
+        self.assertNotEqual(missing.returncode, 0)
+        self.assertIn("image-rendering rio-backend contract", missing.stderr)
 
 
 if __name__ == "__main__":

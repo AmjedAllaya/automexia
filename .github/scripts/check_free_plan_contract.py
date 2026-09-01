@@ -199,6 +199,37 @@ else:
             'image-rendering Linux platform contract requires Sugarloaf\'s '
             'workspace rio-window dev-dependency with x11 and wayland features'
         )
+
+# The same command later invokes rio-backend on its own. Its default feature
+# graph enables the optional rio-window bridge, so each native backend must be
+# forwarded to that dependency instead of only to rio-vt.
+rio_backend_manifest_path = Path('rio-backend/Cargo.toml')
+try:
+    rio_backend_manifest = tomllib.loads(
+        rio_backend_manifest_path.read_text(encoding='utf-8')
+    )
+except (OSError, tomllib.TOMLDecodeError) as error:
+    errors.append(f'image-rendering rio-backend contract is unreadable: {error}')
+else:
+    backend_features = rio_backend_manifest.get('features', {})
+    required_defaults = {'rio-window', 'x11', 'wayland'}
+    configured_defaults = set(backend_features.get('default', []))
+    required_forwarding = {
+        'x11': {'rio-vt/x11', 'rio-window?/x11'},
+        'wayland': {'rio-vt/wayland', 'rio-window?/wayland'},
+    }
+    if not required_defaults.issubset(configured_defaults):
+        errors.append(
+            'image-rendering rio-backend contract requires default rio-window, '
+            'x11, and wayland features'
+        )
+    for backend, required_edges in required_forwarding.items():
+        configured_edges = set(backend_features.get(backend, []))
+        if not required_edges.issubset(configured_edges):
+            errors.append(
+                'image-rendering rio-backend contract requires '
+                f'{backend} to forward into rio-vt and optional rio-window'
+            )
 # Ordinary PR CI stays on Linux. The sole standard-hosted Windows exception is
 # release-only coverage because the recorded non-regression baseline is MSVC.
 ci_jobs = {
