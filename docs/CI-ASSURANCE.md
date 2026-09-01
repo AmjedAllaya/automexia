@@ -133,6 +133,12 @@ Then run the contributor gate:
 cargo ready
 ```
 
+Pinned security tools use a repository-local Cargo home for reproducibility.
+When the assurance runner must invoke repository readiness itself, the product
+build keeps the contributor's normal Cargo home while retaining the isolated
+tool `PATH` and temporary directories. This prevents native dependency source
+roots from changing underneath a shared persistent target.
+
 ### Current local evidence
 
 The 2026-08-31 native Windows x86_64 MSVC audit of this worktree produced the

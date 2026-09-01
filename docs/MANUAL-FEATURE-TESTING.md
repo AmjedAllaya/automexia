@@ -3045,9 +3045,9 @@ Run exactly:
 
 ```text
 cargo fmt --all -- --check
-cargo clippy --workspace --all-targets --locked -- -D warnings
-cargo nextest run --workspace --locked --profile ci
-cargo test --workspace --doc --locked
+cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+cargo nextest run --workspace --all-features --locked --profile ci
+cargo test --workspace --all-features --doc --locked
 python3 tools/ci/qa.py --full
 cargo ready
 ```

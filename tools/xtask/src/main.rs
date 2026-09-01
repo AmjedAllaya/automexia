@@ -21,6 +21,25 @@ const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
 const DEFAULT_TARGET_WARN_GIB: u64 = 12;
+const WORKSPACE_CHECK_ARGS: &[&str] = &[
+    "check",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+];
+const WORKSPACE_CLIPPY_ARGS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+    "--",
+    "-D",
+    "warnings",
+];
+const WORKSPACE_TEST_ARGS: &[&str] =
+    &["test", "--workspace", "--all-features", "--locked"];
 
 #[derive(Debug)]
 struct ProductIdentity {
@@ -1251,10 +1270,7 @@ fn check_in(target: &Path) -> TaskResult {
     verify_all()?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
     run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])?;
-    run_cargo_in(
-        target,
-        &["check", "--workspace", "--all-targets", "--locked"],
-    )
+    run_cargo_in(target, WORKSPACE_CHECK_ARGS)
 }
 
 fn verify_all() -> TaskResult {
@@ -1671,24 +1687,13 @@ fn ci_in(target: &Path) -> TaskResult {
     println!("==> verification phase 1/3: workspace checks");
     check_in(target)?;
     println!("==> verification phase 2/3: warning-denied Clippy");
-    run_cargo_in(
-        target,
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
+    run_cargo_in(target, WORKSPACE_CLIPPY_ARGS)?;
     println!(
         "==> verification phase 3/3: workspace tests (a cold isolated target can compile for several minutes)"
     );
     run_cargo_summarized_in(
         target,
-        &["test", "--workspace", "--locked"],
+        WORKSPACE_TEST_ARGS,
         "workspace unit, integration, and documentation tests passed",
     )
 }
@@ -4585,6 +4590,37 @@ mod tests {
             assert!(!assurance_owns_readiness(scope));
         }
         assert!(!assurance_scope_supported("unknown"));
+    }
+
+    #[test]
+    fn local_workspace_gate_covers_every_feature_like_hosted_ci() {
+        assert_eq!(
+            WORKSPACE_CHECK_ARGS,
+            &[
+                "check",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_CLIPPY_ARGS,
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_TEST_ARGS,
+            &["test", "--workspace", "--all-features", "--locked"]
+        );
     }
 
     #[test]

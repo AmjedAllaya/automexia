@@ -61,7 +61,9 @@ limited to tracked and newly added non-ignored sources so ignored caches or
 private archival worktrees cannot substitute stale files for the active
 checkout.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
-isolated exhaustive build artifacts behind.
+isolated exhaustive build artifacts behind. The check, Clippy, and workspace
+test phases all enable every workspace feature, matching the hosted Rust quality
+gate instead of relying on default-feature coverage.
 
 ## Public Linux Early Access distribution
 

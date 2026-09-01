@@ -149,10 +149,13 @@ def tool_command(policy: dict[str, Any], name: str, *arguments: str) -> list[str
     return [str(binary), *arguments]
 
 
-def process_environment(policy: dict[str, Any]) -> dict[str, str]:
+def process_environment(
+    policy: dict[str, Any], *, isolate_cargo_home: bool = True
+) -> dict[str, str]:
     environment = os.environ.copy()
     cache = cache_root(policy)
-    environment["CARGO_HOME"] = str(cache / "cargo-home")
+    if isolate_cargo_home:
+        environment["CARGO_HOME"] = str(cache / "cargo-home")
     environment["PATH"] = str(cache / "bin") + os.pathsep + environment.get("PATH", "")
     temporary = cache / "tmp"
     temporary.mkdir(parents=True, exist_ok=True)
@@ -165,8 +168,8 @@ def process_environment(policy: dict[str, Any]) -> dict[str, str]:
     return environment
 
 
-def run(command: list[str], label: str, policy: dict[str, Any], *, timeout: int = MAX_COMMAND_TIMEOUT_SECONDS, extra_environment: dict[str, str] | None = None) -> None:
-    environment = process_environment(policy)
+def run(command: list[str], label: str, policy: dict[str, Any], *, timeout: int = MAX_COMMAND_TIMEOUT_SECONDS, extra_environment: dict[str, str] | None = None, isolate_cargo_home: bool = True) -> None:
+    environment = process_environment(policy, isolate_cargo_home=isolate_cargo_home)
     if extra_environment:
         environment.update(extra_environment)
     print(f"RUN: {label}")
@@ -437,7 +440,15 @@ def run_step(policy: dict[str, Any], step: str) -> None:
         if os.environ.get("AUTOMEXIA_ASSURANCE_READY_DONE") == "1":
             print("INFO: repository readiness was completed by the owning xtask process")
         else:
-            run(["cargo", "xtask", "ready"], "repository readiness", policy)
+            # The isolated Cargo home belongs to pinned assurance tools. Reusing
+            # it for the product build changes native dependency source roots
+            # and can race or invalidate the contributor target unexpectedly.
+            run(
+                ["cargo", "xtask", "ready"],
+                "repository readiness",
+                policy,
+                isolate_cargo_home=False,
+            )
     elif step == "free-plan-contract":
         run([sys.executable, ".github/scripts/check_action_pins.py"], "immutable GitHub Action pins", policy, timeout=180)
         run([sys.executable, ".github/scripts/check_free_plan_contract.py"], "GitHub-Free workflow policy", policy, timeout=180)

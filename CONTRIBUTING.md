@@ -73,8 +73,9 @@ user profiles.
 
 `cargo ready` is the required contributor command. It includes tool and
 structured-file validation, all Automexia verification scopes, package metadata,
-rustfmt, locked workspace checks, warning-denied Clippy, workspace tests,
-dependency policy, a debug build, and executable identity smoke.
+rustfmt, locked all-feature workspace checks, warning-denied all-feature Clippy,
+all-feature workspace tests, dependency policy, a debug build, and executable
+identity smoke.
 Compilation-heavy checks run with incremental compilation disabled inside an
 isolated target that is deleted on both success and ordinary failure. This
 keeps a complete contributor gate from permanently multiplying workspace

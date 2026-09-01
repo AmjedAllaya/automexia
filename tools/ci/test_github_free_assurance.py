@@ -167,6 +167,14 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                 ASSURANCE.run_step(self.policy, "repository-ready")
         runner.assert_not_called()
 
+    def test_direct_repository_ready_keeps_the_contributor_cargo_home(self) -> None:
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("AUTOMEXIA_ASSURANCE_READY_DONE", None)
+            with mock.patch.object(ASSURANCE, "run") as runner:
+                ASSURANCE.run_step(self.policy, "repository-ready")
+        self.assertEqual(runner.call_args.args[0], ["cargo", "xtask", "ready"])
+        self.assertFalse(runner.call_args.kwargs["isolate_cargo_home"])
+
     def test_cargo_vet_initialization_is_idempotent_but_rejects_partial_records(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
@@ -237,6 +245,12 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.assertEqual(Path(environment["PIP_CACHE_DIR"]), cache / "pip-cache")
         for name in ("TMP", "TEMP", "TMPDIR"):
             self.assertEqual(Path(environment[name]), cache / "tmp")
+
+        with mock.patch.dict(os.environ, {"CARGO_HOME": "ambient-cargo-home"}):
+            repository_environment = ASSURANCE.process_environment(
+                self.policy, isolate_cargo_home=False
+            )
+        self.assertEqual(repository_environment["CARGO_HOME"], "ambient-cargo-home")
 
     def test_tool_downloads_are_checksum_pinned_and_bounded(self) -> None:
         downloads = ASSURANCE.platform_downloads(self.policy)
