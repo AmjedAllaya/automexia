@@ -317,6 +317,11 @@ Current assurance: **Controlled/external**.
 - Exercise the same native packaging graph through a credential-free manual
   rehearsal that retains an explicit non-release marker and cannot read secrets,
   sign, publish, tag, or emit activation evidence.
+- Reproduce the historical free-runner linker exhaustion and require the release
+  quality job to use one build/test thread, omit development/test debug data,
+  cache only Cargo registry/Git sources under a `Cargo.lock` identity, and clean
+  lint artifacts before all-feature tests. Mutate each limit, cleanup position,
+  cache pin/path/identity, and reject compiled-target caching.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
   website activation seal as independent oracles. Require GitHub's signed
   release attestation and verify each local asset against it from the complete

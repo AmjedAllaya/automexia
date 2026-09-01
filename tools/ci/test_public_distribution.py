@@ -513,6 +513,61 @@ class PublicDistributionTests(unittest.TestCase):
                 'for asset in "${assets[0]}"; do',
                 1,
             ),
+            "release quality build parallelism": workflow.replace(
+                "CARGO_BUILD_JOBS: '1'",
+                "CARGO_BUILD_JOBS: '2'",
+                1,
+            ),
+            "release quality development debug info": workflow.replace(
+                "CARGO_PROFILE_DEV_DEBUG: '0'",
+                "CARGO_PROFILE_DEV_DEBUG: '1'",
+                1,
+            ),
+            "release quality test debug info": workflow.replace(
+                "CARGO_PROFILE_TEST_DEBUG: '0'",
+                "CARGO_PROFILE_TEST_DEBUG: '1'",
+                1,
+            ),
+            "release quality test parallelism": workflow.replace(
+                "NEXTEST_TEST_THREADS: '1'",
+                "NEXTEST_TEST_THREADS: '2'",
+                1,
+            ),
+            "release quality lint cleanup": workflow.replace(
+                "        run: cargo clean\n",
+                "        run: cargo metadata --locked --format-version 1\n",
+                1,
+            ),
+            "release quality source cache": workflow.replace(
+                "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+                "actions/cache@1111111111111111111111111111111111111111",
+                1,
+            ),
+            "release quality target cache": workflow.replace(
+                "            ~/.cargo/git\n",
+                "            ~/.cargo/git\n            target\n",
+                1,
+            ),
+            "release quality stale cache identity": workflow.replace(
+                "${{ hashFiles('Cargo.lock') }}",
+                "static-lock-identity",
+                1,
+            ),
+            "release quality cleanup ordering": workflow.replace(
+                "      - name: Reclaim release lint artifacts before the all-feature "
+                "test build\n"
+                "        run: cargo clean\n"
+                "      - name: Workspace unit and integration tests\n"
+                "        run: cargo nextest run --workspace --all-features --locked "
+                "--profile ci\n",
+                "      - name: Workspace unit and integration tests\n"
+                "        run: cargo nextest run --workspace --all-features --locked "
+                "--profile ci\n"
+                "      - name: Reclaim release lint artifacts after the all-feature "
+                "test build\n"
+                "        run: cargo clean\n",
+                1,
+            ),
             "credential leak into rehearsal": workflow.replace(
                 "\n  assemble:",
                 "\n      - run: echo '${{ secrets.TEST_PRIVATE_KEY }}'\n\n  assemble:",
@@ -521,6 +576,11 @@ class PublicDistributionTests(unittest.TestCase):
         }
         for label, mutated in mutations.items():
             with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                self.assertNotEqual(
+                    workflow,
+                    mutated,
+                    f"{label} mutation did not alter the workflow fixture",
+                )
                 path = Path(temporary) / "workflow.yml"
                 path.write_text(mutated, encoding="utf-8")
                 with self.assertRaises(DISTRIBUTION.DistributionError):
@@ -535,6 +595,15 @@ class PublicDistributionTests(unittest.TestCase):
             'gh release verify "$tag"',
             'gh release verify-asset "$tag" "$asset"',
             'X-GitHub-Api-Version: 2026-03-10',
+            "CARGO_BUILD_JOBS: '1'",
+            "CARGO_PROFILE_DEV_DEBUG: '0'",
+            "CARGO_PROFILE_TEST_DEBUG: '0'",
+            "NEXTEST_TEST_THREADS: '1'",
+            "Reclaim release lint artifacts before the all-feature test build",
+            "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+            "~/.cargo/registry",
+            "~/.cargo/git",
+            "hashFiles('Cargo.lock')",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, workflow)

@@ -673,6 +673,10 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "asset attestation verification": 'gh release verify-asset "$tag" "$asset"',
         "release signature": "minisign -S -W",
         "signature verification": "minisign -V -P",
+        "release quality source cache": "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+        "release quality lint cleanup": (
+            "Reclaim release lint artifacts before the all-feature test build"
+        ),
     }
     for label, token in required.items():
         if token not in workflow:
@@ -696,6 +700,7 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         return match.group("body")
 
     authorize = job_body("authorize")
+    quality = job_body("quality")
     rehearsal = job_body("rehearsal")
     assemble = job_body("assemble")
     publish = job_body("publish")
@@ -711,6 +716,37 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         fail("manual dispatch must select non-public rehearsal mode")
     if "publish=true" not in dispatch.group("release"):
         fail("only the reviewed merge path may select public release mode")
+    resource_contract = {
+        "single build job": "CARGO_BUILD_JOBS: '1'",
+        "disabled development debug info": "CARGO_PROFILE_DEV_DEBUG: '0'",
+        "disabled test debug info": "CARGO_PROFILE_TEST_DEBUG: '0'",
+        "single test thread": "NEXTEST_TEST_THREADS: '1'",
+    }
+    for label, token in resource_contract.items():
+        if quality.count(token) != 1:
+            fail(f"release quality job must enforce {label}")
+    source_cache_contract = {
+        "Cargo registry source cache": "~/.cargo/registry",
+        "Cargo Git source cache": "~/.cargo/git",
+        "Cargo.lock cache identity": "hashFiles('Cargo.lock')",
+    }
+    for label, token in source_cache_contract.items():
+        if quality.count(token) != 1:
+            fail(f"release quality job must enforce {label}")
+    if re.search(r"(?m)^\s+target(?:/.*)?\s*$", quality):
+        fail("release quality cache must not retain target build artifacts")
+    clippy = quality.find(
+        "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+    )
+    clean = quality.find("run: cargo clean")
+    nextest = quality.find(
+        "cargo nextest run --workspace --all-features --locked --profile ci"
+    )
+    if quality.count("run: cargo clean") != 1 or not 0 <= clippy < clean < nextest:
+        fail(
+            "release quality job must clean lint artifacts between Clippy and "
+            "the all-feature test build"
+        )
     if "if: needs.authorize.outputs.publish == 'false'" not in rehearsal:
         fail("credential-free rehearsal must be restricted to non-public dispatches")
     for name, body in (("assemble", assemble), ("publish", publish)):

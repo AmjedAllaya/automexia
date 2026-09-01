@@ -103,6 +103,13 @@ jobs:
     needs: authorize
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      # GitHub Free runners provide a small CPU/memory/disk envelope. Keep
+      # linker concurrency and debug artifacts bounded across the full graph.
+      CARGO_BUILD_JOBS: '1'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      NEXTEST_TEST_THREADS: '1'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -116,21 +123,35 @@ jobs:
           rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: linux-release-quality-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            linux-release-quality-${{ runner.os }}-
       - name: Install pinned quality tools
         uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
         with:
           tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
-      - name: Run release-quality checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt --all -- --check
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-          cargo nextest run --workspace --all-features --locked --profile ci
-          cargo test --workspace --all-features --doc --locked
-          cargo audit --deny warnings
-          cargo deny --locked --color never check --hide-inclusion-graph
-          bash tools/ci/test_shell_sources.sh
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Warning-denied all-target Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Reclaim release lint artifacts before the all-feature test build
+        run: cargo clean
+      - name: Workspace unit and integration tests
+        run: cargo nextest run --workspace --all-features --locked --profile ci
+      - name: Workspace documentation tests
+        run: cargo test --workspace --all-features --doc --locked
+      - name: RustSec dependency audit
+        run: cargo audit --deny warnings
+      - name: Dependency, license, and source policy
+        run: cargo deny --locked --color never check --hide-inclusion-graph
+      - name: Shell integration syntax and contract smoke
+        run: bash tools/ci/test_shell_sources.sh
 
   package:
     name: Native Linux package build

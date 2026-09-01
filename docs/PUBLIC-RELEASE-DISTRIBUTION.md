@@ -45,7 +45,10 @@ route returns a real 404 without a `Location` header.
 2. Merge only after the exact head has an independent approval and a distinct
    merger.
 3. `Linux Early Access release` reruns formatting, Clippy, full tests, doctests,
-   RustSec, dependency policy, and shell contracts on the merged commit.
+   RustSec, dependency policy, and shell contracts on the merged commit. Its
+   free-runner envelope serializes compilation and tests, omits development and
+   test debug artifacts, caches only Cargo registry/Git sources keyed by
+   `Cargo.lock`, and cleans lint artifacts before the all-feature test build.
 4. Native Ubuntu x64 and Arm64 runners build and test DEB/RPM/tar install and
    removal lifecycles.
 5. The workflow creates the exact manifest, public documents, and two SBOMs;
@@ -75,6 +78,18 @@ lifecycle jobs, then retains a seven-day private unsigned bundle marked
 access secrets, mint a GitHub App token, sign checksums, create a release or tag,
 or produce a website activation handoff. It is package-pipeline evidence, not a
 public release and not signing evidence.
+
+The resource envelope is part of the checked release contract, not an optional
+optimization. Workflow mutations must fail when concurrency or debug artifacts
+increase, cleanup is removed or moved after tests, the source-cache action or
+lockfile identity changes, or compiled `target` artifacts enter the cache.
+
+The first real credential-free dispatch on 2026-09-01 (run `33518978466`)
+correctly failed closed before packaging or publication when `rust-lld`
+encountered a runner resource failure while linking `rio-vt` examples after the
+all-target Clippy build. The bounded quality-job fix was added from that real
+reproduction. A fresh hosted run must pass before native rehearsal evidence is
+claimed.
 
 ## One-time external configuration still required
 

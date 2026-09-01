@@ -88,8 +88,11 @@ activation handoff. Workflow mutations also remove the manual rehearsal trigger,
 change its non-public gate, inject a secret reference, weaken the signing and
 publishing gates, change the GitHub API version, skip the live repository
 governance audit, remove release-level attestation verification, or reduce the
-complete uploaded-asset attestation loop to one asset; each mutation must fail
-closed. Repository-governance mutations independently weaken visibility,
+complete uploaded-asset attestation loop to one asset. They also increase build
+or test concurrency, restore debug artifacts, remove or reorder the post-Clippy
+cleanup, alter the pinned source cache, detach its identity from `Cargo.lock`,
+or cache compiled `target` artifacts; each mutation must fail closed.
+Repository-governance mutations independently weaken visibility,
 passive-feature settings, immutability, bypass actors, reference scopes,
 approvals, code-owner review, merge mode, required commit signatures, and tag
 rewrite rules. They do not
@@ -102,6 +105,15 @@ produce only the six unsigned packages, the manifest, and the explicit
 `REHEARSAL-NOT-A-PUBLIC-RELEASE.txt` marker in a seven-day private artifact. A
 rehearsal that reads a secret, signs, publishes, creates a tag, or emits an
 activation handoff is a policy failure.
+
+The release-quality job is deliberately bounded for GitHub Free runners:
+one Cargo build job, one nextest thread, no development/test debug artifacts, a
+registry/Git-only cache keyed by `Cargo.lock`, and `cargo clean` between
+all-target Clippy and the all-feature test build. The initial real dispatch,
+run `33518978466` on 2026-09-01, exposed a linker resource failure before this
+envelope existed and correctly skipped every package/publication job. That run
+is regression evidence, not a pass; the corrected workflow still requires a
+successful hosted rerun.
 
 On 2026-09-01, the authenticated live public-archive payload passed
 `verify-repository`: visibility and passive-feature settings, immutable releases,

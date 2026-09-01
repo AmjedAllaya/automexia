@@ -311,6 +311,14 @@ seven-day private artifact containing
 `REHEARSAL-NOT-A-PUBLIC-RELEASE.txt`. It cannot read release secrets, mint an App
 token, sign, publish, create a tag, or emit a website activation handoff.
 
+The quality job stays inside the standard free Linux runner envelope by using
+one Cargo build job, one nextest thread, development/test profiles without debug
+artifacts, a source-only Cargo registry/Git cache keyed by `Cargo.lock`, and a
+clean boundary between all-target Clippy and all-feature tests. Do not add
+`target` to this cache or reorder/remove the cleanup: the policy mutation suite
+rejects those changes because the first real rehearsal exhausted the linker
+after retaining the lint graph.
+
 Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
 independent approval and distinct merger, `linux-early-access.yml` reruns the
 Linux release-quality gate, builds x64 and Arm64 packages natively, signs the
