@@ -558,6 +558,81 @@ def write_activation_handoff(manifest_path: Path, output: Path) -> dict[str, obj
     return handoff
 
 
+def validate_public_repository_governance(
+    repository: dict[str, object],
+    immutable: dict[str, object],
+    main_ruleset: dict[str, object],
+    tag_ruleset: dict[str, object],
+) -> None:
+    expected_repository = {
+        "visibility": "public",
+        "has_issues": False,
+        "has_projects": False,
+        "has_wiki": False,
+        "allow_squash_merge": True,
+        "allow_merge_commit": False,
+        "allow_rebase_merge": False,
+    }
+    for field, expected in expected_repository.items():
+        if repository.get(field) != expected:
+            fail(f"public release repository has unsafe {field} configuration")
+    if immutable.get("enabled") is not True:
+        fail("public release repository must enforce immutable releases")
+
+    def rules_by_type(
+        ruleset: dict[str, object], name: str, target: str, include: list[str]
+    ) -> dict[str, dict[str, object]]:
+        if (
+            ruleset.get("name") != name
+            or ruleset.get("target") != target
+            or ruleset.get("enforcement") != "active"
+            or ruleset.get("bypass_actors") != []
+        ):
+            fail(f"{name} ruleset identity, enforcement, or bypass policy drifted")
+        conditions = ruleset.get("conditions")
+        ref_name = conditions.get("ref_name") if isinstance(conditions, dict) else None
+        if not isinstance(ref_name, dict) or ref_name.get("include") != include or ref_name.get("exclude") != []:
+            fail(f"{name} ruleset reference scope drifted")
+        raw_rules = ruleset.get("rules")
+        if not isinstance(raw_rules, list):
+            fail(f"{name} ruleset has no rule list")
+        indexed: dict[str, dict[str, object]] = {}
+        for rule in raw_rules:
+            if not isinstance(rule, dict) or not isinstance(rule.get("type"), str):
+                fail(f"{name} ruleset contains an invalid rule")
+            rule_type = rule["type"]
+            if rule_type in indexed:
+                fail(f"{name} ruleset repeats {rule_type}")
+            indexed[rule_type] = rule
+        return indexed
+
+    main_rules = rules_by_type(main_ruleset, "Protect main", "branch", ["~DEFAULT_BRANCH"])
+    for required in ("deletion", "non_fast_forward", "required_linear_history", "pull_request"):
+        if required not in main_rules:
+            fail(f"Protect main ruleset is missing {required}")
+    review = main_rules["pull_request"].get("parameters")
+    if not isinstance(review, dict):
+        fail("Protect main pull-request rule has no parameters")
+    approvals = review.get("required_approving_review_count")
+    if not isinstance(approvals, int) or isinstance(approvals, bool) or approvals < 1:
+        fail("Protect main must require at least one approval")
+    for flag in (
+        "dismiss_stale_reviews_on_push",
+        "require_code_owner_review",
+        "require_last_push_approval",
+        "required_review_thread_resolution",
+    ):
+        if review.get(flag) is not True:
+            fail(f"Protect main pull-request rule must enable {flag}")
+    if review.get("allowed_merge_methods") != ["squash"]:
+        fail("Protect main must allow squash merging only")
+
+    tag_rules = rules_by_type(tag_ruleset, "Protect release tags", "tag", ["refs/tags/v*"])
+    for required in ("deletion", "update", "non_fast_forward"):
+        if required not in tag_rules:
+            fail(f"Protect release tags ruleset is missing {required}")
+
+
 def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
     try:
         workflow = path.read_text(encoding="utf-8")
@@ -566,6 +641,8 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
     if len(workflow.encode("utf-8")) > 256 * 1024:
         fail("public Linux release workflow exceeds its byte limit")
     required = {
+        "manual rehearsal trigger": "workflow_dispatch:",
+        "rehearsal-only dispatch mode": "publish=false",
         "internal merged PR": "github.event.pull_request.head.repo.full_name == github.repository",
         "release branch": "^release/linux/([0-9]+)\\.([0-9]+)\\.([0-9]+)$",
         "manifest builder": "tools/ci/public_distribution.py build",
@@ -574,6 +651,9 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "published verifier": "--stage published",
         "full upload verification": "--bundle release-bundle",
         "immutable repository audit": "repos/$PUBLIC_REPOSITORY/immutable-releases",
+        "repository governance audit": "tools/ci/public_distribution.py verify-repository",
+        "protected metadata branch": "Protect main",
+        "protected release tags": "Protect release tags",
         "create-once publication": "gh release create",
         "no replacement": "A release or tag already exists in the public repository",
         "scoped repository": "repositories: automexia-releases",
@@ -581,6 +661,10 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "scoped administration permission": "permission-administration: read",
         "short-lived GitHub App": "actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1",
         "activation handoff": "website-activation.json",
+        "rehearsal warning": "REHEARSAL-NOT-A-PUBLIC-RELEASE.txt",
+        "current GitHub API contract": "X-GitHub-Api-Version: 2026-03-10",
+        "release attestation verification": 'gh release verify "$tag"',
+        "asset attestation verification": 'gh release verify-asset "$tag" "$asset"',
         "release signature": "minisign -S -W",
         "signature verification": "minisign -V -P",
     }
@@ -595,10 +679,58 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         fail("draft and published release checks must verify every uploaded bundle file")
     if workflow.count("AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY") != 1:
         fail("public Linux release workflow must expose the App private key to one step only")
+
+    def job_body(name: str) -> str:
+        match = re.search(
+            rf"(?ms)^  {re.escape(name)}:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)",
+            workflow,
+        )
+        if match is None:
+            fail(f"public Linux release workflow is missing {name} job")
+        return match.group("body")
+
+    authorize = job_body("authorize")
+    rehearsal = job_body("rehearsal")
+    assemble = job_body("assemble")
+    publish = job_body("publish")
+    dispatch = re.search(
+        r"(?ms)if \[\[ \"\$EVENT_NAME\" == 'workflow_dispatch' \]\]; then"
+        r"(?P<rehearsal>.*?)^\s*else\s*$"
+        r"(?P<release>.*?)^\s*fi\s*$",
+        authorize,
+    )
+    if dispatch is None:
+        fail("authorize job must separate manual rehearsal from public release")
+    if "publish=false" not in dispatch.group("rehearsal"):
+        fail("manual dispatch must select non-public rehearsal mode")
+    if "publish=true" not in dispatch.group("release"):
+        fail("only the reviewed merge path may select public release mode")
+    if "if: needs.authorize.outputs.publish == 'false'" not in rehearsal:
+        fail("credential-free rehearsal must be restricted to non-public dispatches")
+    for name, body in (("assemble", assemble), ("publish", publish)):
+        if "if: needs.authorize.outputs.publish == 'true'" not in body:
+            fail(f"{name} job must be restricted to an authorized public release")
+    if "X-GitHub-Api-Version: 2026-03-10" not in publish:
+        fail("publication must use the current pinned GitHub API contract")
+    for forbidden in (
+        "secrets.",
+        "create-github-app-token",
+        "gh release create",
+        "minisign -S",
+        "activation-handoff",
+    ):
+        if forbidden in rehearsal:
+            fail(f"credential-free rehearsal unexpectedly contains {forbidden}")
     if workflow.find("--stage draft") > workflow.find("gh release edit"):
         fail("draft release must be verified before it is published")
     if workflow.find("--stage published") < workflow.find("gh release edit"):
         fail("published release must be verified after immutable publication")
+    published = workflow.find("--stage published")
+    release_attestation = workflow.find('gh release verify "$tag"')
+    asset_attestation = workflow.find('gh release verify-asset "$tag" "$asset"')
+    activation = workflow.find("activation-handoff")
+    if not published < release_attestation < asset_attestation < activation:
+        fail("release and asset attestations must be verified before website activation")
 
 
 def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]:
@@ -640,6 +772,11 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     verify.add_argument("--release-json", type=Path, required=True)
     verify.add_argument("--stage", choices=("draft", "published"), default="published")
     verify.add_argument("--bundle", type=Path, required=True)
+    governance = commands.add_parser("verify-repository")
+    governance.add_argument("--repository-json", type=Path, required=True)
+    governance.add_argument("--immutable-json", type=Path, required=True)
+    governance.add_argument("--main-ruleset-json", type=Path, required=True)
+    governance.add_argument("--tag-ruleset-json", type=Path, required=True)
     bundle = commands.add_parser("verify-bundle")
     bundle.add_argument("--directory", type=Path, required=True)
     activation = commands.add_parser("activation-handoff")
@@ -673,6 +810,14 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "verify-bundle":
             manifest = verify_bundle(args.directory)
             print(f"Verified exact public bundle for v{manifest['version']}")
+        elif args.command == "verify-repository":
+            validate_public_repository_governance(
+                _load_json(args.repository_json, MAX_RELEASE_JSON_BYTES),
+                _load_json(args.immutable_json, MAX_RELEASE_JSON_BYTES),
+                _load_json(args.main_ruleset_json, MAX_RELEASE_JSON_BYTES),
+                _load_json(args.tag_ruleset_json, MAX_RELEASE_JSON_BYTES),
+            )
+            print("Public release repository governance passed")
         elif args.command == "activation-handoff":
             handoff = write_activation_handoff(args.manifest, args.output)
             print(f"Prepared website activation handoff for {handoff['releaseTag']}")

@@ -42,14 +42,22 @@ secret in the private source repository; it is exposed to only the token-minting
 step. The release workflow has read-only source-repository permissions.
 
 The repository owner performs the one-time public-repository setup with
-administration write: enable immutable releases, private vulnerability
-reporting, protected `main`, and disable Actions in the passive archive. The
-publication App can audit but cannot change immutable-release configuration.
+administration write: enable immutable releases and private vulnerability
+reporting; disable Actions, issues, Projects, and the wiki; protect `main`; and
+apply no-bypass rulesets to the default branch and `v*` tags. The publication App
+can audit but cannot change immutable-release configuration or repository rules.
 
 Every release is first a draft. The workflow rejects an existing tag/release,
 uploads without replacement, compares the exact draft asset inventory, sizes,
 and GitHub SHA-256 digests, and only then publishes. It re-fetches and verifies
 the immutable release before emitting the website activation handoff.
+It also verifies GitHub's cryptographically signed release attestation and each
+of the sixteen local assets against that attestation before the handoff exists.
+
+A manual credential-free mode exercises quality, native packaging, and exact
+unsigned bundle assembly without access to release secrets or publication
+authority. Its retained artifact carries an explicit non-release marker and
+cannot activate the website.
 
 ## Alternatives
 
@@ -71,10 +79,13 @@ the immutable release before emitting the website activation handoff.
 
 - `tools/ci/public_distribution.py` builds and validates the exact manifest,
   rejects links, duplicates, symbols, unowned formats, size/count overflow,
-  checksum drift, and GitHub release-state drift.
+  checksum drift, GitHub release-state drift, and live public-repository or
+  branch/tag-ruleset governance drift.
 - `tools/ci/test_public_distribution.py` mutates package slots, bundle bytes,
   checksums, draft/immutable state, repository scope, publication ordering, and
-  activation handoff.
+  activation handoff. It also removes or weakens rehearsal isolation, public-job
+  gating, API versioning, and release/asset attestation checks and requires every
+  mutation to fail closed.
 - `.github/workflows/linux-early-access.yml` runs full Linux release quality,
   native x64/Arm64 package lifecycle tests, SPDX/CycloneDX generation, minisign
   signing, draft verification, immutable publication, and post-upload evidence.

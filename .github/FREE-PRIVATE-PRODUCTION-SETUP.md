@@ -74,6 +74,14 @@ AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER=0
 
 This is an explicit reduction in release governance, not the default.
 
+Those two variables apply only to the multi-platform stable-release workflow.
+The Linux Early Access workflow deliberately does not read them: public Linux
+publication always requires a current approval of the exact pull-request head
+and a merger distinct from the pull-request author. On the current private
+GitHub Free source repository, server-enforced branch protection is unavailable;
+until a second trusted reviewer exists, public Linux publication remains an
+external prerequisite rather than silently weakening this rule.
+
 ## 4. Windows production signing
 
 Set variable:
@@ -173,8 +181,8 @@ sha256sum -c SHA256SUMS
 Linux Early Access publishes to the passive public repository
 `AmjedAllaya/automexia-releases`; it does not publish public assets from the
 private source repository. That repository must remain public, keep Actions
-disabled, protect `main`, enable private vulnerability reporting, and return a
-successful authenticated response from:
+disabled, protect `main`, protect `v*` release tags, enable private vulnerability
+reporting, and return a successful authenticated response from:
 
 ```text
 GET /repos/AmjedAllaya/automexia-releases/immutable-releases
@@ -198,6 +206,20 @@ The repository owner enables immutable releases once with administration write.
 Do not grant that write permission to the publication App. Rotate an exposed App
 private key immediately, remove the old key from the App, and rerun only a new
 patch version; never replace a published release.
+
+The public archive uses active no-bypass rulesets in addition to legacy branch
+protection: `Protect main` requires squash-only reviewed changes with code-owner,
+last-push, stale-review, linear-history, and resolved-thread controls; `Protect
+release tags` rejects deletion, update, and non-fast-forward changes to `v*`.
+Issues, Projects, the wiki, and Actions remain disabled. Repository topics,
+description, homepage, distribution notice, security policy, and support policy
+are public metadata only.
+
+Every publication fetches the live repository, immutable-release, default-branch
+ruleset, and release-tag ruleset payloads using the pinned GitHub API. The
+repository-owned validator rejects visibility, interactive-feature, merge-mode,
+scope, bypass, approval, review, linear-history, or tag-rewrite drift before any
+tag or draft is created.
 
 ## 7. Ordinary PR CI
 
@@ -280,12 +302,22 @@ After CI/reviews, merge it. `Stable release` then:
 
 ### Linux Early Access only
 
+Before provisioning signing keys or a GitHub App, dispatch `Linux Early Access
+release` manually from the exact candidate ref and provide the Cargo workspace
+version as `X.Y.Z`. This credential-free rehearsal runs the native package jobs,
+assembles only the six unsigned packages plus the manifest, and retains a
+seven-day private artifact containing
+`REHEARSAL-NOT-A-PUBLIC-RELEASE.txt`. It cannot read release secrets, mint an App
+token, sign, publish, create a tag, or emit a website activation handoff.
+
 Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
 independent approval and distinct merger, `linux-early-access.yml` reruns the
 Linux release-quality gate, builds x64 and Arm64 packages natively, signs the
 public bundle, publishes one immutable prerelease in `automexia-releases`, and
-retains `website-activation.json` for 30 days. It does not publish Windows or
-macOS and does not enable the website.
+uses GitHub's current versioned API plus `gh release verify` and
+`gh release verify-asset` for all sixteen assets before retaining
+`website-activation.json` for 30 days. It does not publish Windows or macOS and
+does not enable the website.
 
 Review the activation handoff in the landing-page repository, set its trusted
 minisign public-key deployment variable, run its complete live-release verifier,

@@ -296,11 +296,17 @@ Current assurance: **Controlled/external**.
   reject links, duplicates, symbols, unowned formats, count/byte overflow, and
   checksum/manifest drift; verify a create-once draft before publication and the
   exact immutable GitHub asset inventory afterward.
+- Exercise the same native packaging graph through a credential-free manual
+  rehearsal that retains an explicit non-release marker and cannot read secrets,
+  sign, publish, tag, or emit activation evidence.
 - Keep the public binary repository, one-hour repository-scoped GitHub App, and
-  website activation seal as independent oracles. Mutate repository scope,
-  App permissions, draft/publish ordering, immutable audit, every asset digest,
-  redirect host, trusted minisign key/signature, source commit, manifest digest,
-  wrong pinned version, and unavailable-route 404 behavior.
+  website activation seal as independent oracles. Require GitHub's signed
+  release attestation and verify each local asset against it. Mutate repository
+  scope, App permissions, rehearsal isolation, public-job gates, API version,
+  live repository settings, branch/tag rules and bypass actors, attestation
+  commands, draft/publish ordering, immutable audit, every asset digest, redirect
+  host, trusted minisign key/signature, source commit, manifest digest, wrong
+  pinned version, and unavailable-route 404 behavior.
 
 ### command-productivity-cp0-policy
 

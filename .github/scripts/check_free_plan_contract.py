@@ -71,6 +71,10 @@ if not re.search(r'^  publish:\n(?:.*\n){0,15}?    - reproducibility-linux$', re
 
 linux_early_access = (wf/'linux-early-access.yml').read_text(encoding='utf-8')
 for fragment in (
+    'workflow_dispatch:',
+    "needs.authorize.outputs.publish == 'false'",
+    "needs.authorize.outputs.publish == 'true'",
+    'REHEARSAL-NOT-A-PUBLIC-RELEASE.txt',
     "startsWith(github.event.pull_request.head.ref, 'release/linux/')",
     'github.event.pull_request.head.repo.full_name == github.repository',
     'tools/ci/public_distribution.py check-policy',
@@ -79,6 +83,12 @@ for fragment in (
     'repositories: automexia-releases',
     '--stage draft',
     '--stage published',
+    'X-GitHub-Api-Version: 2026-03-10',
+    'tools/ci/public_distribution.py verify-repository',
+    'Protect main',
+    'Protect release tags',
+    'gh release verify "$tag"',
+    'gh release verify-asset "$tag" "$asset"',
 ):
     if fragment not in linux_early_access:
         errors.append(f'Linux Early Access workflow is missing free-plan fragment: {fragment}')

@@ -1,7 +1,13 @@
 name: Linux Early Access release
-run-name: "Linux Early Access · PR #${{ github.event.pull_request.number }} · ${{ github.event.pull_request.head.ref }}"
+run-name: "Linux Early Access · ${{ github.event_name }} · ${{ github.event.pull_request.head.ref || github.ref_name }}"
 
 on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: SemVer package version to rehearse without signing or publishing
+        required: true
+        type: string
   pull_request:
     branches: [main]
     types: [closed]
@@ -18,27 +24,32 @@ env:
 
 jobs:
   authorize:
-    name: Authorize merged Linux release PR
+    name: Authorize Linux release or rehearsal
     if: >-
-      github.event.pull_request.merged == true &&
-      github.event.pull_request.base.ref == 'main' &&
-      startsWith(github.event.pull_request.head.ref, 'release/linux/') &&
-      github.event.pull_request.head.repo.full_name == github.repository
+      github.event_name == 'workflow_dispatch' ||
+      (github.event.pull_request.merged == true &&
+       github.event.pull_request.base.ref == 'main' &&
+       startsWith(github.event.pull_request.head.ref, 'release/linux/') &&
+       github.event.pull_request.head.repo.full_name == github.repository)
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     outputs:
       commit: ${{ steps.authorize.outputs.commit }}
+      publish: ${{ steps.authorize.outputs.publish }}
       version: ${{ steps.authorize.outputs.version }}
     steps:
       - name: Check out the exact merged source
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
-          ref: ${{ github.event.pull_request.merge_commit_sha }}
-      - name: Validate branch, source, and independent approval
+          ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.merge_commit_sha }}
+      - name: Validate rehearsal or independently approved release
         id: authorize
         shell: bash
         env:
+          DISPATCH_VERSION: ${{ inputs.version }}
+          EVENT_COMMIT: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.merge_commit_sha }}
+          EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
           MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
           MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
@@ -48,29 +59,41 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
-          [[ "$PR_BRANCH" =~ ^release/linux/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
-            echo 'Linux release branch must be exactly release/linux/X.Y.Z.' >&2
-            exit 1
-          }
-          [[ "$MERGE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-          [[ "$MERGED_BY" != "$PR_AUTHOR" ]] || {
-            echo 'The release merger must be independent from the pull-request author.' >&2
-            exit 1
-          }
-          approvals="$(
-            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" |
-              python3 tools/ci/check_pr_policy.py --count-approvals "$PR_AUTHOR" "$PR_HEAD_SHA"
-          )"
-          (( approvals >= 1 )) || { echo 'The exact release head needs a current human approval.' >&2; exit 1; }
-          version="${PR_BRANCH#release/linux/}"
+          [[ "$EVENT_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          if [[ "$EVENT_NAME" == 'workflow_dispatch' ]]; then
+            [[ "$DISPATCH_VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || {
+              echo 'A rehearsal version must be exact SemVer X.Y.Z.' >&2
+              exit 1
+            }
+            version="$DISPATCH_VERSION"
+            publish=false
+          else
+            [[ "$PR_BRANCH" =~ ^release/linux/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
+              echo 'Linux release branch must be exactly release/linux/X.Y.Z.' >&2
+              exit 1
+            }
+            [[ "$MERGE_COMMIT" == "$EVENT_COMMIT" ]]
+            [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
+            [[ "$MERGED_BY" != "$PR_AUTHOR" ]] || {
+              echo 'The release merger must be independent from the pull-request author.' >&2
+              exit 1
+            }
+            approvals="$(
+              gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" |
+                python3 tools/ci/check_pr_policy.py --count-approvals "$PR_AUTHOR" "$PR_HEAD_SHA"
+            )"
+            (( approvals >= 1 )) || { echo 'The exact release head needs a current human approval.' >&2; exit 1; }
+            version="${PR_BRANCH#release/linux/}"
+            publish=true
+          fi
           grep -Fq "version = \"$version\"" Cargo.toml || { echo 'Cargo workspace version does not match the release branch.' >&2; exit 1; }
-          test "$(git rev-parse HEAD)" = "$MERGE_COMMIT"
+          test "$(git rev-parse HEAD)" = "$EVENT_COMMIT"
           python3 tools/ci/public_distribution.py check-policy
           python3 tools/ci/test_public_distribution.py
           python3 .github/scripts/check_action_pins.py
           python3 .github/scripts/check_free_plan_contract.py
-          echo "commit=$MERGE_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "commit=$EVENT_COMMIT" >> "$GITHUB_OUTPUT"
+          echo "publish=$publish" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
 
   quality:
@@ -168,9 +191,53 @@ jobs:
           retention-days: 7
           compression-level: 0
 
+  rehearsal:
+    name: Retain credential-free native rehearsal
+    needs: [authorize, package]
+    if: needs.authorize.outputs.publish == 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          persist-credentials: false
+          ref: ${{ needs.authorize.outputs.commit }}
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+        with:
+          pattern: public-linux-*
+          path: package-source
+          merge-multiple: true
+      - name: Prove the exact unsigned rehearsal package contract
+        shell: bash
+        env:
+          REHEARSAL_COMMIT: ${{ needs.authorize.outputs.commit }}
+          REHEARSAL_VERSION: ${{ needs.authorize.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/public_distribution.py build \
+            --source package-source \
+            --output rehearsal-bundle \
+            --version "$REHEARSAL_VERSION" \
+            --commit "$REHEARSAL_COMMIT" \
+            --copy-packages
+          test "$(find rehearsal-bundle -maxdepth 1 -type f | wc -l)" -eq 7
+          printf '%s\n' \
+            'REHEARSAL-NOT-A-PUBLIC-RELEASE' \
+            'Unsigned package rehearsal. Do not distribute or activate.' \
+            > rehearsal-bundle/REHEARSAL-NOT-A-PUBLIC-RELEASE.txt
+      - name: Retain bounded private rehearsal evidence
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: linux-package-rehearsal-${{ needs.authorize.outputs.version }}
+          path: rehearsal-bundle
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
+
   assemble:
     name: Assemble and sign public Linux bundle
     needs: [authorize, package]
+    if: needs.authorize.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -257,6 +324,7 @@ jobs:
   publish:
     name: Publish immutable public Linux prerelease
     needs: [authorize, assemble]
+    if: needs.authorize.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     concurrency:
@@ -281,6 +349,8 @@ jobs:
           sudo apt-get install -y --no-install-recommends minisign
           python3 tools/ci/public_distribution.py verify-bundle --directory release-bundle
           minisign -V -P "$RELEASE_MINISIGN_PUBLIC_KEY" -m release-bundle/SHA256SUMS -x release-bundle/SHA256SUMS.minisig
+          gh release verify --help >/dev/null
+          gh release verify-asset --help >/dev/null
       - name: Create repository-scoped one-hour GitHub App token
         id: distribution-token
         uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
@@ -300,20 +370,39 @@ jobs:
         run: |
           set -euo pipefail
           tag="v$VERSION"
-          test "$(gh api "repos/$PUBLIC_REPOSITORY" --jq .visibility)" = public
-          gh api "repos/$PUBLIC_REPOSITORY/immutable-releases" >/dev/null
-          if gh release view "$tag" --repo "$PUBLIC_REPOSITORY" >/dev/null 2>&1 || gh api "repos/$PUBLIC_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
+          api_header='X-GitHub-Api-Version: 2026-03-10'
+          governance="$RUNNER_TEMP/public-repository-governance"
+          mkdir -p "$governance"
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY" > "$governance/repository.json"
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/immutable-releases" > "$governance/immutable.json"
+          main_ruleset_id="$(gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/rulesets" --jq 'map(select(.name == "Protect main" and .target == "branch" and .enforcement == "active")) | if length == 1 then .[0].id else empty end')"
+          tag_ruleset_id="$(gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/rulesets" --jq 'map(select(.name == "Protect release tags" and .target == "tag" and .enforcement == "active")) | if length == 1 then .[0].id else empty end')"
+          [[ "$main_ruleset_id" =~ ^[0-9]+$ ]]
+          [[ "$tag_ruleset_id" =~ ^[0-9]+$ ]]
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/rulesets/$main_ruleset_id" > "$governance/main-ruleset.json"
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/rulesets/$tag_ruleset_id" > "$governance/tag-ruleset.json"
+          python3 tools/ci/public_distribution.py verify-repository \
+            --repository-json "$governance/repository.json" \
+            --immutable-json "$governance/immutable.json" \
+            --main-ruleset-json "$governance/main-ruleset.json" \
+            --tag-ruleset-json "$governance/tag-ruleset.json"
+          if gh release view "$tag" --repo "$PUBLIC_REPOSITORY" >/dev/null 2>&1 || gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
             echo 'A release or tag already exists in the public repository; create a new patch version.' >&2
             exit 1
           fi
           mapfile -d '' assets < <(find release-bundle -maxdepth 1 -type f -print0 | sort -z)
           test "${#assets[@]}" -eq 16
           gh release create "$tag" "${assets[@]}" --repo "$PUBLIC_REPOSITORY" --draft --prerelease --title "Automexia Terminal $tag — Linux Early Access" --notes-file release-bundle/RELEASE-NOTES.md
-          gh api "repos/$PUBLIC_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release-draft.json"
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release-draft.json"
           python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-draft.json" --bundle release-bundle --stage draft
           gh release edit "$tag" --repo "$PUBLIC_REPOSITORY" --draft=false --prerelease --latest=false
-          gh api "repos/$PUBLIC_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release-published.json"
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release-published.json"
           python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-published.json" --bundle release-bundle --stage published
+          gh release verify "$tag" --repo "$PUBLIC_REPOSITORY" --format json > "$RUNNER_TEMP/release-attestation.json"
+          test -s "$RUNNER_TEMP/release-attestation.json"
+          for asset in "${assets[@]}"; do
+            gh release verify-asset "$tag" "$asset" --repo "$PUBLIC_REPOSITORY" --format json >/dev/null
+          done
           mkdir -p activation
           python3 tools/ci/public_distribution.py activation-handoff --manifest release-bundle/public-distribution-manifest-v1.json --output activation/website-activation.json
       - name: Retain exact website activation handoff

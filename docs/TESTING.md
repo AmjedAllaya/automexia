@@ -82,8 +82,31 @@ digests. They cover missing/duplicate package slots, unowned AppImage/Windows
 files, symbols, links, size/count ceilings, malformed checksum paths, one-byte
 drift, draft/immutable state, extra assets, post-upload digest changes,
 repository scope, App permission tokens, publication ordering, and deterministic
-activation handoff. They do not substitute for native hosted packaging, real
-minisign, GitHub App, immutable release, or production website evidence.
+activation handoff. Workflow mutations also remove the manual rehearsal trigger,
+change its non-public gate, inject a secret reference, weaken the signing and
+publishing gates, change the GitHub API version, skip the live repository
+governance audit, and remove release-level or per-asset attestation verification;
+each mutation must fail closed. Repository-governance mutations independently
+weaken visibility, passive-feature settings, immutability, bypass actors,
+reference scopes, approvals, code-owner review, merge mode, and tag rewrite
+rules. They do not
+substitute for native hosted packaging, real minisign, GitHub App, immutable
+release, cryptographic GitHub release attestation, or production website
+evidence.
+
+A manual workflow dispatch is the credential-free native rehearsal. It must
+produce only the six unsigned packages, the manifest, and the explicit
+`REHEARSAL-NOT-A-PUBLIC-RELEASE.txt` marker in a seven-day private artifact. A
+rehearsal that reads a secret, signs, publishes, creates a tag, or emits an
+activation handoff is a policy failure.
+
+On 2026-09-01, the authenticated live public-archive payload passed
+`verify-repository`: visibility and passive-feature settings, immutable releases,
+the no-bypass `Protect main` review ruleset, and the non-rewritable `Protect
+release tags` ruleset matched the checked-in contract. This verifies current
+repository governance only; no release exists yet, and it is not evidence for a
+GitHub App, release key, native hosted package run, attestation, or website
+deployment.
 
 The landing-page repository separately runs `pnpm downloads:check` for friendly
 and pinned 404/redirect contracts plus live-verifier mutations. When and only

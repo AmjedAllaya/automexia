@@ -9,6 +9,13 @@ activation handoff, and rollback procedure are in
 [`docs/PUBLIC-RELEASE-DISTRIBUTION.md`](docs/PUBLIC-RELEASE-DISTRIBUTION.md) and
 [ADR 0037](docs/adr/0037-public-binary-release-distribution.md).
 
+Before release credentials exist, manually dispatch the Linux workflow from an
+exact candidate ref with the Cargo version to obtain the private, unsigned
+native-package rehearsal. The rehearsal is visibly marked as not distributable
+and cannot sign, publish, tag, or activate the website. A real publication also
+requires GitHub release-level and per-asset attestation verification after
+immutable publication and before the activation handoff.
+
 Stable releases are tag-driven from protected `main`. Run:
 
 ```text

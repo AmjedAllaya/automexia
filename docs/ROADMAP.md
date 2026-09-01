@@ -32,8 +32,8 @@ That status does not make them safe or supported for production use.
 
 | Status | Feature | Remaining requirement |
 |---|---|---|
-| **Fully done (source and repository setup)** | Exact x64/Arm64 DEB, RPM, and tar allowlist; bundle/manifest/checksum policy; mutation tests; public binary repository; immutable releases; protected public metadata branch | Preserve these contracts and rerun them for every release change. |
-| **Partially done (external release evidence required)** | Native Linux Early Access workflow, minisign bundle, scoped GitHub App publication, immutable post-upload verification, and website activation handoff | Configure the real signing key and App, merge the workflow, then pass the exact hosted x64/Arm64 jobs. |
+| **Fully done (source and repository setup)** | Exact x64/Arm64 DEB, RPM, and tar allowlist; bundle/manifest/checksum policy; credential-free native rehearsal; release/asset attestation gates; mutation tests; passive public archive; immutable releases; active default-branch and `v*` tag rulesets | Preserve these contracts and rerun them for every release change. |
+| **Partially done (external release evidence required)** | Native Linux Early Access execution, real minisign bundle, scoped GitHub App publication, immutable post-upload and GitHub attestation evidence, and website activation handoff | Add an independent reviewer, configure the real signing key and App, integrate the reviewed source/website/archive branches, then pass the exact hosted x64/Arm64 jobs. |
 | **Not done (no public package claimed)** | Publish the first real immutable prerelease and activate/download-smoke the landing-page routes | Publish only real verified packages, run the landing site's independent live verifier and preview review, deploy, and smoke every route from a signed-out client. |
 
 The detailed source of truth is
