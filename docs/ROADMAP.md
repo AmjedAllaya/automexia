@@ -34,6 +34,17 @@ not evidence that a public package exists.
 The exact current status and remaining external gates are documented in
 [Public Linux Early Access distribution](PUBLIC-RELEASE-DISTRIBUTION.md).
 
+### Build and CI performance status
+
+| Status | Feature | Remaining requirement |
+|---|---|---|
+| **Fully done (source and policy)** | Readiness avoids the duplicate pre-Clippy Cargo check; quality jobs use a reviewed, versioned compiler cache; Cargo source caches share a lockfile-bound identity; native x64/Arm64 package jobs run beside quality while remaining cold; nFPM uses checksum-pinned native archives; downstream jobs join all required evidence; semantic mutation tests guard every boundary | Preserve the cold package boundary and rerun all mutations for every workflow or toolchain change. |
+| **Partially done (measured hosted evidence)** | The pre-change rehearsal baseline is recorded and the implementation emits cache statistics | Run cold and warm hosted jobs on the exact reviewed commit, retain timings and sccache statistics, and compare the critical path without treating a miss as a win. |
+| **Not done (performance claim)** | No percentage reduction is advertised | Publish a measured claim only after exact hosted cold/warm evidence exists; eviction, quota, and rate-limit behavior remain external GitHub service conditions. |
+
+The complete design and evidence ledger is
+[CI and build performance plan](CI-BUILD-PERFORMANCE-PLAN.md).
+
 ## Direction after the first stable release
 
 Only high-level category labels are public: diagnostic work, production
