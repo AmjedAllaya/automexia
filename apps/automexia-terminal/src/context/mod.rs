@@ -32,7 +32,7 @@ use rio_backend::selection::SelectionRange;
 use rio_backend::sugarloaf::{font::SugarloafFont, Rect, Sugarloaf, SugarloafErrors};
 use std::collections::VecDeque;
 use std::error::Error;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -177,12 +177,15 @@ pub struct Context<T: EventListener> {
     pub ime: Ime,
     managed_session: Option<ManagedSessionGuard>,
     _io_thread: Option<PtyWorkerHandle<()>>,
+    shutdown_requested: AtomicBool,
 }
 
 impl<T: rio_backend::event::EventListener> Drop for Context<T> {
     fn drop(&mut self) {
-        // Shutdown the terminal's PTY.
-        let _ = self.messenger.channel.send(Msg::Shutdown);
+        // Application/window teardown broadcasts before contexts are dropped so
+        // every owned PTY can consume its graceful budget concurrently. Keep
+        // this request as the single-context fallback for every other drop path.
+        let _ = self.request_pty_shutdown();
         #[cfg(not(target_os = "windows"))]
         let managed = self.managed_session.is_some();
 
@@ -205,6 +208,20 @@ impl<T: rio_backend::event::EventListener> Drop for Context<T> {
 }
 
 impl<T: EventListener> Context<T> {
+    /// Ask this context's PTY worker to terminate exactly once.
+    ///
+    /// Returning whether this call won the request race lets aggregate owners
+    /// prove that active, background, split, pane-tab, and parked contexts were
+    /// all covered without publishing process identities.
+    #[inline]
+    pub fn request_pty_shutdown(&self) -> bool {
+        if self.shutdown_requested.swap(true, Ordering::AcqRel) {
+            return false;
+        }
+        let _ = self.messenger.channel.send(Msg::Shutdown);
+        true
+    }
+
     #[inline]
     pub fn set_selection(&mut self, selection_range: Option<SelectionRange>) {
         let old_selection = self.renderable_content.selection_range;
@@ -360,6 +377,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         ime: Ime::new(),
         managed_session: None,
         _io_thread: None,
+        shutdown_requested: AtomicBool::new(false),
     }
 }
 
@@ -531,6 +549,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 reconciled: false,
             }),
             _io_thread: io_thread,
+            shutdown_requested: AtomicBool::new(false),
         })
     }
 
@@ -808,6 +827,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             ime: Ime::new(),
             managed_session: None,
             _io_thread: io_thread,
+            shutdown_requested: AtomicBool::new(false),
         })
     }
 
@@ -1309,6 +1329,17 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .iter()
             .flat_map(ContextGrid::route_ids)
             .collect()
+    }
+
+    /// Start shutdown for every PTY owned by this OS window before any grid is
+    /// dropped. Parked topologies remain live PTYs and therefore participate;
+    /// redo entries only reference active grids and must not be counted twice.
+    pub fn request_pty_shutdown(&self) -> usize {
+        self.contexts
+            .iter()
+            .chain(self.parked_topologies.iter().map(|entry| &entry.grid))
+            .map(ContextGrid::request_pty_shutdown)
+            .sum()
     }
 
     /// Active local-tab routes for every visible pane in the selected
@@ -2562,6 +2593,21 @@ pub mod test {
         assert!(!manager.can_undo_topology());
         assert!(!manager.can_redo_topology());
         assert_eq!(manager.clear_parked_topologies(), 0);
+    }
+
+    #[test]
+    fn window_shutdown_broadcast_includes_active_and_parked_topologies_once() {
+        let window_id = WindowId::from(75);
+        let mut manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, window_id).unwrap();
+        manager.add_context(true, 0);
+        assert!(manager.park_current_topology_model());
+        manager.add_context(true, 0);
+
+        assert_eq!(manager.len(), 2);
+        assert_eq!(manager.parked_topologies.len(), 1);
+        assert_eq!(manager.request_pty_shutdown(), 3);
+        assert_eq!(manager.request_pty_shutdown(), 0);
     }
     #[derive(Clone, Default)]
     struct RecordingListener {

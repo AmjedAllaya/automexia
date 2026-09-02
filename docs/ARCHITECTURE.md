@@ -103,14 +103,29 @@ The session owner is responsible for:
 - joining owned readers, writers, and workers.
 
 Unix process groups and Windows Job Objects or equivalent platform mechanisms
-are used where applicable. A failed optional feature must not interrupt the
-basic local shell path.
+are used where applicable. Every ordinary and exact Windows ConPTY child is
+created suspended, assigned to its session's kill-on-close Job Object, and only
+then resumed. Window and application teardown first broadcast one idempotent
+shutdown request to every active, background, split, pane-tab, and parked
+session; only then may route destruction join workers. This keeps per-session
+graceful deadlines concurrent instead of multiplying them by the number of
+sessions. A failed optional feature must not interrupt the basic local shell
+path. [ADR 0038](adr/0038-owned-pty-trees-and-broadcast-shutdown.md) owns this
+lifecycle invariant.
 
 ## Renderer and snapshots
 
 The renderer consumes immutable, generation-labelled snapshots. Expensive
 layout, search, image, font, or accessibility work is bounded and cancellable.
 A result is published only if its route and generation are still current.
+Feature-gated native visual readiness is published only after the matching
+frame has presented; a control consumed after draw-data construction forces a
+new frame rather than pairing new state with old or partially rendered pixels.
+The CPU renderer's frame-skip identity includes the physical surface extent,
+and its reusable-frame cache advances only after successful native
+presentation. Therefore an unchanged terminal model still repaints newly
+exposed pixels after a client resize, while a failed present remains eligible
+for an identical retry.
 
 Frames preserve terminal-cell geometry, grapheme widths, clipping, z-order,
 cursor position, selection, scroll offsets, and modal composition. Renderer
