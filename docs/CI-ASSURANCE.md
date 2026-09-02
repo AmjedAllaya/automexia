@@ -9,20 +9,23 @@ a pass.
 
 | Area | Source/local status | Remaining external evidence |
 |---|---|---|
-| Ordinary PR policy, Rust quality, dependency security | Implemented and covered by repository validators plus complete Python mutation discovery | A current hosted run must execute on the exact commit |
+| Ordinary PR policy, Rust quality, dependency security | Implemented, mutation-tested, and passed in exact-commit run `33593759776` | Repeat on every changed commit; native and controlled evidence remains separate |
 | Internal release validation | Implemented and mutation-tested | A real internal `release/X.Y.Z` PR must run it |
 | Windows/MSVC coverage ratchet | Implemented with exact commit, platform, path, size, and changed-owned-line binding | The standard Windows runner must execute successfully within available Actions quota |
 | Manual deep, S1, S2, and native OpenSSH workflows | Implemented as bounded opt-in/controlled workflow contracts | Their declared self-hosted runners, hardware, evidence manifests, and independent review remain required |
 | Stable release graph and artifact trust | Implemented and mutation-tested through final package/signature/publication boundaries | Production signing identities, notarization, active S1/S2 evidence, governance audit, and a real release run remain required |
-| Build and CI critical-path controls | Source-complete and mutation-tested: local readiness avoids a duplicate compile, quality jobs use a versioned compiler cache, and native packages run beside quality while staying cold | Exact-commit hosted cold/warm timing and cache statistics remain required before claiming a measured speedup |
+| Build and CI critical-path controls | Source-complete, mutation-tested, and exercised by exact-commit cold/warm run `33593793029`; local readiness avoids a duplicate compile, quality uses a versioned compiler cache, and native packages run beside quality while staying cold | GitHub eviction, quota, rate limiting, runner variance, and longitudinal evidence remain external |
 | GitHub branch/ruleset enforcement | Locally versioned and remotely auditable | Private GitHub Free does not expose the required server-side branch/ruleset controls |
 
-Authenticated inspection on 2026-08-31 found the latest `main` CI run stopped
+Authenticated inspection on 2026-08-31 found the then-latest `main` CI run stopped
 before runner assignment with zero steps. GitHub reported an account payment or
 Actions spending-limit prerequisite. This is classified as `external-billing`,
 not a source-code test failure and not a passing run. The separate branch
 protection API continues to report the private-plan upgrade/public-visibility
-prerequisite. Source changes cannot legitimately hide either condition.
+prerequisite. Source changes cannot legitimately hide either condition. Actions
+execution subsequently became available: exact-commit PR run `33593759776` and
+Linux rehearsal run `33593793029` passed on 2026-09-02. That later execution
+evidence does not change the separate private-plan branch-protection limit.
 
 ## Workflow ownership
 
@@ -63,8 +66,21 @@ source. Package and quality jobs run concurrently after authorization; both
 rehearsal and public assembly require quality plus every native architecture.
 The architecture-matched nFPM v2.43.4 archive is SHA-256 checked before use.
 The canonical design, baseline, threat model, test inventory, rollback, and
-outstanding hosted evidence are in
+hosted evidence are in
 [CI and build performance plan](CI-BUILD-PERFORMANCE-PLAN.md).
+
+On exact implementation commit
+`b38f0e884aa7dd1d7bd05adba6853218ffb98fb2`, credential-free rehearsal run
+`33593793029` passed twice. The cold-cache attempt took 25m56s end to end and
+reported 185 compiler-cache hits, 1,127 misses, and no errors. The warm attempt
+took 15m01s, reported 1,308 hits, 4 misses, and no errors, and retained both
+cache-free native package sets. Against pre-change run `33581137496` at 37m11s,
+those bounded observations are 30.3% and 59.6% shorter. They are exact-run
+evidence, not a guarantee for later hosted-runner or dependency conditions.
+The independent ordinary PR quality/test job in run `33593759776` also passed
+twice: 38m20s with 474 hits and 1,681 misses, then 13m44s with 2,153 hits and
+2 misses. Both attempts reported no cache errors; the exact warm reduction was
+64.2%.
 
 ## Checker and mutation ownership
 

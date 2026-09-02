@@ -1,6 +1,6 @@
 # CI and build performance plan
 
-Status: source implemented; exact hosted timing evidence pending
+Status: implemented; exact hosted cold/warm evidence recorded
 
 Last reviewed: 2026-09-02
 
@@ -58,7 +58,8 @@ minutes on the rehearsal critical path before aggregation.
 
 ## Implementation record
 
-The source implementation now satisfies acceptance criteria 1–7:
+The implementation and exact-commit evidence now satisfy acceptance criteria
+1–8:
 
 - local readiness runs policy/metadata/formatting, Clippy, and workspace tests
   without the redundant standalone Cargo check; focused `cargo xtask check`
@@ -74,7 +75,6 @@ The source implementation now satisfies acceptance criteria 1–7:
 - action-pin, free-plan, repository-protection, public-distribution, xtask, and
   feature-reinforcement mutation owners cover the new boundaries.
 
-Acceptance criterion 8 remains open until exact hosted cold/warm runs complete.
 The pre-host local verification completed on 2026-09-02 with these results:
 
 | Evidence | Result |
@@ -86,9 +86,36 @@ The pre-host local verification completed on 2026-09-02 with these results:
 | `cargo test --workspace --doc --locked` | 64 passed; 3 explicitly ignored platform examples |
 | `python3 tools/ci/qa.py --full` | Every locally executable stage passed; controlled native, elevated, long-campaign, and private-manifest gates remained explicitly external |
 
-The final contributor-gate receipt and hosted run URLs belong to the signed
-commit/PR evidence. Source shape or a cache hit by itself is not performance
-evidence, and no percentage improvement is claimed here.
+The exact implementation commit was
+`b38f0e884aa7dd1d7bd05adba6853218ffb98fb2`. Pull request CI run
+[`33593759776`](https://github.com/AmjedAllaya/automexia-terminal/actions/runs/33593759776)
+passed policy, dependency security, and the complete Rust quality/test job on
+that commit. Credential-free Linux rehearsal run
+[`33593793029`](https://github.com/AmjedAllaya/automexia-terminal/actions/runs/33593793029)
+then produced both native package sets without signing or publication:
+
+| Evidence | Pre-change run `33581137496` | Optimized cold-cache attempt 1 | Optimized warm-cache attempt 2 |
+|---|---:|---:|---:|
+| Whole rehearsal, authorization start through retained evidence | 37m11s | 25m56s | 15m01s |
+| Quality job | 20m36s | 25m38s | 12m05s |
+| x64 cold native package lifecycle | 16m05s | 15m25s | 14m40s |
+| Arm64 cold native package lifecycle | 15m37s | 15m39s | 14m03s |
+| Compiler-cache report | Not present | 185 hits, 1,127 misses, 0 errors | 1,308 hits, 4 misses, 0 errors |
+
+The optimized cold attempt reduced this exact rehearsal's measured critical
+path by 30.3%; the warm attempt reduced it by 59.6%. The quality job itself was
+52.9% faster warm than cold. These are bounded observations from the linked
+GitHub-hosted runs, not universal promises: runner load, source-cache state,
+cache eviction, quota, and dependency changes can alter later timings. Release
+packages remained cold in both optimized attempts; their modest timing change
+reflects source-download reuse and hosted-runner variance, not compiler-output
+reuse.
+
+The same commit's ordinary PR CI run passed twice as an independent workflow.
+Its Rust quality/test job fell from 38m20s with 474 hits, 1,681 misses, and no
+cache errors to 13m44s with 2,153 hits, 2 misses, and no cache errors: 64.2%
+for those exact attempts. Repository policy and dependency security remained
+separate read-only jobs and passed on both attempts.
 
 ## Placement decision
 
@@ -166,8 +193,7 @@ state require no migration because no cache is permitted in their build path.
 
 ## External evidence
 
-The first run can prove correctness and cold behavior. A second exact-policy run
-after a trusted default-branch cache exists is required to measure warm-cache
-benefit. GitHub service eviction, quota, and rate limiting remain external. No
-performance percentage is claimed until exact hosted job timings and sccache
-hit/miss statistics exist.
+The linked cold and warm attempts complete the exact-commit hosted evidence for
+this change. GitHub service eviction, quota, rate limiting, runner contention,
+and future dependency graphs remain external. Repeated longitudinal runs are
+required before treating the bounded percentages above as a stable forecast.
