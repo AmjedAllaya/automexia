@@ -110,7 +110,16 @@ Arm64. Its final aggregation failed closed because the public allowlist omitted
 the nFPM Debian revision from both DEB filenames. No signing, publication, tag,
 or activation job ran. The public contract now derives the revision from
 `packaging/linux/nfpm.yaml`, and the real six-name package set is a regression
-fixture. A fresh hosted rehearsal of the corrected commit is still required.
+fixture.
+
+The corrected exact-commit rehearsal, run `33571540675` on commit
+`9dcf08845dc96aaea4f757d168d3d84861f19b94`, passed authorization, the complete
+quality gate, native x64 and Arm64 build/package/install lifecycles, exact
+three-package uploads for each architecture, and the seven-file unsigned
+aggregation contract. The bounded rehearsal bundle was retained for seven days.
+Signing, release publication, tag creation, and website activation were skipped
+as required, so this is complete credential-free package-pipeline evidence but
+does not satisfy the external signing, publication, or activation gates below.
 
 ## One-time external configuration still required
 
