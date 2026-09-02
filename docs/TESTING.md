@@ -65,9 +65,11 @@ limited to tracked and newly added non-ignored sources so ignored caches or
 private archival worktrees cannot substitute stale files for the active
 checkout.
 `cargo xtask ci` runs the same non-launching gate; neither command leaves its
-isolated exhaustive build artifacts behind. The check, Clippy, and workspace
-test phases all enable every workspace feature, matching the hosted Rust quality
-gate instead of relying on default-feature coverage.
+isolated exhaustive build artifacts behind. Readiness uses warning-denied,
+all-target/all-feature Clippy as its single pre-test workspace compilation owner
+instead of first repeating the same graph through `cargo check`. Workspace tests
+still enable every feature. `cargo xtask check` retains the explicit
+all-target/all-feature Cargo check for focused diagnosis.
 
 ## Public Linux Early Access distribution
 
@@ -94,10 +96,14 @@ publishing gates, change the GitHub API version, skip the live repository
 governance audit, remove release-level attestation verification, or reduce the
 complete uploaded-asset attestation loop to one asset. They also increase build
 or test concurrency, restore debug artifacts, remove or reorder the post-Clippy
-cleanup, alter the pinned source cache, detach its identity from `Cargo.lock`,
-or cache compiled `target` artifacts; each mutation must fail closed.
-The native package-job mutations separately remove its one-build-job limit or
-restore release debug data; either change must fail before a rehearsal runs.
+cleanup, alter the pinned shared source cache, detach its identity from
+`Cargo.lock`, cache compiled `target` artifacts, change the reviewed sccache
+Action or release, remove its generation/wrapper/statistics, or let
+compiler-cache inputs reach a package job; each mutation must fail closed.
+The native package-job mutations separately remove its one-build-job limit,
+restore release debug data, serialize it behind quality, drop quality from a
+consumer join, alter either nFPM architecture digest, or skip checksum
+verification; each change must fail before a rehearsal runs.
 Repository-governance mutations independently weaken visibility,
 passive-feature settings, immutability, bypass actors, reference scopes,
 approvals, code-owner review, merge mode, required commit signatures, and tag
@@ -112,10 +118,13 @@ produce only the six unsigned packages, the manifest, and the explicit
 rehearsal that reads a secret, signs, publishes, creates a tag, or emits an
 activation handoff is a policy failure.
 
-The release-quality job is deliberately bounded for GitHub Free runners:
-one Cargo build job, one nextest thread, no development/test debug artifacts, a
-registry/Git-only cache keyed by `Cargo.lock`, and `cargo clean` between
-all-target Clippy and the all-feature test build. The initial real dispatch,
+The release-quality job is deliberately bounded for GitHub Free runners: one
+Cargo build job, one nextest thread, no development/test debug artifacts, a
+registry/Git source cache keyed by `Cargo.lock`, a versioned compiler cache, and
+`cargo clean` between all-target Clippy and the all-feature test build. The
+compiler cache is quality-only; both native package jobs are cold exact-source
+builds and run concurrently with quality after authorization. The initial real
+dispatch,
 run `33518978466` on 2026-09-01, exposed a linker resource failure before this
 envelope existed and correctly skipped every package/publication job. That run
 is regression evidence, not a pass. A later corrected-quality rehearsal, run
@@ -675,8 +684,10 @@ variables exist for unusual build hosts:
   diagnosis instead of deleting it.
 
 Keep the defaults on contributor machines. CI, nightly, and release workflows
-set `CARGO_INCREMENTAL=0` and cache only downloaded Cargo registry/Git content,
-not `target` build products.
+set `CARGO_INCREMENTAL=0` and never cache the Cargo `target` directory. Ordinary
+and Linux-release quality jobs may reuse content-addressed compiler outputs
+through their versioned sccache backend; native package jobs cache downloaded
+registry/Git sources only and therefore remain cold builds.
 
 To validate another checkout or filesystem, provide an absolute or
 invocation-relative `CARGO_TARGET_DIR`; build, smoke, launch, storage preflight,

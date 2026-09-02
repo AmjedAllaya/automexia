@@ -14,6 +14,7 @@ a pass.
 | Windows/MSVC coverage ratchet | Implemented with exact commit, platform, path, size, and changed-owned-line binding | The standard Windows runner must execute successfully within available Actions quota |
 | Manual deep, S1, S2, and native OpenSSH workflows | Implemented as bounded opt-in/controlled workflow contracts | Their declared self-hosted runners, hardware, evidence manifests, and independent review remain required |
 | Stable release graph and artifact trust | Implemented and mutation-tested through final package/signature/publication boundaries | Production signing identities, notarization, active S1/S2 evidence, governance audit, and a real release run remain required |
+| Build and CI critical-path controls | Source-complete and mutation-tested: local readiness avoids a duplicate compile, quality jobs use a versioned compiler cache, and native packages run beside quality while staying cold | Exact-commit hosted cold/warm timing and cache statistics remain required before claiming a measured speedup |
 | GitHub branch/ruleset enforcement | Locally versioned and remotely auditable | Private GitHub Free does not expose the required server-side branch/ruleset controls |
 
 Authenticated inspection on 2026-08-31 found the latest `main` CI run stopped
@@ -38,6 +39,32 @@ All workflows default to read-only contents. External Actions must use a
 reviewed repository and a full lowercase 40-character commit. Only the final
 publication job receives `contents: write`; signing credentials stay in their
 dedicated jobs.
+
+## Build performance and artifact isolation
+
+`cargo ready` and `cargo xtask ci` run repository policy, metadata, formatting,
+warning-denied all-target/all-feature Clippy, workspace tests, dependency
+policy, shell checks, and smoke validation. They no longer run a standalone
+workspace `cargo check` immediately before Clippy compiles the same graph.
+`cargo xtask check` retains the explicit Cargo check for focused contributor
+use. The local gate still uses a fresh bounded target and removes it on exit.
+
+Ordinary and Linux-release quality jobs install sccache v0.16.0 through the
+reviewed Mozilla Action pinned at commit
+`fc920bf0ec8de6ee65d409111f7ec508035751ba`. The Action verifies its release
+download; Automexia additionally pins the `automexia-rust-1.98-v1` cache
+generation and reports cache statistics. Cache misses, eviction, and service
+limits degrade only performance. `cargo clean` remains between Clippy and
+Nextest to bound the runner filesystem.
+
+Release package jobs use the shared, lockfile-bound Cargo source cache but never
+the compiler cache or `target`. They remain native cold builds of the exact
+source. Package and quality jobs run concurrently after authorization; both
+rehearsal and public assembly require quality plus every native architecture.
+The architecture-matched nFPM v2.43.4 archive is SHA-256 checked before use.
+The canonical design, baseline, threat model, test inventory, rollback, and
+outstanding hosted evidence are in
+[CI and build performance plan](CI-BUILD-PERFORMANCE-PLAN.md).
 
 ## Checker and mutation ownership
 

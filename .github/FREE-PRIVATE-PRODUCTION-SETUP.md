@@ -38,6 +38,7 @@ In **Settings → Actions → General**:
 anchore/sbom-action@*
 azure/artifact-signing-action@*
 azure/login@*
+mozilla-actions/sccache-action@*
 taiki-e/install-action@*
 ```
 
@@ -313,17 +314,28 @@ token, sign, publish, create a tag, or emit a website activation handoff.
 
 The quality job stays inside the standard free Linux runner envelope by using
 one Cargo build job, one nextest thread, development/test profiles without debug
-artifacts, a source-only Cargo registry/Git cache keyed by `Cargo.lock`, and a
-clean boundary between all-target Clippy and all-feature tests. Do not add
-`target` to this cache or reorder/remove the cleanup: the policy mutation suite
-rejects those changes because the first real rehearsal exhausted the linker
-after retaining the lint graph.
+artifacts, a versioned Cargo registry/Git source cache keyed by `Cargo.lock`, and
+a clean boundary between all-target Clippy and all-feature tests. It also uses
+the reviewed, full-SHA-pinned Mozilla sccache setup Action at sccache v0.16.0.
+That content-addressed compiler cache is restricted to non-shipping quality
+jobs; its explicit `automexia-rust-1.98-v1` generation is the rollback and
+invalidation boundary. Do not add `target` to either cache or reorder/remove the
+cleanup: the policy mutation suite rejects those changes because the first real
+rehearsal exhausted the linker after retaining the lint graph.
 
 Each native x64/Arm64 package job also uses one Cargo build job and disables
-release debug data. The policy mutation suite rejects either limit being
-weakened. This follows a real corrected-quality rehearsal in which x64 passed
-but the hosted Arm64 runner shut down during compilation with status 143; only a
-new successful rehearsal counts as native package evidence.
+release debug data. Package jobs restore only downloaded Cargo sources; they do
+not set `RUSTC_WRAPPER`, use sccache, or restore compiled `target` objects, so
+every distributed binary remains a cold exact-source build. Quality and both
+native architectures begin after authorization in parallel. Rehearsal and
+release assembly join all three results before any artifact can be retained,
+signed, or published. nFPM v2.43.4 is downloaded as the architecture-matched
+upstream archive and checked against its pinned SHA-256 digest rather than
+compiled from source on every runner. The policy mutation suite rejects any of
+these boundaries being weakened. This follows a real corrected-quality
+rehearsal in which x64 passed but the hosted Arm64 runner shut down during
+compilation with status 143; only a new successful rehearsal counts as native
+package evidence.
 
 Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
 independent approval and distinct merger, `linux-early-access.yml` reruns the
