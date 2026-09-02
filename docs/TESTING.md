@@ -689,6 +689,21 @@ and Linux-release quality jobs may reuse content-addressed compiler outputs
 through their versioned sccache backend; native package jobs cache downloaded
 registry/Git sources only and therefore remain cold builds.
 
+The build-performance implementation was exercised on exact commit
+`b38f0e884aa7dd1d7bd05adba6853218ffb98fb2`. Ordinary PR run `33593759776`
+passed all three mandatory jobs. Credential-free release rehearsal
+`33593793029` passed cold and warm attempts: 25m56s with 185 compiler-cache hits
+and 1,127 misses, then 15m01s with 1,308 hits and 4 misses; both reported zero
+cache errors and completed native x64 and Arm64 package install/removal
+lifecycles. The pre-change rehearsal took 37m11s. Treat the resulting 30.3%
+cold and 59.6% warm critical-path reductions as exact-run observations only,
+not stable runner or service guarantees. The full ledger and direct run links
+are in [CI and build performance plan](CI-BUILD-PERFORMANCE-PLAN.md).
+The same ordinary PR quality/test job took 38m20s with 474 hits and 1,681
+misses, then 13m44s with 2,153 hits and 2 misses; both attempts had zero cache
+errors. This exact-attempt 64.2% reduction is CI evidence, not a long-term
+service-level objective.
+
 To validate another checkout or filesystem, provide an absolute or
 invocation-relative `CARGO_TARGET_DIR`; build, smoke, launch, storage preflight,
 and cleanup all resolve the same directory consistently.
