@@ -32,7 +32,7 @@ class RepositoryProtectionTests(unittest.TestCase):
 
         self.assertEqual(counts["rulesets"], 0)
         self.assertEqual(counts["required_checks"], 3)
-        self.assertEqual(counts["action_patterns"], 4)
+        self.assertEqual(counts["action_patterns"], 5)
         self.assertGreaterEqual(counts["codeowners"], 1)
 
     def test_duplicate_json_keys_fail_closed(self) -> None:
@@ -158,6 +158,12 @@ class RepositoryProtectionTests(unittest.TestCase):
 
         with self.assertRaisesRegex(PROTECTION.ProtectionPolicyError, "selected Action policy"):
             PROTECTION.validate_policy(altered)
+
+    def test_action_allowlist_includes_the_reviewed_compiler_cache_action(self) -> None:
+        self.assertIn(
+            "mozilla-actions/sccache-action@*",
+            self.policy["actions_policy"]["third_party_patterns"],
+        )
 
     def test_excluded_paid_features_cannot_drift(self) -> None:
         altered = copy.deepcopy(self.policy)

@@ -287,6 +287,52 @@ class FreePlanContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("resource envelope", completed.stderr)
 
+    def test_quality_compiler_cache_is_versioned_and_non_shipping(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        quality = workflow.split("  quality:\n", 1)[1].split(
+            "  dependency-security:\n", 1
+        )[0]
+        required = (
+            "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
+            "version: v0.16.0",
+            "SCCACHE_GHA_ENABLED: 'true'",
+            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "RUSTC_WRAPPER: sccache",
+            "sccache --show-stats",
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
+        )
+        for token in required:
+            with self.subTest(token=token):
+                self.assertEqual(quality.count(token), 1)
+        self.assertNotRegex(quality, r"(?m)^\s+target(?:/.*)?\s*$")
+
+        for old, new in (
+            (
+                "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+                "1111111111111111111111111111111111111111",
+            ),
+            ("version: v0.16.0", "version: v0.15.0"),
+            ("SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'"),
+            (
+                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION: unversioned",
+            ),
+            ("RUSTC_WRAPPER: sccache", "RUSTC_WRAPPER: rustc"),
+            ("run: sccache --show-stats", "run: echo stats-skipped"),
+            (
+                "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
+                "cargo-sources-v1-static",
+            ),
+        ):
+            with self.subTest(mutation=old):
+                completed = self.run_checker_with_replacement(old, new)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertRegex(
+                    completed.stderr.casefold(), r"cache|resource envelope"
+                )
+
     def test_image_rendering_linux_backends_cannot_be_removed(self) -> None:
         # The hosted regression occurred only in the stand-alone Sugarloaf
         # command because the preceding workspace build had hidden this edge.

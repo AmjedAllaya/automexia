@@ -37,6 +37,23 @@ class ActionPinTests(unittest.TestCase):
         )
         self.assertEqual(failures, [])
 
+    def test_compiler_cache_action_accepts_only_the_reviewed_commit(self) -> None:
+        reviewed = (
+            "mozilla-actions/sccache-action@"
+            "fc920bf0ec8de6ee65d409111f7ec508035751ba"
+        )
+        self.assertEqual(self.validate(f"steps:\n  - uses: {reviewed}\n"), [])
+
+        # Compiler caches feed executable build inputs back into later jobs.
+        # A repository allowlist alone must not silently authorize a different
+        # action implementation at another otherwise-valid full SHA.
+        unreviewed = (
+            "mozilla-actions/sccache-action@"
+            "1111111111111111111111111111111111111111"
+        )
+        failures = self.validate(f"steps:\n  - uses: {unreviewed}\n")
+        self.assertTrue(any("reviewed commit" in failure for failure in failures), failures)
+
     def test_mutable_docker_and_unreviewed_actions_fail(self) -> None:
         cases = (
             ("actions/checkout@v4", "not pinned"),

@@ -54,6 +54,7 @@
       "anchore/sbom-action@*",
       "azure/artifact-signing-action@*",
       "azure/login@*",
+      "mozilla-actions/sccache-action@*",
       "taiki-e/install-action@*"
     ],
     "full_length_sha_required": true,

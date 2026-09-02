@@ -40,6 +40,7 @@ const WORKSPACE_CLIPPY_ARGS: &[&str] = &[
 ];
 const WORKSPACE_TEST_ARGS: &[&str] =
     &["test", "--workspace", "--all-features", "--locked"];
+const LOCAL_CI_CARGO_PHASES: [&[&str]; 2] = [WORKSPACE_CLIPPY_ARGS, WORKSPACE_TEST_ARGS];
 
 #[derive(Debug)]
 struct ProductIdentity {
@@ -1267,10 +1268,14 @@ fn check() -> TaskResult {
 }
 
 fn check_in(target: &Path) -> TaskResult {
+    pre_compile_checks()?;
+    run_cargo_in(target, WORKSPACE_CHECK_ARGS)
+}
+
+fn pre_compile_checks() -> TaskResult {
     verify_all()?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
-    run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])?;
-    run_cargo_in(target, WORKSPACE_CHECK_ARGS)
+    run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])
 }
 
 fn verify_all() -> TaskResult {
@@ -1684,16 +1689,16 @@ fn validate_shell_integrations() -> TaskResult {
 }
 
 fn ci_in(target: &Path) -> TaskResult {
-    println!("==> verification phase 1/3: workspace checks");
-    check_in(target)?;
-    println!("==> verification phase 2/3: warning-denied Clippy");
-    run_cargo_in(target, WORKSPACE_CLIPPY_ARGS)?;
+    println!("==> verification phase 1/3: policy, metadata, and formatting checks");
+    pre_compile_checks()?;
+    println!("==> verification phase 2/3: warning-denied all-target Clippy");
+    run_cargo_in(target, LOCAL_CI_CARGO_PHASES[0])?;
     println!(
         "==> verification phase 3/3: workspace tests (a cold isolated target can compile for several minutes)"
     );
     run_cargo_summarized_in(
         target,
-        WORKSPACE_TEST_ARGS,
+        LOCAL_CI_CARGO_PHASES[1],
         "workspace unit, integration, and documentation tests passed",
     )
 }
@@ -4621,6 +4626,11 @@ mod tests {
             WORKSPACE_TEST_ARGS,
             &["test", "--workspace", "--all-features", "--locked"]
         );
+        assert_eq!(
+            LOCAL_CI_CARGO_PHASES,
+            [WORKSPACE_CLIPPY_ARGS, WORKSPACE_TEST_ARGS]
+        );
+        assert!(!LOCAL_CI_CARGO_PHASES.contains(&WORKSPACE_CHECK_ARGS));
     }
 
     #[test]

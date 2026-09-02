@@ -25,7 +25,13 @@ ALLOWED_ACTIONS = {
     "anchore/sbom-action",
     "azure/artifact-signing-action",
     "azure/login",
+    "mozilla-actions/sccache-action",
     "taiki-e/install-action",
+}
+REVIEWED_ACTION_PINS = {
+    "mozilla-actions/sccache-action": {
+        "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+    },
 }
 
 
@@ -85,6 +91,13 @@ def validate_workflows(
                 failures.append(
                     f"{path.name}:{line}: external action repository is not "
                     f"allowlisted: {action}"
+                )
+                continue
+            reviewed_pins = REVIEWED_ACTION_PINS.get(action)
+            if reviewed_pins is not None and parsed.group("sha") not in reviewed_pins:
+                failures.append(
+                    f"{path.name}:{line}: security-sensitive Action does not use a "
+                    f"reviewed commit: {reference}"
                 )
     return failures
 
