@@ -534,10 +534,10 @@ class PublicDistributionTests(unittest.TestCase):
             ),
             "assemble publication gate": workflow.replace(
                 "  assemble:\n    name: Assemble and sign public Linux bundle\n"
-                "    needs: [authorize, package]\n"
+                "    needs: [authorize, quality, package]\n"
                 "    if: needs.authorize.outputs.publish == 'true'",
                 "  assemble:\n    name: Assemble and sign public Linux bundle\n"
-                "    needs: [authorize, package]\n    if: always()",
+                "    needs: [authorize, quality, package]\n    if: always()",
                 1,
             ),
             "publish publication gate": workflow.replace(
@@ -627,6 +627,97 @@ class PublicDistributionTests(unittest.TestCase):
                 "        run: cargo clean\n",
                 1,
             ),
+            "release quality compiler cache pin": workflow.replace(
+                "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+                "1111111111111111111111111111111111111111",
+                1,
+            ),
+            "release quality compiler cache version": workflow.replace(
+                "version: v0.16.0", "version: v0.15.0", 1
+            ),
+            "release quality compiler cache backend": workflow.replace(
+                "SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'", 1
+            ),
+            "release quality compiler cache namespace": workflow.replace(
+                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION: unversioned",
+                1,
+            ),
+            "release quality compiler cache stats": workflow.replace(
+                "run: sccache --show-stats", "run: echo stats-skipped", 1
+            ),
+            "serialized native package build": workflow.replace(
+                "  package:\n    name: Native Linux package build\n    needs: authorize",
+                "  package:\n    name: Native Linux package build\n"
+                "    needs: [authorize, quality]",
+                1,
+            ),
+            "rehearsal missing quality join": workflow.replace(
+                "needs: [authorize, quality, package]",
+                "needs: [authorize, package]",
+                1,
+            ),
+            "assemble missing quality join": workflow.replace(
+                "  assemble:\n    name: Assemble and sign public Linux bundle\n"
+                "    needs: [authorize, quality, package]",
+                "  assemble:\n    name: Assemble and sign public Linux bundle\n"
+                "    needs: [authorize, package]",
+                1,
+            ),
+            "native package compiler cache": workflow.replace(
+                "      NFPM_VERSION: '2.43.4'\n",
+                "      NFPM_VERSION: '2.43.4'\n      RUSTC_WRAPPER: sccache\n",
+                1,
+            ),
+            "native package nFPM digest": workflow.replace(
+                "cafb544650cb0305d1b164fc0ab261eb77a81af324e18011282d326b326d20fb",
+                "1" * 64,
+                1,
+            ),
+            "native package Arm64 nFPM digest": workflow.replace(
+                "e4365707dedfda6e089f597dcdab9497beea80accb2c2704be18981e4a4d9b9b",
+                "2" * 64,
+                1,
+            ),
+            "native package nFPM architecture": workflow.replace(
+                "nfpm_arch: arm64", "nfpm_arch: x86_64", 1
+            ),
+            "native package nFPM checksum": workflow.replace(
+                "sha256sum --check", "echo checksum-skipped", 1
+            ),
+            "native package source cache Action": workflow.replace(
+                "          ref: ${{ needs.authorize.outputs.commit }}\n"
+                "      - name: Cache Cargo registry and Git sources\n"
+                "        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+                "          ref: ${{ needs.authorize.outputs.commit }}\n"
+                "      - name: Cache Cargo registry and Git sources\n"
+                "        uses: actions/cache@1111111111111111111111111111111111111111",
+                1,
+            ),
+            "native package target cache": workflow.replace(
+                "            ~/.cargo/git\n"
+                "          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n"
+                "          restore-keys: |\n"
+                "            cargo-sources-v1-${{ runner.os }}-\n"
+                "      - name: Require native architecture",
+                "            ~/.cargo/git\n"
+                "            target\n"
+                "          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n"
+                "          restore-keys: |\n"
+                "            cargo-sources-v1-${{ runner.os }}-\n"
+                "      - name: Require native architecture",
+                1,
+            ),
+            "native package nFPM download origin": workflow.replace(
+                "https://github.com/goreleaser/nfpm/releases/download/",
+                "https://example.invalid/nfpm/",
+                1,
+            ),
+            "native package nFPM extraction scope": workflow.replace(
+                ' --directory "$RUNNER_TEMP/nfpm-bin" nfpm',
+                ' --directory "$RUNNER_TEMP/nfpm-bin"',
+                1,
+            ),
             "native package build parallelism": workflow.replace(
                 "      AUTOMEXIA_VERSION: ${{ needs.authorize.outputs.version }}\n"
                 "      CARGO_BUILD_JOBS: '1'\n",
@@ -688,6 +779,46 @@ class PublicDistributionTests(unittest.TestCase):
         )
         self.assertEqual(workflow.count("CARGO_BUILD_JOBS: '1'"), 2)
         self.assertEqual(workflow.count("CARGO_PROFILE_RELEASE_DEBUG: '0'"), 1)
+
+    def test_workflow_parallelizes_cold_packages_without_caching_shipped_objects(self) -> None:
+        workflow = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        quality = workflow.split("  quality:\n", 1)[1].split("  package:\n", 1)[0]
+        package = workflow.split("  package:\n", 1)[1].split("  rehearsal:\n", 1)[0]
+        rehearsal = workflow.split("  rehearsal:\n", 1)[1].split("  assemble:\n", 1)[0]
+        assemble = workflow.split("  assemble:\n", 1)[1].split("  publish:\n", 1)[0]
+
+        for token in (
+            "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
+            "version: v0.16.0",
+            "SCCACHE_GHA_ENABLED: 'true'",
+            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "RUSTC_WRAPPER: sccache",
+            "sccache --show-stats",
+        ):
+            with self.subTest(quality_token=token):
+                self.assertEqual(quality.count(token), 1)
+
+        self.assertIn("    needs: authorize\n", package)
+        self.assertNotIn("needs: [authorize, quality]", package)
+        self.assertIn("needs: [authorize, quality, package]", rehearsal)
+        self.assertIn("needs: [authorize, quality, package]", assemble)
+        self.assertNotIn("sccache", package.casefold())
+        self.assertNotIn("RUSTC_WRAPPER", package)
+        self.assertNotRegex(package, r"(?m)^\s+target(?:/.*)?\s*$")
+
+        shared_source_key = (
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}"
+        )
+        self.assertEqual(quality.count(shared_source_key), 1)
+        self.assertEqual(package.count(shared_source_key), 1)
+        self.assertNotIn("go install github.com/goreleaser/nfpm", package)
+        for digest in (
+            "cafb544650cb0305d1b164fc0ab261eb77a81af324e18011282d326b326d20fb",
+            "e4365707dedfda6e089f597dcdab9497beea80accb2c2704be18981e4a4d9b9b",
+        ):
+            self.assertEqual(package.count(digest), 1)
+        self.assertIn("nfpm_${NFPM_VERSION}_Linux_${{ matrix.nfpm_arch }}.tar.gz", package)
+        self.assertIn("sha256sum --check", package)
 
 
 if __name__ == "__main__":

@@ -691,6 +691,11 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "release signature": "minisign -S -W",
         "signature verification": "minisign -V -P",
         "release quality source cache": "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+        "reviewed compiler cache": (
+            "mozilla-actions/sccache-action@"
+            "fc920bf0ec8de6ee65d409111f7ec508035751ba"
+        ),
+        "pinned compiler cache release": "version: v0.16.0",
         "release quality lint cleanup": (
             "Reclaim release lint artifacts before the all-feature test build"
         ),
@@ -739,6 +744,9 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "disabled development debug info": "CARGO_PROFILE_DEV_DEBUG: '0'",
         "disabled test debug info": "CARGO_PROFILE_TEST_DEBUG: '0'",
         "single test thread": "NEXTEST_TEST_THREADS: '1'",
+        "compiler wrapper": "RUSTC_WRAPPER: sccache",
+        "GitHub cache backend": "SCCACHE_GHA_ENABLED: 'true'",
+        "versioned compiler cache": "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
     }
     for label, token in resource_contract.items():
         if quality.count(token) != 1:
@@ -754,24 +762,102 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "Cargo registry source cache": "~/.cargo/registry",
         "Cargo Git source cache": "~/.cargo/git",
         "Cargo.lock cache identity": "hashFiles('Cargo.lock')",
+        "versioned shared cache key": (
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}"
+        ),
     }
-    for label, token in source_cache_contract.items():
+    for job_name, body in (("release quality", quality), ("native package", package)):
+        for label, token in source_cache_contract.items():
+            if body.count(token) != 1:
+                fail(f"{job_name} job must enforce {label}")
+        if body.count(
+            "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9"
+        ) != 1:
+            fail(f"{job_name} job must use the reviewed Cargo source cache Action")
+        if re.search(r"(?m)^\s+target(?:/.*)?\s*$", body):
+            fail(f"{job_name} cache must not retain target build artifacts")
+    compiler_cache_contract = {
+        "reviewed Action": (
+            "mozilla-actions/sccache-action@"
+            "fc920bf0ec8de6ee65d409111f7ec508035751ba"
+        ),
+        "pinned release": "version: v0.16.0",
+        "step identity": "id: sccache",
+        "statistics": "run: sccache --show-stats",
+    }
+    for label, token in compiler_cache_contract.items():
         if quality.count(token) != 1:
-            fail(f"release quality job must enforce {label}")
-    if re.search(r"(?m)^\s+target(?:/.*)?\s*$", quality):
-        fail("release quality cache must not retain target build artifacts")
+            fail(f"release quality compiler cache must enforce {label}")
+    if "sccache" in package.casefold() or "RUSTC_WRAPPER" in package:
+        fail("native package builds must stay cold and reject compiler cache inputs")
     clippy = quality.find(
         "cargo clippy --workspace --all-targets --all-features --locked -- -D warnings"
+    )
+    compiler_cache = quality.find(
+        "mozilla-actions/sccache-action@"
+        "fc920bf0ec8de6ee65d409111f7ec508035751ba"
     )
     clean = quality.find("run: cargo clean")
     nextest = quality.find(
         "cargo nextest run --workspace --all-features --locked --profile ci"
     )
-    if quality.count("run: cargo clean") != 1 or not 0 <= clippy < clean < nextest:
+    if quality.count("run: cargo clean") != 1 or not (
+        0 <= compiler_cache < clippy < clean < nextest
+    ):
         fail(
             "release quality job must clean lint artifacts between Clippy and "
             "the all-feature test build"
         )
+    if quality.find("run: sccache --show-stats") < nextest:
+        fail("release quality compiler-cache statistics must follow the build gates")
+    if re.search(r"(?m)^    needs: authorize$", package) is None:
+        fail("native package builds must start beside quality after authorization")
+    joined_dependencies = "needs: [authorize, quality, package]"
+    for name, body in (("rehearsal", rehearsal), ("assemble", assemble)):
+        if body.count(joined_dependencies) != 1:
+            fail(f"{name} must join successful quality and native package evidence")
+    nfpm_contract = {
+        "pinned nFPM release": "NFPM_VERSION: '2.43.4'",
+        "x64 nFPM archive mapping": (
+            "runner_arch: X64\n"
+            "            nfpm_arch: x86_64\n"
+            "            nfpm_sha256: "
+            "cafb544650cb0305d1b164fc0ab261eb77a81af324e18011282d326b326d20fb"
+        ),
+        "Arm64 nFPM archive mapping": (
+            "runner_arch: ARM64\n"
+            "            nfpm_arch: arm64\n"
+            "            nfpm_sha256: "
+            "e4365707dedfda6e089f597dcdab9497beea80accb2c2704be18981e4a4d9b9b"
+        ),
+        "native nFPM archive": (
+            "nfpm_${NFPM_VERSION}_Linux_${{ matrix.nfpm_arch }}.tar.gz"
+        ),
+        "upstream nFPM release URL": (
+            "https://github.com/goreleaser/nfpm/releases/download/"
+            "v${NFPM_VERSION}/$nfpm_archive"
+        ),
+        "bounded HTTPS nFPM download": (
+            "curl --fail --location --proto '=https' --tlsv1.2 --retry 3 "
+            "--retry-all-errors"
+        ),
+        "nFPM checksum verification": "sha256sum --check",
+        "single-member nFPM extraction": (
+            'tar --extract --gzip --file "$nfpm_path" '
+            '--directory "$RUNNER_TEMP/nfpm-bin" nfpm'
+        ),
+    }
+    for label, token in nfpm_contract.items():
+        if package.count(token) != 1:
+            fail(f"native package job must enforce {label}")
+    if "go install github.com/goreleaser/nfpm" in package:
+        fail("native package job must not compile nFPM from source")
+    download = package.find("curl --fail --location")
+    checksum = package.find("sha256sum --check")
+    extraction = package.find("tar --extract --gzip")
+    version_smoke = package.find('"$RUNNER_TEMP/nfpm-bin/nfpm" --version')
+    if not 0 <= download < checksum < extraction < version_smoke:
+        fail("native package job must verify nFPM before extraction and use")
     if "if: needs.authorize.outputs.publish == 'false'" not in rehearsal:
         fail("credential-free rehearsal must be restricted to non-public dispatches")
     for name, body in (("assemble", assemble), ("publish", publish)):
