@@ -421,4 +421,4 @@ controls. Unknown copied configuration keys must not activate CP5.
 - [CLI and automation](cli.md)
 - [Shell integration](../guide/shell-productivity.md)
 - [Liquid Hacker UX](../guide/terminal-experience.md)
-- [Architecture](../developer/architecture.md#runtime-configuration-transaction)
+- [Architecture](../ARCHITECTURE.md#configuration-transaction)

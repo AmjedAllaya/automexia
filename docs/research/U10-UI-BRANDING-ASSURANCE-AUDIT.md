@@ -50,8 +50,8 @@ deduplicates by ID, and performs no retained-history scan in the paint path.
 Silent commands do not create an empty band, and the boundary stores neither
 command text nor output text.
 
-This closes the visible ownership defect without creating the durable complete
-output-region model reserved for future diagnostic-navigation design. Removal is
+This closes the visible ownership defect without creating a durable complete
+output-region model or changing terminal ownership. Removal is
 reversible: deleting boundary projection and its tests restores the previous
 behavior without migrating user data, but would reopen the U9.1 regression and
 must also revert the corresponding roadmap claim.

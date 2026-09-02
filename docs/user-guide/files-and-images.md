@@ -41,7 +41,7 @@ If icons are missing, first check [Troubleshooting](../guide/troubleshooting.md)
 
 ## Semantic output
 
-Automexia recognizes common Kubernetes, Docker, Terraform, build, test, and structured-log states and may give warnings/errors a restrained presentation treatment.
+Automexia may give common build, test, and structured-log warnings or errors a restrained presentation treatment without changing the underlying text.
 
 This is visual only:
 

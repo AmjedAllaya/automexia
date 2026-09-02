@@ -59,7 +59,7 @@ without prompt/context/listing features.
    `AUTOMEXIA_SHELL_INTEGRATION=1`.
 3. Confirm the shell is PowerShell, CMD, Bash, or Zsh; unsupported shells remain
    usable but may not emit enhanced metadata.
-4. Run the native checks in [Shell integration](SHELL-INTEGRATION.md#verification).
+4. Run the native checks in [Shell integration](SHELL-INTEGRATION.md#testing).
 
 Do not add prompt escape sequences manually before testing the repository-owned
 integration; duplicate hooks can create repeated semantic generations.

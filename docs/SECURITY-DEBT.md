@@ -27,7 +27,7 @@ advisories have no standing exception policy.
 The control-string source blocker was closed locally on 2026-08-14; hosted fuzz,
 sanitizer, and native-host evidence remain release-assurance gates rather than
 accepted advisory debt. Its implementation and acceptance gate are defined
-in the [stabilization roadmap](STABILIZATION-ROADMAP.md#s0-bounded-control-strings).
+in the [stabilization roadmap](STABILIZATION-ROADMAP.md#priorities).
 
 ## Duplicate dependency baseline
 

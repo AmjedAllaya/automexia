@@ -1,39 +1,43 @@
-# Situation-aware Production Operations testing
+# Private planning boundary
+
+This compatibility path intentionally contains no public feature, architecture,
+testing, roadmap, or product-plan details. The former content is preserved in
+ignored private documentation and is not a public commitment.
+
+Do not add unreleased advanced or commercial material here. Public documentation
+is limited to the baseline terminal catalog in [Features](FEATURES.md).
+
+## Assurance evidence anchor compatibility
+
+These headings preserve source-owned feature-matrix references after the
+public documentation consolidation. They do not expand shipped behavior,
+reintroduce private plans, or replace the current status stated above.
+
+### Phase Exit Criteria
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
+
+### Scenario Inventory
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
+
+## Public assurance status
 
 Status: planned public assurance summary.
 
-Production guidance cannot be considered complete because a suggestion looks
-plausible in a demo. Release evidence must cover:
-
-- deterministic policy, ranking, freshness, and uncertainty behavior;
-- incorrect, missing, hostile, oversized, and cross-environment provider data;
-- exact target, executable, arguments, environment, approval, and forbidden
-  side effects;
-- cancellation, stale-generation rejection, saturation, provider failure,
-  restart, shutdown, disable, uninstall, and recovery;
-- bounded CPU, memory, network, cache, storage, handle, and process use during
-  long sessions and incident bursts;
-- keyboard, focus, responsive layout, high contrast, reduced motion, and native
-  screen-reader workflows;
-- native provider-tool behavior with public fixtures or isolated test accounts;
-- complete end-to-end paths from context display through evidence, review,
-  execution, observation, verification, and rollback.
-
-No release claim may treat mocked provider results, cross-compilation, a short
-fuzz run, or a narrow unit test as proof of production safety. Exact private
-test matrices and internal thresholds are published only when they are tied to
-implemented behavior and reproducible public fixtures.
-
 ## Scenario inventory
 
-The public scenario classes cover boundaries, hostile input, stale and missing
-evidence, provider failure, policy refusal, approval separation, cancellation,
-recovery, accessibility, resources, native platforms, disable, and uninstall.
-The exact unpublished fixture and provider matrix remains local.
+Future evidence must cover empty, boundary, maximum, malformed, stale,
+cancelled, concurrent, offline, permission-denied, hostile Unicode, cross-pane,
+policy-denied, rollback, disable, uninstall, shutdown, and resource-pressure
+cases with independent oracles and forbidden-side-effect checks.
 
 ## Phase exit criteria
 
-The feature remains planned until implemented source, independent oracles,
-native provider workflows, security review, accessibility, resource and
-performance evidence, packaging, rollback, and documentation all agree. Missing
-external evidence remains explicitly incomplete.
+No availability claim is permitted without source contracts, security review,
+native provider/platform evidence, deterministic UI and accessibility evidence,
+performance/resource limits, recovery, packaging, and exact-artifact approval.

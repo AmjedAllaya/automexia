@@ -12,5 +12,5 @@ debug symbols.
 
 Early Access is not a stable-release guarantee. Review the website's release
 trust, system requirements, known limitations, and support guidance before use.
-Windows Store delivery remains in preparation. A public macOS binary remains
-planned for a future signed and notarized release.
+Availability is stated only on the official download page for each signed
+artifact. This note makes no promise about an unpublished platform package.

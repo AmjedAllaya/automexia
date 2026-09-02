@@ -4,7 +4,7 @@ Status: Accepted
 
 Automexia needs persistent session status that remains useful after global
 shell, clock, and environment labels were removed from the header. A global
-footer would repeat the same ambiguity: in a split or multi-cloud workspace it
+footer would repeat the same ambiguity: in a split or multi-session workspace it
 could describe only the selected PTY while appearing to describe the window.
 
 Each visible pane therefore owns a renderer-only 32 logical-pixel footer. Its

@@ -57,7 +57,7 @@ Out of scope and external:
 | S1.2 resources/hardware | Partially implemented | Windows resource storm, AppVerifier/WPR wrappers, QA reports | Controlled elevated and named-hardware executions | Preserve source; verify release ledger keeps every external run explicit. |
 | S1.3 visual/frame regression | Partially implemented | Renderer-neutral snapshots and native Windows capture | Repository-owned expected/actual/diff comparator, pinned goldens, other native hosts, human approval | Implement bounded comparator and self-tests; actual approved matrix remains external. |
 | S1.4 accessibility | Partially implemented | Inventory, focus/contrast/scale tests, ADR 0013 | Narrator/NVDA, VoiceOver, Orca, later semantic tree | Preserve and report as external. |
-| S1.5 context freshness | Partially implemented | bounded provider workers/caches/generations | Controlled CLI latency/resource runs on three hosts | Preserve and make the S2 evidence vocabulary capable of carrying the measurements. |
+| S1.5 external context freshness | Partially implemented | bounded workers/caches/generations | Controlled CLI latency/resource runs on three hosts | Preserve and make the S2 evidence vocabulary capable of carrying the measurements. |
 | S1.6 orchestration/QA | Source tooling fully implemented | Nextest, `tools/ci/qa.py`, `cargo ready` | Retained bundles from controlled hosts | Preserve; integrate new deterministic policy tests and normalized summaries. |
 | S1.7 property/model/fuzz | Partially implemented | Proptest, Loom, fuzz, coverage and mutation workflows | Pure resize model and generation-aware snapshot replacement; longer hosted campaigns | Implement the two local models; hosted campaigns remain external. |
 | S1.8 performance measurement | Partially implemented | nine controlled Criterion targets and controlled nightly job | Normalized same-runner evidence and retained comparison contract | Add bounded collection/evaluation/reporting without claiming a baseline. |
@@ -157,7 +157,7 @@ boundary without changing ordinary terminal behavior or persisted user state.
 | S1.2 resources/hardware | **Partially done** | Existing native report now has a strict allowlisted S2 memory normalizer | Elevated/named-hardware/long-soak runs |
 | S1.3 visuals | **Partially done** | Bounded `visual-diff` command, reviewed tolerance policy, atomic heatmap/report, focused tests | Approved golden matrices, Linux/macOS captures, human review |
 | S1.4 accessibility | **Partially done** | Existing automated contracts preserved | Controlled Narrator/NVDA/VoiceOver/Orca evidence |
-| S1.5 provider recovery | **Partially done** | Existing bounded/cancellable/freshness contracts preserved | Real provider/CLI latency and recovery runs |
+| S1.5 external-tool recovery | **Partially done** | Existing bounded/cancellable/freshness contracts preserved | Real CLI latency and recovery runs |
 | S1.6 QA orchestration | **Source tooling fully done** | S2 policy/mutation checks join bounded QA; benchmark targets are unique per run | Retained bundles on every release host |
 | S1.7 models/strength | **Partially done** | Resize property model plus bounded generation-aware atomic publisher | Long corpora, branch/region baseline, mutation/vet governance |
 | S1.8 measurement | **Partially done / collecting** | Classified Criterion/native-memory composition, exact runner identity, path-free reports, 90-day retention | Thirty complete controlled Windows runs |

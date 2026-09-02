@@ -192,7 +192,7 @@ automexia shell-integration uninstall
 
 Use `install --force` only to repair a known broken Automexia-managed block.
 See the
-[shell workflow guide](user-guide/commands-and-shell.md#4-understand-session-only-shell-integration)
+[shell workflow guide](user-guide/commands-and-shell.md#session-only-shell-integration)
 for when persistent integration is useful and when session-only support is the
 better choice.
 
@@ -293,7 +293,7 @@ artifact guarantees.
 After the first window opens:
 
 1. complete the [Getting started tutorial](GETTING-STARTED.md);
-2. take the [15-minute User Guide tour](user-guide/index.md#a-15-minute-tour);
+2. follow [Getting started](GETTING-STARTED.md);
 3. choose a practical task from the [workflow recipes](user-guide/recipes.md);
 4. use the [FAQ](FAQ.md) or [Troubleshooting](TROUBLESHOOTING.md) when something
    is unclear.

@@ -2,7 +2,7 @@
 
 This page owns the focused correctness and native visual evidence for completed-
 command output grouping. User behavior and shell support remain authoritative in
-[Shell integration](SHELL-INTEGRATION.md#prompt-ownership); the roadmap status
+[Shell integration](SHELL-INTEGRATION.md#shell-ownership); the roadmap status
 remains authoritative in [UI branding roadmap](UI-BRANDING-ROADMAP.md).
 
 Generic result geometry, exit classification, color, spacing, the 540 ms
@@ -196,21 +196,6 @@ NVDA, VoiceOver, and Orca X11/Wayland sessions, and independent review must
 populate one manifest that passes
 `python tools/ci/s1_assurance.py validate --require-complete`.
 Unintegrated or unsupported shells continue to fail closed.
-
-## Relationship to planned diagnostic navigation
-
-The proposed
-[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md) may reuse
-trusted prompt result metadata for exact failed-command traversal after v0.4.
-The stable following-prompt boundary closes the visible overflow defect but must
-not be described as a durable complete command-output region. Its DN1 slice
-navigates to the identified prompt/input anchor only; generic
-error-section reconstruction is separate DN2/DN3 work over bounded normal
-scrollback.
-
-Failed-command status and recognized Error/Fatal output remain separate
-classifications. Unknown CMD or unsupported-shell status stays neutral, and no
-future navigator may infer failure from color or fabricate missing metadata.
 
 This local evidence does not justify a universal native-platform claim. Native
 Linux/macOS GUI frames, the complete theme/high-contrast matrix, and

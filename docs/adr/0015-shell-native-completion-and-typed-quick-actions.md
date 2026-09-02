@@ -1,136 +1,43 @@
-# ADR 0015: Shell-native completion and typed Quick Actions
+# ADR 0015: Shell-native completion and explicit insertion
 
 - Status: Accepted for v0.5
-- Date: 2026-08-15
-
-Implementation note (updated 2026-08-23): CP2.2 implements bounded local search,
-review, dry-run administration/import/export, and explicit insert/copy. CP3.1
-implements explicitly opted-in persistent user aliases through private immutable
-five-shell generations, journaled source/generation CAS, verified native-wins
-startup/reload, diagnostics, rollback, and exact uninstall. CP3.2 implements the
-capability-free static pack boundary: 11 immutable provider manifests, 33
-disabled/unaliased typed actions, pure health and update planning, manifest-aware
-alias denial, and dry-run/CAS enablement. CP3.3 implements explicitly selected,
-capability-free native alias imports and exact, receipt-bound trusted-workspace
-task bridges under [ADR 0021](0021-trusted-workspace-task-bridges.md). CP4 now
-implements bounded cached public provider candidates, route-scoped generation
-isolation, final copy/insert revalidation, and production confirmation without
-provider refresh or execution authority. Exact launch and secret expansion
-remain outside that authority. Accepted ADR 0025 separately authorizes disabled
-CP5 source work; no CP5 preview, native replacement, or stable publication is
-active. Stable publication still requires hosted native and controlled
-accessibility/performance evidence.
-
-Verification note (2026-08-17): the CP2.2 re-audit made shell-user and
-global-user precedence structurally distinct, revalidates every activation
-layer, and replaces the process-global pending search slot with bounded fair
-per-route coalescing. Secret-reference and exact-launch actions now fail before
-placeholder collection, and the Command Center exposes textual risk, source,
-conflict, loading, empty, recovered, stale, and unavailable states rather than
-encoding meaning only through color or an empty list.
+- Scope: Public free-terminal boundary
 
 ## Context
 
-Automexia needs command completion and persistent DevOps shortcuts without
-breaking shell editing, history, quoting, accessibility, startup latency, or the
-least-privilege extension model. PowerShell/PSReadLine, Bash/Readline, Zsh/ZLE,
-Fish, and CMD have different input and completion contracts. Inferring the
-editable buffer from rendered terminal cells would race shell redraws and lose
-cursor, quoting, IME, and semantic information.
-
-Plain aliases are also an insufficient canonical model: their persistence and
-argument semantics differ by shell, they collide easily, and some forms execute
-arbitrary shell text. Provider-aware suggestions can accidentally introduce
-per-keystroke process, network, authentication, or secret-cache access.
+Command editing, history, quoting, completion, and execution already have mature
+owners in PowerShell, CMD, Bash, Zsh, and Fish. Reimplementing those semantics
+from rendered terminal cells would be unreliable and unsafe.
 
 ## Decision
 
-1. The active shell/editor owns the editable buffer, completion invocation,
-   history, quoting, cursor, selection, and candidate insertion. Automexia does
-   not reconstruct commands from terminal-grid cells.
-2. Automexia diagnoses and idempotently registers official completion
-   integrations through per-shell managed adapters. Native user definitions win
-   unless the user explicitly selects a reversible override.
-3. Persistent reusable commands use a versioned, bounded, typed Quick Action
-   source. Shell alias/function/abbreviation files are disposable generated
-   projections, never the source of truth.
-4. Built-in DevOps packs enable no short aliases by default. An optional alias
-   is activated only after shell-specific syntax and collision validation, and
-   it receives matching completion when supported.
-5. The default action mode expands placeholders for review and inserts the
-   command without Enter. Raw shell snippets are shell-scoped and insert-only.
-   Typed exact launch is permitted only through the separately reviewed D3
-   executable/argv/cwd broker, capability policy, cancellation, and redacted
-   audit path.
-6. Startup and keystroke paths perform no network, authentication, provider CLI,
-   plugin execution, or secret-store read. Dynamic context uses bounded cached
-   public data after D6 and exposes freshness.
-7. Action storage and generated files use resource ceilings, restrictive
-   permissions, atomic replacement, last-known-good reload, exact-file watchers,
-   deterministic scope precedence, and secret-reference-only placeholders.
-8. A custom renderer-owned completion surface may be considered only after a
-   versioned editor bridge supplies buffer/cursor/replacement-span/generation and
-   cancellation state. Shell-native fallback remains complete.
+The native shell remains authoritative. Automexia may provide session-local
+bounded integration, command navigation, static reviewed text for copy or
+insertion, and ordinary search/palette UI.
 
-The detailed schema, shell strategy, delivery phases, limits, verification
-matrix, and acceptance criteria are in
-[Command Productivity](../COMMAND-PRODUCTIVITY.md). The concrete CP2/CP3 alias
-and first-party pack specification is
-[DevOps Quick Actions and persistent aliases](../DEVOPS-ALIASES.md). CP3.1
-activation is authorized only by an explicit dry-run-reviewed user mutation;
-the link and this ADR activate no alias by themselves.
+Insertion and copy never add Enter. Structured actions do not evaluate a shell,
+launch a process, read hidden history, or expand credentials. If integration is
+missing, disabled, or unhealthy, the native shell continues normally.
 
-## Consequences
-
-### Positive
-
-- Native editors retain mature cursor, history, quoting, accessibility, and IME
-  behavior.
-- Users get one durable, cross-session action model while generated shell state
-  remains rebuildable and removable.
-- Review-before-insert and the existing capability broker prevent a convenient
-  shortcut feature from becoming ambient command execution.
-- Official provider completion remains compatible with provider versions and
-  authentication policy without adding SDKs to terminal core.
-- Resource, privacy, and cancellation contracts are testable independently of
-  the renderer and PTY.
-
-### Trade-offs
-
-- Completion presentation is not pixel-identical across shells.
-- CMD cannot offer the same context-aware programmable completion as the other
-  supported editors.
-- Shell-specific serializers, adapters, and native tests are required.
-- A rich Automexia candidate popup is deferred until an editor bridge can
-  preserve native semantics; terminal output alone is not sufficient.
-- Provider-aware actions depend on Environment Capsule work and therefore
-  cannot be claimed with the initial static packs.
-
-## Rejected alternatives
-
-- **Parse the terminal grid around the cursor.** It is incomplete, races redraw
-  and reflow, and cannot recover editor state or safe token boundaries.
-- **Replace every shell editor with an Automexia editor.** This duplicates mature
-  platform behavior and substantially increases compatibility and security risk.
-- **Persist only shell aliases.** Persistence, parameters, quoting, precedence,
-  metadata, and removal are inconsistent and cannot support typed capability
-  review.
-- **Enable popular one-letter aliases by default.** This silently changes user
-  environments and creates collisions; built-ins remain opt-in.
-- **Query provider CLIs/APIs while typing.** This harms latency, privacy,
-  reliability, and authentication isolation; bounded cached context is used.
+Generated alias files require preview, collision review, explicit activation,
+rollback, and removal.
 
 ## Review and activation gate
 
-Acceptance of this ADR authorizes implementation of bounded static storage,
-search, insertion, and managed shell adapters. It does not authorize arbitrary
-process execution, direct network access, secret reads, third-party pack
-downloads, or AI command generation. Exact launch remains blocked until the D3
-protected activation and native evidence gates pass.
+Listing, search, completion, preview, selection, copy, and insertion do not
+execute a command or implicitly submit terminal input. Any persistent shell
+integration or generated alias activation is a separate, explicit, reviewed,
+reversible operation that owns only Automexia-managed files and preserves the
+native shell as the final execution authority.
 
-CP0 acceptance is limited to the documented architecture, threat model,
-compatibility fixtures, and non-activation ratchets. It does not itself ship a
-completion adapter, Quick Action store, generated alias, or provider invocation.
-CP5 additionally requires its own editor-bridge ADR, versioned threat/compatibility
-fixture, dependency decision record, native feasibility evidence, and rollback
-contract; this ADR does not authorize an Automexia-rendered suggestion surface.
+## Consequences
+
+This design preserves native quoting, completion, accessibility, and user
+configuration while keeping terminal input ownership simple. It limits
+Automexia-specific behavior but provides a dependable fallback on every
+supported shell.
+
+Unreleased assistants, provider-specific actions, workflow products, and
+commercial packages are outside this public ADR.
+
+Alias projection and verification details are in [DEVOPS-ALIASES.md](../DEVOPS-ALIASES.md).

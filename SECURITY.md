@@ -2,189 +2,132 @@
 
 ## Supported versions
 
-Only the latest v0.4 patch is supported initially. After v0.5 ships, v0.4
-receives critical security fixes for 90 days.
+Security support follows the currently published release channels. Use only
+packages whose checksums, provenance, and platform signatures match the official
+release metadata.
 
 ## Report a vulnerability
 
-When GitHub displays **Report a vulnerability** for this repository, use that
-private form. While the repository remains private on a plan that does not
-expose private vulnerability reporting, invited collaborators must contact a
-maintainer through an already-established private channel. Do not send exploit
-details to an unverified address and do not open an issue, discussion, or pull
-request containing exploit details or secrets. Public launch remains blocked
-until GitHub private vulnerability reporting is enabled or a dedicated private
-security-reporting address is published here.
+Do not open a public issue for a vulnerability or include credentials, real
+host data, private infrastructure, terminal history, or exploit details in a
+public artifact. Use the project's private security-reporting channel and
+include a minimal redacted reproduction, affected version, platform, impact,
+and safe contact information.
 
-Include affected versions, impact, reproduction steps, and suggested mitigation
-when available. Maintainers will acknowledge a complete report within five
-business days and coordinate disclosure after a fix is available.
+## Security model
 
-## Release safeguards
+Automexia treats terminal output, control sequences, shell metadata,
+configuration, paths, files, clipboard data, imported records, extension data,
+and generated text as untrusted.
 
-Stable releases require protected tags, pinned dependencies/toolchains, signed
-Windows artifacts, signed and notarized macOS artifacts, checksums, SBOMs,
-provenance attestations, and the release validation checklist in `RELEASING.md`.
-Fork-triggered jobs receive no repository secrets.
+The application keeps one owner for each PTY, process tree, terminal state,
+route, snapshot, persisted record, and UI surface. Optional behavior cannot
+become a competing terminal/process owner.
 
-The final-asset trust boundary, exact publisher verification, controlled
-Defender scan, user verification commands, and vendor false-positive process
-are documented in `docs/RELEASE-TRUST.md`. Automexia does not disable endpoint
-security or install repository-wide antivirus exclusions. A detection on an
-official artifact should include the release URL, exact SHA-256, signature
-status, security-product/version, and detection name. Potentially compromised,
-unsigned, private, or user-owned files must not be uploaded to public scanner
-services; report those privately through the vulnerability channel first.
+## Process and PTY safety
 
-Temporary transitive unmaintained-dependency exceptions and their removal
-conditions are audited in `docs/SECURITY-DEBT.md`. Vulnerability, unsoundness,
-and yanked advisories remain release-blocking.
+Structured launches use a typed executable and exact argument array. They do not
+use shell command concatenation, `sh -c`, `cmd /c`, PowerShell expression
+evaluation, or implicit Enter.
 
-Dependency and tool acquisition is staged separately from normal and release
-builds. Exact lockfiles, registries, build scripts, procedural macros, native
-code, downloaded tools, model weights, and managed runtimes are reviewed as
-code-execution and redistribution inputs. Verified artifacts are pinned by
-digest and builds run without network access where the platform permits. Each
-managed input has a named update owner, removal/rollback path, emergency disable
-mechanism, and a security-fix response target appropriate to its authority;
-SBOM and provenance evidence never substitutes for that review.
+Each session owns its child/PTY lifecycle, ordered input, resize, output,
+cancellation, exit, descendant cleanup, and shutdown joining. A failed optional
+feature cannot break the basic local shell path.
 
-## Conduct reporting prerequisite
+## Terminal-output safety
 
-`CONDUCT_CONTACT_REQUIRED`: a dedicated private conduct-reporting address must
-replace this marker before v0.4.0 is publicly announced. This is deliberately
-enforced by `cargo xtask release`.
-## Managed SSH security boundary
+CSI, OSC, DCS, APC, hyperlinks, titles, clipboard requests, and image protocols
+have explicit byte, dimension, nesting, cache, and lifetime limits. Malformed or
+unsupported input fails safely.
 
-Managed SSH source remains compile-time disabled and the linked first-party
-package remains unverified. Activation requires the protected approvals,
-attestation/revocation, and native evidence in
-`docs/SESSION-LAUNCH-BROKER.md`; ordinary shell-owned OpenSSH remains the safe
-fallback.
+Terminal output cannot launch a process, read arbitrary files, gain a
+capability, or become terminal input without an explicit user action.
 
-The M4 request accepts no caller-supplied option text. Direct routes freeze 17
-defensive options plus optional separate `-l`/`-p` values and one host; config
-routes freeze the 15-option subset plus one canonical bounded `-J` chain and one
-alias. It revalidates current executable identity, never evaluates a shell, and
-does not override OpenSSH post-quantum defaults or downgrade warnings. Complete
-host-key algorithm/SHA-256 evidence is review-bound without `known_hosts` writes;
-changed keys cannot bind. The `C` handoff never executes or adds Enter, and the
-bounded public `ssh-add -l -E sha256` parser has no process or secret authority.
-Completion receipts are private,
-atomic, bounded, use no-follow and stable Windows handle identity checks, and
-exclude destination, terminal content, credentials, paths,
-environment, process IDs, and executable identity. Reconnect is never automatic
-and requires current inventory/source plus fresh review and approval.
+## Configuration and files
 
-OpenSSH configuration is user-owned and may cause OpenSSH to start helper
-processes. Production activation therefore requires controlled native proof that
-all owned descendants, PTYs, routes, listeners, and temporary resources are
-closed on exit, cancellation, failure, and application shutdown.
+Configuration and persisted state are bounded, versioned, private where
+required, validated before publication, and written with safe temporary-file,
+flush, replacement, and recovery behavior. Invalid reload keeps
+last-known-good state.
 
-## Accepted third-party ecosystem source security boundary
+File features validate exact targets, links, identity replacement, type, size,
+permissions, and stale generations. Errors and diagnostics are actionable but
+redacted.
 
-D7/CP6 is fully implemented locally at the accepted source boundary and remains
-non-activating. ADR 0029, its digest-frozen contract, and a separate acceptance
-receipt govern package containment, custom-WIT sandboxing, provenance, trusted
-publishers, current revocation, exact grants, 28 ceilings, selected-input consent,
-rollback and uninstall. The checker rejects contract/acceptance/dependency drift
-or any release authority becoming true.
+## Clipboard and insertion
 
-Explicit local bundles are opened without following links and checked for
-identity changes. Manual bounded ZIP handling rejects encryption, traversal,
-absolute/drive/UNC/option-like paths, case/normalization collisions, links and
-special files. Exact content, Ed25519 signature, publisher/key, provenance, SPDX
-SBOM, licenses, compatibility, time, trust and revocation verify before private
-staging. Protected atomic storage publishes only disabled generations, verifies
-a current-user-only Windows DACL, recovers only validated last-known-good state,
-and removes exact owned data.
+Copy and paste are explicit and route-scoped. Paste never adds Enter. Overlays
+own their input while open, so palette/search/dialog keys do not reach the PTY.
 
-The optional Wasmtime conformance host has no default WASI or ambient filesystem,
-network, process, PTY, terminal, history, environment, clipboard, credential,
-SSH-agent, provider-cache, capsule-secret or connection import. Actual imports
-must exactly equal the reviewed allowlist. Fuel, epoch deadline, memory, table,
-instance and host-transfer limits bound guests, and workers are cancellable and
-joined. Public component execution is denied.
+No public insertion or alias path expands credentials, reads hidden history,
+or executes text automatically.
 
-Every grant binds publisher, extension, version, exact digest, capability, exact
-scope, profile, expiry and generation; revocation is checked before invocation.
-Guest output is sanitized bounded typed data and never becomes PTY input, Enter,
-process launch, or a minted grant. Signed action packs request no capabilities
-and map only into disabled typed insert-only actions subject to collisions,
-revocation and final revalidation.
+## System OpenSSH boundary
 
-CP6 receives only exact selected bounded input after deterministic redaction and
-provider/locality/model/destination/purpose/retention/size/risk review. Consent is
-single-use and route/generation/expiry bound. Ambient data, provider/tool calls,
-MCP, workflow planning, background/typing requests and automatic execution are
-forbidden. Selected input and response content are absent from debug output,
-receipts and persistent state.
+When a user manually runs system OpenSSH, OpenSSH and the operating system own
+configuration, credentials, agents, host-key policy, authentication, proxy
+behavior, and networking. Automexia owns only the local terminal session.
 
-Source acceptance does not authorize public SDK/download, component/provider
-activation, process/network/credential/PTY access, or release. Protected approvals,
-trust/revocation owners, malicious supply-chain and sandbox drills, native signed
-three-platform package/cleanup/accessibility evidence, provider privacy/legal
-review, resource baselines, 1,000 cycles and 30-day soak remain mandatory.
+Public inventory reads only explicitly selected bounded local files, exposes
+public metadata, performs no passive network/login work, and preserves
+last-known-good state after invalid, linked, replaced, or revoked input.
 
-## Proposed LLM orchestration security boundary
+## Extension boundary
 
-Proposed ADR 0033 defines a later, separately installed first-party LLM
-Orchestration extension. It is not part of core, a domain extension, or CP6. The
-model may return only an untrusted candidate typed plan; it receives no shell,
-PTY, process, filesystem, provider, credential, MCP, domain-action, or executor
-handle. The application remains the sole action-registry, policy, risk, review,
-grant, final-revalidation, execution, cancellation, and receipt authority.
+Public extension infrastructure is deny-by-default. Optional code receives only
+exact, reviewed, bounded capabilities and data. It receives no ambient terminal
+content, history, clipboard, environment, filesystem, network, credential,
+process, or PTY authority.
 
-Planning uses an explicit bounded context manifest and disclosed model, endpoint,
-locality, destination, purpose, retention, size, risk, and billing mode. Local or
-self-hosted inference remains an external trust boundary. Remote adapters are
-opt-in and cannot be a silent fallback. Approval is one run and bound to the
-exact canonical plan, context, action-catalog, policy, target, and expiry;
-production, destructive, privilege, credential, public-network, irreversible,
-billing-sensitive, or scope-expanding steps interrupt again immediately before
-execution. Unattended high-risk execution is outside the initial boundary.
+Results are validated and bound to package/component identity, scope, route or
+resource, generation, lifetime, and revocation. Disable and uninstall cancel and
+join work, remove only exact owned state, preserve user files, and leave the core
+terminal usable.
 
-No LLM runtime authority exists today. ADR acceptance, a strict machine contract,
-protected approval for every authority, hostile-plan and prompt-injection tests,
-secret-canary privacy proof, resource and cleanup measurements, accessible
-review, native platform evidence, packaging, disable/uninstall, and rollback are
-required before activation. With the extension absent or disabled there must be
-no model worker, provider request, model download, prompt store, or terminal hot-
-path work. See [the architecture](docs/LLM-ORCHESTRATION-EXTENSION.md) and
-[testing contract](docs/LLM-ORCHESTRATION-TESTING.md).
+Automexia v0.4 does not claim public third-party extension download,
+distribution, marketplace activation, or component execution.
 
-## Provider-neutral authentication security boundary
+## Secrets and privacy
 
-M7/D6.0 is implemented as an authority-free framework. It validates bounded
-public provider context, immutable session capsules, public authentication
-observations, exact operation/isolation/browser metadata, capability review,
-recovery, and redacted receipts/audits. It does not own a process, network
-socket, browser or callback listener, filesystem path, credential, token or
-certificate cache, provider configuration writer, PTY, renderer, clipboard,
-telemetry client, selected-input model integration, or LLM orchestration.
+Credentials belong in platform or external credential stores. Persist opaque
+references instead of secret material where possible.
 
-Every provider operation is bound to a nonzero operation, exact capsule ID,
-session, revision, concrete provider, reviewed executable, ordered arguments,
-capability list, isolation, browser flow/origins/callback, risk, and current
-`AllowOnce` decisions for process and applicable network resources. Other
-capability kinds, persistent grants, secret-bearing CLI flags, HTTP browser
-origins, malformed or non-IP loopback callbacks, stale generations,
-cross-session reads, cross-configuration publication, risk drift, and global CLI
-context mutation fail closed. Candidate observations are fully validated before
-atomic publication; rejection preserves the current operation for cancellation.
-Provider rebind cancels old work and requires a fresh session.
+Never include real usernames, hostnames, home paths, environment values, account
+or tenant identifiers, private IPs/domains, tokens, cookies, credentials,
+private history, or identifying provider output in source, tests, fixtures,
+snapshots, logs, documentation, screenshots, changes, commits, or reports.
 
-Official provider CLIs retain authentication and secret custody. They own
-external browser/device/system-broker/MFA interaction, tokens, certificates,
-cookies, and provider caches. Automexia stores only bounded public observations
-in memory. Passive status and Hub/palette projection never start a provider
-tool. D6.1-D6.5 must add independently reviewed exact adapters and real native
-provider evidence before any product login or refresh can become available.
+Use fictional stable values such as `alice`, `devbox`,
+`example.invalid`, documented test-network addresses, and runtime-created
+temporary paths.
 
-The M7 machine contract rejects process/network/filesystem/unsafe primitives in
-the framework and rejects any return of the removed WSL `sh -c`/provider
-probe. Strict-ingress, exact-review, redaction-canary, 16×64 lifecycle,
-mutation, fuzz-registration, and benchmark evidence are documented in
-[Testing](docs/TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation).
-The accepted ownership decision remains
-[ADR 0020](docs/adr/0020-hybrid-build-wrap-adopt-boundary.md).
+## Dependencies and supply chain
+
+Dependencies require license, provenance, maintenance, advisory, unsafe-code,
+authority, feature, platform, MSRV, build, binary-size, startup, resource,
+offline, cancellation, cleanup, rollback, and replacement review.
+
+Release artifacts bind exact source, lockfiles, dependencies, checksums, SBOM,
+provenance, signatures, and platform verification. Never disable TLS,
+signature, policy, or scanner controls to make a release pass.
+
+## Assurance
+
+Security-sensitive boundaries use table-driven negative tests, property tests,
+fuzzing, deterministic concurrency models, forbidden-side-effect assertions,
+resource/lifecycle repetition, checker mutation tests, and native platform
+evidence.
+
+A passing test proves only the exact campaign and environment. Missing native,
+hardware, signing, account, assistive-technology, or long-duration evidence is
+reported as external.
+
+See [Architecture](docs/ARCHITECTURE.md), [Testing](docs/TESTING.md), and
+[Release trust](docs/RELEASE-TRUST.md).
+
+## Private planning
+
+Unreleased advanced features, integrations, commercial products, and their
+security designs are maintained in ignored private documentation. They must not
+be copied into public issues, ADRs, fixtures, or examples before an explicit
+publication review.
