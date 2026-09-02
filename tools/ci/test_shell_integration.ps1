@@ -298,13 +298,17 @@ try {
     $cmdProbeRoot = Join-Path $fixtureRoot 'cmd-probe'
     $null = New-Item -ItemType Directory -Path $cmdProbeRoot
     $generatedCmd = Join-Path $cmdProbeRoot 'automexia.cmd'
+    # The generated batch needs stable identity bytes, not the contributor's
+    # account or executable path. Fictional values prove the same wire contract.
+    $fixtureUser = 'alice'
+    $fixtureShellPath = 'C:\AutomexiaFixtures\cmd.exe'
     $generatedSource = $cmdSource.Replace(
         '__AUTOMEXIA_CMD_USER_BASE64__',
-        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureUser))
     )
     $generatedSource = $generatedSource.Replace(
         '__AUTOMEXIA_CMD_PATH_BASE64__',
-        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureShellPath))
     )
     $generatedSource = [regex]::Replace($generatedSource, "\r?\n", "`r`n")
     [IO.File]::WriteAllText($generatedCmd, $generatedSource, [Text.Encoding]::ASCII)
@@ -335,10 +339,10 @@ try {
         $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_shell_name=Q01E') -or
         $cmdProbe -notmatch [regex]::Escape(
             'SetUserVar=automexia_shell_user=' +
-            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))) -or
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureUser))) -or
         $cmdProbe -notmatch [regex]::Escape(
             'SetUserVar=automexia_shell_path=' +
-            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))) -or
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureShellPath))) -or
         $cmdProbe -notmatch [regex]::Escape(']7;file:///$P') -or
         $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_prompt_active=MQ==') -or
         $cmdProbe -notmatch [regex]::Escape([char]0x03BB)) {

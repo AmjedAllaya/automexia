@@ -17,6 +17,8 @@ type TaskResult<T = ()> = Result<T, String>;
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
 const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
+const ISOLATED_TARGET_LOG_LABEL: &str = "<isolated-verification-target>";
+const PERSISTENT_DEBUG_BINARY_LOG_LABEL: &str = "<persistent-debug-binary>";
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
@@ -662,12 +664,7 @@ fn storage_health_summary() -> TaskResult {
     })?;
     let warn =
         configured_gib("AUTOMEXIA_TARGET_WARN_GIB", DEFAULT_TARGET_WARN_GIB)? * GIB;
-    println!(
-        "storage            {} used, {} free ({})",
-        format_bytes(used),
-        format_bytes(available),
-        target.display()
-    );
+    println!("{}", storage_health_line(used, available));
     if used >= warn {
         println!(
             "storage warning    persistent target exceeds {}; close Automexia and run `cargo purge`",
@@ -733,6 +730,14 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+fn storage_health_line(used: u64, available: u64) -> String {
+    format!(
+        "storage            {} used, {} free (persistent Cargo target)",
+        format_bytes(used),
+        format_bytes(available)
+    )
+}
+
 fn configured_gib(variable: &str, default: u64) -> TaskResult<u64> {
     match env::var(variable) {
         Ok(value) => value.parse::<u64>().map_err(|_| {
@@ -795,7 +800,7 @@ impl VerificationTarget {
             )
         })?;
         let keep = environment_truthy("AUTOMEXIA_KEEP_VERIFY_TARGET");
-        println!("verification target {}", path.display());
+        println!("verification target {ISOLATED_TARGET_LOG_LABEL}");
         println!("incremental         disabled for verification artifacts");
         Ok(Self {
             parent,
@@ -808,9 +813,13 @@ impl VerificationTarget {
     fn finish(&mut self) -> TaskResult {
         let used = directory_size(&self.path)?;
         if self.keep {
+            let name = self
+                .path
+                .file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or(ISOLATED_TARGET_LOG_LABEL);
             println!(
-                "verification target retained at {} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
-                self.path.display(),
+                "verification target retained under the persistent Cargo target as {name} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
                 format_bytes(used)
             );
             self.finished = true;
@@ -1191,13 +1200,15 @@ fn smoke_debug_app() -> TaskResult {
     let binary = debug_binary(&identity);
     require(
         binary.is_file(),
-        &format!("debug executable is missing: {}", binary.display()),
+        "debug executable is missing from the persistent Cargo target",
     )?;
-    println!("+ {} --version", binary.display());
+    println!("+ {PERSISTENT_DEBUG_BINARY_LOG_LABEL} --version");
     let output = Command::new(&binary)
         .arg("--version")
         .output()
-        .map_err(|error| format!("could not smoke {}: {error}", binary.display()))?;
+        .map_err(|error| {
+            format!("could not run the persistent debug executable: {error}")
+        })?;
     require(
         output.status.success(),
         &format!(
@@ -2247,11 +2258,7 @@ fn cargo_command(target: &Path, args: &[&str]) -> Command {
 }
 
 fn run_cargo_in(target: &Path, args: &[&str]) -> TaskResult {
-    println!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
-        target.display(),
-        args.join(" ")
-    );
+    println!("{}", isolated_cargo_invocation(args));
     let status = cargo_command(target, args)
         .status()
         .map_err(|error| format!("could not start cargo: {error}"))?;
@@ -2267,11 +2274,7 @@ fn run_cargo_summarized_in(
     args: &[&str],
     success_message: &str,
 ) -> TaskResult {
-    println!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
-        target.display(),
-        args.join(" ")
-    );
+    println!("{}", isolated_cargo_invocation(args));
     let output = cargo_command(target, args)
         // Cargo writes compiler/build-script progress and diagnostics to
         // stderr. Keep that stream attached to the contributor's terminal so
@@ -2289,6 +2292,13 @@ fn run_cargo_summarized_in(
     // the complete harness and compiler diagnostics needed for investigation.
     print!("{}", String::from_utf8_lossy(&output.stdout));
     Err(format!("cargo exited with {}", output.status))
+}
+
+fn isolated_cargo_invocation(args: &[&str]) -> String {
+    format!(
+        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={ISOLATED_TARGET_LOG_LABEL} cargo {}",
+        args.join(" ")
+    )
 }
 
 fn metadata() -> TaskResult<Value> {
@@ -2343,6 +2353,40 @@ fn product_identity() -> TaskResult<ProductIdentity> {
         log_level_environment: field("log-level-environment")?,
         shell_integration_environment: field("shell-integration-environment")?,
     })
+}
+
+const POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS: &[&str] = &[
+    "$integrationScript = Join-Path $PSScriptRoot 'test_shell_integration.ps1'",
+    "$integrationLifecycle = & powershell.exe -NoLogo -NoProfile -NonInteractive",
+    "-File $integrationScript 2>&1 | Out-String",
+    "if ($LASTEXITCODE -ne 0)",
+    "captured child process",
+    "SetUserVar=automexia_shell_user=",
+    "SetUserVar=automexia_shell_path=",
+    "$integrationLifecycle = $null",
+];
+
+const POWERSHELL_IDENTITY_FIXTURE_MARKERS: &[&str] = &[
+    "$fixtureUser = 'alice'",
+    "$fixtureShellPath = 'C:\\AutomexiaFixtures\\cmd.exe'",
+    "GetBytes($fixtureUser)",
+    "GetBytes($fixtureShellPath)",
+];
+
+fn powershell_test_output_is_redacted(source: &str) -> bool {
+    POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+}
+
+fn powershell_identity_fixture_is_fictional(source: &str) -> bool {
+    POWERSHELL_IDENTITY_FIXTURE_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+        && source.matches("GetBytes($fixtureUser)").count() >= 2
+        && source.matches("GetBytes($fixtureShellPath)").count() >= 2
+        && !source.contains("[Environment]::UserName")
+        && !source.contains("GetBytes($env:ComSpec)")
 }
 
 fn verify_architecture() -> TaskResult {
@@ -2971,6 +3015,17 @@ fn verify_architecture() -> TaskResult {
     )?;
     let powershell_view =
         read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;
+    let powershell_test = read(&root().join("tools/ci/test_powershell.ps1"))?;
+    let powershell_integration =
+        read(&root().join("tools/ci/test_shell_integration.ps1"))?;
+    require(
+        powershell_test_output_is_redacted(&powershell_test),
+        "PowerShell integration assurance can publish live shell identity bytes into CI logs",
+    )?;
+    require(
+        powershell_identity_fixture_is_fictional(&powershell_integration),
+        "PowerShell integration assurance can derive a persistent fixture from live shell identity",
+    )?;
     require(
         powershell_view.contains("<Label>Mode</Label>")
             && powershell_view.contains("<Label>Last Modified</Label>")
@@ -4683,6 +4738,39 @@ mod tests {
     }
 
     #[test]
+    fn powershell_test_output_redaction_markers_are_independently_required() {
+        let source = read(&root().join("tools/ci/test_powershell.ps1")).unwrap();
+        assert!(powershell_test_output_is_redacted(&source));
+        for marker in POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_test_output_is_redacted(&weakened),
+                "removing {marker:?} must fail the redaction contract"
+            );
+        }
+    }
+
+    #[test]
+    fn powershell_identity_fixture_cannot_use_live_values() {
+        let source = read(&root().join("tools/ci/test_shell_integration.ps1")).unwrap();
+        assert!(powershell_identity_fixture_is_fictional(&source));
+        for marker in POWERSHELL_IDENTITY_FIXTURE_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_identity_fixture_is_fictional(&weakened),
+                "removing {marker:?} must fail the fictional-fixture contract"
+            );
+        }
+        assert!(!powershell_identity_fixture_is_fictional(
+            &source.replace("$fixtureUser", "[Environment]::UserName")
+        ));
+        assert!(!powershell_identity_fixture_is_fictional(&source.replace(
+            "GetBytes($fixtureShellPath)",
+            "GetBytes($env:ComSpec)"
+        )));
+    }
+
+    #[test]
     fn phase_zero_assurance_contract_self_verifies() {
         verify_phase_zero_assurance().unwrap();
     }
@@ -4891,6 +4979,26 @@ mod tests {
         assert_eq!(format_bytes(1024), "1.00 KiB");
         assert_eq!(format_bytes(1024 * 1024), "1.00 MiB");
         assert_eq!(format_bytes(GIB), "1.00 GiB");
+    }
+
+    #[test]
+    fn successful_readiness_diagnostics_use_logical_target_labels() {
+        let invocation = isolated_cargo_invocation(&["check", "--workspace"]);
+        assert_eq!(
+            invocation,
+            "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<isolated-verification-target> cargo check --workspace"
+        );
+        assert!(!invocation.contains(r"C:\Users\alice\private-checkout"));
+        assert_eq!(
+            storage_health_line(GIB, 2 * GIB),
+            "storage            1.00 GiB used, 2.00 GiB free (persistent Cargo target)"
+        );
+        assert!(!storage_health_line(GIB, 2 * GIB).contains(['\\', '/']));
+        assert_eq!(
+            PERSISTENT_DEBUG_BINARY_LOG_LABEL,
+            "<persistent-debug-binary>"
+        );
+        assert!(!PERSISTENT_DEBUG_BINARY_LOG_LABEL.contains(['\\', '/']));
     }
 
     #[cfg(target_os = "windows")]

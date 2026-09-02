@@ -70,6 +70,11 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
                 'os.environ.get("AUTOMEXIA_QA_GHOSTTY_EVIDENCE", "").strip()',
                 '""',
             ),
+            (
+                "roadmap",
+                "G0 — source lock",
+                "G0 source lock",
+            ),
             ("context", "pub fn clear_parked_topologies", "fn removed_clear"),
             (
                 "inspector",

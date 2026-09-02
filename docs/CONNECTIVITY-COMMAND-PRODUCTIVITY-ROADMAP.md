@@ -14,6 +14,7 @@ Public behavior is limited to [the feature catalog](FEATURES.md).
 Status: public summary. Detailed execution sequencing is maintained privately.
 
 The repository contains source foundations for typed Quick Actions, completion,
-aliases, and bounded local infrastructure metadata. This public statement does
-not disclose private provider workflows, commercial modules, or release plans;
-the feature catalog controls availability claims.
+aliases, a read-only Connection Hub boundary, and bounded local infrastructure
+metadata. This public statement does not disclose private provider workflows,
+commercial modules, or release plans; the feature catalog controls availability
+claims.
