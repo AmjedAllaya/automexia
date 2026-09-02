@@ -513,6 +513,11 @@ Current assurance: **Partial**.
   ensure checkers test behavior rather than only their own strings.
 - Run the same locked contributor contract natively on Windows/Linux/macOS and
   record exact commands, counts, skips, first failures, duration and cleanup.
+- Exercise the real readiness child for success, deadline, output overflow and
+  process-tree cleanup; retain the intermittent no-progress run as a regression
+  seed even when repeated parallel executions pass.
+- Mutation-check the 30-minute hard deadline, 16 MiB capture ceiling, Unix
+  process group, Windows Job Object and real child-process tests.
 
 ### stabilization-release-assurance-s1-s2
 

@@ -203,6 +203,13 @@ build keeps the contributor's normal Cargo home while retaining the isolated
 tool `PATH` and temporary directories. This prevents native dependency source
 roots from changing underneath a shared persistent target.
 
+Repository readiness also owns a bounded workspace-test process tree. The
+summarized Cargo test command runs in a Unix process group or Windows Job
+Object, terminates after 30 minutes, and captures at most 16 MiB of stdout while
+leaving compiler stderr visible. Real self-spawn tests prove success, deadline,
+and overflow behavior; policy mutations fail when either platform wrapper, the
+deadline, the ceiling, or those tests disappear.
+
 ### Current local evidence
 
 The 2026-09-01 native Windows x86_64 MSVC audit of this worktree produced the
@@ -223,6 +230,17 @@ following bounded evidence:
   Cargo Deny, Cargo Vet, changed-history and working-tree Gitleaks scans, two
   Semgrep rules over 620 tracked Rust files with zero findings, and three real
   scanner-canary mutations.
+
+A later documentation-only protected push exposed an intermittent assurance
+failure: one all-feature terminal test process remained responsive but made no
+CPU or output progress for more than ten minutes. The exact all-feature binary
+then passed sequentially and in 20 consecutive parallel repetitions, so no
+individual product test is falsely blamed. The first stalled run remains the
+regression seed; the readiness owner now fails closed at its hard deadline and
+cannot retain unbounded output or leave descendants behind.
+The interrupted legacy runner had in fact left its owned test tree alive; that
+exact tree was removed before the passing bounded rerun, without touching any
+unrelated application process.
 
 The introduced-commit scan compares an established branch with its configured
 upstream. A new branch with no upstream uses the fetched `origin/HEAD` merge

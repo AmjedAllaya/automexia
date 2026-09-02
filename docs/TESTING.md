@@ -697,6 +697,17 @@ target completes and `cargo ready` prints its final `PASS` line.
 readable and prints the complete captured diagnostics automatically on failure.
 Running `cargo test` directly retains Cargo's normal per-target output.
 
+The summarized workspace-test process is owned by one Unix process group or
+Windows Job Object. It has a 30-minute hard deadline and a 16 MiB stdout capture
+ceiling; exceeding either bound terminates the complete owned process tree and
+fails readiness. Compiler and build-script stderr remains live so a cold build
+does not look frozen. The xtask suite uses the real test executable as a child
+process to prove normal completion, deadline termination, and output-overflow
+termination while retaining the bounded partial diagnostics. Zero deadlines and
+zero capture ceilings fail before a child is started. The GitHub-Free policy
+checker and mutation suite reject removal or relaxation of the deadline,
+ceiling, process-tree wrappers, diagnostic oracle, or real-process tests.
+
 Known incompatible transitive dependency generations are maintained as an
 exact, reasoned baseline in `deny.toml`. They do not print repetitive warnings.
 Any newly introduced duplicate is denied, while advisories, banned crates,

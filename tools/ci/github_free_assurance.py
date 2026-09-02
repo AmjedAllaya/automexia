@@ -29,7 +29,9 @@ from typing import Any, Iterable
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "tests" / "assurance" / "github-free-assurance-policy-v1.json"
+READINESS_RUNNER_PATH = ROOT / "tools" / "xtask" / "src" / "main.rs"
 MAX_POLICY_BYTES = 32 * 1024
+MAX_READINESS_RUNNER_BYTES = 512 * 1024
 MAX_COMMAND_TIMEOUT_SECONDS = 90 * 60
 MAX_TOOL_ARCHIVE_BYTES = 128 * 1024 * 1024
 MAX_TOOL_BINARY_BYTES = 64 * 1024 * 1024
@@ -117,6 +119,63 @@ def validate_policy_for_test(policy: dict[str, Any]) -> dict[str, Any]:
         path = Path(temporary) / "policy.json"
         path.write_text(json.dumps(policy), encoding="utf-8")
         return load_policy(path)
+
+
+def validate_readiness_runner_source(source: str) -> None:
+    required_top_level = (
+        "const WORKSPACE_TEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);",
+        "const SUMMARIZED_CARGO_STDOUT_LIMIT: usize = 16 * 1024 * 1024;",
+        "use process_wrap::std::CommandWrap;",
+        "struct BoundedCommandFailure",
+    )
+    missing = [marker for marker in required_top_level if marker not in source]
+    if missing:
+        raise AssuranceError("workspace readiness deadline or output ceiling drifted")
+    try:
+        summarized = source.split("fn run_cargo_summarized_in(", 1)[1].split(
+            "\n#[derive(Debug)]", 1
+        )[0]
+        bounded = source.split("fn run_bounded_capture(", 1)[1].split(
+            "\nfn metadata(", 1
+        )[0]
+        tests = source.split("#[cfg(test)]\nmod tests", 1)[1]
+    except (IndexError, ValueError) as error:
+        raise AssuranceError("workspace readiness process ownership is incomplete") from error
+    summarized_markers = (
+        "run_bounded_capture(",
+        "WORKSPACE_TEST_TIMEOUT",
+        "SUMMARIZED_CARGO_STDOUT_LIMIT",
+        "failure.stdout",
+    )
+    if any(marker not in summarized for marker in summarized_markers) or ".output()" in summarized:
+        raise AssuranceError("workspace tests must use the bounded summarized runner")
+    bounded_markers = (
+        "command.wrap(ProcessGroup::leader());",
+        "command.wrap(JobObject);",
+        "overflow.load(Ordering::Acquire)",
+        "child.try_wait()",
+        "child.start_kill()",
+        "child.kill()",
+        "deadline.as_secs()",
+        "stdout_limit",
+    )
+    if any(marker not in bounded for marker in bounded_markers):
+        raise AssuranceError("bounded readiness cleanup, polling, or output enforcement drifted")
+    test_markers = (
+        "summarized_command_returns_bounded_success_output",
+        "summarized_command_rejects_zero_bounds_before_spawn",
+        "summarized_command_deadline_terminates_the_owned_child",
+        "summarized_command_output_limit_fails_closed",
+        'String::from_utf8_lossy(&error.stdout).contains("bounded-child-waiting")',
+    )
+    if any(marker not in tests for marker in test_markers):
+        raise AssuranceError("bounded readiness real-process regression coverage drifted")
+
+
+def validate_readiness_runner() -> None:
+    validate_readiness_runner_source(
+        read_bounded(READINESS_RUNNER_PATH, MAX_READINESS_RUNNER_BYTES)
+    )
 
 
 def cache_root(policy: dict[str, Any]) -> Path:
@@ -551,6 +610,7 @@ def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
         policy = load_policy()
+        validate_readiness_runner()
         if args.command == "check-policy":
             cache_root(policy)
             print("PASS: GitHub-Free local assurance policy is structurally valid")

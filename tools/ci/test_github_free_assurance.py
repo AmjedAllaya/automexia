@@ -31,6 +31,7 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.policy = ASSURANCE.load_policy()
 
     def test_current_policy_and_profile_expansion_are_complete(self) -> None:
+        ASSURANCE.validate_readiness_runner()
         self.assertEqual(self.policy["tools"], ASSURANCE.REQUIRED_TOOLS)
         self.assertEqual(
             ASSURANCE.expand_profile(self.policy, "release-local"),
@@ -42,6 +43,48 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
             ],
         )
         self.assertIn("fuzz", ASSURANCE.expand_profile(self.policy, "deep-source"))
+
+    def test_readiness_deadline_cleanup_and_real_process_tests_cannot_be_weakened(self) -> None:
+        source = ASSURANCE.READINESS_RUNNER_PATH.read_text(encoding="utf-8")
+        # Each mutation removes one independent part of the failure mode seen in
+        # the protected push: deadline, memory bound, descendant ownership, or
+        # the real child-process oracle. The production checker must reject all.
+        mutations = {
+            "deadline relaxation": (
+                "Duration::from_secs(30 * 60)",
+                "Duration::from_secs(90 * 60)",
+            ),
+            "output ceiling removal": (
+                "SUMMARIZED_CARGO_STDOUT_LIMIT",
+                "UNBOUNDED_CARGO_STDOUT",
+            ),
+            "unix descendant cleanup removal": (
+                "command.wrap(ProcessGroup::leader());",
+                "",
+            ),
+            "windows descendant cleanup removal": (
+                "command.wrap(JobObject);",
+                "",
+            ),
+            "deadline test removal": (
+                "summarized_command_deadline_terminates_the_owned_child",
+                "removed_deadline_test",
+            ),
+            "zero-bound test removal": (
+                "summarized_command_rejects_zero_bounds_before_spawn",
+                "removed_zero_bound_test",
+            ),
+            "deadline diagnostics removal": (
+                'String::from_utf8_lossy(&error.stdout).contains("bounded-child-waiting")',
+                "true",
+            ),
+        }
+        for name, (needle, replacement) in mutations.items():
+            with self.subTest(name=name):
+                self.assertIn(needle, source)
+                mutated = source.replace(needle, replacement, 1)
+                with self.assertRaises(ASSURANCE.AssuranceError):
+                    ASSURANCE.validate_readiness_runner_source(mutated)
 
     def test_missing_security_step_or_tool_version_is_rejected(self) -> None:
         policy = copy.deepcopy(self.policy)
