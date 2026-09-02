@@ -16,7 +16,12 @@ use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, Sessio
 use automexia_ui_model::{self, IconOptics, Segment};
 
 use crate::automexia::runtime;
-use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
+use crate::automexia::ui::{
+    PromptAnchor, COMMAND_RESULT_PROMPT_RESERVE, MAX_PROMPT_CONTEXT_HISTORY,
+};
+
+#[cfg(feature = "native-gui-test-hooks")]
+pub(crate) type NativePromptContextPaint = (Option<u64>, u64, [f32; 4]);
 
 pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
@@ -26,7 +31,6 @@ const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.62;
 const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
-const PROMPT_RESULT_RESERVE: f32 = 112.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PromptTagMetrics {
@@ -63,6 +67,11 @@ fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
         tag_gap,
         radius,
     }
+}
+
+#[inline]
+fn prompt_context_right_edge(anchor: &PromptAnchor) -> f32 {
+    anchor.x + (anchor.width - COMMAND_RESULT_PROMPT_RESERVE).max(0.0)
 }
 
 struct PromptSnapshot {
@@ -104,6 +113,8 @@ pub struct DevOpsStatus {
     snapshot_revision: u32,
     refresh_pending: bool,
     request_in_flight: bool,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_prompt_paints: std::cell::RefCell<Vec<NativePromptContextPaint>>,
 }
 
 impl DevOpsStatus {
@@ -121,6 +132,11 @@ impl DevOpsStatus {
                 .map(|segment| segment.value.clone())
                 .collect(),
         ))
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_prompt_paints(&self) -> Vec<NativePromptContextPaint> {
+        self.native_prompt_paints.borrow().clone()
     }
 
     /// Keep asynchronous context discovery warm for semantic prompt rows.
@@ -158,6 +174,8 @@ impl DevOpsStatus {
         historical_anchors: &[PromptAnchor],
         live_anchor: Option<PromptAnchor>,
     ) -> bool {
+        #[cfg(feature = "native-gui-test-hooks")]
+        self.native_prompt_paints.borrow_mut().clear();
         self.ensure_live_segments(session);
         let new_prompt = self.sync_active_prompt(
             session,
@@ -375,7 +393,7 @@ impl DevOpsStatus {
         let text_y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
         let icon_y = tag_y + (metrics.height - metrics.icon_size) * 0.5;
         let mut cursor_x = anchor.x + PROMPT_TAG_LEFT_INSET;
-        let right_edge = anchor.x + (anchor.width - PROMPT_RESULT_RESERVE).max(80.0);
+        let right_edge = prompt_context_right_edge(anchor);
 
         for segment in segments {
             let color = segment_color(colors, segment.role);
@@ -404,6 +422,12 @@ impl DevOpsStatus {
                 metrics.radius,
                 ORDER - 1,
             );
+            #[cfg(feature = "native-gui-test-hooks")]
+            self.native_prompt_paints.borrow_mut().push((
+                anchor.generation,
+                anchor.key,
+                [cursor_x, tag_y, segment_width, metrics.height],
+            ));
             let content_x = cursor_x + metrics.padding_x;
             draw_icon_in_slot(
                 sugarloaf,
@@ -849,6 +873,25 @@ mod tests {
             automexia_ui_model::prompt_context_top_inset(24.0, comfortable.height, true,)
                 .unwrap()
                 > (24.0 - comfortable.height) * 0.5
+        );
+        let wide = PromptAnchor {
+            generation: Some(1),
+            key: 1,
+            x: 4.0,
+            y: 20.0,
+            width: 720.0,
+            height: 24.0,
+        };
+        assert_eq!(
+            prompt_context_right_edge(&wide),
+            wide.x + wide.width - COMMAND_RESULT_PROMPT_RESERVE
+        );
+        assert_eq!(
+            prompt_context_right_edge(&PromptAnchor {
+                width: COMMAND_RESULT_PROMPT_RESERVE - 1.0,
+                ..wide
+            }),
+            wide.x
         );
     }
     #[test]

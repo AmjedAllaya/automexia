@@ -11,6 +11,9 @@ compact, keyboard-first, high-contrast capable, and focused on terminal content.
   preview, and quit confirmation;
 - visible focus and redundant text/shape/state meaning;
 - reduced motion and responsive small/high-resolution layouts;
+- **Fully done (source contract):** command-result badges keep exclusive
+  result-ID and display-row ownership across resize and command navigation, and
+  share a collision-free right reservation with optional prompt-context chips;
 - no credentials, hidden history, private paths, or unrelated pane content in
   chrome or diagnostics; and
 - no decorative surface may change PTY, shell, process, clipboard, or native

@@ -88,10 +88,15 @@ the documented launch context and still owns an independent PTY.
 ### SESSION-04 — shutdown
 
 Close panes, windows, and finally the application while shells are idle and
-while they are producing output.
+while they are producing output. On Windows, repeat with at least four live
+panes or pane-local tabs whose shells are blocked in a long-running command;
+time application close from the close request until every shell disappears.
 
 Expected result: shutdown is bounded and all owned descendants and temporary
-resources are cleaned up.
+resources are cleaned up. The four-session Windows case completes within six
+seconds on the controlled native fixture; no shell remains after the Automexia
+window closes. Other hardware is compared against its recorded same-host
+ceiling rather than this development observation.
 
 ## Search, selection, and clipboard
 
@@ -121,10 +126,21 @@ Enter, and mouse events go to the correct owner.
 
 ### INPUT-04 — command navigation and palette isolation
 
-Jump between completed commands and open the command palette over active output.
+Run at least six output-producing commands with visibly different text, resize
+the window to a narrow layout and back to a normal layout, then use
+Ctrl+Shift+Up and Ctrl+Shift+Down repeatedly in both directions. Stop on each
+command and inspect every visible completion datetime/duration badge. Repeat in
+a split pane with enough workspace/provider context to fill most of the prompt
+row, then open the command palette over active output.
 
-Expected result: navigation remains pane-scoped; palette keystrokes do not leak
-to the PTY; closing the palette restores prior focus.
+Expected result: each visible result has one badge, no badge text is duplicated,
+merged, clipped into another badge, or moved onto the wrong command, and the
+result label never overlaps a prompt-context chip. The same command keeps the
+same datetime and duration through reflow. Wait briefly on each position and
+confirm the frame does not fill in progressively, flicker between two metadata
+owners, or become obscured by an error dialog. Navigation remains pane-scoped
+and does not edit or execute the live command; palette
+keystrokes do not leak to the PTY; closing the palette restores prior focus.
 
 ## Configuration and appearance
 
