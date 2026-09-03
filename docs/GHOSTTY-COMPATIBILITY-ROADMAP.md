@@ -6,6 +6,20 @@ window, tab, pane, or shell ownership.
 
 ## Ghostty compatibility G0-G6
 
+## Machine-readable compatibility phase keys
+
+The following identifiers are stable assurance-contract keys. Their wording must
+remain unchanged because repository compatibility checks consume them directly.
+Human-readable phase headings may contain additional descriptive text.
+
+- `G0 — source lock`
+- `G1 — typed registry`
+- `G2 — profiles and reload`
+- `G3 — dispatch language`
+- `G4 — stateless actions`
+- `G5 — tooling`
+- `G6 — high-lifecycle`
+
 ### Public contract
 
 - Compatibility is opt-in; Automexia remains the default profile.
