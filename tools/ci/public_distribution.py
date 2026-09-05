@@ -19,6 +19,7 @@ from urllib.parse import quote
 PUBLIC_REPOSITORY = "AmjedAllaya/automexia-releases"
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_WORKFLOW = ROOT / ".github/workflows/linux-early-access.yml"
+NFPM_CONFIG = ROOT / "packaging/linux/nfpm.yaml"
 MANIFEST_NAME = "public-distribution-manifest-v1.json"
 MAX_ARTIFACTS = 24
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
@@ -74,31 +75,47 @@ def fail(message: str) -> NoReturn:
     raise DistributionError(message)
 
 
+def _package_revision() -> str:
+    try:
+        source = NFPM_CONFIG.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError) as error:
+        raise DistributionError(
+            "Linux package revision source is unavailable"
+        ) from error
+    if len(source.encode("utf-8")) > 64 * 1024:
+        fail("Linux package revision source exceeds its byte limit")
+    revisions = re.findall(r"(?m)^release:\s*([1-9][0-9]*)\s*$", source)
+    if len(revisions) != 1:
+        fail("Linux package revision source must define one positive release")
+    return revisions[0]
+
+
 def _artifact_contract(version: str) -> dict[str, dict[str, object]]:
+    revision = _package_revision()
     rows = (
         (
             "linux-x64-deb",
             "x64",
             ".deb",
-            f"automexia-terminal_{version}_amd64.deb",
+            f"automexia-terminal_{version}-{revision}_amd64.deb",
         ),
         (
             "linux-arm64-deb",
             "Arm64",
             ".deb",
-            f"automexia-terminal_{version}_arm64.deb",
+            f"automexia-terminal_{version}-{revision}_arm64.deb",
         ),
         (
             "linux-x64-rpm",
             "x64",
             ".rpm",
-            f"automexia-terminal-{version}-1.x86_64.rpm",
+            f"automexia-terminal-{version}-{revision}.x86_64.rpm",
         ),
         (
             "linux-arm64-rpm",
             "Arm64",
             ".rpm",
-            f"automexia-terminal-{version}-1.aarch64.rpm",
+            f"automexia-terminal-{version}-{revision}.aarch64.rpm",
         ),
         (
             "linux-x64-portable",

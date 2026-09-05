@@ -17,8 +17,13 @@ The private terminal repository builds exactly six Linux packages:
 
 | Architecture | DEB | RPM | Portable |
 |---|---|---|---|
-| x64 | `automexia-terminal_<version>_amd64.deb` | `automexia-terminal-<version>-1.x86_64.rpm` | `automexia-terminal-<version>-x86_64-unknown-linux-gnu.tar.gz` |
-| Arm64 | `automexia-terminal_<version>_arm64.deb` | `automexia-terminal-<version>-1.aarch64.rpm` | `automexia-terminal-<version>-aarch64-unknown-linux-gnu.tar.gz` |
+| x64 | `automexia-terminal_<version>-1_amd64.deb` | `automexia-terminal-<version>-1.x86_64.rpm` | `automexia-terminal-<version>-x86_64-unknown-linux-gnu.tar.gz` |
+| Arm64 | `automexia-terminal_<version>-1_arm64.deb` | `automexia-terminal-<version>-1.aarch64.rpm` | `automexia-terminal-<version>-aarch64-unknown-linux-gnu.tar.gz` |
+
+The `-1` component is the repository-owned nFPM package revision and is part of
+the exact public filename. The distribution manifest derives both DEB and RPM
+names from that single source so a future revision change cannot silently split
+the native package and website contracts.
 
 The public release also requires `SHA256SUMS`, `SHA256SUMS.minisig`, the public
 minisign key, SPDX and CycloneDX SBOMs, release notes, install/remove guidance,
@@ -98,6 +103,15 @@ hosted-runner shutdown while compiling, with exit status 143 rather than a Rust,
 package, or test failure. The native package job now also limits Cargo to one
 build job and disables release debug data. This is a tested mitigation, not a
 passing Arm64 result; a new exact-commit rehearsal remains required.
+
+Run `33985318880` on commit
+`6130a53c3a5fa439f75806e7719d90748d41a9c6` passed authorization, the complete
+quality gate, and native x64 and Arm64 build/package/install lifecycles. Its
+final rehearsal aggregation then failed closed because this branch had lost the
+source-driven nFPM revision contract and expected both DEB names without `-1`.
+No signing, publication, tag, or activation job ran. This observed failure is a
+permanent regression fixture; a corrected exact-commit rehearsal must pass
+before publication.
 
 ## One-time external configuration still required
 

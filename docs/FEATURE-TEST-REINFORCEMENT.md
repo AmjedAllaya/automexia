@@ -102,6 +102,9 @@ and cleanup. The native shell remains the independent command-editor oracle.
 Reinforce artifact identity, licenses, checksums, SBOM, provenance, signatures,
 install, upgrade, rollback, uninstall, startup hooks, user-data policy, and final
 cleanup. Missing native signing or notarization evidence remains not run.
+The native nFPM revision is one repository-owned input for both DEB and RPM
+names; the post-download assembler must consume the exact native filenames, and
+mutation coverage must reject a missing, duplicate, zero, or split revision.
 
 ### contributor-automation-quality-policy
 

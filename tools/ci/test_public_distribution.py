@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("public_distribution.py")
@@ -26,9 +27,12 @@ REPOSITORY = "AmjedAllaya/automexia-releases"
 
 
 def package_names() -> tuple[str, ...]:
+    # nFPM emits the Debian revision from the repository-owned version `1`.
+    # This fixture mirrors the real native package job so the post-download
+    # aggregator cannot silently drift from package production again.
     return (
-        f"automexia-terminal_{VERSION}_amd64.deb",
-        f"automexia-terminal_{VERSION}_arm64.deb",
+        f"automexia-terminal_{VERSION}-1_amd64.deb",
+        f"automexia-terminal_{VERSION}-1_arm64.deb",
         f"automexia-terminal-{VERSION}-1.x86_64.rpm",
         f"automexia-terminal-{VERSION}-1.aarch64.rpm",
         f"automexia-terminal-{VERSION}-x86_64-unknown-linux-gnu.tar.gz",
@@ -161,6 +165,59 @@ def repository_governance() -> dict[str, dict[str, object]]:
 
 
 class PublicDistributionTests(unittest.TestCase):
+    def test_native_nfpm_revision_drives_exact_deb_and_rpm_names(self) -> None:
+        contract = DISTRIBUTION._artifact_contract(VERSION)
+        self.assertEqual(
+            contract["linux-x64-deb"]["file"],
+            f"automexia-terminal_{VERSION}-1_amd64.deb",
+        )
+        self.assertEqual(
+            contract["linux-arm64-rpm"]["file"],
+            f"automexia-terminal-{VERSION}-1.aarch64.rpm",
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary) / "nfpm.yaml"
+            config.write_text("name: automexia-terminal\nrelease: 7\n", encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                changed = DISTRIBUTION._artifact_contract(VERSION)
+            self.assertEqual(
+                changed["linux-x64-deb"]["file"],
+                f"automexia-terminal_{VERSION}-7_amd64.deb",
+            )
+            self.assertEqual(
+                changed["linux-arm64-rpm"]["file"],
+                f"automexia-terminal-{VERSION}-7.aarch64.rpm",
+            )
+
+            config.write_text("release: 1\nrelease: 2\n", encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "one positive"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
+            config.write_text("release: 0\n", encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "one positive"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
+            config.write_text("#" * (64 * 1024 + 1), encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "byte limit"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
+            missing = Path(temporary) / "missing.yaml"
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", missing):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "unavailable"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
     def test_public_repository_governance_fails_closed_on_every_release_control(self) -> None:
         baseline = repository_governance()
         DISTRIBUTION.validate_public_repository_governance(
@@ -274,7 +331,9 @@ class PublicDistributionTests(unittest.TestCase):
             source = root / "source"
             source.mkdir()
             write_packages(source)
-            duplicate = source / "duplicate" / f"automexia-terminal_{VERSION}_amd64.deb"
+            duplicate = (
+                source / "duplicate" / f"automexia-terminal_{VERSION}-1_amd64.deb"
+            )
             duplicate.parent.mkdir()
             duplicate.write_bytes(b"duplicate\n")
             with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "exactly one"):
