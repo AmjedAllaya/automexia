@@ -265,7 +265,7 @@ jobs:
 
   release-candidate:
     name: Release candidate gate
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && !startsWith(github.head_ref, 'release/linux/') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -306,7 +306,7 @@ jobs:
 
   release-candidate-coverage:
     name: Release candidate Windows coverage
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && !startsWith(github.head_ref, 'release/linux/') && github.event.pull_request.head.repo.full_name == github.repository }}
     needs:
       - quality
       - release-candidate

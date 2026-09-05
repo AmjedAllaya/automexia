@@ -46,7 +46,9 @@ route returns a real 404 without a `Location` header.
 
 ## Release flow
 
-1. Prepare and review an internal `release/linux/X.Y.Z` pull request.
+1. Prepare and review an internal `release/linux/X.Y.Z` pull request. Ordinary
+   free hosted CI still runs, while the stable `release/X.Y.Z` candidate and
+   Windows-coverage jobs are explicitly excluded from this separate namespace.
 2. Merge only after the exact head has an independent approval and a distinct
    merger.
 3. `Linux Early Access release` reruns formatting, Clippy, full tests, doctests,

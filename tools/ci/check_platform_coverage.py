@@ -219,15 +219,16 @@ def validate_ci(workflow: dict[str, Any]) -> None:
     release_condition = (
         "${{ github.event_name == 'pull_request' && "
         "startsWith(github.head_ref, 'release/') && "
+        "!startsWith(github.head_ref, 'release/linux/') && "
         "github.event.pull_request.head.repo.full_name == github.repository }}"
     )
     require(
         str(release_candidate.get("if", "")) == release_condition,
-        "CI release-candidate validation must remain limited to release pull requests",
+        "CI release-candidate validation must remain limited to internal stable release pull requests",
     )
     require(
         str(release_coverage.get("if", "")) == release_condition,
-        "CI release coverage must remain limited to internal release pull requests",
+        "CI release coverage must remain limited to internal stable release pull requests",
     )
     candidate_commands = commands(release_candidate)
     for fragment in (

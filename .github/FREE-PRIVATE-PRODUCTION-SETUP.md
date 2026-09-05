@@ -246,6 +246,11 @@ commit range to the repository's `windows-x86_64-msvc` coverage baseline. The
 split prevents a Linux report from being compared to a Windows baseline and
 prevents fork PRs from consuming Windows minutes.
 
+These stable-release-only jobs explicitly exclude `release/linux/X.Y.Z`.
+Linux Early Access uses the independent, credential-free rehearsal and guarded
+post-merge publication lane described below, so its pull requests cannot be
+captured by the incompatible `release/X.Y.Z` validator.
+
 Standard Windows-hosted time consumes the private repository's included GitHub
 Free minutes at the Windows multiplier. Keep paid overage disabled if the goal
 is a hard zero-cost ceiling; a release PR then waits when included quota is
