@@ -31,6 +31,13 @@ Repository support exists for x64 and Arm64 Linux package formats, manifests,
 checksums, release policy, and verification. A source-complete release path is
 not evidence that a public package exists.
 
+| Status | Feature | Remaining requirement |
+|---|---|---|
+| **Fully done (source and policy)** | Six-package x64/Arm64 DEB, RPM, and portable archive allowlist; source-owned nFPM revision; bounded manifest; checksums; SBOMs; Minisign; create-once immutable-release and attestation verification; fail-closed website handoff | Preserve the exact package, permission, immutability, and no-activation-before-verification contracts. |
+| **Fully done (unsigned native rehearsal)** | Exact commit `3cb729af27e7d353a7050b4b446cac3695a6511e` passed quality, both native package/install lifecycles, aggregation, and independent byte-for-byte manifest reconstruction in hosted run `33990137784` | Repeat after any source, dependency, toolchain, package, or workflow change. The rehearsal is intentionally non-distributable. |
+| **External prerequisite** | Official signed Linux Early Access publication | Configure the protected Minisign key and repository-scoped GitHub App, add an independent reviewer/merger, merge `release/linux/0.4.0`, and let the guarded workflow publish and attest the immutable prerelease. |
+| **Not done** | Public download activation | Consume only the workflow-generated activation handoff, verify every live asset from a signed-out client, then enable the landing-page routes. |
+
 The exact current status and remaining external gates are documented in
 [Public Linux Early Access distribution](PUBLIC-RELEASE-DISTRIBUTION.md).
 

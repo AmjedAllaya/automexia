@@ -124,9 +124,20 @@ lifecycle tests, and PTY benchmark. Exact payload, completion-marker,
 child-exit, and cleanup assertions remain mandatory. No signing, publication,
 tag, or activation job ran; a new exact-commit rehearsal remains required.
 
+Run `33990137784` on commit
+`3cb729af27e7d353a7050b4b446cac3695a6511e` then passed authorization, the
+complete quality gate without a flaky retry, both native x64 and Arm64
+build/package/install lifecycles, and final credential-free rehearsal
+aggregation. An independent download of its six package files reconstructed
+the hosted manifest byte for byte at SHA-256
+`b5c1d5a41c6b8315d42cda841f5d033f89c4f3c4f7dfb447726ca57133872d83` and
+confirmed the non-distributable rehearsal marker. The signing and publication
+jobs remained skipped, so this is current package-pipeline evidence but is not
+a public release.
+
 ## One-time external configuration still required
 
-The 2026-09-01 authenticated re-audit found zero configured Actions variables,
+The 2026-09-05 authenticated re-audit found zero configured Actions variables,
 zero configured Actions secrets, and no independent release approval. The first
 public Linux release is therefore correctly blocked; no placeholder credential
 or reduced-review path was introduced.
