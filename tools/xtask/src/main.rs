@@ -17,6 +17,7 @@ type TaskResult<T = ()> = Result<T, String>;
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
 const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
+const ACTIVE_CACHE_MARKER: &str = ".automexia-active";
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
@@ -110,6 +111,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             completion::dispatch(completion_args)
         }
         [command] if command == "storage" => storage_report(),
+        [command, cache_args @ ..] if command == "cache" => cache(cache_args),
         [command, visual_diff_args @ ..] if command == "visual-diff" => {
             visual_diff::dispatch(visual_diff_args)
         }
@@ -209,7 +211,27 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|cache <status [--warn-gib N]|gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]>|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+}
+
+fn cache(arguments: &[String]) -> TaskResult {
+    let program = python_program().ok_or("Python 3 is required for cache management")?;
+    println!("+ {program} tools/ci/dev_cache.py {}", arguments.join(" "));
+    let mut command = Command::new(program);
+    command
+        .arg("tools/ci/dev_cache.py")
+        .args(arguments)
+        .current_dir(root());
+    run_command(command, "Automexia development-cache manager")
+}
+
+fn automatic_cache_gc() -> TaskResult {
+    cache(&[
+        "gc".into(),
+        "--scope".into(),
+        "automatic".into(),
+        "--apply".into(),
+    ])
 }
 
 fn assurance_scope_supported(scope: &str) -> bool {
@@ -795,6 +817,11 @@ impl VerificationTarget {
                 path.display()
             )
         })?;
+        fs::write(
+            path.join(ACTIVE_CACHE_MARKER),
+            std::process::id().to_string(),
+        )
+        .map_err(|error| format!("could not create verification cache lease: {error}"))?;
         let keep = environment_truthy("AUTOMEXIA_KEEP_VERIFY_TARGET");
         println!("verification target {}", path.display());
         println!("incremental         disabled for verification artifacts");
@@ -809,6 +836,9 @@ impl VerificationTarget {
     fn finish(&mut self) -> TaskResult {
         let used = directory_size(&self.path)?;
         if self.keep {
+            fs::remove_file(self.path.join(ACTIVE_CACHE_MARKER)).map_err(|error| {
+                format!("could not release verification cache marker: {error}")
+            })?;
             println!(
                 "verification target retained at {} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
                 self.path.display(),
@@ -1310,8 +1340,34 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("collect_host_manifest()")
             && qa.contains("AUTOMEXIA_NATIVE_RESOURCE_REPORT")
             && qa.contains("JUnit report exceeds the 8 MiB artifact ceiling")
+            && qa.contains("def run_benchmark_matrix(")
+            && qa.contains("shutil.rmtree(benchmark_target)")
             && root().join("tools/ci/test_qa.py").is_file(),
         "Phase 0 QA evidence lacks bounds, deadlines, host identity, self-tests, or private-artifact safety",
+    )?;
+
+    let cache = read(&root().join("tools/ci/dev_cache.py"))?;
+    let assurance = read(&root().join("tools/ci/github_free_assurance.py"))?;
+    let cargo_config = read(&root().join(".cargo/config.toml"))?;
+    let workspace_manifest = read(&root().join("Cargo.toml"))?;
+    require(
+        cache.contains("SCOPES = (\"automatic\", \"tools\", \"worktrees\", \"all\")")
+            && cache.contains("DEFAULT_GRACE_HOURS = 72")
+            && cache.contains("def cache_lease(")
+            && cache.contains("def process_is_active(")
+            && cache.contains("refusing to remove a path outside the cache contract")
+            && cache.contains("if candidate.current or candidate.leased or candidate.current_toolset")
+            && assurance.contains("TOOL_CACHE_CONTRACT = \"shared-content-addressed-v1\"")
+            && assurance.contains("def toolset_is_valid(")
+            && assurance.contains("def quarantine_invalid_toolset(")
+            && assurance.contains("# cargo xtask assurance pre-push")
+            && assurance.contains("\"exit 0\\n\"")
+            && cargo_config.contains("build-dir = \"{workspace-root}/target/build\"")
+            && cargo_config.contains("auto-clean-frequency = \"1 day\"")
+            && workspace_manifest.contains("[profile.debugging]")
+            && workspace_manifest.contains("debug = \"line-tables-only\"")
+            && root().join("tools/ci/test_dev_cache.py").is_file(),
+        "Development cache ownership, integrity, cleanup, non-blocking push, or debug-profile policy is missing",
     )?;
 
     let ci = read(&root().join(".github/workflows/ci.yml"))?;
@@ -1622,6 +1678,7 @@ fn ci() -> TaskResult {
 }
 
 fn qa(bundle: bool) -> TaskResult {
+    automatic_cache_gc()?;
     require_native_wsl_workspace("the Phase 0 QA evidence gate")?;
     let program =
         python_program().ok_or("Python 3 is required for the QA evidence runner")?;
@@ -1633,10 +1690,15 @@ fn qa(bundle: bool) -> TaskResult {
     if bundle {
         command.arg("--bundle");
     }
-    run_command(command, "Phase 0 QA evidence runner")
+    let result = run_command(command, "Phase 0 QA evidence runner");
+    if result.is_ok() {
+        automatic_cache_gc()?;
+    }
+    result
 }
 
 fn complete_ci_gate() -> TaskResult {
+    automatic_cache_gc()?;
     doctor()?;
     run_python("tools/ci/validate_repository.py")?;
     validate_shell_integrations()?;
@@ -1644,7 +1706,8 @@ fn complete_ci_gate() -> TaskResult {
     run_command(
         cargo_deny_command(),
         "cargo deny --locked --color never check --hide-inclusion-graph",
-    )
+    )?;
+    automatic_cache_gc()
 }
 
 fn cargo_deny_command() -> Command {
@@ -4566,6 +4629,8 @@ mod tests {
         assert!(usage().contains("assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>"));
         assert!(usage().contains("run [-- APP_ARGS...]"));
         assert!(usage().contains("storage"));
+        assert!(usage().contains("cache <status"));
+        assert!(usage().contains("gc [--scope automatic|tools|worktrees|all]"));
         assert!(usage().contains("verify architecture"));
         assert!(usage().contains("test conformance"));
         assert!(usage().contains("test resize-stress [--native-gui]"));
@@ -4881,6 +4946,27 @@ mod tests {
         )));
         assert!(verified_target_child(&parent, "../outside").is_err());
         assert!(verified_target_child(&parent, "nested/child").is_err());
+    }
+
+    #[test]
+    fn retained_verification_target_releases_its_activity_marker() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join(verification_target_name(42, 1234));
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join(ACTIVE_CACHE_MARKER), b"42").unwrap();
+        fs::write(path.join("artifact"), b"generated").unwrap();
+        let mut target = VerificationTarget {
+            parent: temporary.path().to_path_buf(),
+            path: path.clone(),
+            keep: true,
+            finished: false,
+        };
+
+        target.finish().unwrap();
+
+        assert!(path.is_dir());
+        assert!(!path.join(ACTIVE_CACHE_MARKER).exists());
+        assert!(target.finished);
     }
 
     #[test]

@@ -54,6 +54,33 @@ class DocumentationCoverageTests(unittest.TestCase):
         )
         self.assertNotIn("install-tools", commands)
 
+    def test_grouped_cache_usage_expands_to_documented_subcommands(self) -> None:
+        commands = COVERAGE.xtask_commands()
+        self.assertEqual(
+            {command for command in commands if command.startswith("cache ")},
+            {
+                "cache status [--warn-gib N]",
+                "cache gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]",
+            },
+        )
+        self.assertNotIn("cache", commands)
+
+    def test_usage_alternatives_do_not_split_option_value_registries(self) -> None:
+        self.assertEqual(
+            COVERAGE.split_usage_alternatives(
+                "status [--warn N]|generate <--one|--two>|gc [--scope automatic|tools|all] [--apply]"
+            ),
+            [
+                "status [--warn N]",
+                "generate <--one|--two>",
+                "gc [--scope automatic|tools|all] [--apply]",
+            ],
+        )
+        with self.assertRaisesRegex(
+            COVERAGE.DocumentationCoverageError, "unmatched"
+        ):
+            COVERAGE.split_usage_alternatives("gc [--scope all")
+
     def test_missing_binding_action_is_rejected(self) -> None:
         with self.assertRaisesRegex(
             COVERAGE.DocumentationCoverageError, "previewselectedimage"

@@ -540,6 +540,27 @@ CI-equivalent suite. Do not use `cargo dev` merely as a test command because it
 intentionally launches the application. Use `cargo automexia` only for deliberate
 manual UI validation.
 
+### 9.1 Preserve build-cache ownership and push policy
+
+- Keep final Cargo artifacts, intermediate compiler data, per-gate verification
+  targets, immutable assurance tools, mutable downloads/runtime state, staging,
+  process temporary data, and QA benchmark targets under their documented
+  separate owners. Never share a mutable Cargo target across worktrees or
+  operating systems.
+- Before adding a cache, define its content identity, byte/file/directory
+  ceilings, producer, consumers, lease or process ownership, atomic publication,
+  corruption behavior, cleanup scope, grace period, rollback, and proof that it
+  cannot affect release authority.
+- Inspect with `cargo xtask cache status`. Preview `cargo xtask cache gc` before
+  applying cleanup. Never broaden an exact generated candidate into a cache
+  root, worktree root, linked path, dirty worktree, live process, or leased
+  directory.
+- GitHub's free hosted `CI` workflow is the automatic push and pull-request
+  authority. Keep the local pre-push hook dormant and non-blocking until the user
+  explicitly authorizes reactivation. Preserve the manual
+  `cargo xtask assurance pre-push` path and update generator, mutation tests,
+  resource budgets, and documentation together if this policy changes.
+
 ### 10. Perform visual and manual verification
 
 For visible or interactive changes, exercise the real workflow and inspect a

@@ -197,27 +197,66 @@ def application_cli_commands(root: Path = ROOT) -> set[str]:
     }
 
 
+def split_usage_alternatives(value: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    square_depth = 0
+    angle_depth = 0
+    for index, character in enumerate(value):
+        if character == "[":
+            square_depth += 1
+        elif character == "]":
+            square_depth -= 1
+            if square_depth < 0:
+                raise DocumentationCoverageError("xtask usage has unmatched brackets")
+        elif character == "<":
+            angle_depth += 1
+        elif character == ">":
+            angle_depth -= 1
+            if angle_depth < 0:
+                raise DocumentationCoverageError("xtask usage has unmatched brackets")
+        elif character == "|" and square_depth == 0 and angle_depth == 0:
+            parts.append(value[start:index])
+            start = index + 1
+    if square_depth != 0 or angle_depth != 0:
+        raise DocumentationCoverageError("xtask usage has unmatched brackets")
+    parts.append(value[start:])
+    return parts
+
+
 def xtask_commands(root: Path = ROOT) -> set[str]:
     source = (root / "tools/xtask/src/main.rs").read_text(encoding="utf-8")
     match = re.search(r'"usage: cargo xtask <([^\"]+)>"', source)
     if not match:
         raise DocumentationCoverageError("could not find xtask usage registry")
     usage = match.group(1)
-    assurance = re.search(r"assurance <([^>]+)>", usage)
-    if assurance is None:
-        raise DocumentationCoverageError("xtask usage is missing the assurance scope registry")
+    groups = list(
+        re.finditer(r"(?P<owner>[a-z-]+) <(?P<items>[a-z][^>]+)>", usage)
+    )
+    owners = {group.group("owner") for group in groups}
+    if not {"assurance", "cache"}.issubset(owners):
+        raise DocumentationCoverageError(
+            "xtask usage is missing the assurance or cache scope registry"
+        )
+    flattened = usage
+    for group in reversed(groups):
+        flattened = (
+            flattened[: group.start()]
+            + group.group("owner")
+            + flattened[group.end() :]
+        )
     commands = {
         item.strip()
-        for item in re.split(
-            r"\|(?=[a-z])", usage.replace(assurance.group(0), "assurance")
-        )
+        for item in split_usage_alternatives(flattened)
     }
-    commands.remove("assurance")
-    commands.update(
-        f"assurance {scope.strip()}"
-        for scope in assurance.group(1).split("|")
-        if scope.strip()
-    )
+    for group in groups:
+        owner = group.group("owner")
+        commands.remove(owner)
+        commands.update(
+            f"{owner} {scope.strip()}"
+            for scope in split_usage_alternatives(group.group("items"))
+            if scope.strip()
+        )
     return commands
 
 

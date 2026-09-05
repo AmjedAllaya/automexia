@@ -95,6 +95,20 @@ for fragment in (
         errors.append(f'Linux Early Access workflow is missing free-plan fragment: {fragment}')
 
 ci = (wf/'ci.yml').read_text(encoding='utf-8')
+expected_ci_triggers = """on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+"""
+if ci.count(expected_ci_triggers) != 1:
+    errors.append(
+        'CI must remain the single automatic free hosted push/PR pipeline with '
+        'an explicit manual dispatch option'
+    )
+if re.search(r'^\s*schedule:\s*$', ci, re.MULTILINE):
+    errors.append('ordinary free hosted CI must not add a scheduled trigger')
 for fragment in (
     'tools/ci/github_free_assurance.py check-policy',
     'tools/ci/validate_repository.py',
@@ -116,7 +130,7 @@ for fragment in (
     'gitleaks dir --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml .',
 ):
     if fragment not in ci:
-        errors.append(f'CI is missing required GitHub-Free local assurance fragment: {fragment}')
+        errors.append(f'CI is missing required GitHub-Free hosted assurance fragment: {fragment}')
 if '--log-opts=--all' in ci:
     errors.append('ordinary CI must not rescan unresolved legacy history; use the explicit local history-audit command')
 dependency_job = re.search(

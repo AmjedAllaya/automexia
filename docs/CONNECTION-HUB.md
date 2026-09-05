@@ -2,6 +2,7 @@
 
 Implementation owner: `automexia-connectivity`. This package name records
 current source ownership and does not announce a connection product.
+Implementation contract: `F2/D5.0` capability-free model and review boundary.
 
 This public page describes only ordinary free system-OpenSSH interoperability
 and the explicit local inventory behavior that is safe to document publicly.

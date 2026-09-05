@@ -109,6 +109,19 @@ class FreePlanContractTests(unittest.TestCase):
         completed = self.run_checker()
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_ci_remains_the_automatic_free_hosted_push_and_pr_pipeline(self) -> None:
+        for old, new in (
+            ("  push:\n    branches: [main]\n", ""),
+            (
+                "  workflow_dispatch:\n",
+                "  workflow_dispatch:\n  schedule:\n    - cron: '0 0 * * *'\n",
+            ),
+        ):
+            with self.subTest(mutation=old):
+                completed = self.run_checker_with_replacement(old, new)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertRegex(completed.stderr, r"automatic free hosted|scheduled")
+
     def test_private_environment_is_rejected(self) -> None:
         completed = self.run_checker(
             ("workflows/s2-assurance.yml", "\n  environment: stable-release\n")
@@ -156,7 +169,7 @@ class FreePlanContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("only release-candidate-coverage", completed.stderr)
 
-    def test_required_local_assurance_scanners_cannot_be_removed(self) -> None:
+    def test_required_hosted_assurance_scanners_cannot_be_removed(self) -> None:
         completed = self.run_checker(
             (
                 "workflows/ci.yml",
@@ -184,7 +197,7 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("GitHub-Free local assurance", completed.stderr)
+        self.assertIn("GitHub-Free hosted assurance", completed.stderr)
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
             shutil.copytree(ROOT / ".github", root / ".github")
@@ -204,7 +217,7 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("GitHub-Free local assurance", completed.stderr)
+        self.assertIn("GitHub-Free hosted assurance", completed.stderr)
 
     def test_ordinary_ci_cannot_be_changed_back_to_all_history_scanning(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:

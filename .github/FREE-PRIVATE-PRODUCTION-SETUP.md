@@ -355,10 +355,15 @@ available. See `docs/PUBLIC-RELEASE-DISTRIBUTION.md`.
 
 `nightly.yml` is manual-only in this edition. Daily scheduled fuzz/Miri/sanitizer runs can consume a private Free repository's allowance rapidly. Run **Deep assurance (manual)** before major releases when desired. The specialized S1/S2/F5 workflows are also manual/self-hosted controls.
 
-## 9.1 Local assurance before a push
+## 9.1 Optional local assurance
 
-On every trusted contributor machine, install and verify the free local
-assurance tools once from a clean repository checkout:
+GitHub's free hosted `CI` workflow is the automatic push and pull-request
+authority. The local profile remains available for explicit offline or
+pre-release checks, but the repository pre-push hook is intentionally dormant
+and does not run a pipeline.
+
+On a trusted contributor machine, install and verify the free local assurance
+tools from a clean repository checkout when the manual profile is needed:
 
 ```text
 cargo xtask assurance install-tools
@@ -366,11 +371,14 @@ cargo xtask assurance initialize-vet
 cargo xtask assurance pre-push
 ```
 
-The installer places all downloaded or built tools in the ignored repository
-local `.automexia-tools/` directory. It checksum-verifies Actionlint and
-Gitleaks release archives, pins Semgrep Community Edition, Cargo Audit, Cargo
-Vet, and Zizmor versions, and never stores credentials in that directory. The
-pre-push profile checks the repository readiness gate, workflow pin/policy and
+The installer publishes downloaded or built executables to a shared,
+platform- and version-addressed immutable toolset after verifying its complete
+integrity manifest. Mutable Cargo/Python state, downloads, staging, and process
+temporary data remain separate and never enter the toolset. It checksum-verifies
+Actionlint and Gitleaks release archives, pins Semgrep Community Edition, Cargo
+Audit, Cargo Vet, and Zizmor versions, and never stores credentials in the
+cache. The manually invoked pre-push profile checks the repository readiness
+gate, workflow pin/policy and
 mutation contracts, Actionlint, offline Zizmor, RustSec/Cargo Deny/Cargo Vet,
 Gitleaks against introduced commits and current files, local Semgrep rules, and
 real scanner canaries. `initialize-vet` generates Cargo Vet's source-controlled
@@ -393,11 +401,15 @@ validated GitHub event SHAs and still scans the complete checked-out working
 tree.
 
 Use `cargo xtask assurance install-hook` only on a machine that has no existing
-pre-push hook. It refuses to replace an existing hook. `release-local` adds
-release policy checks; `deep-source` must run from Linux or a native WSL
-checkout and runs bounded Miri, sanitizer, and fuzz campaigns. These local
-profiles do not claim GitHub plan controls, native macOS/Windows accessibility,
-or signing/notarization evidence.
+pre-push hook. It refuses to replace an existing hook and installs a non-blocking
+placeholder whose assurance command is commented out. A future decision to
+restore automatic local enforcement must deliberately update the hook generator,
+tests, and contributor documentation. `release-local` adds release policy
+checks; `deep-source` must run from Linux or a native WSL checkout and runs
+bounded Miri, sanitizer, and fuzz campaigns. These local profiles do not claim
+GitHub plan controls, native macOS/Windows accessibility, or
+signing/notarization evidence. Cache inspection and dry-run-first cleanup are
+documented in `docs/DEVELOPMENT-CACHE.md`.
 
 ## 10. Trust boundary
 

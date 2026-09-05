@@ -113,9 +113,10 @@ twice: 38m20s with 474 hits and 1,681 misses, then 13m44s with 2,153 hits and
   `github_free_assurance.py` remain the typed policy/evidence owners for their
   respective external boundaries.
 
-The hosted policy job and local pre-push profile both run actionlint 1.7.12 with
-an explicit checksum-pinned ShellCheck 0.11.0 path. The full Python policy layer
-also runs:
+The hosted policy job and explicitly invoked local assurance profile both run
+actionlint 1.7.12 with an explicit checksum-pinned ShellCheck 0.11.0 path. The
+local pre-push hook is dormant and does not invoke this profile. The full Python
+policy layer also runs:
 
 ```text
 python -m unittest discover -s tools/ci -p "test_*.py"
@@ -240,11 +241,14 @@ Then run the contributor gate:
 cargo ready
 ```
 
-Pinned security tools use a repository-local Cargo home for reproducibility.
-When the assurance runner must invoke repository readiness itself, the product
-build keeps the contributor's normal Cargo home while retaining the isolated
-tool `PATH` and temporary directories. This prevents native dependency source
-roots from changing underneath a shared persistent target.
+Pinned security executables use an immutable content-addressed shared toolset.
+Their mutable Cargo/Python state, downloads, staging, and process temporary data
+use separate generated cache roots. When the assurance runner must invoke
+repository readiness itself, the product build keeps the contributor's normal
+Cargo home while retaining only the verified tool `PATH` and isolated temporary
+directories. This prevents native dependency source roots from changing
+underneath a persistent target. See
+[Development cache and build storage](DEVELOPMENT-CACHE.md).
 
 ### Current local evidence
 
@@ -262,10 +266,12 @@ following bounded evidence:
 - `cargo ready` passed its clean isolated workspace check, warning-denied
   Clippy, unit/integration/documentation tests, dependency policy, application
   build, and version smoke, then removed 9.45 GiB of disposable artifacts; and
-- the pre-push profile passed Action pinning, actionlint, Zizmor, RustSec,
+- the explicitly invoked local assurance profile passed Action pinning,
+  actionlint, Zizmor, RustSec,
   Cargo Deny, Cargo Vet, changed-history and working-tree Gitleaks scans, two
   Semgrep rules over 620 tracked Rust files with zero findings, and three real
-  scanner-canary mutations.
+  scanner-canary mutations. This historical run does not mean the dormant
+  pre-push hook runs automatically.
 
 The introduced-commit scan compares an established branch with its configured
 upstream. A new branch with no upstream uses the fetched `origin/HEAD` merge

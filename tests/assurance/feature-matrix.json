@@ -614,21 +614,21 @@
     },
     {
       "id": "contributor-automation-quality-policy",
-      "title": "Single-command workflow, architecture, identity, coverage, QA evidence, and dependency policy",
-      "components": ["tools/xtask"],
+      "title": "Single-command workflow, bounded caches, architecture, identity, coverage, QA evidence, and dependency policy",
+      "components": ["tools/xtask", "tools/ci"],
       "documentation": {
-        "guide": ["CONTRIBUTING.md#one-command-workflows", "docs/GETTING-STARTED.md#6-prepare-a-contribution"],
-        "reference": ["docs/CLI-REFERENCE.md#focused-xtask-commands", "docs/TESTING.md#complete-local-gate"],
-        "explanation": ["docs/adr/0005-storage-bounded-build-workflow.md"]
+        "guide": ["CONTRIBUTING.md#one-command-workflows", "docs/DEVELOPMENT-CACHE.md#inspect-storage"],
+        "reference": ["docs/CLI-REFERENCE.md#focused-xtask-commands", "docs/TESTING.md#build-cache-and-storage-evidence"],
+        "explanation": ["docs/adr/0005-storage-bounded-build-workflow.md", "docs/adr/0039-content-addressed-development-cache.md"]
       },
       "quality": {
         "accessibility": {"level": "not_applicable", "evidence": [], "rationale": "Contributor automation is a textual command interface; product accessibility is tested at renderer and input surfaces."},
-        "correctness": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
-        "security": {"level": "pr", "evidence": ["tools/ci/test_qa.py", "tools/ci/validate_repository.py", "deny.toml"]},
-        "performance": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py"]},
-        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py"]},
-        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/qa.py", "tools/ci/test_qa.py", "docs/WSL-DEVELOPMENT.md"]},
-        "resilience": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/test_qa.py"]},
+        "correctness": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/dev_cache.py", "tools/ci/test_dev_cache.py", "tools/ci/test_qa.py"]},
+        "security": {"level": "pr", "evidence": ["tools/ci/dev_cache.py", "tools/ci/test_dev_cache.py", "tools/ci/test_github_free_assurance.py", "tools/ci/validate_repository.py", "deny.toml"]},
+        "performance": {"level": "pr", "evidence": [".cargo/config.toml", "Cargo.toml", "tools/ci/qa.py", "tools/ci/test_qa.py"]},
+        "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/dev_cache.py", "tools/ci/test_dev_cache.py", "tools/ci/qa.py", "tools/ci/test_qa.py"]},
+        "storage_hygiene": {"level": "pr", "evidence": ["tools/ci/dev_cache.py", "tools/ci/test_dev_cache.py", "tools/ci/github_free_assurance.py", "tools/ci/test_github_free_assurance.py", "docs/DEVELOPMENT-CACHE.md"], "rationale": "Final and intermediate Cargo artifacts, verification targets, immutable toolsets, mutable runtime/download state, staging, temporary data, and QA benchmark targets have separate owners; bounded dry-run-first cleanup protects current, dirty, live, leased, required, recent, linked, and unexpected paths."},
+        "resilience": {"level": "pr", "evidence": ["tools/xtask/src/main.rs", "tools/ci/dev_cache.py", "tools/ci/test_dev_cache.py", "tools/ci/test_qa.py"]},
         "visual_quality": {"level": "not_applicable", "evidence": [], "rationale": "QA reports are evidence artifacts rather than the terminal product UI."}
       },
       "platforms": {

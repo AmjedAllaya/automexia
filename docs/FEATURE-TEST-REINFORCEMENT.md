@@ -109,6 +109,14 @@ Mutation-test repository validators so deleted owners, weakened limits, stale
 paths, fabricated evidence, missing private-documentation exclusions, and
 confidential-data canaries fail closed.
 
+For caches and build storage, additionally mutate content identity, integrity
+manifests, atomic publication, link/reparse rejection, traversal ceilings,
+current and dirty worktree protection, live/dead owner probes, leases, grace
+periods, dry-run/apply behavior, exact deletion allowlists, de-duplicated usage,
+success/failure cleanup, and the dormant pre-push hook. Compare the generated
+tree and hashes independently. Exercise native process ownership on each
+claimed platform and keep unexecuted hosts external.
+
 ### stabilization-release-assurance
 
 Keep first failures, compare same-host performance baselines, require bounded

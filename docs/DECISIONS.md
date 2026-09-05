@@ -32,6 +32,7 @@ listed or summarized here.
 | [0031](adr/0031-versioned-hosted-ci-and-repository-protection.md) | Hosted CI and repository protection |
 | [0036](adr/0036-application-owned-runtime-user-preferences.md) | Application-owned appearance preferences |
 | [0037](adr/0037-public-binary-release-distribution.md) | Public binary release distribution |
+| [0039](adr/0039-content-addressed-development-cache.md) | Content-addressed development cache lifecycle |
 
 ## When an ADR is required
 

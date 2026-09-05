@@ -41,9 +41,13 @@ The exact current status and remaining external gates are documented in
 | **Fully done (source and policy)** | Readiness avoids the duplicate pre-Clippy Cargo check; quality jobs use a reviewed, versioned compiler cache; Cargo source caches share a lockfile-bound identity; native x64/Arm64 package jobs run beside quality while remaining cold; nFPM uses checksum-pinned native archives; downstream jobs join all required evidence; semantic mutation tests guard every boundary | Preserve the cold package boundary and rerun all mutations for every workflow or toolchain change. |
 | **Fully done (exact hosted evidence)** | Exact-commit PR CI and credential-free cold/warm release rehearsals passed; both native package lifecycles remained cold; cache counters and job timestamps are retained in runs `33593759776` and `33593793029` | Preserve the evidence links and repeat the measurement after material workflow, dependency, toolchain, or cache-generation changes. |
 | **Fully done (bounded measured claim)** | For the linked rehearsal only, the whole path improved from 37m11s to 25m56s cold and 15m01s warm (30.3% and 59.6%); the warm release quality job was 52.9% faster and the independent ordinary PR quality/test job improved from 38m20s to 13m44s (64.2%) | Do not generalize these figures: GitHub runner load, eviction, quota, rate limits, and future dependency graphs remain external service conditions. |
+| **Fully done (source and local contract)** | Cargo intermediates are separated from final artifacts; assurance tools are shared through an integrity-checked content-addressed cache; disposable verification and QA benchmark targets have explicit cleanup owners; cache inventory and dry-run-first GC protect current, dirty, leased, live, required, recent, linked, and unexpected paths | Obtain current native evidence on every claimed host and keep any destructive legacy/worktree cleanup an explicit reviewed action. |
+| **Fully done (CI trigger policy)** | GitHub's free hosted CI remains automatic for pushes and pull requests; the local pre-push hook is a tested non-blocking placeholder with the manual command preserved as a comment | A future automatic-local policy change must update the generator, mutation tests, contributor docs, and cache/resource budget together. |
 
 The complete design and evidence ledger is
 [CI and build performance plan](CI-BUILD-PERFORMANCE-PLAN.md).
+The cache lifecycle and cleanup guide is
+[Development cache and build storage](DEVELOPMENT-CACHE.md).
 
 ## Direction after the first stable release
 

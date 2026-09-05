@@ -64,6 +64,7 @@ features and commercial strategy.
 | Architecture decisions | [Decision index](DECISIONS.md) |
 | Documentation rules | [Documentation guide](DOCUMENTATION.md) |
 | Testing and release | [Developer testing](developer/testing-release.md) |
+| Build storage and cache cleanup | [Development cache](DEVELOPMENT-CACHE.md) |
 | Public/private boundary | [Private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md) |
 
 ## Public feature-status boundary

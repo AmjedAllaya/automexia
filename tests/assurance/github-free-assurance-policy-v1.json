@@ -1,7 +1,7 @@
 {
-  "schema": 1,
+  "schema": 2,
   "owner": "tools/ci/github_free_assurance.py",
-  "tool_cache": ".automexia-tools",
+  "tool_cache": "shared-content-addressed-v1",
   "profiles": {
     "pre-push": [
       "repository-ready",

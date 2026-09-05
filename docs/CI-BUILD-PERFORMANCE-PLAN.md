@@ -117,6 +117,22 @@ cache errors to 13m44s with 2,153 hits, 2 misses, and no cache errors: 64.2%
 for those exact attempts. Repository policy and dependency security remained
 separate read-only jobs and passed on both attempts.
 
+### Development-cache lifecycle extension
+
+The 2026-09-05 source extension separates Cargo final artifacts from
+intermediates, shares immutable assurance tools by content identity, separates
+mutable package-manager state, and gives verification, staging, temporary, and
+QA benchmark data explicit cleanup owners. Cache collection is bounded and
+dry-run by default; current, dirty, linked, leased, live, required, and recent
+entries fail closed. This reduces duplicate per-worktree storage without
+sharing mutable Cargo targets.
+
+GitHub's free hosted `CI` workflow remains the automatic push and pull-request
+authority. The local pre-push hook is now a non-blocking placeholder with the
+manual assurance command commented for possible future reactivation. This
+changes contributor latency, not hosted coverage. Exact implementation and
+recovery commands are in [Development cache and build storage](DEVELOPMENT-CACHE.md).
+
 ## Placement decision
 
 This is contributor and release infrastructure, so ownership stays in the

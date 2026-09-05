@@ -39,6 +39,35 @@ The contributor command `cargo ready` is the final local gate when applicable.
 Use the complete CI-equivalent command only when the change or policy requires
 it.
 
+GitHub's free hosted `CI` workflow is the automatic push and pull-request
+authority. The local pre-push hook is intentionally dormant and exits without
+running assurance. Invoke `cargo xtask assurance pre-push` manually when a
+local profile is desired.
+
+## Build cache and storage evidence
+
+Cache and build-lifecycle changes must test exact path containment, link and
+reparse-point rejection, zero/boundary/over-limit inventory, content identity,
+corrupt and partial toolsets, atomic publication, concurrent leases, live and
+dead process owners, current and dirty worktrees, grace periods, dry-run versus
+apply, failure cleanup, and storage de-duplication. The independent oracles are
+the generated storage tree and file digests, not cache self-reporting.
+
+Run the focused owners first:
+
+```text
+python tools/ci/test_dev_cache.py
+python tools/ci/test_github_free_assurance.py
+python tools/ci/test_qa.py
+cargo xtask cache status
+cargo xtask cache gc --scope automatic --grace-hours 72
+```
+
+The cleanup command above is a dry run. Use `--apply` only after reviewing the
+exact candidates. The current target, dirty worktrees, active leases, live
+processes, required toolsets, recent entries, links, and broad paths must remain
+protected. See [Development cache and build storage](DEVELOPMENT-CACHE.md).
+
 ## Evidence ladder
 
 1. Unit tests for pure parsing, state, policy, layout, and limits.

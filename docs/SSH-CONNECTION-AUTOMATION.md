@@ -4,6 +4,9 @@ Automexia supports ordinary command-line OpenSSH as a free terminal capability.
 This page does not specify a managed connection, provider, automation, or
 commercial product.
 
+Implementation contract: `F2/D5.0` capability-free review remains separate
+from system OpenSSH execution.
+
 ## Use
 
 Run the operating system's `ssh`, `scp`, or `sftp` command in a terminal

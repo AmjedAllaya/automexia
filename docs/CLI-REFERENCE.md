@@ -113,6 +113,8 @@ cleanup commands are mutating and require deliberate review.
 | `cargo xtask dev [-- APP_ARGS...]` | Run the development build/launch workflow. |
 | `cargo xtask qa --full [--bundle]` | Run the full assurance profile and optionally validate the bundle. |
 | `cargo xtask storage` | Report bounded repository build-storage use. |
+| `cargo xtask cache status [--warn-gib N]` | Inventory generated development caches and warn at the selected distinct-usage budget. |
+| `cargo xtask cache gc [--scope automatic\|tools\|worktrees\|all] [--grace-hours N] [--apply]` | Preview or apply exact, bounded cache cleanup; cleanup is a dry run without `--apply`. |
 | `cargo xtask completion COMMAND [OPTIONS]` | Generate shell completion for the selected contributor command. |
 | `cargo xtask verify all` | Run all repository verification owners. |
 | `cargo xtask verify keybindings` | Verify the keyboard contract and generated artifacts. |
@@ -127,9 +129,9 @@ cleanup commands are mutating and require deliberate review.
 | `cargo xtask assurance deep-source` | Run the deep source-assurance profile. |
 | `cargo xtask assurance audit-history-secrets` | Audit retained repository history through the bounded secret-scanner workflow. |
 | `cargo xtask assurance initialize-vet` | Initialize the dependency-vetting workflow explicitly. |
-| `cargo xtask assurance install-hook` | Install the repository-owned local assurance hook explicitly. |
+| `cargo xtask assurance install-hook` | Install a non-blocking local pre-push placeholder; the assurance command remains commented. |
 | `cargo xtask assurance install-tools` | Install declared assurance tooling explicitly. |
-| `cargo xtask assurance pre-push` | Run the repository-owned pre-push assurance profile. |
+| `cargo xtask assurance pre-push` | Run the repository-owned local assurance profile explicitly; it is not invoked by the dormant hook. |
 | `cargo xtask assurance release-local` | Run the local release-assurance profile without claiming hosted publication. |
 
 Commands that launch, install, generate, package, release, or clean are

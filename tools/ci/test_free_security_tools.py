@@ -87,10 +87,14 @@ def execute(
     cwd: Path,
     environment: dict[str, str] | None = None,
 ) -> subprocess.CompletedProcess[str]:
-    if Path(command[0]).stem.lower() != "semgrep":
+    is_semgrep = Path(command[0]).stem.lower() == "semgrep" or (
+        len(command) >= 2 and Path(command[1]).name == "semgrep_entrypoint.py"
+    )
+    if not is_semgrep:
         return execute_once(command, cwd=cwd, environment=environment)
-    temporary_parent = Path(ROOT.anchor) if os.name == "nt" else None
-    with tempfile.TemporaryDirectory(prefix="automexia-semgrep-canary-", dir=temporary_parent) as temporary:
+    # Semgrep adds an RPC socket suffix, so use the same short cache path as
+    # production rather than a deeply nested worktree-local directory.
+    with ASSURANCE.semgrep_temporary_directory() as temporary:
         semgrep_environment = (
             os.environ.copy() if environment is None else environment.copy()
         )
@@ -143,8 +147,7 @@ class FreeSecurityToolTests(unittest.TestCase):
         command = installed_command("gitleaks")
         if command is None:
             self.skipTest("Gitleaks is not installed; run cargo xtask assurance install-tools")
-        temporary_root = ROOT / ".automexia-tools" / "tmp"
-        temporary_root.mkdir(parents=True, exist_ok=True)
+        temporary_root = ASSURANCE.process_temporary_directory()
         parent_head = execute(["git", "rev-parse", "HEAD"], cwd=ROOT)
         parent_status = execute(["git", "status", "--porcelain=v1", "-uno"], cwd=ROOT)
         parent_config = execute(
@@ -199,8 +202,7 @@ class FreeSecurityToolTests(unittest.TestCase):
         command = installed_command("gitleaks")
         if command is None:
             self.skipTest("Gitleaks is not installed; run cargo xtask assurance install-tools")
-        temporary_root = ROOT / ".automexia-tools" / "tmp"
-        temporary_root.mkdir(parents=True, exist_ok=True)
+        temporary_root = ASSURANCE.process_temporary_directory()
         with tempfile.TemporaryDirectory(prefix="automexia-private-scope-", dir=temporary_root) as temporary:
             root = Path(temporary)
             private = root / ".automexia-private"
