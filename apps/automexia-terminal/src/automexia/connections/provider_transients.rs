@@ -25,6 +25,7 @@ pub const MAX_PROVIDER_TRANSIENTS: usize = 16;
 pub const MAX_PROVIDER_TRANSIENT_AGE: Duration = Duration::from_secs(24 * 60 * 60);
 const ROOT_PREFIX: &str = "provider-transients-";
 const FILE_PREFIX: &str = "kubeconfig-";
+const MAX_RESERVE_ATTEMPTS: usize = 64;
 const MAX_SWEEP_ROOTS: usize = 64;
 const MAX_SWEEP_FILES: usize = 64;
 
@@ -131,14 +132,9 @@ impl ProviderTransientManager {
         private_fs::validate_private_child_directory(connections_root)
             .map_err(|_| storage_error())?;
         sweep_stale_roots(connections_root);
-        let sequence = MANAGER_SEQUENCE.fetch_add(1, Ordering::Relaxed);
-        let root = connections_root.join(format!(
-            "{ROOT_PREFIX}{}-{sequence:016x}",
-            std::process::id()
-        ));
-        private_fs::ensure_private_child_directory(&root).map_err(|_| storage_error())?;
-        private_fs::validate_private_child_directory(&root)
-            .map_err(|_| storage_error())?;
+        let root = reserve_manager_root_with(connections_root, || {
+            MANAGER_SEQUENCE.fetch_add(1, Ordering::Relaxed)
+        })?;
         Ok(Self {
             root,
             records: VecDeque::with_capacity(MAX_PROVIDER_TRANSIENTS),
@@ -213,6 +209,7 @@ impl ProviderTransientManager {
         handle: &ProviderTransientHandle,
         capsule_id: &str,
         session_id: u64,
+        capsule_revision: u64,
         generation: u64,
         now_ms: u64,
     ) -> Result<(), ProviderTransientError> {
@@ -223,13 +220,19 @@ impl ProviderTransientManager {
             .ok_or_else(|| {
                 ProviderTransientError::new(ProviderTransientErrorCode::SourceChanged)
             })?;
-        validate_owner(record, capsule_id, session_id, generation)?;
+        validate_owner(record, capsule_id, session_id, capsule_revision, generation)?;
         if now_ms >= record.binding.expires_at_ms {
             return Err(ProviderTransientError::new(
                 ProviderTransientErrorCode::Expired,
             ));
         }
-        let exact_path = self.exact_path(handle, capsule_id, session_id, generation)?;
+        let exact_path = self.exact_path(
+            handle,
+            capsule_id,
+            session_id,
+            capsule_revision,
+            generation,
+        )?;
         let bytes = private_fs::read_bounded_regular(exact_path, MAX_KUBECONFIG_BYTES)
             .map_err(|_| {
                 ProviderTransientError::new(ProviderTransientErrorCode::SourceChanged)
@@ -262,6 +265,7 @@ impl ProviderTransientManager {
         handle: &ProviderTransientHandle,
         capsule_id: &str,
         session_id: u64,
+        capsule_revision: u64,
         generation: u64,
     ) -> Result<&Path, ProviderTransientError> {
         let record = self
@@ -271,7 +275,7 @@ impl ProviderTransientManager {
             .ok_or_else(|| {
                 ProviderTransientError::new(ProviderTransientErrorCode::SourceChanged)
             })?;
-        validate_owner(record, capsule_id, session_id, generation)?;
+        validate_owner(record, capsule_id, session_id, capsule_revision, generation)?;
         Ok(&record.path)
     }
 
@@ -280,6 +284,7 @@ impl ProviderTransientManager {
         handle_id: &str,
         capsule_id: &str,
         session_id: u64,
+        capsule_revision: u64,
         generation: u64,
     ) -> Result<bool, ProviderTransientError> {
         let Some(index) = self
@@ -289,7 +294,13 @@ impl ProviderTransientManager {
         else {
             return Ok(false);
         };
-        validate_owner(&self.records[index], capsule_id, session_id, generation)?;
+        validate_owner(
+            &self.records[index],
+            capsule_id,
+            session_id,
+            capsule_revision,
+            generation,
+        )?;
         let record = self.records.remove(index).expect("located record exists");
         remove_owned_file(&self.root, &record.path).map_err(|_| storage_error())?;
         Ok(true)
@@ -352,7 +363,7 @@ impl ProviderTransientManager {
     }
 
     fn reserve_path(&self) -> Result<(String, PathBuf), ProviderTransientError> {
-        for _ in 0..64 {
+        for _ in 0..MAX_RESERVE_ATTEMPTS {
             let sequence = FILE_SEQUENCE.fetch_add(1, Ordering::Relaxed);
             let id = format!("transient-{sequence:016x}");
             let path = self.root.join(format!("{FILE_PREFIX}{sequence:016x}.yaml"));
@@ -362,6 +373,33 @@ impl ProviderTransientManager {
         }
         Err(storage_error())
     }
+}
+
+fn reserve_manager_root_with(
+    connections_root: &Path,
+    mut next_sequence: impl FnMut() -> u64,
+) -> Result<PathBuf, ProviderTransientError> {
+    for _ in 0..MAX_RESERVE_ATTEMPTS {
+        let sequence = next_sequence();
+        let root = connections_root.join(format!(
+            "{ROOT_PREFIX}{}-{sequence:016x}",
+            std::process::id()
+        ));
+        match fs::create_dir(&root) {
+            Ok(()) => {
+                if private_fs::ensure_private_child_directory(&root).is_err()
+                    || private_fs::validate_private_child_directory(&root).is_err()
+                {
+                    let _ = fs::remove_dir(&root);
+                    return Err(storage_error());
+                }
+                return Ok(root);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {}
+            Err(_) => return Err(storage_error()),
+        }
+    }
+    Err(storage_error())
 }
 
 impl Drop for ProviderTransientManager {
@@ -410,6 +448,7 @@ fn validate_owner(
     record: &ProviderTransientRecord,
     capsule_id: &str,
     session_id: u64,
+    capsule_revision: u64,
     generation: u64,
 ) -> Result<(), ProviderTransientError> {
     if record.binding.capsule_id != capsule_id || record.binding.session_id != session_id
@@ -418,7 +457,9 @@ fn validate_owner(
             ProviderTransientErrorCode::CrossSession,
         ));
     }
-    if record.binding.generation != generation {
+    if record.binding.capsule_revision != capsule_revision
+        || record.binding.generation != generation
+    {
         return Err(ProviderTransientError::new(
             ProviderTransientErrorCode::StaleGeneration,
         ));
@@ -539,10 +580,10 @@ current-context: context-one
         let (_temporary, mut manager) = manager();
         let handle = manager.publish(binding(1, 500), KUBECONFIG, 100).unwrap();
         manager
-            .revalidate(&handle, "capsule-one", 7, 1, 200)
+            .revalidate(&handle, "capsule-one", 7, 3, 1, 200)
             .unwrap();
         let path = manager
-            .exact_path(&handle, "capsule-one", 7, 1)
+            .exact_path(&handle, "capsule-one", 7, 3, 1)
             .unwrap()
             .to_path_buf();
         assert!(path.exists());
@@ -553,12 +594,12 @@ current-context: context-one
         fs::write(&path, tampered).unwrap();
         assert_eq!(
             manager
-                .revalidate(&handle, "capsule-one", 7, 1, 200)
+                .revalidate(&handle, "capsule-one", 7, 3, 1, 200)
                 .unwrap_err()
                 .code(),
             ProviderTransientErrorCode::SourceChanged
         );
-        assert!(manager.revoke(handle.id(), "capsule-one", 7, 1).unwrap());
+        assert!(manager.revoke(handle.id(), "capsule-one", 7, 3, 1).unwrap());
         assert!(!path.exists());
     }
 
@@ -583,21 +624,28 @@ current-context: context-one
         let handle = manager.publish(binding(2, 250), KUBECONFIG, 100).unwrap();
         assert_eq!(
             manager
-                .revalidate(&handle, "capsule-one", 7, 1, 200)
+                .revalidate(&handle, "capsule-one", 7, 3, 1, 200)
                 .unwrap_err()
                 .code(),
             ProviderTransientErrorCode::StaleGeneration
         );
         assert_eq!(
             manager
-                .revalidate(&handle, "capsule-one", 8, 2, 200)
+                .revalidate(&handle, "capsule-one", 8, 3, 2, 200)
                 .unwrap_err()
                 .code(),
             ProviderTransientErrorCode::CrossSession
         );
         assert_eq!(
             manager
-                .revalidate(&handle, "capsule-one", 7, 2, 250)
+                .revalidate(&handle, "capsule-one", 7, 4, 2, 200)
+                .unwrap_err()
+                .code(),
+            ProviderTransientErrorCode::StaleGeneration
+        );
+        assert_eq!(
+            manager
+                .revalidate(&handle, "capsule-one", 7, 3, 2, 250)
                 .unwrap_err()
                 .code(),
             ProviderTransientErrorCode::Expired
@@ -659,6 +707,52 @@ current-context: context-one
             );
             assert_eq!(manager.shutdown(), 0);
         }
+    }
+
+    #[test]
+    fn manager_root_reservation_never_adopts_a_preexisting_directory() {
+        let temporary = tempfile::tempdir().unwrap();
+        let connections = temporary.path().join("connections");
+        private_fs::ensure_private_child_directory(&connections).unwrap();
+        let colliding = connections.join(format!(
+            "{ROOT_PREFIX}{}-{:016x}",
+            std::process::id(),
+            41_u64
+        ));
+        private_fs::ensure_private_child_directory(&colliding).unwrap();
+        let sequence = AtomicU64::new(41);
+        let reserved = reserve_manager_root_with(&connections, || {
+            sequence.fetch_add(1, Ordering::Relaxed)
+        })
+        .unwrap();
+        assert_ne!(reserved, colliding);
+        assert!(reserved.ends_with(format!(
+            "{ROOT_PREFIX}{}-{:016x}",
+            std::process::id(),
+            42_u64
+        )));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_local_paths_publish_revalidate_and_revoke_real_provider_transients() {
+        let temporary = tempfile::tempdir().unwrap();
+        let long_parent = temporary.path().join("p".repeat(180));
+        fs::create_dir(&long_parent).unwrap();
+        let connections = long_parent.join("connections");
+        let mut manager = ProviderTransientManager::open(&connections).unwrap();
+        let item = binding(41, 500);
+        let handle = manager.publish(item, KUBECONFIG, 100).unwrap();
+        let path = manager
+            .exact_path(&handle, "capsule-one", 7, 3, 41)
+            .unwrap();
+        assert!(path.to_string_lossy().encode_utf16().count() > 260);
+        manager
+            .revalidate(&handle, "capsule-one", 7, 3, 41, 200)
+            .unwrap();
+        manager
+            .revoke(handle.id(), "capsule-one", 7, 3, 41)
+            .unwrap();
     }
 
     #[cfg(unix)]

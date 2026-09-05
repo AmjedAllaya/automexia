@@ -103,6 +103,11 @@ jobs:
       - name: Execute the complete Python CI contract and mutation suite
         run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
+      - name: Verify M8-M12 multi-cloud evidence wiring
+        run: |
+          python tools/ci/check_m8_m12_multicloud.py
+          python tools/ci/test_m8_m12_multicloud.py
+
       - name: Scan Rust source with local Semgrep rules
         run: >-
           semgrep scan --config tools/ci/semgrep-rules.yml --error --metrics=off

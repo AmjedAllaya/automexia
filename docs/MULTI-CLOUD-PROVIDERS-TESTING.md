@@ -15,6 +15,21 @@ These headings preserve source-owned feature-matrix references after the
 public documentation consolidation. They do not expand shipped behavior,
 reintroduce private plans, or replace the current status stated above.
 
+### M8-M12 stable-release semantic and hostile-input gate
+
+This repository-owned gate validates the bounded provider source, hostile-input,
+nonactivation, fuzz, benchmark, and S1 evidence owners:
+
+```text
+python tools/ci/check_m8_m12_multicloud.py
+python tools/ci/test_m8_m12_multicloud.py
+```
+
+Live provider accounts, native credential and browser flows, native clusters,
+controlled visual and accessibility review, resource campaigns, and signed
+package identity remain external evidence. A local checker pass does not satisfy
+those gates.
+
 ### M10 Google Cloud Adapter Source Contracts
 
 This compatibility anchor retains traceability to the current public

@@ -678,6 +678,16 @@ def main() -> int:
             None,
         ),
         (
+            "m8-m12-multicloud-contract",
+            [sys.executable, "tools/ci/check_m8_m12_multicloud.py"],
+            None,
+        ),
+        (
+            "m8-m12-multicloud-mutations",
+            [sys.executable, "tools/ci/test_m8_m12_multicloud.py"],
+            None,
+        ),
+        (
             "s1-assurance-policy",
             [sys.executable, "tools/ci/s1_assurance.py", "check-policy"],
             None,

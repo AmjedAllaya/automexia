@@ -348,7 +348,7 @@ fn apply_private_permissions(path: &Path, directory: bool) -> Result<(), StoreEr
 
 #[cfg(windows)]
 fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreError> {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt as _, ptr};
+    use std::ptr;
     use windows_sys::Win32::{
         Foundation::{CloseHandle, LocalFree, GENERIC_ALL},
         Security::{
@@ -431,10 +431,7 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
         return Err(StoreError::new(StoreErrorCode::PrivatePermissions));
     }
     let acl = LocalAcl(raw_acl);
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let result = unsafe {
         SetNamedSecurityInfoW(
             wide.as_ptr(),
@@ -450,6 +447,48 @@ fn apply_private_permissions(path: &Path, _directory: bool) -> Result<(), StoreE
         return Err(StoreError::new(StoreErrorCode::PrivatePermissions));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, StoreError> {
+    use std::{
+        os::windows::ffi::OsStrExt as _,
+        path::{Component, Prefix},
+    };
+
+    let prefix = match path.components().next() {
+        Some(Component::Prefix(prefix)) if path.is_absolute() => prefix.kind(),
+        _ => return Err(StoreError::new(StoreErrorCode::InvalidRoot)),
+    };
+    let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.contains(&0) {
+        return Err(StoreError::new(StoreErrorCode::InvalidRoot));
+    }
+    // Normalize before adding the verbatim prefix, which deliberately performs
+    // neither separator nor dot-segment normalization.
+    for unit in &mut wide {
+        if *unit == b'/' as u16 {
+            *unit = b'\\' as u16;
+        }
+    }
+    if wide
+        .split(|unit| *unit == b'\\' as u16)
+        .any(|segment| segment == [b'.' as u16] || segment == [b'.' as u16, b'.' as u16])
+    {
+        return Err(StoreError::new(StoreErrorCode::InvalidRoot));
+    }
+    match prefix {
+        Prefix::Disk(_) => {
+            wide.splice(
+                0..0,
+                [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16],
+            );
+        }
+        Prefix::VerbatimDisk(_) => {}
+        _ => return Err(StoreError::new(StoreErrorCode::InvalidRoot)),
+    }
+    wide.push(0);
+    Ok(wide)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -471,7 +510,7 @@ fn private_permissions_are_safe(
     path: &Path,
     _metadata: &Metadata,
 ) -> Result<bool, StoreError> {
-    use std::{ffi::OsStr, mem, os::windows::ffi::OsStrExt as _, ptr};
+    use std::{mem, ptr};
     use windows_sys::Win32::{
         Foundation::LocalFree,
         Security::{
@@ -492,10 +531,7 @@ fn private_permissions_are_safe(
         }
     }
 
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let mut acl = ptr::null_mut();
     let mut descriptor = ptr::null_mut();
     // SAFETY: path is NUL-terminated and all requested output pointers are valid.
@@ -550,7 +586,7 @@ fn private_permissions_are_safe(
 #[cfg(all(test, windows))]
 mod tests {
     use super::*;
-    use std::{ffi::OsStr, mem, os::windows::ffi::OsStrExt as _, ptr};
+    use std::{mem, path::Path, ptr};
     use windows_sys::Win32::{
         Foundation::LocalFree,
         Security::{
@@ -574,10 +610,7 @@ mod tests {
     }
 
     fn dacl_shape(path: &Path) -> (u16, u32) {
-        let wide = OsStr::new(path)
-            .encode_wide()
-            .chain(std::iter::once(0))
-            .collect::<Vec<_>>();
+        let wide = windows_local_wide_path(path).unwrap();
         let mut acl = ptr::null_mut();
         let mut descriptor = ptr::null_mut();
         // SAFETY: the path is NUL-terminated; all requested output pointers are
@@ -640,5 +673,46 @@ mod tests {
             assert_ne!(control & SE_DACL_PROTECTED, 0);
             assert_eq!(ace_count, 1, "private DACL must contain only the user ACE");
         }
+    }
+
+    #[test]
+    fn long_local_quick_action_paths_keep_private_dacls() {
+        let temporary = tempfile::tempdir().unwrap();
+        let actions = temporary.path().join("p".repeat(240)).join("actions");
+        assert!(actions.to_string_lossy().encode_utf16().count() > 260);
+        ensure_private_directory(&actions).unwrap();
+        let source = actions.join("actions.toml");
+        fs::write(&source, b"schema_version = 1\nrevision = 0\nactions = []\n").unwrap();
+        apply_private_file_permissions(&source).unwrap();
+
+        for path in [&actions, &source] {
+            assert!(private_permissions_are_safe(
+                path,
+                &fs::symlink_metadata(path).unwrap()
+            )
+            .unwrap());
+            let (control, ace_count) = dacl_shape(path);
+            assert_ne!(control & SE_DACL_PROTECTED, 0);
+            assert_eq!(ace_count, 1);
+        }
+    }
+
+    #[test]
+    fn windows_acl_paths_reject_relative_remote_and_dot_segments() {
+        for path in [
+            Path::new("relative"),
+            Path::new(r"\\server\share\actions"),
+            Path::new(r"D:\actions\..\escape"),
+            Path::new(r"D:\actions\.\local"),
+        ] {
+            assert_eq!(
+                windows_local_wide_path(path).unwrap_err().code(),
+                StoreErrorCode::InvalidRoot
+            );
+        }
+        let mixed = Path::new(r"D:\actions").join("workspace/generated");
+        assert!(!windows_local_wide_path(&mixed)
+            .unwrap()
+            .contains(&(b'/' as u16)));
     }
 }
