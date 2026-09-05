@@ -166,7 +166,7 @@ impl Route<'_> {
     #[inline]
     pub fn quit(&mut self) {
         self.window.screen.shutdown_connection_hub();
-        std::process::exit(0);
+        self.window.screen.context_manager.quit();
     }
 
     #[inline]
@@ -598,6 +598,16 @@ impl Router<'_> {
             audit_count,
             "managed external-tool runner reconciled during application shutdown"
         );
+    }
+
+    /// Notify every terminal session before route destruction begins. This is
+    /// intentionally separate from `routes.clear()` so graceful PTY budgets run
+    /// concurrently instead of once per pane, tab, or window.
+    pub fn request_pty_shutdown(&self) -> usize {
+        self.routes
+            .values()
+            .map(|route| route.window.screen.context_manager.request_pty_shutdown())
+            .sum()
     }
 
     #[inline]

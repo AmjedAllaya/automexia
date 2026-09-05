@@ -6961,6 +6961,81 @@ mod tests {
     }
 
     #[test]
+    fn shared_prompt_result_and_preceding_boundary_survive_reflow_navigation() {
+        use crate::crosswords::grid::row::SemanticPrompt;
+        use crate::performer::handler::Processor;
+
+        let mut cw = make_prompt_crosswords(96, 10);
+        let mut processor = Processor::default();
+        processor.advance(
+            &mut cw,
+            b"\x1b]133;A;aid=1\x07one> \x1b]133;B\x07echo one\r\n\
+              \x1b]133;C\x07first-result-abcdefghijklmnopqrstuvwxyz\r\n\
+              \x1b]133;D;0\x07\x1b]133;A;aid=2\x07two> \x1b]133;B\x07echo two\r\n\
+              \x1b]133;C\x07second-result-abcdefghijklmnopqrstuvwxyz\r\n\
+              \x1b]133;D;7\x07\x1b]133;A;aid=3\x07three> \x1b]133;B\x07echo three\r\n\
+              \x1b]133;C\x07third-result-abcdefghijklmnopqrstuvwxyz\r\n\
+              \x1b]133;D;0\x07\x1b]133;A;aid=4\x07four> \x1b]133;B\x07echo four\r\n\
+              \x1b]133;C\x07fourth-result-abcdefghijklmnopqrstuvwxyz\r\n\
+              \x1b]133;D;0\x07\x1b]133;A;aid=5\x07five> \x1b]133;B\x07echo five\r\n\
+              \x1b]133;C\x07fifth-result-abcdefghijklmnopqrstuvwxyz\r\n\
+              \x1b]133;D;0\x07\x1b]133;A;aid=6\x07six> \x1b]133;B\x07echo six\r\n\
+              \x1b]133;C\x07sixth-result-abcdefghijklmnopqrstuvwxyz\r\n\
+              \x1b]133;D;0\x07\x1b]133;A;aid=7\x07seven> ",
+        );
+
+        let shared_row = (-(cw.grid.history_size() as i32)
+            ..cw.grid.screen_lines() as i32)
+            .map(Line)
+            .find(|line| {
+                cw.grid[*line].semantic_prompt == SemanticPrompt::Prompt
+                    && cw.grid[*line].semantic_prompt_id == Some(2)
+            })
+            .expect("the second prompt must be retained");
+        let expected_result = cw.grid[shared_row]
+            .semantic_command_result
+            .expect("the second prompt owns its completed command");
+        let expected_boundary = cw.grid[shared_row]
+            .semantic_command_boundary
+            .expect("the second prompt bounds the first command");
+        assert_eq!(expected_result.id, 2);
+        assert_eq!(expected_result.exit_code, Some(7));
+        assert_eq!(expected_boundary.result.id, 1);
+        assert_eq!(expected_boundary.result.exit_code, Some(0));
+
+        for size in [(23, 8), (96, 10), (31, 7), (72, 9)] {
+            cw.resize(CrosswordsSize::new(size.0, size.1));
+            let owner = (-(cw.grid.history_size() as i32)..cw.grid.screen_lines() as i32)
+                .map(Line)
+                .find(|line| {
+                    cw.grid[*line].semantic_prompt == SemanticPrompt::Prompt
+                        && cw.grid[*line].semantic_prompt_id == Some(2)
+                })
+                .expect("reflow must retain exactly one second-prompt owner");
+            assert_eq!(
+                cw.grid[owner].semantic_command_result,
+                Some(expected_result)
+            );
+            assert_eq!(
+                cw.grid[owner].semantic_command_boundary,
+                Some(expected_boundary)
+            );
+
+            cw.scroll_display(Scroll::Bottom);
+            assert!(cw.scroll_to_prompt(false));
+            assert!(cw.scroll_to_prompt(true));
+            assert_eq!(
+                cw.grid[owner].semantic_command_result,
+                Some(expected_result)
+            );
+            assert_eq!(
+                cw.grid[owner].semantic_command_boundary,
+                Some(expected_boundary)
+            );
+        }
+    }
+
+    #[test]
     fn silent_completion_does_not_publish_an_empty_result_boundary() {
         use crate::performer::handler::Processor;
 

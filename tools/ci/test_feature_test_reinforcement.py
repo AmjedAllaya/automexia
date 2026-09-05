@@ -25,6 +25,9 @@ class FeatureTestReinforcementTests(unittest.TestCase):
         # Keep the canonical ledger immutable; every test mutates a deep copy and
         # proves the checker rejects one missing assurance dimension.
         cls.document = json.loads(REINFORCEMENT.DEFAULT_CONTRACT.read_text(encoding="utf-8"))
+        cls.native_sources = REINFORCEMENT._load_native_contract_sources(
+            REINFORCEMENT.ROOT
+        )
 
     def validate(self, document: dict) -> dict[str, int]:
         return REINFORCEMENT.validate_document(document)
@@ -218,6 +221,145 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                         REINFORCEMENT.ReinforcementError, "required scenario detail"
                     ):
                         self.validate(document)
+
+    def test_command_result_resize_navigation_details_cannot_be_weakened(self) -> None:
+        mutations = {
+            "terminal-protocols-grid-history": (
+                ("needed_tests", "resize followed by previous/next command navigation"),
+                ("verification_reinforcements", "duplicate IDs"),
+                ("verification_reinforcements", "successful frame presentation"),
+                ("checker_reinforcements", "resize-navigation assurance"),
+                ("checker_reinforcements", "post-present publication"),
+            ),
+            "renderer-fonts-responsive-ui": (
+                ("needed_tests", "one badge per result identity and display row"),
+                ("needed_tests", "measured label rectangles"),
+                ("needed_tests", "prompt-context paint rectangles"),
+                ("needed_tests", "frozen command duration"),
+                ("needed_tests", "post-present checkpoint publication"),
+                ("needed_tests", "two consecutive identical full-frame pixel digests"),
+                ("needed_tests", "physical surface width and height"),
+                ("needed_tests", "successful-present-only cache recording"),
+                ("verification_reinforcements", "every command-result draw rectangle"),
+                ("verification_reinforcements", "cross-owner non-intersection"),
+                ("verification_reinforcements", "zero changed channel tolerance"),
+                ("verification_reinforcements", "successful present completion"),
+                ("verification_reinforcements", "native dialog occlusion"),
+                ("verification_reinforcements", "two identical full-frame digests"),
+                ("verification_reinforcements", "full opaque on-screen client pixels"),
+                ("verification_reinforcements", "skippable only after successful presentation"),
+                ("checker_reinforcements", "one-badge-per-row ownership"),
+                ("checker_reinforcements", "prompt-context paint rectangles"),
+                ("checker_reinforcements", "frozen command duration"),
+                ("checker_reinforcements", "resize-navigation sequencing"),
+                ("checker_reinforcements", "forced next-frame control handling"),
+                ("checker_reinforcements", "dialog-occlusion rejection"),
+                ("checker_reinforcements", "independent frame inspection"),
+                ("checker_reinforcements", "physical extent identity"),
+                ("checker_reinforcements", "fixed unsent editor input"),
+            ),
+            "windows-tabs-sessions-input": (
+                ("needed_tests", "resizes immediately before Ctrl+Shift+Up/Down"),
+                ("needed_tests", "intersecting badge rectangles"),
+                ("needed_tests", "intersecting prompt-context rectangles"),
+                ("needed_tests", "broadcast-first teardown"),
+                ("needed_tests", "ConPTY reparenting"),
+                ("verification_reinforcements", "all command-result paint rectangles"),
+                ("verification_reinforcements", "visible snapshot publication"),
+                ("verification_reinforcements", "six-second controlled Windows"),
+                ("verification_reinforcements", "sequential deadline multiplication"),
+                ("checker_reinforcements", "resize-before-shortcut ordering"),
+                ("checker_reinforcements", "no-PTY proof"),
+                ("checker_reinforcements", "pre-close owned process identities"),
+                ("checker_reinforcements", "application and descendant exit"),
+            ),
+        }
+        for feature_id, details in mutations.items():
+            for field, detail in details:
+                with self.subTest(feature_id=feature_id, field=field, detail=detail):
+                    document = copy.deepcopy(self.document)
+                    feature = next(
+                        item for item in document["features"] if item["id"] == feature_id
+                    )
+                    feature[field] = [
+                        item.replace(detail, "generic resize coverage")
+                        for item in feature[field]
+                    ]
+                    with self.assertRaisesRegex(
+                        REINFORCEMENT.ReinforcementError, "required scenario detail"
+                    ):
+                        self.validate(document)
+
+    def test_pty_shutdown_scenario_details_cannot_be_weakened(self) -> None:
+        details = (
+            ("needed_tests", "Ordinary and exact Windows ConPTY"),
+            ("needed_tests", "broadcast-first teardown"),
+            ("needed_tests", "parked"),
+            ("verification_reinforcements", "exact temporary-fixture process identities before close"),
+            ("verification_reinforcements", "ConPTY reparenting"),
+            ("verification_reinforcements", "multi-session wall-clock ceiling"),
+            ("verification_reinforcements", "idempotent broadcasts"),
+            ("verification_reinforcements", "no sequential deadline multiplication"),
+            ("checker_reinforcements", "ordinary Job ownership"),
+            ("checker_reinforcements", "broadcast-before-join ordering"),
+            ("checker_reinforcements", "exact pre-close process identity"),
+            ("checker_reinforcements", "repeated-request idempotence"),
+        )
+        for field, detail in details:
+            with self.subTest(field=field, detail=detail):
+                document = copy.deepcopy(self.document)
+                feature = next(
+                    item
+                    for item in document["features"]
+                    if item["id"] == "pty-scheduler-process-lifecycle"
+                )
+                feature[field] = [
+                    item.replace(detail, "generic lifecycle coverage")
+                    for item in feature[field]
+                ]
+                with self.assertRaisesRegex(
+                    REINFORCEMENT.ReinforcementError, "required scenario detail"
+                ):
+                    self.validate(document)
+
+    def test_native_renderer_and_lifecycle_source_mutations_fail_closed(self) -> None:
+        mutations = (
+            ("screen", "if !frame_dropped", "if frame_dropped"),
+            ("application", "manager.request_pty_shutdown()", "manager.route_ids()"),
+            ("context", "self.shutdown_requested.swap(true", "self.shutdown_requested.load("),
+            ("router", "context_manager.quit()", "context_manager.route_ids()"),
+            (
+                "windows_pty",
+                "env,\n        true,\n        true,\n        columns,",
+                "env,\n        true,\n        false,\n        columns,",
+            ),
+            (
+                "windows_conpty",
+                "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
+                "limits.BasicLimitInformation.LimitFlags = 0;",
+            ),
+            (
+                "sugarloaf_cpu",
+                "hash_surface_extent(&mut h, ctx.width_px, ctx.height_px);",
+                "h.write_u8(0);",
+            ),
+            (
+                "sugarloaf_cpu",
+                "Ok(()) => cache.record_presented_frame(frame_hash),",
+                "Ok(()) => {},",
+            ),
+            ("native_driver", "previousFrame.PixelDigest", "previousFrame.DistinctColorBuckets"),
+            ("native_driver", "NonOpaquePixelCount = nonOpaquePixels", "NonOpaquePixelCount = 0"),
+            ("native_driver", "AMX_CAPTURE_INPUT_59217", ""),
+            ("native_driver", "$process.CloseMainWindow()", "$process.Kill()"),
+        )
+        for owner, old, new in mutations:
+            with self.subTest(owner=owner, removed=old):
+                sources = copy.deepcopy(self.native_sources)
+                self.assertIn(old, sources[owner])
+                sources[owner] = sources[owner].replace(old, new, 1)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_native_contract_sources(sources)
 
 
 if __name__ == "__main__":

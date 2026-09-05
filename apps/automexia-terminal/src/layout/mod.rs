@@ -737,6 +737,24 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn shutdown_broadcast_targets_every_split_and_pane_tab_once() {
+        let mut grid = two_panel_grid();
+        let first = grid
+            .inner
+            .values_mut()
+            .find(|item| item.val.route_id == 11)
+            .expect("first pane");
+        first.push_tab_core(dead(33));
+        first.push_tab_core(dead(44));
+
+        // The first call covers both panes and both inactive local tabs. The
+        // atomic guard makes a second broadcast a no-op instead of extending
+        // shutdown or publishing duplicate worker messages.
+        assert_eq!(grid.request_pty_shutdown(), 4);
+        assert_eq!(grid.request_pty_shutdown(), 0);
+    }
+
+    #[test]
     fn pointer_wheel_target_selects_only_the_exact_pane_under_the_cursor() {
         let mut grid = two_panel_grid();
         for item in grid.inner.values_mut() {
@@ -2421,6 +2439,16 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             .values()
             .flat_map(ContextGridItem::route_ids)
             .collect()
+    }
+
+    /// Broadcast shutdown to every PTY owned by this top-level grid before any
+    /// context is dropped and starts waiting for its individual worker.
+    pub fn request_pty_shutdown(&self) -> usize {
+        self.inner
+            .values()
+            .flat_map(ContextGridItem::contexts)
+            .filter(|context| context.request_pty_shutdown())
+            .count()
     }
 
     pub fn split_right(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {

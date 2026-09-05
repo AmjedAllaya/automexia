@@ -41,6 +41,33 @@ PTY splits are not changed into another terminal's internal ownership model.
 Platform-global shortcuts remain owned by the operating-system hotkey adapter;
 focused bindings remain route-scoped.
 
+## Current delivery status
+
+The compatibility work remains split into the following independently evidenced
+phases. A phase is not promoted by this summary; the implementation ledger and
+native evidence named below remain authoritative for its exit criteria.
+
+- **G0 — source lock: partially done.** The reviewed Ghostty 1.3.1 source,
+  provenance, generated fixtures, and deterministic Windows evidence are locked;
+  native Linux and macOS fixture evidence remains external.
+- **G1 — typed registry: fully done.** Versioned actions, triggers, precedence,
+  diagnostics, and bounded lookup have source and contract-test owners.
+- **G2 — profiles and reload: fully done.** Opt-in profiles, user layers,
+  last-known-good reload, migration preview, and rollback are implemented.
+- **G3 — dispatch language: fully done.** Structured dispatch, fallthrough,
+  cancellation, route isolation, and bounded sequence state are implemented.
+- **G4 — stateless actions: fully done.** Supported terminal, selection, search,
+  layout, resize, clear, and export actions retain Automexia ownership.
+- **G5 — tooling: partially done.** Generation, verification, fuzzing,
+  benchmarks, and evidence validation are implemented; controlled native
+  three-platform release evidence remains external.
+- **G6 — high-lifecycle: partially done.** Bounded memory-only top-level tab
+  parking, restore, undo/redo, and clear are implemented; split, local-tab, and
+  native-window lifecycle evidence remains external.
+
+Detailed source, test, and outstanding-evidence ownership is maintained in
+[the implementation ledger](GHOSTTY-COMPATIBILITY-IMPLEMENTATION.md).
+
 ## Verification
 
 Tests cover profile identity, parsing, precedence, unbind, collisions,

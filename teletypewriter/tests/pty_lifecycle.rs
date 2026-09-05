@@ -316,6 +316,56 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
 }
 
 #[cfg(windows)]
+#[test]
+fn ordinary_windows_pty_shutdown_confirms_the_owned_shell_tree_exited() {
+    let mut pty = teletypewriter::create_pty(
+        Some("powershell.exe"),
+        vec![
+            "-NoLogo".into(),
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            "Start-Sleep -Seconds 60".into(),
+        ],
+        &None,
+        None,
+        80,
+        24,
+    )
+    .expect("ordinary ConPTY shell should start");
+
+    let started = Instant::now();
+    let outcome = pty
+        .shutdown_owned_process_tree()
+        .expect("ordinary terminal shutdown should remain bounded");
+
+    if outcome == ManagedPtyShutdown::NotManaged {
+        // Keep the pre-fix failing test self-cleaning: interrupt the bounded
+        // sleep and wait for the real child before asserting ownership.
+        pty.writer().write_all(b"\x03").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    assert!(
+        matches!(
+            outcome,
+            ManagedPtyShutdown::Graceful | ManagedPtyShutdown::Forced
+        ),
+        "ordinary Windows sessions must confirm their owned process tree: {outcome:?}"
+    );
+    assert!(
+        started.elapsed() <= Duration::from_secs(10),
+        "ordinary Windows session shutdown exceeded the ten-second lifecycle budget"
+    );
+}
+
+#[cfg(windows)]
 fn spawn_stubborn_exact_pty() -> Pty {
     let executable = std::env::var_os("COMSPEC")
         .map(std::path::PathBuf::from)

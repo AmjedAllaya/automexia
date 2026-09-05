@@ -42,5 +42,18 @@ if ($SyntaxOnly) {
     exit 0
 }
 
-& (Join-Path $PSScriptRoot 'test_shell_integration.ps1')
+# The production integration deliberately emits OSC identity bytes. Capture a
+# real child workflow so CI proves the bytes exist without publishing host
+# metadata in logs or changing the parent's console writer.
+$integrationScript = Join-Path $PSScriptRoot 'test_shell_integration.ps1'
+$integrationLifecycle = & powershell.exe -NoLogo -NoProfile -NonInteractive `
+    -File $integrationScript 2>&1 | Out-String
+if ($LASTEXITCODE -ne 0) {
+    throw 'PowerShell integration contract failed in the captured child process'
+}
+if ($integrationLifecycle -notmatch 'SetUserVar=automexia_shell_user=' -or
+    $integrationLifecycle -notmatch 'SetUserVar=automexia_shell_path=') {
+    throw 'PowerShell integration did not emit the captured identity contract'
+}
+$integrationLifecycle = $null
 Write-Host 'PASS: all repository PowerShell sources parse and the integration contract passes'

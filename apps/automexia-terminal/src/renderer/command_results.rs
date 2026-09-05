@@ -10,7 +10,7 @@ use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-use crate::automexia::ui::CommandResultAnchor;
+use crate::automexia::ui::{CommandResultAnchor, COMMAND_RESULT_PROMPT_RESERVE};
 
 const ORDER: u8 = 19;
 const RESULT_LABEL_FONT_ROW_RATIO: f32 = 0.62;
@@ -21,6 +21,8 @@ const RESULT_SURFACE_ALPHA: f32 = 0.099;
 const RESULT_PULSE_ALPHA: f32 = 0.14;
 const RESULT_PULSE_DURATION: Duration = Duration::from_millis(540);
 const RESULT_PULSE_HOLD_FRACTION: f32 = 1.0 / 3.0;
+const RESULT_LABEL_RIGHT_INSET: f32 = 10.0;
+const RESULT_LABEL_CONTEXT_GAP: f32 = 10.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct ResultLabelMetrics {
@@ -38,6 +40,16 @@ fn result_label_metrics(row_height: f32) -> ResultLabelMetrics {
         font_size,
         height: (font_size + vertical_padding * 2.0).min(row_height),
     }
+}
+
+#[inline]
+fn result_label_maximum_width(anchor_width: f32) -> f32 {
+    (anchor_width - 34.0).clamp(
+        0.0,
+        COMMAND_RESULT_PROMPT_RESERVE
+            - RESULT_LABEL_RIGHT_INSET
+            - RESULT_LABEL_CONTEXT_GAP,
+    )
 }
 /// Keep the result boundary inside the following prompt's already-reserved
 /// context row. Nothing is inserted into the terminal grid or PTY stream.
@@ -119,6 +131,9 @@ type NativeCommandResultIdentity = (Option<u64>, u64, Option<i32>, Option<u64>);
 
 #[cfg(feature = "native-gui-test-hooks")]
 type NativeCommandResultStyle = ([f32; 3], u64, f32);
+
+#[cfg(feature = "native-gui-test-hooks")]
+pub(crate) type NativeCommandResultPaint = (Option<u64>, u64, [f32; 4]);
 
 impl PartialEq for CommandResultIdentity {
     fn eq(&self, other: &Self) -> bool {
@@ -227,6 +242,8 @@ pub struct CommandResults {
     native_identity: Option<NativeCommandResultIdentity>,
     #[cfg(feature = "native-gui-test-hooks")]
     native_label: Option<String>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_paints: Vec<NativeCommandResultPaint>,
 }
 
 impl CommandResults {
@@ -269,6 +286,11 @@ impl CommandResults {
     pub(crate) fn native_test_result_label(&self) -> Option<&str> {
         self.native_label.as_deref()
     }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_result_paints(&self) -> &[NativeCommandResultPaint] {
+        &self.native_paints
+    }
     /// Draw completion state on the semantic row that owns the command.
     pub fn render_command_results(
         &mut self,
@@ -298,12 +320,13 @@ impl CommandResults {
                 )
             });
             self.native_label = None;
+            self.native_paints.clear();
         }
         for anchor in anchors {
             let timestamp = command_timestamp_label(anchor.completed_at);
             let presentation = command_result_presentation(
                 anchor.exit_code,
-                anchor.elapsed_ms,
+                command_elapsed_ms(anchor.elapsed_ms),
                 timestamp.as_deref(),
             );
             let accent_color = match presentation.tone {
@@ -349,7 +372,7 @@ impl CommandResults {
                 divider_color[3] = RESULT_DIVIDER_ALPHA;
                 sugarloaf.rect(None, x, y, width, height, divider_color, 0.0, ORDER - 2);
             }
-            let maximum_width = (anchor.width - 34.0).max(0.0);
+            let maximum_width = result_label_maximum_width(anchor.width);
             let Some((label, text_width)) =
                 fitting_command_result_label(&presentation, |candidate| {
                     let width = sugarloaf.text_mut().measure(candidate, &opts);
@@ -358,12 +381,17 @@ impl CommandResults {
             else {
                 continue;
             };
-            let x = anchor.x + anchor.width - text_width - 10.0;
+            let x = anchor.x + anchor.width - text_width - RESULT_LABEL_RIGHT_INSET;
             let tag_y = anchor.y + top_inset;
             let y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
             sugarloaf.text_mut().draw(x, y, label, &opts);
             #[cfg(feature = "native-gui-test-hooks")]
             {
+                self.native_paints.push((
+                    anchor.generation,
+                    anchor.key,
+                    [x, tag_y, text_width, metrics.height],
+                ));
                 if native_label_target == Some(CommandResultIdentity::from(anchor)) {
                     self.native_label = Some(label.to_owned());
                 }
@@ -404,6 +432,17 @@ fn command_timestamp_label(
         timestamp.minute,
         timestamp.second
     ))
+}
+
+#[inline]
+fn command_elapsed_ms(elapsed_ms: Option<u64>) -> Option<u64> {
+    #[cfg(feature = "visual-test-hooks")]
+    if let Some(frozen) =
+        crate::automexia::visual_test_hooks::frozen_command_duration_ms()
+    {
+        return Some(frozen);
+    }
+    elapsed_ms
 }
 
 fn compact_command_timestamp(label: &str) -> Option<String> {
@@ -502,6 +541,7 @@ mod tests {
     }
     #[test]
     fn command_duration_uses_compact_units() {
+        assert_eq!(command_elapsed_ms(Some(18)), Some(18));
         assert_eq!(format_duration(18), "18ms");
         assert_eq!(format_duration(1_250), "1.2s");
         assert_eq!(format_duration(62_000), "1m 02s");
@@ -573,6 +613,17 @@ mod tests {
             }),
             None
         );
+    }
+
+    #[test]
+    fn result_label_stays_inside_the_shared_prompt_reservation() {
+        let maximum = result_label_maximum_width(720.0);
+        assert_eq!(
+            maximum + RESULT_LABEL_RIGHT_INSET + RESULT_LABEL_CONTEXT_GAP,
+            COMMAND_RESULT_PROMPT_RESERVE
+        );
+        assert_eq!(result_label_maximum_width(24.0), 0.0);
+        assert_eq!(result_label_maximum_width(100.0), 66.0);
     }
 
     #[test]
