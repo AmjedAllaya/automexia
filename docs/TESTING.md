@@ -200,6 +200,13 @@ Repository-owned readiness status lines identify completion state, isolated
 Cargo targets, and the debug smoke executable with stable logical labels rather
 than contributor-specific managed-state or workspace paths.
 
+The summarized workspace-test process is owned by a Unix process group or
+Windows Job Object. It has a 30-minute deadline and a 16 MiB stdout ceiling;
+exceeding either terminates the owned tree and retains only bounded failure
+diagnostics. Compiler stderr remains live. The xtask tests use a real child to
+prove success, pre-spawn zero-bound rejection, deadline cleanup, and output
+overflow cleanup without relying on arbitrary sleeps as the result oracle.
+
 The native shell remains the independent oracle for command editing, history,
 completion, quoting, and pipeline objects.
 

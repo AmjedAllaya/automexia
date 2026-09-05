@@ -176,6 +176,12 @@ success/failure cleanup, and the dormant pre-push hook. Compare the generated
 tree and hashes independently. Exercise native process ownership on each
 claimed platform and keep unexecuted hosts external.
 
+The summarized workspace-test owner must also keep its 30-minute deadline,
+16 MiB stdout ceiling, live compiler diagnostics, Unix process group or Windows
+Job Object, and real success/deadline/overflow child-process tests. Mutation
+coverage must reject a missing or relaxed limit, wrapper, cleanup path, partial
+failure diagnostic, or real-process oracle.
+
 ### stabilization-release-assurance
 
 Keep first failures, compare same-host performance baselines, require bounded
