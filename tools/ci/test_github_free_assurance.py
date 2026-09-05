@@ -136,9 +136,15 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
 
         # Tool execution is mocked, but CLI routing and the full-history argument
         # remain observable; separate scanner canaries exercise the real binary.
+        # Isolate the lease because this mutation suite also runs inside the
+        # release profile's already-held process-wide assurance lease.
         with mock.patch.object(ASSURANCE, "load_policy", return_value=self.policy), mock.patch.object(
             ASSURANCE, "tool_command", side_effect=command
-        ), mock.patch.object(ASSURANCE, "run") as runner:
+        ), mock.patch.object(ASSURANCE, "run") as runner, mock.patch.object(
+            ASSURANCE.dev_cache,
+            "cache_lease",
+            return_value=contextlib.nullcontext(),
+        ):
             self.assertEqual(ASSURANCE.main(["audit-history-secrets"]), 0)
         command_line = runner.call_args.args[0]
         self.assertEqual(command_line[0], "gitleaks")
