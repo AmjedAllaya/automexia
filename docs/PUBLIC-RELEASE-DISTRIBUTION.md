@@ -137,9 +137,21 @@ confirmed the non-distributable rehearsal marker. The signing and publication
 jobs remained skipped, so this is current package-pipeline evidence but is not
 a public release.
 
+Run `33994146068` on release commit
+`09ae5d2723542a447947b8cf1d2ddd405d7a7a9e` repeated that complete result
+after the stable/Linux pull-request routing fix: authorization, the quality
+gate without retry, both native x64 and Arm64 package/install lifecycles, and
+credential-free aggregation all passed. Independent download rebuilt the
+manifest byte for byte at SHA-256
+`4edcd25c4bf44a97bf774acbbeb679f645052b89f40c3dff546133fbd0914b97` and
+confirmed the exact non-public marker. Pull-request CI run `33994118326` on
+the same commit passed all three ordinary free checks and skipped both
+stable-release-only jobs. Signing and publication remained skipped, so the
+public repository correctly remained unchanged.
+
 ## One-time external configuration still required
 
-The 2026-09-05 authenticated re-audit found zero configured Actions variables,
+The 2026-09-06 authenticated re-audit found zero configured Actions variables,
 zero configured Actions secrets, and no independent release approval. The first
 public Linux release is therefore correctly blocked; no placeholder credential
 or reduced-review path was introduced.
