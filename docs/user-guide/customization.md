@@ -234,3 +234,10 @@ Use these for controlled environments, test setups, portable launch scripts, or 
 7. Periodically remove overrides that no longer solve a real problem.
 
 For every available key, type, range, default, and platform override, use [Configuration reference](../reference/configuration.md).
+
+## Contributor-facing usability corrections
+
+The [terminal interaction requirements](../TERMINAL-INTERACTION-REQUIREMENTS.md)
+define needed improvements to discovery, reversible preferences, compact
+layout and keyboard access. They are not additional configuration options.
+This guide continues to describe only settings supported by current source.

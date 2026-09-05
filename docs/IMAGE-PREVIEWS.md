@@ -117,6 +117,11 @@ checks.
 
 ## Verification
 
+The [preview interaction requirements](TERMINAL-INTERACTION-REQUIREMENTS.md#i4-improve-local-image-preview-placement-without-widening-authority)
+describe required refinements to retained-row anchoring, keyboard targeting,
+placement and cleanup evidence. They do not change the available controls,
+supported formats, file authority or resource limits described on this page.
+
 Focused checks are:
 
 ```text

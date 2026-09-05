@@ -59,6 +59,8 @@ features and commercial strategy.
 | Subject | Page |
 |---|---|
 | Current architecture | [Architecture](ARCHITECTURE.md), [developer summary](developer/architecture.md) |
+| Required terminal fixes and their evidence | [Terminal maintenance requirements](TERMINAL-MAINTENANCE-REQUIREMENTS.md) |
+| Keyboard-first usability and customization corrections | [Terminal interaction requirements](TERMINAL-INTERACTION-REQUIREMENTS.md) |
 | Dependency placement | [Build, wrap, and adopt](BUILD-WRAP-ADOPT-ARCHITECTURE.md) |
 | Feature ownership | [Feature ownership audit](FEATURE-OWNERSHIP-AUDIT.md) |
 | Architecture decisions | [Decision index](DECISIONS.md) |
