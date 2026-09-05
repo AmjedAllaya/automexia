@@ -5,7 +5,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use teletypewriter::{
-    ChildEvent, EventedPty, ManagedPtyShutdown, ProcessReadWrite, Pty, WinsizeBuilder,
+    is_pty_eof_error, ChildEvent, EventedPty, ManagedPtyShutdown, ProcessReadWrite, Pty,
+    WinsizeBuilder,
 };
 
 const PAYLOAD_BYTES: usize = 64 * 1024;
@@ -63,13 +64,19 @@ fn pty_resize_throughput_child_exit_and_teardown() {
     let deadline = Instant::now() + Duration::from_secs(20);
     let mut output = Vec::with_capacity(PAYLOAD_BYTES + 32);
     let mut exited = false;
+    let mut read_closed = false;
     let mut buffer = [0_u8; 8 * 1024];
     while Instant::now() < deadline {
-        match pty.reader().read(&mut buffer) {
-            Ok(0) => {}
-            Ok(read) => output.extend_from_slice(&buffer[..read]),
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-            Err(error) => panic!("PTY read failed: {error}"),
+        if !read_closed {
+            match pty.reader().read(&mut buffer) {
+                Ok(0) => {}
+                Ok(read) => output.extend_from_slice(&buffer[..read]),
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                // This one-shot child cannot reopen its slave. Keep waiting
+                // for its independent exit event, but do not spin on EIO.
+                Err(error) if is_pty_eof_error(&error) => read_closed = true,
+                Err(error) => panic!("PTY read failed: {error}"),
+            }
         }
         if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
             exited = true;
@@ -150,13 +157,19 @@ fn repeated_pty_create_resize_exit_and_drop_cycles_release_each_route() {
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut output = Vec::new();
         let mut exited = false;
+        let mut read_closed = false;
         let mut buffer = [0_u8; 1024];
         while Instant::now() < deadline {
-            match pty.reader().read(&mut buffer) {
-                Ok(0) => {}
-                Ok(read) => output.extend_from_slice(&buffer[..read]),
-                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-                Err(error) => panic!("PTY cycle {cycle} read failed: {error}"),
+            if !read_closed {
+                match pty.reader().read(&mut buffer) {
+                    Ok(0) => {}
+                    Ok(read) => output.extend_from_slice(&buffer[..read]),
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                    // The marker and child-exit assertions below remain the
+                    // independent oracle for a complete one-shot lifecycle.
+                    Err(error) if is_pty_eof_error(&error) => read_closed = true,
+                    Err(error) => panic!("PTY cycle {cycle} read failed: {error}"),
+                }
             }
             if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
                 exited = true;
@@ -180,6 +193,21 @@ fn repeated_pty_create_resize_exit_and_drop_cycles_release_each_route() {
         );
         drop(pty);
     }
+}
+
+#[test]
+fn pty_eof_classification_rejects_unrelated_io_errors() {
+    for code in [libc::EACCES, libc::EINVAL, libc::ENOENT] {
+        assert!(!is_pty_eof_error(&std::io::Error::from_raw_os_error(code)));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_pty_eio_is_classified_as_end_of_stream() {
+    assert!(is_pty_eof_error(&std::io::Error::from_raw_os_error(
+        libc::EIO
+    )));
 }
 
 #[cfg(windows)]

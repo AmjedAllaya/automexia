@@ -356,6 +356,7 @@ where
                         // being drained; only `WouldBlock` does.
                         drained = err.kind() == ErrorKind::WouldBlock;
                     }
+                    _ if teletypewriter::is_pty_eof_error(&err) => break,
                     _ => return Err(err),
                 },
             }
@@ -607,14 +608,6 @@ where
                                 if let Err(err) =
                                     self.pty_read(&mut state, &mut buf, false)
                                 {
-                                    // On Linux, a `read` on the master side of a PTY can fail
-                                    // with `EIO` if the client side hangs up.  In that case,
-                                    // just loop back round for the inevitable `Exited` event.
-                                    #[cfg(target_os = "linux")]
-                                    if err.raw_os_error() == Some(libc::EIO) {
-                                        continue;
-                                    }
-
                                     error!(
                                         "Error reading from PTY in event loop: {}",
                                         err

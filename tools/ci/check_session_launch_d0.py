@@ -447,6 +447,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
     }, root).replace("\r\n", "\n")
     require_tokens("teletypewriter/src/lib.rs", {
         "pub enum ManagedPtyShutdown", "fn shutdown_owned_process_tree",
+        "pub fn is_pty_eof_error", "error.raw_os_error() == Some(libc::EIO)",
     }, root)
     require_tokens("teletypewriter/src/windows/conpty.rs", {
         "JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE", "TerminateJobObject",
@@ -464,6 +465,17 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
     require_tokens("rio-vt/src/performer/mod.rs", {
         "pub struct PtyWorkerHandle", "pub fn join_timeout",
         "self.pty.shutdown_owned_process_tree()", "drop((self, state))",
+        "teletypewriter::is_pty_eof_error(&err)",
+    }, root)
+    require_tokens("teletypewriter/tests/pty_lifecycle.rs", {
+        "linux_pty_eio_is_classified_as_end_of_stream",
+        "pty_eof_classification_rejects_unrelated_io_errors",
+        "Err(error) if is_pty_eof_error(&error) => read_closed = true",
+        "output.ends_with(b\"PTY_DONE\")", "Some(ChildEvent::Exited(_))",
+    }, root)
+    require_tokens("teletypewriter/benches/pty_io.rs", {
+        "Err(error) if is_pty_eof_error(&error) => read_closed = true",
+        "marker_seen", "expected_bytes + READY.len()",
     }, root)
     for declaration in (
         "pub mod external_tool_runner;",

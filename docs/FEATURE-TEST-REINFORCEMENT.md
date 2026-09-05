@@ -43,7 +43,10 @@ terminal-input boundary with historical failures retained.
 Reinforce exact executable/argument launch, ordered input, resize/output storms,
 interrupt, EOF, exit, cancellation, close, and shutdown on each native adapter.
 Assert no shell evaluation, implicit Enter, stale publication, orphan process,
-leaked handle, worker, or temporary file.
+leaked handle, worker, or temporary file. Treat Linux master-side `EIO` after a
+one-shot slave closes as a platform EOF signal without weakening exact output,
+completion-marker, child-exit, or cleanup oracles; do not treat temporary
+zero-byte ConPTY reads as permanent closure.
 
 ### renderer-fonts-responsive-ui
 

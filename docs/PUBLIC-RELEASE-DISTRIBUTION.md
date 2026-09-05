@@ -113,6 +113,17 @@ No signing, publication, tag, or activation job ran. This observed failure is a
 permanent regression fixture; a corrected exact-commit rehearsal must pass
 before publication.
 
+Run `33987010858` on corrected commit
+`d230743315b4a6b385ae543a915e02bb4da2fe67` passed authorization and both
+native x64 and Arm64 package/build/install lifecycles. Its quality job failed
+closed when the native Unix PTY lifecycle received Linux's master-side `EIO`
+after the one-shot child closed; the same test passed on retry, and Nextest's
+fail-on-flaky policy correctly rejected the run. The platform EOF rule is now
+owned by the core PTY adapter and shared by the renderer worker, native
+lifecycle tests, and PTY benchmark. Exact payload, completion-marker,
+child-exit, and cleanup assertions remain mandatory. No signing, publication,
+tag, or activation job ran; a new exact-commit rehearsal remains required.
+
 ## One-time external configuration still required
 
 The 2026-09-01 authenticated re-audit found zero configured Actions variables,

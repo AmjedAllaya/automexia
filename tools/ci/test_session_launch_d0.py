@@ -299,6 +299,32 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         )
         validate(
             lambda path, source: source.replace(
+                "error.raw_os_error() == Some(libc::EIO)",
+                "error.kind() == std::io::ErrorKind::Other",
+            )
+            if path.name == "lib.rs"
+            and path.parent.name == "src"
+            and path.parent.parent.name == "teletypewriter"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "linux_pty_eio_is_classified_as_end_of_stream",
+                "removed_linux_pty_eio_regression",
+            )
+            if path.name == "pty_lifecycle.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "teletypewriter::is_pty_eof_error(&err)",
+                "false",
+            )
+            if path.name == "mod.rs" and path.parent.name == "performer"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
                 "TerminateJobObject", "removed job termination"
             )
             if path.name == "conpty.rs"
