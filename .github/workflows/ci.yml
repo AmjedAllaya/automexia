@@ -73,7 +73,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"
 
       - name: Install pinned zizmor 1.21.0
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: zizmor@1.21.0
           fallback: none
@@ -168,7 +168,7 @@ jobs:
           version: v0.16.0
 
       - name: Install pinned test runner
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-nextest@0.9.137
 
@@ -219,7 +219,7 @@ jobs:
           persist-credentials: false
 
       - name: Install pinned Rust security tools
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-audit@0.22.0,cargo-deny@0.20.2,cargo-vet@0.10.2
 
@@ -341,7 +341,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust coverage toolchain activation failed' }
 
       - name: Install pinned coverage tool
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-llvm-cov@0.6.18
 

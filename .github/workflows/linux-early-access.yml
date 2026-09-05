@@ -141,7 +141,7 @@ jobs:
         with:
           version: v0.16.0
       - name: Install pinned quality tools
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
       - name: Rust formatting
@@ -332,14 +332,14 @@ jobs:
           cp release-bundle/*.deb release-bundle/*.rpm release-bundle/*.tar.gz sbom-input/packages/
           cp Cargo.lock sbom-input/Cargo.lock
       - name: Generate SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           path: sbom-input
           format: spdx-json
           output-file: release-bundle/automexia-terminal.spdx.json
           upload-artifact: false
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           path: sbom-input
           format: cyclonedx-json
