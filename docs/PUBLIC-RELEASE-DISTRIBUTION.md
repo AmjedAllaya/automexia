@@ -71,8 +71,10 @@ route returns a real 404 without a `Location` header.
    identity-bound GraphQL evidence supplements REST's deliberately omitted
    bypass field without granting administration write;
    then it rejects a pre-existing tag/release, uploads one draft, and verifies
-   every draft asset.
-8. It publishes the prerelease and verifies GitHub reports it immutable with the
+   every draft asset. It binds the creation URL and numeric release ID; a new
+   draft uses GitHub's temporary `untagged-` locator before its tag exists.
+8. It publishes that same numeric release ID and verifies GitHub reports it
+   immutable with the final version-pinned release and asset URLs and the
    same size and SHA-256 digest for every package and public evidence file in the
    locally verified bundle. It then requires GitHub's cryptographically signed
    release attestation and verifies every local asset against that attestation.
@@ -188,6 +190,28 @@ cover identities, counts, redaction, bounds, real CLI behavior and workflow
 suppression; the new source still needs its own guarded post-merge run.
 No draft, release, tag, or website handoff was created by these failed attempts.
 
+Run `34032755370` on merged commit
+`79b44443cdde2ce2e6b071828f368d1b1bfeac1f` passed quality, native x64/Arm64
+package lifecycles, signing, App authentication, and the corrected live
+governance check. Publication then stopped after draft upload: GitHub's tag
+endpoint returned 404 because the new draft and all asset URLs still used a
+temporary `untagged-` locator. Nothing became public or immutable, no release
+tag existed, and no activation handoff was produced.
+
+The existing distribution owner now requires the created draft URL and a bounded
+positive numeric ID, reads the draft by that ID, and validates every temporary
+asset locator against the same draft. Publication patches that exact ID, not a
+fresh tag lookup. Final validation still requires immutable state, the same ID,
+the requested version tag, exact version-pinned URLs, and all sixteen digests.
+The corrected validator passed against the actual draft with the existing
+release-only App permissions and signed bundle; the diagnostic token was revoked.
+Regression and mutation tests cover both lifecycle states, wrong IDs, temporary
+URL substitution, asset mismatches, missing creation evidence, CLI no-write
+behavior, and skipped/reordered publication. The exact unpublished failed draft
+was removed under the recovery policy after rechecking its signed asset identities
+and the absence of a tag. The private signed workflow artifact remains available
+for diagnosis; a new guarded source run is required before publication.
+
 The first local full QA pass over this governance correction recorded one
 PowerShell completion-adapter timing failure: p95 59.4983 ms against the
 unchanged 50 ms ceiling. Completion source and tests were byte-identical to the
@@ -195,7 +219,9 @@ previously passing main tree. A fixed three-repetition isolated native campaign
 then passed at 29.86, 38.33 and 29.06 ms, with no threshold or runtime change.
 The original failure remains retained; its cause is not conclusively established,
 and these samples do not establish a sustained performance baseline. The final
-clean-commit QA and readiness gates remain mandatory before pushing.
+clean-commit QA passed all 41 required checks, including 627 Python tests with
+eight explicit skips, and `cargo ready` passed before PR #24 merged. Hosted
+PR and main CI also passed. Changes after that commit need fresh affected gates.
 
 The 2026-09-06 authenticated metadata check confirmed that both required Actions
 secrets and both required variables are registered. Their values were not read

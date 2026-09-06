@@ -180,6 +180,15 @@ query removal, comments, error suppression, deadline changes, stale evidence,
 reordering and permission expansion. A native App positive control must detect
 an actual actor on an isolated disabled rule; remove that exact rule and revoke
 the diagnostic token afterward. Never modify live main/tag rules for this test.
+Draft lifecycle tests must use GitHub's observed temporary release and asset
+locators before tag creation, not a published-only fixture relabeled as draft.
+Bind the create response URL and numeric ID through lookup, complete signed
+bundle verification, the exact publication write and immutable response. Reject
+missing/changed IDs, cross-draft locators, malformed temporary URLs, stale
+published URLs, digest drift, stable/latest-channel drift, skipped or reordered
+checks, and extra writes. Verify the actual least-privilege App draft path before
+discarding a failed draft; keep final version-pinned URLs mandatory and do not
+claim publication until release and every asset attestation pass.
 `tools/ci/test_free_plan_contract.py` also removes and inverts the stable-lane
 Linux-namespace exclusion; the selector must reject that overlap before stable
 authorization rather than failing an unrelated branch grammar later.

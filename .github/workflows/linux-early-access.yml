@@ -436,12 +436,14 @@ jobs:
           fi
           mapfile -d '' assets < <(find release-bundle -maxdepth 1 -type f -print0 | sort -z)
           test "${#assets[@]}" -eq 16
-          gh release create "$tag" "${assets[@]}" --repo "$PUBLIC_REPOSITORY" --draft --prerelease --title "Automexia Terminal $tag — Linux Early Access" --notes-file release-bundle/RELEASE-NOTES.md
-          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release-draft.json"
-          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-draft.json" --bundle release-bundle --stage draft
-          gh release edit "$tag" --repo "$PUBLIC_REPOSITORY" --draft=false --prerelease --latest=false
-          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/tags/$tag" > "$RUNNER_TEMP/release-published.json"
-          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-published.json" --bundle release-bundle --stage published
+          created_release_url="$(gh release create "$tag" "${assets[@]}" --repo "$PUBLIC_REPOSITORY" --draft --prerelease --title "Automexia Terminal $tag — Linux Early Access" --notes-file release-bundle/RELEASE-NOTES.md)"
+          release_id="$(gh release view "$tag" --repo "$PUBLIC_REPOSITORY" --json databaseId --jq '.databaseId')"
+          [[ "$release_id" =~ ^[1-9][0-9]{0,19}$ ]]
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-draft.json"
+          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-draft.json" --release-id "$release_id" --created-url "$created_release_url" --bundle release-bundle --stage draft
+          gh api -H "$api_header" --method PATCH "repos/$PUBLIC_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=true -f make_latest=false >/dev/null
+          gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-published.json"
+          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-published.json" --release-id "$release_id" --bundle release-bundle --stage published
           gh release verify "$tag" --repo "$PUBLIC_REPOSITORY" --format json > "$RUNNER_TEMP/release-attestation.json"
           test -s "$RUNNER_TEMP/release-attestation.json"
           for asset in "${assets[@]}"; do

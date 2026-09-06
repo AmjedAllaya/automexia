@@ -525,6 +525,8 @@ def verify_release_payload(
     manifest: dict[str, object],
     payload: dict[str, object],
     *,
+    release_id: int,
+    created_url: str | None = None,
     stage: str = "published",
     bundle: Path | None = None,
 ) -> None:
@@ -544,13 +546,34 @@ def verify_release_payload(
     if expected_state is None:
         fail("GitHub release verification stage is invalid")
     expected_draft, expected_immutable = expected_state
+    if (type(release_id) is not int or not 0 < release_id < 10**20
+            or type(payload.get("id")) is not int or payload["id"] != release_id):
+        fail("GitHub release numeric identity is invalid or changed")
+    # New drafts have no tag yet. Bind their temporary locator to the URL
+    # returned by creation and use the same numeric API identity after publish.
+    # Temporary locators never relax the final version-pinned public contract.
+    locator = tag
+    release_url = f"https://github.com/{repository}/releases/tag/{locator}"
+    if stage == "draft":
+        if not isinstance(created_url, str) or created_url != payload.get("html_url"):
+            fail("GitHub draft URL does not match the newly created release")
+        if created_url != release_url:
+            temporary = re.fullmatch(
+                rf"https://github\.com/{re.escape(repository)}/releases/tag/"
+                r"(untagged-[0-9a-f]{20})", created_url,
+            )
+            if temporary is None:
+                fail("GitHub draft locator is invalid")
+            locator = temporary.group(1)
+            release_url = created_url
+    elif created_url is not None:
+        fail("published verification must not use a draft URL")
     if (
         payload.get("tag_name") != tag
         or payload.get("draft") is not expected_draft
         or payload.get("prerelease") is not True
         or payload.get("immutable") is not expected_immutable
-        or payload.get("html_url")
-        != f"https://github.com/{repository}/releases/tag/{tag}"
+        or payload.get("html_url") != release_url
     ):
         fail("GitHub release state does not match the immutable Early Access contract")
     assets = payload.get("assets")
@@ -573,7 +596,7 @@ def verify_release_payload(
         size = asset.get("size")
         digest = asset.get("digest")
         expected_url = (
-            f"https://github.com/{repository}/releases/download/{tag}/"
+            f"https://github.com/{repository}/releases/download/{locator}/"
             f"{quote(name, safe='')}"
         )
         if (
@@ -1087,10 +1110,24 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
     ):
         if forbidden in rehearsal:
             fail(f"credential-free rehearsal unexpectedly contains {forbidden}")
-    if workflow.find("--stage draft") > workflow.find("gh release edit"):
-        fail("draft release must be verified before it is published")
-    if workflow.find("--stage published") < workflow.find("gh release edit"):
-        fail("published release must be verified after immutable publication")
+    # The tag endpoint describes published releases, not newly created drafts.
+    # Bind creation, lookup, verification and the sole publication write as one
+    # fail-fast block; mutations must not skip or reorder any authority check.
+    draft_publication = (
+        'created_release_url="$(gh release create "$tag" "${assets[@]}" --repo "$PUBLIC_REPOSITORY" --draft --prerelease --title "Automexia Terminal $tag — Linux Early Access" --notes-file release-bundle/RELEASE-NOTES.md)"',
+        'release_id="$(gh release view "$tag" --repo "$PUBLIC_REPOSITORY" --json databaseId --jq \'.databaseId\')"',
+        '[[ "$release_id" =~ ^[1-9][0-9]{0,19}$ ]]',
+        'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-draft.json"',
+        'python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-draft.json" --release-id "$release_id" --created-url "$created_release_url" --bundle release-bundle --stage draft',
+        'gh api -H "$api_header" --method PATCH "repos/$PUBLIC_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=true -f make_latest=false >/dev/null',
+        'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-published.json"',
+        'python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-published.json" --release-id "$release_id" --bundle release-bundle --stage published',
+    )
+    if (normalized_publish.count("\n" + "\n".join(draft_publication) + "\n") != 1
+            or any(publish.count(command) != 1 for command in draft_publication)
+            or publish.count('gh release create') != 1
+            or publish.count('--method PATCH') != 1):
+        fail("draft creation, exact release identity and verified publication order are required")
     published = workflow.find("--stage published")
     release_attestation = workflow.find('gh release verify "$tag"')
     asset_attestation = workflow.find('gh release verify-asset "$tag" "$asset"')
@@ -1146,6 +1183,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     build.add_argument("--copy-packages", action="store_true")
     verify = commands.add_parser("verify-release")
     verify.add_argument("--manifest", type=Path, required=True)
+    verify.add_argument("--release-id", type=int, required=True)
+    verify.add_argument("--created-url")
     verify.add_argument("--release-json", type=Path, required=True)
     verify.add_argument("--stage", choices=("draft", "published"), default="published")
     verify.add_argument("--bundle", type=Path, required=True)
@@ -1192,8 +1231,11 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "verify-release":
             manifest = _load_json(args.manifest, MAX_MANIFEST_BYTES)
             payload = _load_json(args.release_json, MAX_RELEASE_JSON_BYTES)
-            verify_release_payload(manifest, payload, stage=args.stage, bundle=args.bundle)
-            print("Immutable GitHub Early Access release evidence passed")
+            verify_release_payload(
+                manifest, payload, stage=args.stage, bundle=args.bundle,
+                release_id=args.release_id, created_url=args.created_url,
+            )
+            print(f"Verified GitHub Early Access {args.stage} release evidence")
         elif args.command == "verify-bundle":
             manifest = verify_bundle(args.directory)
             print(f"Verified exact public bundle for v{manifest['version']}")

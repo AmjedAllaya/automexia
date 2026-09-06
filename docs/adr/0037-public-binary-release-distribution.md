@@ -74,8 +74,17 @@ Reference: [GitHub ruleset visibility contract](https://docs.github.com/en/rest/
 
 Every release is first a draft. The workflow rejects an existing tag/release,
 uploads without replacement, compares the exact draft asset inventory, sizes,
-and GitHub SHA-256 digests, and only then publishes. It re-fetches and verifies
-the immutable release before emitting the website activation handoff.
+and GitHub SHA-256 digests, and only then publishes. New drafts have temporary
+`untagged-` URLs and cannot be retrieved by the published-tag endpoint. Bind the
+creation URL to a bounded positive numeric release ID, fetch the draft by ID,
+and compare all asset URLs with that exact temporary locator. Publish only that
+same ID and verify the returned immutable response with final version-pinned
+URLs before emitting the website activation handoff. The release/tooling owner
+and App permissions do not change; do not create tags early, grant additional
+authority, or skip draft verification to work around this API lifecycle.
+
+References: [GitHub release API](https://docs.github.com/en/rest/releases/releases)
+and [GitHub CLI release identity fields](https://cli.github.com/manual/gh_release_view).
 It also verifies GitHub's cryptographically signed release attestation and each
 of the sixteen local assets against that attestation before the handoff exists.
 

@@ -266,6 +266,7 @@ def release_payload(
             }
         )
     return {
+        "id": 7,
         "tag_name": f"v{VERSION}",
         "draft": False,
         "prerelease": True,
@@ -773,7 +774,7 @@ class PublicDistributionTests(unittest.TestCase):
             manifest = write_bundle(root)
             bundle = root / "bundle"
             DISTRIBUTION.verify_release_payload(
-                manifest, release_payload(manifest, bundle), bundle=bundle
+                manifest, release_payload(manifest, bundle), bundle=bundle, release_id=7
             )
 
             mutations = {
@@ -810,13 +811,14 @@ class PublicDistributionTests(unittest.TestCase):
                     mutate(payload)
                     with self.assertRaises(DISTRIBUTION.DistributionError):
                         DISTRIBUTION.verify_release_payload(
-                            manifest, payload, bundle=bundle
+                            manifest, payload, bundle=bundle, release_id=7
                         )
 
             draft = release_payload(manifest, bundle)
             draft.update(draft=True, immutable=False)
             DISTRIBUTION.verify_release_payload(
-                manifest, draft, stage="draft", bundle=bundle
+                manifest, draft, stage="draft", bundle=bundle, release_id=7,
+                created_url=draft["html_url"],
             )
 
             malformed = json.loads(json.dumps(manifest))
@@ -825,8 +827,82 @@ class PublicDistributionTests(unittest.TestCase):
                 DISTRIBUTION.DistributionError, "evidence contract"
             ):
                 DISTRIBUTION.verify_release_payload(
-                    malformed, release_payload(manifest, bundle), bundle=bundle
+                    malformed, release_payload(manifest, bundle), bundle=bundle, release_id=7
                 )
+
+    def test_real_draft_locator_and_same_identity_publication_transition(self) -> None:
+        # GitHub assigns this bounded temporary locator before a new tag exists;
+        # neither the tag endpoint nor final asset URLs describe that draft.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = write_bundle(root)
+            bundle = root / "bundle"
+            published = release_payload(manifest, bundle)
+            draft = copy.deepcopy(published)
+            locator = "untagged-0123456789abcdef0123"
+            created_url = f"https://github.com/{REPOSITORY}/releases/tag/{locator}"
+            draft.update(draft=True, immutable=False, html_url=created_url)
+            for asset in draft["assets"]:
+                asset["browser_download_url"] = (
+                    f"https://github.com/{REPOSITORY}/releases/download/{locator}/{asset['name']}"
+                )
+            DISTRIBUTION.verify_release_payload(
+                manifest, draft, bundle=bundle, stage="draft", release_id=7,
+                created_url=created_url,
+            )
+            DISTRIBUTION.verify_release_payload(
+                manifest, published, bundle=bundle, release_id=7,
+            )
+            faults = {
+                "different release": lambda item: item.update(id=8),
+                "boolean identity": lambda item: item.update(id=True),
+                "numeric string identity": lambda item: item.update(id="7"),
+                "missing identity": lambda item: item.pop("id"),
+                "different tag": lambda item: item.update(tag_name="v9.9.9"),
+                "different draft locator": lambda item: item.update(html_url=created_url + "0"),
+                "different repository": lambda item: item.update(html_url=created_url.replace(REPOSITORY, "example/releases")),
+                "unbound asset locator": lambda item: item["assets"][0].update(browser_download_url=published["assets"][0]["browser_download_url"]),
+                "asset digest changed": lambda item: item["assets"][0].update(digest="sha256:" + "e" * 64),
+                "published too soon": lambda item: item.update(draft=False, immutable=True),
+            }
+            for label, mutate in faults.items():
+                with self.subTest(label=label):
+                    broken = copy.deepcopy(draft)
+                    mutate(broken)
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.verify_release_payload(
+                            manifest, broken, bundle=bundle, stage="draft", release_id=7,
+                            created_url=created_url,
+                        )
+            for identity in (None, True, 0, -1, "7", 10**20):
+                with self.subTest(identity=identity):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.verify_release_payload(
+                            manifest, draft, bundle=bundle, stage="draft", release_id=identity,
+                            created_url=created_url,
+                        )
+            for created in (None, "", created_url + "?redirect=1", created_url.replace("https:", "http:")):
+                with self.subTest(created=created):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.verify_release_payload(
+                            manifest, draft, bundle=bundle, stage="draft", release_id=7,
+                            created_url=created,
+                        )
+            # A mutable draft locator can never escape into public availability.
+            for stage in ("published", "invalid"):
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.verify_release_payload(
+                        manifest, draft, bundle=bundle, stage=stage, release_id=7,
+                    )
+            for suffix in ("", "0" * 19, "0" * 21, "g" * 20, "0" * 20 + "?q=1", "../v1.2.3"):
+                broken = copy.deepcopy(draft)
+                created = f"https://github.com/{REPOSITORY}/releases/tag/untagged-{suffix}"
+                broken["html_url"] = created
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.verify_release_payload(
+                        manifest, broken, bundle=bundle, stage="draft", release_id=7,
+                        created_url=created,
+                    )
 
     def test_bundle_checksums_and_activation_handoff_are_exact(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
@@ -864,6 +940,67 @@ class PublicDistributionTests(unittest.TestCase):
             )
             with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "invalid|cover|canonical"):
                 DISTRIBUTION.verify_bundle(root / "bundle")
+
+    def test_draft_cli_requires_created_identity_and_preserves_files_on_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = write_bundle(root)
+            bundle = root / "bundle"
+            payload = release_payload(manifest, bundle)
+            payload.update(draft=True, immutable=False)
+            payload_file = root / "draft.json"
+            payload_file.write_text(json.dumps(payload), encoding="utf-8")
+            arguments = [sys.executable, str(MODULE_PATH), "verify-release", "--manifest",
+                         str(bundle / DISTRIBUTION.MANIFEST_NAME), "--release-json", str(payload_file),
+                         "--bundle", str(bundle), "--stage", "draft", "--release-id", "7",
+                         "--created-url", payload["html_url"]]
+            passed = subprocess.run(arguments, capture_output=True, text=True, timeout=10)
+            self.assertEqual(passed.returncode, 0, passed.stderr)
+            before = {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()}
+            for label, change in {
+                "missing creation URL": lambda argv: argv[:-2],
+                "different release ID": lambda argv: [*argv[:-3], "8", *argv[-2:]],
+                "missing release ID": lambda argv: [*argv[:-4], *argv[-2:]],
+            }.items():
+                with self.subTest(label=label):
+                    failed = subprocess.run(change(arguments), capture_output=True, text=True, timeout=10)
+                    self.assertNotEqual(failed.returncode, 0)
+                    self.assertEqual(before, {path.relative_to(root): path.read_bytes() for path in root.rglob("*") if path.is_file()})
+
+    def test_workflow_binds_new_draft_and_publication_to_one_numeric_identity(self) -> None:
+        workflow = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        mutations = {
+            "tag endpoint cannot find new draft": ('releases/$release_id" > "$RUNNER_TEMP/release-draft.json"', 'releases/tags/$tag" > "$RUNNER_TEMP/release-draft.json"'),
+            "unbounded numeric ID": ('^[1-9][0-9]{0,19}$', '^[0-9]+$'),
+            "unbound draft identity": ('--release-id "$release_id" --created-url', '--release-id 7 --created-url'),
+            "unbound creation result": ('--created-url "$created_release_url"', '--created-url "$tag"'),
+            "publish by unrelated identity": ('--method PATCH "repos/$PUBLIC_REPOSITORY/releases/$release_id"', '--method PATCH "repos/$PUBLIC_REPOSITORY/releases/7"'),
+            "still a draft": ('-F draft=false', '-F draft=true'),
+            "stable rather than prerelease": ('-F prerelease=true', '-F prerelease=false'),
+            "unexpected latest channel": ('-f make_latest=false', '-f make_latest=true'),
+            "skip lookup": ('release_id="$(gh release view', 'true || release_id="$(gh release view'),
+            "skip creation": ('created_release_url="$(gh release create', 'true || created_release_url="$(gh release create'),
+            "masked publish failure": ('gh api -H "$api_header" --method PATCH', 'true || gh api -H "$api_header" --method PATCH'),
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            candidate = Path(temporary) / "workflow.yml"
+            for label, (original, replacement) in mutations.items():
+                with self.subTest(label=label):
+                    self.assertIn(original, workflow)
+                    candidate.write_text(workflow.replace(original, replacement, 1), encoding="utf-8")
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.validate_workflow(candidate)
+            for owner in ('release_id="$(gh release view', '[[ "$release_id"', '--stage draft', '--method PATCH', 'releases/$release_id" > "$RUNNER_TEMP/release-published.json"'):
+                line = next(line for line in workflow.splitlines(keepends=True) if owner in line)
+                for replacement in ("", line + line, line.replace(line.lstrip(), "# " + line.lstrip())):
+                    candidate.write_text(workflow.replace(line, replacement, 1), encoding="utf-8")
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.validate_workflow(candidate)
+            draft_line = next(line for line in workflow.splitlines(keepends=True) if '--stage draft' in line)
+            publish_line = next(line for line in workflow.splitlines(keepends=True) if '--method PATCH' in line)
+            candidate.write_text(workflow.replace(draft_line + publish_line, publish_line + draft_line), encoding="utf-8")
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.validate_workflow(candidate)
 
     def test_workflow_policy_rejects_publication_gate_removal(self) -> None:
         DISTRIBUTION.validate_workflow()
