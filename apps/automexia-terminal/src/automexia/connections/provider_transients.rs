@@ -687,25 +687,46 @@ current-context: context-one
     }
     #[test]
     fn capacity_disable_and_repeated_shutdown_are_bounded() {
+        // A native run stalled in this lifecycle with no operation evidence.
+        // Captured numeric checkpoints identify the next blocked filesystem
+        // phase without exposing transient contents, paths or host identities.
         for cycle in 0..64_u64 {
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=open");
             let (_temporary, mut manager) = manager();
+            let owned_root = manager.root.clone();
             for index in 0..MAX_PROVIDER_TRANSIENTS {
                 let mut item = binding(index as u64 + 1, 10_000);
                 item.capsule_id = format!("capsule-{cycle}-{index}");
                 item.session_id = index as u64 + 1;
+                eprintln!("provider-transient lifecycle cycle={cycle} phase=publish item={index}");
                 manager.publish(item, KUBECONFIG, 100).unwrap();
             }
+            assert_eq!(
+                fs::read_dir(&owned_root).unwrap().count(),
+                MAX_PROVIDER_TRANSIENTS,
+                "every live transient must have exactly one owned file"
+            );
             let mut extra = binding(99, 10_000);
             extra.capsule_id = "capacity-extra".into();
             assert_eq!(
                 manager.publish(extra, KUBECONFIG, 100).unwrap_err().code(),
                 ProviderTransientErrorCode::CapacityExceeded
             );
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=disable");
             assert_eq!(
                 manager.disable_provider(ProviderKind::Aws),
                 MAX_PROVIDER_TRANSIENTS
             );
+            assert_eq!(fs::read_dir(&owned_root).unwrap().count(), 0);
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=shutdown");
             assert_eq!(manager.shutdown(), 0);
+            assert!(!owned_root.exists(), "shutdown must remove its owned root");
+            assert_eq!(manager.shutdown(), 0);
+            assert!(
+                !owned_root.exists(),
+                "repeated shutdown must not recreate state"
+            );
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=complete");
         }
     }
 
