@@ -171,6 +171,18 @@ and malformed JSON rejection, no writes, and redacted diagnostics. Mutations
 must reject removed, duplicated, reordered or ignored authorization and forged
 contexts while preserving manual rehearsal isolation and all artifact gates.
 Only the real post-merge run supplies signed-release evidence.
+The explicitly approved public-archive solo policy requires zero approvals,
+no mandatory second reviewer, and retains PRs, resolved threads, signatures,
+linear squash history, no bypass and protected tags. Mutate every field's
+absence, value and JSON type. Public documentation uses the separate read-only
+`check_public_release_metadata.py` / `test_public_release_metadata.py` owner:
+check exact file inventory, logo bytes, accessible image text, local anchors,
+six pinned download URLs, trusted verification key and private-path rejection.
+Check live anonymous links and the actual GitHub-rendered page separately;
+offline tests neither activate downloads nor certify rendered pixels.
+The real classic-protection self-approval blocker is also a regression seed:
+require bounded classic review evidence as well as rulesets, reject type/value
+drift, and mutate its API fetch and CLI wiring without expanding App authority.
 Read-only App governance must combine REST rules with repository/identity-bound
 GraphQL bypass evidence. Preserve the real omitted REST field and redacted
 nonempty GraphQL actor as regression seeds. Test zero/nonzero/inconsistent

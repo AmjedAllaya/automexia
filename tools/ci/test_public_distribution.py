@@ -316,6 +316,14 @@ def repository_governance() -> dict[str, dict[str, object]]:
             "allow_rebase_merge": False,
         },
         "immutable": {"enabled": True},
+        "classic": {
+            "required_pull_request_reviews": {
+                "required_approving_review_count": 0,
+                "dismiss_stale_reviews": True,
+                "require_code_owner_reviews": False,
+                "require_last_push_approval": False,
+            },
+        },
         "main": {
             "id": 101, "node_id": "RRS_fixture_main",
             "name": "Protect main",
@@ -330,10 +338,12 @@ def repository_governance() -> dict[str, dict[str, object]]:
                 {
                     "type": "pull_request",
                     "parameters": {
-                        "required_approving_review_count": 1,
+                        "required_approving_review_count": 0,
                         "dismiss_stale_reviews_on_push": True,
-                        "require_code_owner_review": True,
-                        "require_last_push_approval": True,
+                        "require_code_owner_review": False,
+                        "require_last_push_approval": False,
+                        "require_extra_approval_for_unattributed_changes": False,
+                        "required_reviewers": [],
                         "required_review_thread_resolution": True,
                         "allowed_merge_methods": ["squash"],
                     },
@@ -476,7 +486,8 @@ class ReadOnlyGovernanceTests(unittest.TestCase):
             state = repository_governance()
             arguments = [sys.executable, str(MODULE_PATH), "verify-repository"]
             for key, flag in (("repository", "repository"), ("immutable", "immutable"),
-                              ("main", "main-ruleset"), ("tag", "tag-ruleset")):
+                              ("main", "main-ruleset"), ("tag", "tag-ruleset"),
+                              ("classic", "main-protection")):
                 value = state[key]
                 if key in ("main", "tag"):
                     value.pop("bypass_actors")
@@ -517,6 +528,11 @@ class ReadOnlyGovernanceTests(unittest.TestCase):
             '', argument + ' || true', '--ruleset-bypass-json other.json', '# ' + argument,
         ))
         mutations.append(text.replace('permission-administration: read', 'permission-administration: write', 1))
+        classic_fetch = 'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/branches/main/protection" > "$governance/main-protection.json"'
+        classic_argument = '--main-protection-json "$governance/main-protection.json"'
+        for token in (classic_fetch, classic_argument):
+            for replacement in ('', '# ' + token, token + ' || true', token + '\n          ' + token):
+                mutations.append(text.replace(token, replacement, 1))
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'workflow.yml'
             for mutation in mutations:
@@ -527,6 +543,28 @@ class ReadOnlyGovernanceTests(unittest.TestCase):
 
 
 class PublicDistributionTests(unittest.TestCase):
+    def test_classic_protection_cannot_silently_reintroduce_self_approval(self) -> None:
+        baseline = repository_governance()["classic"]
+        DISTRIBUTION.validate_public_classic_review(baseline)
+        expected = baseline["required_pull_request_reviews"]
+        # The real PR remained blocked after the ruleset passed: classic
+        # protection had a second independent review requirement.
+        for field, current in expected.items():
+            for value in (None, True, False, 0, 1, "0", []):
+                if type(value) is type(current) and value == current:
+                    continue
+                state = copy.deepcopy(baseline)
+                state["required_pull_request_reviews"][field] = value
+                with self.subTest(field=field, value=value), self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.validate_public_classic_review(state)
+            state = copy.deepcopy(baseline)
+            del state["required_pull_request_reviews"][field]
+            with self.subTest(missing=field), self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.validate_public_classic_review(state)
+        for state in ({}, {"required_pull_request_reviews": []}, None):
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.validate_public_classic_review(state)
+
     def test_native_nfpm_revision_drives_exact_deb_and_rpm_names(self) -> None:
         contract = DISTRIBUTION._artifact_contract(VERSION)
         self.assertEqual(
@@ -595,11 +633,11 @@ class PublicDistributionTests(unittest.TestCase):
             "main scope": lambda state: state["main"]["conditions"]["ref_name"].__setitem__(
                 "include", ["refs/heads/release"]
             ),
-            "no approval": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
-                "required_approving_review_count", 0
+            "unapproved team policy": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
+                "required_approving_review_count", 1
             ),
-            "no code owner": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
-                "require_code_owner_review", False
+            "impossible self approval": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
+                "require_code_owner_review", True
             ),
             "merge commit": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
                 "allowed_merge_methods", ["squash", "merge"]
@@ -614,6 +652,31 @@ class PublicDistributionTests(unittest.TestCase):
             with self.subTest(label=label):
                 state = copy.deepcopy(baseline)
                 mutate(state)
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.validate_public_repository_governance(
+                        state["repository"], state["immutable"], state["main"], state["tag"]
+                    )
+
+    def test_solo_review_policy_rejects_missing_and_type_confused_fields(self) -> None:
+        baseline = repository_governance()
+        review = baseline["main"]["rules"][3]["parameters"]
+        # Self-approval must not be manufactured, and false must not masquerade
+        # as the integer approval count. Keep every other protection mandatory.
+        for field, expected in review.items():
+            candidates = [None, "", {}, 1, 0, True, False, [], ["unexpected"]]
+            for value in candidates:
+                if type(value) is type(expected) and value == expected:
+                    continue
+                with self.subTest(field=field, value=value):
+                    state = copy.deepcopy(baseline)
+                    state["main"]["rules"][3]["parameters"][field] = value
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.validate_public_repository_governance(
+                            state["repository"], state["immutable"], state["main"], state["tag"]
+                        )
+            with self.subTest(missing=field):
+                state = copy.deepcopy(baseline)
+                del state["main"]["rules"][3]["parameters"][field]
                 with self.assertRaises(DISTRIBUTION.DistributionError):
                     DISTRIBUTION.validate_public_repository_governance(
                         state["repository"], state["immutable"], state["main"], state["tag"]

@@ -833,16 +833,21 @@ def validate_public_repository_governance(
     if not isinstance(review, dict):
         fail("Protect main pull-request rule has no parameters")
     approvals = review.get("required_approving_review_count")
-    if not isinstance(approvals, int) or isinstance(approvals, bool) or approvals < 1:
-        fail("Protect main must require at least one approval")
-    for flag in (
-        "dismiss_stale_reviews_on_push",
-        "require_code_owner_review",
-        "require_last_push_approval",
-        "required_review_thread_resolution",
-    ):
-        if review.get(flag) is not True:
-            fail(f"Protect main pull-request rule must enable {flag}")
+    # ADR 0040's explicit public-archive extension permits owner-reviewed PRs,
+    # not a ruleset bypass. Reject policy drift and JSON bool/int confusion.
+    if type(approvals) is not int or approvals != 0:
+        fail("Protect main must use the approved solo-maintainer review policy")
+    for flag, expected in {
+        "dismiss_stale_reviews_on_push": True,
+        "require_code_owner_review": False,
+        "require_last_push_approval": False,
+        "require_extra_approval_for_unattributed_changes": False,
+        "required_review_thread_resolution": True,
+    }.items():
+        if review.get(flag) is not expected:
+            fail(f"Protect main pull-request policy drifted: {flag}")
+    if review.get("required_reviewers") != []:
+        fail("Protect main must not require an unavailable second reviewer")
     if review.get("allowed_merge_methods") != ["squash"]:
         fail("Protect main must allow squash merging only")
 
@@ -850,6 +855,21 @@ def validate_public_repository_governance(
     for required in ("deletion", "update", "non_fast_forward"):
         if required not in tag_rules:
             fail(f"Protect release tags ruleset is missing {required}")
+
+
+def validate_public_classic_review(protection: object) -> None:
+    review = protection.get("required_pull_request_reviews") if isinstance(protection, dict) else None
+    if not isinstance(review, dict):
+        fail("public main classic review evidence is unavailable")
+    for field, expected in {
+        "required_approving_review_count": 0,
+        "dismiss_stale_reviews": True,
+        "require_code_owner_reviews": False,
+        "require_last_push_approval": False,
+    }.items():
+        value = review.get(field)
+        if type(value) is not type(expected) or value != expected:
+            fail(f"public main classic review policy drifted: {field}")
 
 
 def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
@@ -1084,18 +1104,22 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         'ruleset-bypass-query)" > "$governance/ruleset-bypass.json"'
     )
     bypass_argument = '--ruleset-bypass-json "$governance/ruleset-bypass.json"'
+    classic_fetch = 'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/branches/main/protection" > "$governance/main-protection.json"'
     bypass_block = "\n" + "\n".join((
+        classic_fetch,
         bypass_fetch,
         'python3 tools/ci/public_distribution.py verify-repository \\',
         '--repository-json "$governance/repository.json" \\',
         '--immutable-json "$governance/immutable.json" \\',
         '--main-ruleset-json "$governance/main-ruleset.json" \\',
         '--tag-ruleset-json "$governance/tag-ruleset.json" \\',
+        '--main-protection-json "$governance/main-protection.json" \\',
         bypass_argument,
         '',
     ))
     normalized_publish = "\n" + "\n".join(line.strip() for line in publish.splitlines()) + "\n"
     if (publish.count(bypass_fetch) != 1 or publish.count(bypass_argument) != 1
+            or publish.count(classic_fetch) != 1
             or normalized_publish.count(bypass_block) != 1
             or not publish.find(bypass_fetch) < publish.find(bypass_argument) < publish.find('gh release create')
             or 'permission-administration: write' in publish or 'set +' in publish
@@ -1193,6 +1217,7 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     governance.add_argument("--immutable-json", type=Path, required=True)
     governance.add_argument("--main-ruleset-json", type=Path, required=True)
     governance.add_argument("--tag-ruleset-json", type=Path, required=True)
+    governance.add_argument("--main-protection-json", type=Path, required=True)
     governance.add_argument("--ruleset-bypass-json", type=Path, required=True)
     commands.add_parser("ruleset-bypass-query")
     bundle = commands.add_parser("verify-bundle")
@@ -1240,6 +1265,9 @@ def main(argv: list[str] | None = None) -> int:
             manifest = verify_bundle(args.directory)
             print(f"Verified exact public bundle for v{manifest['version']}")
         elif args.command == "verify-repository":
+            validate_public_classic_review(
+                _load_json(args.main_protection_json, MAX_RELEASE_JSON_BYTES)
+            )
             validate_public_repository_governance(
                 _load_json(args.repository_json, MAX_RELEASE_JSON_BYTES),
                 _load_json(args.immutable_json, MAX_RELEASE_JSON_BYTES),
