@@ -14,3 +14,6 @@
 - Public guide templates use the same branding and archive links. The portable
   instructions require a fresh extraction directory. Already published signed
   guide assets are not overwritten.
+- The real public PR exposed a second approval requirement in classic branch
+  protection. The read-only publication audit now checks both policy layers;
+  missing evidence and fetch/argument bypasses are regression-tested.

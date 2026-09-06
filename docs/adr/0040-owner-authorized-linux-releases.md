@@ -77,6 +77,16 @@ reviewer requirements are disabled. Optional reviews still become stale on a
 new push. CODEOWNERS remains an ownership record, not fabricated approval.
 The release tags and immutable published assets retain their original rules.
 
+The actual public PR remained review-blocked after changing the ruleset because
+classic branch protection independently required a second reviewer. Its review
+settings must also require zero approvals, disable CODEOWNER and last-push
+approval, and keep stale-review dismissal enabled. The remaining classic fields
+are preserved. The release workflow reads classic protection with the existing
+read-only App permission; its bounded validator and CLI reject missing evidence,
+wrong types and review-policy drift. Mutations remove, duplicate, comment out or
+suppress the API fetch and argument. Verify the effective PR merge result, not
+only one policy endpoint. Normal protected squash merging remains required.
+
 Placement remains the release-tooling owner, not terminal core or an extension.
 The governance validator checks this exact accepted policy, including missing
 and type-confused fields. Before this change the real CLI rejected a valid solo

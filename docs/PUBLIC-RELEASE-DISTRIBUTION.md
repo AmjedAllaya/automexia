@@ -300,6 +300,10 @@ under [ADR 0040](adr/0040-owner-authorized-linux-releases.md#public-archive-solo
 Approval count is zero and second-person/code-owner/last-push approval is not
 required. No bypass actor was added and release-tag protections are unchanged.
 Only the owner currently has write access; this policy is not independent review.
+Classic branch protection has its own review settings. They are aligned to the
+same zero-approval policy without changing its other controls; publication reads
+and validates both policy layers so an invisible second-review requirement is
+not missed again. A ruleset-only pass is not proof a metadata PR can merge.
 
 The public README and guides reuse the supplied logo and link directly to the
 six immutable v0.4.0 packages. Installation, verification, Linux shortcuts,

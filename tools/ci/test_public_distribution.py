@@ -316,6 +316,14 @@ def repository_governance() -> dict[str, dict[str, object]]:
             "allow_rebase_merge": False,
         },
         "immutable": {"enabled": True},
+        "classic": {
+            "required_pull_request_reviews": {
+                "required_approving_review_count": 0,
+                "dismiss_stale_reviews": True,
+                "require_code_owner_reviews": False,
+                "require_last_push_approval": False,
+            },
+        },
         "main": {
             "id": 101, "node_id": "RRS_fixture_main",
             "name": "Protect main",
@@ -478,7 +486,8 @@ class ReadOnlyGovernanceTests(unittest.TestCase):
             state = repository_governance()
             arguments = [sys.executable, str(MODULE_PATH), "verify-repository"]
             for key, flag in (("repository", "repository"), ("immutable", "immutable"),
-                              ("main", "main-ruleset"), ("tag", "tag-ruleset")):
+                              ("main", "main-ruleset"), ("tag", "tag-ruleset"),
+                              ("classic", "main-protection")):
                 value = state[key]
                 if key in ("main", "tag"):
                     value.pop("bypass_actors")
@@ -519,6 +528,11 @@ class ReadOnlyGovernanceTests(unittest.TestCase):
             '', argument + ' || true', '--ruleset-bypass-json other.json', '# ' + argument,
         ))
         mutations.append(text.replace('permission-administration: read', 'permission-administration: write', 1))
+        classic_fetch = 'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/branches/main/protection" > "$governance/main-protection.json"'
+        classic_argument = '--main-protection-json "$governance/main-protection.json"'
+        for token in (classic_fetch, classic_argument):
+            for replacement in ('', '# ' + token, token + ' || true', token + '\n          ' + token):
+                mutations.append(text.replace(token, replacement, 1))
         with tempfile.TemporaryDirectory() as temporary:
             path = Path(temporary) / 'workflow.yml'
             for mutation in mutations:
@@ -529,6 +543,28 @@ class ReadOnlyGovernanceTests(unittest.TestCase):
 
 
 class PublicDistributionTests(unittest.TestCase):
+    def test_classic_protection_cannot_silently_reintroduce_self_approval(self) -> None:
+        baseline = repository_governance()["classic"]
+        DISTRIBUTION.validate_public_classic_review(baseline)
+        expected = baseline["required_pull_request_reviews"]
+        # The real PR remained blocked after the ruleset passed: classic
+        # protection had a second independent review requirement.
+        for field, current in expected.items():
+            for value in (None, True, False, 0, 1, "0", []):
+                if type(value) is type(current) and value == current:
+                    continue
+                state = copy.deepcopy(baseline)
+                state["required_pull_request_reviews"][field] = value
+                with self.subTest(field=field, value=value), self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.validate_public_classic_review(state)
+            state = copy.deepcopy(baseline)
+            del state["required_pull_request_reviews"][field]
+            with self.subTest(missing=field), self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.validate_public_classic_review(state)
+        for state in ({}, {"required_pull_request_reviews": []}, None):
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.validate_public_classic_review(state)
+
     def test_native_nfpm_revision_drives_exact_deb_and_rpm_names(self) -> None:
         contract = DISTRIBUTION._artifact_contract(VERSION)
         self.assertEqual(
