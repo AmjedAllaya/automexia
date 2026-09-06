@@ -190,7 +190,7 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
-    - uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
+    - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute the exact native and benchmark release workload
@@ -361,7 +361,7 @@ jobs:
     - name: Install native Linux build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
     - name: Install pinned release quality tools
-      uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
+      uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
         tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
     - name: Formatting
@@ -724,7 +724,7 @@ jobs:
         rustup default $env:AUTOMEXIA_RUST_TOOLCHAIN
         if ($LASTEXITCODE -ne 0) { throw 'rustup default failed' }
     - name: Install pinned cargo-packager
-      uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
+      uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
         tool: cargo-packager@0.11.8
     - name: Restore signed inputs into packaging workspace
