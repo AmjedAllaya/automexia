@@ -36,11 +36,12 @@ encrypted backup remains the owner's responsibility and was not independently
 inspected. Stable platform, controlled graphics/accessibility and long-duration
 assurance gates remain separate; this publication does not mark them complete.
 
-The authenticated 2026-09-01 audit confirmed the merged website configuration
-contains the exact six-package contract with a null activation seal. The live
-supported routes and the deliberately unsupported AppImage route all return a
-non-cacheable 404 without a redirect. This is correct pre-release behavior, not
-evidence that a package has shipped.
+The authenticated 2026-09-01 website audit confirmed the merged six-package
+contract with a null activation seal. After publication, an independent
+2026-09-06 smoke check verified all six friendly routes, all six version-pinned
+routes and the unsupported AppImage route: each returned 404, no redirect and
+`Cache-Control: no-store`. This is correct inactive-website behavior; the
+published packages are available directly from the GitHub release above.
 
 ## Public contract
 
