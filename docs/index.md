@@ -1,8 +1,8 @@
 # Automexia Terminal documentation
 
 This public documentation covers current open-source terminal behavior and
-ordinary free terminal capabilities. It intentionally excludes advanced future
-features and commercial strategy.
+implemented free terminal capabilities. It excludes all future features,
+including open-source ideas, and commercial strategy.
 
 ## Start here
 
@@ -59,8 +59,8 @@ features and commercial strategy.
 | Subject | Page |
 |---|---|
 | Current architecture | [Architecture](ARCHITECTURE.md), [developer summary](developer/architecture.md) |
-| Required terminal fixes and their evidence | [Terminal maintenance requirements](TERMINAL-MAINTENANCE-REQUIREMENTS.md) |
-| Keyboard-first usability and customization corrections | [Terminal interaction requirements](TERMINAL-INTERACTION-REQUIREMENTS.md) |
+| Terminal implementation and known limitations | [Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) |
+| UI ownership and verification limits | [Terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) |
 | Dependency placement | [Build, wrap, and adopt](BUILD-WRAP-ADOPT-ARCHITECTURE.md) |
 | Feature ownership | [Feature ownership audit](FEATURE-OWNERSHIP-AUDIT.md) |
 | Architecture decisions | [Decision index](DECISIONS.md) |
@@ -83,7 +83,7 @@ or presence of an internal source module.
 
 When public behavior changes, update its guide, reference, architecture,
 feature status, platform evidence, tests, and release notes together. When a
-draft includes advanced future or commercial material, preserve it only in the
+draft includes future features or commercial material, preserve it only in the
 ignored private documentation workspace and remove public links to it.
 
 ## Command-productivity evidence status

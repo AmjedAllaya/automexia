@@ -150,9 +150,8 @@ shell control keys retain documented fallthrough.
 
 The current default table still intercepts bare Ctrl+R/Ctrl+D for cloning;
 fallthrough is therefore profile- and mode-specific, not a universal current
-guarantee. The required correction must cover both the typed registry and
-legacy fallback, plus effective shortcut labels. See
-[native shell key correction](TERMINAL-MAINTENANCE-REQUIREMENTS.md#r4-restore-native-shell-control-keys-by-default).
+guarantee. Both the typed registry and legacy fallback affect current input
+routing. See [native shell key status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys).
 
 ## Configuration transaction
 
@@ -263,44 +262,20 @@ A source test, cross-compile, or mocked platform result cannot replace native
 runtime evidence. Documentation must distinguish implemented source, shipped
 behavior, and external release prerequisites.
 
-## Required maintenance refinements
+## Current maintenance ownership
 
 The existing Rust terminal/session, VT, renderer, platform and capability
-boundaries remain the architecture to preserve. The reported reliability and
-interaction problems do not establish a need for a replacement renderer,
-terminal engine, asynchronous runtime, graphical frontend, or distributed
-service architecture.
+boundaries remain authoritative. Fundamental input, PTY, reflow, focus and
+rendering behavior belongs to core owners. Optional decoding and file
+validation use the existing image owners, not the parser or paint hot path.
 
-The following are correction requirements, not claims that every consumer
-already implements them or that native validation is complete:
+[Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) and
+[terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) identify
+existing source owners and known limitations. They are not implementation
+plans or evidence that every native scenario has passed.
 
-| Boundary | Required refinement | Existing ownership to extend |
-|---|---|---|
-| Terminal state to visible content | One reflow map for retained text, selection, search, command anchors and images; explicit eviction handling | VT grid/selection and application renderable state |
-| Mutation to presentation | Preserve final damage, publish before wake, immutable live style interpretation, eventual quiescent convergence | Pending damage, grid emission and renderer snapshot/style owners |
-| User intent to PTY input | Capture target route/generation, reject replacement, preserve ordered paste and overlay ownership | Application input routing and existing session messenger |
-| Actions to keyboard/help | Effective profile/user bindings and scope-aware availability, including legacy fallback | Typed keybinding compiler, frontend adapter and application dispatch |
-| Session events to cleanup | Resolve exact hidden/background session, reject stale exit, join owned workers/process resources | Context manager, PTY and native process adapters |
-| Preferences to runtime/persistence | One validated transaction; truthful applied/saved state and reversible reset | Application preferences and existing configuration owner |
-| Layout to all consumers | Shared transforms for paint, focus, hit testing, IME, selection and preview anchors | Renderer-neutral layout and native accessibility adapters |
-| Optional preview to files/resources | Existing bounded worker, exact target identity, generation rejection and CPU/GPU cleanup | Image-preview controller, image library and renderer resource owners |
-
-Detailed symptoms, source/test owners, acceptance criteria and failure cases
-are in [Terminal maintenance requirements](TERMINAL-MAINTENANCE-REQUIREMENTS.md)
-and [Terminal interaction requirements](TERMINAL-INTERACTION-REQUIREMENTS.md).
-These are public technical maintenance specifications, not feature schedules.
-
-Fundamental input, PTY, reflow, focus and rendering corrections belong in their
-existing core owners because every terminal session depends on them. Optional
-decoding and file validation remain within the existing image owners rather
-than gaining authority in the parser or paint path. A new extension is not
-justified merely to fix a cross-cutting terminal defect.
-
-Prefer pure model corrections with thin existing adapters, retain dependency
-direction, and preserve current limits. Any actual new dependency, capability,
-persistence schema, protocol or threading boundary still needs an ADR and
-applicable architecture-checker coverage before implementation. No such change
-is enacted by documenting these requirements.
+Dependencies, capabilities, persistence schemas, protocols and threading
+boundaries remain subject to the existing ADR and architecture checks.
 
 ## Public architecture boundary
 

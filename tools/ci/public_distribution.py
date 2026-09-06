@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -17,6 +18,9 @@ from urllib.parse import quote
 
 
 PUBLIC_REPOSITORY = "AmjedAllaya/automexia-releases"
+SOURCE_REPOSITORY = "AmjedAllaya/automexia-terminal"
+RELEASE_OWNER = "AmjedAllaya"
+MAX_RELEASE_EVENT_BYTES = 1024 * 1024
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_WORKFLOW = ROOT / ".github/workflows/linux-early-access.yml"
 NFPM_CONFIG = ROOT / "packaging/linux/nfpm.yaml"
@@ -73,6 +77,109 @@ class DistributionError(ValueError):
 
 def fail(message: str) -> NoReturn:
     raise DistributionError(message)
+
+
+def load_release_event(path: Path) -> dict[str, object]:
+    """Read only a bounded runner event; never echo event fields or host paths."""
+    try:
+        _regular_unlinked(path, "release event", MAX_RELEASE_EVENT_BYTES)
+        with path.open("rb") as source:
+            data = source.read(MAX_RELEASE_EVENT_BYTES + 1)
+        if len(data) > MAX_RELEASE_EVENT_BYTES:
+            fail("release event exceeds its byte limit")
+        payload = json.loads(
+            data.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys,
+            parse_constant=lambda _: fail("non-finite release event value"),
+        )
+        if not isinstance(payload, dict):
+            fail("release event must be an object")
+        pending = [(payload, 0)]
+        visited = 0
+        while pending:
+            value, depth = pending.pop()
+            visited += 1
+            if depth > 32 or visited > 32768:
+                fail("release event structure exceeds its limits")
+            if isinstance(value, float) and not math.isfinite(value):
+                fail("non-finite release event value")
+            if isinstance(value, dict):
+                children = value.values()
+            elif isinstance(value, list):
+                children = value
+            else:
+                children = ()
+            if visited + len(pending) + len(children) > 32768:
+                fail("release event structure exceeds its limits")
+            pending.extend((child, depth + 1) for child in children)
+        return payload
+    except (OSError, ValueError, RecursionError):
+        raise DistributionError(
+            "release event is unavailable, malformed or over limit"
+        ) from None
+
+
+def authorize_owner_release(
+    payload: object,
+    *,
+    event_name: str,
+    repository: str,
+    actor: str,
+    triggering_actor: str,
+    commit: str,
+    current_main: str,
+) -> str:
+    """Authorize one owner-merged Linux PR, not an arbitrary manual run."""
+    def field(*path: str) -> object:
+        value = payload
+        for part in path:
+            if not isinstance(value, dict):
+                return None
+            value = value.get(part)
+        return value
+
+    if event_name != "pull_request" or repository != SOURCE_REPOSITORY:
+        fail("release requires a merged pull request in the pinned source repository")
+    if actor != RELEASE_OWNER or triggering_actor != RELEASE_OWNER:
+        fail("only the release owner may trigger or rerun publication")
+    for role in (("sender",), ("pull_request", "user"), ("pull_request", "merged_by")):
+        if field(*role, "login") != RELEASE_OWNER or field(*role, "type") != "User":
+            fail("release author, merger and sender must be the pinned human owner")
+    for path in (
+        ("repository",), ("pull_request", "head", "repo"),
+        ("pull_request", "base", "repo"),
+    ):
+        if field(*path, "full_name") != SOURCE_REPOSITORY:
+            fail("release pull request must not cross a repository or fork boundary")
+    number = field("pull_request", "number")
+    if (
+        type(number) is not int or number <= 0 or field("action") != "closed"
+        or field("pull_request", "state") != "closed"
+        or field("pull_request", "merged") is not True
+        or field("pull_request", "base", "ref") != "main"
+    ):
+        fail("release requires a closed and merged pull request into main")
+    # Original and rerun events must still refer to the checked-out current main.
+    head = field("pull_request", "head", "sha")
+    merge = field("pull_request", "merge_commit_sha")
+    for identity in (head, merge, commit, current_main):
+        if (
+            not isinstance(identity, str)
+            or COMMIT_RE.fullmatch(identity) is None
+            or identity == "0" * 40
+        ):
+            fail("release commit identity is invalid")
+    if merge != commit or current_main != commit:
+        fail("release merge, checkout and current main identities must agree")
+    branch = field("pull_request", "head", "ref")
+    if not isinstance(branch, str) or len(branch) > 64:
+        fail("release branch is invalid")
+    version = re.fullmatch(
+        r"release/linux/((?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*)\.(?:0|[1-9][0-9]*))",
+        branch,
+    )
+    if version is None:
+        fail("release branch must be exactly release/linux/X.Y.Z")
+    return version.group(1)
 
 
 def _package_revision() -> str:
@@ -667,7 +774,7 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "manual rehearsal trigger": "workflow_dispatch:",
         "rehearsal-only dispatch mode": "publish=false",
         "internal merged PR": "github.event.pull_request.head.repo.full_name == github.repository",
-        "release branch": "^release/linux/([0-9]+)\\.([0-9]+)\\.([0-9]+)$",
+        "owner release authorization": "tools/ci/public_distribution.py authorize-release",
         "manifest builder": "tools/ci/public_distribution.py build",
         "bundle verifier": "tools/ci/public_distribution.py verify-bundle",
         "draft verifier": "--stage draft",
@@ -739,6 +846,24 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         fail("manual dispatch must select non-public rehearsal mode")
     if "publish=true" not in dispatch.group("release"):
         fail("only the reviewed merge path may select public release mode")
+    owner_lines = [line.strip() for line in dispatch.group("release").strip().splitlines()]
+    expected_owner_lines = [
+        'current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"',
+        'version="$(python3 tools/ci/public_distribution.py authorize-release \\',
+        '--event "$GITHUB_EVENT_PATH" --event-name "$EVENT_NAME" \\',
+        '--repository "$GITHUB_REPOSITORY" --actor "$GITHUB_ACTOR" \\',
+        '--triggering-actor "$GITHUB_TRIGGERING_ACTOR" \\',
+        '--commit "$EVENT_COMMIT" --current-main "$current_main")"',
+        'publish=true',
+    ]
+    if (
+        owner_lines != expected_owner_lines
+        or 'set -euo pipefail' not in authorize
+        or 'set +' in authorize
+        or authorize.count('publish=true') != 1
+        or 'continue-on-error:' in authorize
+    ):
+        fail("owner authorization must succeed with exact runner contexts before publication")
     resource_contract = {
         "single build job": "CARGO_BUILD_JOBS: '1'",
         "disabled development debug info": "CARGO_PROFILE_DEV_DEBUG: '0'",
@@ -920,6 +1045,10 @@ def _load_json(path: Path, maximum: int) -> dict[str, object]:
 def parse_args(argv: list[str]) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
+    authorize = commands.add_parser("authorize-release")
+    authorize.add_argument("--event", type=Path, required=True)
+    for name in ("event-name", "repository", "actor", "triggering-actor", "commit", "current-main"):
+        authorize.add_argument(f"--{name}", required=True)
     build = commands.add_parser("build")
     build.add_argument("--source", type=Path, required=True)
     build.add_argument("--output", type=Path, required=True)
@@ -949,7 +1078,15 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(sys.argv[1:] if argv is None else argv)
     try:
-        if args.command == "build":
+        if args.command == "authorize-release":
+            version = authorize_owner_release(
+                load_release_event(args.event), event_name=args.event_name,
+                repository=args.repository, actor=args.actor,
+                triggering_actor=args.triggering_actor, commit=args.commit,
+                current_main=args.current_main,
+            )
+            print(version)
+        elif args.command == "build":
             manifest = build_public_distribution(
                 args.source,
                 args.output,

@@ -24,12 +24,11 @@ Public documentation may include:
 - security and trust boundaries;
 - tests, native evidence, packaging, and release rules;
 - accepted decisions governing current source;
-- a maintenance roadmap for the open-source terminal.
+- current implementation and release-evidence status for the open-source terminal.
 
 Public documentation must not include:
 
-- advanced unreleased product ideas;
-- advanced future free features;
+- unreleased product ideas, including ordinary and advanced future free features;
 - paid or commercial features;
 - pricing, packaging, revenue, customer, or market strategy;
 - future specialist extensions;
@@ -53,7 +52,7 @@ The exact public/private rule is in
   `docs/CLI-REFERENCE.md` own exact public reference.
 - `docs/ARCHITECTURE.md` and accepted ADRs own current technical rationale.
 - `docs/TESTING.md` owns evidence levels and contributor commands.
-- `docs/ROADMAP.md` owns only open-source terminal maintenance direction.
+- `docs/ROADMAP.md` records current implementation and release-evidence status.
 - `docs/PRIVATE-DOCUMENTATION-POLICY.md` owns confidentiality and publication.
 
 Pages may summarize these owners for a specific reader but must not contradict

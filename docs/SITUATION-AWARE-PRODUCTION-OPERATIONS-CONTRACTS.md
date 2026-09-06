@@ -19,16 +19,18 @@ This compatibility anchor retains traceability to the current public
 source, test, and evidence owner. Detailed future or commercial planning
 remains private, and unavailable native evidence remains an explicit gate.
 
-## Public contract status
+## Current implementation status
 
-Status: planned public contract summary; no production-operation contract is
-implemented or available through this document.
+Status: no public runtime implementation or activation.
 
-A suggestion cannot execute itself, type into a PTY, or imply approval.
-External identity, credential, policy, provider, and change-management systems
-remain authoritative.
+This path is retained only for existing source and assurance references.
+It does not specify a feature, future design, or delivery plan.
+
+## Current contract boundary
+
+The enforced nonactivation boundary means that a suggestion cannot execute itself, type into a PTY, or imply approval
+through this path. There is no runtime contract to activate.
 
 Detailed schemas, scoring fields, provider mappings, and wire formats remain
-private until an explicit publication decision.
-
-Exact invariant: a suggestion cannot execute itself, type into a PTY, or imply approval.
+outside this public compatibility document. The checker rejects their known
+private fixture and schema markers.

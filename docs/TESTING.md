@@ -86,13 +86,11 @@ A narrow pass never overrides a known real-workflow failure.
 
 ## Reported terminal regressions
 
-[Terminal maintenance requirements](TERMINAL-MAINTENANCE-REQUIREMENTS.md)
-identifies source owners and independent acceptance checks for reflow, damage,
-paste targeting, native control keys, process exit, responsiveness, Unicode,
-graphics and native-platform maintenance.
-[Terminal interaction requirements](TERMINAL-INTERACTION-REQUIREMENTS.md)
-covers palette discovery, preferences, compact geometry, preview placement,
-shell/TUI compatibility and accessibility.
+[Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) identifies
+existing owners and known verification limits for reflow, rendering, input,
+process exit, Unicode and graphics.
+[Terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) records
+current palette, shortcut, preference, preview and accessibility ownership.
 
 Treat these as regression inventories, not passing evidence. Reproduce the
 reported path at the exact revision, retain its first failure, extend existing

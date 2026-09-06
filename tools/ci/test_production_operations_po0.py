@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Mutation tests for the public Production Operations planning boundary."""
+"""Mutation tests for the current-status and nonactivation boundary."""
 
 from __future__ import annotations
 
@@ -83,6 +83,22 @@ class ProductionOperationsBoundaryTests(unittest.TestCase):
                         "local-only planning detail",
                     ):
                         CHECKER.validate_repository(root)
+
+    def test_future_announcement_is_rejected_without_echoing_it(self) -> None:
+        temporary, root = self.make_repository()
+        with temporary:
+            path = root / next(iter(CHECKER.REQUIRED_DOCUMENTS))
+            # A merge can restore a proposal while retaining every status marker.
+            announcement = "Status: planned public direction."
+            path.write_text(
+                path.read_text(encoding="utf-8") + announcement + "\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                CHECKER.ProductionOperationsBoundaryError, "future planning"
+            ) as caught:
+                CHECKER.validate_repository(root)
+            self.assertNotIn(announcement, str(caught.exception))
 
     def test_runtime_path_is_rejected(self) -> None:
         temporary, root = self.make_repository()

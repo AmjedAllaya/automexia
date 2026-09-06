@@ -7,6 +7,13 @@ a pass.
 
 ## Current status
 
+Linux Early Access and stable releases have separate selectors. A merged
+`release/linux/X.Y.Z` PR skips stable authorization before its review/signing
+jobs, while `release/X.Y.Z` retains the complete stable-release contract. The
+free-plan checker and its mutation suite reject removal or inversion of that
+exclusion. This prevents an unrelated stable-lane failure on a Linux release;
+it does not waive any test or signing requirement for either channel.
+
 | Area | Source/local status | Remaining external evidence |
 |---|---|---|
 | Ordinary PR policy, Rust quality, dependency security | Implemented, mutation-tested, and passed in exact-commit run `33593759776` | Repeat on every changed commit; native and controlled evidence remains separate |

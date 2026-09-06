@@ -96,9 +96,21 @@ class PhaseImplementationAuditTests(unittest.TestCase):
     def test_public_summary_missing_area_is_rejected(self) -> None:
         audit = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
         roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
-        mutated = audit.replace("Automation Studio", "Removed editor", 1)
+        mutated = audit.replace("Command productivity foundations", "Removed area", 1)
         with self.assertRaisesRegex(AUDIT.PhaseAuditError, "missing areas"):
             AUDIT.validate_public_summary(mutated, roadmap)
+
+    def test_unreviewed_or_duplicate_public_area_is_rejected(self) -> None:
+        audit = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
+        roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
+        for row in (
+            "| Future free component | A proposal, not current software. |",
+            "| Command productivity foundations | Duplicate status. |",
+        ):
+            with self.subTest(row=row), self.assertRaisesRegex(
+                AUDIT.PhaseAuditError, "duplicate or unreviewed"
+            ):
+                AUDIT.validate_public_summary(audit + "\n" + row + "\n", roadmap)
 
     def test_public_roadmap_private_phase_code_is_rejected(self) -> None:
         audit = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")

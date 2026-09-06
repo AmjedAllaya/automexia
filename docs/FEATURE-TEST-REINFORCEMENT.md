@@ -162,11 +162,37 @@ The native nFPM revision is one repository-owned input for both DEB and RPM
 names; the post-download assembler must consume the exact native filenames, and
 mutation coverage must reject a missing, duplicate, zero, or split revision.
 
+Linux Early Access authorization additionally validates the pinned owner's
+author/merger/sender/original/rerun identities, a same-repository merged release
+PR, and exact current-main identity under ADR 0040. The existing
+`tools/ci/public_distribution.py` / `tools/ci/test_public_distribution.py` pair
+owns realistic event and CLI tests, 1 MiB/32-depth/32,768-node bounds, duplicate
+and malformed JSON rejection, no writes, and redacted diagnostics. Mutations
+must reject removed, duplicated, reordered or ignored authorization and forged
+contexts while preserving manual rehearsal isolation and all artifact gates.
+Only the real post-merge run supplies signed-release evidence.
+`tools/ci/test_free_plan_contract.py` also removes and inverts the stable-lane
+Linux-namespace exclusion; the selector must reject that overlap before stable
+authorization rather than failing an unrelated branch grammar later.
+
 ### contributor-automation-quality-policy
 
 Mutation-test repository validators so deleted owners, weakened limits, stale
 paths, fabricated evidence, missing private-documentation exclusions, and
 confidential-data canaries fail closed.
+
+Public-documentation mutations cover restored future announcements, renamed
+pages and changelog entries, duplicate or unreviewed status rows, and unresolved
+merge markers inside and outside code fences. Current limitations and missing
+release evidence remain allowed. Diagnostics must not echo rejected content.
+These checks supplement human publication review; they do not prove the absence
+of every possible confidential statement. Nonactivation, architecture, security
+and release-evidence gates remain enforced.
+
+The documentation checker/hygiene pairs own publication regressions. The
+existing `test_phase_implementation_audit.py` and
+`test_production_operations_po0.py` suites additionally enforce current-status
+row identity and the absence of runtime activation.
 
 For caches and build storage, additionally mutate content identity, integrity
 manifests, atomic publication, link/reparse rejection, traversal ceilings,

@@ -134,17 +134,11 @@ PUBLIC_AUDIT_AREAS = (
     "Managed SSH and provider-neutral launch foundations",
     "Multi-cloud and orchestrator adapters",
     "Public extension ecosystem",
-    "Semantic Diagnostic Navigator",
-    "Situation-aware Production Operations",
-    "Automation Studio",
-    "Optional LLM Orchestration extension",
-    "Video-editing and other specialized domains",
 )
 PUBLIC_ROADMAP_HEADINGS = (
     "# Automexia roadmap",
     "## Product direction",
     "## Current public focus",
-    "## Direction after the first stable release",
     "## Release principles",
     "## Publication boundary",
 )
@@ -400,6 +394,17 @@ def validate_public_summary(audit: str, roadmap: str) -> dict[str, int]:
         raise PhaseAuditError(
             f"public implementation summary is missing areas: {missing_areas}"
         )
+    areas = [
+        cells[0]
+        for line in audit_lines
+        if (cells := markdown_table_cells(line))
+        and not is_markdown_separator(cells)
+        and cells[0] != "Public area"
+    ]
+    if len(areas) != len(set(areas)) or set(areas) != set(PUBLIC_AUDIT_AREAS):
+        raise PhaseAuditError(
+            "public implementation summary contains duplicate or unreviewed areas"
+        )
     if "source tests remain authoritative" not in audit.casefold():
         raise PhaseAuditError(
             "public implementation summary must preserve source/test authority"
@@ -420,19 +425,16 @@ def validate_public_summary(audit: str, roadmap: str) -> dict[str, int]:
             "public roadmap must not restore the internal phase status register"
         )
     required_roadmap_terms = (
-        "diagnostic",
-        "production",
-        "automation studio",
-        "llm",
-        "orchestration",
-        "video",
+        "source",
+        "release",
+        "evidence",
         "public/private documentation policy",
     )
     folded = roadmap.casefold()
     missing_terms = [term for term in required_roadmap_terms if term not in folded]
     if missing_terms:
         raise PhaseAuditError(
-            f"public roadmap is missing high-level direction: {missing_terms}"
+            f"public roadmap is missing current status context: {missing_terms}"
         )
     return {
         "phase_sections": 0,

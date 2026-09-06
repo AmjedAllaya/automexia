@@ -4,12 +4,16 @@
 from __future__ import annotations
 
 import copy
+import contextlib
 import importlib.util
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
 import tempfile
+import subprocess
+import sys
 import unittest
 from unittest import mock
 
@@ -24,6 +28,192 @@ SPEC.loader.exec_module(DISTRIBUTION)
 VERSION = "1.2.3"
 COMMIT = "0123456789abcdef0123456789abcdef01234567"
 REPOSITORY = "AmjedAllaya/automexia-releases"
+
+
+def owner_release_event() -> dict:
+    # Public project identities are intentional; no live account/event is copied.
+    owner = {"login": "AmjedAllaya", "type": "User"}
+    repo = {"full_name": "AmjedAllaya/automexia-terminal"}
+    return {
+        "action": "closed", "repository": copy.deepcopy(repo),
+        "sender": copy.deepcopy(owner),
+        "pull_request": {
+            "number": 1, "state": "closed", "merged": True,
+            "user": copy.deepcopy(owner), "merged_by": copy.deepcopy(owner),
+            "merge_commit_sha": COMMIT,
+            "head": {"ref": "release/linux/1.2.3", "sha": "b" * 40,
+                     "repo": copy.deepcopy(repo)},
+            "base": {"ref": "main", "repo": copy.deepcopy(repo)},
+        },
+    }
+
+
+class OwnerReleaseAuthorizationTests(unittest.TestCase):
+    def authorize(self, payload: object, **overrides: str) -> str:
+        arguments = {
+            "event_name": "pull_request", "repository": "AmjedAllaya/automexia-terminal",
+            "actor": "AmjedAllaya", "triggering_actor": "AmjedAllaya",
+            "commit": COMMIT, "current_main": COMMIT,
+        }
+        arguments.update(overrides)
+        return DISTRIBUTION.authorize_owner_release(payload, **arguments)
+
+    def test_owner_can_author_and_merge_without_a_self_review(self) -> None:
+        self.assertEqual(self.authorize(owner_release_event()), "1.2.3")
+
+    def test_every_actor_and_context_must_be_the_owner_and_exact_source(self) -> None:
+        for name, values in {
+            "actor": ("alice", "AmjedAllaya[bot]", ""),
+            "triggering_actor": ("alice", "AmjedAllaya[bot]", ""),
+            "repository": ("alice/automexia-terminal", "AmjedAllaya/automexia-releases", ""),
+            "event_name": ("workflow_dispatch", "pull_request_target", "push", ""),
+            "commit": ("a" * 40, "0" * 40, "bad", ""),
+            "current_main": ("a" * 40, "0" * 40, "bad", ""),
+        }.items():
+            for value in values:
+                with self.subTest(field=name, value=value):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        self.authorize(owner_release_event(), **{name: value})
+
+    def test_untrusted_event_mutations_never_authorize(self) -> None:
+        mutations = {
+            ("action",): ("opened", "synchronize", None),
+            ("repository", "full_name"): ("alice/automexia-terminal", None),
+            ("sender", "login"): ("alice", "", "AmjedAllaya\n"),
+            ("sender", "type"): ("Bot", None),
+            ("pull_request", "user", "login"): ("alice", None),
+            ("pull_request", "user", "type"): ("Bot", None),
+            ("pull_request", "merged_by", "login"): ("alice", None),
+            ("pull_request", "merged_by", "type"): ("Bot", None),
+            ("pull_request", "number"): (0, -1, True, "1", None),
+            ("pull_request", "state"): ("open", None),
+            ("pull_request", "merged"): (False, 1, "true", None),
+            ("pull_request", "merge_commit_sha"): ("a" * 40, "0" * 40, COMMIT + "\n", None),
+            ("pull_request", "head", "sha"): ("", "0" * 40, "b" * 39, "b" * 41, None),
+            ("pull_request", "base", "ref"): ("release", "main\n", None),
+            ("pull_request", "head", "repo", "full_name"): ("alice/automexia-terminal", None),
+            ("pull_request", "base", "repo", "full_name"): ("alice/automexia-terminal", None),
+            ("pull_request", "head", "ref"): (
+                "release/1.2.3", "release/linux/1.2.3-rc.1", "release/linux/01.2.3",
+                "release/linux/1.2.3\necho bad", "release/linux/" + "1" * 100, None,
+            ),
+        }
+        for path, values in mutations.items():
+            for value in values:
+                with self.subTest(path=path, value=value):
+                    payload = owner_release_event()
+                    target = payload
+                    for part in path[:-1]:
+                        target = target[part]
+                    target[path[-1]] = value
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        self.authorize(payload)
+        for payload in (None, [], {}, "private-canary", {"pull_request": []}):
+            with self.subTest(payload=payload):
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    self.authorize(payload)
+
+    def test_event_reader_is_bounded_strict_redacted_and_read_only(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            event = Path(temporary) / "event.json"
+            maximum = 1024 * 1024
+            valid = json.dumps(owner_release_event()).encode()
+            event.write_bytes(valid + b" " * (maximum - len(valid)))
+            self.assertEqual(DISTRIBUTION.load_release_event(event), owner_release_event())
+            # Each rejected payload contains private-like data that must not enter logs.
+            for data in (
+                b" " * (maximum + 1), b'{"private-canary":1,"private-canary":2}',
+                b'{"private-canary":', b'"private-canary"', b'\xff',
+                b'{"value":NaN}', b'{"value":Infinity}', b'{"value":1e999}',
+                b'{"items":[' + b'0,' * 32768 + b'0]}',
+                b'{"nested":' + b'[' * 2000 + b'0' + b']' * 2000 + b'}',
+            ):
+                event.write_bytes(data)
+                with self.subTest(kind=data[:20]):
+                    with self.assertRaises(DISTRIBUTION.DistributionError) as raised:
+                        DISTRIBUTION.load_release_event(event)
+                    self.assertNotIn("private-canary", str(raised.exception))
+                    self.assertNotIn(temporary, str(raised.exception))
+                    self.assertEqual(event.read_bytes(), data)
+                    self.assertEqual([p.name for p in Path(temporary).iterdir()], ["event.json"])
+
+    def test_event_reader_depth_boundary_and_missing_file(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            event = Path(temporary) / "event.json"
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.load_release_event(event)
+            for depth in (31, 32, 33):
+                event.write_bytes(b'{"item":' * depth + b'0' + b'}' * depth)
+                if depth <= 32:
+                    self.assertIsInstance(DISTRIBUTION.load_release_event(event), dict)
+                else:
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.load_release_event(event)
+
+    def test_event_node_boundary_and_hardlink_rejection(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            event = Path(temporary) / "event.json"
+            for count in (32765, 32766, 32767):
+                event.write_text(json.dumps({"items": [0] * count}), encoding="utf-8")
+                if count <= 32766:
+                    self.assertEqual(len(DISTRIBUTION.load_release_event(event)["items"]), count)
+                else:
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.load_release_event(event)
+            event.write_text(json.dumps(owner_release_event()), encoding="utf-8")
+            os.link(event, Path(temporary) / "linked.json")
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.load_release_event(event)
+
+    def test_workflow_cannot_bypass_or_substitute_owner_authorization(self) -> None:
+        workflow = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        invocation = 'version="$(python3 tools/ci/public_distribution.py authorize-release'
+        mutations = {
+            "delete checker": workflow.replace(invocation, 'version="$(echo 1.2.3'),
+            "ignore failure": workflow.replace('--current-main "$current_main")"', '--current-main "$current_main" || true)"'),
+            "duplicate publication": workflow.replace('publish=true', 'publish=true\n            publish=true'),
+            "activate before validation": workflow.replace(invocation, 'publish=true\n            ' + invocation),
+            "rerun substitution": workflow.replace('--triggering-actor "$GITHUB_TRIGGERING_ACTOR"', '--triggering-actor "$GITHUB_ACTOR"'),
+            "stale main": workflow.replace('--current-main "$current_main"', '--current-main "$EVENT_COMMIT"'),
+            "event substitution": workflow.replace('--event "$GITHUB_EVENT_PATH"', '--event event.json'),
+            "wrong source": workflow.replace('--repository "$GITHUB_REPOSITORY"', '--repository alice/automexia-terminal'),
+            "remove fail fast": workflow.replace('set -euo pipefail', 'set -uo pipefail', 1),
+            "disable fail fast": workflow.replace('set -euo pipefail', 'set -euo pipefail\n          set +e', 1),
+            "continue after failure": workflow.replace('        id: authorize', '        continue-on-error: true\n        id: authorize', 1),
+        }
+        with tempfile.TemporaryDirectory() as temporary:
+            candidate = Path(temporary) / "workflow.yml"
+            for label, mutated in mutations.items():
+                with self.subTest(mutation=label):
+                    self.assertNotEqual(mutated, workflow)
+                    candidate.write_text(mutated, encoding="utf-8", newline="\n")
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.validate_workflow(candidate)
+
+    def test_real_cli_returns_only_validated_version_and_rejects_bad_event(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            event = Path(temporary) / "event.json"
+            event.write_text(json.dumps(owner_release_event()), encoding="utf-8")
+            argv = ["authorize-release", "--event", str(event), "--event-name", "pull_request",
+                    "--repository", "AmjedAllaya/automexia-terminal", "--actor", "AmjedAllaya",
+                    "--triggering-actor", "AmjedAllaya", "--commit", COMMIT, "--current-main", COMMIT]
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(DISTRIBUTION.main(argv), 0)
+            self.assertEqual(stdout.getvalue(), "1.2.3\n")
+            self.assertEqual(stderr.getvalue(), "")
+            process = subprocess.run(
+                [sys.executable, str(MODULE_PATH), *argv],
+                capture_output=True, text=True, timeout=15, check=False,
+            )
+            self.assertEqual((process.returncode, process.stdout, process.stderr), (0, "1.2.3\n", ""))
+            event.write_text('{"private-canary":', encoding="utf-8")
+            stdout, stderr = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(stdout), contextlib.redirect_stderr(stderr):
+                self.assertEqual(DISTRIBUTION.main(argv), 1)
+            self.assertEqual(stdout.getvalue(), "")
+            self.assertNotIn("private-canary", stderr.getvalue())
+            self.assertNotIn(temporary, stderr.getvalue())
 
 
 def package_names() -> tuple[str, ...]:

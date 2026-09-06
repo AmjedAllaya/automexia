@@ -668,7 +668,15 @@ tokens, environment values, private history, personal paths, or remote host data
 
 ### 12. Document the resulting truth
 
-Follow [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md). Update, as applicable:
+Follow [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md).
+
+Publish only current implementation, observable limitations, tests, and release
+status. Do not publish business plans or future feature names, designs, or
+delivery plans, including free or open-source features. During merges, review
+newly restored documentation and checker requirements for the same boundary.
+Keep current security, native, and release evidence requirements intact.
+
+Update, as applicable:
 
 - user guides for setup, workflow, failure, recovery, disable/uninstall, and
   migration;

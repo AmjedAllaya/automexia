@@ -109,6 +109,26 @@ class FreePlanContractTests(unittest.TestCase):
         completed = self.run_checker()
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_stable_release_does_not_start_for_linux_early_access(self) -> None:
+        exclusion = "!startsWith(github.event.pull_request.head.ref, 'release/linux/') &&"
+        source = (ROOT / ".github/workflows/release.yml").read_text(encoding="utf-8")
+        # A Linux merge used to start stable authorization and fail its stricter
+        # branch grammar. Skip that lane before any stable signing job can run.
+        self.assertIn(exclusion, source)
+        for replacement in ("", exclusion[1:], "true &&"):
+            with self.subTest(replacement=replacement):
+                with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+                    root = Path(temporary)
+                    self.populate_contract_root(root)
+                    candidate = root / ".github/workflows/release.yml"
+                    candidate.write_text(source.replace(exclusion, replacement, 1), encoding="utf-8")
+                    completed = subprocess.run(
+                        [sys.executable, str(CHECKER)], cwd=root,
+                        capture_output=True, text=True, timeout=30, check=False,
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertIn("stable release must exclude Linux", completed.stderr)
+
     def test_ci_remains_the_automatic_free_hosted_push_and_pr_pipeline(self) -> None:
         for old, new in (
             ("  push:\n    branches: [main]\n", ""),

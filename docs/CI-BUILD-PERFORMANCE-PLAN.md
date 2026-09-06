@@ -40,16 +40,16 @@ The change is complete only when all of the following are true:
 
 ## Evidence ledger
 
-| Area | Status before this work | Evidence | Required action |
+| Area | Current status | Implemented contract | Evidence boundary |
 |---|---|---|---|
-| Free-runner CPU, memory, debug-info, and test-thread bounds | Fully implemented | CI and Linux Early Access jobs pin single-job compilation, stripped test/debug artifacts, single-thread Nextest, deadlines, and lint cleanup | Preserve unchanged |
-| Cargo source downloads | Partially implemented | CI and release quality cache registry/Git sources, but use isolated keys; native package jobs do not restore them | Introduce one versioned, lockfile-bound source-cache contract across the Linux jobs |
-| Reuse across the mandatory Clippy cleanup | Not implemented | `cargo clean` intentionally deletes the full lint target before Nextest | Add a content-addressed compiler cache only to non-shipping quality jobs |
-| Native release package build trust | Fully implemented | Each architecture builds, packages, validates, installs, uninstalls, and uploads exact artifacts natively | Preserve cold builds and prohibit compiler-cache environment/action use in package jobs |
-| Release critical-path scheduling | Partially implemented | Architectures run in parallel, but both wait for the complete quality job | Start quality and package jobs after authorization; make every consumer depend on both |
-| nFPM provisioning | Not implemented for performance | Every package runner compiles `nfpm@v2.43.4` with Go | Adopt the signed-release project’s native archive with exact per-architecture SHA-256 pins |
-| Local readiness compilation | Partially implemented | `cargo ready` runs all-target/all-feature `cargo check`, then Clippy over the same graph, then tests | Keep `cargo xtask check`; make `cargo ready` compile the graph once through Clippy before tests |
-| Performance observability | Partially implemented | GitHub records step durations and the earlier rehearsal records wall time, but no compiler-cache statistics exist | Emit sccache statistics and compare exact cold/warm hosted runs |
+| Free-runner resource bounds | Fully implemented | Single-job compilation, bounded debug artifacts, test threads, deadlines and lint cleanup | Hosted evidence below is scoped to the recorded runs. |
+| Cargo source downloads | Fully implemented | Versioned, lockfile-bound registry/Git source cache shared across the Linux jobs | Source downloads are not compiled release objects. |
+| Reuse across Clippy cleanup | Fully implemented | Content-addressed compiler cache in non-shipping quality jobs; mandatory lint cleanup retained | Cache misses and hosted eviction remain possible. |
+| Native package trust | Fully implemented | Cold native build, validation, install, uninstall and upload for each architecture | No compiler-cache objects enter package jobs. |
+| Critical-path scheduling | Fully implemented | Quality and package jobs start after authorization; consumers join every required result | Failures block assembly and publication. |
+| nFPM provisioning | Fully implemented | Exact native v2.43.4 archives with per-architecture SHA-256 pins | Package filenames remain bound to the source-owned revision. |
+| Local readiness | Fully implemented | Clippy compiles the graph once before tests; the separate focused Cargo check remains available | Readiness retains all other gates. |
+| Performance observability | Fully implemented | Recorded job timestamps and compiler-cache statistics | Only the linked cold/warm measurements are claimed. |
 
 The exact pre-change hosted rehearsal (`33581137496`) is the baseline: release
 quality took 20m36s; native x64 and Arm64 package lifecycles took 16m05s and

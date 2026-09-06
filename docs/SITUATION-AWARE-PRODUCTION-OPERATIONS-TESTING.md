@@ -25,19 +25,22 @@ This compatibility anchor retains traceability to the current public
 source, test, and evidence owner. Detailed future or commercial planning
 remains private, and unavailable native evidence remains an explicit gate.
 
-## Public assurance status
+## Current implementation status
 
-Status: planned public assurance summary.
+Status: no public runtime implementation or activation.
+
+This path is retained only for existing source and assurance references.
+It does not specify a feature, future design, or delivery plan.
 
 ## Scenario inventory
 
-Future evidence must cover empty, boundary, maximum, malformed, stale,
-cancelled, concurrent, offline, permission-denied, hostile Unicode, cross-pane,
-policy-denied, rollback, disable, uninstall, shutdown, and resource-pressure
-cases with independent oracles and forbidden-side-effect checks.
+The current mutation suite checks missing status markers, restored private
+fixtures and schema markers, unexpected runtime paths, activating source
+markers, and unimplemented workspace/configuration entries. Future public
+announcements are rejected independently of retained status markers.
 
 ## Phase exit criteria
 
-No availability claim is permitted without source contracts, security review,
-native provider/platform evidence, deterministic UI and accessibility evidence,
-performance/resource limits, recovery, packaging, and exact-artifact approval.
+This document is not evidence of implementation or release readiness. The
+nonactivation and privacy checks must pass; they do not authorize execution
+or publication of a product capability.

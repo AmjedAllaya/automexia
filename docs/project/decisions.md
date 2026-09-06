@@ -34,6 +34,7 @@ listed or summarized here.
 | [0037](../adr/0037-public-binary-release-distribution.md) | Public binary release distribution |
 | [0038](../adr/0038-owned-pty-trees-and-broadcast-shutdown.md) | Owned PTY trees and broadcast-first shutdown |
 | [0039](../adr/0039-content-addressed-development-cache.md) | Content-addressed development cache lifecycle |
+| [0040](../adr/0040-owner-authorized-linux-releases.md) | Owner-authorized Linux Early Access releases |
 
 ## When an ADR is required
 

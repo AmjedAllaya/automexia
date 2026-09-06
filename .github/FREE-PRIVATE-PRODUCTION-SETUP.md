@@ -76,12 +76,15 @@ AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER=0
 This is an explicit reduction in release governance, not the default.
 
 Those two variables apply only to the multi-platform stable-release workflow.
-The Linux Early Access workflow deliberately does not read them: public Linux
-publication always requires a current approval of the exact pull-request head
-and a merger distinct from the pull-request author. On the current private
-GitHub Free source repository, server-enforced branch protection is unavailable;
-until a second trusted reviewer exists, public Linux publication remains an
-external prerequisite rather than silently weakening this rule.
+Linux Early Access instead uses the explicitly accepted owner-only policy in
+[ADR 0040](../docs/adr/0040-owner-authorized-linux-releases.md). Only
+`AmjedAllaya` may author, merge, trigger or rerun a publishing release PR; no
+second-person review or distinct merger is required for that lane. The exact
+merged commit must equal current `main`, and the internal source repository,
+branch, event and human identities must validate before publication is enabled.
+Manual dispatch remains an unsigned rehearsal. Source-account compromise is
+a residual risk of this deliberate solo policy; signing, native tests, scoped
+App authority, immutable releases and public-archive protection are unchanged.
 
 ## 4. Windows production signing
 

@@ -49,8 +49,12 @@ route returns a real 404 without a `Location` header.
 1. Prepare and review an internal `release/linux/X.Y.Z` pull request. Ordinary
    free hosted CI still runs, while the stable `release/X.Y.Z` candidate and
    Windows-coverage jobs are explicitly excluded from this separate namespace.
-2. Merge only after the exact head has an independent approval and a distinct
-   merger.
+2. As `AmjedAllaya`, inspect the exact green PR head and merge it. Under the
+   explicitly accepted [owner-only policy](adr/0040-owner-authorized-linux-releases.md),
+   the same owner may author and merge; no second-person approval is required.
+   The workflow checks the author, merger, sender, original and rerun actors,
+   same-repository branch, and exact merge/current-main commit. Other accounts,
+   forks, stale reruns and non-merge events cannot publish.
 3. `Linux Early Access release` reruns formatting, Clippy, full tests, doctests,
    RustSec, dependency policy, and shell contracts on the merged commit. Its
    free-runner envelope serializes compilation and tests, omits development and
@@ -149,24 +153,40 @@ the same commit passed all three ordinary free checks and skipped both
 stable-release-only jobs. Signing and publication remained skipped, so the
 public repository correctly remained unchanged.
 
-## One-time external configuration still required
+## Current external configuration and publication gates
 
-The 2026-09-06 authenticated re-audit found zero configured Actions variables,
-zero configured Actions secrets, and no independent release approval. The first
-public Linux release is therefore correctly blocked; no placeholder credential
-or reduced-review path was introduced.
+The reconciled candidate `8725cc6cffb5cdff3c5f282c3b04a019ac9452ec` passed
+ordinary hosted CI (`34026015211`) and the complete credential-free native
+x64/Arm64 rehearsal (`34026013864`). Independent download reconstructed the
+six-package manifest byte for byte at SHA-256
+`c5028f65071eec08ac6edfddfd62490303f03573679e673c211ffe48f1d160b8` and
+verified its non-public marker. The temporary copy was removed after verification.
+These are unsigned package results, not proof of signing or publication.
+The subsequent owner-authorization change
+requires its own hosted checks and a guarded post-merge signed run.
 
-- Generate and protect the real minisign release key; configure
+The 2026-09-06 authenticated metadata check confirmed that both required Actions
+secrets and both required variables are registered. Their values were not read
+or disclosed. Registration alone does not prove key validity, an offline backup,
+the GitHub App installation scope, or a successful signed publication.
+
+PR #21 uses the explicitly accepted solo-maintainer policy. No placeholder
+credential is permitted; the owner-only authorization does not bypass artifact
+quality, signatures or public repository governance.
+
+- Keep the real Minisign release key protected and backed up offline. The
   `AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY` and
-  `AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY` in the private source repository.
-- Register a GitHub App with repository **Contents: read/write** and
-  **Administration: read-only**, install it on `automexia-releases` only, and set
+  `AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY` settings are registered in the private
+  source repository; the guarded signing job verifies that they match.
+- The GitHub App must have repository **Contents: read/write** and
+  **Administration: read-only**, installed on `automexia-releases` only. Its
   `AUTOMEXIA_DISTRIBUTION_APP_CLIENT_ID` plus
-  `AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY` in the private source repository.
-- Add a second trusted reviewer who can approve the exact release head and merge
-  independently. The private GitHub Free source repository cannot enforce this
-  with a paid protected environment or private-repository ruleset, so the
-  release workflow also validates the live review event and fails closed.
+  `AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY` settings are registered in the private
+  source repository; publication still checks the actual installation and scope.
+- Merge the exact tested release head using the pinned owner's account. The
+  workflow rejects a non-owner author, merger, sender or rerun actor, and fails
+  closed when the merge commit no longer equals current `main`. This lane needs
+  no paid protected environment or second reviewer.
 - Ensure included GitHub Actions minutes are available. Keep paid overage off if
   a hard zero-cost ceiling is required.
 - Run the real release workflow and retain its exact package/native evidence.

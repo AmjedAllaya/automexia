@@ -37,21 +37,23 @@ This compatibility anchor retains traceability to the current public
 source, test, and evidence owner. Detailed future or commercial planning
 remains private, and unavailable native evidence remains an explicit gate.
 
-## Public status boundary
+## Current implementation status
 
-Status: planned public direction. It is not available for production use.
+Status: no public runtime implementation or activation.
+
+This path is retained only for existing source and assurance references.
+It does not specify a feature, future design, or delivery plan.
 
 ## Architectural boundary
 
-Any future optional operations extension must remain outside terminal hot paths,
-use typed capability-broker requests, preserve external provider and approval
-authorities, and never gain execution authority from a suggestion.
+There is no runtime owner, model crate, configuration section, or action
+registration for this compatibility path. The existing nonactivation checker
+rejects their presence; no terminal, provider, process, or PTY authority exists
+here.
 
 ## Security and privacy threat model
 
-Treat provider output, operational metadata, labels, diagnostics, and generated
-content as untrusted; require explicit review, bounded inputs and resources,
-redaction, route/generation isolation, cancellation, and fail-closed policy.
-
 Detailed ranking formulas, provider playbooks, schemas, internal limits, and
-commercial sequencing remain in ignored private documentation.
+delivery plans are not public documentation. The checker rejects the private
+fixture and known private schema markers. Diagnostics identify the owning path,
+not the rejected document contents.

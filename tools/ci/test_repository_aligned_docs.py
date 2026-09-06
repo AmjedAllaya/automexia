@@ -275,5 +275,42 @@ class RepositoryAlignedDocumentationTests(unittest.TestCase):
             ):
                 CHECKER.validate(root)
 
+    def test_future_plans_are_rejected_even_under_renamed_public_pages(self) -> None:
+        # The release merge restored proposal text in otherwise current-status
+        # pages. Renaming a page or calling the feature free must not evade review.
+        examples = (
+            "## Direction after the first stable release\n\nA later free feature.\n",
+            "## Future features\n\nAn open-source addition.\n",
+            "Status: planned public direction.\n",
+            "Status: proposed public summary; no implementation exists.\n",
+            "| Optional component | Separate later direction only. |\n",
+        )
+        for relative in ("README.md", "docs/guide/renamed.md", "changes/review.md"):
+            for example in examples:
+                with self.subTest(path=relative, example=example.splitlines()[0]):
+                    with TemporaryDirectory() as directory:
+                        root = Path(directory)
+                        self.create_private_boundary(root)
+                        target = root / relative
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text("# Current status\n\n" + example, encoding="utf-8")
+                        with self.assertRaisesRegex(
+                            CHECKER.DocumentationPackError, "future planning"
+                        ) as failure:
+                            CHECKER.validate(root)
+                        self.assertNotIn(example.strip(), str(failure.exception))
+
+    def test_current_behavior_and_external_release_gates_remain_public(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            (root / "README.md").write_text(
+                "# Current status\n\n"
+                "Tabs are implemented in source. Native release evidence is external.\n"
+                "Future feature plans must not be published here.\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(CHECKER.validate(root)["files"], 3)
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -219,10 +219,8 @@ actions are rejected and do not silently remove the matching default.
 
 Known maintenance issue: current Automexia defaults use Ctrl+R/Ctrl+D for
 cloning, as listed above, displacing familiar shell controls. The
-[required correction](TERMINAL-MAINTENANCE-REQUIREMENTS.md#r4-restore-native-shell-control-keys-by-default)
-specifies restoring native input while preserving explicit user overrides.
-It has not been implemented by this documentation change; the tables above
-remain the current-behavior reference.
+[current status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys)
+records this limitation; the tables above remain the current-behavior reference.
 
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse
