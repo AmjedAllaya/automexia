@@ -86,14 +86,34 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "ecosystem-d7-cp6-proposal": {
+        "needed_tests": ("pre-arming interrupts", "shared-engine ticks", "reused cancellation tokens", "worker-unwind cleanup"),
+        "verification_reinforcements": ("invocation-local completion", "joined watchdogs"),
+    },
+    "packaging-release-provenance": {
+        "needed_tests": ("recomputed-checksum SBOM privacy", "Minimal publication rejects full inventories",
+                         "rehashed private paths and identifiers", "non-private retention",
+                         "real ephemeral-key Minisign tamper coverage"),
+        "verification_reinforcements": ("complete graph, license and file-hash preservation",),
+    },
+    "stabilization-release-assurance-s1-s2": {
+        "needed_tests": ("content-bound dirty fingerprints", "logical artifact announcements"),
+        "verification_reinforcements": ("before/after source identity drift",),
+    },
     "terminal-protocols-grid-history": {
         "needed_tests": (
+            "viewport identity journal",
+            "parser-created selection journal",
+            "hard-line journal",
             "boundary-only CMD D",
             "pre-epoch",
             "timezone or DST transitions",
             "resize followed by previous/next command navigation",
         ),
         "verification_reinforcements": (
+            "first visible cell and snapshot styles",
+            "unselected control grid",
+            "text, hard-break, whitespace and style faults",
             "source prompt, following-prompt boundary",
             "no shell-provided timestamp text",
             "duplicate IDs",
@@ -108,11 +128,14 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "pty-scheduler-process-lifecycle": {
         "needed_tests": (
+            "parked split/local-tab exit journal",
             "Ordinary and exact Windows ConPTY",
             "broadcast-first teardown",
             "parked",
         ),
         "verification_reinforcements": (
+            "surviving channels remain empty and connected",
+            "restore refresh precedes visibility",
             "exact temporary-fixture process identities before close",
             "ConPTY reparenting",
             "multi-session wall-clock ceiling",
@@ -180,6 +203,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "windows-tabs-sessions-input": {
         "needed_tests": (
+            "shell-owned Ctrl+R and Ctrl+D",
+            "single-message captured-target paste",
+            "typed fallback and reset",
             "resizes immediately before Ctrl+Shift+Up/Down",
             "intersecting badge rectangles",
             "intersecting prompt-context rectangles",
@@ -187,6 +213,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "ConPTY reparenting",
         ),
         "verification_reinforcements": (
+            "no clone action",
+            "sibling silence and unchanged selection on rejection",
+            "explicit user mappings",
             "all command-result paint rectangles",
             "visible snapshot publication",
             "six-second controlled Windows",
@@ -408,6 +437,14 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         context,
         ("self.shutdown_requested.swap(true", "send(Msg::Shutdown)"),
         "context shutdown idempotence",
+    )
+    undo_restore = _source_slice(
+        sources["context"], "pub fn undo_topology(", "fn undo_topology_model", "parked restore publication"
+    )
+    _require_order(
+        undo_restore,
+        ("self.undo_topology_model()", "self.current_grid_mut().update_dimensions(sugarloaf)", "self.keep_only_active_context_visible(sugarloaf)"),
+        "parked restore publication",
     )
     route_quit = _source_slice(
         sources["router"], "pub fn quit(&mut self)", "pub fn open_config", "route quit"

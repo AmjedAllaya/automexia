@@ -18,15 +18,34 @@ Application paths below are relative to `apps/automexia-terminal/src/`.
 | Unicode and graphics | `rio-vt/src/`, `sugarloaf/src/`, `grid_emit.rs` | Existing parser/rendering suites cover declared fixtures. This does not imply universal terminal-protocol compatibility. |
 | Responsiveness and resources | Session launch, PTY queues, snapshots and native presentation | Measurements and native evidence are scoped to their recorded host, build, scenario and duration. |
 
+## Reported regression observations
+
+The following user reports remain open pending reproduction against the exact
+binary, configuration, shell and display environment. Existing tests and source
+mechanisms do not invalidate a report; this documentation review did not run the
+native reproductions or establish their causes.
+
+| Observed symptom | Current owner or reference | Evidence limitation |
+|---|---|---|
+| Retained command output disappears during pane/window resizing | Grid/reflow and renderable snapshot owners above | Check intermediate widths; returning to the old size is not evidence that other sizes rendered correctly. |
+| Red/green result highlights disappear on resize and return at the previous size | Command-result anchors, style/damage and renderer owners | Shell ANSI styles and application result accents are distinct; a specific root cause is not yet established. |
+| Text overlaps or large unexpected blank gaps appear below `ls` and other output after resizing/moving | Grid, viewport, cell geometry and native presentation | Intentional output blank lines and ordinary unused viewport space are not themselves defects. |
+| Context indicators, timestamps and command-output chrome collide or disappear/reappear on small panes | Context projection and renderer overlay owners | Current source coverage does not certify every narrow/fractional-scale combination. |
+| Automexia-hosted WSL feels slower than the reference WSL terminal | Session launch, ConPTY, PTY queues and renderer | No same-host latency comparison was performed in this review; cold launch, warm launch and interactive echo are different measurements. |
+| A pointer-associated paste reaches the previously selected pane | Application input routing and `screen/mod.rs` | Exact mouse button/modifiers and binding profile must be recorded; current left-click does not paste. See [mouse input](KEYBOARD.md#mouse-input). |
+
+These are current reported limitations, not a universal statement that every
+build/platform reproduces them or an announcement of additional capabilities.
+
 ## Native shell control keys
 
-The current Automexia defaults assign Ctrl+R and Ctrl+D to cloning actions,
-as documented in [Keyboard](KEYBOARD.md). They can displace familiar shell
-controls. Effective behavior depends on the selected binding profile, user
-overrides, input mode and legacy fallback.
-
-This is a current compatibility limitation, not a claim that native shell
-bindings have already been restored. The binding tables remain authoritative.
+The published 0.4.0 defaults assign Ctrl+R and Ctrl+D to cloning actions,
+displacing familiar shell controls. Current source removes those built-in
+mappings while preserving explicit user overrides and clone palette actions;
+see [Keyboard](KEYBOARD.md) and [ADR 0041](adr/0041-shell-owned-history-and-eof-shortcuts.md).
+Platform-table and native Windows ConPTY/PSReadLine tests cover the correction.
+Graphical key routing, other native shells/platforms, IME and accessibility
+remain separate verification gates. No published artifact has been replaced.
 
 ## Verification boundaries
 

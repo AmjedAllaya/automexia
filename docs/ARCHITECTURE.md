@@ -27,6 +27,11 @@ for terminal cells, process lifetime, routes, focus, or persisted settings.
 
 ## Terminal and session ownership
 
+Selection endpoint tracking belongs to the existing VT grid resize traversal,
+with two fixed-size trackers and no alternate terminal buffer. The
+[selection reflow contract](adr/0043-retained-selection-reflow.md) defines
+cropping, eviction and rectangular-selection behavior.
+
 A session owns exactly one PTY or ConPTY endpoint, child-process lifecycle,
 terminal state, ordered input queue, resize generation, and exit outcome. Panes
 and tabs reference sessions through stable route identities. Closing a view
@@ -93,6 +98,13 @@ oversized, Unicode, control-character, and historical failure cases.
 Processes are launched from a typed executable plus an exact argument array.
 Structured actions do not use shell command concatenation or implicit Enter.
 
+Clipboard delivery stays in the application context owner. It captures route
+and terminal identity before the OS read, validates that owner again, and queues
+one bounded paste frame without redirecting to later focus. Selection and scroll
+changes apply only to the accepting context. See
+[ADR 0042](adr/0042-route-bound-paste-transactions.md) for limits, pointer
+ownership, rejection and the remaining native evidence requirements.
+
 The session owner is responsible for:
 
 - child identity and inherited context;
@@ -148,10 +160,12 @@ versioned, collision-tested, and layered before user overrides. Invalid
 compilation preserves the previous complete binding registry, while native
 shell control keys retain documented fallthrough.
 
-The current default table still intercepts bare Ctrl+R/Ctrl+D for cloning;
-fallthrough is therefore profile- and mode-specific, not a universal current
-guarantee. Both the typed registry and legacy fallback affect current input
-routing. See [native shell key status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys).
+Current source leaves bare Ctrl+R/Ctrl+D shell-owned in normal terminal input.
+Both the typed registry and legacy fallback affect dispatch, and explicit user
+bindings and modal ownership remain authoritative. Clone actions retain their
+existing session owner and palette entry without a built-in chord. The published
+0.4.0 package predates this correction. See
+[ADR 0041](adr/0041-shell-owned-history-and-eof-shortcuts.md).
 
 ## Configuration transaction
 

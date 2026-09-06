@@ -13,6 +13,22 @@ local inventory. [Features](FEATURES.md) identifies each current user path and
 its release limitations. Native accessibility, hardware, packaging, and
 long-duration evidence remain external where they have not been collected.
 
+### Configuration and appearance status
+
+Current source provides declarative terminal configuration for fonts, themes,
+cursor, window appearance, navigation and keybindings. The application-owned
+runtime-preference overlay separately stores font size and forced light/dark
+appearance; it does not store every terminal preference or rewrite `config.toml`.
+These are implementation boundaries, not a claim of complete native verification
+for every theme, scale, keyboard profile or platform.
+
+Use the [customization guide](user-guide/customization.md) for supported user
+workflows, [configuration reference](CONFIGURATION.md) for exact keys and
+[ADR 0036](adr/0036-application-owned-runtime-user-preferences.md) for persistence
+ownership. Configuration recovery, keyboard/focus, responsive rendering and
+platform-specific appearance evidence remain subject to the existing
+[testing](TESTING.md) and [release principles](#release-principles).
+
 ### Public Linux distribution status
 
 Repository support exists for x64 and Arm64 Linux package formats, manifests,

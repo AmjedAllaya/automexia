@@ -189,7 +189,21 @@ class FeatureTestReinforcementTests(unittest.TestCase):
 
     def test_command_timestamp_scenario_details_cannot_be_weakened(self) -> None:
         mutations = {
+            "ecosystem-d7-cp6-proposal": (
+                ("needed_tests", "pre-arming interrupts"),
+                ("needed_tests", "shared-engine ticks"),
+                ("needed_tests", "reused cancellation tokens"),
+                ("needed_tests", "worker-unwind cleanup"),
+                ("verification_reinforcements", "invocation-local completion"),
+                ("verification_reinforcements", "joined watchdogs"),
+            ),
             "terminal-protocols-grid-history": (
+                ("needed_tests", "viewport identity journal"),
+                ("verification_reinforcements", "first visible cell and snapshot styles"),
+                ("needed_tests", "parser-created selection journal"),
+                ("verification_reinforcements", "unselected control grid"),
+                ("needed_tests", "hard-line journal"),
+                ("verification_reinforcements", "text, hard-break, whitespace and style faults"),
                 ("needed_tests", "boundary-only CMD D"),
                 ("needed_tests", "pre-epoch"),
                 ("needed_tests", "timezone or DST transitions"),
@@ -292,6 +306,9 @@ class FeatureTestReinforcementTests(unittest.TestCase):
 
     def test_pty_shutdown_scenario_details_cannot_be_weakened(self) -> None:
         details = (
+            ("needed_tests", "parked split/local-tab exit journal"),
+            ("verification_reinforcements", "surviving channels remain empty and connected"),
+            ("verification_reinforcements", "restore refresh precedes visibility"),
             ("needed_tests", "Ordinary and exact Windows ConPTY"),
             ("needed_tests", "broadcast-first teardown"),
             ("needed_tests", "parked"),
@@ -322,11 +339,58 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 ):
                     self.validate(document)
 
+    def test_shell_control_scenarios_cannot_be_replaced_by_generic_key_tests(self) -> None:
+        for field, detail in (
+            ("needed_tests", "shell-owned Ctrl+R and Ctrl+D"),
+            ("needed_tests", "single-message captured-target paste"),
+            ("verification_reinforcements", "sibling silence and unchanged selection on rejection"),
+            ("needed_tests", "typed fallback and reset"),
+            ("verification_reinforcements", "no clone action"),
+            ("verification_reinforcements", "explicit user mappings"),
+        ):
+            with self.subTest(field=field, detail=detail):
+                document = copy.deepcopy(self.document)
+                feature = next(item for item in document["features"] if item["id"] == "windows-tabs-sessions-input")
+                self.assertTrue(any(detail in item for item in feature[field]))
+                feature[field] = [item.replace(detail, "generic key coverage") for item in feature[field]]
+                with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                    self.validate(document)
+
+    def test_qa_source_identity_requirements_cannot_be_dropped(self) -> None:
+        for field, detail in (
+            ("needed_tests", "content-bound dirty fingerprints"),
+            ("needed_tests", "logical artifact announcements"),
+            ("verification_reinforcements", "before/after source identity drift"),
+        ):
+            with self.subTest(field=field):
+                document = copy.deepcopy(self.document)
+                feature = next(item for item in document["features"] if item["id"] == "stabilization-release-assurance-s1-s2")
+                feature[field] = [item.replace(detail, "generic evidence") for item in feature[field]]
+                with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                    self.validate(document)
+
+    def test_public_sbom_privacy_requirements_cannot_be_dropped(self) -> None:
+        for field, detail in (
+            ("needed_tests", "recomputed-checksum SBOM privacy"),
+            ("needed_tests", "Minimal publication rejects full inventories"),
+            ("needed_tests", "rehashed private paths and identifiers"),
+            ("needed_tests", "non-private retention"),
+            ("needed_tests", "real ephemeral-key Minisign tamper coverage"),
+            ("verification_reinforcements", "complete graph, license and file-hash preservation"),
+        ):
+            document = copy.deepcopy(self.document)
+            feature = next(item for item in document["features"] if item["id"] == "packaging-release-provenance")
+            feature[field] = [item.replace(detail, "generic metadata") for item in feature[field]]
+            with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                self.validate(document)
+
     def test_native_renderer_and_lifecycle_source_mutations_fail_closed(self) -> None:
         mutations = (
             ("screen", "if !frame_dropped", "if frame_dropped"),
             ("application", "manager.request_pty_shutdown()", "manager.route_ids()"),
             ("context", "self.shutdown_requested.swap(true", "self.shutdown_requested.load("),
+            ("context", "self.current_grid_mut().update_dimensions(sugarloaf);", ""),
+            ("context", "self.current_grid_mut().update_dimensions(sugarloaf);\n        self.keep_only_active_context_visible(sugarloaf);", "self.keep_only_active_context_visible(sugarloaf);\n        self.current_grid_mut().update_dimensions(sugarloaf);"),
             ("router", "context_manager.quit()", "context_manager.route_ids()"),
             (
                 "windows_pty",

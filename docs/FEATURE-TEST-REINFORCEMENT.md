@@ -33,10 +33,39 @@ fixtures or reports.
 
 ### terminal-protocols-grid-history
 
+A parser-created viewport identity journal must retain the first visible cell
+in the first projected row after every resize, as far as history permits. Use
+independent input colors for repeated text and inspect renderer-facing snapshot
+styles as well as live-follow sibling cells. Cover one-column output, height-only
+changes, blank hard lines, selection, inactive normal buffers, alternate screens,
+and actual anchor eviction/absorption. Reject PTY writes. Saved same-host
+scrolled/unselected/selected benchmarks measure the combined core path; preserve
+separate native redraw, pixel and accessibility gates.
+
 Reinforce fragmented and malformed control sequences, Unicode widths,
 combining/bidi/control input, alternate-screen transitions, scrollback, reflow,
 search, selection, cursor state, and exact visible cells. Fuzz every structured
 terminal-input boundary with historical failures retained.
+
+The parser-driven retained-output journal preserves explicit hard breaks,
+intentional empty lines, spaces across soft wraps, fragmented Unicode and ANSI
+colors across intermediate width/height changes in both directions. Its oracle
+is fault-tested against text, hard-break, whitespace and style mutations.
+Substring counts or restored-width-only checks cannot replace this assertion.
+This does not establish selection retention, native shell repaint, renderer
+geometry or pixels; those remain distinct evidence owners.
+
+Selection reflow uses a separate parser-created selection journal: select once,
+resize both directions, and assert exact copy bytes and anchor sides at every
+intermediate geometry. Include wide/combining characters, semantic and line
+selections, alternate-screen cropping, invalid points, zero-history eviction and
+rectangular-selection invalidation. Compare all retained cells with an independently
+resized unselected terminal. Measure combined reflow/copy/visible-snapshot work
+over deep bounded history; do not call a parser-only pass native pixel evidence.
+Check the next Vi motion as well as its cursor/anchor coordinates, preserving
+unrelated cursor ownership. The Windows PowerShell/ConPTY fixture uses bounded
+UTF-8 output and requires both parsed completion and successful child exit before
+retained-output reflow; live redraw and native selection gestures remain separate.
 
 For command completion metadata, include multiple adjacent prompt lifecycles
 whose source result and preceding boundary share a physical prompt row. Resize
@@ -62,6 +91,16 @@ window close, explicit quit, and the final event-loop callback. Capture exact
 temporary-fixture process identities before close so ConPTY reparenting cannot
 escape a parent-only oracle; require every identity and owner to exit inside a
 declared many-session wall-clock ceiling.
+
+Exercise the parked split/local-tab exit journal through the real context and
+Taffy owners: all exit orders, selected and inactive routes, unknown/late exits,
+independent windows, undo/redo and repeated cleanup. Compare real shutdown
+channels and weak terminal references: surviving channels remain empty and
+connected, while only the removed owner is dropped. Require live window size,
+scale, margins and font metrics on restore even when padding did not change;
+restore refresh precedes visibility. Saved zoom/unzoom styles must also use the
+new extent and DPI. Native sibling output, process identities,
+resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
@@ -95,6 +134,24 @@ live editor input at a fixed unsent sentinel so cursor-line drift cannot
 masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
+
+Shell-control regressions must exercise complete Windows, macOS and Unix
+default tables with splits enabled and disabled, plus typed Automexia fallback,
+pinned profiles, explicit user overrides and reset. Assert exact control bytes
+and no clone action in normal and alternate-screen input. Test palette reload
+against actual configured clone mappings, typed tombstones and overlapping
+sequences; unbound actions remain discoverable. Never migrate a user mapping by
+guessing its provenance. Native shell/PTY and physical keyboard/IME evidence are
+separate requirements, not inferred from a binding-table pass.
+
+Clipboard regressions must traverse the real terminal mode parser and capture
+one complete queue transaction, including bracket delimiters and exact Unicode
+bytes. Assert sibling silence after a focus change between target capture and
+delivery, and reject removed, replaced, closing and disconnected destinations.
+Cover empty/byte-limit text, ESC/ETX injection, raw input and newline semantics;
+rejection must preserve selection and scroll. Pointer tests must distinguish
+terminal cells from pane chrome and preserve copy-before-paste selection and
+per-button release ownership. Native clipboard/IME evidence remains separate.
 
 Reinforce independent windows, global and pane-local tabs, fresh/cloned splits,
 route and focus isolation, geometric navigation, pointer routing, divider
@@ -171,6 +228,24 @@ and malformed JSON rejection, no writes, and redacted diagnostics. Mutations
 must reject removed, duplicated, reordered or ignored authorization and forged
 contexts while preserving manual rehearsal isolation and all artifact gates.
 Only the real post-merge run supplies signed-release evidence.
+
+Minimal public metadata tests must reject full inventories, unknown manifest
+fields, private identifiers and paths in documents even after rehashing,
+incorrect review-policy digests, removed notices, altered verification comments,
+and retention outside the private source repository. Preserve schema-1 first
+release compatibility without allowing a downgrade for another version. Run
+real ephemeral-key Minisign verification and tamper rejection where available;
+mocked signatures do not prove cryptographic interoperability.
+
+Private SBOM privacy tests must retain the recomputed-checksum leak regression,
+real preparation CLI, full dependency/license/file-hash preservation, cross-format
+input identities, virtual versus host scan paths, nested/encoded unsafe metadata,
+duplicate/dangling references, malformed and bounded input, atomic-write failure
+and untouched private inputs. The shared release-trust suite must accept Syft's
+versionless file/root entries without counting them as dependencies. Workflow
+mutations reject raw-output uploads, generator drift, skipped/duplicated/moved
+preparation, suppressed failure and missing scratch cleanup before claiming
+current-source verification. Hosted publication remains separate evidence.
 Read-only App governance must combine REST rules with repository/identity-bound
 GraphQL bypass evidence. Preserve the real omitted REST field and redacted
 nonempty GraphQL actor as regression seeds. Test zero/nonzero/inconsistent
@@ -312,6 +387,14 @@ and terminal hot-path authority; detailed future planning remains private.
 
 ### ecosystem-d7-cp6-proposal
 
+All-feature host assurance must cover pre-arming interrupts, shared-engine ticks,
+reused cancellation tokens and worker-unwind cleanup. Require invocation-local
+completion, a persistent absolute deadline, store-local interruption decisions
+and joined watchdogs. Use a finite emergency fuel budget in deliberate lost-tick
+mutations; retain the native infinite-loop failure separately. Default-feature
+QA is not evidence for code behind the component-host feature, and none of these
+source tests grants product activation.
+
 Keep optional ecosystem proposals behind explicit capability, signing,
 sandboxing, lifecycle, disable/uninstall, resource, and failure-isolation gates.
 This anchor is not an availability claim.
@@ -321,6 +404,16 @@ This anchor is not an availability claim.
 Reinforce staged stabilization with exact failure retention, same-host baselines,
 native evidence, packaged-artifact identity, bounded resources, cleanup, and
 explicit external gates before release claims advance.
+
+QA source evidence must use content-bound dirty fingerprints, not status-line
+hashes. Mutate an already-dirty file without changing its status and prove the
+identity changes. Exercise untracked/deleted/renamed files, Unicode names,
+byte/file/total limits, link rejection, unavailable Git, subprocess deadlines and
+cleanup. An actual QA report must fail on before/after identity drift even when
+all mocked test commands pass; unavailable identities must never compare equal
+as passing evidence. Keep source contents and private paths out of reports.
+Exercise logical artifact announcements through the actual CLI on successful
+and failed runs, including optional bundle creation; reject checkout disclosure.
 
 ### connection-hub-f2-models
 

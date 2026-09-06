@@ -27,6 +27,38 @@ This inventory does not certify every placement after reflow, scroll, resize,
 pane replacement, scale change or native presentation. Only the scenarios and
 environments recorded by the existing tests and retained evidence are claimed.
 
+## Reported usability observations
+
+The user reports difficulty browsing a long command-palette list, ambiguous
+search hints/icons, dense colored command tables, and inconsistent visual
+hierarchy between context tags, command timestamps and actual split borders.
+Colors, shapes, icons and fonts are otherwise positively received. The reports
+do not establish a renderer root cause or a completed correction.
+
+Current behavior and limits relevant to those observations:
+
+- In normal search with the query focused, Enter selects the next result and
+  Shift+Enter the previous result. Vi search and focused scope controls have
+  separate semantics; see [search](KEYBOARD.md#search-mode).
+- Existing image quick look supports hover, explicit pinning, navigation and
+  dismissal. Its presence does not certify every filename association or
+  narrow-pane placement; see [local quick look](IMAGE-PREVIEWS.md#local-quick-look).
+- Raw shell tables obey terminal cell/wrap semantics. A wrapped or densely
+  colored `kubectl get pod`/`pods` result is not evidence of a separate
+  structured-table implementation.
+- A reported green `0/1 Completed` Pod row can be confused with running-ready
+  status. A completed workload is not necessarily failed because readiness is
+  zero; the command's own exit success is separate from the resource's state.
+  See [Kubernetes Pod lifecycle](https://kubernetes.io/docs/concepts/workloads/pods/pod-lifecycle/).
+- A command timestamp/output boundary can be mistaken for a pane divider.
+  This reported visual ambiguity is distinct from an actual split/layout action.
+- Schema 1 runtime preferences persist font size and appearance only; source
+  support for those fields is not a general-purpose runtime feature-toggle UI.
+
+No new shortcut, image mode, table workflow or configuration option is activated
+by these observations. Current source and the linked references remain the
+behavior authority; native usability evidence is still environment-specific.
+
 ## Verification boundaries
 
 Palette actions and typed shortcut contracts remain separate source structures;
