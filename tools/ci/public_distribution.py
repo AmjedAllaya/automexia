@@ -682,11 +682,73 @@ def write_activation_handoff(manifest_path: Path, output: Path) -> dict[str, obj
     return handoff
 
 
+def ruleset_bypass_query() -> str:
+    owner, name = PUBLIC_REPOSITORY.split("/")
+    return (
+        '{repository(owner:"' + owner + '",name:"' + name + '"){'
+        'nameWithOwner rulesets(first:100){pageInfo{hasNextPage} nodes{'
+        'id databaseId name enforcement bypassActors(first:1){'
+        'totalCount nodes{bypassMode} pageInfo{hasNextPage}}}}}}'
+    )
+
+
+def _validate_ruleset_bypass_evidence(
+    evidence: object, rulesets: tuple[dict[str, object], ...]
+) -> None:
+    # REST intentionally omits bypass_actors without ruleset-write permission.
+    # GraphQL exposes the count even when individual actor identities are null;
+    # require three agreeing empty signals, never interpret redaction as zero.
+    if not isinstance(evidence, dict) or "errors" in evidence:
+        fail("ruleset bypass evidence is unavailable or contains GraphQL errors")
+    data = evidence.get("data")
+    repository = data.get("repository") if isinstance(data, dict) else None
+    if not isinstance(repository, dict) or repository.get("nameWithOwner") != PUBLIC_REPOSITORY:
+        fail("ruleset bypass evidence has the wrong repository identity")
+    def complete_page(page: object) -> bool:
+        return (isinstance(page, dict) and set(page) == {"hasNextPage"}
+                and page["hasNextPage"] is False)
+
+    connection = repository.get("rulesets")
+    if not isinstance(connection, dict) or not complete_page(connection.get("pageInfo")):
+        fail("ruleset bypass evidence is incomplete")
+    nodes = connection.get("nodes")
+    if not isinstance(nodes, list) or not 2 <= len(nodes) <= 100:
+        fail("ruleset bypass inventory exceeds its bounds or is incomplete")
+    by_id: dict[int, dict[str, object]] = {}
+    seen_nodes: set[str] = set()
+    for node in nodes:
+        if not isinstance(node, dict):
+            fail("ruleset bypass inventory contains a redacted rule")
+        identity, node_id = node.get("databaseId"), node.get("id")
+        if (type(identity) is not int or identity <= 0 or identity in by_id
+                or not isinstance(node_id, str) or not 1 <= len(node_id) <= 128
+                or node_id in seen_nodes):
+            fail("ruleset bypass inventory contains invalid or duplicate identities")
+        by_id[identity] = node
+        seen_nodes.add(node_id)
+    for ruleset in rulesets:
+        identity = ruleset.get("id")
+        if type(identity) is not int:
+            fail("REST ruleset identity is unavailable for independent verification")
+        node = by_id.get(identity)
+        if (node is None or node.get("id") != ruleset.get("node_id")
+                or node.get("name") != ruleset.get("name")
+                or node.get("enforcement") != "ACTIVE"):
+            fail("REST and GraphQL ruleset identities or enforcement disagree")
+        actors = node.get("bypassActors")
+        if (not isinstance(actors, dict) or type(actors.get("totalCount")) is not int
+                or actors.get("totalCount") != 0 or actors.get("nodes") != []
+                or not complete_page(actors.get("pageInfo"))):
+            fail("ruleset bypass policy is nonempty, redacted, or incomplete")
+
+
 def validate_public_repository_governance(
     repository: dict[str, object],
     immutable: dict[str, object],
     main_ruleset: dict[str, object],
     tag_ruleset: dict[str, object],
+    *,
+    bypass_evidence: object = None,
 ) -> None:
     expected_repository = {
         "visibility": "public",
@@ -703,6 +765,9 @@ def validate_public_repository_governance(
     if immutable.get("enabled") is not True:
         fail("public release repository must enforce immutable releases")
 
+    if bypass_evidence is not None:
+        _validate_ruleset_bypass_evidence(bypass_evidence, (main_ruleset, tag_ruleset))
+
     def rules_by_type(
         ruleset: dict[str, object], name: str, target: str, include: list[str]
     ) -> dict[str, dict[str, object]]:
@@ -710,7 +775,8 @@ def validate_public_repository_governance(
             ruleset.get("name") != name
             or ruleset.get("target") != target
             or ruleset.get("enforcement") != "active"
-            or ruleset.get("bypass_actors") != []
+            or ("bypass_actors" in ruleset and ruleset["bypass_actors"] != [])
+            or ("bypass_actors" not in ruleset and bypass_evidence is None)
         ):
             fail(f"{name} ruleset identity, enforcement, or bypass policy drifted")
         conditions = ruleset.get("conditions")
@@ -990,6 +1056,28 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
             fail(f"{name} job must be restricted to an authorized public release")
     if "X-GitHub-Api-Version: 2026-03-10" not in publish:
         fail("publication must use the current pinned GitHub API contract")
+    bypass_fetch = (
+        'timeout 30s gh api graphql -f query="$(python3 tools/ci/public_distribution.py '
+        'ruleset-bypass-query)" > "$governance/ruleset-bypass.json"'
+    )
+    bypass_argument = '--ruleset-bypass-json "$governance/ruleset-bypass.json"'
+    bypass_block = "\n" + "\n".join((
+        bypass_fetch,
+        'python3 tools/ci/public_distribution.py verify-repository \\',
+        '--repository-json "$governance/repository.json" \\',
+        '--immutable-json "$governance/immutable.json" \\',
+        '--main-ruleset-json "$governance/main-ruleset.json" \\',
+        '--tag-ruleset-json "$governance/tag-ruleset.json" \\',
+        bypass_argument,
+        '',
+    ))
+    normalized_publish = "\n" + "\n".join(line.strip() for line in publish.splitlines()) + "\n"
+    if (publish.count(bypass_fetch) != 1 or publish.count(bypass_argument) != 1
+            or normalized_publish.count(bypass_block) != 1
+            or not publish.find(bypass_fetch) < publish.find(bypass_argument) < publish.find('gh release create')
+            or 'permission-administration: write' in publish or 'set +' in publish
+            or 'continue-on-error:' in publish):
+        fail("publication requires independent read-only bypass evidence before creation")
     for forbidden in (
         "secrets.",
         "create-github-app-token",
@@ -1066,6 +1154,8 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     governance.add_argument("--immutable-json", type=Path, required=True)
     governance.add_argument("--main-ruleset-json", type=Path, required=True)
     governance.add_argument("--tag-ruleset-json", type=Path, required=True)
+    governance.add_argument("--ruleset-bypass-json", type=Path, required=True)
+    commands.add_parser("ruleset-bypass-query")
     bundle = commands.add_parser("verify-bundle")
     bundle.add_argument("--directory", type=Path, required=True)
     activation = commands.add_parser("activation-handoff")
@@ -1113,8 +1203,11 @@ def main(argv: list[str] | None = None) -> int:
                 _load_json(args.immutable_json, MAX_RELEASE_JSON_BYTES),
                 _load_json(args.main_ruleset_json, MAX_RELEASE_JSON_BYTES),
                 _load_json(args.tag_ruleset_json, MAX_RELEASE_JSON_BYTES),
+                bypass_evidence=load_release_event(args.ruleset_bypass_json),
             )
             print("Public release repository governance passed")
+        elif args.command == "ruleset-bypass-query":
+            print(ruleset_bypass_query())
         elif args.command == "activation-handoff":
             handoff = write_activation_handoff(args.manifest, args.output)
             print(f"Prepared website activation handoff for {handoff['releaseTag']}")

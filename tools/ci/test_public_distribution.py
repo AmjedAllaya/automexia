@@ -316,6 +316,7 @@ def repository_governance() -> dict[str, dict[str, object]]:
         },
         "immutable": {"enabled": True},
         "main": {
+            "id": 101, "node_id": "RRS_fixture_main",
             "name": "Protect main",
             "target": "branch",
             "enforcement": "active",
@@ -340,6 +341,7 @@ def repository_governance() -> dict[str, dict[str, object]]:
             ],
         },
         "tag": {
+            "id": 102, "node_id": "RRS_fixture_tag",
             "name": "Protect release tags",
             "target": "tag",
             "enforcement": "active",
@@ -352,6 +354,175 @@ def repository_governance() -> dict[str, dict[str, object]]:
             ],
         },
     }
+
+
+def graphql_governance() -> dict:
+    return {"data": {"repository": {
+        "nameWithOwner": REPOSITORY,
+        "rulesets": {
+            "pageInfo": {"hasNextPage": False},
+            "nodes": [
+                {"id": node, "databaseId": identity, "name": name,
+                 "enforcement": "ACTIVE", "bypassActors": {
+                     "totalCount": 0, "nodes": [],
+                     "pageInfo": {"hasNextPage": False}}}
+                for identity, node, name in (
+                    (101, "RRS_fixture_main", "Protect main"),
+                    (102, "RRS_fixture_tag", "Protect release tags"),
+                )
+            ],
+        },
+    }}}
+
+
+class ReadOnlyGovernanceTests(unittest.TestCase):
+    def verify(self, evidence: object, rest: dict | None = None) -> None:
+        state = rest or repository_governance()
+        if rest is None:
+            for key in ("main", "tag"):
+                state[key].pop("bypass_actors")
+        DISTRIBUTION.validate_public_repository_governance(
+            state["repository"], state["immutable"], state["main"], state["tag"],
+            bypass_evidence=evidence,
+        )
+
+    def test_read_only_rest_omission_requires_independent_complete_graphql(self) -> None:
+        # The actual App token omits REST bypass_actors, while GraphQL reports
+        # real counts even when an individual actor's identity is redacted.
+        self.verify(graphql_governance())
+        with self.assertRaises(DISTRIBUTION.DistributionError):
+            self.verify(None)
+
+    def test_graphql_never_treats_redacted_or_inconsistent_actor_as_empty(self) -> None:
+        for index in (0, 1):
+            for count in (1, 2, 100, -1, True, False, "0", None):
+                data = graphql_governance()
+                actors = data["data"]["repository"]["rulesets"]["nodes"][index]["bypassActors"]
+                actors.update(totalCount=count, nodes=[None])
+                with self.subTest(index=index, count=count):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        self.verify(data)
+            for mutation in ({"nodes": [None]}, {"pageInfo": {"hasNextPage": True}},
+                             {"nodes": None}, {"totalCount": False}):
+                data = graphql_governance()
+                data["data"]["repository"]["rulesets"]["nodes"][index]["bypassActors"].update(mutation)
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    self.verify(data)
+
+    def test_graphql_errors_identity_substitution_truncation_and_duplicates_fail(self) -> None:
+        mutations = [
+            lambda d: d.update(errors=[{"message": "private-canary"}]),
+            lambda d: d.update(errors=[]),
+            lambda d: d.update(data=None),
+            lambda d: d["data"].update(repository=None),
+            lambda d: d["data"]["repository"].update(nameWithOwner="alice/archive"),
+            lambda d: d["data"]["repository"]["rulesets"]["pageInfo"].update(hasNextPage=True),
+            lambda d: d["data"]["repository"]["rulesets"].update(nodes=[]),
+            lambda d: d["data"]["repository"]["rulesets"]["nodes"].pop(),
+            lambda d: d["data"]["repository"]["rulesets"]["nodes"].append(None),
+            lambda d: d["data"]["repository"]["rulesets"]["nodes"].append(d["data"]["repository"]["rulesets"]["nodes"][0]),
+        ]
+        for field, value in (("id", "wrong"), ("databaseId", True), ("databaseId", 999),
+                             ("name", "Wrong rule"), ("enforcement", "DISABLED"),
+                             ("bypassActors", None)):
+            mutations.append(lambda d, f=field, v=value: d["data"]["repository"]["rulesets"]["nodes"][0].update({f: v}))
+        for mutate in mutations:
+            data = graphql_governance()
+            mutate(data)
+            with self.assertRaises(DISTRIBUTION.DistributionError) as failure:
+                self.verify(data)
+            self.assertNotIn("private-canary", str(failure.exception))
+
+    def test_rest_conflicts_cannot_be_overridden_by_graphql(self) -> None:
+        for key in ("main", "tag"):
+            for value in (None, [{"actor_type": "RepositoryRole"}], False):
+                state = repository_governance()
+                state[key]["bypass_actors"] = value
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    self.verify(graphql_governance(), state)
+
+    def test_bounded_complete_inventory_and_independent_rule_identities(self) -> None:
+        data = graphql_governance()
+        nodes = data["data"]["repository"]["rulesets"]["nodes"]
+        for identity in range(103, 201):
+            nodes.append({"databaseId": identity, "id": f"RRS_fixture_{identity}"})
+        self.verify(data)
+        nodes.append({"databaseId": 201, "id": "RRS_fixture_201"})
+        with self.assertRaises(DISTRIBUTION.DistributionError):
+            self.verify(data)
+        for index in (0, 1):
+            for field in ("id", "databaseId", "name", "enforcement", "bypassActors"):
+                broken = graphql_governance()
+                broken["data"]["repository"]["rulesets"]["nodes"][index].pop(field)
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    self.verify(broken)
+
+    def test_pagination_requires_explicit_boolean_false_not_numeric_zero(self) -> None:
+        for value in (0, 1, None, "false", [], True):
+            for actors in (False, True):
+                evidence = graphql_governance()
+                connection = evidence["data"]["repository"]["rulesets"]
+                if actors:
+                    connection = connection["nodes"][0]["bypassActors"]
+                connection["pageInfo"]["hasNextPage"] = value
+                with self.subTest(value=value, actors=actors):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        self.verify(evidence)
+
+    def test_real_governance_cli_rejects_missing_malformed_and_private_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            state = repository_governance()
+            arguments = [sys.executable, str(MODULE_PATH), "verify-repository"]
+            for key, flag in (("repository", "repository"), ("immutable", "immutable"),
+                              ("main", "main-ruleset"), ("tag", "tag-ruleset")):
+                value = state[key]
+                if key in ("main", "tag"):
+                    value.pop("bypass_actors")
+                path = root / f"{key}.json"
+                path.write_text(json.dumps(value), encoding="utf-8")
+                arguments.extend([f"--{flag}-json", str(path)])
+            evidence = root / "bypass.json"
+            arguments.extend(["--ruleset-bypass-json", str(evidence)])
+            evidence.write_text(json.dumps(graphql_governance()), encoding="utf-8")
+            ok = subprocess.run(arguments, capture_output=True, text=True, timeout=10)
+            self.assertEqual(ok.returncode, 0, ok.stderr)
+            self.assertEqual(ok.stdout.strip(), "Public release repository governance passed")
+            for content in (b'{"private-canary":1,"private-canary":2}', b'\xff',
+                            b'{"data":NaN}', b' ' * (1024 * 1024 + 1),
+                            json.dumps({"errors": [{"message": "private-canary"}]}).encode()):
+                evidence.write_bytes(content)
+                failed = subprocess.run(arguments, capture_output=True, text=True, timeout=10)
+                self.assertEqual(failed.returncode, 1)
+                self.assertNotIn("private-canary", failed.stdout + failed.stderr)
+                self.assertNotIn(temporary, failed.stdout + failed.stderr)
+                self.assertEqual(evidence.read_bytes(), content)
+            evidence.unlink()
+            failed = subprocess.run(arguments, capture_output=True, text=True, timeout=10)
+            self.assertEqual(failed.returncode, 1)
+            self.assertNotIn(temporary, failed.stderr)
+
+    def test_workflow_cannot_skip_weaken_fake_or_move_bypass_evidence(self) -> None:
+        text = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        fetch = 'timeout 30s gh api graphql -f query="$(python3 tools/ci/public_distribution.py ruleset-bypass-query)" > "$governance/ruleset-bypass.json"'
+        argument = '--ruleset-bypass-json "$governance/ruleset-bypass.json"'
+        mutations = [text.replace(fetch, replacement, 1) for replacement in (
+            'echo bypass-not-checked', '# ' + fetch, 'true || ' + fetch,
+            fetch + ' || true', fetch.replace('30s', '300s'),
+            fetch.replace('gh api graphql', 'echo gh api graphql'),
+            fetch + '\n          ' + fetch,
+        )]
+        mutations.extend(text.replace(argument, replacement, 1) for replacement in (
+            '', argument + ' || true', '--ruleset-bypass-json other.json', '# ' + argument,
+        ))
+        mutations.append(text.replace('permission-administration: read', 'permission-administration: write', 1))
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / 'workflow.yml'
+            for mutation in mutations:
+                self.assertNotEqual(mutation, text)
+                path.write_text(mutation, encoding='utf-8')
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.validate_workflow(path)
 
 
 class PublicDistributionTests(unittest.TestCase):

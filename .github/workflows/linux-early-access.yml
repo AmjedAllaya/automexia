@@ -423,11 +423,13 @@ jobs:
           [[ "$tag_ruleset_id" =~ ^[0-9]+$ ]]
           gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/rulesets/$main_ruleset_id" > "$governance/main-ruleset.json"
           gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/rulesets/$tag_ruleset_id" > "$governance/tag-ruleset.json"
+          timeout 30s gh api graphql -f query="$(python3 tools/ci/public_distribution.py ruleset-bypass-query)" > "$governance/ruleset-bypass.json"
           python3 tools/ci/public_distribution.py verify-repository \
             --repository-json "$governance/repository.json" \
             --immutable-json "$governance/immutable.json" \
             --main-ruleset-json "$governance/main-ruleset.json" \
-            --tag-ruleset-json "$governance/tag-ruleset.json"
+            --tag-ruleset-json "$governance/tag-ruleset.json" \
+            --ruleset-bypass-json "$governance/ruleset-bypass.json"
           if gh release view "$tag" --repo "$PUBLIC_REPOSITORY" >/dev/null 2>&1 || gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/git/ref/tags/$tag" >/dev/null 2>&1; then
             echo 'A release or tag already exists in the public repository; create a new patch version.' >&2
             exit 1

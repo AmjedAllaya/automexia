@@ -68,6 +68,8 @@ route returns a real 404 without a `Location` header.
    `automexia-releases` with contents-write and administration-read permissions.
 7. It requires the archive to be public and passive, immutable releases enabled,
    squash-only reviewed `main`, no bypass actors, and non-rewritable `v*` tags;
+   identity-bound GraphQL evidence supplements REST's deliberately omitted
+   bypass field without granting administration write;
    then it rejects a pre-existing tag/release, uploads one draft, and verifies
    every draft asset.
 8. It publishes the prerelease and verifies GitHub reports it immutable with the
@@ -162,8 +164,38 @@ six-package manifest byte for byte at SHA-256
 `c5028f65071eec08ac6edfddfd62490303f03573679e673c211ffe48f1d160b8` and
 verified its non-public marker. The temporary copy was removed after verification.
 These are unsigned package results, not proof of signing or publication.
-The subsequent owner-authorization change
-requires its own hosted checks and a guarded post-merge signed run.
+The owner-authorization change passed the full 41-check local QA ladder,
+`cargo ready`, and hosted PR CI `34027651874`, then merged as
+`9ed49a1dfddb873484ddab139925372195e6ceec`. Main CI `34028707604` passed.
+The stable-only workflow correctly stayed excluded from the Linux namespace.
+
+Post-merge run `34028707592` passed owner authorization, release quality, and
+both native package/install lifecycles. Attempt one failed while loading an
+incorrectly encoded Minisign secret; after validating the original key against
+the registered public key and uploading the entire file as Base64, signing
+passed. Attempt two exposed malformed App PEM configuration; the existing
+App key was authenticated against its configured identity and its installation
+verified as release-repository-only before uploading the original PEM.
+Neither correction rotated a key or expanded permissions.
+
+Attempt three passed signing and App token creation but stopped at governance:
+the read-only App's REST response omits `bypass_actors`. The corrected query and
+validator now pass against the real least-privilege App view, and a temporary
+disabled-rule positive control proved that GraphQL detects a nonempty actor
+even when its identity is redacted. That exact diagnostic rule and its token
+were removed. Production main/tag rules remain unchanged. Regression tests
+cover identities, counts, redaction, bounds, real CLI behavior and workflow
+suppression; the new source still needs its own guarded post-merge run.
+No draft, release, tag, or website handoff was created by these failed attempts.
+
+The first local full QA pass over this governance correction recorded one
+PowerShell completion-adapter timing failure: p95 59.4983 ms against the
+unchanged 50 ms ceiling. Completion source and tests were byte-identical to the
+previously passing main tree. A fixed three-repetition isolated native campaign
+then passed at 29.86, 38.33 and 29.06 ms, with no threshold or runtime change.
+The original failure remains retained; its cause is not conclusively established,
+and these samples do not establish a sustained performance baseline. The final
+clean-commit QA and readiness gates remain mandatory before pushing.
 
 The 2026-09-06 authenticated metadata check confirmed that both required Actions
 secrets and both required variables are registered. Their values were not read

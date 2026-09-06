@@ -171,6 +171,15 @@ and malformed JSON rejection, no writes, and redacted diagnostics. Mutations
 must reject removed, duplicated, reordered or ignored authorization and forged
 contexts while preserving manual rehearsal isolation and all artifact gates.
 Only the real post-merge run supplies signed-release evidence.
+Read-only App governance must combine REST rules with repository/identity-bound
+GraphQL bypass evidence. Preserve the real omitted REST field and redacted
+nonempty GraphQL actor as regression seeds. Test zero/nonzero/inconsistent
+counts, missing/duplicate/substituted identities, incomplete pages, query errors,
+1 MiB/depth/node limits, strict redacted CLI failure and no writes. Mutation-test
+query removal, comments, error suppression, deadline changes, stale evidence,
+reordering and permission expansion. A native App positive control must detect
+an actual actor on an isolated disabled rule; remove that exact rule and revoke
+the diagnostic token afterward. Never modify live main/tag rules for this test.
 `tools/ci/test_free_plan_contract.py` also removes and inverts the stable-lane
 Linux-namespace exclusion; the selector must reject that overlap before stable
 authorization rather than failing an unrelated branch grammar later.
