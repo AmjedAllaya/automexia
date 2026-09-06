@@ -42,6 +42,14 @@ if re.search(r'^\s*environment\s*:', all_text, re.MULTILINE):
     errors.append('private GitHub environments are unavailable on the Free/private edition')
 
 release = (wf/'release.yml').read_text(encoding='utf-8')
+stable_selector = re.search(
+    r'(?ms)^  authorize:\n.*?^    if: >-\n(?P<condition>.*?)^    runs-on:', release
+)
+if stable_selector is None or (
+    "!startsWith(github.event.pull_request.head.ref, 'release/linux/') &&"
+    not in stable_selector.group('condition')
+):
+    errors.append('stable release must exclude Linux Early Access before authorization')
 required_release_fragments = [
     'types:', '- closed', "startsWith(github.event.pull_request.head.ref, 'release/')",
     'github.event.pull_request.head.repo.full_name == github.repository',

@@ -171,6 +171,9 @@ and malformed JSON rejection, no writes, and redacted diagnostics. Mutations
 must reject removed, duplicated, reordered or ignored authorization and forged
 contexts while preserving manual rehearsal isolation and all artifact gates.
 Only the real post-merge run supplies signed-release evidence.
+`tools/ci/test_free_plan_contract.py` also removes and inverts the stable-lane
+Linux-namespace exclusion; the selector must reject that overlap before stable
+authorization rather than failing an unrelated branch grammar later.
 
 ### contributor-automation-quality-policy
 
