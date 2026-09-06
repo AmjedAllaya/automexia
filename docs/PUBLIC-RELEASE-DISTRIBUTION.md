@@ -1,9 +1,40 @@
 # Public Linux Early Access distribution
 
-Status: **implementation, passive-archive governance, and inactive website
-integration complete; release externally gated**. No package or website route
-is active until the real signed release workflow and landing-page activation
-checks pass.
+Status: **v0.4.0 is published as signed, immutable Linux Early Access on GitHub;
+website activation is not completed**.
+
+[Download v0.4.0](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0).
+The release contains x64 and Arm64 DEB, RPM and portable archives. It is an
+official prerelease, not stable multi-platform certification.
+
+## Current publication evidence
+
+Release run [34035788913](https://github.com/AmjedAllaya/automexia-terminal/actions/runs/34035788913)
+passed owner authorization, quality, both native Ubuntu package/install/remove
+lifecycles, signing, least-privilege governance, draft verification, immutable
+publication and all attestation checks on 2026-09-06.
+
+- Compiled source commit: `6d3fcf6910155fde1f582e56be87141526e9a660`.
+- Distribution manifest SHA-256:
+  `b3ca30dc0b93d11788d389168827f14221827a658460ab3786160e277c2c04bd`.
+- Independent signed-out downloads verified all sixteen asset bytes/sizes and
+  GitHub digests, all fourteen signed checksum records, the Minisign signature
+  against the separately registered key, and the exact compiled-source binding.
+- Independent GitHub verification passed the release attestation and every one
+  of the sixteen asset attestations. The workflow-generated
+  `website-activation-0.4.0` artifact matches that source and manifest digest.
+- The release-fix head passed 41 required local QA checks, 630 Python tests with
+  eight explicit skips, all requested Cargo gates, and `cargo ready`; PR CI
+  [34034838848](https://github.com/AmjedAllaya/automexia-terminal/actions/runs/34034838848)
+  also passed. Merge-tree equality bound that evidence to the release source.
+
+The website was not activated by this publication. Its deployment must pin the
+public key, consume the generated handoff and pass its own live verifier before
+enabling friendly routes. The public key and user verification commands are in
+[Installation](INSTALLATION.md#verify-a-linux-early-access-package). Offline
+encrypted backup remains the owner's responsibility and was not independently
+inspected. Stable platform, controlled graphics/accessibility and long-duration
+assurance gates remain separate; this publication does not mark them complete.
 
 The authenticated 2026-09-01 audit confirmed the merged website configuration
 contains the exact six-package contract with a null activation seal. The live
@@ -210,7 +241,7 @@ URL substitution, asset mismatches, missing creation evidence, CLI no-write
 behavior, and skipped/reordered publication. The exact unpublished failed draft
 was removed under the recovery policy after rechecking its signed asset identities
 and the absence of a tag. The private signed workflow artifact remains available
-for diagnosis; a new guarded source run is required before publication.
+for diagnosis. The successful guarded run listed above supersedes this failure.
 
 The first local full QA pass over this governance correction recorded one
 PowerShell completion-adapter timing failure: p95 59.4983 ms against the
@@ -247,11 +278,11 @@ quality, signatures or public repository governance.
   no paid protected environment or second reviewer.
 - Ensure included GitHub Actions minutes are available. Keep paid overage off if
   a hard zero-cost ceiling is required.
-- Run the real release workflow and retain its exact package/native evidence.
+- Retain the successful release run's exact package/native and signature evidence.
 - Complete the required independent review and merge the remaining
   public-archive metadata hardening change. The terminal and website
-  integrations are merged by this change and must remain inactive until the
-  handoff is verified.
+  integrations are merged; only the website remains inactive until its handoff
+  verification and deployment gates pass. The GitHub release is already public.
 - Copy the generated activation handoff into the landing-page review, set its
   trusted minisign public-key variable, run the live verifier, deploy, and test
   every friendly and pinned route from a signed-out browser.

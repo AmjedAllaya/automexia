@@ -3,7 +3,7 @@
 Automexia is a keyboard-first terminal focused on fast local shell work,
 independent sessions, clear command output, and user control.
 
-This public repository documents only free baseline terminal behavior.
+This repository documents only free baseline terminal behavior.
 Unreleased advanced features and all commercial plans are maintained privately.
 
 ## Public capabilities
@@ -22,6 +22,11 @@ Unreleased advanced features and all commercial plans are maintained privately.
 See [Features](docs/FEATURES.md) for the public catalog.
 
 ## Install and start
+
+Linux v0.4.0 Early Access is available for x64 and Arm64 as DEB, RPM and portable
+archives from the [official release](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0).
+Verify the signature and package checksum before installation. This is an
+official prerelease, not a stable Windows/macOS release.
 
 Follow [Installation](docs/INSTALLATION.md) and
 [Getting started](docs/GETTING-STARTED.md).

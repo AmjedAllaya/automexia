@@ -1,8 +1,12 @@
 # Install Automexia
 
-Automexia is currently available as a source build. Official signed stable
-installers are not published yet, so the safest supported way to try the
-project today is to build and launch it from this repository.
+Automexia v0.4.0 is available as signed Linux Early Access packages for x64 and
+Arm64: DEB, RPM and portable archives. Download them from the
+[official release](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
+and follow the verification steps below before installation.
+
+Stable multi-platform installers are not published. Source builds remain an
+option for contributors with repository access; they are not signed releases.
 
 This page takes you from a clean computer to the first Automexia window. If you
 already have a working source checkout, continue with the
@@ -12,12 +16,54 @@ already have a working source checkout, continue with the
 
 | Goal | Recommended path |
 |---|---|
-| Try Automexia today | Follow the source-build steps on this page. |
+| Try Automexia on Linux | Download v0.4.0 from the official release and verify the signature and selected package below. |
 | Use Automexia regularly from a source checkout | Complete one verified launch, then use `cargo automexia` for later launches. |
 | Contribute code or documentation | Install the contributor tools, complete `cargo ready`, and read [Contributing](../CONTRIBUTING.md). |
-| Install a signed desktop package | Wait for an official stable release. Do not treat an unverified third-party package as an Automexia release. |
+| Install on Windows or macOS | No official stable installer is published; use a source build only if you have source access. Do not treat an unverified third-party package as an Automexia release. |
 
-## What you need
+## Verify a Linux Early Access package
+
+Use only the exact versioned assets in the
+[official binary archive](https://github.com/AmjedAllaya/automexia-releases/releases).
+Do not use GitHub's automatically generated source archives as application
+packages. Select `amd64`/`x86_64` for an x64 system or `arm64`/`aarch64` for an
+Arm64 system; `uname -m` reports the running architecture.
+
+Download the chosen package, `SHA256SUMS`, and `SHA256SUMS.minisig` from the same
+release. Install Minisign from your distribution's package repository; on Ubuntu
+and Debian, run `sudo apt update` followed by `sudo apt install minisign`.
+
+The public verification key below is the independently registered Automexia
+Linux release key. It is intentionally public and is not a signing secret.
+Do not substitute a key supplied by an untrusted mirror or use a checksum alone
+as publisher authentication.
+
+```sh
+minisign -V -P 'RWTO3NFbh6cxrzSTATcR6SBkp/bHhwCdR48B+G7IS83pkW8XPqVDrNkN' -m SHA256SUMS -x SHA256SUMS.minisig
+sha256sum --check --ignore-missing SHA256SUMS
+```
+
+Both commands must succeed, and the checksum output must explicitly identify
+your downloaded package as `OK`. A valid signature over a different version is
+not an upgrade instruction: also check the intended version and architecture.
+Stop on any mismatch; do not install or disable OS security protections.
+
+With a current GitHub CLI, you can additionally check the immutable release and
+the exact package against GitHub's signed release attestation. Replace the
+example with the version and filename you actually downloaded:
+
+```sh
+gh release verify v0.4.0 --repo AmjedAllaya/automexia-releases
+gh release verify-asset v0.4.0 ./automexia-terminal_0.4.0-1_amd64.deb --repo AmjedAllaya/automexia-releases
+```
+
+After verification, follow the release's `INSTALL.md` and `UNINSTALL.md` for
+your package family. Package removal preserves user settings; portable archives
+do not register an automatic updater. Linux Early Access does not imply stable
+Windows/macOS packages or certification of every Linux compositor, GPU or
+distribution. See [Platform support](PLATFORMS.md#linux).
+
+## What you need for a source build
 
 Every source build needs:
 
