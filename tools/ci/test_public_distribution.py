@@ -330,10 +330,12 @@ def repository_governance() -> dict[str, dict[str, object]]:
                 {
                     "type": "pull_request",
                     "parameters": {
-                        "required_approving_review_count": 1,
+                        "required_approving_review_count": 0,
                         "dismiss_stale_reviews_on_push": True,
-                        "require_code_owner_review": True,
-                        "require_last_push_approval": True,
+                        "require_code_owner_review": False,
+                        "require_last_push_approval": False,
+                        "require_extra_approval_for_unattributed_changes": False,
+                        "required_reviewers": [],
                         "required_review_thread_resolution": True,
                         "allowed_merge_methods": ["squash"],
                     },
@@ -595,11 +597,11 @@ class PublicDistributionTests(unittest.TestCase):
             "main scope": lambda state: state["main"]["conditions"]["ref_name"].__setitem__(
                 "include", ["refs/heads/release"]
             ),
-            "no approval": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
-                "required_approving_review_count", 0
+            "unapproved team policy": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
+                "required_approving_review_count", 1
             ),
-            "no code owner": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
-                "require_code_owner_review", False
+            "impossible self approval": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
+                "require_code_owner_review", True
             ),
             "merge commit": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
                 "allowed_merge_methods", ["squash", "merge"]
@@ -614,6 +616,31 @@ class PublicDistributionTests(unittest.TestCase):
             with self.subTest(label=label):
                 state = copy.deepcopy(baseline)
                 mutate(state)
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.validate_public_repository_governance(
+                        state["repository"], state["immutable"], state["main"], state["tag"]
+                    )
+
+    def test_solo_review_policy_rejects_missing_and_type_confused_fields(self) -> None:
+        baseline = repository_governance()
+        review = baseline["main"]["rules"][3]["parameters"]
+        # Self-approval must not be manufactured, and false must not masquerade
+        # as the integer approval count. Keep every other protection mandatory.
+        for field, expected in review.items():
+            candidates = [None, "", {}, 1, 0, True, False, [], ["unexpected"]]
+            for value in candidates:
+                if type(value) is type(expected) and value == expected:
+                    continue
+                with self.subTest(field=field, value=value):
+                    state = copy.deepcopy(baseline)
+                    state["main"]["rules"][3]["parameters"][field] = value
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.validate_public_repository_governance(
+                            state["repository"], state["immutable"], state["main"], state["tag"]
+                        )
+            with self.subTest(missing=field):
+                state = copy.deepcopy(baseline)
+                del state["main"]["rules"][3]["parameters"][field]
                 with self.assertRaises(DISTRIBUTION.DistributionError):
                     DISTRIBUTION.validate_public_repository_governance(
                         state["repository"], state["immutable"], state["main"], state["tag"]

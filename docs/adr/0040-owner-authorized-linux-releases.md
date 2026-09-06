@@ -9,7 +9,8 @@ The repository owner explicitly removed the second-person approval and distinct
 merger requirement. Only `AmjedAllaya` may author, merge, trigger, or rerun a
 publishing release PR. An approval count is not a substitute for this identity
 check. This decision does not relax independent native evidence review or the
-separate stable-release workflow, nor change public-archive branch/tag rules.
+separate stable-release workflow. The public-archive extension below records a
+subsequent explicit owner decision; the original decision did not change it.
 
 The owner is the existing contributor release infrastructure:
 `tools/ci/public_distribution.py` and `.github/workflows/linux-early-access.yml`.
@@ -65,7 +66,39 @@ Archive protection still prevents replacement or deletion of published assets.
 Reverting this ADR's code commit restores the prior two-person policy without
 rewriting published tags; failed immutable verification requires a new version.
 
-## Primary sources
+## Public archive solo-maintainer extension (2026-09-06)
+
+The owner explicitly also requested solo-maintainer operation for the public
+release repository. Its existing `Protect main` rule continues to require a
+pull request, resolved discussions, signed commits, squash-only linear history,
+and no force pushes, deletion, or bypass actors. Required approval count is
+exactly zero; CODEOWNER, last-push, extra unattributed-change approval and named
+reviewer requirements are disabled. Optional reviews still become stale on a
+new push. CODEOWNERS remains an ownership record, not fabricated approval.
+The release tags and immutable published assets retain their original rules.
+
+Placement remains the release-tooling owner, not terminal core or an extension.
+The governance validator checks this exact accepted policy, including missing
+and type-confused fields. Before this change the real CLI rejected a valid solo
+ruleset; regression tests preserve that reproduction along with every remaining
+branch/tag, bypass, immutable-release and publication control. Live REST and
+independent GraphQL evidence must still agree. No signing key or App permission
+changes are needed. One owner can review and merge public documentation; that
+reduces independent oversight and does not imply an independent security audit.
+
+Public branding and version-specific installation/verification/support guides
+belong to the passive public archive. Reuse the supplied PNG without changing
+rights-approval status; publish no source, private plans or build material.
+Keep the existing prerelease classification, tag, packages and signed evidence
+unchanged. Editable release-page prose is not signed package evidence.
+
+Rollback requires restoring both the prior validator and the prior review
+settings deliberately. Do not restore only one side or rewrite published tags.
+
+## Primary sources (public archive extension)
+
+- [GitHub ruleset API](https://docs.github.com/en/rest/repos/rules#update-a-repository-ruleset)
+- [GitHub immutable release editing](https://docs.github.com/en/repositories/releasing-projects-on-github/managing-releases-in-a-repository)
 
 - [GitHub merged pull-request events](https://docs.github.com/en/actions/reference/workflows-and-actions/events-that-trigger-workflows#running-your-pull_request-workflow-when-a-pull-request-merges)
 - [GitHub actor and triggering-actor contexts](https://docs.github.com/en/actions/reference/workflows-and-actions/contexts#github-context)

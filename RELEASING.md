@@ -15,6 +15,13 @@ reviewer is required. The workflow checks both original and rerun actors,
 the merged event, repository boundaries and exact current-main commit before
 enabling publication; the signing and native quality gates remain mandatory.
 
+The owner also approved solo-maintainer PRs in the public metadata archive under
+ADR 0040. Its validator still requires signed linear squash history, resolved
+discussions, no rule bypasses, and protected immutable release tags/assets.
+Before changing public guides, run the bounded offline metadata checker described
+in [public distribution](docs/PUBLIC-RELEASE-DISTRIBUTION.md), verify anonymous
+links and rendered pages, and preserve the existing package identities.
+
 Before release credentials exist, manually dispatch the Linux workflow from an
 exact candidate ref with the Cargo version to obtain the private, unsigned
 native-package rehearsal. The rehearsal is visibly marked as not distributable

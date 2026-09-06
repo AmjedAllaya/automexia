@@ -290,14 +290,27 @@ quality, signatures or public repository governance.
 
 The public repository already exists, is public, has immutable releases and
 private vulnerability reporting enabled, has Actions, issues, Projects, and its
-wiki disabled, and protects `main` with code-owner review, last-push approval,
+wiki disabled, and protects `main` with owner-reviewed pull requests,
 linear history, required cryptographic commit signatures, resolved
 conversations, administrator enforcement, and no
 force-push/deletion. Active no-bypass rulesets separately protect default-branch
 changes and reject deletion, update, or non-fast-forward changes to `v*` tags.
-Its passive archive metadata is already present on `main`; the additional
-support-policy hardening remains behind the required independent review rather
-than bypassing the repository's own rule.
+The owner explicitly extended the solo-maintainer policy to this public archive
+under [ADR 0040](adr/0040-owner-authorized-linux-releases.md#public-archive-solo-maintainer-extension-2026-09-06).
+Approval count is zero and second-person/code-owner/last-push approval is not
+required. No bypass actor was added and release-tag protections are unchanged.
+Only the owner currently has write access; this policy is not independent review.
+
+The public README and guides reuse the supplied logo and link directly to the
+six immutable v0.4.0 packages. Installation, verification, Linux shortcuts,
+current limitations, support, removal and licensing are owned by that passive
+archive; private plans, source, tests and release credentials are not published.
+Run `python tools/ci/check_public_release_metadata.py --root <metadata-checkout>`
+before publishing changes there. Its offline checks cover the exact metadata
+inventory, logo digest, guide links/anchors, pinned package URLs and public key.
+`test_public_release_metadata.py` mutates those contracts. Independently check
+live anonymous downloads, rendered GitHub guides, rule state and unchanged
+release asset identities; the offline gate cannot prove those external facts.
 
 The archive's original foundation commit predates the corrected repository-local
 identity and contains a malformed author/sign-off address, so GitHub correctly

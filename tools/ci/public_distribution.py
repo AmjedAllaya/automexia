@@ -833,16 +833,21 @@ def validate_public_repository_governance(
     if not isinstance(review, dict):
         fail("Protect main pull-request rule has no parameters")
     approvals = review.get("required_approving_review_count")
-    if not isinstance(approvals, int) or isinstance(approvals, bool) or approvals < 1:
-        fail("Protect main must require at least one approval")
-    for flag in (
-        "dismiss_stale_reviews_on_push",
-        "require_code_owner_review",
-        "require_last_push_approval",
-        "required_review_thread_resolution",
-    ):
-        if review.get(flag) is not True:
-            fail(f"Protect main pull-request rule must enable {flag}")
+    # ADR 0040's explicit public-archive extension permits owner-reviewed PRs,
+    # not a ruleset bypass. Reject policy drift and JSON bool/int confusion.
+    if type(approvals) is not int or approvals != 0:
+        fail("Protect main must use the approved solo-maintainer review policy")
+    for flag, expected in {
+        "dismiss_stale_reviews_on_push": True,
+        "require_code_owner_review": False,
+        "require_last_push_approval": False,
+        "require_extra_approval_for_unattributed_changes": False,
+        "required_review_thread_resolution": True,
+    }.items():
+        if review.get(flag) is not expected:
+            fail(f"Protect main pull-request policy drifted: {flag}")
+    if review.get("required_reviewers") != []:
+        fail("Protect main must not require an unavailable second reviewer")
     if review.get("allowed_merge_methods") != ["squash"]:
         fail("Protect main must allow squash merging only")
 
