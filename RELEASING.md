@@ -15,6 +15,16 @@ reviewer is required. The workflow checks both original and rerun actors,
 the merged event, repository boundaries and exact current-main commit before
 enabling publication; the signing and native quality gates remain mandatory.
 
+The current Linux assembler keeps full scanner SBOMs private, including after
+bounded semantic/privacy validation. Reviewed copies remain private workflow
+evidence for seven days; neither format enters the public upload bundle.
+Public schema 2 contains six packages and eight verification/user-document
+assets. Exact document review hashes and privacy checks precede signing.
+Run `python tools/ci/test_public_distribution.py` and
+`python tools/ci/test_release_trust.py` after changing this boundary. This
+correction is source-verified, not a replacement of the immutable first release;
+see the [SBOM privacy contract](docs/PUBLIC-RELEASE-DISTRIBUTION.md#sbom-privacy-boundary-in-current-source).
+
 Before release credentials exist, manually dispatch the Linux workflow from an
 exact candidate ref with the Cargo version to obtain the private, unsigned
 native-package rehearsal. The rehearsal is visibly marked as not distributable

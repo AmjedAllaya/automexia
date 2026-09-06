@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "documents": {
+    "INSTALL.md": "d4fc804ddce224f37aa3724dea10d4e99e3642efae75585310e08f5c901f9d55",
+    "RELEASE-NOTES.md": "9070708b57f4051032315f3325591d5eda7f218eac4adddd3a163b5173d6b4de",
+    "THIRD_PARTY_NOTICES.md": "3a5cf04b9e53a0f734778b4afe03da037f848e81ac2eb11197b262b2233cbd62",
+    "UNINSTALL.md": "5a3985a5ad918c223bb4c926f50d2df85c2b8bb827ec7499324d35f889676a1d"
+  }
+}

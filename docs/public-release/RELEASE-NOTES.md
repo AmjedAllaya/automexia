@@ -5,8 +5,9 @@ architectures named on the Automexia download page. It includes native DEB and
 RPM packages plus a portable archive for x64 and Arm64.
 
 Every package is published with an exact SHA-256 manifest, a detached minisign
-signature, a public verification key, SPDX and CycloneDX SBOMs, installation and
-removal guidance, and third-party notices. The release manifest binds the public
+signature, a public verification key, installation and removal guidance, and
+third-party notices. Complete build inventories are not public release assets.
+The minimal release manifest binds the public
 files to the reviewed private-source commit without publishing private source or
 debug symbols.
 

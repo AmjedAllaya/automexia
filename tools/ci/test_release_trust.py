@@ -313,6 +313,32 @@ class ReleaseTrustTests(unittest.TestCase):
                 with self.assertRaisesRegex(TRUST.ReleaseTrustError, message):
                     TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
+    def test_syft_versionless_files_and_directory_root_preserve_package_requirements(self) -> None:
+        final = self.prepare_final()
+        spdx_path = final / "automexia-terminal.spdx.json"
+        cdx_path = final / "automexia-terminal.cdx.json"
+        spdx = json.loads(spdx_path.read_text(encoding="utf-8"))
+        cdx = json.loads(cdx_path.read_text(encoding="utf-8"))
+        spdx["packages"].append({"name": "sbom-input", "SPDXID": "SPDXRef-DocumentRoot-fixture",
+                                  "primaryPackagePurpose": "FILE", "filesAnalyzed": False})
+        file = {"type": "file", "name": "Cargo.lock", "bom-ref": "file-lock",
+                "hashes": [{"alg": "SHA-1", "content": "a" * 40}, {"alg": "SHA-256", "content": "b" * 64}]}
+        cdx["components"].append(file)
+        spdx_path.write_text(json.dumps(spdx), encoding="utf-8")
+        cdx_path.write_text(json.dumps(cdx), encoding="utf-8")
+        self.write_checksums(final)
+        TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+        for bad_file in (dict(file, hashes=[]), dict(file, hashes=file["hashes"][:1]),
+                         dict(file, hashes=[{"alg": "SHA-256", "content": "invalid"}]),
+                         dict(file, **{"bom-ref": ""})):
+            cdx["components"][-1] = bad_file
+            with self.assertRaisesRegex(TRUST.ReleaseTrustError, "file identity"):
+                TRUST.validate_sboms(spdx, cdx, "0.4.0", self.policy)
+        # File counts cannot replace the required cross-format dependency graph.
+        cdx["components"] = [cdx["components"][0], *[file] * 20]
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "must agree"):
+            TRUST.validate_sboms(spdx, cdx, "0.4.0", self.policy)
+
     def test_sboms_must_identify_the_exact_product_version(self) -> None:
         final = self.prepare_final("wrong-sbom-product-version")
         path = final / "automexia-terminal.cdx.json"

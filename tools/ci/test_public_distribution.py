@@ -10,6 +10,7 @@ import hashlib
 import io
 import json
 import os
+import shutil
 from pathlib import Path
 import tempfile
 import subprocess
@@ -276,6 +277,359 @@ def release_payload(
     }
 
 
+def sbom_documents() -> tuple[dict, dict]:
+    # A real package graph plus a versionless, hashed file reproduces Syft output;
+    # header-only JSON cannot prove that release dependencies were inventoried.
+    packages = [("automexia-terminal", VERSION), *[(f"dependency-{i}", "1.0.0") for i in range(9)]]
+    spdx = {
+        "spdxVersion": "SPDX-2.3", "SPDXID": "SPDXRef-DOCUMENT",
+        "dataLicense": "CC0-1.0", "name": "sbom-input",
+        "documentNamespace": "https://example.invalid/sbom/fixture",
+        "creationInfo": {"created": "2026-01-01T00:00:00Z", "creators": ["Tool: syft-fixture"]},
+        "packages": [
+            {"SPDXID": f"SPDXRef-Package-{i}", "name": name, "versionInfo": version,
+             "downloadLocation": "NOASSERTION", "filesAnalyzed": False,
+             "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER", "referenceType": "purl",
+                               "referenceLocator": f"pkg:cargo/{name}@{version}"}]}
+            for i, (name, version) in enumerate(packages)
+        ],
+        "files": [{"SPDXID": "SPDXRef-File-lock", "fileName": "Cargo.lock",
+                   "checksums": [{"algorithm": "SHA256", "checksumValue": "a" * 64}]}],
+        "relationships": [{"spdxElementId": "SPDXRef-Package-0", "relationshipType": "CONTAINS",
+                           "relatedSpdxElement": "SPDXRef-File-lock"}],
+    }
+    cdx = {
+        "bomFormat": "CycloneDX", "specVersion": "1.7", "version": 1,
+        "serialNumber": "urn:uuid:12345678-1234-1234-1234-123456789abc",
+        "metadata": {"component": {"name": "sbom-input", "type": "file", "bom-ref": "scan-root"}},
+        "components": [
+            {"type": "library", "bom-ref": f"package-{i}", "name": name, "version": version,
+             "purl": f"pkg:cargo/{name}@{version}", "licenses": [{"license": {"id": "MIT"}}]}
+            for i, (name, version) in enumerate(packages)
+        ] + [{"type": "file", "bom-ref": "file-lock", "name": "Cargo.lock",
+              "hashes": [{"alg": "SHA-256", "content": "a" * 64}]}],
+        "dependencies": [{"ref": "package-0", "dependsOn": ["package-1"]}],
+    }
+    return spdx, cdx
+
+
+def rewrite_checksums(bundle: Path) -> None:
+    covered = sorted(path for path in bundle.iterdir() if path.name not in {"SHA256SUMS", "SHA256SUMS.minisig"})
+    lines = [f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}" for path in covered]
+    (bundle / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
+
+
+class PublicSbomPreparationTests(unittest.TestCase):
+    def setUp(self) -> None:
+        self.temporary = tempfile.TemporaryDirectory()
+        self.addCleanup(self.temporary.cleanup)
+        self.root = Path(self.temporary.name)
+        self.source, self.output, self.scan = (self.root / name for name in ("private", "public", "scan"))
+        for directory in (self.source, self.output, self.scan):
+            directory.mkdir()
+
+    def write(self, spdx: dict, cdx: dict) -> None:
+        for name, payload in (("spdx", spdx), ("cdx", cdx)):
+            (self.source / f"automexia-terminal.{name}.json").write_text(json.dumps(payload), encoding="utf-8")
+
+    def prepare(self) -> None:
+        DISTRIBUTION.prepare_public_sboms(self.source, self.output, self.scan, VERSION)
+
+    def test_real_cli_preserves_graph_hashes_and_licenses_and_never_copies_raw_paths(self) -> None:
+        spdx, cdx = sbom_documents()
+        spdx["packages"].append({"SPDXID": "SPDXRef-DocumentRoot-Directory-fixture", "name": "sbom-input",
+                                  "filesAnalyzed": False, "primaryPackagePurpose": "FILE"})
+        spdx["packages"][0]["sourceInfo"] = "acquired package info from rust cargo manifest: /Cargo.lock"
+        cdx["components"][0]["properties"] = [{"name": "syft:location:0:path", "value": "/Cargo.lock"}]
+        expected_spdx, expected_cdx = copy.deepcopy(spdx), copy.deepcopy(cdx)
+        expected_spdx["packages"][0]["sourceInfo"] = "acquired package info from rust cargo manifest: Cargo.lock"
+        expected_cdx["components"][0]["properties"][0]["value"] = "Cargo.lock"
+        spdx["files"][0]["fileName"] = "./Cargo.lock"
+        cdx["components"][-1]["name"] = str(self.scan / "Cargo.lock")
+        self.write(spdx, cdx)
+        before = {p.name: p.read_bytes() for p in self.source.iterdir()}
+        completed = subprocess.run(
+            [sys.executable, str(MODULE_PATH), "prepare-sboms", "--source", str(self.source),
+             "--output", str(self.output), "--scan-root", str(self.scan), "--version", VERSION],
+            capture_output=True, text=True, timeout=10,
+        )
+        self.assertEqual(completed.returncode, 0, "SBOM preparation CLI failed")
+        self.assertEqual(completed.stdout.strip(), "Validated private build inventories")
+        for suffix, expected in (("spdx", expected_spdx), ("cdx", expected_cdx)):
+            data = (self.output / f"automexia-terminal.{suffix}.json").read_bytes()
+            self.assertEqual(json.loads(data), expected)
+            self.assertNotIn(str(self.root).encode(), data)
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.source.iterdir()})
+        first = {p.name: p.read_bytes() for p in self.output.iterdir()}
+        self.prepare()
+        self.assertEqual(first, {p.name: p.read_bytes() for p in self.output.iterdir()})
+
+    def test_rejected_paths_or_unknown_metadata_leave_both_outputs_untouched(self) -> None:
+        self.write(*sbom_documents())
+        self.prepare()
+        before = {p.name: p.read_bytes() for p in self.output.iterdir()}
+        for value in (str(self.root / "other" / "Cargo.lock"), str(self.scan / ".." / "Cargo.lock"),
+                      "../Cargo.lock", "packages/unapproved.deb", "file:///Cargo.lock", "%2FCargo.lock"):
+            with self.subTest(case="rejected location"):
+                spdx, cdx = sbom_documents()
+                cdx["components"][-1]["name"] = value
+                self.write(spdx, cdx)
+                with self.assertRaises(DISTRIBUTION.DistributionError) as raised:
+                    self.prepare()
+                self.assertNotIn(value, str(raised.exception))
+                self.assertEqual(before, {p.name: p.read_bytes() for p in self.output.iterdir()})
+        for value in (str(self.scan / "Cargo.lock"), "file%253A%252F%252F%252FCargo.lock",
+                      "https://alice:private-canary@example.invalid/package", "unsafe\u202epath",
+                      "https://localhost/package", "https://devbox.local/package", "https://127.0.0.1/package",
+                      "https://[::1]/package"):
+            spdx, cdx = sbom_documents()
+            cdx["metadata"]["unknown"] = {"value": value}
+            self.write(spdx, cdx)
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                self.prepare()
+            self.assertEqual(before, {p.name: p.read_bytes() for p in self.output.iterdir()})
+
+    def test_malformed_bounded_input_and_file_identity_fail_without_output(self) -> None:
+        for data in (b'{"private-canary":1,"private-canary":2}', b'{"value":1e999}',
+                     b'{"value":NaN}', b'\xff', b'{"a":' * 1000 + b'0' + b'}' * 1000):
+            self.write(*sbom_documents())
+            (self.source / "automexia-terminal.cdx.json").write_bytes(data)
+            with self.assertRaises(DISTRIBUTION.DistributionError) as raised:
+                self.prepare()
+            self.assertNotIn("private-canary", str(raised.exception))
+            self.assertEqual(list(self.output.iterdir()), [])
+        for field in ("hashes", "bom-ref", "name"):
+            spdx, cdx = sbom_documents()
+            del cdx["components"][-1][field]
+            self.write(spdx, cdx)
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                self.prepare()
+        self.write(*sbom_documents())
+        for limit, size in (("MAX_SBOM_BYTES", 64), ("MAX_SBOM_NODES", 10), ("MAX_SBOM_DEPTH", 2)):
+            with mock.patch.object(DISTRIBUTION, limit, size):
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    self.prepare()
+        self.assertEqual(list(self.output.iterdir()), [])
+
+    def test_privacy_guard_and_shape_limits_have_exact_boundaries(self) -> None:
+        for value in ("https://example.invalid/license", "pkg:cargo/fixture@1.2.3", "MIT AND Apache-2.0"):
+            DISTRIBUTION._sbom_structure(value, privacy=True)
+        with mock.patch.object(DISTRIBUTION, "MAX_SBOM_DEPTH", 2):
+            DISTRIBUTION._sbom_structure([[0]], privacy=True)
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION._sbom_structure([[[0]]], privacy=True)
+        with mock.patch.object(DISTRIBUTION, "MAX_SBOM_NODES", 3):
+            DISTRIBUTION._sbom_structure([0, 1], privacy=True)
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION._sbom_structure([0, 1, 2], privacy=True)
+
+    def test_public_graph_file_checksums_and_package_count_cannot_be_fabricated(self) -> None:
+        mutations = (
+            lambda spdx, cdx: spdx.update(files=[]),
+            lambda spdx, cdx: cdx["components"].pop(),
+            lambda spdx, cdx: cdx["components"][-1]["hashes"][0].update(content="b" * 64),
+            lambda spdx, cdx: cdx["components"][-1].update(hashes=[{"alg": "SHA-1", "content": "a" * 40}]),
+            lambda spdx, cdx: spdx["files"][0].update(checksums=[]),
+            lambda spdx, cdx: spdx["packages"][1].update(SPDXID=spdx["packages"][0]["SPDXID"]),
+            lambda spdx, cdx: cdx["components"][1].update({"bom-ref": cdx["components"][0]["bom-ref"]}),
+            lambda spdx, cdx: cdx["dependencies"][0].update(dependsOn=["unknown"]),
+            lambda spdx, cdx: spdx["relationships"][0].update(relatedSpdxElement="unknown"),
+            lambda spdx, cdx: cdx.update(version=True),
+            lambda spdx, cdx: cdx.update(components=[cdx["components"][0], *[dict(cdx["components"][-1], **{"bom-ref": str(i)}) for i in range(20)]]),
+        )
+        for index, mutation in enumerate(mutations):
+            with self.subTest(mutation=index):
+                spdx, cdx = sbom_documents()
+                mutation(spdx, cdx)
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.validate_public_sboms(spdx, cdx, VERSION)
+
+    def test_atomic_sbom_output_preserves_previous_bytes_and_cleans_owned_temporary(self) -> None:
+        self.write(*sbom_documents())
+        self.prepare()
+        before = {p.name: p.read_bytes() for p in self.output.iterdir()}
+        with mock.patch.object(DISTRIBUTION.os, "replace", side_effect=PermissionError("private-canary")):
+            with self.assertRaises(OSError):
+                self.prepare()
+        self.assertEqual(before, {p.name: p.read_bytes() for p in self.output.iterdir()})
+        scratch = self.output / f".automexia-terminal.spdx.json.{os.getpid()}.tmp"
+        scratch.write_text("unrelated sentinel", encoding="utf-8")
+        with self.assertRaises(DISTRIBUTION.DistributionError):
+            self.prepare()
+        self.assertEqual(scratch.read_text(encoding="utf-8"), "unrelated sentinel")
+
+    def test_workflow_cannot_skip_duplicate_move_or_upload_raw_sboms(self) -> None:
+        workflow = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        command = ('python3 tools/ci/public_distribution.py prepare-sboms --source sbom-private '
+                   '--output sbom-reviewed --scan-root sbom-input --version "$RELEASE_VERSION"')
+        candidates = [workflow.replace(command, replacement, 1) for replacement in (
+            "true", "true || " + command, command + " || true", command + "\n          " + command,
+            command.replace("--output sbom-reviewed", "--output release-bundle"),
+        )]
+        candidates += [workflow.replace(original, replacement, 1) for original, replacement in (
+            ("syft-version: v1.51.1", "syft-version: latest"),
+            ("output-file: sbom-private/", "output-file: release-bundle/"),
+            ("upload-release-assets: false", "upload-release-assets: true"),
+            ("upload-artifact: false", "upload-artifact: true"),
+            ("dependency-snapshot: false", "dependency-snapshot: true"),
+            ("if: github.event.repository.private == true", "if: always()"),
+            ("name: private-build-inventories", "name: public-linux-release-bundle"),
+            ("path: sbom-reviewed", "path: sbom-private"),
+            ("--directory release-bundle\n      - name: Retain", "--directory ignored\n      - name: Retain"),
+            ('test "${#assets[@]}" -eq 14', 'test "${#assets[@]}" -eq 16'),
+            ("rm -rf -- sbom-private sbom-input sbom-reviewed", "rm -rf -- sbom-private sbom-input sbom-reviewed\n          compression-level: 0"),
+            ("        if: always()\n        shell: bash\n        run: |\n          set -euo pipefail\n          # Only job-owned", "        shell: bash\n        run: |\n          set -euo pipefail\n          # Only job-owned"),
+            ("rm -rf -- sbom-private sbom-input sbom-reviewed", "rm -rf -- release-bundle"),
+        )]
+        start = workflow.index("      - name: Validate private build inventories")
+        end = workflow.index("      - name: Create and verify", start)
+        block = workflow[start:end]
+        candidates.append(workflow[:start] + workflow[end:] + block)
+        candidate = self.root / "workflow.yml"
+        for mutated in candidates:
+            self.assertNotEqual(mutated, workflow)
+            candidate.write_text(mutated, encoding="utf-8")
+            with self.assertRaises(DISTRIBUTION.DistributionError):
+                DISTRIBUTION.validate_workflow(candidate)
+
+
+class MinimalPublicationTests(unittest.TestCase):
+    def test_forbidden_asset_names_are_redacted_from_diagnostics(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / 'source'
+            source.mkdir()
+            write_packages(source)
+            (source / 'private-project-canary.pdb').write_bytes(b'fixture')
+            with self.assertRaises(DISTRIBUTION.DistributionError) as raised:
+                DISTRIBUTION.build_public_distribution(source, root / 'bundle', VERSION, COMMIT)
+            self.assertNotIn('private-project-canary', str(raised.exception))
+            self.assertFalse((root / 'bundle').exists())
+
+    def test_repinning_a_document_does_not_allow_local_path_metadata(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_bundle(root)
+            bundle = root / 'bundle'
+            policy = root / 'review.json'
+            approved = json.loads(DISTRIBUTION.DOCUMENT_POLICY.read_text(encoding='utf-8'))
+            original = (bundle / 'INSTALL.md').read_bytes()
+            for suffix in (b'file:///home/alice/build', b'https://devbox.internal/build',
+                           b'C:\\Users\\alice\\build', b'file%3A%2F%2F%2Fworkspace%2Fprivate', b'\xe2\x80\xaeprivate'):
+                modified = original + suffix
+                (bundle / 'INSTALL.md').write_bytes(modified)
+                approved['documents']['INSTALL.md'] = hashlib.sha256(modified).hexdigest()
+                policy.write_text(json.dumps(approved), encoding='utf-8')
+                with mock.patch.object(DISTRIBUTION, 'DOCUMENT_POLICY', policy):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.validate_public_documents(bundle)
+
+    @unittest.skipUnless(shutil.which('minisign'), 'Native Minisign unavailable; Linux release runner required')
+    def test_real_minisign_output_passes_template_and_tampering_fails_crypto(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = write_bundle(root)
+            bundle = root / 'bundle'
+
+            def run(*arguments: str) -> subprocess.CompletedProcess:
+                return subprocess.run(['minisign', *arguments], cwd=root, capture_output=True,
+                                      timeout=15, check=False)
+
+            # Ephemeral test key only; never access a contributor's release credentials.
+            self.assertEqual(run('-G', '-W', '-s', 'test.sec', '-p', 'test.pub').returncode, 0)
+            public = (root / 'test.pub').read_text(encoding='utf-8').splitlines()[-1]
+            (bundle / 'automexia-release-key.pub').write_text(
+                f'untrusted comment: Automexia release verification key\n{public}\n', encoding='utf-8')
+            rewrite_checksums(bundle)
+            comment = f'Automexia Linux Early Access v{VERSION} source {COMMIT}'
+            self.assertEqual(run('-S', '-W', '-s', 'test.sec', '-m', 'bundle/SHA256SUMS',
+                                 '-x', 'bundle/SHA256SUMS.minisig', '-t', comment).returncode, 0)
+            self.assertEqual(DISTRIBUTION.verify_bundle(bundle), manifest)
+            self.assertEqual(run('-V', '-P', public, '-m', 'bundle/SHA256SUMS').returncode, 0)
+            (bundle / 'SHA256SUMS').write_bytes(b'tampered\n')
+            self.assertNotEqual(run('-V', '-P', public, '-m', 'bundle/SHA256SUMS').returncode, 0)
+
+    def test_verification_comments_cannot_publish_private_identifiers(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_bundle(root)
+            bundle = root / 'bundle'
+            for name in ('automexia-release-key.pub', 'SHA256SUMS.minisig'):
+                original = (bundle / name).read_bytes()
+                for suffix in (b'private-account-canary\n', b'/home/alice/build\n', b'A' * 4097):
+                    (bundle / name).write_bytes(original + suffix)
+                    rewrite_checksums(bundle)
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.verify_bundle(bundle)
+                (bundle / name).write_bytes(original)
+
+    def test_document_review_policy_cannot_drop_expand_or_corrupt_approval(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            policy = Path(temporary) / 'review.json'
+            original = json.loads(DISTRIBUTION.DOCUMENT_POLICY.read_text(encoding='utf-8'))
+            for mutate in (
+                lambda p: p.update(schema=True),
+                lambda p: p.update(internal='private-project-canary'),
+                lambda p: p['documents'].pop('THIRD_PARTY_NOTICES.md'),
+                lambda p: p['documents'].update({'build.json': 'a' * 64}),
+                lambda p: p['documents'].update({'INSTALL.md': '/home/alice/build'}),
+            ):
+                candidate = copy.deepcopy(original)
+                mutate(candidate)
+                policy.write_text(json.dumps(candidate), encoding='utf-8')
+                with mock.patch.object(DISTRIBUTION, 'DOCUMENT_POLICY', policy):
+                    with self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION._reviewed_documents()
+
+    def test_new_bundle_contains_only_packages_and_reviewed_user_evidence(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            manifest = write_bundle(root)
+            self.assertEqual(manifest['schema'], 2)
+            self.assertEqual(len(DISTRIBUTION.required_release_asset_names(manifest)), 14)
+            self.assertFalse(any('spdx' in name or 'cdx' in name
+                                 for name in DISTRIBUTION.required_release_asset_names(manifest)))
+            self.assertEqual(DISTRIBUTION.verify_bundle(root / 'bundle'), manifest)
+
+    def test_unknown_manifest_fields_cannot_smuggle_internal_details(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            original = write_bundle(root)
+            bundle = root / 'bundle'
+            # Recompute all checksums: integrity alone must not authorize disclosure.
+            for section in ('root', 'evidence', 'artifact'):
+                for value in ('private-project-canary', '/home/alice/build', 'file:///workspace/build',
+                              {'account': 'private-account-canary'}, ['internal-module-canary']):
+                    manifest = copy.deepcopy(original)
+                    target = manifest if section == 'root' else (
+                        manifest['evidence'] if section == 'evidence' else manifest['artifacts'][0])
+                    target['internal'] = value
+                    (bundle / DISTRIBUTION.MANIFEST_NAME).write_text(json.dumps(manifest), encoding='utf-8')
+                    rewrite_checksums(bundle)
+                    with self.subTest(section=section), self.assertRaises(DISTRIBUTION.DistributionError):
+                        DISTRIBUTION.verify_bundle(bundle)
+
+    def test_rehashed_document_leaks_and_notice_removal_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_bundle(root)
+            bundle = root / 'bundle'
+            for name in ('INSTALL.md', 'RELEASE-NOTES.md', 'THIRD_PARTY_NOTICES.md', 'UNINSTALL.md'):
+                original = (bundle / name).read_bytes()
+                for suffix in (b'private-project-canary', b'/home/alice/build', b'C:\\Users\\alice\\build',
+                               b'file%3A%2F%2F%2Fworkspace%2Fprivate', b'\xe2\x80\xaeprivate'):
+                    (bundle / name).write_bytes(original + suffix)
+                    rewrite_checksums(bundle)
+                    with self.subTest(name=name), self.assertRaises(DISTRIBUTION.DistributionError) as raised:
+                        DISTRIBUTION.verify_bundle(bundle)
+                    self.assertNotIn('private-project-canary', str(raised.exception))
+                (bundle / name).write_bytes(b'Notices removed.\n')
+                rewrite_checksums(bundle)
+                with self.assertRaises(DISTRIBUTION.DistributionError):
+                    DISTRIBUTION.verify_bundle(bundle)
+                (bundle / name).write_bytes(original)
+
+
 def write_bundle(root: Path) -> dict[str, object]:
     source = root / "source"
     bundle = root / "bundle"
@@ -285,22 +639,17 @@ def write_bundle(root: Path) -> dict[str, object]:
         source, bundle, VERSION, COMMIT, REPOSITORY, copy_packages=True
     )
     evidence = {
-        "INSTALL.md": b"Install fixture.\n",
-        "RELEASE-NOTES.md": b"Release fixture.\n",
-        "THIRD_PARTY_NOTICES.md": b"Notices fixture.\n",
-        "UNINSTALL.md": b"Uninstall fixture.\n",
-        "automexia-release-key.pub": b"untrusted comment: fixture\nRWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n",
-        "automexia-terminal.cdx.json": b'{"bomFormat":"CycloneDX"}\n',
-        "automexia-terminal.spdx.json": b'{"spdxVersion":"SPDX-2.3"}\n',
+        **{name: (DISTRIBUTION.ROOT / source).read_bytes()
+           for name, source in DISTRIBUTION.DOCUMENT_SOURCES.items()},
+        "automexia-release-key.pub": b"untrusted comment: Automexia release verification key\nRWAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA\n",
     }
     for name, data in evidence.items():
         (bundle / name).write_bytes(data)
-    covered = sorted(
-        path for path in bundle.iterdir() if path.name not in {"SHA256SUMS", "SHA256SUMS.minisig"}
-    )
-    lines = [f"{hashlib.sha256(path.read_bytes()).hexdigest()}  {path.name}" for path in covered]
-    (bundle / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8", newline="\n")
-    (bundle / "SHA256SUMS.minisig").write_text("fixture signature\n", encoding="utf-8")
+    rewrite_checksums(bundle)
+    (bundle / "SHA256SUMS.minisig").write_text(
+        'untrusted comment: signature from minisign secret key\n' + 'A' * 88 + '\n'
+        + f'trusted comment: Automexia Linux Early Access v{VERSION} source {COMMIT}\n'
+        + 'A' * 88 + '\n', encoding='utf-8')
     return manifest
 
 
@@ -669,7 +1018,7 @@ class PublicDistributionTests(unittest.TestCase):
                 )
             self.assertEqual(
                 json.loads(
-                    (output / "public-distribution-manifest-v1.json").read_text(
+                    (output / "public-distribution-manifest-v2.json").read_text(
                         encoding="utf-8"
                     )
                 ),
@@ -922,6 +1271,42 @@ class PublicDistributionTests(unittest.TestCase):
             (root / "bundle" / "INSTALL.md").write_bytes(b"changed\n")
             with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "checksum mismatch"):
                 DISTRIBUTION.verify_bundle(root / "bundle")
+
+    def test_bundle_rejects_local_metadata_even_when_checksums_match(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_bundle(root)
+            bundle = root / "bundle"
+            original = json.dumps(sbom_documents()[1]).encode()
+            for location in ("file", "nested", "key"):
+                with self.subTest(location=location):
+                    cdx = json.loads(original)
+                    # Runtime-created private-like paths must not be printed or retained.
+                    canary = str(root / "scan" / "Cargo.lock")
+                    if location == "file":
+                        cdx["components"][-1]["name"] = canary
+                    elif location == "key":
+                        cdx["metadata"][canary] = "hidden"
+                    else:
+                        cdx["components"][0]["properties"] = [{"name": "unexpected", "value": canary}]
+                    (bundle / "automexia-terminal.cdx.json").write_text(json.dumps(cdx), encoding="utf-8")
+                    rewrite_checksums(bundle)
+                    with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "allowlist") as raised:
+                        DISTRIBUTION.verify_bundle(bundle)
+                    self.assertNotIn(canary, str(raised.exception))
+
+    def test_bundle_rejects_header_only_or_wrong_product_sboms(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            write_bundle(root)
+            bundle = root / "bundle"
+            for cdx in ({"bomFormat": "CycloneDX"}, sbom_documents()[1]):
+                if "components" in cdx:
+                    cdx["components"][0]["version"] = "9.9.9"
+                (bundle / "automexia-terminal.cdx.json").write_text(json.dumps(cdx), encoding="utf-8")
+                rewrite_checksums(bundle)
+                with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "allowlist"):
+                    DISTRIBUTION.verify_bundle(bundle)
 
     def test_bundle_rejects_extra_symbols_and_checksum_path_records(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
