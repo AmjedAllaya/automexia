@@ -168,6 +168,12 @@ it is not a claim that every toolchain/OS combination produces identical bits.
 
 ## User verification
 
+For Linux Early Access, use the [package verification guide](INSTALLATION.md#verify-a-linux-early-access-package),
+which pins the public Minisign key and explains both checksum/signature and
+GitHub release-attestation verification. The platform-signature examples below
+describe the separate stable workflow; they are not announcements of published
+Windows or macOS packages.
+
 Download only from the canonical GitHub release. Verify the checksum first.
 Then use the host-native trust mechanism:
 

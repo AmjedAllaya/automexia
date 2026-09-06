@@ -5,6 +5,11 @@ Portable Rust tests are necessary but not sufficient: an OS-specific adapter is
 accepted on the native host that owns its window server, PTY, shell, graphics,
 packaging, and accessibility APIs.
 
+Current public binaries: [v0.4.0 Linux Early Access](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
+for x64 and Arm64, in DEB, RPM and portable formats. Windows and macOS stable
+installers are not published. The matrix below describes implementation and
+release-gate ownership, not a claim that every listed package is available.
+
 ## Support matrix
 
 | Surface | Windows | Linux | macOS |
