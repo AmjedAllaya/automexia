@@ -49,6 +49,29 @@ reporting; disable Actions, issues, Projects, and the wiki; protect `main`; and
 apply no-bypass rulesets to the default branch and `v*` tags. The publication App
 can audit but cannot change immutable-release configuration or repository rules.
 
+### Read-only ruleset visibility (2026-09-06)
+
+GitHub's REST ruleset endpoint omits `bypass_actors` without ruleset-write
+authority. Keep administration read-only: do not promote the publication App
+to an administrator and do not interpret an omitted field as an empty list.
+The existing CI distribution owner supplements REST with a bounded GraphQL
+query. It binds repository, numeric and node rule identities, names and active
+enforcement across both responses. A zero integer actor count, empty actor
+nodes, and complete pagination must agree for each protected rule. Any REST
+actor value, GraphQL error, missing rule, partial page, duplicate identity,
+redacted/nonempty actor, or inconsistent response blocks publication.
+
+A live least-privilege App probe observed REST omission and GraphQL zero counts
+on both protected rules. A temporary disabled rule supplied an independent
+positive control: one actual bypass actor produced count one with a redacted
+actor node, and was rejected. The exact diagnostic rule and token were removed;
+main/tag protection and App permissions were unchanged. The query has a
+30-second deadline, at most 100 rules and one actor per rule; strict JSON ingress
+is capped at 1 MiB, depth 32 and 32,768 nodes. Core/extension ownership is
+unchanged: this is release tooling, with no product startup or runtime impact.
+
+Reference: [GitHub ruleset visibility contract](https://docs.github.com/en/rest/repos/rules#get-a-repository-ruleset).
+
 Every release is first a draft. The workflow rejects an existing tag/release,
 uploads without replacement, compares the exact draft asset inventory, sizes,
 and GitHub SHA-256 digests, and only then publishes. It re-fetches and verifies

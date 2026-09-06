@@ -159,16 +159,17 @@ Store the entire secret-key file as a base64 GitHub Actions secret named:
 AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY
 ```
 
-PowerShell encoding example:
+Upload directly through stdin; do not print secret bytes or copy them into chat,
+logs, repository files, or screenshots. PowerShell upload example:
 
 ```powershell
-[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\\automexia-release.key')) | Set-Clipboard
+[Convert]::ToBase64String([IO.File]::ReadAllBytes('.\automexia-release.key')) | gh secret set AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY --repo AmjedAllaya/automexia-terminal
 ```
 
-Linux/macOS encoding example:
+Linux upload example (GNU `base64`):
 
 ```bash
-base64 -w0 automexia-release.key
+base64 -w0 automexia-release.key | gh secret set AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY --repo AmjedAllaya/automexia-terminal
 ```
 
 The release workflow reconstructs the key only in a dedicated read-only signing job, signs `SHA256SUMS`, verifies the signature using the public key, deletes the temporary key, and publishes `SHA256SUMS.minisig`. The final publication job never receives the minisign secret.
@@ -201,6 +202,30 @@ private source repository set:
 AUTOMEXIA_DISTRIBUTION_APP_CLIENT_ID          # Actions variable
 AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY        # Actions secret, PEM contents
 ```
+
+The two private-key settings deliberately use different formats. Minisign
+requires Base64 of the **entire two-line key file**, including its comment;
+the App requires the **original multiline PEM**, including both delimiters.
+Neither accepts a filename, only the inner encoded line, or the public key.
+Upload the App PEM without an extra Base64 layer, for example on Linux:
+
+```bash
+chmod 600 automexia-release.key release-publisher.private-key.pem
+gh secret set AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY --repo AmjedAllaya/automexia-terminal < release-publisher.private-key.pem
+```
+
+Keep an offline encrypted backup; the presence of a GitHub secret is not backup
+evidence. Before uploading an existing key, validate its native format and
+prove it matches the configured public key or App identity. Never regenerate
+a release key merely to repair encoding. A failed signing-file load or App
+`Invalid keyData` error requires checking the respective whole-file format.
+After correction, rerun only failed jobs if no draft/tag exists and source
+`main` still equals the authorized merge; do not bypass create-once policy.
+
+The App's REST view omits bypass actors. The release verifier uses identity-bound
+GraphQL counts and complete empty nodes to prove their absence, without granting
+administration write. Missing or conflicting evidence fails closed. See
+[ADR 0037](../docs/adr/0037-public-binary-release-distribution.md).
 
 The workflow mints a one-hour installation token restricted to that one
 repository. Contents write creates the draft/tag/assets; Administration read
