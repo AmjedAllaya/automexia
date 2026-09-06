@@ -21,15 +21,18 @@ This compatibility anchor retains traceability to the current public
 source, test, and evidence owner. Detailed future or commercial planning
 remains private, and unavailable native evidence remains an explicit gate.
 
-## Public proposal status
+## Current implementation status
 
-Status: proposed public summary; not an accepted implementation decision.
+Status: no public runtime implementation or activation.
+
+This path is retained only for existing source and assurance references.
+It does not specify a feature, future design, or delivery plan.
 
 ## Proposed decision
 
-If pursued, keep the capability as a separate optional extension behind the
-application-owned broker; preserve external provider, credential, policy, and
-approval authority; and prohibit suggestion-driven execution.
+No public implementation decision is accepted through this compatibility path.
+The heading is retained for historical links, not as a proposal.
 
-Detailed internal contracts and execution recipes remain local to the ignored
-private documentation workspace.
+Detailed internal contracts and execution recipes remain local and are not
+part of this public document. Existing source, configuration, and fixture
+guards enforce the absence of runtime activation.

@@ -84,6 +84,20 @@ protected. See [Development cache and build storage](DEVELOPMENT-CACHE.md).
 
 A narrow pass never overrides a known real-workflow failure.
 
+## Reported terminal regressions
+
+[Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) identifies
+existing owners and known verification limits for reflow, rendering, input,
+process exit, Unicode and graphics.
+[Terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) records
+current palette, shortcut, preference, preview and accessibility ownership.
+
+Treat these as regression inventories, not passing evidence. Reproduce the
+reported path at the exact revision, retain its first failure, extend existing
+tests, and update the matching feature-test reinforcement entries when code
+changes. Source inspection alone cannot close a native workflow failure.
+These documents introduce no new test commands or relaxed quality thresholds.
+
 ## Native platform ownership
 
 Windows, Linux/BSD, and macOS claims require native runs on the named platform
@@ -117,6 +131,14 @@ Assertions include forbidden side effects: no shell evaluation for structured
 actions, no implicit Enter, no cross-session input, no stale publication, no
 orphan child, and no leaked handle or worker.
 
+Application and window teardown tests broadcast an idempotent shutdown request
+to every active, background, split, pane-tab, and parked PTY before destructors
+join workers. Native many-session tests record exact temporary-fixture process
+identities before close, because a pseudoterminal host may reparent descendants;
+parent-count sampling alone is insufficient. The owner and every recorded
+identity must exit within the declared wall-clock ceiling. Repeated broadcasts
+must not duplicate shutdown messages or extend that ceiling.
+
 Unix PTY results do not prove ConPTY behavior, and Windows results do not prove
 Unix process-group cleanup. Native claims name the operating system and
 architecture that actually ran.
@@ -127,6 +149,17 @@ Model and integration tests cover independent windows and PTYs, global tabs,
 pane-local tabs, fresh and cloned splits, route isolation, focus movement,
 divider resize, pointer routing, selection, clipboard, IME, search scope,
 command navigation, and modal isolation.
+
+Command-result navigation tests must resize before using Ctrl+Shift+Up/Down and
+inspect every badge draw, not only the latest selected result. Raw shell bytes
+must traverse VT lifecycle, reflow, visible snapshot, navigation, projection,
+and drawing; result IDs must be unique, label rectangles pairwise disjoint, the
+prior output boundary must own a shared prompt row, and prompt/route/PTY input
+state must remain unchanged. Compare every badge rectangle with every co-located
+prompt-context chip under the shared right reservation. Controlled rasters must
+freeze both completion datetime and duration before the zero-tolerance diff.
+The combined reflow-navigation-snapshot benchmark guards the terminal-owned
+cost; native backend frames remain a separate visual gate.
 
 Test every transition with one and multiple panes/tabs, rapid closure, stale
 route IDs, shutdown, tiny through high-resolution viewports, and keyboard-only
@@ -154,6 +187,23 @@ the real user profile, host, environment, Git identity, or shell history.
 Supported-shell tests verify session-local provisioning, prompt boundaries,
 status/duration/path/Git metadata, object-preserving listings, disable/remove
 behavior, missing-resource fallback, quoting, Unicode, and startup cleanup.
+
+The PowerShell test wrapper captures the real shell-identity stream from an
+isolated child, asserts its user and path fields internally, and then discards
+the stream so machine identity values do not enter local or hosted logs. CMD
+identity fixtures use stable fictional values instead of live account or
+executable-path data.
+
+Repository-owned readiness status lines identify completion state, isolated
+Cargo targets, and the debug smoke executable with stable logical labels rather
+than contributor-specific managed-state or workspace paths.
+
+The summarized workspace-test process is owned by a Unix process group or
+Windows Job Object. It has a 30-minute deadline and a 16 MiB stdout ceiling;
+exceeding either terminates the owned tree and retains only bounded failure
+diagnostics. Compiler stderr remains live. The xtask tests use a real child to
+prove success, pre-spawn zero-bound rejection, deadline cleanup, and output
+overflow cleanup without relying on arbitrary sleeps as the result oracle.
 
 The native shell remains the independent oracle for command editing, history,
 completion, quoting, and pipeline objects.
@@ -200,6 +250,19 @@ Visible changes require three separate layers:
 2. deterministic controlled raster goldens with exact comparison; and
 3. native frames plus accessibility tree/event evidence on each claimed
    platform.
+
+Native visual readiness must be coupled to a successfully presented matching
+frame. A control consumed after draw-data construction is exercised on the next
+forced frame; a dropped or skipped frame publishes no checkpoint. Before a
+retained desktop capture, the driver establishes foreground ownership and
+rejects detectable native dialog occlusion, positions the complete physical
+client on the capture display, and rejects non-opaque client pixels. It then
+requires two consecutive identical full-frame pixel digests inside a bounded
+deadline. Controlled renderer comparisons hold a fixed unsent editor sentinel
+and require frame-skip identity to include the physical surface extent; only a
+successfully presented frame may be cached. Backend-to-backend equality is
+evaluated only after each frame independently passes the automated checks.
+Manual and independent visual review remains a separate release gate.
 
 Cover small through high-resolution viewports, 100–300% scale,
 light/dark/high-contrast themes, long and localized text, Unicode, IME, empty

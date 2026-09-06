@@ -234,3 +234,9 @@ Use these for controlled environments, test setups, portable launch scripts, or 
 7. Periodically remove overrides that no longer solve a real problem.
 
 For every available key, type, range, default, and platform override, use [Configuration reference](../reference/configuration.md).
+
+## Current implementation limits
+
+The [terminal interaction status](../TERMINAL-INTERACTION-REQUIREMENTS.md)
+identifies current UI and persistence owners. This guide describes only
+settings supported by current source, not additional configuration options.

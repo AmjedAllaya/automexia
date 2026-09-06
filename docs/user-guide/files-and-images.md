@@ -58,6 +58,11 @@ programs, and listings; it is not an `ls`-specific effect. A new live result
 lightens once for 540 milliseconds and then keeps its persistent grouping.
 Commands without output keep their truthful compact completion rule/status but
 do not receive an empty output surface or borrow the preceding command's state.
+Resizing and jumping between commands preserve one non-overlapping badge per
+visible result; a prompt that also bounds the preceding output never displays
+both commands' datetime or duration text in the same row. Optional prompt
+context truncates before the reserved result-label region, so neither surface
+can cover the other on narrow or historical rows.
 The full grouping is available in integrated PowerShell, Bash, Zsh, and Fish
 sessions. Integrated CMD also groups output, but uses neutral styling because
 stock `cmd.exe` cannot provide a generic truthful exit status or duration.

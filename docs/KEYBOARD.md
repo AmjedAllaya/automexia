@@ -217,6 +217,11 @@ actions are rejected and do not silently remove the matching default.
 
 ## Ownership and precedence
 
+Known maintenance issue: current Automexia defaults use Ctrl+R/Ctrl+D for
+cloning, as listed above, displacing familiar shell controls. The
+[current status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys)
+records this limitation; the tables above remain the current-behavior reference.
+
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse
 reporting, and the line editor each have scoped ownership. Automexia never

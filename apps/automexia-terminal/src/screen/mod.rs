@@ -487,6 +487,27 @@ fn publish_native_resize_snapshot_generation(
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
+const MAX_PENDING_NATIVE_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
+
+#[cfg(feature = "native-gui-test-hooks")]
+struct PendingNativeResizeSnapshot {
+    path: std::path::PathBuf,
+    payload: Vec<u8>,
+    generation: u64,
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+impl PendingNativeResizeSnapshot {
+    fn publish(self) -> std::io::Result<bool> {
+        publish_native_resize_snapshot_generation(
+            &self.path,
+            &self.payload,
+            self.generation,
+        )
+    }
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
 fn native_test_control_checkpoint() -> String {
     std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL")
         .and_then(|path| std::fs::read_to_string(path).ok())
@@ -554,6 +575,9 @@ struct NativeWindowSnapshot {
     command_result_exit_code: Option<i32>,
     command_result_completed_at_unix_ms: Option<u64>,
     command_result_label: Option<String>,
+    command_result_paints:
+        Vec<crate::renderer::command_results::NativeCommandResultPaint>,
+    prompt_context_paints: Vec<crate::renderer::devops_status::NativePromptContextPaint>,
     command_result_pulse_duration_ms: Option<u64>,
     command_result_pulse_hold_fraction: Option<f32>,
     command_result_pulse_generation: u64,
@@ -567,7 +591,7 @@ fn write_native_resize_snapshot(
     last_control: &str,
     image_preview: crate::image_preview::NativeImagePreviewState,
     pointer: serde_json::Value,
-) {
+) -> Option<PendingNativeResizeSnapshot> {
     use rio_backend::crosswords::grid::row::SemanticPrompt;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -579,9 +603,7 @@ fn write_native_resize_snapshot(
     #[cfg(not(target_os = "windows"))]
     let fullscreen_display_request_active = false;
 
-    let Some(path) = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT") else {
-        return;
-    };
+    let path = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT")?;
 
     let mut visible_text = String::new();
     let mut visible_row_texts = Vec::with_capacity(content.visible_rows.len());
@@ -773,6 +795,8 @@ fn write_native_resize_snapshot(
     snapshot["command_result_completed_at_unix_ms"] =
         serde_json::json!(window.command_result_completed_at_unix_ms);
     snapshot["command_result_label"] = serde_json::json!(window.command_result_label);
+    snapshot["command_result_paints"] = serde_json::json!(window.command_result_paints);
+    snapshot["prompt_context_paints"] = serde_json::json!(window.prompt_context_paints);
     snapshot["command_result_pulse_duration_ms"] =
         serde_json::json!(window.command_result_pulse_duration_ms);
     snapshot["command_result_pulse_hold_fraction"] =
@@ -790,14 +814,19 @@ fn write_native_resize_snapshot(
             serde_json::json!(crate::automexia::visual_test_hooks::animations_enabled());
     }
 
-    let payload = snapshot.to_string();
-    if let Err(error) = publish_native_resize_snapshot_generation(
-        std::path::Path::new(&path),
-        payload.as_bytes(),
-        sequence,
-    ) {
-        tracing::warn!("could not write native resize snapshot: {error}");
+    let payload = snapshot.to_string().into_bytes();
+    if payload.len() > MAX_PENDING_NATIVE_SNAPSHOT_BYTES {
+        tracing::warn!(
+            payload_bytes = payload.len(),
+            "native resize snapshot exceeded its pending publication bound"
+        );
+        return None;
     }
+    Some(PendingNativeResizeSnapshot {
+        path: path.into(),
+        payload,
+        generation: sequence,
+    })
 }
 
 /// Reusable buffers for the hottest row-emission path. Keeping these on the
@@ -892,6 +921,10 @@ pub struct Screen<'screen> {
     row_render_scratch: RowRenderScratch,
     #[cfg(feature = "native-gui-test-hooks")]
     native_test_last_control: String,
+    #[cfg(feature = "native-gui-test-hooks")]
+    pending_native_snapshot: Option<PendingNativeResizeSnapshot>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_test_present_after_control: bool,
 }
 
 pub struct ChromePress {
@@ -1169,6 +1202,10 @@ impl Screen<'_> {
             row_render_scratch: RowRenderScratch::default(),
             #[cfg(feature = "native-gui-test-hooks")]
             native_test_last_control: native_test_control_checkpoint(),
+            #[cfg(feature = "native-gui-test-hooks")]
+            pending_native_snapshot: None,
+            #[cfg(feature = "native-gui-test-hooks")]
+            native_test_present_after_control: false,
         })
     }
 
@@ -6114,8 +6151,21 @@ impl Screen<'_> {
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
         #[cfg(feature = "native-gui-test-hooks")]
+        let force_present_for_control = self.native_test_present_after_control;
+        #[cfg(feature = "native-gui-test-hooks")]
         {
+            // A test control is consumed after this frame's overlay model has
+            // already been recorded. Defer both readiness publication and its
+            // forced present to the next frame so state and pixels describe the
+            // same generation instead of exposing a partially rasterized CPU
+            // surface to the native driver.
+            self.native_test_present_after_control = false;
+            let previous_control = self.native_test_last_control.clone();
             self.process_native_test_control();
+            let control_changed = self.native_test_last_control != previous_control;
+            if control_changed {
+                self.native_test_present_after_control = true;
+            }
             let window_size = self.sugarloaf.window_size();
             let mut panels = self.context_manager.native_test_panel_snapshots();
             for panel in &mut panels {
@@ -6176,9 +6226,18 @@ impl Screen<'_> {
                 .command_results
                 .native_test_result_label()
                 .map(str::to_owned);
+            let command_result_paints = self
+                .renderer
+                .command_results
+                .native_test_result_paints()
+                .to_vec();
+            let prompt_context_paints =
+                self.renderer.native_test_active_prompt_context_paints();
             let palette_scroll_state =
                 self.renderer.command_palette.native_test_scroll_state();
-            write_native_resize_snapshot(
+            self.pending_native_snapshot = (!control_changed)
+                .then(|| {
+                    write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
                 NativeWindowSnapshot {
@@ -6282,6 +6341,8 @@ impl Screen<'_> {
                     command_result_completed_at_unix_ms: command_result_identity
                         .and_then(|identity| identity.3),
                     command_result_label,
+                    command_result_paints,
+                    prompt_context_paints,
                     command_result_divider: command_result_visual.map(|visual| visual.1),
                     command_result_opacity: command_result_style.map(|style| style.0),
                     command_result_pulse_duration_ms: command_result_style
@@ -6294,7 +6355,9 @@ impl Screen<'_> {
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),
                 pointer,
-            );
+                )
+                })
+                .flatten();
             // The control file is intentionally not watched by product code.
             // Keep feature-gated automation responsive while the window is
             // otherwise idle so latency measurements cover PTY/shell/render
@@ -6325,6 +6388,8 @@ impl Screen<'_> {
         let has_animation = self.renderer.needs_redraw();
         let should_present =
             any_panel_dirty || has_animation || preview_changed || preview_visible;
+        #[cfg(feature = "native-gui-test-hooks")]
+        let should_present = should_present || force_present_for_control;
 
         if self.renderer.custom_mouse_cursor {
             let scale = self.sugarloaf.scale_factor();
@@ -6967,7 +7032,18 @@ impl Screen<'_> {
                 // A dropped frame (no drawable, e.g. right after wake)
                 // already consumed this frame's damage; without a retry
                 // the content is lost until unrelated PTY traffic.
-                if self.sugarloaf.take_frame_dropped() {
+                let frame_dropped = self.sugarloaf.take_frame_dropped();
+                #[cfg(feature = "native-gui-test-hooks")]
+                if let Some(pending) = self.pending_native_snapshot.take() {
+                    if !frame_dropped {
+                        if let Err(error) = pending.publish() {
+                            tracing::warn!(
+                                "could not publish presented native resize snapshot: {error}"
+                            );
+                        }
+                    }
+                }
+                if frame_dropped {
                     self.mark_dirty();
                     self.context_manager.request_render();
                 }
@@ -6978,6 +7054,10 @@ impl Screen<'_> {
                 // them so the next presented frame doesn't
                 // composite them on top of their re-pushed selves.
                 self.sugarloaf.discard_frame();
+                #[cfg(feature = "native-gui-test-hooks")]
+                {
+                    self.pending_native_snapshot = None;
+                }
             }
 
             // Return each panel's snapshot buffers to the matching

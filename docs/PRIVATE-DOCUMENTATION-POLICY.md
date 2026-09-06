@@ -7,14 +7,18 @@ planning document.
 
 ## Public documentation
 
+Public documentation describes current implementation and release status only.
+Future features and implementation plans remain private, including free and
+open-source features. Current limitations and missing evidence may be documented
+without describing a future design or announcing a product.
+
 The repository should publish:
 
 - product purpose, values, and intended users;
 - installation, configuration, use, recovery, and uninstall guidance;
 - behavior that exists in source, with honest release and platform status;
 - stable architecture and security boundaries contributors must preserve;
-- a maintenance roadmap limited to the free open-source terminal and ordinary
-  capabilities already common in open-source terminals;
+- current implementation, known limitations, and release-evidence status;
 - contribution, testing, release, support, and vulnerability-reporting rules;
 - accepted decisions needed to understand or maintain public code.
 
@@ -23,7 +27,7 @@ The repository should publish:
 Keep the following outside version control until a deliberate publication
 review approves them:
 
-- every advanced unreleased feature, including a feature intended to be free;
+- every unreleased feature plan, including an ordinary or advanced free feature;
 - every paid or commercial feature, product edition, package, service, or
   extension;
 - pricing, monetization, revenue, market, customer, positioning, and business

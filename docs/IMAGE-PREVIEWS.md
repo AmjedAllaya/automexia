@@ -117,6 +117,11 @@ checks.
 
 ## Verification
 
+The [preview implementation status](TERMINAL-INTERACTION-REQUIREMENTS.md#local-image-preview)
+identifies existing source owners and native verification limits. Available
+controls, supported formats, file authority and resource limits remain as
+described on this page.
+
 Focused checks are:
 
 ```text

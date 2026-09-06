@@ -60,13 +60,13 @@ or release evidence. See [Features](FEATURES.md), [Platforms](PLATFORMS.md), and
 
 ## Publication boundary
 
-Public vision and roadmap pages describe the current free terminal and ordinary
-open-source improvements. They do not publish unreleased advanced product ideas,
-commercial packaging, pricing, market plans, or detailed future architectures.
+Public vision and roadmap pages describe current implementation, observable
+limitations and release evidence only. Future features remain private,
+including free and open-source ideas. Business plans, commercial strategy,
+pricing, market analysis and future architectures are not public documentation.
 
-Private planning is not evidence that a feature exists. A future capability may
-enter public documentation only after an explicit publication review establishes
-what maintainers and users need to know.
+Private planning is not evidence that a feature exists. Public descriptions
+must match actual source behavior and distinguish it from released artifacts.
 
 ## Documentation language
 

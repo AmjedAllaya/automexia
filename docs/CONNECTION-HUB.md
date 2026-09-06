@@ -79,6 +79,13 @@ These headings preserve source-owned feature-matrix references after the
 public documentation consolidation. They do not expand shipped behavior,
 reintroduce private plans, or replace the current status stated above.
 
+### F2/D5.0 capability-free inventory and planning
+
+F2/D5.0 owns the bounded, non-executing connection models, explicit local
+inventory, review state, and renderer-neutral Hub contract described here.
+Network, authentication, process, PTY, and credential authority remain outside
+this phase and require their separately reviewed activation boundaries.
+
 ### Aws
 
 This compatibility anchor retains traceability to the current public

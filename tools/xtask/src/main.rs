@@ -2,15 +2,24 @@ mod completion;
 mod keybindings;
 mod visual_diff;
 
+use process_wrap::std::CommandWrap;
+#[cfg(windows)]
+use process_wrap::std::JobObject;
+#[cfg(unix)]
+use process_wrap::std::ProcessGroup;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 type TaskResult<T = ()> = Result<T, String>;
 
@@ -18,10 +27,15 @@ const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
 const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
 const ACTIVE_CACHE_MARKER: &str = ".automexia-active";
+const ISOLATED_TARGET_LOG_LABEL: &str = "<isolated-verification-target>";
+const PERSISTENT_DEBUG_BINARY_LOG_LABEL: &str = "<persistent-debug-binary>";
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
 const DEFAULT_TARGET_WARN_GIB: u64 = 12;
+const WORKSPACE_TEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const SUMMARIZED_CARGO_STDOUT_LIMIT: usize = 16 * 1024 * 1024;
+const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
 const WORKSPACE_CHECK_ARGS: &[&str] = &[
     "check",
     "--workspace",
@@ -685,12 +699,7 @@ fn storage_health_summary() -> TaskResult {
     })?;
     let warn =
         configured_gib("AUTOMEXIA_TARGET_WARN_GIB", DEFAULT_TARGET_WARN_GIB)? * GIB;
-    println!(
-        "storage            {} used, {} free ({})",
-        format_bytes(used),
-        format_bytes(available),
-        target.display()
-    );
+    println!("{}", storage_health_line(used, available));
     if used >= warn {
         println!(
             "storage warning    persistent target exceeds {}; close Automexia and run `cargo purge`",
@@ -754,6 +763,14 @@ fn format_bytes(bytes: u64) -> String {
     } else {
         format!("{bytes} B")
     }
+}
+
+fn storage_health_line(used: u64, available: u64) -> String {
+    format!(
+        "storage            {} used, {} free (persistent Cargo target)",
+        format_bytes(used),
+        format_bytes(available)
+    )
 }
 
 fn configured_gib(variable: &str, default: u64) -> TaskResult<u64> {
@@ -823,7 +840,7 @@ impl VerificationTarget {
         )
         .map_err(|error| format!("could not create verification cache lease: {error}"))?;
         let keep = environment_truthy("AUTOMEXIA_KEEP_VERIFY_TARGET");
-        println!("verification target {}", path.display());
+        println!("verification target {ISOLATED_TARGET_LOG_LABEL}");
         println!("incremental         disabled for verification artifacts");
         Ok(Self {
             parent,
@@ -839,9 +856,13 @@ impl VerificationTarget {
             fs::remove_file(self.path.join(ACTIVE_CACHE_MARKER)).map_err(|error| {
                 format!("could not release verification cache marker: {error}")
             })?;
+            let name = self
+                .path
+                .file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or(ISOLATED_TARGET_LOG_LABEL);
             println!(
-                "verification target retained at {} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
-                self.path.display(),
+                "verification target retained under the persistent Cargo target as {name} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
                 format_bytes(used)
             );
             self.finished = true;
@@ -1222,13 +1243,15 @@ fn smoke_debug_app() -> TaskResult {
     let binary = debug_binary(&identity);
     require(
         binary.is_file(),
-        &format!("debug executable is missing: {}", binary.display()),
+        "debug executable is missing from the persistent Cargo target",
     )?;
-    println!("+ {} --version", binary.display());
+    println!("+ {PERSISTENT_DEBUG_BINARY_LOG_LABEL} --version");
     let output = Command::new(&binary)
         .arg("--version")
         .output()
-        .map_err(|error| format!("could not smoke {}: {error}", binary.display()))?;
+        .map_err(|error| {
+            format!("could not run the persistent debug executable: {error}")
+        })?;
     require(
         output.status.success(),
         &format!(
@@ -2315,11 +2338,7 @@ fn cargo_command(target: &Path, args: &[&str]) -> Command {
 }
 
 fn run_cargo_in(target: &Path, args: &[&str]) -> TaskResult {
-    println!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
-        target.display(),
-        args.join(" ")
-    );
+    println!("{}", isolated_cargo_invocation(args));
     let status = cargo_command(target, args)
         .status()
         .map_err(|error| format!("could not start cargo: {error}"))?;
@@ -2335,19 +2354,27 @@ fn run_cargo_summarized_in(
     args: &[&str],
     success_message: &str,
 ) -> TaskResult {
-    println!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
-        target.display(),
-        args.join(" ")
-    );
-    let output = cargo_command(target, args)
-        // Cargo writes compiler/build-script progress and diagnostics to
-        // stderr. Keep that stream attached to the contributor's terminal so
-        // a cold native dependency build never looks frozen. Test-harness
-        // stdout remains captured and summarized on success below.
-        .stderr(Stdio::inherit())
-        .output()
-        .map_err(|error| format!("could not start cargo: {error}"))?;
+    println!("{}", isolated_cargo_invocation(args));
+    let mut command = cargo_command(target, args);
+    // Cargo writes compiler/build-script progress and diagnostics to stderr.
+    // Keep that stream attached to the contributor's terminal so a cold native
+    // dependency build never looks frozen. Test-harness stdout is captured up
+    // to a strict ceiling and summarized only after the owned process group
+    // exits.
+    command.stderr(Stdio::inherit());
+    let output = match run_bounded_capture(
+        command,
+        WORKSPACE_TEST_TIMEOUT,
+        SUMMARIZED_CARGO_STDOUT_LIMIT,
+    ) {
+        Ok(output) => output,
+        Err(failure) => {
+            if !failure.stdout.is_empty() {
+                print!("{}", String::from_utf8_lossy(&failure.stdout));
+            }
+            return Err(failure.message);
+        }
+    };
     if output.status.success() {
         println!("PASS: {success_message}");
         return Ok(());
@@ -2357,6 +2384,152 @@ fn run_cargo_summarized_in(
     // the complete harness and compiler diagnostics needed for investigation.
     print!("{}", String::from_utf8_lossy(&output.stdout));
     Err(format!("cargo exited with {}", output.status))
+}
+
+#[derive(Debug)]
+struct BoundedCommandOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct BoundedCommandFailure {
+    message: String,
+    stdout: Vec<u8>,
+}
+
+fn read_bounded_output(
+    mut reader: impl Read,
+    limit: usize,
+    overflow: Arc<AtomicBool>,
+) -> std::io::Result<Vec<u8>> {
+    let mut output = Vec::with_capacity(limit.min(64 * 1024));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            return Ok(output);
+        }
+        if overflow.load(Ordering::Acquire) {
+            continue;
+        }
+        if output.len().saturating_add(read) > limit {
+            let remaining = limit.saturating_sub(output.len());
+            output.extend_from_slice(&buffer[..remaining]);
+            overflow.store(true, Ordering::Release);
+            continue;
+        }
+        output.extend_from_slice(&buffer[..read]);
+    }
+}
+
+fn run_bounded_capture(
+    mut command: Command,
+    deadline: Duration,
+    stdout_limit: usize,
+) -> Result<BoundedCommandOutput, BoundedCommandFailure> {
+    if deadline.is_zero() || stdout_limit == 0 {
+        return Err(BoundedCommandFailure {
+            message: "bounded command requires a positive deadline and output ceiling"
+                .into(),
+            stdout: Vec::new(),
+        });
+    }
+    command.stdin(Stdio::null()).stdout(Stdio::piped());
+    let mut command = CommandWrap::from(command);
+    #[cfg(unix)]
+    command.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    command.wrap(JobObject);
+    let mut child = command.spawn().map_err(|error| BoundedCommandFailure {
+        message: format!("could not start bounded command: {error}"),
+        stdout: Vec::new(),
+    })?;
+    let stdout = child.stdout().take().ok_or_else(|| BoundedCommandFailure {
+        message: "bounded command stdout pipe is unavailable".to_owned(),
+        stdout: Vec::new(),
+    })?;
+    let overflow = Arc::new(AtomicBool::new(false));
+    let reader_overflow = Arc::clone(&overflow);
+    let reader =
+        thread::spawn(move || read_bounded_output(stdout, stdout_limit, reader_overflow));
+    let started = Instant::now();
+
+    let status = loop {
+        if overflow.load(Ordering::Acquire) {
+            let _ = child.kill();
+            return Err(bounded_failure_after_cleanup(
+                format!(
+                    "bounded command output exceeded its {stdout_limit}-byte ceiling and was terminated"
+                ),
+                reader,
+            ));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // The leader may exit while a descendant still owns stdout.
+                // Close the complete process group/Job Object before joining
+                // the reader so a stale helper cannot block readiness forever.
+                let _ = child.start_kill();
+                break status;
+            }
+            Ok(None) if started.elapsed() < deadline => {
+                thread::sleep(PROCESS_POLL_INTERVAL)
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                return Err(bounded_failure_after_cleanup(
+                    format!(
+                        "bounded command exceeded its {}-second deadline and was terminated",
+                        deadline.as_secs()
+                    ),
+                    reader,
+                ));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                return Err(bounded_failure_after_cleanup(
+                    format!("could not poll bounded command: {error}"),
+                    reader,
+                ));
+            }
+        }
+    };
+    let stdout = reader
+        .join()
+        .map_err(|_| BoundedCommandFailure {
+            message: "bounded command stdout reader panicked".to_owned(),
+            stdout: Vec::new(),
+        })?
+        .map_err(|error| BoundedCommandFailure {
+            message: format!("could not read bounded command stdout: {error}"),
+            stdout: Vec::new(),
+        })?;
+    Ok(BoundedCommandOutput { status, stdout })
+}
+
+fn bounded_failure_after_cleanup(
+    message: String,
+    reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
+) -> BoundedCommandFailure {
+    match reader.join() {
+        Ok(Ok(stdout)) => BoundedCommandFailure { message, stdout },
+        Ok(Err(error)) => BoundedCommandFailure {
+            message: format!("{message}; could not read bounded command stdout: {error}"),
+            stdout: Vec::new(),
+        },
+        Err(_) => BoundedCommandFailure {
+            message: format!("{message}; bounded command stdout reader panicked"),
+            stdout: Vec::new(),
+        },
+    }
+}
+
+fn isolated_cargo_invocation(args: &[&str]) -> String {
+    format!(
+        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={ISOLATED_TARGET_LOG_LABEL} cargo {}",
+        args.join(" ")
+    )
 }
 
 fn metadata() -> TaskResult<Value> {
@@ -2411,6 +2584,40 @@ fn product_identity() -> TaskResult<ProductIdentity> {
         log_level_environment: field("log-level-environment")?,
         shell_integration_environment: field("shell-integration-environment")?,
     })
+}
+
+const POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS: &[&str] = &[
+    "$integrationScript = Join-Path $PSScriptRoot 'test_shell_integration.ps1'",
+    "$integrationLifecycle = & powershell.exe -NoLogo -NoProfile -NonInteractive",
+    "-File $integrationScript 2>&1 | Out-String",
+    "if ($LASTEXITCODE -ne 0)",
+    "captured child process",
+    "SetUserVar=automexia_shell_user=",
+    "SetUserVar=automexia_shell_path=",
+    "$integrationLifecycle = $null",
+];
+
+const POWERSHELL_IDENTITY_FIXTURE_MARKERS: &[&str] = &[
+    "$fixtureUser = 'alice'",
+    "$fixtureShellPath = 'C:\\AutomexiaFixtures\\cmd.exe'",
+    "GetBytes($fixtureUser)",
+    "GetBytes($fixtureShellPath)",
+];
+
+fn powershell_test_output_is_redacted(source: &str) -> bool {
+    POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+}
+
+fn powershell_identity_fixture_is_fictional(source: &str) -> bool {
+    POWERSHELL_IDENTITY_FIXTURE_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+        && source.matches("GetBytes($fixtureUser)").count() >= 2
+        && source.matches("GetBytes($fixtureShellPath)").count() >= 2
+        && !source.contains("[Environment]::UserName")
+        && !source.contains("GetBytes($env:ComSpec)")
 }
 
 fn verify_architecture() -> TaskResult {
@@ -2513,6 +2720,7 @@ fn verify_architecture() -> TaskResult {
                 "automexia-connectivity",
                 "automexia-extension-api",
                 "configparser",
+                "criterion",
                 "serde",
                 "serde_json",
             ],
@@ -3039,6 +3247,17 @@ fn verify_architecture() -> TaskResult {
     )?;
     let powershell_view =
         read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;
+    let powershell_test = read(&root().join("tools/ci/test_powershell.ps1"))?;
+    let powershell_integration =
+        read(&root().join("tools/ci/test_shell_integration.ps1"))?;
+    require(
+        powershell_test_output_is_redacted(&powershell_test),
+        "PowerShell integration assurance can publish live shell identity bytes into CI logs",
+    )?;
+    require(
+        powershell_identity_fixture_is_fictional(&powershell_integration),
+        "PowerShell integration assurance can derive a persistent fixture from live shell identity",
+    )?;
     require(
         powershell_view.contains("<Label>Mode</Label>")
             && powershell_view.contains("<Label>Last Modified</Label>")
@@ -4758,6 +4977,39 @@ mod tests {
     }
 
     #[test]
+    fn powershell_test_output_redaction_markers_are_independently_required() {
+        let source = read(&root().join("tools/ci/test_powershell.ps1")).unwrap();
+        assert!(powershell_test_output_is_redacted(&source));
+        for marker in POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_test_output_is_redacted(&weakened),
+                "removing {marker:?} must fail the redaction contract"
+            );
+        }
+    }
+
+    #[test]
+    fn powershell_identity_fixture_cannot_use_live_values() {
+        let source = read(&root().join("tools/ci/test_shell_integration.ps1")).unwrap();
+        assert!(powershell_identity_fixture_is_fictional(&source));
+        for marker in POWERSHELL_IDENTITY_FIXTURE_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_identity_fixture_is_fictional(&weakened),
+                "removing {marker:?} must fail the fictional-fixture contract"
+            );
+        }
+        assert!(!powershell_identity_fixture_is_fictional(
+            &source.replace("$fixtureUser", "[Environment]::UserName")
+        ));
+        assert!(!powershell_identity_fixture_is_fictional(&source.replace(
+            "GetBytes($fixtureShellPath)",
+            "GetBytes($env:ComSpec)"
+        )));
+    }
+
+    #[test]
     fn phase_zero_assurance_contract_self_verifies() {
         verify_phase_zero_assurance().unwrap();
     }
@@ -4987,6 +5239,126 @@ mod tests {
         assert_eq!(format_bytes(1024), "1.00 KiB");
         assert_eq!(format_bytes(1024 * 1024), "1.00 MiB");
         assert_eq!(format_bytes(GIB), "1.00 GiB");
+    }
+
+    #[test]
+    fn summarized_command_returns_bounded_success_output() {
+        let mut command =
+            Command::new(env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "tests::bounded_runner_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AUTOMEXIA_XTASK_TEST_CHILD_MODE", "success");
+
+        let output = run_bounded_capture(command, Duration::from_secs(5), 4096)
+            .expect("fixture child should finish before the deadline");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("bounded-child-success"));
+    }
+
+    #[test]
+    fn summarized_command_rejects_zero_bounds_before_spawn() {
+        let deadline_error = run_bounded_capture(
+            Command::new(env::current_exe().expect("current test executable")),
+            Duration::ZERO,
+            1,
+        )
+        .expect_err("a zero deadline must fail before starting the child");
+        assert!(deadline_error.message.contains("positive"));
+        assert!(deadline_error.stdout.is_empty());
+
+        let output_error = run_bounded_capture(
+            Command::new(env::current_exe().expect("current test executable")),
+            Duration::from_secs(1),
+            0,
+        )
+        .expect_err("a zero output ceiling must fail before starting the child");
+        assert!(output_error.message.contains("positive"));
+        assert!(output_error.stdout.is_empty());
+    }
+
+    #[test]
+    fn summarized_command_deadline_terminates_the_owned_child() {
+        let mut command =
+            Command::new(env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "tests::bounded_runner_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AUTOMEXIA_XTASK_TEST_CHILD_MODE", "wait");
+        let started = Instant::now();
+
+        let error = run_bounded_capture(command, Duration::from_millis(100), 4096)
+            .expect_err("waiting fixture must be terminated at the deadline");
+        assert!(error.message.contains("deadline"));
+        assert!(String::from_utf8_lossy(&error.stdout).contains("bounded-child-waiting"));
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn summarized_command_output_limit_fails_closed() {
+        let mut command =
+            Command::new(env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "tests::bounded_runner_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AUTOMEXIA_XTASK_TEST_CHILD_MODE", "overflow");
+
+        let error = run_bounded_capture(command, Duration::from_secs(5), 512)
+            .expect_err("oversized captured output must terminate the child");
+        assert!(error.message.contains("output"));
+        assert!(error.message.contains("ceiling"));
+        assert_eq!(error.stdout.len(), 512);
+        assert!(String::from_utf8_lossy(&error.stdout).contains("bounded-child-overflow"));
+    }
+
+    #[test]
+    #[ignore = "spawned only by bounded process ownership tests"]
+    fn bounded_runner_child() {
+        match env::var("AUTOMEXIA_XTASK_TEST_CHILD_MODE").as_deref() {
+            Ok("success") => println!("bounded-child-success"),
+            Ok("overflow") => println!("bounded-child-overflow\n{}", "x".repeat(4096)),
+            Ok("wait") => {
+                println!("bounded-child-waiting");
+                use std::io::Write as _;
+                std::io::stdout()
+                    .flush()
+                    .expect("deadline fixture marker must be visible");
+                thread::sleep(Duration::from_secs(30));
+            }
+            _ => panic!("bounded child mode is required"),
+        }
+    }
+
+    #[test]
+    fn successful_readiness_diagnostics_use_logical_target_labels() {
+        let invocation = isolated_cargo_invocation(&["check", "--workspace"]);
+        assert_eq!(
+            invocation,
+            "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<isolated-verification-target> cargo check --workspace"
+        );
+        assert!(!invocation.contains(r"C:\Users\alice\private-checkout"));
+        assert_eq!(
+            storage_health_line(GIB, 2 * GIB),
+            "storage            1.00 GiB used, 2.00 GiB free (persistent Cargo target)"
+        );
+        assert!(!storage_health_line(GIB, 2 * GIB).contains(['\\', '/']));
+        assert_eq!(
+            PERSISTENT_DEBUG_BINARY_LOG_LABEL,
+            "<persistent-debug-binary>"
+        );
+        assert!(!PERSISTENT_DEBUG_BINARY_LOG_LABEL.contains(['\\', '/']));
     }
 
     #[cfg(target_os = "windows")]

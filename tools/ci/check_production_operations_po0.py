@@ -3,8 +3,9 @@
 
 The exact unreleased schemas, ranking rules, provider mappings, and delivery
 ledger are intentionally local-only. This checker protects the public promise:
-the proposal stays visibly planned, preserves its trust boundaries, exposes no
-private planning contract, and gains no runtime authority by accident.
+the compatibility path reports no implementation, preserves its trust
+boundaries, exposes no private planning contract, and gains no runtime
+authority by accident.
 """
 
 from __future__ import annotations
@@ -13,33 +14,35 @@ from pathlib import Path
 import re
 import sys
 
+from check_repository_aligned_docs import PUBLIC_FUTURE_PLANNING
+
 
 ROOT = Path(__file__).resolve().parents[2]
 MAX_DOCUMENT_BYTES = 2 * 1024 * 1024
 PRIVATE_FIXTURE = Path("tests/fixtures/production-operations/po0-contract-v1.json")
 REQUIRED_DOCUMENTS = {
     Path("docs/SITUATION-AWARE-PRODUCTION-OPERATIONS.md"): (
-        "Status: planned public direction. It is not available for production use.",
+        "Status: no public runtime implementation or activation.",
         "## Architectural boundary",
         "## Security and privacy threat model",
         "Detailed ranking formulas, provider playbooks, schemas, internal limits, and",
     ),
     Path("docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md"): (
-        "Status: planned public contract summary; no production-operation contract is",
+        "Status: no public runtime implementation or activation.",
         "a suggestion cannot execute itself, type into a PTY, or imply approval",
         "Detailed schemas, scoring fields, provider mappings, and wire formats remain",
     ),
     Path("docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md"): (
-        "Status: planned public experience summary.",
+        "Status: no public runtime implementation or activation.",
         "## Interaction requirements",
     ),
     Path("docs/SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md"): (
-        "Status: planned public assurance summary.",
+        "Status: no public runtime implementation or activation.",
         "## Scenario inventory",
         "## Phase exit criteria",
     ),
     Path("docs/adr/0034-situation-aware-production-operations.md"): (
-        "Status: proposed public summary; not an accepted implementation decision.",
+        "Status: no public runtime implementation or activation.",
         "## Proposed decision",
         "Detailed internal contracts and execution recipes remain local",
     ),
@@ -104,12 +107,16 @@ def _validate_public_documents(root: Path) -> int:
         missing = [marker for marker in markers if marker not in text]
         if missing:
             raise ProductionOperationsBoundaryError(
-                f"{relative.as_posix()} lost public boundary markers: {missing}"
+                f"{relative.as_posix()} lost public boundary markers"
             )
         leaked = [marker for marker in FORBIDDEN_PUBLIC_MARKERS if marker in text]
         if leaked:
             raise ProductionOperationsBoundaryError(
-                f"{relative.as_posix()} exposes local-only planning detail: {leaked}"
+                f"{relative.as_posix()} exposes local-only planning detail"
+            )
+        if PUBLIC_FUTURE_PLANNING.search(text):
+            raise ProductionOperationsBoundaryError(
+                f"{relative.as_posix()} exposes future planning"
             )
 
     fixture = root / PRIVATE_FIXTURE

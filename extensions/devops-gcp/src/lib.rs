@@ -52,6 +52,7 @@ pub enum GcpAdapterErrorCode {
     InvalidUtf8,
     MalformedConfig,
     DuplicateSection,
+    DuplicateEntry,
     TooComplex,
     SensitiveField,
     UnsafePublicField,
@@ -178,7 +179,8 @@ fn sensitive_key(key: &str) -> bool {
 
 fn scan_structure(text: &str) -> Result<(), GcpAdapterError> {
     let mut sections = HashSet::new();
-    let mut entries = 0_usize;
+    let mut entries = HashSet::new();
+    let mut current_section: Option<String> = None;
     for raw_line in text.lines() {
         let line = raw_line.trim();
         if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
@@ -193,7 +195,7 @@ fn scan_structure(text: &str) -> Result<(), GcpAdapterError> {
             }
             let section = line[1..line.len() - 1].trim().to_ascii_lowercase();
             validate_public(&section, "section")?;
-            if !sections.insert(section) {
+            if !sections.insert(section.clone()) {
                 return Err(GcpAdapterError::new(
                     GcpAdapterErrorCode::DuplicateSection,
                     "section",
@@ -205,8 +207,15 @@ fn scan_structure(text: &str) -> Result<(), GcpAdapterError> {
                     "sections",
                 ));
             }
+            current_section = Some(section);
             continue;
         }
+        let Some(section) = current_section.as_ref() else {
+            return Err(GcpAdapterError::new(
+                GcpAdapterErrorCode::MalformedConfig,
+                "entry",
+            ));
+        };
         let Some((key, _)) = line.split_once(['=', ':']) else {
             return Err(GcpAdapterError::new(
                 GcpAdapterErrorCode::MalformedConfig,
@@ -221,8 +230,13 @@ fn scan_structure(text: &str) -> Result<(), GcpAdapterError> {
                 "configuration",
             ));
         }
-        entries += 1;
-        if entries > MAX_ENTRIES {
+        if !entries.insert((section.clone(), key.to_ascii_lowercase())) {
+            return Err(GcpAdapterError::new(
+                GcpAdapterErrorCode::DuplicateEntry,
+                "entry",
+            ));
+        }
+        if entries.len() > MAX_ENTRIES {
             return Err(GcpAdapterError::new(
                 GcpAdapterErrorCode::TooComplex,
                 "entries",
@@ -1038,6 +1052,16 @@ mod tests {
                 .code(),
             GcpAdapterErrorCode::DuplicateSection
         );
+        assert!(parse_public_configuration(
+            "dev",
+            b"[core]\nproject=payments-a\nPROJECT=payments-b\n"
+        )
+        .is_err());
+        assert!(parse_public_configuration(
+            "dev",
+            b"project=payments\n[core]\naccount=user\n"
+        )
+        .is_err());
         assert_eq!(
             parse_public_configuration("dev", &vec![b'a'; MAX_CONFIG_BYTES + 1])
                 .unwrap_err()

@@ -272,7 +272,7 @@ Deleting the checkout does not intentionally delete the separate Automexia
 configuration folder. Likewise, removing the configuration folder does not
 remove unrelated shell, cloud, SSH, or provider configuration.
 
-## About future stable packages
+## Current packaging definitions
 
 The repository owns packaging definitions for:
 
@@ -280,13 +280,12 @@ The repository owns packaging definitions for:
 - a universal macOS application in a disk image (DMG);
 - Linux x86_64 and ARM64 DEB, RPM, and tar archives.
 
-Those formats are part of the release plan, not proof that an official stable
+Those definitions exist in source; they are not proof that an official stable
 download is available today. Stable publication remains blocked until the
 remaining brand, signing, native, accessibility, and release checks are
-complete. When packages are published, the installation page will add exact
-download, signature/checksum verification, upgrade, rollback, and uninstall
-steps for each format. See [Release trust](RELEASE-TRUST.md) for the required
-artifact guarantees.
+complete. Use only an actually published artifact with its exact verification
+and lifecycle instructions. See [Release trust](RELEASE-TRUST.md) for the
+required artifact guarantees.
 
 ## Continue learning
 

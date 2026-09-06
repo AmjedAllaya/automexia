@@ -38,6 +38,12 @@ combining/bidi/control input, alternate-screen transitions, scrollback, reflow,
 search, selection, cursor state, and exact visible cells. Fuzz every structured
 terminal-input boundary with historical failures retained.
 
+For command completion metadata, include multiple adjacent prompt lifecycles
+whose source result and preceding boundary share a physical prompt row. Resize
+between narrow and wide grids, navigate in both directions, and independently
+compare stable IDs, timestamps, boundaries, visible rows, and unchanged PTY
+bytes after each transition.
+
 ### pty-scheduler-process-lifecycle
 
 Reinforce exact executable/argument launch, ordered input, resize/output storms,
@@ -48,6 +54,15 @@ one-shot slave closes as a platform EOF signal without weakening exact output,
 completion-marker, child-exit, or cleanup oracles; do not treat temporary
 zero-byte ConPTY reads as permanent closure.
 
+Exercise ordinary and exact Windows ConPTY sessions under kill-on-close Job
+ownership plus the Unix process-group owner. Broadcast one idempotent shutdown
+request to active, background, split, pane-tab, parked, and top-level-window
+sessions before sequential joins. Test one and many sessions, repeated requests,
+window close, explicit quit, and the final event-loop callback. Capture exact
+temporary-fixture process identities before close so ConPTY reparenting cannot
+escape a parent-only oracle; require every identity and owner to exit inside a
+declared many-session wall-clock ceiling.
+
 ### renderer-fonts-responsive-ui
 
 Reinforce immutable generation-labelled snapshots, font fallback, cell geometry,
@@ -55,11 +70,45 @@ clipping, z-order, cursor, selection, themes, high contrast, reduced motion, and
 small through high-resolution layouts. Require renderer-neutral state, exact
 controlled rasters, and native frames.
 
+Project row-anchored metadata through one frame-local ownership pass. Exercise
+input permutations and malformed duplicates, then prove each result identity is
+painted once and every measured label rectangle is pairwise disjoint after
+reflow. Expose co-located prompt-context rectangles and reject cross-owner
+intersection under one shared reservation. Freeze command duration as well as
+wall time before exact raster comparison. A latest-result-only hook is not a
+multi-result or cross-overlay paint oracle.
+
+Publish a feature-gated native checkpoint only after the matching frame has
+presented successfully. Controls consumed after overlay construction must force
+a subsequent frame; skipped or dropped frames publish nothing. Retained native
+captures establish foreground ownership, reject detectable dialog occlusion,
+and require two consecutive identical full-frame pixel digests before exact
+backend comparison and independent frame inspection. Two identical occluded or
+stale captures are not visual proof.
+
+Frame-skip identities must include the physical framebuffer extent, and the
+cache may record only a successfully presented frame. Exercise unchanged
+content across initial sizing and later resize, acquisition or presentation
+failure followed by identical retry, a completely opaque on-screen client, and
+zero-tolerance full-client comparison across available renderer backends. Hold
+live editor input at a fixed unsent sentinel so cursor-line drift cannot
+masquerade as a renderer difference.
+
 ### windows-tabs-sessions-input
 
 Reinforce independent windows, global and pane-local tabs, fresh/cloned splits,
 route and focus isolation, geometric navigation, pointer routing, divider
 resize, clipboard, IME, search scope, overlays, and focus restoration.
+
+For previous/next command shortcuts, perform an actual native resize first,
+assert the freshly reflowed frame, and inspect every intermediate and restored
+frame for result-ID uniqueness, non-intersecting badge geometry, stable pane and
+prompt ownership, and absence of terminal input.
+
+Require the state checkpoint to follow the corresponding successful present,
+then stabilize the retained native image with two exact full-frame digests. On
+multi-pane exit, require broadcast-first PTY shutdown and exact owned-process
+cleanup within the native wall-clock ceiling.
 
 ### ghostty-compatibility-g0-g6
 
@@ -99,6 +148,10 @@ errors; cancellation; stale results; clipping; scrolling; eviction; and cleanup.
 Reinforce supported-shell startup, prompt boundaries, object-preserving
 pipelines, quoting, Unicode, missing-resource fallback, explicit disable/remove,
 and cleanup. The native shell remains the independent command-editor oracle.
+PowerShell assurance must capture real identity control bytes in a child process,
+verify internally that user and path fields exist, and discard those bytes before
+they reach local or hosted logs. CMD identity fixtures must use stable fictional
+values rather than contributor account or executable-path data.
 
 ### packaging-release-provenance
 
@@ -115,6 +168,19 @@ Mutation-test repository validators so deleted owners, weakened limits, stale
 paths, fabricated evidence, missing private-documentation exclusions, and
 confidential-data canaries fail closed.
 
+Public-documentation mutations cover restored future announcements, renamed
+pages and changelog entries, duplicate or unreviewed status rows, and unresolved
+merge markers inside and outside code fences. Current limitations and missing
+release evidence remain allowed. Diagnostics must not echo rejected content.
+These checks supplement human publication review; they do not prove the absence
+of every possible confidential statement. Nonactivation, architecture, security
+and release-evidence gates remain enforced.
+
+The documentation checker/hygiene pairs own publication regressions. The
+existing `test_phase_implementation_audit.py` and
+`test_production_operations_po0.py` suites additionally enforce current-status
+row identity and the absence of runtime activation.
+
 For caches and build storage, additionally mutate content identity, integrity
 manifests, atomic publication, link/reparse rejection, traversal ceilings,
 current and dirty worktree protection, live/dead owner probes, leases, grace
@@ -122,6 +188,12 @@ periods, dry-run/apply behavior, exact deletion allowlists, de-duplicated usage,
 success/failure cleanup, and the dormant pre-push hook. Compare the generated
 tree and hashes independently. Exercise native process ownership on each
 claimed platform and keep unexecuted hosts external.
+
+The summarized workspace-test owner must also keep its 30-minute deadline,
+16 MiB stdout ceiling, live compiler diagnostics, Unix process group or Windows
+Job Object, and real success/deadline/overflow child-process tests. Mutation
+coverage must reject a missing or relaxed limit, wrapper, cleanup path, partial
+failure diagnostic, or real-process oracle.
 
 ### stabilization-release-assurance
 

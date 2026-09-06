@@ -36,3 +36,23 @@ extension requires a distinct optional authority or dependency footprint,
 explicit lifecycle, limits, disable/uninstall behavior, tests, and an ADR.
 
 Unreleased feature placement and commercial architecture are private.
+
+## Maintaining existing boundaries
+
+Map a change to its current owner before adding a crate or shared type. Reuse
+capability-free contracts when consumers need the same semantics. Directory
+names alone do not establish dependency or authority isolation; a mechanical move
+needs a concrete maintenance reason and a separate review from behavior changes.
+
+System tools remain responsible for their native protocols and credentials.
+Evaluate adapter compatibility, structured output, limits, cancellation and
+cleanup rather than assuming either a CLI or library is automatically safer.
+
+## Build and validation ownership
+
+[ADR 0005](../adr/0005-storage-bounded-build-workflow.md) governs the current
+incremental application and disposable verification builds. Keep current test,
+platform and cleanup requirements when evaluating maintenance improvements.
+Report clean and incremental measurements separately, with the exact toolchain,
+target, features and evidence limits. Configuration proposals are not implemented
+optimizations until the owning source and applicable checks agree.

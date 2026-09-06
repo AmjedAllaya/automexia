@@ -82,6 +82,10 @@ the first failure; investigate it and record the cause.
   generated, and newly referenced artifact for secrets and local identifiers.
   Treat any verified leak as a blocking failure, remove it without weakening the
   behavior or test, re-run the scan, and keep scan reports fully redacted.
+- Repository-owned test and readiness success output must use stable logical
+  labels for managed roots and generated targets, never contributor-specific
+  absolute paths. Failure diagnostics must redact private path prefixes while
+  preserving the failing operation and repository-relative owner.
 - Bound input bytes, decoded dimensions, recursion, file counts, queues, cache
   size, history, concurrency, time, retries, logs, and persisted storage.
 - Preserve pane, tab, route, session, and generation isolation. Cancel obsolete
@@ -397,6 +401,70 @@ Visible changes require three distinct layers:
 3. native frames and accessibility tree/event evidence on each claimed
    OS/display/renderer environment.
 
+Row-anchored terminal chrome needs an additional ownership audit. A semantic
+prompt row can validly own its command completion while also carrying the
+preceding command's output boundary. After every visible snapshot, reflow, and
+display-offset change, normalize overlay projections into a frame-local map
+scoped by route and pane: paint each stable result identity at most once and
+give each display row at most one badge owner. Prefer the truthful preceding
+output boundary over a source-row fallback, reject invalid or stale geometry,
+and resolve malformed collisions deterministically without changing terminal
+cells, scrollback, PTY bytes, focus, or command input. Do not render a raw
+post-reflow anchor list directly.
+
+Regressions for row-anchored chrome must traverse raw supported-shell bytes,
+VT parsing, multiple adjacent command lifecycles, scrollback, alternating
+narrow/wide resize, visible snapshot publication, previous/next command
+navigation in both directions, projection, draw rectangles, and controlled
+pixels. Assert unique result identities, non-intersecting badge rectangles,
+non-intersection with every co-located overlay from another owner,
+stable source/boundary metadata, pane and route isolation, no PTY input, and
+the restored live prompt after every transition. Cover source eviction,
+silent/output commands, repeated resize/navigation, split panes, scale and
+responsive label fallbacks. Benchmark the combined reflow-navigation-snapshot
+path over deep bounded history and ensure projection work remains bounded by
+the visible frame. A single-result test or a hook that reports only the latest
+badge is insufficient evidence for multi-result paint isolation.
+
+When independent UI contributors can paint the same row, they must share an
+explicit renderer-neutral reservation or exclusion contract. Measure and expose
+every contributor's issued rectangles in controlled native hooks, then compare
+them pairwise across owners after resize, scale, scroll, navigation, focus, and
+extension enable/disable transitions. Testing only each contributor against
+itself cannot detect cross-overlay collisions. Native pointer automation must
+wait for the renderer-owned hit target before pressing; posting a move and click
+back-to-back is not deterministic evidence on a scheduled desktop event loop.
+
+Before exact raster comparison, freeze every visible volatile value, including
+wall clock, completion duration, animation phase, cursor blink, discovery data,
+and fixture output. Prove that the control hook is absent from product builds,
+then run the zero-tolerance comparator and inspect both native frames. Stable
+geometry with a changing label is not a deterministic pixel oracle.
+
+Native readiness must describe a frame that the compositor can actually show.
+When a test control is consumed after overlay or draw-data construction, defer
+its snapshot to a new forced frame and publish readiness only after that frame
+has presented successfully. A model snapshot written before present can race a
+partially rasterized CPU or GPU surface and is not visual evidence. Retained
+desktop captures must first establish foreground ownership, reject detectable
+native dialogs or occluders, position the entire physical client area on the
+capture display, reject non-opaque or uninitialized client pixels, and then
+obtain two consecutive exact full-frame pixel digests within a bounded
+deadline. Freeze live editor bytes as well as clocks and animation before
+comparing renderers; an active cursor or partially typed command is volatile
+visual state. Matching captures from two renderers do not prove correctness if
+both captured the same dialog, stale frame, or occluder; inspect each retained
+native frame independently.
+
+Frame-skip caches are presentation state, not content-only state. Their identity
+must include the physical surface width and height so a content-preserving
+resize still repaints every newly exposed pixel. Record a reusable frame only
+after native presentation succeeds; acquisition or presentation failure must
+leave identical content eligible for retry. Test same-content extent changes,
+failed-present retry semantics, initial native sizing, and cross-backend full-
+client equality. A later input event that happens to repaint an incomplete
+surface does not make the resize path correct.
+
 The repository's deterministic visual policy has zero channel tolerance, zero
 changed-pixel ratio, and no default masks. A change to one channel in one pixel
 must fail with the first changed coordinate, changed bounds, counts, and diff
@@ -432,6 +500,16 @@ disconnect, restart, and shutdown. Then add repeated native stress for real
 PTY/process/window behavior. Arbitrary sleeps, retry-until-pass, and timing-only
 assertions are invalid evidence. Preserve and investigate the first failure of a
 flaky run.
+
+Multi-session shutdown must broadcast an idempotent termination request to all
+active, background, split, pane-tab, parked, and top-level-window PTY owners
+before any sequential drop or worker join begins. Test one and many sessions,
+window-close and application-quit paths, repeated requests, and the final event-
+loop callback. On platforms where a pseudoterminal host can reparent children,
+native cleanup evidence must capture exact platform-owned process identities
+before closing the owner rather than relying only on parent traversal. Assert
+that the application and every captured identity exit, that no orphan remains,
+and that total many-session wall-clock shutdown stays within a declared ceiling.
 
 Persistence tests must cover canonical round trip, every supported predecessor,
 corruption, truncation, duplicate keys, read-only/disk-full/interrupted writes,
@@ -590,7 +668,15 @@ tokens, environment values, private history, personal paths, or remote host data
 
 ### 12. Document the resulting truth
 
-Follow [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md). Update, as applicable:
+Follow [`docs/DOCUMENTATION.md`](docs/DOCUMENTATION.md).
+
+Publish only current implementation, observable limitations, tests, and release
+status. Do not publish business plans or future feature names, designs, or
+delivery plans, including free or open-source features. During merges, review
+newly restored documentation and checker requirements for the same boundary.
+Keep current security, native, and release evidence requirements intact.
+
+Update, as applicable:
 
 - user guides for setup, workflow, failure, recovery, disable/uninstall, and
   migration;

@@ -149,20 +149,25 @@ the same commit passed all three ordinary free checks and skipped both
 stable-release-only jobs. Signing and publication remained skipped, so the
 public repository correctly remained unchanged.
 
-## One-time external configuration still required
+## Current external configuration and publication gates
 
-The 2026-09-06 authenticated re-audit found zero configured Actions variables,
-zero configured Actions secrets, and no independent release approval. The first
-public Linux release is therefore correctly blocked; no placeholder credential
-or reduced-review path was introduced.
+The 2026-09-06 authenticated metadata check confirmed that both required Actions
+secrets and both required variables are registered. Their values were not read
+or disclosed. Registration alone does not prove key validity, an offline backup,
+the GitHub App installation scope, or a successful signed publication.
 
-- Generate and protect the real minisign release key; configure
+PR #21 still requires a current independent approval and a merger other than
+its author. No placeholder credential or reduced-review path was introduced.
+
+- Keep the real Minisign release key protected and backed up offline. The
   `AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY` and
-  `AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY` in the private source repository.
-- Register a GitHub App with repository **Contents: read/write** and
-  **Administration: read-only**, install it on `automexia-releases` only, and set
+  `AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY` settings are registered in the private
+  source repository; the guarded signing job verifies that they match.
+- The GitHub App must have repository **Contents: read/write** and
+  **Administration: read-only**, installed on `automexia-releases` only. Its
   `AUTOMEXIA_DISTRIBUTION_APP_CLIENT_ID` plus
-  `AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY` in the private source repository.
+  `AUTOMEXIA_DISTRIBUTION_APP_PRIVATE_KEY` settings are registered in the private
+  source repository; publication still checks the actual installation and scope.
 - Add a second trusted reviewer who can approve the exact release head and merge
   independently. The private GitHub Free source repository cannot enforce this
   with a paid protected environment or private-repository ruleset, so the

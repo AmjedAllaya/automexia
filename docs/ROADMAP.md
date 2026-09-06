@@ -2,28 +2,16 @@
 
 ## Product direction
 
-Automexia is a free, open-source, keyboard-first terminal. The public roadmap is
-limited to ordinary terminal quality, safe interoperability, accessibility,
-recovery, packaging, and release evidence. It is not a disclosure of advanced
-product plans, commercial features, pricing, or internal implementation phases.
+Automexia is a free, open-source, keyboard-first terminal. This page records
+current implementation and release evidence only.
 
 ## Current public focus
 
-1. Complete native correctness and lifecycle evidence on Windows, Linux, and
-   macOS.
-2. Improve startup, input, PTY, resize, rendering, shutdown, and long-session
-   resource behavior.
-3. Finish accessibility evidence for keyboard navigation, focus, high contrast,
-   reduced motion, scaling, and supported screen readers.
-4. Make configuration, migration, recovery, cleanup, and uninstall predictable.
-5. Preserve terminal compatibility, Unicode behavior, image protocols, shell
-   integration, search, selection, and clipboard behavior.
-6. Complete signed packaging and public release evidence before claiming stable
-   installers.
-7. Improve getting-started, reference, troubleshooting, contributor, and manual
-   testing documentation.
-8. Keep optional source foundations disabled or release-gated until their exact
-   security, native, performance, resource, and accessibility gates pass.
+The existing source covers terminal sessions, tabs, panes, search, selection,
+clipboard, images, shell integration, keyboard navigation, configuration, and
+local inventory. [Features](FEATURES.md) identifies each current user path and
+its release limitations. Native accessibility, hardware, packaging, and
+long-duration evidence remain external where they have not been collected.
 
 ### Public Linux distribution status
 
@@ -35,7 +23,7 @@ not evidence that a public package exists.
 |---|---|---|
 | **Fully done (source and policy)** | Six-package x64/Arm64 DEB, RPM, and portable archive allowlist; source-owned nFPM revision; bounded manifest; checksums; SBOMs; Minisign; create-once immutable-release and attestation verification; fail-closed website handoff | Preserve the exact package, permission, immutability, and no-activation-before-verification contracts. |
 | **Fully done (unsigned native rehearsal)** | Exact commit `09ae5d2723542a447947b8cf1d2ddd405d7a7a9e` passed quality without retry, both native package/install lifecycles, aggregation, and independent byte-for-byte manifest reconstruction at SHA-256 `4edcd25c4bf44a97bf774acbbeb679f645052b89f40c3dff546133fbd0914b97` in hosted run `33994146068`; PR CI run `33994118326` passed and correctly skipped stable-only jobs | Repeat after any source, dependency, toolchain, package, or workflow change. The rehearsal is intentionally non-distributable. |
-| **External prerequisite** | Official signed Linux Early Access publication | Configure the protected Minisign key and repository-scoped GitHub App, add an independent reviewer/merger, merge `release/linux/0.4.0`, and let the guarded workflow publish and attest the immutable prerelease. |
+| **External prerequisite** | Official signed Linux Early Access publication | All four credential settings are registered. Key/App validity, offline backup, current independent approval and a distinct merger remain required. Only the guarded post-merge workflow can publish and attest the immutable prerelease. |
 | **Not done** | Public download activation | Consume only the workflow-generated activation handoff, verify every live asset from a signed-out client, then enable the landing-page routes. |
 
 The exact current status and remaining external gates are documented in
@@ -56,15 +44,6 @@ The complete design and evidence ledger is
 The cache lifecycle and cleanup guide is
 [Development cache and build storage](DEVELOPMENT-CACHE.md).
 
-## Direction after the first stable release
-
-Only high-level category labels are public: diagnostic work, production
-operations, Automation Studio, optional LLM orchestration, video editing, and
-other specialized extensions. Their requirements, architecture, sequencing,
-business model, pricing, and validation plans remain private. Listing a category
-here is not a feature promise, implementation claim, schedule, or commercial
-offer.
-
 ## Release principles
 
 A public free feature moves forward only when:
@@ -83,7 +62,7 @@ a feature available.
 
 ## Publication boundary
 
-Unreleased advanced capabilities, specialist extensions, commercial products,
+All future capabilities, including free and open-source ideas, commercial products,
 market analysis, pricing, detailed schemas, algorithms, UX state machines, and
 phase-by-phase execution plans are maintained only in the ignored private
 workspace. Public documents should not link to or summarize that material.

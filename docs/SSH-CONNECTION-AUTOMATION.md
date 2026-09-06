@@ -39,6 +39,12 @@ These headings preserve source-owned feature-matrix references after the
 public documentation consolidation. They do not expand shipped behavior,
 reintroduce private plans, or replace the current status stated above.
 
+### F2/D5.0 planning dependency
+
+The automation reviews documented by this source consume only the bounded,
+capability-free F2/D5.0 profile and plan contract. They do not grant network,
+process, PTY, authentication, or credential authority.
+
 ### M6 Review Only Implementation
 
 This compatibility anchor retains traceability to the current public

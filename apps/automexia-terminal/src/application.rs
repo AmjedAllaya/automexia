@@ -385,11 +385,14 @@ impl Application<'_> {
     /// only application-level per-window destruction path; explicit Quit is
     /// deliberately separate and remains process-wide.
     fn close_window_route(&mut self, window_id: rio_backend::event::WindowId) -> bool {
-        let route_ids = self
+        let (route_ids, shutdown_requests) = self
             .router
             .routes
             .get(&window_id)
-            .map(|route| route.window.screen.context_manager.route_ids())
+            .map(|route| {
+                let manager = &route.window.screen.context_manager;
+                (manager.route_ids(), manager.request_pty_shutdown())
+            })
             .unwrap_or_default();
         let Some(route) = self.router.remove_window(window_id) else {
             return false;
@@ -398,7 +401,17 @@ impl Application<'_> {
             self.scheduler.unschedule_window(route_id);
         }
         drop(route);
+        tracing::debug!(shutdown_requests, "window PTY shutdown broadcast completed");
         true
+    }
+
+    fn request_application_exit(&mut self, event_loop: &ActiveEventLoop) {
+        let shutdown_requests = self.router.request_pty_shutdown();
+        tracing::debug!(
+            shutdown_requests,
+            "application PTY shutdown broadcast completed"
+        );
+        event_loop.exit();
     }
 
     fn close_window_and_maybe_exit(
@@ -929,12 +942,21 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::Exit | RioEvent::Quit) => {
-                if let Some(route) = self.router.routes.get_mut(&window_id) {
-                    if self.config.confirm_before_quit {
-                        route.confirm_quit();
+                let should_exit =
+                    if let Some(route) = self.router.routes.get_mut(&window_id) {
+                        if self.config.confirm_before_quit
+                            && !route.window.screen.renderer.confirm_quit.is_active()
+                        {
+                            route.confirm_quit();
+                            false
+                        } else {
+                            true
+                        }
                     } else {
-                        route.quit();
-                    }
+                        false
+                    };
+                if should_exit {
+                    self.request_application_exit(event_loop);
                 }
             }
             RioEventType::Rio(RioEvent::GlyphProtocolInstalled {
@@ -3086,6 +3108,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     // This is irreversible - if this event is emitted, it is guaranteed to be the last event that gets emitted.
     // You generally want to treat this as an “do on quit” event.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        // OS-driven termination may bypass the explicit Quit event. Start every
+        // owned PTY concurrently before waiting on settings, services, or route
+        // destructors in that path as well.
+        let shutdown_requests = self.router.request_pty_shutdown();
+        tracing::debug!(shutdown_requests, "final PTY shutdown broadcast completed");
         if !self.preference_writer.shutdown(Duration::from_secs(2)) {
             tracing::warn!(
                 "saved terminal settings did not finish flushing before shutdown"

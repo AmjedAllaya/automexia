@@ -47,6 +47,13 @@ REQUIRED_POLICY_HEADINGS = (
     "## Never document in the repository",
     "## Publication review",
 )
+PUBLIC_FUTURE_PLANNING = re.compile(
+    r"^#{1,6}\s+(?:direction after|future features?)\b"
+    r"|^Status:\s*(?:planned public|proposed public)\b"
+    r"|\b(?:high-level direction only|separate (?:optional )?later direction only"
+    r"|preserved as separate later extensions)\b",
+    re.IGNORECASE | re.MULTILINE,
+)
 
 
 class DocumentationPackError(ValueError):
@@ -332,6 +339,12 @@ def validate_private_boundary(root: Path) -> dict[str, int]:
             raise DocumentationPackError(
                 "public documentation links into the ignored private workspace: "
                 f"{relative.as_posix()}"
+            )
+        # Diagnose the owning page only: repeating matched planning text in CI
+        # would disclose the material this boundary is intended to protect.
+        if PUBLIC_FUTURE_PLANNING.search(text):
+            raise DocumentationPackError(
+                f"public documentation exposes future planning: {relative.as_posix()}"
             )
         public_count += 1
     return {"files": public_count, "historical": 0, "duplicates": 0}

@@ -12,6 +12,7 @@ mod openssh_tunnels;
 mod planner;
 mod provider_auth;
 mod state;
+mod strict_json;
 mod validation;
 mod workspace;
 
@@ -47,6 +48,8 @@ pub use openssh_tunnels::{
 pub use planner::{fingerprint_profile, fingerprint_recipe, resolve_connection_plan};
 pub use provider_auth::*;
 pub use state::{apply_auth_event, apply_result_event};
+#[doc(hidden)]
+pub use strict_json::from_json_slice_without_duplicate_keys;
 pub use validation::{
     parse_connection_definition_json, parse_connection_intent_json,
     parse_connection_observation_json, parse_connection_receipt_json,

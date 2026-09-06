@@ -11,11 +11,6 @@ internal phase plan and does not enumerate private advanced or commercial work.
 | Managed SSH and provider-neutral launch foundations | Source/test-owned but availability remains release-gated where the public feature catalog says so; exact review, argument, trust, cancellation, and external-credential boundaries apply. |
 | Multi-cloud and orchestrator adapters | Source/test-owned cached public metadata boundaries are documented; provider authentication remains external and unshipped or unassured paths are not public availability claims. |
 | Public extension ecosystem | Only the deny-by-default extension contract, lifecycle, capability, disable/uninstall, and failure-isolation boundary is public; unpublished product/marketplace plans remain private. |
-| Semantic Diagnostic Navigator | High-level direction only; detailed product, architecture, sequencing, and commercialization remain private and no availability is claimed here. |
-| Situation-aware Production Operations | High-level direction only; detailed workflows and commercial planning remain private and existing provider/approval systems retain authority. |
-| Automation Studio | Separate later direction only; detailed product and commercial plans remain private and it is not part of the current public terminal offer. |
-| Optional LLM Orchestration extension | Separate optional later direction only; detailed model/provider/commercial plans remain private and no hidden AI authority is implied. |
-| Video-editing and other specialized domains | Preserved as separate later extensions with independent validation; detailed private plans are not public commitments or current terminal scope. |
 
 ## Truth rule
 

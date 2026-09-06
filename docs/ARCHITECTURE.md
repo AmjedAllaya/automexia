@@ -103,14 +103,29 @@ The session owner is responsible for:
 - joining owned readers, writers, and workers.
 
 Unix process groups and Windows Job Objects or equivalent platform mechanisms
-are used where applicable. A failed optional feature must not interrupt the
-basic local shell path.
+are used where applicable. Every ordinary and exact Windows ConPTY child is
+created suspended, assigned to its session's kill-on-close Job Object, and only
+then resumed. Window and application teardown first broadcast one idempotent
+shutdown request to every active, background, split, pane-tab, and parked
+session; only then may route destruction join workers. This keeps per-session
+graceful deadlines concurrent instead of multiplying them by the number of
+sessions. A failed optional feature must not interrupt the basic local shell
+path. [ADR 0038](adr/0038-owned-pty-trees-and-broadcast-shutdown.md) owns this
+lifecycle invariant.
 
 ## Renderer and snapshots
 
 The renderer consumes immutable, generation-labelled snapshots. Expensive
 layout, search, image, font, or accessibility work is bounded and cancellable.
 A result is published only if its route and generation are still current.
+Feature-gated native visual readiness is published only after the matching
+frame has presented; a control consumed after draw-data construction forces a
+new frame rather than pairing new state with old or partially rendered pixels.
+The CPU renderer's frame-skip identity includes the physical surface extent,
+and its reusable-frame cache advances only after successful native
+presentation. Therefore an unchanged terminal model still repaints newly
+exposed pixels after a client resize, while a failed present remains eligible
+for an identical retry.
 
 Frames preserve terminal-cell geometry, grapheme widths, clipping, z-order,
 cursor position, selection, scroll offsets, and modal composition. Renderer
@@ -132,6 +147,11 @@ Automexia defaults remain authoritative. Compatibility profiles are explicit,
 versioned, collision-tested, and layered before user overrides. Invalid
 compilation preserves the previous complete binding registry, while native
 shell control keys retain documented fallthrough.
+
+The current default table still intercepts bare Ctrl+R/Ctrl+D for cloning;
+fallthrough is therefore profile- and mode-specific, not a universal current
+guarantee. Both the typed registry and legacy fallback affect current input
+routing. See [native shell key status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys).
 
 ## Configuration transaction
 
@@ -241,6 +261,21 @@ owners, limits, or evidence are removed or weakened.
 A source test, cross-compile, or mocked platform result cannot replace native
 runtime evidence. Documentation must distinguish implemented source, shipped
 behavior, and external release prerequisites.
+
+## Current maintenance ownership
+
+The existing Rust terminal/session, VT, renderer, platform and capability
+boundaries remain authoritative. Fundamental input, PTY, reflow, focus and
+rendering behavior belongs to core owners. Optional decoding and file
+validation use the existing image owners, not the parser or paint hot path.
+
+[Terminal maintenance status](TERMINAL-MAINTENANCE-REQUIREMENTS.md) and
+[terminal interaction status](TERMINAL-INTERACTION-REQUIREMENTS.md) identify
+existing source owners and known limitations. They are not implementation
+plans or evidence that every native scenario has passed.
+
+Dependencies, capabilities, persistence schemas, protocols and threading
+boundaries remain subject to the existing ADR and architecture checks.
 
 ## Public architecture boundary
 

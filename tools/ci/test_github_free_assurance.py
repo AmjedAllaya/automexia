@@ -32,6 +32,7 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.policy = ASSURANCE.load_policy()
 
     def test_current_policy_and_profile_expansion_are_complete(self) -> None:
+        ASSURANCE.validate_readiness_runner()
         self.assertEqual(self.policy["tools"], ASSURANCE.REQUIRED_TOOLS)
         self.assertEqual(self.policy["schema"], 2)
         self.assertEqual(
@@ -47,6 +48,48 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
             ],
         )
         self.assertIn("fuzz", ASSURANCE.expand_profile(self.policy, "deep-source"))
+
+    def test_readiness_deadline_cleanup_and_real_process_tests_cannot_be_weakened(self) -> None:
+        source = ASSURANCE.READINESS_RUNNER_PATH.read_text(encoding="utf-8")
+        # Each mutation removes one independent part of the failure mode seen in
+        # the protected push: deadline, memory bound, descendant ownership, or
+        # the real child-process oracle. The production checker must reject all.
+        mutations = {
+            "deadline relaxation": (
+                "Duration::from_secs(30 * 60)",
+                "Duration::from_secs(90 * 60)",
+            ),
+            "output ceiling removal": (
+                "SUMMARIZED_CARGO_STDOUT_LIMIT",
+                "UNBOUNDED_CARGO_STDOUT",
+            ),
+            "unix descendant cleanup removal": (
+                "command.wrap(ProcessGroup::leader());",
+                "",
+            ),
+            "windows descendant cleanup removal": (
+                "command.wrap(JobObject);",
+                "",
+            ),
+            "deadline test removal": (
+                "summarized_command_deadline_terminates_the_owned_child",
+                "removed_deadline_test",
+            ),
+            "zero-bound test removal": (
+                "summarized_command_rejects_zero_bounds_before_spawn",
+                "removed_zero_bound_test",
+            ),
+            "deadline diagnostics removal": (
+                'String::from_utf8_lossy(&error.stdout).contains("bounded-child-waiting")',
+                "true",
+            ),
+        }
+        for name, (needle, replacement) in mutations.items():
+            with self.subTest(name=name):
+                self.assertIn(needle, source)
+                mutated = source.replace(needle, replacement, 1)
+                with self.assertRaises(ASSURANCE.AssuranceError):
+                    ASSURANCE.validate_readiness_runner_source(mutated)
 
     def test_missing_security_step_or_tool_version_is_rejected(self) -> None:
         policy = copy.deepcopy(self.policy)
@@ -167,6 +210,61 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         commands = [call.args[0] for call in runner.call_args_list]
         self.assertEqual(commands[0][0], "cargo-audit")
         self.assertEqual(commands[1][0], "cargo-deny")
+
+    def test_dependency_scanners_share_the_managed_short_cache_environment(self) -> None:
+        if os.name != "nt":
+            self.skipTest("the historical path exhaustion is Windows-specific")
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            deep_root = Path(temporary).joinpath(*(["nested"] * 12))
+            deep_root.mkdir(parents=True)
+            cache_override = Path(temporary) / "managed-cache"
+            cargo_homes: list[Path] = []
+            temporary_roots: list[Path] = []
+
+            def command(
+                _policy: dict[str, object], name: str, *arguments: str
+            ) -> list[str]:
+                return [name, *arguments]
+
+            def capture_subprocess(
+                _command: list[str], **kwargs: object
+            ) -> mock.Mock:
+                environment = kwargs["env"]
+                assert isinstance(environment, dict)
+                cargo_home = Path(environment["CARGO_HOME"])
+                cargo_homes.append(cargo_home)
+                roots = {Path(environment[name]) for name in ("TMP", "TEMP", "TMPDIR")}
+                self.assertEqual(len(roots), 1)
+                temporary_roots.extend(roots)
+                return mock.Mock(returncode=0)
+
+            expected_cargo_home = cache_override / "mutable" / "runtime" / "cargo-home"
+            expected_temporary_parent = cache_override / "temporary"
+
+            # The real runner must construct the environment. Mocking run()
+            # here would repeat the historical blind spot that missed a deep
+            # Win32 path only after Cargo Deny cloned its advisory repository.
+            with mock.patch.dict(
+                os.environ, {"AUTOMEXIA_DEV_CACHE_DIR": str(cache_override)}
+            ), mock.patch.object(ASSURANCE, "ROOT", deep_root), mock.patch.object(
+                ASSURANCE, "tool_command", side_effect=command
+            ), mock.patch.object(
+                ASSURANCE.subprocess, "run", side_effect=capture_subprocess
+            ):
+                ASSURANCE._PROCESS_TEMPORARY = None
+                try:
+                    ASSURANCE.run_step(self.policy, "dependency-security")
+                    ASSURANCE.run_step(self.policy, "dependency-vetting")
+                finally:
+                    ASSURANCE._PROCESS_TEMPORARY = None
+
+            self.assertEqual(len(cargo_homes), 3)
+            self.assertEqual(set(cargo_homes), {expected_cargo_home})
+            self.assertEqual(len(temporary_roots), 3)
+            for temporary_root in temporary_roots:
+                self.assertEqual(temporary_root.parent, expected_temporary_parent)
+                self.assertNotIn(deep_root, temporary_root.parents)
+            self.assertNotIn(deep_root, expected_cargo_home.parents)
 
     def test_deep_source_profile_fails_closed_off_linux(self) -> None:
         with mock.patch.object(ASSURANCE.platform, "system", return_value="Windows"):
@@ -297,6 +395,81 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                 self.assertTrue(download.url.startswith("https://github.com/"))
                 self.assertRegex(download.sha256, r"^[0-9a-f]{64}$")
                 self.assertLessEqual(ASSURANCE.MAX_TOOL_BINARY_BYTES, ASSURANCE.MAX_TOOL_ARCHIVE_BYTES)
+
+    def test_install_tools_uses_disposable_managed_staging(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            deep_root = Path(temporary).joinpath(*(["nested"] * 12))
+            deep_root.mkdir(parents=True)
+            cache_override = Path(temporary) / "managed-cache"
+            install_roots: list[Path] = []
+            build_roots: list[Path] = []
+            commands: list[list[str]] = []
+
+            def capture_run(
+                command: list[str],
+                _label: str,
+                policy: dict[str, object],
+                **kwargs: object,
+            ) -> None:
+                self.assertEqual(policy, self.policy)
+                commands.append(command)
+                if command[:2] == ["cargo", "install"]:
+                    install_roots.append(Path(command[command.index("--root") + 1]))
+                    build_roots.append(Path(command[command.index("--target-dir") + 1]))
+                self.assertIn("cache", kwargs)
+
+            # Mock only external producers and final publication. The production
+            # installer still chooses both temporary paths and must release them
+            # after building one complete toolset.
+            with mock.patch.dict(
+                os.environ, {"AUTOMEXIA_DEV_CACHE_DIR": str(cache_override)}
+            ), mock.patch.object(ASSURANCE, "ROOT", deep_root), mock.patch.object(
+                ASSURANCE, "toolset_is_valid", side_effect=[False, False, True]
+            ), mock.patch.object(
+                ASSURANCE, "quarantine_invalid_toolset"
+            ), mock.patch.object(
+                ASSURANCE.dev_cache,
+                "cache_lease",
+                return_value=contextlib.nullcontext(),
+            ), mock.patch.object(
+                ASSURANCE, "platform_downloads", return_value={}
+            ), mock.patch.object(
+                ASSURANCE,
+                "tool_command",
+                side_effect=lambda _policy, name, *arguments, **_kwargs: [
+                    name,
+                    *arguments,
+                ],
+            ), mock.patch.object(
+                ASSURANCE, "run", side_effect=capture_run
+            ), mock.patch.object(
+                ASSURANCE, "write_toolset_manifest"
+            ), mock.patch.object(ASSURANCE, "publish_toolset") as publish:
+                ASSURANCE.install_tools(self.policy)
+
+            staging_parent = cache_override / "staging"
+            expected_final = (
+                cache_override
+                / "toolsets"
+                / ASSURANCE.dev_cache.toolset_id(self.policy["tools"])
+            )
+            self.assertEqual(len(install_roots), 4)
+            self.assertEqual(len(build_roots), 4)
+            self.assertEqual(len(set(install_roots)), 1)
+            self.assertEqual(len(set(build_roots)), 1)
+            install_root = install_roots[0]
+            build_root = build_roots[0]
+            self.assertEqual(install_root.parent, staging_parent)
+            self.assertEqual(build_root.parent, staging_parent)
+            self.assertNotIn(deep_root, install_root.parents)
+            self.assertNotIn(deep_root, build_root.parents)
+            self.assertFalse(install_root.exists())
+            self.assertFalse(build_root.exists())
+            self.assertTrue(any(command[:2] == ["cargo", "install"] for command in commands))
+            publish.assert_called_once()
+            self.assertEqual(publish.call_args.args[0], self.policy)
+            self.assertEqual(publish.call_args.args[1], install_root)
+            self.assertEqual(publish.call_args.args[2], expected_final)
 
     def test_checksum_pinned_zip_and_tar_members_extract_to_the_isolated_cache(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:

@@ -19,13 +19,15 @@ This compatibility anchor retains traceability to the current public
 source, test, and evidence owner. Detailed future or commercial planning
 remains private, and unavailable native evidence remains an explicit gate.
 
-## Public experience status
+## Current implementation status
 
-Status: planned public experience summary.
+Status: no public runtime implementation or activation.
+
+This path is retained only for existing source and assurance references.
+It does not specify a feature, future design, or delivery plan.
 
 ## Interaction requirements
 
-Any future surface must be keyboard-first, pane-scoped, non-modal by default,
-textually disclose environment and risk, preserve focus, avoid color-only
-meaning, support high contrast and reduced motion, and require explicit review
-without implicit Enter or execution.
+No runtime surface, shortcut, background refresh, or executor is registered by
+this compatibility path. Opening ordinary terminal surfaces does not activate
+it. The current command and keyboard references remain authoritative.

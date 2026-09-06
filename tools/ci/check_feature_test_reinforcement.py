@@ -91,14 +91,39 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "boundary-only CMD D",
             "pre-epoch",
             "timezone or DST transitions",
+            "resize followed by previous/next command navigation",
         ),
         "verification_reinforcements": (
             "source prompt, following-prompt boundary",
             "no shell-provided timestamp text",
+            "duplicate IDs",
+            "successful frame presentation",
         ),
         "checker_reinforcements": (
             "local timezone conversion",
             "no-PTY side-effect coverage",
+            "resize-navigation assurance",
+            "post-present publication",
+        ),
+    },
+    "pty-scheduler-process-lifecycle": {
+        "needed_tests": (
+            "Ordinary and exact Windows ConPTY",
+            "broadcast-first teardown",
+            "parked",
+        ),
+        "verification_reinforcements": (
+            "exact temporary-fixture process identities before close",
+            "ConPTY reparenting",
+            "multi-session wall-clock ceiling",
+            "idempotent broadcasts",
+            "no sequential deadline multiplication",
+        ),
+        "checker_reinforcements": (
+            "ordinary Job ownership",
+            "broadcast-before-join ordering",
+            "exact pre-close process identity",
+            "repeated-request idempotence",
         ),
     },
     "renderer-fonts-responsive-ui": {
@@ -112,6 +137,14 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "responsive reclamping",
             "full ISO local date and time",
             "compact date-time fallbacks",
+            "one badge per result identity and display row",
+            "measured label rectangles",
+            "prompt-context paint rectangles",
+            "frozen command duration",
+            "post-present checkpoint publication",
+            "two consecutive identical full-frame pixel digests",
+            "physical surface width and height",
+            "successful-present-only cache recording",
         ),
         "verification_reinforcements": (
             "42-pixel header",
@@ -121,13 +154,62 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "persistent idle indicator",
             "painted command datetime label",
             "terminal cells, PTY bytes",
+            "every command-result draw rectangle",
+            "cross-owner non-intersection",
+            "zero changed channel tolerance",
+            "successful present completion",
+            "native dialog occlusion",
+            "two identical full-frame digests",
+            "full opaque on-screen client pixels",
+            "skippable only after successful presentation",
         ),
         "checker_reinforcements": (
             "184-pixel default tab cap",
             "modal event ownership",
             "no-fabrication behavior",
+            "one-badge-per-row ownership",
+            "prompt-context paint rectangles",
+            "frozen command duration",
+            "resize-navigation sequencing",
+            "forced next-frame control handling",
+            "dialog-occlusion rejection",
+            "independent frame inspection",
+            "physical extent identity",
+            "fixed unsent editor input",
         ),
-    }
+    },
+    "windows-tabs-sessions-input": {
+        "needed_tests": (
+            "resizes immediately before Ctrl+Shift+Up/Down",
+            "intersecting badge rectangles",
+            "intersecting prompt-context rectangles",
+            "broadcast-first teardown",
+            "ConPTY reparenting",
+        ),
+        "verification_reinforcements": (
+            "all command-result paint rectangles",
+            "visible snapshot publication",
+            "six-second controlled Windows",
+            "sequential deadline multiplication",
+        ),
+        "checker_reinforcements": (
+            "resize-before-shortcut ordering",
+            "no-PTY proof",
+            "pre-close owned process identities",
+            "application and descendant exit",
+        ),
+    },
+}
+
+NATIVE_CONTRACT_SOURCES = {
+    "screen": "apps/automexia-terminal/src/screen/mod.rs",
+    "application": "apps/automexia-terminal/src/application.rs",
+    "context": "apps/automexia-terminal/src/context/mod.rs",
+    "router": "apps/automexia-terminal/src/router/mod.rs",
+    "windows_pty": "teletypewriter/src/windows/mod.rs",
+    "windows_conpty": "teletypewriter/src/windows/conpty.rs",
+    "sugarloaf_cpu": "sugarloaf/src/renderer/cpu.rs",
+    "native_driver": "tests/integration/resize-stress-windows.ps1",
 }
 
 
@@ -213,6 +295,240 @@ def _load_json(path: Path, owner: str) -> Any:
         return json.loads(path.read_text(encoding="utf-8"), object_pairs_hook=reject_duplicate_keys)
     except (OSError, UnicodeError, json.JSONDecodeError) as error:
         raise ReinforcementError(f"cannot read {owner}: {error}") from error
+
+
+def _source_slice(text: str, start: str, end: str, owner: str) -> str:
+    start_index = text.find(start)
+    if start_index < 0:
+        raise ReinforcementError(f"{owner} is missing {start!r}")
+    end_index = text.find(end, start_index + len(start))
+    if end_index < 0:
+        raise ReinforcementError(f"{owner} is missing boundary {end!r}")
+    return text[start_index:end_index]
+
+
+def _require_fragments(text: str, fragments: tuple[str, ...], owner: str) -> None:
+    for fragment in fragments:
+        if fragment not in text:
+            raise ReinforcementError(f"{owner} is missing invariant {fragment!r}")
+
+
+def _require_order(text: str, fragments: tuple[str, ...], owner: str) -> None:
+    cursor = 0
+    for fragment in fragments:
+        position = text.find(fragment, cursor)
+        if position < 0:
+            raise ReinforcementError(
+                f"{owner} does not preserve required order at {fragment!r}"
+            )
+        cursor = position + len(fragment)
+
+
+def _validate_native_contract_sources(sources: dict[str, str]) -> None:
+    missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
+    if missing:
+        raise ReinforcementError(f"native assurance sources are missing {sorted(missing)}")
+
+    frame = _source_slice(
+        sources["screen"],
+        "let force_present_for_control = self.native_test_present_after_control;",
+        "// Return each panel's snapshot buffers",
+        "native frame publication",
+    )
+    _require_fragments(
+        frame,
+        (
+            "(!control_changed)",
+            "force_present_for_control",
+            "if !frame_dropped",
+            "self.pending_native_snapshot = None",
+        ),
+        "native frame publication",
+    )
+    _require_order(
+        frame,
+        (
+            "self.process_native_test_control();",
+            "write_native_resize_snapshot(",
+            "if should_present {",
+            "self.sugarloaf.render",
+            "let frame_dropped",
+            "if !frame_dropped",
+            "pending.publish()",
+        ),
+        "native frame publication",
+    )
+
+    application = sources["application"]
+    close_window = _source_slice(
+        application,
+        "fn close_window_route",
+        "fn request_application_exit",
+        "window shutdown",
+    )
+    _require_order(
+        close_window,
+        ("manager.request_pty_shutdown()", "remove_window", "drop(route)"),
+        "window shutdown",
+    )
+    application_exit = _source_slice(
+        application,
+        "fn request_application_exit",
+        "fn close_window_and_maybe_exit",
+        "application shutdown request",
+    )
+    _require_order(
+        application_exit,
+        ("self.router.request_pty_shutdown()", "event_loop.exit()"),
+        "application shutdown request",
+    )
+    final_exit = _source_slice(
+        application,
+        "fn exiting(&mut self",
+        "#[cfg(all(",
+        "final application shutdown",
+    )
+    _require_order(
+        final_exit,
+        (
+            "self.router.request_pty_shutdown()",
+            "self.router.routes.clear()",
+            "std::process::exit(0)",
+        ),
+        "final application shutdown",
+    )
+
+    context = _source_slice(
+        sources["context"],
+        "pub fn request_pty_shutdown(&self) -> bool",
+        "pub fn set_selection",
+        "context shutdown idempotence",
+    )
+    _require_order(
+        context,
+        ("self.shutdown_requested.swap(true", "send(Msg::Shutdown)"),
+        "context shutdown idempotence",
+    )
+    route_quit = _source_slice(
+        sources["router"], "pub fn quit(&mut self)", "pub fn open_config", "route quit"
+    )
+    _require_fragments(route_quit, ("context_manager.quit()",), "route quit")
+    if "process::exit" in route_quit:
+        raise ReinforcementError("route quit bypasses application-owned shutdown")
+
+    ordinary_pty = _source_slice(
+        sources["windows_pty"],
+        "pub fn create_pty(",
+        "pub fn create_exact_pty(",
+        "ordinary Windows PTY ownership",
+    )
+    if not re.search(
+        r"conpty::new\(\s*None,.*?\s+true,\s*true,\s*columns,\s*rows,\s*\)",
+        ordinary_pty,
+        flags=re.DOTALL,
+    ):
+        raise ReinforcementError(
+            "ordinary Windows PTY must inherit its environment and own a managed Job"
+        )
+
+    conpty_launch = sources["windows_conpty"]
+    _require_fragments(
+        conpty_launch,
+        (
+            "limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;",
+            "CREATE_SUSPENDED",
+        ),
+        "Windows ConPTY launch",
+    )
+    _require_order(
+        conpty_launch,
+        ("CreateProcessW(", "AssignProcessToJobObject(", "ResumeThread("),
+        "Windows ConPTY launch",
+    )
+
+    cpu_renderer = sources["sugarloaf_cpu"]
+    cpu_frame = _source_slice(
+        cpu_renderer,
+        "let frame_hash = {",
+        "/// Paint one primitive phase",
+        "CPU frame presentation cache",
+    )
+    _require_fragments(
+        cpu_frame,
+        (
+            "hash_surface_extent(&mut h, ctx.width_px, ctx.height_px);",
+            "cache.can_skip_frame(frame_hash)",
+            "cache.record_presented_frame(frame_hash)",
+        ),
+        "CPU frame presentation cache",
+    )
+    _require_order(
+        cpu_frame,
+        (
+            "hash_surface_extent(&mut h, ctx.width_px, ctx.height_px);",
+            "cache.can_skip_frame(frame_hash)",
+            "buffer.present()",
+            "cache.record_presented_frame(frame_hash)",
+        ),
+        "CPU frame presentation cache",
+    )
+
+    driver = sources["native_driver"]
+    capture = _source_slice(
+        driver,
+        "public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath)",
+        "private static FrameStats CaptureClientFrameCore",
+        "native stable capture",
+    )
+    _require_fragments(
+        capture,
+        (
+            "previousFrame.PixelDigest",
+            "current.PixelDigest",
+            "two identical full-pixel captures",
+        ),
+        "native stable capture",
+    )
+    _require_fragments(
+        driver,
+        (
+            "RequireExclusiveCaptureOwnership(hWnd);",
+            'className.ToString() != "#32770"',
+            "PixelDigest = pixelDigest",
+            "NonOpaquePixelCount = nonOpaquePixels",
+            "AMX_CAPTURE_INPUT_59217",
+            "[int]$MaximumOwnedShutdownMilliseconds = 6000",
+            "owned_process_tree_shutdown",
+        ),
+        "native visual and lifecycle driver",
+    )
+    shutdown = _source_slice(
+        driver,
+        "$script:testStage = 'application process-tree shutdown'",
+        "Write-Host ($successSummary",
+        "native process shutdown",
+    )
+    _require_order(
+        shutdown,
+        (
+            "Get-AutomexiaOwnedProcessIds $process.Id $configRoot",
+            "$process.CloseMainWindow()",
+            "$remainingOwnedProcesses",
+            "$MaximumOwnedShutdownMilliseconds",
+        ),
+        "native process shutdown",
+    )
+
+
+def _load_native_contract_sources(root: Path) -> dict[str, str]:
+    result: dict[str, str] = {}
+    for owner, relative in NATIVE_CONTRACT_SOURCES.items():
+        path = _repository_path(root, relative, f"native contract source {owner}")
+        try:
+            result[owner] = path.read_text(encoding="utf-8")
+        except (OSError, UnicodeError) as error:
+            raise ReinforcementError(f"cannot read native contract source {owner}: {error}") from error
+    return result
 
 
 def _validate_exact_visual_policy(path: Path) -> None:
@@ -380,6 +696,8 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
 
         needed_test_count += len(needed_tests)
         owner_count += len(owners)
+
+    _validate_native_contract_sources(_load_native_contract_sources(root))
 
     return {
         "features": len(features),

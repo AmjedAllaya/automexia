@@ -54,6 +54,24 @@ class DocumentationHygieneTests(unittest.TestCase):
         with self.assertRaisesRegex(CHECKER.DocumentationHygieneError, "unclosed"):
             self.validate_payload(b"# Page\n\n```text\nvalue\n")
 
+    def test_merge_markers_are_rejected_even_inside_code_fences(self) -> None:
+        for marker in ("<<<<<<< HEAD", ">>>>>>> incoming", "||||||| base"):
+            for fenced in (False, True):
+                with self.subTest(marker=marker[:7], fenced=fenced):
+                    body = marker + "\n"
+                    if fenced:
+                        body = "```text\n" + body + "```\n"
+                    with self.assertRaisesRegex(
+                        CHECKER.DocumentationHygieneError, "unresolved merge marker"
+                    ) as caught:
+                        self.validate_payload(("# Page\n\n" + body).encode())
+                    self.assertNotIn(marker, str(caught.exception))
+
+    def test_setext_heading_is_not_a_merge_marker(self) -> None:
+        self.assertEqual(
+            self.validate_payload(b"Page\n=======\n"), {"files": 1, "lines": 2}
+        )
+
     def test_private_workspace_is_excluded(self) -> None:
         with TemporaryDirectory() as directory:
             root = Path(directory)

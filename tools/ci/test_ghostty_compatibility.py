@@ -70,6 +70,11 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
                 'os.environ.get("AUTOMEXIA_QA_GHOSTTY_EVIDENCE", "").strip()',
                 '""',
             ),
+            (
+                "roadmap",
+                "G0 — source lock",
+                "G0 source lock",
+            ),
             ("context", "pub fn clear_parked_topologies", "fn removed_clear"),
             (
                 "inspector",
@@ -91,7 +96,10 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
             with self.subTest(source=source, token=old):
                 changed = dict(valid)
                 self.assertIn(old, changed[source])
-                changed[source] = changed[source].replace(old, new, 1)
+                # The roadmap intentionally repeats phase names in its index and
+                # detailed section. Mutate every matching contract anchor so a
+                # surviving duplicate cannot make this deletion test a no-op.
+                changed[source] = changed[source].replace(old, new)
                 with self.assertRaises(CHECKER.GhosttyCompatibilityError):
                     CHECKER.validate_gate_sources(changed)
 

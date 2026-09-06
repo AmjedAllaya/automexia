@@ -118,6 +118,14 @@ class Cp56ImplementationTests(unittest.TestCase):
                 "app_route_exchange_reads_submission_and_writes_exact_authenticated_reply",
             ),
             (
+                "apps/automexia-terminal/tests/suggestion_publication.rs",
+                "publication_from_submission",
+            ),
+            (
+                "apps/automexia-terminal/tests/suggestion_publication.rs",
+                "SUGGESTION_SERVICE_TEST_SLOT",
+            ),
+            (
                 "tools/ci/test_cp5_native_shell_adapters.py",
                 "Fish response descriptor mismatch",
             ),
