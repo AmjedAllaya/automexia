@@ -13,7 +13,7 @@ use rio_vt::crosswords::style::Style;
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
 use rio_vt::event::{TerminalDamage, VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
-use rio_vt::selection::{Anchor, SelectionMotion};
+use rio_vt::selection::{Anchor, Selection, SelectionMotion, SelectionType};
 
 const COLS: usize = 120;
 const ROWS: usize = 40;
@@ -452,6 +452,74 @@ fn bench(c: &mut Criterion) {
             std::hint::black_box(&visible_rows);
         })
     });
+
+    // Measure reflow, retained selection serialization, scrolling and the
+    // renderer-facing snapshot together. Setup is outside the timed path;
+    // the history cap exceeds both layouts so eviction cannot hide work.
+    let selected_text = "retained output with spaces and Unicode 界e\u{301}";
+    for (label, selected, scrolled) in [
+        ("unselected", false, false),
+        ("selected", true, false),
+        ("scrolled", false, true),
+    ] {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(180, 40),
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            60_000,
+        );
+        let mut processor = Processor::default();
+        let line = format!("{}\r\n", "bounded history ".repeat(9));
+        for _ in 0..10_000 {
+            processor.advance(&mut terminal, line.as_bytes());
+        }
+        let start = terminal.grid.cursor.pos;
+        processor.advance(&mut terminal, selected_text.as_bytes());
+        if selected {
+            let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
+            let end = Pos::new(
+                terminal.grid.cursor.pos.row,
+                terminal.grid.cursor.pos.col - 1,
+            );
+            selection.update(end, Side::Right);
+            terminal.selection = Some(selection);
+        }
+        let mut narrow = true;
+        if scrolled {
+            terminal.scroll_display(Scroll::Delta(5_000));
+        }
+        let mut visible_rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        c.bench_function(
+            &format!("selection_resize_copy_snapshot_10k_{label}"),
+            |b| {
+                b.iter(|| {
+                    terminal
+                        .resize(CrosswordsSize::new(if narrow { 40 } else { 180 }, 40));
+                    narrow = !narrow;
+                    if !scrolled {
+                        terminal.scroll_display(Scroll::Top);
+                        terminal.scroll_display(Scroll::Bottom);
+                    }
+                    assert_eq!(
+                        terminal.selection_to_string().as_deref(),
+                        selected.then_some(selected_text)
+                    );
+                    terminal.snapshot_visible(
+                        &TerminalDamage::Full,
+                        terminal.columns(),
+                        &mut visible_rows,
+                        &mut styles,
+                        &mut extras,
+                    );
+                    std::hint::black_box(&visible_rows);
+                });
+            },
+        );
+    }
 }
 
 criterion_group!(benches, bench);
