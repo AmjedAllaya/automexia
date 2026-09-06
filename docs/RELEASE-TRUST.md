@@ -1,16 +1,20 @@
 # Release trust and antivirus compatibility
 
-This guide defines how Automexia produces operating-system-trusted release
-artifacts and how maintainers respond to antivirus false positives. It does not
+This guide defines Automexia's release verification contracts and how
+maintainers respond to antivirus false positives. It does not
 promise that every security product will accept every new build immediately:
 antivirus reputation and classification are controlled by independent vendors
-and can change after publication. The enforceable Automexia contract is signed,
-notarized, reproducible-to-source evidence plus a controlled malware scan and a
-documented vendor-review process.
+and can change after publication. Stable multi-platform signing, notarization,
+reproducibility and malware-scan requirements are distinct from the signed Linux
+Early Access channel. A passing Linux publication does not prove Windows or
+macOS operating-system trust, native accessibility, or stable-release readiness.
 
 ## Trust boundary
 
-Only artifacts produced by the protected tag workflow are release artifacts.
+Official artifacts come from one of two guarded workflows: the protected-tag
+stable workflow or the owner-authorized, merged-PR Linux Early Access workflow.
+Their package inventories and required evidence are separate; neither can
+substitute for the other. See [Releasing](../RELEASING.md).
 Local `cargo build`, `cargo dev`, and `cargo automexia` outputs are developer
 builds: they are intentionally unsigned, frequently change hash, and should not
 be redistributed. Cargo and Rust toolchain binaries come from the user's Rust
@@ -24,6 +28,8 @@ capture the exact product, version, path, SHA-256 digest, signature state, and
 detection name.
 
 ## Release artifact contract
+
+This section specifies the stable multi-platform lane, not Linux Early Access.
 
 `tests/assurance/release-trust-policy-v1.json` is the machine-enforced manifest.
 The flat publication directory must contain exactly eleven versioned packages:
@@ -129,8 +135,8 @@ Linux packages retain the platform-native model: deterministic DEB/RPM/tar.gz
 payloads, clean install/uninstall validation, exact SHA-256 checksums, SBOMs,
 and a signed repository-owned release manifest. GitHub artifact attestations
 for this private repository are an external Enterprise entitlement. Distribution-
-repository signing is a future channel concern and must not be inferred from
-the GitHub release signature contract.
+repository signing is not provided by this GitHub release signature contract;
+it does not configure a signed APT or RPM repository or an automatic updater.
 
 Linux Early Access additionally uses the separate public binary archive
 `AmjedAllaya/automexia-releases`. Its private-source workflow publishes exactly
