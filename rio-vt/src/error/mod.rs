@@ -62,6 +62,9 @@ pub enum RioErrorType {
     // background image referenced in config could not be loaded
     BackgroundImageLoadFailure(String),
 
+    /// Fixed public text: clipboard content and provider diagnostics are never included.
+    PasteRejected,
+
     // reports that are ignored by RioErrorType
     IgnoredReport,
 }
@@ -85,6 +88,7 @@ impl std::fmt::Display for RioErrorType {
                 write!(f, "Error initializing Automexia Terminal:\n{message}")
             }
             RioErrorType::IgnoredReport => write!(f, ""),
+            RioErrorType::PasteRejected => write!(f, "Paste cancelled. The destination closed or the text exceeds 1 MiB. Select a live pane and paste a smaller selection."),
             RioErrorType::InvalidConfigurationFormat(message) => {
                 write!(f, "Found an issue loading the configuration file:\n\n{message}\n\nAutomexia kept the last known-good configuration; safe defaults are used only when no prior configuration exists")
             }
@@ -117,5 +121,10 @@ mod tests {
         assert!(invalid.contains("last known-good configuration"));
         let inherited_fallback_copy = ["Rio", " will proceed"].concat();
         assert!(!invalid.contains(&inherited_fallback_copy));
+    }
+
+    #[test]
+    fn paste_warning_is_fixed_actionable_text_without_payload_or_provider_error() {
+        assert_eq!(RioErrorType::PasteRejected.to_string(), "Paste cancelled. The destination closed or the text exceeds 1 MiB. Select a live pane and paste a smaller selection.");
     }
 }

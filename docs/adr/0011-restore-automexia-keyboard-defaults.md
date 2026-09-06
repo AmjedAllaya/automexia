@@ -2,6 +2,10 @@
 
 Status: Accepted
 
+The clone and displaced-shell-control defaults below are superseded in current
+source by [ADR 0041](0041-shell-owned-history-and-eof-shortcuts.md). Other tab,
+fresh-split, navigation and clipboard decisions remain unchanged.
+
 ## Context
 
 ADR 0010 made a hand-maintained subset of Ghostty bindings the implicit

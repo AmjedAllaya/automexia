@@ -128,8 +128,8 @@ const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
 const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
-const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
-const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
+const SHORTCUT_CLONE_RIGHT: &str = "Unbound";
+const SHORTCUT_CLONE_DOWN: &str = "Unbound";
 #[cfg(target_os = "macos")]
 const SHORTCUT_PREV_LOCAL_TAB: &str = "Cmd+Alt+[";
 #[cfg(not(target_os = "macos"))]
@@ -1523,6 +1523,62 @@ impl CommandPalette {
             .unwrap_or(command.shortcut)
     }
 
+    /// Clone actions have no built-in chord. Publish the actual legacy user
+    /// mapping after configuration load/reload rather than a guessed default.
+    pub fn set_clone_bindings(
+        &mut self,
+        bindings: &[crate::bindings::KeyBinding],
+        snapshot: Option<&crate::bindings::registry::RegistrySnapshot>,
+    ) {
+        use crate::bindings::{Action, BindingMode};
+        use automexia_keybindings::{ModeFlags, SequenceResolution, SurfaceBindingState};
+        for (action, legacy_action) in [
+            (PaletteAction::CloneSplitRight, Action::CloneSplitRight),
+            (PaletteAction::CloneSplitDown, Action::CloneSplitDown),
+        ] {
+            let mut label = "Unbound".to_string();
+            for binding in bindings.iter().filter(|binding| {
+                binding.action == legacy_action && binding.mode.is_empty()
+            }) {
+                if !binding.is_triggered_by(
+                    BindingMode::empty(),
+                    binding.mods,
+                    &binding.trigger,
+                ) {
+                    continue;
+                }
+                let Some(trigger) = crate::bindings::registry::legacy_trigger(binding)
+                else {
+                    label = "Custom binding".into();
+                    continue;
+                };
+                if let Some(snapshot) = snapshot {
+                    if snapshot.suppresses_legacy_trigger(&trigger, ModeFlags::empty()) {
+                        continue;
+                    }
+                    let mut state = SurfaceBindingState::default();
+                    if state.resolve(
+                        &snapshot.registry,
+                        &trigger,
+                        &[],
+                        ModeFlags::empty(),
+                    ) != SequenceResolution::NoMatch
+                    {
+                        // Whether a typed action performs can depend on live
+                        // selection/topology; do not advertise a shadowed chord.
+                        label = "Conditional binding".into();
+                        continue;
+                    }
+                }
+                label = format!("{} · Legacy", trigger);
+                break;
+            }
+            self.registry_shortcuts
+                .retain(|(candidate, _)| *candidate != action);
+            self.registry_shortcuts.push((action, label));
+        }
+    }
+
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
         if enabled {
@@ -2676,8 +2732,8 @@ mod tests {
             .find(|command| command.action == PaletteAction::SplitDown)
             .expect("fresh split-down command should be present");
 
-        assert_eq!(clone_right.shortcut, "Ctrl+R");
-        assert_eq!(clone_down.shortcut, "Ctrl+D");
+        assert_eq!(clone_right.shortcut, "Unbound");
+        assert_eq!(clone_down.shortcut, "Unbound");
         assert_ne!(clone_right.action, split_right.action);
         assert_ne!(clone_down.action, split_down.action);
         assert_ne!(
@@ -2792,6 +2848,13 @@ mod tests {
     fn palette_shortcuts_are_complete_and_unique() {
         let mut shortcuts = std::collections::HashMap::new();
         for command in COMMANDS {
+            if matches!(
+                command.action,
+                PaletteAction::CloneSplitRight | PaletteAction::CloneSplitDown
+            ) {
+                assert_eq!(command.shortcut, "Unbound");
+                continue;
+            }
             assert!(
                 !command.shortcut.is_empty(),
                 "missing palette shortcut for {}",
@@ -2803,6 +2866,42 @@ mod tests {
                 command.shortcut
             );
         }
+    }
+
+    #[test]
+    fn clone_labels_follow_user_bindings_typed_overrides_and_reset() {
+        use crate::bindings::{config_key_bindings, registry};
+        use rio_backend::config::bindings::KeyBinding;
+        let mut palette = CommandPalette::new();
+        let command = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::CloneSplitRight)
+            .unwrap();
+        let bindings = config_key_bindings(
+            vec![KeyBinding {
+                key: "r".into(),
+                action: "CloneSplitRight".into(),
+                with: "control".into(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            vec![],
+        );
+        for (typed, expected) in [
+            (vec![], "ctrl+r · Legacy"),
+            (vec!["ctrl+r=unbind"], "Unbound"),
+            (vec!["ctrl+r=quit"], "Conditional binding"),
+            (vec!["ctrl+r>ctrl+x=quit"], "Conditional binding"),
+            (vec!["ctrl+d=unbind"], "ctrl+r · Legacy"),
+        ] {
+            let mut config = rio_backend::config::Config::default();
+            config.bindings.keybinds = typed.into_iter().map(str::to_string).collect();
+            let snapshot = registry::build(&config).unwrap();
+            palette.set_clone_bindings(&bindings, snapshot.as_ref());
+            assert_eq!(palette.command_shortcut(command), expected);
+        }
+        palette.set_clone_bindings(&[], None);
+        assert_eq!(palette.command_shortcut(command), "Unbound");
     }
 
     #[test]

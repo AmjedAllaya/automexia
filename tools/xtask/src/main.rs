@@ -2952,23 +2952,18 @@ fn verify_architecture() -> TaskResult {
     let bindings = read(&app.join("src/bindings/mod.rs"))?;
     let palette = read(&app.join("src/renderer/command_palette.rs"))?;
     require(
-        bindings.contains(
-            r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
-        ) && bindings.contains(
+        !bindings.contains("fn clone_split_key_bindings")
+            && bindings.contains("fn platform_defaults_preserve_shell_history_and_eof_input")
+            && bindings.contains("fn explicit_clone_bindings_survive_default_and_reset_changes")
+            && bindings.contains(
             r#""r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
         ) && bindings.contains(
             r#""d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
-        ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into())"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into())"#,
         ) && palette.contains("Clone Active Session Right")
             && palette.contains("Clone Active Session Down")
             && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
             && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
-        "Automexia classic fresh-split, clone, and explicit shell-control shortcuts are not distinct",
+        "shell-owned defaults, explicit clone overrides, and fresh-split discovery are not preserved",
     )?;
     let layout_source = read(&app.join("src/layout/mod.rs"))?;
     require(

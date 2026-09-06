@@ -1206,17 +1206,6 @@ pub fn create_hint_bindings(
     hint_bindings
 }
 
-fn clone_split_key_bindings() -> Vec<KeyBinding> {
-    bindings!(
-        KeyBinding;
-        "r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
-        "d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
-        // Keep the displaced shell controls available explicitly.
-        "r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into());
-        "d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into());
-    )
-}
-
 /// Automexia's original non-macOS tab scopes.
 ///
 /// - Ctrl+T adds a window-level tab.
@@ -1316,7 +1305,6 @@ fn automexia_macos_key_bindings(
     }
 
     if use_splits {
-        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "d", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
@@ -1415,7 +1403,6 @@ fn automexia_windows_key_bindings(
     }
 
     if use_splits {
-        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
@@ -1496,7 +1483,6 @@ fn automexia_unix_key_bindings(
     }
 
     if use_splits {
-        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
@@ -2195,63 +2181,80 @@ mod tests {
     }
 
     #[test]
-    fn bare_ctrl_clone_shortcuts_preserve_alt_shell_passthroughs() {
-        let bindings = clone_split_key_bindings();
-        assert_eq!(bindings.len(), 4);
-        assert_eq!(bindings[0].action, Action::CloneSplitRight);
-        assert_eq!(bindings[1].action, Action::CloneSplitDown);
-        for binding in &bindings[..2] {
-            assert_eq!(binding.mods, ModifiersState::CONTROL);
-            assert!(binding.notmode.contains(BindingMode::SEARCH));
-            assert!(binding.notmode.contains(BindingMode::VI));
-            assert!(!binding.is_triggered_by(
-                BindingMode::SEARCH,
-                binding.mods,
-                &binding.trigger
-            ));
-            assert!(!binding.is_triggered_by(
-                BindingMode::VI,
-                binding.mods,
-                &binding.trigger
-            ));
-            assert!(binding.is_triggered_by(
-                BindingMode::empty(),
-                ModifiersState::CONTROL,
-                &binding.trigger
-            ));
+    fn platform_defaults_preserve_shell_history_and_eof_input() {
+        for use_splits in [false, true] {
+            for (platform, bindings) in [
+                ("Windows", automexia_windows_key_bindings(true, use_splits)),
+                ("Unix", automexia_unix_key_bindings(true, use_splits)),
+                (
+                    "macOS",
+                    automexia_macos_key_bindings(
+                        true,
+                        use_splits,
+                        ConfigKeyboard::default(),
+                    ),
+                ),
+            ] {
+                // Exercise complete platform tables: a helper-only test missed
+                // the fallback owner that consumed Readline input in real panes.
+                for (text, expected) in [("r", 0x12), ("d", 0x04)] {
+                    let key = Key::Character(text.into());
+                    let trigger = BindingKey::Keycode {
+                        key: key.clone(),
+                        location: KeyLocation::Standard,
+                    };
+                    for mode in [BindingMode::empty(), BindingMode::ALT_SCREEN] {
+                        assert!(
+                            !bindings.iter().any(|binding| binding.is_triggered_by(
+                                mode.clone(),
+                                ModifiersState::CONTROL,
+                                &trigger,
+                            )),
+                            "{platform} consumed shell Ctrl+{text} in {mode:?}"
+                        );
+                    }
+                    assert_eq!(
+                        ctrl_seq(&key, text, ModifiersState::CONTROL),
+                        Some(expected),
+                    );
+                }
+                assert!(!bindings.iter().any(|binding| matches!(
+                    binding.action,
+                    Action::CloneSplitRight | Action::CloneSplitDown
+                )));
+            }
         }
-        assert_eq!(
-            bindings[2].mods,
-            ModifiersState::CONTROL | ModifiersState::ALT
-        );
-        assert_eq!(
-            bindings[3].mods,
-            ModifiersState::CONTROL | ModifiersState::ALT
-        );
-        assert!(matches!(&bindings[2].action, Action::Esc(value) if value == "\x12"));
-        assert!(matches!(&bindings[3].action, Action::Esc(value) if value == "\x04"));
     }
 
     #[test]
-    fn user_binding_can_override_a_clone_shortcut() {
-        let updated = config_key_bindings(
-            vec![ConfigKeyBinding {
-                key: "r".to_string(),
-                action: "receivechar".to_string(),
-                with: "control".to_string(),
+    fn explicit_clone_bindings_survive_default_and_reset_changes() {
+        for (key, name, action) in [
+            ("r", "CloneSplitRight", Action::CloneSplitRight),
+            ("d", "CloneSplitDown", Action::CloneSplitDown),
+        ] {
+            let mut config = rio_backend::config::Config::default();
+            config.bindings.keys.push(ConfigKeyBinding {
+                key: key.into(),
+                action: name.into(),
+                with: "control".into(),
                 esc: String::new(),
-                mode: String::new(),
-            }],
-            clone_split_key_bindings(),
-        );
-        assert_eq!(updated.len(), 4);
-        assert!(updated.iter().any(|binding| {
-            binding.mods == ModifiersState::CONTROL
-                && binding.action == Action::ReceiveChar
-        }));
-        assert!(updated
-            .iter()
-            .any(|binding| binding.action == Action::CloneSplitDown));
+                mode: "~Search|~Vi".into(),
+            });
+            let unchanged = config.bindings.keys.clone();
+            for _ in 0..2 {
+                assert_action_binding(
+                    &default_key_bindings(&config),
+                    Key::Character(key.into()),
+                    ModifiersState::CONTROL,
+                    action.clone(),
+                );
+                assert_eq!(config.bindings.keys, unchanged);
+            }
+            config.bindings.keys.clear();
+            assert!(!default_key_bindings(&config)
+                .iter()
+                .any(|binding| binding.action == action));
+        }
     }
 
     #[test]
@@ -2502,12 +2505,6 @@ mod tests {
         );
         assert_action_binding(
             &bindings,
-            Key::Character("r".into()),
-            ModifiersState::CONTROL,
-            Action::CloneSplitRight,
-        );
-        assert_action_binding(
-            &bindings,
             Key::Named(ArrowLeft),
             ModifiersState::ALT,
             Action::SelectPaneLeft,
@@ -2596,12 +2593,6 @@ mod tests {
             Key::Character("r".into()),
             ModifiersState::CONTROL | ModifiersState::SHIFT,
             Action::SplitRight,
-        );
-        assert_action_binding(
-            &bindings,
-            Key::Character("r".into()),
-            ModifiersState::CONTROL,
-            Action::CloneSplitRight,
         );
         assert_action_binding(
             &bindings,
@@ -2731,12 +2722,6 @@ mod tests {
             Key::Character("t".into()),
             ModifiersState::SUPER | ModifiersState::SHIFT,
             Action::LocalTabCreateNew,
-        );
-        assert_action_binding(
-            &bindings,
-            Key::Character("r".into()),
-            ModifiersState::CONTROL,
-            Action::CloneSplitRight,
         );
         assert_action_binding(
             &bindings,

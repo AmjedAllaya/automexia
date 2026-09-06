@@ -25,8 +25,8 @@ the action is mode-sensitive.
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
 | `Ctrl+Shift+R` / `Ctrl+Shift+D` | Fresh default-shell split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone the active shell/profile/directory into an independent split right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send shell history-search / EOF control byte displaced by cloning. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| Command palette: Clone Active Session Right / Down | Clone the active shell/profile/directory; no default keyboard chord. |
 | `Alt+Arrow` | Select the nearest pane geometrically. |
 | `F6` / `Shift+F6` | Cycle to next / previous pane. |
 | `Alt+Shift+Arrow` | Resize the selected split on Windows. |
@@ -89,8 +89,8 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Previous / next local tab in the selected pane. |
 | `Cmd+1` … `Cmd+8`; `Cmd+9` | Select window tab 1…8; select the last tab. |
 | `Cmd+D` / `Cmd+Shift+D` | Fresh split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone active session right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send history search / EOF to the shell. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| Command palette: Clone Active Session Right / Down | Clone active session; no default keyboard chord. |
 | `Cmd+Alt+Arrow` | Select a neighboring pane. |
 | `Cmd+]` / `Cmd+[` | Cycle next / previous pane. |
 | `Ctrl+Cmd+Arrow` | Resize the selected split. |
@@ -216,6 +216,12 @@ do not use it with untrusted values or arguments that require quoting. Unknown
 actions are rejected and do not silently remove the matching default.
 
 ## Ownership and precedence
+
+Current source restores shell-owned Ctrl+R/Ctrl+D; published 0.4.0 predates the
+correction. Explicit user mappings remain unchanged. Clone actions are
+discoverable in the palette and rebindable, but have no built-in chord.
+Ctrl+Alt+R/Ctrl+Alt+D now use normal terminal encoding, not a forced bare byte.
+See [ADR 0041](../adr/0041-shell-owned-history-and-eof-shortcuts.md).
 
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse

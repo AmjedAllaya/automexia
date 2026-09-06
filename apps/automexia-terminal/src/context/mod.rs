@@ -1,6 +1,7 @@
 pub mod external_tool_runner;
 pub mod launch;
 pub mod launch_broker;
+pub(crate) mod paste;
 pub mod renderable;
 pub mod title;
 
@@ -969,6 +970,29 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .complete(managed_process_outcome(raw_status))
             .and_then(|completion| completion.notification)
     }
+    fn close_parked_route(&mut self, route_id: usize) -> bool {
+        let Some(index) = self
+            .parked_topologies
+            .iter()
+            .position(|parked| parked.grid.route_ids().contains(&route_id))
+        else {
+            return false;
+        };
+        if self.parked_topologies[index].grid.route_ids().len() == 1 {
+            self.parked_topologies.remove(index);
+        } else if !self.parked_topologies[index]
+            .grid
+            .remove_parked_route(route_id)
+        {
+            // Preserve siblings even if topology reconciliation fails. A
+            // failed removal must never become authority to destroy the grid.
+            tracing::error!("could not reconcile an exited parked session");
+        }
+        self.restored_topologies
+            .retain(|entry| entry.route_id != route_id);
+        true
+    }
+
     #[inline]
     pub fn should_close_context_manager(
         &mut self,
@@ -982,14 +1006,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             return false;
         }
 
-        if let Some(index) = self
-            .parked_topologies
-            .iter()
-            .position(|parked| parked.grid.route_ids().contains(&route_id))
-        {
-            self.parked_topologies.remove(index);
-            self.restored_topologies
-                .retain(|entry| entry.route_id != route_id);
+        if self.close_parked_route(route_id) {
             return false;
         }
 
@@ -1706,16 +1723,29 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         if !self.undo_topology_model() {
             return false;
         }
+        // Refresh font metrics and PTY sizes before exposing the restored grid.
+        // A caller's margin-only refresh may correctly be a no-op.
+        self.current_grid_mut().update_dimensions(sugarloaf);
         self.keep_only_active_context_visible(sugarloaf);
         true
     }
 
     fn undo_topology_model(&mut self) -> bool {
         self.prune_topology_history();
-        let Some(parked) = self.parked_topologies.pop_back() else {
+        let Some(mut parked) = self.parked_topologies.pop_back() else {
             return false;
         };
         if self.contexts.len() >= self.capacity {
+            self.parked_topologies.push_back(parked);
+            return false;
+        }
+        let live = self.current_grid();
+        if !parked.grid.prepare_restore(
+            live.width,
+            live.height,
+            live.current().dimension.dimension.scale,
+            live.scaled_margin,
+        ) {
             self.parked_topologies.push_back(parked);
             return false;
         }
@@ -2593,6 +2623,257 @@ pub mod test {
         assert!(!manager.can_undo_topology());
         assert!(!manager.can_redo_topology());
         assert_eq!(manager.clear_parked_topologies(), 0);
+    }
+
+    #[test]
+    fn parked_exit_removes_only_its_local_tab_and_preserves_undo() {
+        for exiting_index in 0..3 {
+            let window_id = WindowId::from(76);
+            let mut manager =
+                ContextManager::start_with_capacity(4, VoidListener {}, window_id)
+                    .unwrap();
+            manager.add_context(true, 0);
+            for _ in 0..2 {
+                let context = create_mock_context(
+                    VoidListener {},
+                    window_id,
+                    0,
+                    ContextDimension::default(),
+                );
+                manager
+                    .current_grid_mut()
+                    .contexts_mut()
+                    .values_mut()
+                    .next()
+                    .unwrap()
+                    .push_tab_core(context);
+            }
+            let routes = manager.current_grid().route_ids();
+            let exiting = routes[exiting_index];
+            let survivors = routes
+                .iter()
+                .copied()
+                .filter(|id| *id != exiting)
+                .collect::<Vec<_>>();
+            let mut receivers = Vec::new();
+            for item in manager.current_grid_mut().contexts_mut().values_mut() {
+                for context in item.contexts_mut() {
+                    let (sender, receiver) = corcovado::channel::channel();
+                    context.messenger = Messenger::new(sender);
+                    receivers.push((context.route_id, receiver));
+                }
+            }
+            assert!(manager.park_current_topology_model());
+            let foreground = manager.current_route();
+            assert!(manager.close_parked_route(exiting));
+            // Observe actual Context drops through their real message channels,
+            // not merely the surviving topology's self-reported route count.
+            for (route_id, receiver) in &receivers {
+                if *route_id == exiting {
+                    assert!(matches!(receiver.try_recv(), Ok(Msg::Shutdown)));
+                } else {
+                    assert!(
+                        matches!(
+                            receiver.try_recv(),
+                            Err(std::sync::mpsc::TryRecvError::Empty)
+                        ),
+                        "a healthy parked session was terminated"
+                    );
+                }
+            }
+            assert_eq!(manager.current_route(), foreground);
+            assert_eq!(manager.len(), 1);
+            assert_eq!(manager.parked_topologies.len(), 1);
+            assert_eq!(manager.parked_topologies[0].grid.route_ids(), survivors);
+            assert!(!manager.close_parked_route(exiting));
+            assert!(manager.undo_topology_model());
+            assert_eq!(manager.current_grid().route_ids(), survivors);
+            assert!(manager.redo_topology_model());
+            for survivor in survivors {
+                assert!(manager.close_parked_route(survivor));
+            }
+            assert!(!manager.can_undo_topology());
+            assert_eq!(manager.current_route(), foreground);
+        }
+    }
+
+    #[test]
+    fn parked_exit_split_journal_preserves_siblings_and_restores_live_geometry() {
+        for order in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            let window_id = WindowId::from(77);
+            let mut manager =
+                ContextManager::start_with_capacity(4, VoidListener {}, window_id)
+                    .unwrap();
+            let untouched = ContextManager::start_with_capacity(
+                4,
+                VoidListener {},
+                WindowId::from(78),
+            )
+            .unwrap();
+            let untouched_routes = untouched.route_ids();
+            for cycle in 0..16 {
+                manager.add_context(true, 0);
+                let first = manager.current_route();
+                let local = create_mock_context(
+                    VoidListener {},
+                    window_id,
+                    0,
+                    ContextDimension::default(),
+                );
+                let second = local.route_id;
+                manager
+                    .current_grid_mut()
+                    .contexts_mut()
+                    .values_mut()
+                    .next()
+                    .unwrap()
+                    .push_tab_core(local);
+                let split = create_mock_context(
+                    VoidListener {},
+                    window_id,
+                    0,
+                    ContextDimension::default(),
+                );
+                let third = split.route_id;
+                assert!(manager.current_grid_mut().split_right_core(split));
+                manager.current_grid_mut().width = 800.0;
+                manager.current_grid_mut().height = 600.0;
+                let routes = [first, second, third];
+                let mut receivers = Vec::new();
+                let mut terminals = Vec::new();
+                for item in manager.current_grid_mut().contexts_mut().values_mut() {
+                    for context in item.contexts_mut() {
+                        let (sender, receiver) = corcovado::channel::channel();
+                        context.messenger = Messenger::new(sender);
+                        receivers.push((context.route_id, receiver));
+                        terminals
+                            .push((context.route_id, Arc::downgrade(&context.terminal)));
+                    }
+                }
+                assert!(manager.park_current_topology_model());
+                let foreground = manager.current_route();
+                // The visible window changed while this topology was parked.
+                // Unchanged top padding must not suppress its restore layout.
+                let width = if cycle % 2 == 0 { 1440.0 } else { 640.0 };
+                let height = if cycle % 2 == 0 { 900.0 } else { 480.0 };
+                let scale = if cycle % 2 == 0 { 2.0 } else { 1.0 };
+                let active = manager.current_grid_mut();
+                active.width = width;
+                active.height = height;
+                active.current_mut().dimension.update_scale(scale);
+                assert!(!manager.close_parked_route(usize::MAX));
+                assert!(!manager.close_parked_route(untouched.current_route()));
+                let mut survivors = routes.to_vec();
+                for position in order {
+                    let exiting = routes[position];
+                    let previous_selection =
+                        manager.parked_topologies[0].grid.current().route_id;
+                    assert!(manager.close_parked_route(exiting));
+                    survivors.retain(|route| *route != exiting);
+                    assert!(!manager.close_parked_route(exiting));
+                    assert_eq!(manager.current_route(), foreground);
+                    for (route, receiver) in &receivers {
+                        if *route == exiting {
+                            assert!(matches!(receiver.try_recv(), Ok(Msg::Shutdown)));
+                        } else if survivors.contains(route) {
+                            assert!(
+                                matches!(
+                                    receiver.try_recv(),
+                                    Err(std::sync::mpsc::TryRecvError::Empty)
+                                ),
+                                "healthy parked PTY received a message or was dropped"
+                            );
+                        }
+                    }
+                    for (route, terminal) in &terminals {
+                        assert_eq!(
+                            terminal.upgrade().is_some(),
+                            survivors.contains(route)
+                        );
+                    }
+                    if !survivors.is_empty() {
+                        let selected =
+                            manager.parked_topologies[0].grid.current().route_id;
+                        if survivors.contains(&previous_selection) {
+                            assert_eq!(selected, previous_selection);
+                        }
+                        assert!(manager.undo_topology_model());
+                        assert_eq!(manager.current_route(), selected);
+                        let restored = manager.current_grid();
+                        assert_eq!((restored.width, restored.height), (width, height));
+                        let mut actual_routes = restored.route_ids();
+                        actual_routes.sort_unstable();
+                        let mut expected_routes = survivors.clone();
+                        expected_routes.sort_unstable();
+                        assert_eq!(actual_routes, expected_routes);
+                        for item in restored.contexts().values() {
+                            let [x, y, w, h] = item.layout_rect;
+                            assert!(w > 0.0 && h > 0.0);
+                            assert!(
+                                x >= 0.0 && y >= 0.0 && x + w <= width && y + h <= height
+                            );
+                            for context in item.contexts() {
+                                assert_eq!(context.dimension.dimension.scale, scale);
+                            }
+                        }
+                        if restored.panel_count() == 1 {
+                            let rect =
+                                restored.contexts().values().next().unwrap().layout_rect;
+                            assert_eq!(
+                                rect[2],
+                                width
+                                    - restored.scaled_margin.left
+                                    - restored.scaled_margin.right
+                                    - (manager.config.panel.margin.left
+                                        + manager.config.panel.margin.right)
+                                        * scale
+                            );
+                        }
+                        assert!(manager.redo_topology_model());
+                    }
+                }
+                assert_eq!(manager.len(), 1);
+                assert!(manager.parked_topologies.is_empty());
+                assert!(manager.restored_topologies.is_empty());
+                assert_eq!(untouched.route_ids(), untouched_routes);
+            }
+        }
+    }
+
+    #[test]
+    fn parked_restore_rejects_invalid_geometry_without_consuming_undo() {
+        for (width, height, scale) in [
+            (f32::NAN, 600.0, 1.0),
+            (800.0, -1.0, 1.0),
+            (800.0, 600.0, 0.0),
+            (800.0, 600.0, f32::INFINITY),
+        ] {
+            let mut manager = ContextManager::start_with_capacity(
+                3,
+                VoidListener {},
+                WindowId::from(79),
+            )
+            .unwrap();
+            manager.add_context(true, 0);
+            let parked = manager.current_route();
+            assert!(manager.park_current_topology_model());
+            let foreground = manager.current_route();
+            let active = manager.current_grid_mut();
+            active.width = width;
+            active.height = height;
+            active.current_mut().dimension.update_scale(scale);
+            assert!(!manager.undo_topology_model());
+            assert_eq!(manager.current_route(), foreground);
+            assert_eq!(manager.parked_topologies[0].grid.current().route_id, parked);
+            assert!(!manager.can_redo_topology());
+        }
     }
 
     #[test]

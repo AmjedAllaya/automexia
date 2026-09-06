@@ -183,6 +183,7 @@ enum SecondaryClickClipboardAction {
 enum PointerPaneFocusReason {
     Click,
     Wheel,
+    ClipboardClick,
 }
 
 impl PointerPaneFocusReason {
@@ -1064,6 +1065,9 @@ impl Screen<'_> {
             config.keyboard.binding_profile,
             &legacy_unbinds,
         );
+        renderer
+            .command_palette
+            .set_clone_bindings(&bindings, binding_registry.as_ref());
 
         let is_native = config.navigation.is_native();
 
@@ -1572,6 +1576,17 @@ impl Screen<'_> {
         self.select_current_based_on_pointer(PointerPaneFocusReason::Wheel)
     }
 
+    pub fn select_mouse_clipboard_target(&mut self) -> Option<bool> {
+        if self.renderer.command_palette.is_enabled() || self.search_active() {
+            return None;
+        }
+        let mouse = &self.mouse;
+        self.context_manager
+            .current_grid()
+            .find_terminal_at_position(mouse.x as f32, mouse.y as f32)?;
+        Some(self.select_current_based_on_pointer(PointerPaneFocusReason::ClipboardClick))
+    }
+
     #[inline]
     fn select_current_based_on_pointer(
         &mut self,
@@ -1687,6 +1702,9 @@ impl Screen<'_> {
                 config.keyboard.binding_profile,
                 &legacy_unbinds,
             );
+            self.renderer
+                .command_palette
+                .set_clone_bindings(&self.bindings, self.binding_registry.as_ref());
         }
 
         // Apply configuration in-place. Replacing the renderer here used to
@@ -2254,8 +2272,7 @@ impl Screen<'_> {
             if binding.is_triggered_by(binding_mode.to_owned(), mods, &button) {
                 match binding.action {
                     Act::PasteSelection => {
-                        let content = clipboard.get(ClipboardType::Selection);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Selection);
                     }
                     Act::Paste if button == MouseButton::Right => {
                         match secondary_click_clipboard_action(
@@ -2266,10 +2283,10 @@ impl Screen<'_> {
                                 self.clear_selection();
                             }
                             SecondaryClickClipboardAction::PasteClipboard => {
-                                let content = clipboard.get(ClipboardType::Clipboard);
-                                if !content.is_empty() {
-                                    self.paste(&content, true);
-                                }
+                                self.paste_from_clipboard(
+                                    clipboard,
+                                    ClipboardType::Clipboard,
+                                );
                             }
                         }
                     }
@@ -2301,9 +2318,8 @@ impl Screen<'_> {
             let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
                 // Windows may expose Ctrl+Alt as AltGr and mangle the logical
                 // key into an unidentified/composed value. Normalize before
-                // character classification so Ctrl+Alt shell-control
-                // passthroughs and other application shortcuts remain
-                // reachable.
+                // character classification so explicitly configured Ctrl+Alt
+                // shortcuts remain reachable.
                 match key.key_without_modifiers() {
                     Key::Character(character) => {
                         Key::Character(character.to_lowercase().into())
@@ -2340,15 +2356,13 @@ impl Screen<'_> {
                         self.paste(s, false);
                     }
                     Act::Paste => {
-                        let content = clipboard.get(ClipboardType::Clipboard);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
                     }
                     Act::ClearSelection => {
                         self.clear_selection();
                     }
                     Act::PasteSelection => {
-                        let content = clipboard.get(ClipboardType::Selection);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Selection);
                     }
                     Act::Copy => {
                         self.copy_selection(ClipboardType::Clipboard, clipboard);
@@ -5818,11 +5832,47 @@ impl Screen<'_> {
         self.mouse.accumulated_scroll.y %= height;
     }
 
+    pub(crate) fn paste_from_clipboard(
+        &mut self,
+        clipboard: &mut Clipboard,
+        source: ClipboardType,
+    ) -> bool {
+        // Capture identity before asking the OS provider. No caller may derive
+        // the destination from focus after a delayed clipboard read.
+        let target = self.context_manager.current().paste_target();
+        let content = clipboard.get(source);
+        if self.search_active() {
+            self.paste(&content, true);
+            !content.is_empty()
+        } else {
+            self.finish_paste(target, &content, true)
+        }
+    }
+
+    fn finish_paste(
+        &mut self,
+        target: context::paste::PasteTarget,
+        text: &str,
+        bracketed: bool,
+    ) -> bool {
+        match self.context_manager.deliver_paste(target, text, bracketed) {
+            Ok(sent) => sent,
+            Err(_) => {
+                self.renderer.assistant.set_error(RioError {
+                    level: RioErrorLevel::Warning,
+                    report: RioErrorType::PasteRejected,
+                });
+                self.context_manager.request_render();
+                false
+            }
+        }
+    }
+
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
         let search_active = self.search_active();
         if search_active {
-            for c in text.chars() {
+            for c in text.chars().take(MAX_SEARCH_QUERY_BYTES) {
                 self.search_input(c);
             }
             return;
@@ -5832,52 +5882,8 @@ impl Screen<'_> {
             return;
         }
 
-        // Every payload forwarded to the PTY exits terminal selection mode.
-        // This includes plain/application-cursor arrows, normal text,
-        // clipboard paste, and IME commits.
-        self.scroll_bottom_when_cursor_not_visible();
-        self.clear_selection();
-
-        if bracketed && self.get_mode().contains(Mode::BRACKETED_PASTE) {
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(&b"\x1b[200~"[..]);
-
-            // Write filtered escape sequences.
-            //
-            // We remove `\x1b` to ensure it's impossible for the pasted text to write the bracketed
-            // paste end escape `\x1b[201~` and `\x03` since some shells incorrectly terminate
-            // bracketed paste on its receival.
-            let filtered = text.replace(['\x1b', '\x03'], "");
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(filtered.into_bytes());
-
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(&b"\x1b[201~"[..]);
-        } else {
-            let payload = if bracketed {
-                // In non-bracketed (ie: normal) mode, terminal applications cannot distinguish
-                // pasted data from keystrokes.
-                //
-                // In theory, we should construct the keystrokes needed to produce the data we are
-                // pasting... since that's neither practical nor sensible (and probably an
-                // impossible task to solve in a general way), we'll just replace line breaks
-                // (windows and unix style) with a single carriage return (\r, which is what the
-                // Enter key produces).
-                text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
-            } else {
-                // When we explicitly disable bracketed paste don't manipulate with the input,
-                // so we pass user input as is.
-                text.to_owned().into_bytes()
-            };
-
-            self.ctx_mut().current_mut().messenger.send_write(payload);
-        }
+        let target = self.context_manager.current().paste_target();
+        self.finish_paste(target, text, bracketed);
     }
 
     pub(crate) fn render_welcome(&mut self) {
@@ -6014,8 +6020,7 @@ impl Screen<'_> {
                 self.copy_selection(ClipboardType::Clipboard, clipboard);
             }
             PaletteAction::Paste => {
-                let content = clipboard.get(ClipboardType::Clipboard);
-                self.paste(&content, true);
+                self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
             }
             PaletteAction::ScrollToPreviousCommand => {
                 self.scroll_to_command(false);
@@ -8119,6 +8124,7 @@ mod tests {
     fn wheel_focus_preserves_selection_while_click_focus_clears_it() {
         assert!(PointerPaneFocusReason::Click.clears_target_selection());
         assert!(!PointerPaneFocusReason::Wheel.clears_target_selection());
+        assert!(!PointerPaneFocusReason::ClipboardClick.clears_target_selection());
     }
 
     #[test]

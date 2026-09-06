@@ -36,19 +36,26 @@ terminal applications and never write to or execute in the PTY.
 | Next / previous window tab | `Ctrl+Tab` / `Ctrl+Shift+Tab` | `Ctrl+Tab` / `Ctrl+Shift+Tab` |
 | Next / previous local tab | `Alt+PageDown` / `Alt+PageUp` | `Cmd+Alt+]` / `Cmd+Alt+[` |
 | Fresh split right / down | `Ctrl+Shift+R` / `Ctrl+Shift+D` | `Cmd+D` / `Cmd+Shift+D` |
-| Clone current launch context right / down | `Ctrl+R` / `Ctrl+D` | `Ctrl+R` / `Ctrl+D` |
+| Clone current launch context right / down | Command palette; unbound by default | Command palette; unbound by default |
 | Geometric pane focus | `Alt+Arrow` | `Cmd+Alt+Arrow` |
 | Cycle next / previous pane | `F6` / `Shift+F6` | `Cmd+]` / `Cmd+[` |
 
 ### A key difference: fresh vs clone
 
-`Ctrl+Shift+R` / `Ctrl+Shift+D` on Windows/Linux/BSD creates a **fresh default-shell split**. `Ctrl+R` / `Ctrl+D` creates an independent split that **clones the active launch profile/directory**.
+`Ctrl+Shift+R` / `Ctrl+Shift+D` on Windows/Linux/BSD creates a **fresh default-shell split**. The palette's **Clone Active Session Right / Down** starts an independent session with the active launch profile/directory.
 
-Because `Ctrl+R` and `Ctrl+D` are traditionally shell control keys, their original shell bytes remain available as `Ctrl+Alt+R` and `Ctrl+Alt+D` when you need history-search/EOF passthrough.
+Current source leaves `Ctrl+R` and `Ctrl+D` to the shell for history and delete/EOF behavior. The published 0.4.0 package predates this correction. Existing custom bindings remain authoritative; remove an explicit clone binding if you want native shell input. Ctrl+Alt variants are no longer rewritten to bare controls.
 
-On macOS, fresh splits use native-style `Cmd+D` / `Cmd+Shift+D`; cloning still uses `Ctrl+R` / `Ctrl+D`.
+On macOS, fresh splits retain `Cmd+D` / `Cmd+Shift+D`. Clone actions are unbound by default on every platform and remain assignable in configuration.
 
 ## Resize panes
+
+Current source preserves ordinary text selections while retained cells reflow
+to a new pane width. If an endpoint is removed or cropped, the selection clears;
+rectangular selections still clear on width changes. Alternate-screen programs
+can redraw their content. The published 0.4.0 package predates this correction;
+native visual verification remains outstanding. See the
+[selection reflow contract](../adr/0043-retained-selection-reflow.md).
 
 | Platform | Resize selected split |
 |---|---|
@@ -101,6 +108,15 @@ Once a selection exists, an Arrow without `Shift`, printable input, paste, or IM
 - Right-click copies and clears an existing selection; with no selection it pastes through normal paste filtering.
 - Middle-click pastes the primary selection on platforms that provide one.
 - Left-click never pastes; it is reserved for focus, selection, links, image previews, and pane activation.
+
+In current source, right-click and middle-click first target the terminal pane
+under the pointer. Right-click preserves that pane's selection long enough to
+copy it; it does not copy another pane's selection. Pane rails/footers and an
+active search or command palette do not forward these gestures to the terminal.
+Paste is queued once for its captured terminal and cancelled if that destination
+closed. Text over 1 MiB is rejected with a warning, not truncated. No Enter is
+added, but embedded newlines can execute commands when the shell does not support
+bracketed paste. The published Linux 0.4.0 prerelease predates this correction.
 - Rotating the mouse wheel or starting a trackpad scroll selects the pane under
   the pointer and sends that initiating scroll to it; pointer hover alone does
   not change pane selection.

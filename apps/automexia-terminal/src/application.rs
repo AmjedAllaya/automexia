@@ -1787,6 +1787,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
 
+                if state == ElementState::Pressed {
+                    route.window.screen.mouse.set_clipboard_press(button, true);
+                }
+
                 match state {
                     ElementState::Pressed => {
                         // Calculate time since the last click to handle double/triple clicks.
@@ -1919,8 +1923,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // click always uses the target pane's cwd and shell
                         // metadata. The click still does not start a
                         // selection merely because focus changed.
-                        let selected_new_panel = button == MouseButton::Left
-                            && route.window.screen.select_current_based_on_mouse();
+                        let selected_new_panel = match button {
+                            MouseButton::Left => {
+                                route.window.screen.select_current_based_on_mouse()
+                            }
+                            MouseButton::Right | MouseButton::Middle => {
+                                let Some(changed) =
+                                    route.window.screen.select_mouse_clipboard_target()
+                                else {
+                                    return;
+                                };
+                                changed
+                            }
+                            _ => false,
+                        };
                         if selected_new_panel {
                             route.request_redraw();
                         }
@@ -1950,7 +1966,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // Always try panel switching first: if the click
                         // targets a different panel, switch to it regardless
                         // of mouse mode (e.g. neovim capturing clicks).
-                        if selected_new_panel {
+                        if selected_new_panel && button == MouseButton::Left {
                             // Focus change owns this click.
                         } else if should_report_terminal_mouse(
                             route.window.screen.modifiers.state().shift_key(),
@@ -1975,10 +1991,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 .screen
                                 .mouse_report(code, ElementState::Pressed);
 
-                            route.window.screen.process_mouse_bindings(
-                                button,
-                                &mut self.router.clipboard,
-                            );
+                            route.window.screen.mouse.set_clipboard_press(button, false);
                         } else {
                             // Load mouse point, treating message bar and padding as the closest square.
                             let display_offset = route.window.screen.display_offset();
@@ -2007,6 +2020,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             let timer_id =
                                 TimerId::new(Topic::SelectionScrolling, scroll_timer_id);
                             self.scheduler.unschedule(timer_id);
+                        }
+
+                        if route.window.screen.mouse.take_clipboard_release(button) {
+                            return;
                         }
 
                         if button == MouseButton::Left
