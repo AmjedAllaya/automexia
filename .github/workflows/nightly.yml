@@ -98,17 +98,22 @@ jobs:
         - ecosystem_bundle
         - ghostty_keybindings
         - ghostty_migration
+        - multicloud_provider_inputs
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
     - name: Install the nightly-2026-08-25 compiler required by libFuzzer
       run: rustup toolchain install nightly-2026-08-25 --profile minimal
-    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+    - uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
       with:
         tool: cargo-fuzz@0.13.1
     - name: Fuzz ${{ matrix.target }} with nightly-2026-08-25
+      if: matrix.target != 'multicloud_provider_inputs'
       run: cargo +nightly-2026-08-25 fuzz run ${{ matrix.target }} --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15
+    - name: Fuzz isolated multi-cloud parsers with nightly-2026-08-25
+      if: matrix.target == 'multicloud_provider_inputs'
+      run: cargo +nightly-2026-08-25 fuzz run --no-default-features --features multicloud-provider-inputs multicloud_provider_inputs --target x86_64-unknown-linux-gnu -- -max_total_time=120 -rss_limit_mb=768 -timeout=15 -max_len=1048577
   miri:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -188,7 +193,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
-    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+    - uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute and retain Criterion measurements
@@ -225,7 +230,7 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
-    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+    - uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute native GUI resource stress and controlled benchmarks
@@ -271,7 +276,7 @@ jobs:
       with:
         persist-credentials: false
     - run: rustup target add ${{ matrix.target }}
-    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+    - uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
       if: matrix.target == 'x86_64-pc-windows-msvc'
       with:
         tool: cargo-packager@0.11.8
@@ -374,7 +379,7 @@ jobs:
       with:
         persist-credentials: false
     - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
-    - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+    - uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
       with:
         tool: cargo-packager@0.11.8
     - run: 'cargo build --release --locked -p automexia-terminal --target x86_64-apple-darwin

@@ -2,7 +2,7 @@
 
 - Status: Accepted
 - Date: 2026-08-12
-- Updated: 2026-08-15
+- Updated: 2026-09-05
 
 ## Context
 
@@ -59,6 +59,10 @@ Reducing coverage is not an acceptable storage optimization.
     disposable WSL-native `/tmp` directory. Cargo, libFuzzer, corpus, and
     target activity remains native after staging; targets and Git metadata are
     excluded and a trap removes all campaign state.
+12. ADR 0039 extends this decision: Cargo intermediates use the workspace
+    `build-dir`, reusable assurance tools use an immutable content-addressed
+    shared cache, QA benchmark targets are per-run and disposable, and cache
+    cleanup is bounded, leased, grace-period protected, and dry-run by default.
 
 ## Consequences
 

@@ -1,35 +1,16 @@
-# SSH, connectivity, and multi-cloud delivery direction
+# Private planning boundary
 
-Status: public summary; not an implementation ledger.
+This path is retained only because current machine contracts still reference
+it. It intentionally contains no public feature, architecture, testing,
+roadmap, provider, workflow, or commercial details.
 
-## Target experience
+Historical content is preserved in ignored private documentation. Do not infer
+a product from the filename, a source package, a fixture, or a checker.
 
-Users can choose a host or environment, see the identity and route that will be
-used, review trust and production risk, and open an isolated session. Cloud and
-orchestrator adapters add context and resources through the same consistent
-workflow while their native tools retain credential ownership.
+Public behavior is limited to [the feature catalog](FEATURES.md).
 
-## Broad order
+## M8-M12 evidence compatibility
 
-- release-quality read-only inventory and Connection Hub behavior;
-- exact-argument, user-reviewed system OpenSSH sessions and tunnels;
-- reusable typed connection and workspace automation;
-- provider-neutral context and authentication references;
-- independently enabled AWS, Azure, Google Cloud, Kubernetes, OpenShift, and
-  organization-access adapters;
-- provider-aware completion and reviewed operational actions;
-- situation-aware investigation only after freshness, policy, impact, and
-  authority contracts are proven.
-
-## Required gates
-
-Each increment needs bounded resource use, hostile-input handling, credential
-redaction, cancellation, cleanup, disable and uninstall behavior, deterministic
-tests, native platform evidence, accessible UX, and honest fallback to the
-underlying tool.
-
-Detailed milestones, evidence ledgers, provider recipes, and implementation
-ownership maps are local-only planning material. Current behavior remains
-documented in [Connection Hub](CONNECTION-HUB.md),
-[SSH connection automation](SSH-CONNECTION-AUTOMATION.md), and
-[Multi-cloud provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md).
+M8-M12 remain internal traceability labels for current source and assurance
+owners. This compatibility anchor is not a public roadmap, activation promise,
+or availability claim; the feature catalog remains authoritative.

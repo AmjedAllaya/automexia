@@ -17,16 +17,11 @@ Open the command palette with `Ctrl+Shift+P` on Windows/Linux/BSD or `Cmd+Shift+
 
 | Feature | Windows / Linux / BSD | macOS |
 |---|---|---|
-| Read-only Connection **H**ub | `Ctrl+Shift+H` | `Cmd+Shift+H` |
-| **O**pen Quick Actions | `Ctrl+Shift+O` | `Cmd+Shift+O` |
-| Extensions **M**arketplace | `Ctrl+Shift+M` | `Cmd+Shift+M` |
 | **L**ist fonts | `Ctrl+Shift+L` | `Cmd+Shift+L` |
 | Toggle appearance **T**heme | `Alt+Shift+T` | `Cmd+Alt+Shift+T` |
 
-These launchers do not take over Search, Vi mode, or alternate-screen terminal
-applications. They open UI only: Connection Hub remains read-only, and Quick
-Actions still opens search/review without typing, pressing Enter, or executing
-a command.
+Application UI shortcuts do not take over Search, Vi mode, or alternate-screen
+terminal applications and never write to or execute in the PTY.
 
 ## Workspace shortcuts
 

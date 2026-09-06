@@ -5,7 +5,8 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use teletypewriter::{
-    ChildEvent, EventedPty, ManagedPtyShutdown, ProcessReadWrite, Pty, WinsizeBuilder,
+    is_pty_eof_error, ChildEvent, EventedPty, ManagedPtyShutdown, ProcessReadWrite, Pty,
+    WinsizeBuilder,
 };
 
 const PAYLOAD_BYTES: usize = 64 * 1024;
@@ -63,13 +64,19 @@ fn pty_resize_throughput_child_exit_and_teardown() {
     let deadline = Instant::now() + Duration::from_secs(20);
     let mut output = Vec::with_capacity(PAYLOAD_BYTES + 32);
     let mut exited = false;
+    let mut read_closed = false;
     let mut buffer = [0_u8; 8 * 1024];
     while Instant::now() < deadline {
-        match pty.reader().read(&mut buffer) {
-            Ok(0) => {}
-            Ok(read) => output.extend_from_slice(&buffer[..read]),
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-            Err(error) => panic!("PTY read failed: {error}"),
+        if !read_closed {
+            match pty.reader().read(&mut buffer) {
+                Ok(0) => {}
+                Ok(read) => output.extend_from_slice(&buffer[..read]),
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                // This one-shot child cannot reopen its slave. Keep waiting
+                // for its independent exit event, but do not spin on EIO.
+                Err(error) if is_pty_eof_error(&error) => read_closed = true,
+                Err(error) => panic!("PTY read failed: {error}"),
+            }
         }
         if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
             exited = true;
@@ -150,13 +157,19 @@ fn repeated_pty_create_resize_exit_and_drop_cycles_release_each_route() {
         let deadline = Instant::now() + Duration::from_secs(10);
         let mut output = Vec::new();
         let mut exited = false;
+        let mut read_closed = false;
         let mut buffer = [0_u8; 1024];
         while Instant::now() < deadline {
-            match pty.reader().read(&mut buffer) {
-                Ok(0) => {}
-                Ok(read) => output.extend_from_slice(&buffer[..read]),
-                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-                Err(error) => panic!("PTY cycle {cycle} read failed: {error}"),
+            if !read_closed {
+                match pty.reader().read(&mut buffer) {
+                    Ok(0) => {}
+                    Ok(read) => output.extend_from_slice(&buffer[..read]),
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                    // The marker and child-exit assertions below remain the
+                    // independent oracle for a complete one-shot lifecycle.
+                    Err(error) if is_pty_eof_error(&error) => read_closed = true,
+                    Err(error) => panic!("PTY cycle {cycle} read failed: {error}"),
+                }
             }
             if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
                 exited = true;
@@ -180,6 +193,21 @@ fn repeated_pty_create_resize_exit_and_drop_cycles_release_each_route() {
         );
         drop(pty);
     }
+}
+
+#[test]
+fn pty_eof_classification_rejects_unrelated_io_errors() {
+    for code in [libc::EACCES, libc::EINVAL, libc::ENOENT] {
+        assert!(!is_pty_eof_error(&std::io::Error::from_raw_os_error(code)));
+    }
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn linux_pty_eio_is_classified_as_end_of_stream() {
+    assert!(is_pty_eof_error(&std::io::Error::from_raw_os_error(
+        libc::EIO
+    )));
 }
 
 #[cfg(windows)]
@@ -284,6 +312,56 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
     assert!(
         search_elapsed < Duration::from_millis(1_500),
         "direct ConPTY Ctrl+R search took {search_elapsed:?}"
+    );
+}
+
+#[cfg(windows)]
+#[test]
+fn ordinary_windows_pty_shutdown_confirms_the_owned_shell_tree_exited() {
+    let mut pty = teletypewriter::create_pty(
+        Some("powershell.exe"),
+        vec![
+            "-NoLogo".into(),
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-Command".into(),
+            "Start-Sleep -Seconds 60".into(),
+        ],
+        &None,
+        None,
+        80,
+        24,
+    )
+    .expect("ordinary ConPTY shell should start");
+
+    let started = Instant::now();
+    let outcome = pty
+        .shutdown_owned_process_tree()
+        .expect("ordinary terminal shutdown should remain bounded");
+
+    if outcome == ManagedPtyShutdown::NotManaged {
+        // Keep the pre-fix failing test self-cleaning: interrupt the bounded
+        // sleep and wait for the real child before asserting ownership.
+        pty.writer().write_all(b"\x03").unwrap();
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while Instant::now() < deadline {
+            if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
+                break;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    }
+
+    assert!(
+        matches!(
+            outcome,
+            ManagedPtyShutdown::Graceful | ManagedPtyShutdown::Forced
+        ),
+        "ordinary Windows sessions must confirm their owned process tree: {outcome:?}"
+    );
+    assert!(
+        started.elapsed() <= Duration::from_secs(10),
+        "ordinary Windows session shutdown exceeded the ten-second lifecycle budget"
     );
 }
 

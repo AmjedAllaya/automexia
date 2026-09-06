@@ -11,6 +11,7 @@ import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("public_distribution.py")
@@ -26,9 +27,12 @@ REPOSITORY = "AmjedAllaya/automexia-releases"
 
 
 def package_names() -> tuple[str, ...]:
+    # nFPM emits the Debian revision from the repository-owned version `1`.
+    # This fixture mirrors the real native package job so the post-download
+    # aggregator cannot silently drift from package production again.
     return (
-        f"automexia-terminal_{VERSION}_amd64.deb",
-        f"automexia-terminal_{VERSION}_arm64.deb",
+        f"automexia-terminal_{VERSION}-1_amd64.deb",
+        f"automexia-terminal_{VERSION}-1_arm64.deb",
         f"automexia-terminal-{VERSION}-1.x86_64.rpm",
         f"automexia-terminal-{VERSION}-1.aarch64.rpm",
         f"automexia-terminal-{VERSION}-x86_64-unknown-linux-gnu.tar.gz",
@@ -142,6 +146,7 @@ def repository_governance() -> dict[str, dict[str, object]]:
                         "allowed_merge_methods": ["squash"],
                     },
                 },
+                {"type": "required_signatures"},
             ],
         },
         "tag": {
@@ -160,6 +165,59 @@ def repository_governance() -> dict[str, dict[str, object]]:
 
 
 class PublicDistributionTests(unittest.TestCase):
+    def test_native_nfpm_revision_drives_exact_deb_and_rpm_names(self) -> None:
+        contract = DISTRIBUTION._artifact_contract(VERSION)
+        self.assertEqual(
+            contract["linux-x64-deb"]["file"],
+            f"automexia-terminal_{VERSION}-1_amd64.deb",
+        )
+        self.assertEqual(
+            contract["linux-arm64-rpm"]["file"],
+            f"automexia-terminal-{VERSION}-1.aarch64.rpm",
+        )
+
+        with tempfile.TemporaryDirectory() as temporary:
+            config = Path(temporary) / "nfpm.yaml"
+            config.write_text("name: automexia-terminal\nrelease: 7\n", encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                changed = DISTRIBUTION._artifact_contract(VERSION)
+            self.assertEqual(
+                changed["linux-x64-deb"]["file"],
+                f"automexia-terminal_{VERSION}-7_amd64.deb",
+            )
+            self.assertEqual(
+                changed["linux-arm64-rpm"]["file"],
+                f"automexia-terminal-{VERSION}-7.aarch64.rpm",
+            )
+
+            config.write_text("release: 1\nrelease: 2\n", encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "one positive"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
+            config.write_text("release: 0\n", encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "one positive"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
+            config.write_text("#" * (64 * 1024 + 1), encoding="utf-8")
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", config):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "byte limit"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
+            missing = Path(temporary) / "missing.yaml"
+            with mock.patch.object(DISTRIBUTION, "NFPM_CONFIG", missing):
+                with self.assertRaisesRegex(
+                    DISTRIBUTION.DistributionError, "unavailable"
+                ):
+                    DISTRIBUTION._artifact_contract(VERSION)
+
     def test_public_repository_governance_fails_closed_on_every_release_control(self) -> None:
         baseline = repository_governance()
         DISTRIBUTION.validate_public_repository_governance(
@@ -184,6 +242,7 @@ class PublicDistributionTests(unittest.TestCase):
             "merge commit": lambda state: state["main"]["rules"][3]["parameters"].__setitem__(
                 "allowed_merge_methods", ["squash", "merge"]
             ),
+            "unsigned main": lambda state: state["main"]["rules"].pop(4),
             "tag scope": lambda state: state["tag"]["conditions"]["ref_name"].__setitem__(
                 "include", ["refs/tags/latest"]
             ),
@@ -272,7 +331,9 @@ class PublicDistributionTests(unittest.TestCase):
             source = root / "source"
             source.mkdir()
             write_packages(source)
-            duplicate = source / "duplicate" / f"automexia-terminal_{VERSION}_amd64.deb"
+            duplicate = (
+                source / "duplicate" / f"automexia-terminal_{VERSION}-1_amd64.deb"
+            )
             duplicate.parent.mkdir()
             duplicate.write_bytes(b"duplicate\n")
             with self.assertRaisesRegex(DISTRIBUTION.DistributionError, "exactly one"):
@@ -473,10 +534,10 @@ class PublicDistributionTests(unittest.TestCase):
             ),
             "assemble publication gate": workflow.replace(
                 "  assemble:\n    name: Assemble and sign public Linux bundle\n"
-                "    needs: [authorize, package]\n"
+                "    needs: [authorize, quality, package]\n"
                 "    if: needs.authorize.outputs.publish == 'true'",
                 "  assemble:\n    name: Assemble and sign public Linux bundle\n"
-                "    needs: [authorize, package]\n    if: always()",
+                "    needs: [authorize, quality, package]\n    if: always()",
                 1,
             ),
             "publish publication gate": workflow.replace(
@@ -506,6 +567,169 @@ class PublicDistributionTests(unittest.TestCase):
                 'echo "asset not verified"',
                 1,
             ),
+            "partial asset attestation": workflow.replace(
+                'for asset in "${assets[@]}"; do',
+                'for asset in "${assets[0]}"; do',
+                1,
+            ),
+            "release quality build parallelism": workflow.replace(
+                "CARGO_BUILD_JOBS: '1'",
+                "CARGO_BUILD_JOBS: '2'",
+                1,
+            ),
+            "release quality development debug info": workflow.replace(
+                "CARGO_PROFILE_DEV_DEBUG: '0'",
+                "CARGO_PROFILE_DEV_DEBUG: '1'",
+                1,
+            ),
+            "release quality test debug info": workflow.replace(
+                "CARGO_PROFILE_TEST_DEBUG: '0'",
+                "CARGO_PROFILE_TEST_DEBUG: '1'",
+                1,
+            ),
+            "release quality test parallelism": workflow.replace(
+                "NEXTEST_TEST_THREADS: '1'",
+                "NEXTEST_TEST_THREADS: '2'",
+                1,
+            ),
+            "release quality lint cleanup": workflow.replace(
+                "        run: cargo clean\n",
+                "        run: cargo metadata --locked --format-version 1\n",
+                1,
+            ),
+            "release quality source cache": workflow.replace(
+                "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+                "actions/cache@1111111111111111111111111111111111111111",
+                1,
+            ),
+            "release quality target cache": workflow.replace(
+                "            ~/.cargo/git\n",
+                "            ~/.cargo/git\n            target\n",
+                1,
+            ),
+            "release quality stale cache identity": workflow.replace(
+                "${{ hashFiles('Cargo.lock') }}",
+                "static-lock-identity",
+                1,
+            ),
+            "release quality cleanup ordering": workflow.replace(
+                "      - name: Reclaim release lint artifacts before the all-feature "
+                "test build\n"
+                "        run: cargo clean\n"
+                "      - name: Workspace unit and integration tests\n"
+                "        run: cargo nextest run --workspace --all-features --locked "
+                "--profile ci\n",
+                "      - name: Workspace unit and integration tests\n"
+                "        run: cargo nextest run --workspace --all-features --locked "
+                "--profile ci\n"
+                "      - name: Reclaim release lint artifacts after the all-feature "
+                "test build\n"
+                "        run: cargo clean\n",
+                1,
+            ),
+            "release quality compiler cache pin": workflow.replace(
+                "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+                "1111111111111111111111111111111111111111",
+                1,
+            ),
+            "release quality compiler cache version": workflow.replace(
+                "version: v0.16.0", "version: v0.15.0", 1
+            ),
+            "release quality compiler cache backend": workflow.replace(
+                "SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'", 1
+            ),
+            "release quality compiler cache namespace": workflow.replace(
+                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION: unversioned",
+                1,
+            ),
+            "release quality compiler cache stats": workflow.replace(
+                "run: sccache --show-stats", "run: echo stats-skipped", 1
+            ),
+            "serialized native package build": workflow.replace(
+                "  package:\n    name: Native Linux package build\n    needs: authorize",
+                "  package:\n    name: Native Linux package build\n"
+                "    needs: [authorize, quality]",
+                1,
+            ),
+            "rehearsal missing quality join": workflow.replace(
+                "needs: [authorize, quality, package]",
+                "needs: [authorize, package]",
+                1,
+            ),
+            "assemble missing quality join": workflow.replace(
+                "  assemble:\n    name: Assemble and sign public Linux bundle\n"
+                "    needs: [authorize, quality, package]",
+                "  assemble:\n    name: Assemble and sign public Linux bundle\n"
+                "    needs: [authorize, package]",
+                1,
+            ),
+            "native package compiler cache": workflow.replace(
+                "      NFPM_VERSION: '2.43.4'\n",
+                "      NFPM_VERSION: '2.43.4'\n      RUSTC_WRAPPER: sccache\n",
+                1,
+            ),
+            "native package nFPM digest": workflow.replace(
+                "cafb544650cb0305d1b164fc0ab261eb77a81af324e18011282d326b326d20fb",
+                "1" * 64,
+                1,
+            ),
+            "native package Arm64 nFPM digest": workflow.replace(
+                "e4365707dedfda6e089f597dcdab9497beea80accb2c2704be18981e4a4d9b9b",
+                "2" * 64,
+                1,
+            ),
+            "native package nFPM architecture": workflow.replace(
+                "nfpm_arch: arm64", "nfpm_arch: x86_64", 1
+            ),
+            "native package nFPM checksum": workflow.replace(
+                "sha256sum --check", "echo checksum-skipped", 1
+            ),
+            "native package source cache Action": workflow.replace(
+                "          ref: ${{ needs.authorize.outputs.commit }}\n"
+                "      - name: Cache Cargo registry and Git sources\n"
+                "        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+                "          ref: ${{ needs.authorize.outputs.commit }}\n"
+                "      - name: Cache Cargo registry and Git sources\n"
+                "        uses: actions/cache@1111111111111111111111111111111111111111",
+                1,
+            ),
+            "native package target cache": workflow.replace(
+                "            ~/.cargo/git\n"
+                "          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n"
+                "          restore-keys: |\n"
+                "            cargo-sources-v1-${{ runner.os }}-\n"
+                "      - name: Require native architecture",
+                "            ~/.cargo/git\n"
+                "            target\n"
+                "          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n"
+                "          restore-keys: |\n"
+                "            cargo-sources-v1-${{ runner.os }}-\n"
+                "      - name: Require native architecture",
+                1,
+            ),
+            "native package nFPM download origin": workflow.replace(
+                "https://github.com/goreleaser/nfpm/releases/download/",
+                "https://example.invalid/nfpm/",
+                1,
+            ),
+            "native package nFPM extraction scope": workflow.replace(
+                ' --directory "$RUNNER_TEMP/nfpm-bin" nfpm',
+                ' --directory "$RUNNER_TEMP/nfpm-bin"',
+                1,
+            ),
+            "native package build parallelism": workflow.replace(
+                "      AUTOMEXIA_VERSION: ${{ needs.authorize.outputs.version }}\n"
+                "      CARGO_BUILD_JOBS: '1'\n",
+                "      AUTOMEXIA_VERSION: ${{ needs.authorize.outputs.version }}\n"
+                "      CARGO_BUILD_JOBS: '2'\n",
+                1,
+            ),
+            "native package release debug info": workflow.replace(
+                "      CARGO_PROFILE_RELEASE_DEBUG: '0'\n",
+                "      CARGO_PROFILE_RELEASE_DEBUG: '1'\n",
+                1,
+            ),
             "credential leak into rehearsal": workflow.replace(
                 "\n  assemble:",
                 "\n      - run: echo '${{ secrets.TEST_PRIVATE_KEY }}'\n\n  assemble:",
@@ -514,6 +738,11 @@ class PublicDistributionTests(unittest.TestCase):
         }
         for label, mutated in mutations.items():
             with self.subTest(label=label), tempfile.TemporaryDirectory() as temporary:
+                self.assertNotEqual(
+                    workflow,
+                    mutated,
+                    f"{label} mutation did not alter the workflow fixture",
+                )
                 path = Path(temporary) / "workflow.yml"
                 path.write_text(mutated, encoding="utf-8")
                 with self.assertRaises(DISTRIBUTION.DistributionError):
@@ -528,6 +757,15 @@ class PublicDistributionTests(unittest.TestCase):
             'gh release verify "$tag"',
             'gh release verify-asset "$tag" "$asset"',
             'X-GitHub-Api-Version: 2026-03-10',
+            "CARGO_BUILD_JOBS: '1'",
+            "CARGO_PROFILE_DEV_DEBUG: '0'",
+            "CARGO_PROFILE_TEST_DEBUG: '0'",
+            "NEXTEST_TEST_THREADS: '1'",
+            "Reclaim release lint artifacts before the all-feature test build",
+            "actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9",
+            "~/.cargo/registry",
+            "~/.cargo/git",
+            "hashFiles('Cargo.lock')",
         ):
             with self.subTest(required=required):
                 self.assertIn(required, workflow)
@@ -539,6 +777,48 @@ class PublicDistributionTests(unittest.TestCase):
             workflow.index('gh release verify "$tag"'),
             workflow.index("activation-handoff"),
         )
+        self.assertEqual(workflow.count("CARGO_BUILD_JOBS: '1'"), 2)
+        self.assertEqual(workflow.count("CARGO_PROFILE_RELEASE_DEBUG: '0'"), 1)
+
+    def test_workflow_parallelizes_cold_packages_without_caching_shipped_objects(self) -> None:
+        workflow = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        quality = workflow.split("  quality:\n", 1)[1].split("  package:\n", 1)[0]
+        package = workflow.split("  package:\n", 1)[1].split("  rehearsal:\n", 1)[0]
+        rehearsal = workflow.split("  rehearsal:\n", 1)[1].split("  assemble:\n", 1)[0]
+        assemble = workflow.split("  assemble:\n", 1)[1].split("  publish:\n", 1)[0]
+
+        for token in (
+            "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
+            "version: v0.16.0",
+            "SCCACHE_GHA_ENABLED: 'true'",
+            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "RUSTC_WRAPPER: sccache",
+            "sccache --show-stats",
+        ):
+            with self.subTest(quality_token=token):
+                self.assertEqual(quality.count(token), 1)
+
+        self.assertIn("    needs: authorize\n", package)
+        self.assertNotIn("needs: [authorize, quality]", package)
+        self.assertIn("needs: [authorize, quality, package]", rehearsal)
+        self.assertIn("needs: [authorize, quality, package]", assemble)
+        self.assertNotIn("sccache", package.casefold())
+        self.assertNotIn("RUSTC_WRAPPER", package)
+        self.assertNotRegex(package, r"(?m)^\s+target(?:/.*)?\s*$")
+
+        shared_source_key = (
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}"
+        )
+        self.assertEqual(quality.count(shared_source_key), 1)
+        self.assertEqual(package.count(shared_source_key), 1)
+        self.assertNotIn("go install github.com/goreleaser/nfpm", package)
+        for digest in (
+            "cafb544650cb0305d1b164fc0ab261eb77a81af324e18011282d326b326d20fb",
+            "e4365707dedfda6e089f597dcdab9497beea80accb2c2704be18981e4a4d9b9b",
+        ):
+            self.assertEqual(package.count(digest), 1)
+        self.assertIn("nfpm_${NFPM_VERSION}_Linux_${{ matrix.nfpm_arch }}.tar.gz", package)
+        self.assertIn("sha256sum --check", package)
 
 
 if __name__ == "__main__":

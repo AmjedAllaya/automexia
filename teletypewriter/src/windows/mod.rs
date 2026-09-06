@@ -42,7 +42,8 @@ pub struct Pty {
 // overriding inherited variables of the same name. `None` inherits as-is.
 //
 // `shell` of `None` means no program was configured, and the default console
-// host is used.
+// host is used. Every ordinary terminal session remains in a kill-on-close Job
+// Object so closing its owning route cannot detach the shell or descendants.
 pub fn create_pty(
     shell: Option<&str>,
     args: Vec<String>,
@@ -58,7 +59,7 @@ pub fn create_pty(
         working_directory,
         env,
         true,
-        false,
+        true,
         columns,
         rows,
     )

@@ -12,10 +12,18 @@ storage = "run --package xtask -- storage"
 purge = "clean"
 
 [build]
+# Keep final binaries and reports in the familiar workspace target directory,
+# while grouping disposable compiler intermediates under one explicit child.
+build-dir = "{workspace-root}/target/build"
 # The WGPU/shader workspace can exhaust Windows' paging file when Cargo fans
 # out across every logical CPU while linking tests and examples. Two jobs keep
 # the mandatory workspace gate deterministic on contributor machines and CI.
 jobs = 2
+
+[cache]
+# Let Cargo age out globally downloaded source data once per day. This does not
+# delete workspace target artifacts; Automexia owns those through `xtask cache`.
+auto-clean-frequency = "1 day"
 
 [target.wasm32-unknown-unknown]
 rustflags = [

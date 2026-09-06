@@ -19,7 +19,7 @@ panes below 96 logical pixels fold that rail away without losing tab state.
 
 Operational discovery remains asynchronous and session-scoped. Its cached
 facts are rendered only on each pane's semantic prompt rows, with the selected
-pane identified by its four-sided accent border. This preserves multi-cloud and
+pane identified by its four-sided accent border. This preserves multi-session and
 multi-environment visibility without presenting one pane's identity as a
 window-wide truth.
 

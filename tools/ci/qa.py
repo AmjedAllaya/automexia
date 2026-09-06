@@ -15,6 +15,7 @@ import platform
 import re
 import shutil
 import signal
+import stat
 import subprocess
 import sys
 import threading
@@ -512,6 +513,37 @@ def skipped(name: str, reason: str, *, external: bool = False) -> dict[str, obje
     return {"name": name, "status": status, "required": False, "reason": reason}
 
 
+def run_benchmark_matrix(
+    run_dir: pathlib.Path,
+    next_index: int,
+    commands: tuple[tuple[str, list[str]], ...],
+) -> tuple[list[dict[str, object]], int]:
+    benchmark_target = run_dir / "benchmark-target"
+    results: list[dict[str, object]] = []
+    try:
+        for name, command in commands:
+            results.append(
+                run_step(
+                    run_dir,
+                    next_index,
+                    name,
+                    command,
+                    env_add={"CARGO_TARGET_DIR": str(benchmark_target)},
+                )
+            )
+            next_index += 1
+    finally:
+        if benchmark_target.exists():
+            metadata = benchmark_target.lstat()
+            attributes = getattr(metadata, "st_file_attributes", 0)
+            if benchmark_target.is_symlink() or (
+                attributes & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+            ):
+                raise RuntimeError("refusing to remove a linked benchmark target")
+            shutil.rmtree(benchmark_target)
+    return results, next_index
+
+
 def build_bundle(run_dir: pathlib.Path, bundle_path: pathlib.Path) -> None:
     included: list[pathlib.Path] = []
     excluded: list[dict[str, str]] = []
@@ -643,6 +675,16 @@ def main() -> int:
         (
             "feature-test-reinforcement-mutations",
             [sys.executable, "tools/ci/test_feature_test_reinforcement.py"],
+            None,
+        ),
+        (
+            "m8-m12-multicloud-contract",
+            [sys.executable, "tools/ci/check_m8_m12_multicloud.py"],
+            None,
+        ),
+        (
+            "m8-m12-multicloud-mutations",
+            [sys.executable, "tools/ci/test_m8_m12_multicloud.py"],
             None,
         ),
         (
@@ -1065,19 +1107,10 @@ def main() -> int:
                 ["cargo", "bench", "-p", "automexia-keybindings", "--bench", "registry", "--locked", "--", "--noplot"],
             ),
         )
-        for name, command in benchmark_commands:
-            steps.append(
-                run_step(
-                    run_dir,
-                    next_index,
-                    name,
-                    command,
-                    env_add={
-                        "CARGO_TARGET_DIR": str(run_dir / "benchmark-target")
-                    },
-                )
-            )
-            next_index += 1
+        benchmark_steps, next_index = run_benchmark_matrix(
+            run_dir, next_index, benchmark_commands
+        )
+        steps.extend(benchmark_steps)
     else:
         steps.append(
             skipped(

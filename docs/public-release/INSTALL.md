@@ -16,10 +16,10 @@ signature, package checksum, version, architecture, or filename differs.
 
 ```sh
 # x64
-sudo apt install ./automexia-terminal_<version>_amd64.deb
+sudo apt install ./automexia-terminal_<version>-1_amd64.deb
 
 # Arm64
-sudo apt install ./automexia-terminal_<version>_arm64.deb
+sudo apt install ./automexia-terminal_<version>-1_arm64.deb
 ```
 
 ## Fedora and RPM-based distributions

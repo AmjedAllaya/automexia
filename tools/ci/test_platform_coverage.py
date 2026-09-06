@@ -71,9 +71,25 @@ class PlatformCoverageTests(unittest.TestCase):
         altered = copy.deepcopy(self.ci)
         altered["jobs"]["release-candidate"]["if"] = "true"
         with self.assertRaisesRegex(
-            PLATFORM.PlatformCoverageError, "limited to release pull requests"
+            PLATFORM.PlatformCoverageError, "stable release pull requests"
         ):
             PLATFORM.validate_ci(altered)
+
+    def test_stable_release_gates_cannot_capture_linux_early_access_prs(self) -> None:
+        for job_name in ("release-candidate", "release-candidate-coverage"):
+            with self.subTest(job=job_name):
+                altered = copy.deepcopy(self.ci)
+                altered["jobs"][job_name]["if"] = str(
+                    altered["jobs"][job_name]["if"]
+                ).replace(
+                    "!startsWith(github.head_ref, 'release/linux/') && ",
+                    "",
+                )
+                with self.assertRaisesRegex(
+                    PLATFORM.PlatformCoverageError,
+                    "stable release pull requests",
+                ):
+                    PLATFORM.validate_ci(altered)
 
     def test_release_coverage_is_bound_to_the_windows_baseline_and_exact_commits(self) -> None:
         coverage = self.ci["jobs"]["release-candidate-coverage"]

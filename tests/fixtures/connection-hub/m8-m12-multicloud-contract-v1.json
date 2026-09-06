@@ -1,0 +1,84 @@
+{
+  "schema": 1,
+  "phase": "M8-M12",
+  "status": "implemented-nonactivated-external-provider-native-release-evidence-pending",
+  "providers": ["aws", "azure", "gcp", "kubernetes", "openshift", "teleport"],
+  "limits": {
+    "aws_config_bytes": 1048576,
+    "aws_profiles": 128,
+    "azure_account_bytes": 262144,
+    "azure_accounts": 128,
+    "azure_json_nodes": 4096,
+    "azure_json_depth": 32,
+    "gcp_config_bytes": 262144,
+    "gcp_sections": 64,
+    "gcp_entries": 512,
+    "kubeconfig_bytes": 1048576,
+    "kubeconfig_sources": 16,
+    "kubeconfig_items": 256,
+    "teleport_status_bytes": 262144,
+    "teleport_profiles": 32,
+    "provider_transients": 16,
+    "provider_transient_age_seconds": 86400,
+    "product_providers": 6
+  },
+  "authorities": {
+    "default_enabled": false,
+    "execution_enabled": false,
+    "adapter_process_owner": false,
+    "adapter_network_owner": false,
+    "adapter_filesystem_owner": true,
+    "adapter_credential_owner": false,
+    "adapter_pty_owner": false,
+    "shell_evaluation": false,
+    "implicit_enter": false,
+    "reviewed_process_capability": true,
+    "reviewed_network_capability": true,
+    "reviewed_filesystem_capability": true,
+    "openbao_implemented": false
+  },
+  "external_gates": [
+    "official-provider-accounts-and-disposable-resources",
+    "native-provider-cli-browser-and-credential-store",
+    "native-cluster-and-exec-plugin-lifecycle",
+    "native-visual-accessibility-and-resource-evidence",
+    "signed-packaged-artifact-identity"
+  ],
+  "source_files": [
+    "extensions/devops-aws/src/lib.rs",
+    "extensions/devops-azure/src/lib.rs",
+    "extensions/devops-gcp/src/lib.rs",
+    "extensions/devops-kubernetes/src/implementation.rs",
+    "extensions/devops-openshift/src/implementation.rs",
+    "extensions/devops-teleport/src/lib.rs",
+    "apps/automexia-terminal/src/automexia/connections/providers.rs",
+    "apps/automexia-terminal/src/automexia/connections/provider_transients.rs",
+    "apps/automexia-terminal/src/automexia/private_fs.rs"
+  ],
+  "test_files": [
+    "extensions/devops-aws/src/lib.rs",
+    "extensions/devops-azure/src/lib.rs",
+    "extensions/devops-gcp/src/lib.rs",
+    "extensions/devops-kubernetes/tests/contracts.rs",
+    "extensions/devops-openshift/tests/contracts.rs",
+    "extensions/devops-teleport/tests/contracts.rs",
+    "apps/automexia-terminal/tests/m8_m12_provider_product.rs",
+    "apps/automexia-terminal/src/automexia/connections/provider_transients.rs",
+    "apps/automexia-terminal/src/automexia/private_fs.rs"
+  ],
+  "fuzz_target": "fuzz/fuzz_targets/multicloud_provider_inputs.rs",
+  "benchmarks": [
+    "extensions/devops-aws/benches/provider.rs",
+    "extensions/devops-azure/benches/provider.rs",
+    "extensions/devops-gcp/benches/provider.rs",
+    "extensions/devops-kubernetes/benches/kubeconfig.rs",
+    "extensions/devops-teleport/benches/status.rs"
+  ],
+  "s1_policy": "tests/assurance/s1-assurance-policy-v1.json",
+  "documents": [
+    "docs/MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md",
+    "docs/MULTI-CLOUD-PROVIDERS-TESTING.md",
+    "docs/SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md",
+    "docs/FEATURE-TEST-REINFORCEMENT.md"
+  ]
+}

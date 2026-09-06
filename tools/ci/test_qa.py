@@ -12,6 +12,7 @@ import sys
 import tempfile
 import time
 import unittest
+from unittest import mock
 import zipfile
 
 MODULE_PATH = pathlib.Path(__file__).with_name("qa.py")
@@ -179,6 +180,37 @@ class QaRunnerTests(unittest.TestCase):
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["github-free-assurance-mutations"], 120)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["repository-walker-cache-scope"], 120)
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["rustsec-exception-policy"], 120)
+
+    def test_benchmark_compiler_target_is_removed_after_success_and_failure(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = pathlib.Path(temporary)
+            target = run_dir / "benchmark-target"
+
+            def complete(*_args, **_kwargs):
+                target.mkdir()
+                (target / "large-generated-artifact").write_bytes(b"generated")
+                return {"status": "pass"}
+
+            with mock.patch.object(QA, "run_step", side_effect=complete):
+                results, next_index = QA.run_benchmark_matrix(
+                    run_dir, 7, (("benchmark", ["ignored"]),)
+                )
+            self.assertEqual(results, [{"status": "pass"}])
+            self.assertEqual(next_index, 8)
+            self.assertFalse(target.exists())
+
+            def fail(*_args, **_kwargs):
+                target.mkdir()
+                (target / "partial-artifact").write_bytes(b"generated")
+                raise RuntimeError("simulated benchmark failure")
+
+            with mock.patch.object(QA, "run_step", side_effect=fail), self.assertRaisesRegex(
+                RuntimeError, "simulated benchmark failure"
+            ):
+                QA.run_benchmark_matrix(
+                    run_dir, 9, (("benchmark", ["ignored"]),)
+                )
+            self.assertFalse(target.exists())
         self.assertEqual(QA.STEP_TIMEOUT_SECONDS["benchmark-pty"], 7200)
         self.assertEqual(
             QA.STEP_TIMEOUT_SECONDS["benchmark-ssh-inventory"], 7200

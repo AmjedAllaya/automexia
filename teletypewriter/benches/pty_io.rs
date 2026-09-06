@@ -4,7 +4,7 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use criterion::{criterion_group, criterion_main, Criterion, Throughput};
-use teletypewriter::{ChildEvent, EventedPty, ProcessReadWrite, Pty};
+use teletypewriter::{is_pty_eof_error, ChildEvent, EventedPty, ProcessReadWrite, Pty};
 
 const READY: &str = "AMX_PTY_READY";
 const THROUGHPUT_BYTES: usize = 1024 * 1024;
@@ -52,23 +52,27 @@ fn drain_to_exit(mut pty: Pty, expected_bytes: usize) -> usize {
     let mut tail = Vec::with_capacity(READY.len() * 2);
     let mut exited = false;
     let mut marker_seen = false;
+    let mut read_closed = false;
     let mut buffer = [0_u8; 16 * 1024];
 
     while Instant::now() < deadline {
-        match pty.reader().read(&mut buffer) {
-            Ok(0) => {}
-            Ok(read) => {
-                received = received.saturating_add(read);
-                tail.extend_from_slice(&buffer[..read]);
-                marker_seen |= tail
-                    .windows(READY.len())
-                    .any(|bytes| bytes == READY.as_bytes());
-                if tail.len() > READY.len() * 2 {
-                    tail.drain(..tail.len() - READY.len() * 2);
+        if !read_closed {
+            match pty.reader().read(&mut buffer) {
+                Ok(0) => {}
+                Ok(read) => {
+                    received = received.saturating_add(read);
+                    tail.extend_from_slice(&buffer[..read]);
+                    marker_seen |= tail
+                        .windows(READY.len())
+                        .any(|bytes| bytes == READY.as_bytes());
+                    if tail.len() > READY.len() * 2 {
+                        tail.drain(..tail.len() - READY.len() * 2);
+                    }
                 }
+                Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+                Err(error) if is_pty_eof_error(&error) => read_closed = true,
+                Err(error) => panic!("PTY benchmark read failed: {error}"),
             }
-            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
-            Err(error) => panic!("PTY benchmark read failed: {error}"),
         }
         if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
             exited = true;

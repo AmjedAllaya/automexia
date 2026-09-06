@@ -34,9 +34,14 @@ class RustsecExceptionTests(unittest.TestCase):
                 preceding = source[max(0, position - 260):position]
                 self.assertIn("replacement", preceding)
 
-    def test_advisory_database_stays_in_the_repository_local_tool_cache(self) -> None:
+    def test_advisory_database_uses_the_runner_owned_path_neutral_cargo_home(self) -> None:
         source = (ROOT / ".cargo/audit.toml").read_text(encoding="utf-8")
-        self.assertIn('path = ".automexia-tools/cargo-home/advisory-db"', source)
+        self.assertNotIn("path =", source)
+        runner = (ROOT / "tools/ci/github_free_assurance.py").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('environment["CARGO_HOME"] = str(runtime / "cargo-home")', runner)
+        self.assertIn("dev_cache.runtime_root(root=ROOT)", runner)
         self.assertIn('url = "https://github.com/RustSec/advisory-db.git"', source)
         self.assertIn("fetch = true", source)
         self.assertIn("stale = false", source)

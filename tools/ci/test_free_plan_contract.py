@@ -109,6 +109,19 @@ class FreePlanContractTests(unittest.TestCase):
         completed = self.run_checker()
         self.assertEqual(completed.returncode, 0, completed.stderr)
 
+    def test_ci_remains_the_automatic_free_hosted_push_and_pr_pipeline(self) -> None:
+        for old, new in (
+            ("  push:\n    branches: [main]\n", ""),
+            (
+                "  workflow_dispatch:\n",
+                "  workflow_dispatch:\n  schedule:\n    - cron: '0 0 * * *'\n",
+            ),
+        ):
+            with self.subTest(mutation=old):
+                completed = self.run_checker_with_replacement(old, new)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertRegex(completed.stderr, r"automatic free hosted|scheduled")
+
     def test_private_environment_is_rejected(self) -> None:
         completed = self.run_checker(
             ("workflows/s2-assurance.yml", "\n  environment: stable-release\n")
@@ -156,7 +169,7 @@ class FreePlanContractTests(unittest.TestCase):
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("only release-candidate-coverage", completed.stderr)
 
-    def test_required_local_assurance_scanners_cannot_be_removed(self) -> None:
+    def test_required_hosted_assurance_scanners_cannot_be_removed(self) -> None:
         completed = self.run_checker(
             (
                 "workflows/ci.yml",
@@ -184,7 +197,7 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("GitHub-Free local assurance", completed.stderr)
+        self.assertIn("GitHub-Free hosted assurance", completed.stderr)
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
             shutil.copytree(ROOT / ".github", root / ".github")
@@ -204,7 +217,7 @@ class FreePlanContractTests(unittest.TestCase):
                 check=False,
             )
         self.assertNotEqual(completed.returncode, 0)
-        self.assertIn("GitHub-Free local assurance", completed.stderr)
+        self.assertIn("GitHub-Free hosted assurance", completed.stderr)
 
     def test_ordinary_ci_cannot_be_changed_back_to_all_history_scanning(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
@@ -286,6 +299,52 @@ class FreePlanContractTests(unittest.TestCase):
         completed = self.run_checker_with_replacement(ordered_steps, reordered_steps)
         self.assertNotEqual(completed.returncode, 0)
         self.assertIn("resource envelope", completed.stderr)
+
+    def test_quality_compiler_cache_is_versioned_and_non_shipping(self) -> None:
+        workflow = (ROOT / ".github" / "workflows" / "ci.yml").read_text(
+            encoding="utf-8"
+        )
+        quality = workflow.split("  quality:\n", 1)[1].split(
+            "  dependency-security:\n", 1
+        )[0]
+        required = (
+            "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
+            "version: v0.16.0",
+            "SCCACHE_GHA_ENABLED: 'true'",
+            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "RUSTC_WRAPPER: sccache",
+            "sccache --show-stats",
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
+        )
+        for token in required:
+            with self.subTest(token=token):
+                self.assertEqual(quality.count(token), 1)
+        self.assertNotRegex(quality, r"(?m)^\s+target(?:/.*)?\s*$")
+
+        for old, new in (
+            (
+                "fc920bf0ec8de6ee65d409111f7ec508035751ba",
+                "1111111111111111111111111111111111111111",
+            ),
+            ("version: v0.16.0", "version: v0.15.0"),
+            ("SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'"),
+            (
+                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION: unversioned",
+            ),
+            ("RUSTC_WRAPPER: sccache", "RUSTC_WRAPPER: rustc"),
+            ("run: sccache --show-stats", "run: echo stats-skipped"),
+            (
+                "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
+                "cargo-sources-v1-static",
+            ),
+        ):
+            with self.subTest(mutation=old):
+                completed = self.run_checker_with_replacement(old, new)
+                self.assertNotEqual(completed.returncode, 0)
+                self.assertRegex(
+                    completed.stderr.casefold(), r"cache|resource envelope"
+                )
 
     def test_image_rendering_linux_backends_cannot_be_removed(self) -> None:
         # The hosted regression occurred only in the stand-alone Sugarloaf

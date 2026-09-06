@@ -103,6 +103,16 @@ jobs:
     needs: authorize
     runs-on: ubuntu-24.04
     timeout-minutes: 120
+    env:
+      # GitHub Free runners provide a small CPU/memory/disk envelope. Keep
+      # linker concurrency and debug artifacts bounded across the full graph.
+      CARGO_BUILD_JOBS: '1'
+      CARGO_PROFILE_DEV_DEBUG: '0'
+      CARGO_PROFILE_TEST_DEBUG: '0'
+      NEXTEST_TEST_THREADS: '1'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_GHA_VERSION: automexia-rust-1.98-v1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -116,46 +126,84 @@ jobs:
           rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-sources-v1-${{ runner.os }}-
+      - name: Install checksum-verified compiler cache
+        id: sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+        with:
+          version: v0.16.0
       - name: Install pinned quality tools
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
-      - name: Run release-quality checks
-        shell: bash
-        run: |
-          set -euo pipefail
-          cargo fmt --all -- --check
-          cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
-          cargo nextest run --workspace --all-features --locked --profile ci
-          cargo test --workspace --all-features --doc --locked
-          cargo audit --deny warnings
-          cargo deny --locked --color never check --hide-inclusion-graph
-          bash tools/ci/test_shell_sources.sh
+      - name: Rust formatting
+        run: cargo fmt --all -- --check
+      - name: Warning-denied all-target Clippy
+        run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+      - name: Reclaim release lint artifacts before the all-feature test build
+        run: cargo clean
+      - name: Workspace unit and integration tests
+        run: cargo nextest run --workspace --all-features --locked --profile ci
+      - name: Workspace documentation tests
+        run: cargo test --workspace --all-features --doc --locked
+      - name: RustSec dependency audit
+        run: cargo audit --deny warnings
+      - name: Dependency, license, and source policy
+        run: cargo deny --locked --color never check --hide-inclusion-graph
+      - name: Shell integration syntax and contract smoke
+        run: bash tools/ci/test_shell_sources.sh
+      - name: Report compiler cache statistics
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        run: sccache --show-stats
 
   package:
     name: Native Linux package build
-    needs: [authorize, quality]
+    needs: authorize
     strategy:
       fail-fast: false
       matrix:
         include:
           - runner: ubuntu-22.04
             runner_arch: X64
+            nfpm_arch: x86_64
+            nfpm_sha256: cafb544650cb0305d1b164fc0ab261eb77a81af324e18011282d326b326d20fb
             target: x86_64-unknown-linux-gnu
             artifact: public-linux-x64
           - runner: ubuntu-22.04-arm
             runner_arch: ARM64
+            nfpm_arch: arm64
+            nfpm_sha256: e4365707dedfda6e089f597dcdab9497beea80accb2c2704be18981e4a4d9b9b
             target: aarch64-unknown-linux-gnu
             artifact: public-linux-arm64
     runs-on: ${{ matrix.runner }}
     timeout-minutes: 100
     env:
       AUTOMEXIA_VERSION: ${{ needs.authorize.outputs.version }}
+      CARGO_BUILD_JOBS: '1'
+      CARGO_PROFILE_RELEASE_DEBUG: '0'
+      NFPM_VERSION: '2.43.4'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
+      - name: Cache Cargo registry and Git sources
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-sources-v1-${{ runner.os }}-
       - name: Require native architecture and install packaging dependencies
         shell: bash
         run: |
@@ -166,8 +214,16 @@ jobs:
           rustup target add "${{ matrix.target }}"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends appstream cpio desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libwayland-dev libx11-xcb-dev libxkbcommon-dev lintian ncurses-bin rpm scdoc
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+          nfpm_archive="nfpm_${NFPM_VERSION}_Linux_${{ matrix.nfpm_arch }}.tar.gz"
+          nfpm_path="$RUNNER_TEMP/$nfpm_archive"
+          curl --fail --location --proto '=https' --tlsv1.2 --retry 3 --retry-all-errors \
+            --output "$nfpm_path" \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/$nfpm_archive"
+          printf '%s  %s\n' "${{ matrix.nfpm_sha256 }}" "$nfpm_path" | sha256sum --check
+          mkdir -p "$RUNNER_TEMP/nfpm-bin"
+          tar --extract --gzip --file "$nfpm_path" --directory "$RUNNER_TEMP/nfpm-bin" nfpm
+          "$RUNNER_TEMP/nfpm-bin/nfpm" --version | grep -F "$NFPM_VERSION"
+          echo "$RUNNER_TEMP/nfpm-bin" >> "$GITHUB_PATH"
       - name: Build, package, and exercise install lifecycle
         shell: bash
         run: |
@@ -195,7 +251,7 @@ jobs:
 
   rehearsal:
     name: Retain credential-free native rehearsal
-    needs: [authorize, package]
+    needs: [authorize, quality, package]
     if: needs.authorize.outputs.publish == 'false'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
@@ -238,7 +294,7 @@ jobs:
 
   assemble:
     name: Assemble and sign public Linux bundle
-    needs: [authorize, package]
+    needs: [authorize, quality, package]
     if: needs.authorize.outputs.publish == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 30
@@ -276,14 +332,14 @@ jobs:
           cp release-bundle/*.deb release-bundle/*.rpm release-bundle/*.tar.gz sbom-input/packages/
           cp Cargo.lock sbom-input/Cargo.lock
       - name: Generate SPDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           path: sbom-input
           format: spdx-json
           output-file: release-bundle/automexia-terminal.spdx.json
           upload-artifact: false
       - name: Generate CycloneDX SBOM
-        uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610
+        uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           path: sbom-input
           format: cyclonedx-json

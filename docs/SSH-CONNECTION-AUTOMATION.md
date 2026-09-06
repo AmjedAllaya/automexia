@@ -1,52 +1,64 @@
-# SSH connections and automation
+# System OpenSSH interoperability
 
-Status: the read-only connection foundations exist in source; managed live
-launch and broader automation remain release-gated or planned.
+Automexia supports ordinary command-line OpenSSH as a free terminal capability.
+This page does not specify a managed connection, provider, automation, or
+commercial product.
 
-## User journeys
+Implementation contract: `F2/D5.0` capability-free review remains separate
+from system OpenSSH execution.
 
-Users should be able to find a known host, understand the selected identity and
-route, review host trust, and open a session with minimal ceremony. Reusable
-workflows may add preparation, connection, remote setup, verification, and
-cleanup, but every stage remains visible and cancellable.
+## Use
 
-The Connection Hub is the visual home for the F2/D5.0 inventory and connection
-review boundary.
-Command-first users can reach the same records and actions from the palette and
-terminal workflow. Neither path stores private keys or bypasses the user's
-native SSH configuration.
+Run the operating system's `ssh`, `scp`, or `sftp` command in a terminal
+pane using normal shell syntax. The shell owns parsing; OpenSSH owns
+configuration, credential prompts, agents, host-key verification,
+authentication, and network behavior.
 
-## M6 review-only implementation
+Automexia owns terminal input/output, resize, selection, search, tabs, panes,
+exit reporting, and cleanup. Paste never adds Enter.
 
-The current source includes review and editing foundations for typed recipes and
-multi-environment workspaces. Execution remains disabled behind the independent
-session-launch and native-release gates. A review surface is not proof that the
-corresponding remote action is supported.
+## Safe testing
 
-## Safe automation rules
+Use authorized destinations only. Documentation and automated/manual tests use
+fictional configuration and a disposable loopback fixture. Never publish real
+hostnames, account identifiers, keys, tokens, configuration, or remote output.
 
-- Profiles contain references and typed settings, not secret material.
-- Recipes are structured actions, not opaque shell snippets.
-- A plan shows the exact target, route, identity reference, executable,
-  arguments, working directory, and environment changes before launch.
-- Production or higher-risk steps require explicit review and policy checks.
-- Retries are bounded and never repeat a mutation unless its contract declares
-  safe behavior.
-- Cancellation and shutdown clean up tunnels, processes, temporary files, and
-  partially created state.
-- A failed recipe leaves a clear manual recovery path using the native tool.
+## Failure and cleanup
 
-## Placement in the existing architecture
+OpenSSH diagnostics remain visible and authoritative. Closing a session cleans
+up the owned local client process and PTY without modifying user-owned OpenSSH
+files. Failed optional inventory or shell integration leaves manual OpenSSH use
+available.
 
-SSH and automation behavior belongs in first-party extensions behind the
-application capability broker. Cloud and Kubernetes adapters can contribute
-context and typed actions without becoming separate connection owners. Future
-Automation Studio integration may edit scripts and recipes, but connection
-state remains owned by the connection extension.
+See [Remote connections](guide/remote-connections.md) and
+[SSH inventory](SSH-INVENTORY.md).
 
-Detailed recipe schemas, provider mappings, risk catalogs, resource budgets,
-and future phase instructions remain private until the corresponding behavior
-is implemented and ready for public compatibility review.
+## Assurance evidence anchor compatibility
 
-See [Connection Hub](CONNECTION-HUB.md), [Session Launch Broker](SESSION-LAUNCH-BROKER.md),
-and the [user guide](user-guide/connection-hub-and-ssh.md).
+These headings preserve source-owned feature-matrix references after the
+public documentation consolidation. They do not expand shipped behavior,
+reintroduce private plans, or replace the current status stated above.
+
+### F2/D5.0 planning dependency
+
+The automation reviews documented by this source consume only the bounded,
+capability-free F2/D5.0 profile and plan contract. They do not grant network,
+process, PTY, authentication, or credential authority.
+
+### M6 Review Only Implementation
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
+
+### Placement In The Existing Architecture
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
+
+### User Journeys
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.

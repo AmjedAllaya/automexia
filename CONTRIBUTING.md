@@ -59,6 +59,7 @@ cargo dev       # complete local gate, then launch Automexia
 cargo automexia # fast incremental build and launch
 cargo ready     # complete local gate without launching
 cargo storage   # report target size, free space, and largest target children
+cargo xtask cache status # inventory shared and per-worktree generated caches
 cargo purge     # remove Cargo artifacts after closing Automexia windows
 ```
 
@@ -82,6 +83,19 @@ keeps a complete contributor gate from permanently multiplying workspace
 artifacts. The final application build remains incremental for fast daily use.
 The gate requires 12 GiB free on the selected target filesystem; the app-only
 workflow requires 4 GiB.
+
+GitHub's free hosted `CI` workflow is the automatic push and pull-request gate.
+The repository's local pre-push hook is temporarily dormant so a push does not
+start or wait for a local pipeline. `cargo xtask assurance install-hook`
+installs only a non-blocking placeholder and never overwrites an existing hook.
+Run `cargo xtask assurance pre-push` explicitly when local assurance is useful.
+
+Pinned assurance executables are shared through a platform- and
+version-addressed integrity-checked cache. Compiler targets remain isolated per
+worktree. Inspect the complete ownership model with `cargo xtask cache status`;
+preview cleanup with `cargo xtask cache gc --scope automatic`, and add
+`--apply` only after reviewing the exact candidates. See
+[Development cache and build storage](docs/DEVELOPMENT-CACHE.md).
 
 Set `CARGO_TARGET_DIR` to place both persistent and isolated artifacts on a
 different filesystem. Diagnostic reproductions may set

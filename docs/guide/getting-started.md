@@ -114,8 +114,8 @@ known-good runtime configuration remains active.
 
 Try a practical layout from the [workflow recipes](../user-guide/recipes.md), or
 choose your next task from the [Automexia User Guide](../user-guide/index.md).
-Use [Extensions](../EXTENSIONS.md) to understand which domain foundations exist
-today and which installation experiences remain planned.
+Use [Extensions](../EXTENSIONS.md) to understand the public extension safety
+boundary for the current terminal.
 
 ## 6. Prepare a contribution
 

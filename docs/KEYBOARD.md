@@ -60,9 +60,6 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `F11` or `Alt+Enter` | Toggle fullscreen on Windows. |
 | `Ctrl+Alt+I` | Preview the selected or pointer-targeted local raster image. |
 | `Ctrl+Shift+P` | Open the command palette. |
-| `Ctrl+Shift+H` | Open the read-only Connection Hub. |
-| `Ctrl+Shift+O` | Open Quick Actions search and review. |
-| `Ctrl+Shift+M` | Open the Extensions marketplace. |
 | `Ctrl+Shift+L` | List registered font families. |
 | `Ctrl+,` (Windows) / `Ctrl+Shift+,` (Linux/BSD) | Open the configuration file in the configured editor. |
 | `Ctrl+Alt+Space` | Toggle the quake window on Windows. |
@@ -107,9 +104,6 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
 | `Cmd+Shift+P` | Open command palette. |
-| `Cmd+Shift+H` | Open the read-only Connection Hub. |
-| `Cmd+Shift+O` | Open Quick Actions search and review. |
-| `Cmd+Shift+M` | Open the Extensions marketplace. |
 | `Cmd+Shift+L` | List registered font families. |
 | `Cmd+Alt+Shift+T` | Toggle light/dark appearance. |
 | `Cmd+,` | Open the configuration file. |
@@ -120,34 +114,6 @@ remains platform-neutral. A pointer click without a drag is never reused as
 the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
 non-empty text/paste/IME input exits selection mode before the input is
 forwarded to the shell. Search and Vi mode retain their own input ownership.
-
-## Connection Hub controls (v0.5 release-gated)
-
-These shortcuts work only while the read-only Hub or Connection Review owns
-input. They never insert a command or implicit Enter into a terminal PTY.
-Current Allow actions stop at the protected-review diagnostic and start no
-process.
-
-| Shortcut | Result |
-|---|---|
-| `L` | From Hub results or first-run setup, open the typed host/user/port editor. If Search owns focus, `l` remains search text. |
-| `F` | From Hub results or first-run setup, open the same native exact-file picker as **Choose files**. If Search or a nested review/editor owns focus, `f` remains owned by that surface. |
-| `W` | From the Connections or Providers catalog, open saved Workspaces. If Search or a review owns focus, `w` remains owned by that surface. |
-| `P` | From the Connections or Workspaces catalog, open cached Providers. If Search or a review owns focus, `p` remains owned by that surface. |
-| `C` | From Workspaces or Providers, return to Connections. In Connection Review it copies the exact reviewed SSH command; it never executes or appends a newline. |
-| Up / Down / Home / End | In Workspaces or Providers, move the selected row within the bounded catalog. |
-| `Tab` / `Shift+Tab` | Move through the active modal focus order; Connection Review includes its Allow once action. |
-| `Enter` | Review a valid host or activate the focused editor control; in Connection Review, Allow once only when Review or Allow once owns focus. |
-| `A` | Request Allow once from Connection Review. |
-| `S` | Request Allow for session from Connection Review. For remote, non-loopback, or production tunnels this action is disabled, omitted from focus, and reports that a fresh Allow once decision is required. |
-| `D` | Deny the managed launch and return to results. |
-| `Escape` | Cancel the host editor; return from connection review to results, workspace review to Workspaces, or provider review to Providers. |
-
-While the host editor owns the modal, Tab/Shift+Tab cycles Host, User, Port,
-Review, and Cancel. Its visible Cancel control replaces the redundant top-level
-close icon, keeping focus and pointer targets unambiguous at small scaled
-viewports. Modified approval/copy letters remain available to their existing
-owners.
 
 ## Search mode
 
@@ -251,6 +217,13 @@ actions are rejected and do not silently remove the matching default.
 
 ## Ownership and precedence
 
+Known maintenance issue: current Automexia defaults use Ctrl+R/Ctrl+D for
+cloning, as listed above, displacing familiar shell controls. The
+[required correction](TERMINAL-MAINTENANCE-REQUIREMENTS.md#r4-restore-native-shell-control-keys-by-default)
+specifies restoring native input while preserving explicit user overrides.
+It has not been implemented by this documentation change; the tables above
+remain the current-behavior reference.
+
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse
 reporting, and the line editor each have scoped ownership. Automexia never
@@ -258,14 +231,9 @@ sends terminal-owned selection motions to the PTY. See
 [Architecture](ARCHITECTURE.md#keyboard-compatibility-boundary) for why one
 global shortcut table is not used across every mode and OS.
 
-The four app-surface launchers are inactive while Search, Vi mode, or an
-alternate-screen terminal application owns input. They only open application
-UI: Connection Hub remains read-only, and Quick Actions still requires its
-normal review/insert step. A published CP4 production-context row adds a second
-confirmation; broker-required or non-current provider rows cannot copy or
-insert. None of these shortcuts writes to or executes in the PTY. The mnemonic
-letters are **H**ub, **O**pen actions, **M**arketplace, and
-**L**ist fonts.
+Application-surface shortcuts are inactive while Search, Vi mode, or an
+alternate-screen terminal application owns input. They open application UI
+only and never write to or execute in the PTY.
 ## Ghostty compatibility profiles
 
 `automexia` remains the implicit profile. Set `keyboard.binding-profile` to
@@ -289,3 +257,15 @@ The generated tables are the canonical inventory:
 See [Ghostty keyboard compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md) for
 configuration, migration, provenance, deviations, and current native-evidence
 limits.
+
+## Assurance evidence anchor compatibility
+
+These headings preserve source-owned feature-matrix references after the
+public documentation consolidation. They do not expand shipped behavior,
+reintroduce private plans, or replace the current status stated above.
+
+### Connection Hub Controls V05 Release Gated
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.

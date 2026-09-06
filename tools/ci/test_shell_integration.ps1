@@ -1,8 +1,24 @@
 $ErrorActionPreference = 'Stop'
+
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $integration = Join-Path $root 'shell-integration\powershell\automexia.ps1'
 $integrationSource = Get-Content -LiteralPath $integration -Raw
 $env:TERM_PROGRAM = 'Automexia'
+
+function Remove-AutomexiaAnsiFormatting {
+    param([AllowNull()][string]$Text)
+
+    if ([string]::IsNullOrEmpty($Text)) {
+        return $Text
+    }
+
+    # Formatting tests compare semantic text, not presentation bytes. PowerShell 7
+    # can preserve ANSI depending on $PSStyle.OutputRendering, while Windows
+    # PowerShell 5.1 has different redirection behavior. Strip CSI/SGR sequences
+    # before assertions so the contract is stable across supported hosts.
+    $esc = [char]27
+    return [regex]::Replace($Text, "$esc\[[0-9;?]*[ -/]*[@-~]", '')
+}
 
 . $integration
 $firstPrompt = (Get-Command prompt).ScriptBlock.ToString()
@@ -61,7 +77,6 @@ if ($failureLifecycle -notmatch [regex]::Escape("$([char]27)]133;D;1$([char]7)")
 if ($global:LASTEXITCODE -ne 0) {
     throw 'PowerShell failure classification changed user-owned LASTEXITCODE'
 }
-
 
 $cmdAlias = Get-Command cmd -ErrorAction Stop
 $cmdExeAlias = Get-Command cmd.exe -ErrorAction Stop
@@ -298,13 +313,17 @@ try {
     $cmdProbeRoot = Join-Path $fixtureRoot 'cmd-probe'
     $null = New-Item -ItemType Directory -Path $cmdProbeRoot
     $generatedCmd = Join-Path $cmdProbeRoot 'automexia.cmd'
+    # The generated batch needs stable identity bytes, not the contributor's
+    # account or executable path. Fictional values prove the same wire contract.
+    $fixtureUser = 'alice'
+    $fixtureShellPath = 'C:\AutomexiaFixtures\cmd.exe'
     $generatedSource = $cmdSource.Replace(
         '__AUTOMEXIA_CMD_USER_BASE64__',
-        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureUser))
     )
     $generatedSource = $generatedSource.Replace(
         '__AUTOMEXIA_CMD_PATH_BASE64__',
-        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))
+        [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureShellPath))
     )
     $generatedSource = [regex]::Replace($generatedSource, "\r?\n", "`r`n")
     [IO.File]::WriteAllText($generatedCmd, $generatedSource, [Text.Encoding]::ASCII)
@@ -335,10 +354,10 @@ try {
         $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_shell_name=Q01E') -or
         $cmdProbe -notmatch [regex]::Escape(
             'SetUserVar=automexia_shell_user=' +
-            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes([Environment]::UserName))) -or
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureUser))) -or
         $cmdProbe -notmatch [regex]::Escape(
             'SetUserVar=automexia_shell_path=' +
-            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:ComSpec))) -or
+            [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($fixtureShellPath))) -or
         $cmdProbe -notmatch [regex]::Escape(']7;file:///$P') -or
         $cmdProbe -notmatch [regex]::Escape('SetUserVar=automexia_prompt_active=MQ==') -or
         $cmdProbe -notmatch [regex]::Escape([char]0x03BB)) {
@@ -424,12 +443,49 @@ try {
         }
     }
 
+    # PowerShell table formatting owns truncation once the row is narrower than
+    # the declared columns. At very small widths it may preserve the first glyph
+    # in the Name cell and replace the entire remaining filename with an ellipsis
+    # (for example: "<rust-glyph> ..."). That is valid native truncation and is
+    # different from placing the glyph in a standalone Icon column.
+    #
+    # Keep two contracts separate:
+    #   1. At a normal width the Name cell must be "icon + complete filename".
+    #   2. At width 62 the icon must remain in the same Name cell and be followed
+    #      either by a visible filename prefix or by PowerShell's ellipsis. The
+    #      complete long filename must not leak through the constrained layout.
+    #
+    # Normalize ANSI first so Windows PowerShell 5.1 / PowerShell 7+ rendering
+    # differences and $PSStyle.OutputRendering cannot change the assertion.
     $longRustFile = Get-Item -LiteralPath (Join-Path $fixtureRoot $longRustName)
-    $narrowListing = $longRustFile | Format-Table | Out-String -Width 62
-    if ($narrowListing -notmatch [regex]::Escape("$rustGlyph this")) {
-        throw 'Narrow PowerShell formatting separated or hid the icon from the filename prefix'
+    $rustGlyphText = [string]$rustGlyph
+
+    $wideLongListing = $longRustFile | Format-Table | Out-String -Width 240
+    $wideLongComparable = Remove-AutomexiaAnsiFormatting $wideLongListing
+    if ($wideLongComparable -notmatch [regex]::Escape("$rustGlyphText $longRustName")) {
+        throw "PowerShell normal-width formatting does not keep the Rust icon immediately before the complete filename.`nRendered output:`n$wideLongComparable"
     }
-    if ($narrowListing -match [regex]::Escape($longRustName)) {
+
+    $narrowListing = $longRustFile | Format-Table | Out-String -Width 62
+    $narrowComparable = Remove-AutomexiaAnsiFormatting $narrowListing
+    $narrowRowsWithGlyph = @(
+        $narrowComparable -split "\r?\n" |
+            Where-Object { $_.Contains($rustGlyphText) }
+    )
+    if ($narrowRowsWithGlyph.Count -ne 1) {
+        throw "Narrow PowerShell formatting did not keep exactly one Rust icon in the file row.`nRendered output:`n$narrowComparable"
+    }
+
+    $narrowRow = $narrowRowsWithGlyph[0]
+    $glyphIndex = $narrowRow.IndexOf($rustGlyphText, [StringComparison]::Ordinal)
+    $afterGlyph = $narrowRow.Substring($glyphIndex + $rustGlyphText.Length)
+    $firstFilenameCharacter = $longRustName.Substring(0, 1)
+    $hasVisiblePrefix = $afterGlyph -match ('^\s+' + [regex]::Escape($firstFilenameCharacter))
+    $hasNativeEllipsis = $afterGlyph -match '^\s+(?:\.\.\.|…)(?:\s|$)'
+    if (-not $hasVisiblePrefix -and -not $hasNativeEllipsis) {
+        throw "Narrow PowerShell formatting detached the Rust icon from both the filename and the native truncation marker.`nRendered row: <$narrowRow>"
+    }
+    if ($narrowComparable -match [regex]::Escape($longRustName)) {
         throw 'Narrow PowerShell formatting did not constrain the filename presentation'
     }
 } finally {
@@ -618,10 +674,23 @@ if ($installerSource -notmatch 'automexia-eza-filter\.pl' -or
     $installerSource -notmatch 'AUTOMEXIA_EZA_FILTER_EOF') {
     throw 'Windows installer does not deploy the POSIX composite-folder filter'
 }
-if ($installerSource -notmatch 'DetectedWslDistributions' -or
-    $installerSource -notmatch 'docker-desktop' -or
-    $wslTransportSource -notmatch "Arguments = '--distribution ' \+ \`$Distribution") {
-    throw 'Windows installer does not provision every detected user WSL distribution safely'
+# These are exact source-code contracts, not regular-expression contracts.
+# Keep the WSL distribution argument assertion literal so Windows PowerShell 5.1
+# cannot interpolate `$Distribution` or leave a dangling regex escape. Splitting
+# the checks also makes failures identify the precise missing contract.
+if (-not $installerSource.Contains('DetectedWslDistributions')) {
+    throw 'Windows installer does not track detected WSL distributions'
+}
+if (-not $installerSource.Contains('docker-desktop')) {
+    throw 'Windows installer does not explicitly account for Docker Desktop WSL distributions'
+}
+$expectedWslDistributionArgument = 'Arguments = ''--distribution '' + $Distribution'
+if (-not $wslTransportSource.Contains($expectedWslDistributionArgument)) {
+    throw @(
+        'Windows WSL helper is missing the safe distribution argument construction.',
+        'Expected exact source fragment:',
+        $expectedWslDistributionArgument
+    ) -join [Environment]::NewLine
 }
 if ($installerSource -notmatch 'Invoke-AutomexiaWslScript' -or
     $installerSource -match 'payloadBase64|base64 -d|sh -c') {

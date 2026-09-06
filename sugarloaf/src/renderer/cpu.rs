@@ -40,6 +40,23 @@ impl CpuCache {
         self.glyphs.clear();
         self.has_last = false;
     }
+
+    #[inline]
+    fn can_skip_frame(&self, frame_hash: u64) -> bool {
+        self.has_last && self.last_frame_hash == frame_hash
+    }
+
+    #[inline]
+    fn record_presented_frame(&mut self, frame_hash: u64) {
+        self.last_frame_hash = frame_hash;
+        self.has_last = true;
+    }
+}
+
+#[inline]
+fn hash_surface_extent(hasher: &mut impl Hasher, width_px: u32, height_px: u32) {
+    hasher.write_u32(width_px);
+    hasher.write_u32(height_px);
 }
 
 #[derive(Hash, Eq, PartialEq, Clone, Copy)]
@@ -330,6 +347,10 @@ pub fn render_cpu(
     // each row.
     let frame_hash = {
         let mut h = rustc_hash::FxHasher::default();
+        // A resize can expose new native surface pixels without changing a
+        // terminal cell or overlay. Treat the physical extent as frame state
+        // so the CPU backend repaints every newly exposed row immediately.
+        hash_surface_extent(&mut h, ctx.width_px, ctx.height_px);
         if let Some(c) = background {
             h.write_u64(c.r.to_bits());
             h.write_u64(c.g.to_bits());
@@ -390,11 +411,9 @@ pub fn render_cpu(
         h.finish()
     };
 
-    if cache.has_last && cache.last_frame_hash == frame_hash {
+    if cache.can_skip_frame(frame_hash) {
         return;
     }
-    cache.last_frame_hash = frame_hash;
-    cache.has_last = true;
 
     let buf_w = ctx.width_px as i32;
     let buf_h = ctx.height_px as i32;
@@ -572,8 +591,13 @@ pub fn render_cpu(
     );
     text.render_cpu_modal(&mut buffer, ctx.width_px, ctx.height_px);
 
-    if let Err(e) = buffer.present() {
-        tracing::error!("softbuffer present failed: {e}");
+    match buffer.present() {
+        Ok(()) => cache.record_presented_frame(frame_hash),
+        Err(e) => {
+            // Do not cache a frame the native surface never presented. The
+            // next redraw must retry identical content instead of skipping it.
+            tracing::error!("softbuffer present failed: {e}");
+        }
     }
 }
 /// Paint one primitive phase into the software framebuffer.
@@ -1107,6 +1131,38 @@ fn draw_quad_instance(
             let idx = (y as usize) * stride + (x as usize);
             buf[idx] = blend_over_swar(src_premul, buf[idx]);
         }
+    }
+}
+
+#[cfg(test)]
+mod frame_identity_tests {
+    use super::*;
+
+    fn extent_identity(width_px: u32, height_px: u32) -> u64 {
+        let mut hasher = rustc_hash::FxHasher::default();
+        hash_surface_extent(&mut hasher, width_px, height_px);
+        hasher.finish()
+    }
+
+    #[test]
+    fn physical_surface_extent_is_part_of_the_frame_identity() {
+        assert_ne!(extent_identity(1600, 888), extent_identity(1600, 950));
+        assert_ne!(extent_identity(1599, 950), extent_identity(1600, 950));
+        assert_eq!(extent_identity(1600, 950), extent_identity(1600, 950));
+    }
+
+    #[test]
+    fn only_a_successfully_presented_frame_may_be_skipped() {
+        let mut cache = CpuCache::new();
+        let frame_hash = extent_identity(1600, 950);
+
+        assert!(!cache.can_skip_frame(frame_hash));
+        cache.record_presented_frame(frame_hash);
+        assert!(cache.can_skip_frame(frame_hash));
+        assert!(!cache.can_skip_frame(extent_identity(1600, 951)));
+
+        cache.clear();
+        assert!(!cache.can_skip_frame(frame_hash));
     }
 }
 

@@ -461,6 +461,36 @@ class S1AssuranceTests(unittest.TestCase):
             )
             self.assertEqual(coverage["capture_count"], expected, suite["id"])
 
+    def test_m8_m12_providers_have_native_resource_visual_and_accessibility_evidence(self) -> None:
+        policy = S1.load_policy()
+        for suite in policy["required_suites"]:
+            domain = suite["domain"]
+            coverage = suite["coverage"]
+            if domain == "native":
+                self.assertIn(
+                    "connection-hub-providers-review",
+                    coverage["scenarios"],
+                    suite["id"],
+                )
+            elif suite["tool"] == "native-resource":
+                self.assertIn(
+                    "connection-hub-providers-replacement",
+                    coverage["scenarios"],
+                    suite["id"],
+                )
+            elif domain == "visual":
+                self.assertIn(
+                    "connection-hub-providers-review",
+                    coverage["surfaces"],
+                    suite["id"],
+                )
+            elif domain == "accessibility":
+                self.assertIn(
+                    "connection-hub-providers-review",
+                    coverage["tasks"],
+                    suite["id"],
+                )
+
     def test_resource_and_visual_matrix_covers_all_claimed_macos_and_linux_gpu_variants(self) -> None:
         policy = S1.load_policy()
         suites = {

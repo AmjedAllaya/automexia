@@ -1,126 +1,55 @@
-# Feature catalog
+# Public feature catalog
 
-This catalog is the human-readable inventory of shipped Automexia v0.4
-surfaces. The machine-enforced source is
-[`tests/assurance/feature-matrix.json`](../tests/assurance/feature-matrix.json),
-which also owns quality and native-platform evidence.
+This catalog describes only the free terminal capabilities intended for public
+documentation. It is not a roadmap. Unreleased advanced work and all commercial
+planning are maintained only in the ignored private documentation area.
 
-Use the [complete implemented-feature manual testing guide](MANUAL-FEATURE-TESTING.md)
-for clean-machine prerequisites, feature-by-feature workflows, negative and
-boundary scenarios, expected results, controlled external evidence, and cleanup.
-The guide preserves the status distinctions in this catalog; a source test or
-ordinary provider CLI run does not activate a release-gated capability.
+A source module, fixture, test, or internal type is not evidence that an
+unlisted product capability is available.
 
-`PR` means deterministic checks run on pull requests. `Controlled` means the
-feature additionally needs named hardware, privileges, credentials, or a real
-display session before release. A platform marked `External` is supported by
-portable code but still needs that controlled native evidence; it is not an
-inferred pass.
+## Terminal capabilities
 
-## User-facing terminal
+| Capability | Public behavior | Documentation |
+|---|---|---|
+| Terminal emulation | VT/CSI/OSC/DCS parsing, Unicode text, scrollback, reflow, search, mouse reporting, and keyboard selection | [Architecture](ARCHITECTURE.md), [testing](TESTING.md) |
+| Native shell sessions | Unix PTY and Windows ConPTY launch, resize, ordered input, exit reporting, and cleanup | [Platforms](PLATFORMS.md), [troubleshooting](TROUBLESHOOTING.md) |
+| Windows, tabs, and panes | Independent windows, tabs, pane-local tabs, splits, focus movement, and divider resizing | [Keyboard](KEYBOARD.md), [terminal guide](guide/terminal-experience.md) |
+| Search and selection | Scoped search, keyboard and pointer selection, copy, paste, and command navigation | [Keyboard](KEYBOARD.md), [productivity guide](user-guide/productivity.md) |
+| Appearance | Fonts, themes, opacity, cursor choices, line spacing, and saved appearance preferences | [Configuration](CONFIGURATION.md), [customization](user-guide/customization.md) |
+| Shell integration | Session-local integration for supported shells, prompt metadata, and object-preserving listings | [Shell integration](SHELL-INTEGRATION.md) |
+| Local and inline images | Bounded local raster preview plus Sixel, Kitty, and iTerm2 protocol images | [Image previews](IMAGE-PREVIEWS.md) |
+| OpenSSH interoperability | Ordinary system OpenSSH use and explicit, reviewed local inventory behavior described in the public guide | [Remote connections](guide/remote-connections.md), [SSH inventory](SSH-INVENTORY.md) |
+| Accessibility | Keyboard-only operation, focus models, high-contrast support, reduced motion, and renderer-neutral accessibility semantics | [Accessibility](ACCESSIBILITY.md) |
+| Configuration and migration | TOML configuration, transactional reload, platform overrides, and non-destructive migration | [Configuration](CONFIGURATION.md), [migration](MIGRATION.md) |
+| Platform packages | Windows, macOS, and Linux packaging with checksums, provenance, and platform signing requirements | [Installation](INSTALLATION.md), [release trust](RELEASE-TRUST.md) |
 
-| Capability | What is shipped | Platform evidence | Canonical docs | Why this design |
-|---|---|---|---|---|
-| Terminal core | VT/CSI/OSC/DCS parsing, Unicode grid, scrollback, search, reflow, mouse and keyboard selection, Sixel/Kitty/iTerm2 protocol state | PR: Windows/Linux/macOS; nightly fuzz | [UX](LIQUID-HACKER-UX.md), [testing](TESTING.md#terminal-conformance) | [Architecture](ARCHITECTURE.md#vt-control-string-trust-boundary) |
-| PTY lifecycle | Unix PTY and Windows ConPTY launch, resize coalescing, ordered input, child exit, teardown, and high-throughput handling | PR: all; controlled Windows lifecycle | [Platform support](PLATFORMS.md), [testing](TESTING.md#native-platform-ownership) | [Architecture](ARCHITECTURE.md#interactive-performance-invariants) |
-| Rendering and responsive UI | GPU text/images, experimental CPU fallback, fonts, grapheme width, panes, explicit modal composition, pane-local tabs, active outlines, passive footers, scoped search, branded first-run/diagnostic/compatibility/quit surfaces, a liquid-glass minimize/maximize/restore/close cluster, bounded tab appearance, cyan/blue scrollbars, and application-wide saved font/appearance preferences | PR layout/theme/interaction/privacy/persistence tests, warning-denied Clippy, and enqueue benchmark; controlled native restart/frames; cross-platform screen-reader evidence external | [UX](LIQUID-HACKER-UX.md), [configuration](CONFIGURATION.md#saved-runtime-preferences), [accessibility](ACCESSIBILITY.md), [UI branding audit](UI-BRANDING-ROADMAP.md) | [ADR 0004](adr/0004-native-persistent-operational-chrome.md), [ADR 0007](adr/0007-pane-local-session-tabs.md), [ADR 0008](adr/0008-pane-local-operational-footer.md), [ADR 0013](adr/0013-renderer-independent-accessibility-model.md), [ADR 0036](adr/0036-application-owned-runtime-user-preferences.md) |
-| Windows, tabs, panes, and cloning | Independent OS windows, window tabs, pane-local tabs, fresh splits, exact session clones, clipboard, mouse routing, scoped pane/visible-workspace search, and command palette | PR: all; controlled Windows/WSL | [Keyboard](KEYBOARD.md), [UX](LIQUID-HACKER-UX.md) | [ADR 0006](adr/0006-prompt-context-and-workspace-actions.md), [ADR 0007](adr/0007-pane-local-session-tabs.md) |
-| DevOps prompt context | Per-command OS, user, Git, Docker, Kubernetes, cloud, Terraform, environment, complete path, exit state, and duration metadata | PR: Windows/Linux/macOS | [UX](LIQUID-HACKER-UX.md#per-pane-operational-context), [shell integration](SHELL-INTEGRATION.md) | [ADR 0006](adr/0006-prompt-context-and-workspace-actions.md) |
-| Shell integration and listings | Automatic PowerShell, CMD, WSL, Bash, Zsh, and Fish provisioning; semantic OSC metadata; icon/category-aware listings without changing piped objects | PR: native hosts | [Shell integration](SHELL-INTEGRATION.md) | [ADR 0009](adr/0009-launch-time-shell-provisioning.md) |
-| Local and protocol images | Sixel, Kitty, iTerm2 inline rendering plus bounded hover/click/selection Quick Look for local raster files | PR decoder/state; controlled native visual/lifetime | [Image previews](IMAGE-PREVIEWS.md) | [ADR 0014](adr/0014-explicit-bounded-image-quick-look.md) |
-| Configuration and migration | TOML config, themes, platform overrides, live transactional reload, bounded reads, private versioned runtime-preference overlay with last-known-good recovery, one-time non-destructive Rio import, side-by-side identity | PR: Windows/Linux/macOS source; controlled native preference restart per platform | [Configuration](CONFIGURATION.md), [migration](MIGRATION.md) | [ADR 0001](adr/0001-standalone-product-boundary.md), [ADR 0002](adr/0002-non-destructive-config-migration.md), [ADR 0036](adr/0036-application-owned-runtime-user-preferences.md) |
-| Ghostty 1.3 keyboard compatibility | Explicit versioned profile, typed bind/unbind layers, sequences/tables/chains, generated inspection, safe migration, compatibility actions, modal redacted parked-session controls, and bounded top-level-tab undo/redo | PR/source: fixture/property/frontend/fuzz-build/generation/mutation policy; strict native-evidence validator; same-host Windows benchmark observed; controlled Windows/Linux/macOS visual/resource/AT/package and release evidence external | [Ghostty compatibility](GHOSTTY-KEYBOARD-COMPATIBILITY.md), [generated bindings](generated/ghostty-1.3-keybindings.md) | [ADR 0026](adr/0026-versioned-ghostty-keybinding-profiles.md), [ADR 0027](adr/0027-redacted-compatibility-inspector.md), [ADR 0028](adr/0028-bounded-parked-pty-topology-history.md) |
+## Contributor capabilities
 
-## Internal and contributor surfaces
+The public repository also documents build, test, packaging, security, and
+extension-safety contracts needed to maintain the free terminal:
 
-| Capability | What is shipped | Evidence | Canonical docs | Why this design |
-|---|---|---|---|---|
-| Extension contracts | Private versioned API, bounded worker/cache runtime, cancellation, session isolation, renderer-neutral UI model | PR models; nightly Miri/sanitizers | [Architecture](ARCHITECTURE.md#core-and-extension-ownership) | [ADR 0003](adr/0003-extension-capability-and-threading.md) |
-| OpenSSH inventory and read-only Connection Hub (v0.5 release-gated) | Explicit reviewed native files, bounded static alias inventory, virtualized modal search/filter/group, public favorite/tag CAS, read-only recent/library state, and last-known-good refresh; no launch or network authority | PR/source: Windows; external native picker/accessibility: Linux/macOS; nightly fuzz/benchmark | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md), [inventory](SSH-INVENTORY.md) | [ADR 0022](adr/0022-read-only-connection-hub-activation.md), [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md) |
-| Reviewed OpenSSH routes, trust, tunnels, and guarded lifecycle (nonactivated M2-M5) | Exact direct/config-jump/configuration-free tunnel argv; typed host/user/port/endpoints; loopback defaults; strong per-use tunnel review; complete trust evidence; safe copy; bounded fresh current-executable review with monotonic non-wrapping IDs; guarded PTY/route/tunnel lifecycle; process-group/Job Object teardown; bounded PTY-worker joining; outcomes; opaque per-tunnel receipt ownership; reconnect; and compact accessible tunnel state. Activation/status execution are false, the package is unverified, and no production child/listener can start | PR/source: bounded route/trust/tunnel/status/lifecycle models, hostile/exact/PQ-preserving argv, owned-tree cleanup, 1/10/50 pure cleanup, schema-7 mutations, schema-2 application/tool/advisory/provenance-bound native validation, protected manual workflow, and path-free summaries; protected attestation/activation, actual status/OpenSSH descendant proof, screen-reader/resources, and real Windows/macOS/Linux evidence remain external | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md#review-typed-tunnels-after-activation), [launch contract](SESSION-LAUNCH-BROKER.md#upstream-m5-reviewed-tunnel-request), [M5 testing](TESTING.md#m5-typed-openssh-tunnels-and-native-release-evidence) | [ADR 0012](adr/0012-first-party-ssh-and-session-launch-boundary.md), [Architecture](ARCHITECTURE.md#m5-reviewed-openssh-tunnel-and-native-evidence-boundary) |
-| Typed recipe and multi-environment workspace reviews (nonactivated M6) | Accepted schema-2 preview/CAS editing, migration/recovery, public `automexia workspaces` manager, immutable Hub worker snapshot, responsive workspace catalog/restore review, exact dependent fingerprints, typed recipe lifecycle/no-hooks, narrow remote initialization, declarative multi-window restore, and explicitly armed/redacted broadcast. Every product review remains nonexecuting | PR/source: planner/automation/workspace/library/product-CLI/controller/renderer tests, real temp-store CAS and hostile-file cases, pointer/keyboard/responsive/accessibility/no-PTY regressions, privilege/redaction/1,000×50 generation cases, mutation/fuzz ownership, and maximum-cardinality benchmarks; external: D3/M5 activation, native execution/resources/accessibility/release | [Connection automation](SSH-CONNECTION-AUTOMATION.md#m6-review-only-implementation), [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md#review-only-workspaces-and-broadcast), [M6 testing](TESTING.md#m6-typed-automation-and-multi-environment-workspaces) | [Accepted ADR 0023](adr/0023-typed-automation-and-declarative-workspaces.md), [Architecture](ARCHITECTURE.md#m6-typed-automation-and-declarative-workspace-boundary) |
-| Provider-neutral authentication capsules (M7/D6.0; provider adapters separate) | Strict bounded public provider contexts/capsules/observations, 19-state lifecycle, exact one-time capability review, generation/session isolation, cached-only status semantics, redacted receipts/audits, explicit revoke/disable/uninstall/shutdown, and no passive provider launch. The framework itself has no login control, network, or credential authority | PR/source: 12 focused lifecycle/security tests, 19-state Hub fixture, extension rebind regression, cached Providers integration, six mutation cases, fuzz registration, 16×64 lifecycle, and 64-capsule benchmark; external: real provider CLIs, Linux/macOS native UI, controlled accessibility/release | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md#provider-authentication-framework-current-source-boundary), [M7 testing](TESTING.md#m7-provider-neutral-authentication-and-capsule-isolation) | [Architecture](ARCHITECTURE.md#m7-provider-neutral-authentication-capsule-boundary), [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) |
-| AWS adapter and cached review (M8/D6.1; execution nonactivated) | Independent bounded public parser and exact SSO/STS/SSM/EKS-dry-run contracts plus cached Hub identity/scope/freshness/risk review; M11 owns private EKS output. No official tool, network, cache, credential, or PTY authority | PR/source: adapter contracts plus strict capsule replacement, cached product keyboard/pointer/responsive/accessibility/no-PTY integration, private lifecycle tests, and product benchmark; external: D3 activation and real AWS/native/resource/accessibility/release | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md#review-cached-provider-contexts), [M8-M12 product testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle) | [Architecture](ARCHITECTURE.md#m8-aws-adapter-source-boundary), [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) |
-| Azure adapter and cached review (M9/D6.2; execution nonactivated) | Independent bounded public JSON and exact tenant login/account/Bastion/AKS contracts plus cached Hub review; M11 owns private AKS output. No official tool, network, token/cache, browser, SDK, or PTY authority | PR/source: adapter contracts plus strict capsule publication, cached product UI/no-PTY integration, private lifecycle tests, and product benchmark; external: D3 activation and real Azure/native/resource/accessibility/release | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md#review-cached-provider-contexts), [M8-M12 product testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle) | [Architecture](ARCHITECTURE.md#m9-azure-adapter-source-boundary), [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) |
-| Google Cloud adapter and cached review (M10/D6.3; execution nonactivated) | Independent bounded named public parser and exact per-command auth/project/federation/IAP/GKE contracts plus cached Hub review; M11 owns private GKE output. No official tool, network, credential DB, browser, SDK, or PTY authority | PR/source: adapter tests/benchmark plus strict capsule publication, cached product UI/no-PTY integration, private lifecycle tests, and product benchmark; external: D3 activation and real Google/native/resource/accessibility/release | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle) | [Architecture](ARCHITECTURE.md#m10-google-cloud-adapter-source-boundary), [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) |
-| Kubernetes/OpenShift adapters, private lifecycle, and cached review (M11/D6.4; execution nonactivated) | Independent bounded parse/merge/exec/CLI contracts; app-owned no-follow 16-file/1 MiB validate/revalidate/revoke/cleanup lifecycle; cached Hub context review. No active client, plugin, cluster, network, browser, PTY, or user-kubeconfig mutation | PR/source: 13 adapter tests, private lifecycle/tamper/1,024-file cleanup, cached product UI/no-PTY integration, parser and product benchmarks; external: D3 activation, real clients/clusters/plugins, Unix native no-follow, resources/accessibility/release | [Provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle), [guide](user-guide/connection-hub-and-ssh.md#review-cached-provider-contexts) | [Architecture](ARCHITECTURE.md#m11-kubernetes-and-openshift-source-boundary), [ADR 0020](adr/0020-hybrid-build-wrap-adopt-boundary.md) |
-| Teleport adapter and cached review (M12.1/D6.5; execution nonactivated) | Independent bounded public status and exact version/login/status/ssh/logout contracts plus cached Hub proxy/cluster/user/freshness/risk review. Agent, cache, certificate, browser/MFA, process, network, and PTY remain external authorities; OpenBao is not done | PR/source: Teleport contracts/benchmark plus strict capsule publication, cached product pointer/keyboard/responsive/accessibility/no-PTY integration and OpenBao rejection; external: D3 activation and real Teleport/native/resource/accessibility/release | [Connection Hub and SSH](user-guide/connection-hub-and-ssh.md#review-cached-provider-contexts), [provider testing](MULTI-CLOUD-PROVIDERS-TESTING.md#m8-m12-cached-provider-product-and-m11-private-lifecycle) | [Architecture](ARCHITECTURE.md#m12-teleport-organization-identity-source-boundary), [provider audit](MULTI-CLOUD-PROVIDERS-IMPLEMENTATION-AUDIT.md) |
-| Native completion, Quick Actions, and optional suggestions | **CP1-CP3.3 fully implemented locally:** shell-owned completion; typed private Quick Actions; deterministic five-shell aliases; reviewed static packs; selected native imports; and trusted-workspace task bridges. **CP5 partial overall:** accepted ADR 0025; CP5.1-CP5.4 source/local models done; CP5.5 inert helper/adapter bridge source complete; CP5.6 activation/release gates open. Secret expansion, exact launch, and CP5 preview remain disabled | PR: CP1-CP3 model/native/fuzz/bench/mutation gates plus CP5 authenticated protocol/source/ranking/UI/publication/route/helper, fragmentation, lifecycle, mutation and local native shell tests; fuzz/bench compile; controlled: launcher/signing, WSL relay, live composition, three-OS GPU/endpoint/shell/accessibility/package/rollback/resources and 30-day baseline | [Command Productivity](COMMAND-PRODUCTIVITY.md), [DevOps aliases](DEVOPS-ALIASES.md), [CP5 testing](CP5-SUGGESTION-TESTING.md), [CP5 audit](research/CP51-CP56-IMPLEMENTATION-AUDIT.md), [compatibility](COMMAND-PRODUCTIVITY-COMPATIBILITY.md), [shell integration](SHELL-INTEGRATION.md) | [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md), [ADR 0021](adr/0021-trusted-workspace-task-bridges.md), [accepted ADR 0025](adr/0025-authenticated-native-editor-suggestion-bridge.md) |
-| Provider-aware Quick Actions (M13/F13/CP4; nonactivated) | Immutable cached public capsule actions for SSH, AWS, Azure, Google Cloud, Kubernetes, OpenShift, and Teleport; retained Connection Hub-to-selected-route handoff; route/session/revision/generation isolation; idempotence/revocation; deterministic precedence; exact target/state/risk context; final revalidation; production confirmation; and insert-without-Enter. Broker/private-environment actions remain unavailable, OpenBao is unsupported, and no provider refresh or exact execution is active | PR/source: 25 named core/provider/product/application/UI regressions, seven policy mutations, exact-source ratchets, fuzz compile/registration, architecture check; local performance: 16-action snapshot and cached-search Criterion; external: approved provider refresh/capsule production, provider-native accounts/CLIs/clusters, Linux/macOS runtime, screen readers, controlled resources, packaging/signing/release | [Provider-aware Quick Actions guide](user-guide/commands-and-shell.md#provider-aware-quick-actions), [CP4 reference](COMMAND-PRODUCTIVITY.md#cp4-capsuleprovider-aware-productivity), [M13 testing](TESTING.md#m13-provider-aware-quick-actions) | [CP4 implementation audit](PROVIDER-AWARE-QUICK-ACTIONS-IMPLEMENTATION-AUDIT.md), [Architecture](ARCHITECTURE.md#m13-provider-aware-quick-actions-boundary), [ADR 0015](adr/0015-shell-native-completion-and-typed-quick-actions.md) |
-| Situation-aware production operations | Planned optional DevOps/SRE guidance that may help users understand current evidence, investigate problems, review impact and choose an explicit safe action. No product UI, provider capability, collection, execution or persistence exists | Current: public direction, trust principles, experience summary, proposed ADR and nonactivation checker only. Implementation, acceptance, provider/native/security/accessibility/resource/rollback/package and release evidence remain future work | [Production Operations summary](SITUATION-AWARE-PRODUCTION-OPERATIONS.md), [public contract principles](SITUATION-AWARE-PRODUCTION-OPERATIONS-CONTRACTS.md), [experience summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-UX.md), [assurance summary](SITUATION-AWARE-PRODUCTION-OPERATIONS-TESTING.md) | [Proposed ADR 0034](adr/0034-situation-aware-production-operations.md), [Architecture](ARCHITECTURE.md#proposed-situation-aware-production-operations-boundary) |
-| Sandboxed ecosystem and selected-input model suggestions (D7/CP6; accepted source, nonactivated) | Private strict models, real signed local-bundle verification, protected atomic disabled store, versioned custom WIT, no-default-WASI Wasmtime conformance, exact grants/lifecycle, non-executing signed action packs, selected-input redaction/consent/typed response/risk, renderer-neutral review, and app denial adapter. No public download/SDK, active guest, provider/tool/workflow call, Enter, process, credential or PTY authority | PR/source: 17 mutations, unit/property/real-ZIP/WIT/Wasmtime/ACL/recovery/app tests, fuzz harness compile, dependency policy and Criterion; external: protected activation, trust/supply-chain drills, native signed packages/sandbox/UX/accessibility/privacy/resources/1,000 cycles/30-day evidence | [Safety boundary](ECOSYSTEM-PLATFORM.md), [D7/CP6 testing](TESTING.md#d7cp6-accepted-source-and-release-gate) | [Accepted ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md), [implementation audit](research/D7-CP6-IMPLEMENTATION-AUDIT.md) |
-| Optional LLM Orchestration proposal (LO0; LO1-LO5 not implemented) | One separately installed extension may propose bounded typed workflows over deterministic domain actions; a pure neutral workflow model and the application composition root retain schemas, registry, validation, policy, review, one-run grants, execution, cancellation and receipts. Models receive no direct tools or ambient state. No workflow crate, provider/model adapter, registry, executor, UI, MCP mapping, model download or runtime exists | Current: specification, proposed ADR, provisional limits and future test ledger only; external: explicit acceptance, machine contract, dependency/provider/privacy/security/resource/accessibility/native/package/lifecycle evidence for every later slice | [LLM Orchestration specification](LLM-ORCHESTRATION-EXTENSION.md), [testing](LLM-ORCHESTRATION-TESTING.md) | [Proposed ADR 0033](adr/0033-optional-llm-orchestration-extension.md) |
-| Automation Studio architecture proposal (AS0; no runtime) | Proposed separate embedded file-editor foundation, DevOps/SRE domain extension, metadata-only Pack, core-owned documents/trust/webview/LSP/process/credential brokers, typed saved-revision execution and terminal-only fallback. No editor dependency, document service, webview, LSP/DAP broker, language server, Studio UI, file-write or script-run path exists | Current: architecture, proposed ADR and future test ledger only; external: explicit acceptance, exact dependency review, numeric contract, native Windows/macOS/Linux X11/Wayland feasibility, implementation, security/accessibility/resources/package/release evidence | [Automation Studio architecture](AUTOMATION-STUDIO-ARCHITECTURE.md), [testing](AUTOMATION-STUDIO-TESTING.md) | [Proposed ADR 0030](adr/0030-automation-studio-domain-extension-boundary.md) |
-| Native and Wasm embedding | Inherited private C and WebAssembly embedding crates retained for compatibility | PR compilation/tests; nightly static analysis | [Architecture](ARCHITECTURE.md#layers), crate READMEs | [ADR 0001](adr/0001-standalone-product-boundary.md) |
-| Contributor automation | One-command doctor/check/CI/QA/build/run/package/release workflows, isolated cleanup, identity/provenance/architecture contracts | PR on every host | [CLI reference](CLI-REFERENCE.md), [testing](TESTING.md) | [ADR 0005](adr/0005-storage-bounded-build-workflow.md) |
-| Packaging and release | Windows MSI/ZIP, macOS universal app/DMG, Linux DEB/RPM/tar, exact publisher signatures, hardened-runtime notarization, controlled Defender scan, final-package checksums, SBOMs, and signed repository-owned release manifests | Nightly packages; controlled stable release | [Releasing](../RELEASING.md), [release trust](RELEASE-TRUST.md), [packaging](../packaging/README.md) | [ADR 0016](adr/0016-final-artifact-release-trust.md) |
+- bounded and cancellable background work;
+- one owner for every PTY, process, terminal state, and renderer surface;
+- explicit capability boundaries for installed code;
+- untrusted-input validation and redacted diagnostics;
+- architecture, dependency, fuzz, resource, and release checks; and
+- honest separation between local source evidence and native release evidence.
 
-## Deliberate v0.4 boundaries
+See [Architecture](ARCHITECTURE.md), [Extensions](EXTENSIONS.md),
+[Testing](TESTING.md), [Security](../SECURITY.md), and
+[Contributor CLI](CLI-REFERENCE.md).
 
-Automexia v0.4 does not claim a public extension SDK, third-party extension
-downloads, Wasm sandboxing, remote image fetching, SVG/PDF preview, shared live
-PTY views, complete Ghostty action parity, provider SDK authentication, preinstalled first-party DevOps aliases, trusted-workspace actions, secret
-expansion, or exact Quick Action launch. CP2.2 reviewed insert/copy, CP3.0 pure
-compilation, CP3.1 explicit user-alias persistence, CP3.2 reviewed DevOps
-packs, and CP3.3 selected native imports and exact trusted-workspace task
-bridges are locally implemented for v0.5; their stable release claims remain
-gated by native and controlled evidence.
-D7/CP6 is fully implemented locally at the accepted source boundary and partially done overall: private policy/runtime crates, strict signed local verification, protected disabled storage, custom WIT/Wasmtime conformance, exact grants/lifecycle, non-executing action packs, and selected-input consent/review source exist. Release activation, public download/SDK, provider calls, native product UX and controlled long-run evidence remain disabled or external. LO0 likewise has only an optional LLM Orchestration architecture,
-proposed ADR and test plan. It adds no neutral workflow crate, provider adapter,
-model request, registry, executor, UI or authority; LO1-LO5 are not implemented.
-PO0 likewise adds only the situation-aware Production Operations specification,
-proposed ADR, research baseline, and future test plan. Automexia v0.4 has no
-production passport/lock, evidence-quality model, change/ownership/drift view,
-resource explainer, cohort/revision/environment comparison, network diagnosis,
-SLO or live-log view, dependency graph, situation-aware completion, rollout
-prioritization, impact preflight, GitOps/JIT/policy composition, Incident Mode,
-journal/handoff, managed operation or diagnostic session, runbook pack, local
-ranker, provider capability, or execution path.
-Automation Studio likewise has only an AS0 architecture/test proposal. Automexia
-v0.4 has no built-in file editor, document service, webview surface, language-
-server broker, DevOps/SRE Studio integration, or Studio script-execution path.
-Those omissions are deliberate security and product boundaries, not hidden
-features. The managed SSH/multi-cloud [Connection Hub](CONNECTION-HUB.md) is
-not a shipped v0.4 surface. Its F2/D5.0 bounded records, operation-correlated
-state reducers, panic-free dry-run planner, and accessible value-redacted Hub/
-review/planner models are implemented locally with all authority disabled.
-The D5.1/F3 read-only product is fully implemented locally for v0.5 source
-builds: one app-owned joined service, explicit reviewed native file selection,
-bounded modal search/filter/grouping, public favorite/tag CAS review, read-only
-recent and Connection Library state, and visibly disabled execution. It does
-not persist selected paths or add connection, authentication, provider,
-process, network, listener, credential, or PTY authority. Native macOS/Linux
-picker/permission and controlled screen-reader evidence remain release gates;
-D5.2's typed direct/config-jump/configuration-free tunnel routes, loopback
-defaults, strong per-use tunnel review, full host-key/public-identity evidence,
-safe copy, approval UI, fail-closed runner, guarded PTY/route/tunnel lifecycle,
-and compact accessible tunnel states are now implemented locally without
-production authorization. F5.4's exact native-host/commit/OpenSSH/artifact
-validator and protected manual workflow are also complete locally. Protected
-approvals, attestation, actual status/SSH execution, controlled real F5.4
-cleanup/resource/accessibility proof, and all
-D6.1/M8 AWS, D6.2/M9 Azure, D6.3/M10 Google Cloud, and D6.4/M11
-Kubernetes/OpenShift source contracts are complete locally and nonactivated;
-D6.5 Teleport source contracts are also complete locally and nonactivated;
-OpenBao remains planned behind ADR 0024, and all product/native provider evidence
-remains external.
-D6.0/M7's authority-free capsule/authentication framework is complete locally,
-while D6.1-D6.4 add no live provider/client login or command execution around
-the protected runner. Its reusable
-profiles and typed actions are specified in
-[SSH connections and automation](SSH-CONNECTION-AUTOMATION.md). The complete
-planned command/leader/picker replacement for GUI-oriented remote-management
-workflows is [Terminal-first remote operations](TERMINAL-FIRST-OPERATIONS.md).
-It is a roadmap contract, not a shipped `automexia`/`ax` command claim. See the
-[roadmap](ROADMAP.md) for sequencing and the
-[decision index](DECISIONS.md) for rationale.
+## Publication boundary
 
-Semantic diagnostic and failed-command navigation is also a proposed post-v0.4
-track, not a hidden current feature. Automexia does not currently provide its
-proposed actions, detectors, anchor cache, highlight, user patterns, or
-extension capability. See the
-[Semantic Diagnostic Navigator](SEMANTIC-DIAGNOSTIC-NAVIGATOR.md).
+The absence of a feature from this catalog is intentional. Do not infer
+unreleased integrations, services, specialized workflows, automation products,
+provider products, organization features, or commercial packages from source
+names or private development scaffolding. Publication requires an explicit
+review under [the private documentation policy](PRIVATE-DOCUMENTATION-POLICY.md).
 
-BSD is source-compatible/best-effort where Unix code paths apply, but the
-release assurance matrix certifies Windows, Linux, and macOS. See
-[Platform support](PLATFORMS.md) for the exact claim.
+## Free shell-productivity source foundations
+
+The free source boundary includes explicit insert-without-execute actions,
+opt-in native aliases, reviewed static packs, and bounded candidate imports.
+CP3.3 remains non-executing and release-gated by the feature catalog and native
+evidence. See [DEVOPS-ALIASES.md](DEVOPS-ALIASES.md).

@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import copy
+import contextlib
 import hashlib
 import importlib.util
 import json
@@ -31,7 +32,12 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         self.policy = ASSURANCE.load_policy()
 
     def test_current_policy_and_profile_expansion_are_complete(self) -> None:
+        ASSURANCE.validate_readiness_runner()
         self.assertEqual(self.policy["tools"], ASSURANCE.REQUIRED_TOOLS)
+        self.assertEqual(self.policy["schema"], 2)
+        self.assertEqual(
+            self.policy["tool_cache"], ASSURANCE.TOOL_CACHE_CONTRACT
+        )
         self.assertEqual(
             ASSURANCE.expand_profile(self.policy, "release-local"),
             [
@@ -42,6 +48,48 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
             ],
         )
         self.assertIn("fuzz", ASSURANCE.expand_profile(self.policy, "deep-source"))
+
+    def test_readiness_deadline_cleanup_and_real_process_tests_cannot_be_weakened(self) -> None:
+        source = ASSURANCE.READINESS_RUNNER_PATH.read_text(encoding="utf-8")
+        # Each mutation removes one independent part of the failure mode seen in
+        # the protected push: deadline, memory bound, descendant ownership, or
+        # the real child-process oracle. The production checker must reject all.
+        mutations = {
+            "deadline relaxation": (
+                "Duration::from_secs(30 * 60)",
+                "Duration::from_secs(90 * 60)",
+            ),
+            "output ceiling removal": (
+                "SUMMARIZED_CARGO_STDOUT_LIMIT",
+                "UNBOUNDED_CARGO_STDOUT",
+            ),
+            "unix descendant cleanup removal": (
+                "command.wrap(ProcessGroup::leader());",
+                "",
+            ),
+            "windows descendant cleanup removal": (
+                "command.wrap(JobObject);",
+                "",
+            ),
+            "deadline test removal": (
+                "summarized_command_deadline_terminates_the_owned_child",
+                "removed_deadline_test",
+            ),
+            "zero-bound test removal": (
+                "summarized_command_rejects_zero_bounds_before_spawn",
+                "removed_zero_bound_test",
+            ),
+            "deadline diagnostics removal": (
+                'String::from_utf8_lossy(&error.stdout).contains("bounded-child-waiting")',
+                "true",
+            ),
+        }
+        for name, (needle, replacement) in mutations.items():
+            with self.subTest(name=name):
+                self.assertIn(needle, source)
+                mutated = source.replace(needle, replacement, 1)
+                with self.assertRaises(ASSURANCE.AssuranceError):
+                    ASSURANCE.validate_readiness_runner_source(mutated)
 
     def test_missing_security_step_or_tool_version_is_rejected(self) -> None:
         policy = copy.deepcopy(self.policy)
@@ -72,12 +120,15 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                 ASSURANCE.write_hook(hook)
             self.assertEqual(hook.read_text(encoding="utf-8"), "custom hook\n")
 
-    def test_new_hook_is_executable_and_runs_the_pre_push_profile(self) -> None:
+    def test_new_hook_is_executable_but_does_not_block_push(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             hook = Path(temporary) / "hooks" / "pre-push"
             ASSURANCE.write_hook(hook)
             self.assertTrue(hook.exists())
-            self.assertIn("cargo xtask assurance pre-push", hook.read_text(encoding="utf-8"))
+            source = hook.read_text(encoding="utf-8")
+            self.assertIn("# cargo xtask assurance pre-push", source)
+            self.assertNotIn("\ncargo xtask assurance pre-push\n", source)
+            self.assertTrue(source.endswith("exit 0\n"))
             if os.name != "nt":
                 self.assertNotEqual(hook.stat().st_mode & 0o100, 0)
 
@@ -128,9 +179,15 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
 
         # Tool execution is mocked, but CLI routing and the full-history argument
         # remain observable; separate scanner canaries exercise the real binary.
+        # Isolate the lease because this mutation suite also runs inside the
+        # release profile's already-held process-wide assurance lease.
         with mock.patch.object(ASSURANCE, "load_policy", return_value=self.policy), mock.patch.object(
             ASSURANCE, "tool_command", side_effect=command
-        ), mock.patch.object(ASSURANCE, "run") as runner:
+        ), mock.patch.object(ASSURANCE, "run") as runner, mock.patch.object(
+            ASSURANCE.dev_cache,
+            "cache_lease",
+            return_value=contextlib.nullcontext(),
+        ):
             self.assertEqual(ASSURANCE.main(["audit-history-secrets"]), 0)
         command_line = runner.call_args.args[0]
         self.assertEqual(command_line[0], "gitleaks")
@@ -153,6 +210,61 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         commands = [call.args[0] for call in runner.call_args_list]
         self.assertEqual(commands[0][0], "cargo-audit")
         self.assertEqual(commands[1][0], "cargo-deny")
+
+    def test_dependency_scanners_share_the_managed_short_cache_environment(self) -> None:
+        if os.name != "nt":
+            self.skipTest("the historical path exhaustion is Windows-specific")
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            deep_root = Path(temporary).joinpath(*(["nested"] * 12))
+            deep_root.mkdir(parents=True)
+            cache_override = Path(temporary) / "managed-cache"
+            cargo_homes: list[Path] = []
+            temporary_roots: list[Path] = []
+
+            def command(
+                _policy: dict[str, object], name: str, *arguments: str
+            ) -> list[str]:
+                return [name, *arguments]
+
+            def capture_subprocess(
+                _command: list[str], **kwargs: object
+            ) -> mock.Mock:
+                environment = kwargs["env"]
+                assert isinstance(environment, dict)
+                cargo_home = Path(environment["CARGO_HOME"])
+                cargo_homes.append(cargo_home)
+                roots = {Path(environment[name]) for name in ("TMP", "TEMP", "TMPDIR")}
+                self.assertEqual(len(roots), 1)
+                temporary_roots.extend(roots)
+                return mock.Mock(returncode=0)
+
+            expected_cargo_home = cache_override / "mutable" / "runtime" / "cargo-home"
+            expected_temporary_parent = cache_override / "temporary"
+
+            # The real runner must construct the environment. Mocking run()
+            # here would repeat the historical blind spot that missed a deep
+            # Win32 path only after Cargo Deny cloned its advisory repository.
+            with mock.patch.dict(
+                os.environ, {"AUTOMEXIA_DEV_CACHE_DIR": str(cache_override)}
+            ), mock.patch.object(ASSURANCE, "ROOT", deep_root), mock.patch.object(
+                ASSURANCE, "tool_command", side_effect=command
+            ), mock.patch.object(
+                ASSURANCE.subprocess, "run", side_effect=capture_subprocess
+            ):
+                ASSURANCE._PROCESS_TEMPORARY = None
+                try:
+                    ASSURANCE.run_step(self.policy, "dependency-security")
+                    ASSURANCE.run_step(self.policy, "dependency-vetting")
+                finally:
+                    ASSURANCE._PROCESS_TEMPORARY = None
+
+            self.assertEqual(len(cargo_homes), 3)
+            self.assertEqual(set(cargo_homes), {expected_cargo_home})
+            self.assertEqual(len(temporary_roots), 3)
+            for temporary_root in temporary_roots:
+                self.assertEqual(temporary_root.parent, expected_temporary_parent)
+                self.assertNotIn(deep_root, temporary_root.parents)
+            self.assertNotIn(deep_root, expected_cargo_home.parents)
 
     def test_deep_source_profile_fails_closed_off_linux(self) -> None:
         with mock.patch.object(ASSURANCE.platform, "system", return_value="Windows"):
@@ -206,11 +318,16 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                 with self.assertRaisesRegex(ASSURANCE.AssuranceError, "incomplete"):
                     ASSURANCE.initialize_vet(self.policy)
 
-    def test_semgrep_uses_its_native_virtual_environment_entrypoint(self) -> None:
+    def test_semgrep_uses_its_relocatable_virtual_environment_runtime(self) -> None:
         with mock.patch.object(ASSURANCE.Path, "is_file", return_value=True):
             command = ASSURANCE.tool_command(self.policy, "semgrep", "--version")
-        self.assertEqual(command[0], str(ASSURANCE.tool_path(self.policy, "semgrep")))
-        self.assertEqual(command[1:], ["--version"])
+        self.assertEqual(
+            command[0], str(ASSURANCE.semgrep_python_path(self.policy))
+        )
+        self.assertEqual(
+            command[1:],
+            [str(ASSURANCE.semgrep_launcher_path()), "--legacy", "--version"],
+        )
         self.assertNotIn("-m", command)
 
     def test_local_sast_is_bounded_to_rust_source_and_excludes_local_caches(self) -> None:
@@ -232,19 +349,37 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
         temporary_environment = run.call_args.kwargs["extra_environment"]
         self.assertEqual(set(temporary_environment), {"TMP", "TEMP", "TMPDIR", "PATH"})
         self.assertEqual(
-            {Path(temporary_environment[name]).parent for name in ("TMP", "TEMP", "TMPDIR")},
-            {Path(ASSURANCE.ROOT.anchor) if os.name == "nt" else Path(tempfile.gettempdir())},
+            len(
+                {
+                    Path(temporary_environment[name])
+                    for name in ("TMP", "TEMP", "TMPDIR")
+                }
+            ),
+            1,
+        )
+        self.assertEqual(
+            Path(temporary_environment["TMP"]).parent,
+            ASSURANCE.dev_cache.temporary_root(root=ASSURANCE.ROOT),
         )
         self.assertTrue(temporary_environment["PATH"].startswith(str(ASSURANCE.tool_path(self.policy, "semgrep").parent) + os.pathsep))
 
-    def test_tool_environment_keeps_cargo_and_temporary_output_in_the_local_cache(self) -> None:
+    def test_tool_environment_separates_immutable_tools_from_mutable_state(self) -> None:
         environment = ASSURANCE.process_environment(self.policy)
         cache = ASSURANCE.cache_root(self.policy)
-        self.assertEqual(Path(environment["CARGO_HOME"]), cache / "cargo-home")
+        self.assertEqual(
+            Path(environment["CARGO_HOME"]),
+            ASSURANCE.dev_cache.runtime_root(root=ASSURANCE.ROOT) / "cargo-home",
+        )
         self.assertTrue(environment["PATH"].startswith(str(cache / "bin") + os.pathsep))
-        self.assertEqual(Path(environment["PIP_CACHE_DIR"]), cache / "pip-cache")
+        self.assertEqual(
+            Path(environment["PIP_CACHE_DIR"]),
+            ASSURANCE.dev_cache.downloads_root(root=ASSURANCE.ROOT) / "pip",
+        )
         for name in ("TMP", "TEMP", "TMPDIR"):
-            self.assertEqual(Path(environment[name]), cache / "tmp")
+            self.assertEqual(
+                Path(environment[name]),
+                ASSURANCE.process_temporary_directory(),
+            )
 
         with mock.patch.dict(os.environ, {"CARGO_HOME": "ambient-cargo-home"}):
             repository_environment = ASSURANCE.process_environment(
@@ -260,6 +395,81 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                 self.assertTrue(download.url.startswith("https://github.com/"))
                 self.assertRegex(download.sha256, r"^[0-9a-f]{64}$")
                 self.assertLessEqual(ASSURANCE.MAX_TOOL_BINARY_BYTES, ASSURANCE.MAX_TOOL_ARCHIVE_BYTES)
+
+    def test_install_tools_uses_disposable_managed_staging(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            deep_root = Path(temporary).joinpath(*(["nested"] * 12))
+            deep_root.mkdir(parents=True)
+            cache_override = Path(temporary) / "managed-cache"
+            install_roots: list[Path] = []
+            build_roots: list[Path] = []
+            commands: list[list[str]] = []
+
+            def capture_run(
+                command: list[str],
+                _label: str,
+                policy: dict[str, object],
+                **kwargs: object,
+            ) -> None:
+                self.assertEqual(policy, self.policy)
+                commands.append(command)
+                if command[:2] == ["cargo", "install"]:
+                    install_roots.append(Path(command[command.index("--root") + 1]))
+                    build_roots.append(Path(command[command.index("--target-dir") + 1]))
+                self.assertIn("cache", kwargs)
+
+            # Mock only external producers and final publication. The production
+            # installer still chooses both temporary paths and must release them
+            # after building one complete toolset.
+            with mock.patch.dict(
+                os.environ, {"AUTOMEXIA_DEV_CACHE_DIR": str(cache_override)}
+            ), mock.patch.object(ASSURANCE, "ROOT", deep_root), mock.patch.object(
+                ASSURANCE, "toolset_is_valid", side_effect=[False, False, True]
+            ), mock.patch.object(
+                ASSURANCE, "quarantine_invalid_toolset"
+            ), mock.patch.object(
+                ASSURANCE.dev_cache,
+                "cache_lease",
+                return_value=contextlib.nullcontext(),
+            ), mock.patch.object(
+                ASSURANCE, "platform_downloads", return_value={}
+            ), mock.patch.object(
+                ASSURANCE,
+                "tool_command",
+                side_effect=lambda _policy, name, *arguments, **_kwargs: [
+                    name,
+                    *arguments,
+                ],
+            ), mock.patch.object(
+                ASSURANCE, "run", side_effect=capture_run
+            ), mock.patch.object(
+                ASSURANCE, "write_toolset_manifest"
+            ), mock.patch.object(ASSURANCE, "publish_toolset") as publish:
+                ASSURANCE.install_tools(self.policy)
+
+            staging_parent = cache_override / "staging"
+            expected_final = (
+                cache_override
+                / "toolsets"
+                / ASSURANCE.dev_cache.toolset_id(self.policy["tools"])
+            )
+            self.assertEqual(len(install_roots), 4)
+            self.assertEqual(len(build_roots), 4)
+            self.assertEqual(len(set(install_roots)), 1)
+            self.assertEqual(len(set(build_roots)), 1)
+            install_root = install_roots[0]
+            build_root = build_roots[0]
+            self.assertEqual(install_root.parent, staging_parent)
+            self.assertEqual(build_root.parent, staging_parent)
+            self.assertNotIn(deep_root, install_root.parents)
+            self.assertNotIn(deep_root, build_root.parents)
+            self.assertFalse(install_root.exists())
+            self.assertFalse(build_root.exists())
+            self.assertTrue(any(command[:2] == ["cargo", "install"] for command in commands))
+            publish.assert_called_once()
+            self.assertEqual(publish.call_args.args[0], self.policy)
+            self.assertEqual(publish.call_args.args[1], install_root)
+            self.assertEqual(publish.call_args.args[2], expected_final)
 
     def test_checksum_pinned_zip_and_tar_members_extract_to_the_isolated_cache(self) -> None:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
@@ -285,12 +495,100 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
                         hashlib.sha256(archive.read_bytes()).hexdigest(),
                         member_name,
                     )
+                    cache = root / "toolset"
                     with mock.patch.object(ASSURANCE, "ROOT", root):
-                        ASSURANCE.download_binary(self.policy, "shellcheck", download)
+                        ASSURANCE.download_binary(
+                            self.policy,
+                            "shellcheck",
+                            download,
+                            cache=cache,
+                        )
                         self.assertEqual(
-                            ASSURANCE.tool_path(self.policy, "shellcheck").read_bytes(),
+                            ASSURANCE.tool_path(
+                                self.policy, "shellcheck", cache=cache
+                            ).read_bytes(),
                             payload,
                         )
+                        self.assertFalse((cache.parent / ".downloads").exists())
+
+    def test_toolset_manifest_detects_entrypoint_and_dependency_mutations(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            cache = Path(temporary) / "toolset"
+            (cache / "bin").mkdir(parents=True)
+            binary = cache / "bin" / "tool"
+            binary.write_bytes(b"verified")
+            ASSURANCE.write_toolset_manifest(self.policy, cache)
+            self.assertTrue(ASSURANCE.toolset_is_valid(self.policy, cache))
+            binary.write_bytes(b"changed")
+            self.assertFalse(ASSURANCE.toolset_is_valid(self.policy, cache))
+            binary.write_bytes(b"verified")
+            manifest = cache / ASSURANCE.TOOLSET_MANIFEST_NAME
+            value = json.loads(manifest.read_text(encoding="utf-8"))
+            value["descriptor"]["tools"]["semgrep"] = "0.0.0"
+            manifest.write_text(json.dumps(value), encoding="utf-8")
+            self.assertFalse(ASSURANCE.toolset_is_valid(self.policy, cache))
+            manifest.unlink()
+            with mock.patch.object(ASSURANCE, "MAX_TOOLSET_FILES", 0):
+                with self.assertRaisesRegex(ASSURANCE.AssuranceError, "file ceiling"):
+                    ASSURANCE._toolset_tree_digest(cache)
+
+    def test_concurrent_toolset_publication_reuses_only_an_exact_winner(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            winner = root / "winner"
+            challenger = root / "challenger"
+            final = root / "toolsets" / "current"
+            for cache in (winner, challenger):
+                (cache / "bin").mkdir(parents=True)
+                (cache / "bin" / "tool").write_bytes(b"same")
+                ASSURANCE.write_toolset_manifest(self.policy, cache)
+            ASSURANCE.publish_toolset(self.policy, winner, final)
+            ASSURANCE.publish_toolset(self.policy, challenger, final)
+            self.assertTrue(ASSURANCE.toolset_is_valid(self.policy, final))
+
+            corrupt = root / "corrupt"
+            corrupt.mkdir()
+            with mock.patch.object(
+                ASSURANCE.os, "replace", side_effect=OSError("exists")
+            ), self.assertRaisesRegex(ASSURANCE.AssuranceError, "publication"):
+                ASSURANCE.publish_toolset(self.policy, corrupt, root / "missing")
+
+    def test_incomplete_content_addressed_toolset_fails_closed(self) -> None:
+        with mock.patch.object(
+            ASSURANCE, "load_policy", return_value=self.policy
+        ), mock.patch.object(
+            ASSURANCE, "toolset_is_valid", return_value=False
+        ), mock.patch.object(
+            ASSURANCE.dev_cache,
+            "cache_lease",
+            return_value=contextlib.nullcontext(),
+        ):
+            self.assertEqual(ASSURANCE.main(["pre-push"]), 1)
+
+    def test_invalid_current_toolset_is_quarantined_only_inside_staging(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            cache_root = Path(temporary) / "cache"
+            toolsets = cache_root / "toolsets"
+            staging = cache_root / "staging"
+            final = toolsets / ASSURANCE.dev_cache.toolset_id(self.policy["tools"])
+            final.mkdir(parents=True)
+            (final / "partial").write_bytes(b"generated")
+            with mock.patch.object(
+                ASSURANCE.dev_cache, "cache_root", return_value=cache_root
+            ):
+                quarantine = ASSURANCE.quarantine_invalid_toolset(self.policy, final)
+            self.assertIsNotNone(quarantine)
+            assert quarantine is not None
+            self.assertEqual(quarantine.parent, staging)
+            self.assertFalse(final.exists())
+            self.assertEqual((quarantine / "partial").read_bytes(), b"generated")
+
+            outside = Path(temporary) / "outside"
+            outside.mkdir()
+            with mock.patch.object(
+                ASSURANCE.dev_cache, "cache_root", return_value=cache_root
+            ), self.assertRaisesRegex(ASSURANCE.AssuranceError, "unexpected"):
+                ASSURANCE.quarantine_invalid_toolset(self.policy, outside)
 
     def test_actionlint_self_hosted_labels_are_exactly_declared(self) -> None:
         config = (ROOT / ".github/actionlint.yaml").read_text(encoding="utf-8")

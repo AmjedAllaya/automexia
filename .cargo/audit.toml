@@ -18,8 +18,8 @@ ignore = [
 ]
 
 [database]
-# Keep advisory data in the same ignored D-drive cache as the local tools.
-path = ".automexia-tools/cargo-home/advisory-db"
+# The assurance runner supplies an isolated shared Cargo home on the repository
+# drive. Keep this configuration path-neutral so each worktree reuses it.
 url = "https://github.com/RustSec/advisory-db.git"
 fetch = true
 stale = false

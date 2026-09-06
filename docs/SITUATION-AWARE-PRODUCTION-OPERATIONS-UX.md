@@ -1,42 +1,31 @@
-# Situation-aware Production Operations experience
+# Private planning boundary
+
+This compatibility path intentionally contains no public feature, architecture,
+testing, roadmap, or product-plan details. The former content is preserved in
+ignored private documentation and is not a public commitment.
+
+Do not add unreleased advanced or commercial material here. Public documentation
+is limited to the baseline terminal catalog in [Features](FEATURES.md).
+
+## Assurance evidence anchor compatibility
+
+These headings preserve source-owned feature-matrix references after the
+public documentation consolidation. They do not expand shipped behavior,
+reintroduce private plans, or replace the current status stated above.
+
+### Surface Map
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
+
+## Public experience status
 
 Status: planned public experience summary.
 
-## Surface map
-
-The public experience is intentionally small: the existing prompt area shows
-environment context, completion shows a short set of relevant choices, a
-progressive detail view explains evidence, and the application-owned review
-surface handles any action that needs authority. These are roles, not a frozen
-layout or internal state-machine specification.
-
-## The simple workflow
-
-1. The prompt area makes the current account and environment visible.
-2. A user starts with an ordinary command or opens an incident-oriented action.
-3. Automexia gathers only the permitted, bounded evidence needed for that
-   question.
-4. A compact list shows relevant options with a short reason, risk, freshness,
-   and uncertainty indicator.
-5. The user can inspect evidence or continue typing without losing focus.
-6. A mutating choice opens a review that shows the exact target and effect.
-7. Production policy requires an explicit confirmation after context is
-   revalidated.
-8. Automexia observes the result and offers verification, rollback guidance, or
-   a clean incident handoff.
-
 ## Interaction requirements
 
-- Keyboard use is complete; pointer use is optional.
-- The interface never relies on color alone to communicate environment or risk.
-- Production is visually distinct but not noisy.
-- Explanations use direct language and fit narrow panes as well as wide screens.
-- Loading never blocks typing or terminal output.
-- Empty, stale, partial, offline, denied, cancelled, and failed states say what
-  happened and how to continue with the native tool.
-- Screen readers receive useful roles, names, state changes, and focus recovery.
-- Users can disable recommendations while retaining the normal DevOps/SRE
-  terminal features.
-
-The exact layouts, key map, ranking presentation, and incident-state flow remain
-subject to implementation testing and publication review.
+Any future surface must be keyboard-first, pane-scoped, non-modal by default,
+textually disclose environment and risk, preserve focus, avoid color-only
+meaning, support high contrast and reduced motion, and require explicit review
+without implicit Enter or execution.

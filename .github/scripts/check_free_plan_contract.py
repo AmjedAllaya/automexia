@@ -95,6 +95,20 @@ for fragment in (
         errors.append(f'Linux Early Access workflow is missing free-plan fragment: {fragment}')
 
 ci = (wf/'ci.yml').read_text(encoding='utf-8')
+expected_ci_triggers = """on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+"""
+if ci.count(expected_ci_triggers) != 1:
+    errors.append(
+        'CI must remain the single automatic free hosted push/PR pipeline with '
+        'an explicit manual dispatch option'
+    )
+if re.search(r'^\s*schedule:\s*$', ci, re.MULTILINE):
+    errors.append('ordinary free hosted CI must not add a scheduled trigger')
 for fragment in (
     'tools/ci/github_free_assurance.py check-policy',
     'tools/ci/validate_repository.py',
@@ -116,7 +130,7 @@ for fragment in (
     'gitleaks dir --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml .',
 ):
     if fragment not in ci:
-        errors.append(f'CI is missing required GitHub-Free local assurance fragment: {fragment}')
+        errors.append(f'CI is missing required GitHub-Free hosted assurance fragment: {fragment}')
 if '--log-opts=--all' in ci:
     errors.append('ordinary CI must not rescan unresolved legacy history; use the explicit local history-audit command')
 dependency_job = re.search(
@@ -134,21 +148,43 @@ if quality_job is None or 'fetch-depth: 0' in quality_job.group('body'):
 if quality_job is not None:
     quality_body = quality_job.group('body')
     required_resource_environment = {
-        'CARGO_BUILD_JOBS': '1',
-        'CARGO_PROFILE_DEV_DEBUG': '0',
-        'CARGO_PROFILE_TEST_DEBUG': '0',
-        'NEXTEST_TEST_THREADS': '1',
+        'CARGO_BUILD_JOBS': "      CARGO_BUILD_JOBS: '1'",
+        'CARGO_PROFILE_DEV_DEBUG': "      CARGO_PROFILE_DEV_DEBUG: '0'",
+        'CARGO_PROFILE_TEST_DEBUG': "      CARGO_PROFILE_TEST_DEBUG: '0'",
+        'NEXTEST_TEST_THREADS': "      NEXTEST_TEST_THREADS: '1'",
+        'RUSTC_WRAPPER': '      RUSTC_WRAPPER: sccache',
+        'SCCACHE_GHA_ENABLED': "      SCCACHE_GHA_ENABLED: 'true'",
+        'SCCACHE_GHA_VERSION': (
+            '      SCCACHE_GHA_VERSION: automexia-rust-1.98-v1'
+        ),
     }
-    for name, value in required_resource_environment.items():
+    for name, expected_assignment in required_resource_environment.items():
         assignments = re.findall(
             rf'(?m)^[ \t]*{re.escape(name)}:[^\n]*$',
             quality_body,
         )
-        if assignments != [f"      {name}: '{value}'"]:
+        if assignments != [expected_assignment]:
             errors.append(
                 'quality resource envelope must keep exactly one job-level '
-                f"{name}='{value}' assignment"
+                f'{name} assignment'
             )
+    compiler_cache_contract = {
+        'reviewed compiler-cache Action': (
+            'mozilla-actions/sccache-action@'
+            'fc920bf0ec8de6ee65d409111f7ec508035751ba'
+        ),
+        'pinned compiler-cache release': 'version: v0.16.0',
+        'compiler-cache step identity': 'id: sccache',
+        'compiler-cache statistics': 'run: sccache --show-stats',
+        'shared versioned Cargo source cache': (
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}"
+        ),
+    }
+    for label, token in compiler_cache_contract.items():
+        if quality_body.count(token) != 1:
+            errors.append(f'quality compiler cache must keep exactly one {label}')
+    if re.search(r'(?m)^\s+target(?:/.*)?\s*$', quality_body):
+        errors.append('quality compiler cache must not retain target build artifacts')
     clippy_position = quality_body.find(
         'run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings'
     )
@@ -156,15 +192,22 @@ if quality_job is not None:
     nextest_position = quality_body.find(
         'run: cargo nextest run --workspace --all-features --locked --profile ci'
     )
+    cache_action_position = quality_body.find(
+        'mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba'
+    )
+    cache_stats_position = quality_body.find('run: sccache --show-stats')
     clean_commands = re.findall(
         r'(?m)^[ \t]*run:[ \t]*cargo clean[ \t]*$',
         quality_body,
     )
     if not (
         clippy_position >= 0
+        and cache_action_position >= 0
+        and cache_action_position < clippy_position
         and clean_commands == ['        run: cargo clean']
         and clean_position > clippy_position
         and nextest_position > clean_position
+        and cache_stats_position > nextest_position
     ):
         errors.append(
             'quality resource envelope must reclaim Clippy artifacts before '

@@ -179,10 +179,13 @@ lto = false
 split-debuginfo = "unpacked"
 # Preserve source-level backtraces without the very large full-debug Windows
 # link that made the first everyday Automexia launch take several minutes.
-debug = 1
+debug = "line-tables-only"
 lto = false
 opt-level = 0
 incremental = true
+
+[profile.dev.package."*"]
+debug = false
 
 # Shell line editors can repaint the active prompt several times for one
 # history-navigation key. Keep the VT parser/reflow hot path representative of
@@ -191,8 +194,18 @@ incremental = true
 opt-level = 2
 
 [profile.test]
-debug = 1
+debug = "line-tables-only"
 # Test and all-target verification artifacts are short-lived. Incremental test
 # graphs multiply storage across check, Clippy, examples, and harness binaries
 # without helping the persistent everyday Automexia application build.
 incremental = false
+
+[profile.test.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = "full"
+
+[profile.debugging.package."*"]
+debug = "full"

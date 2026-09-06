@@ -526,6 +526,7 @@ def validate_github_free_private_policy(policy: dict[str, Any]) -> dict[str, int
         "anchore/sbom-action@*",
         "azure/artifact-signing-action@*",
         "azure/login@*",
+        "mozilla-actions/sccache-action@*",
         "taiki-e/install-action@*",
     ]
     require(

@@ -65,5 +65,5 @@ ownership, shell tests, and release policy rather than an inferred Linux pass.
   not observe. External never means passed.
 
 The exact jobs and outstanding controlled evidence are maintained in
-[Testing and verification](TESTING.md#native-platform-ownership) and the
+[Testing and verification](TESTING.md#pty-and-process-lifecycle) and the
 [feature assurance ledger](../tests/assurance/feature-matrix.json).

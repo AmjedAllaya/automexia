@@ -73,7 +73,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"
 
       - name: Install pinned zizmor 1.21.0
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: zizmor@1.21.0
           fallback: none
@@ -103,6 +103,11 @@ jobs:
       - name: Execute the complete Python CI contract and mutation suite
         run: python3 -m unittest discover -s tools/ci -p 'test_*.py'
 
+      - name: Verify M8-M12 multi-cloud evidence wiring
+        run: |
+          python tools/ci/check_m8_m12_multicloud.py
+          python tools/ci/test_m8_m12_multicloud.py
+
       - name: Scan Rust source with local Semgrep rules
         run: >-
           semgrep scan --config tools/ci/semgrep-rules.yml --error --metrics=off
@@ -124,6 +129,9 @@ jobs:
       CARGO_PROFILE_DEV_DEBUG: '0'
       CARGO_PROFILE_TEST_DEBUG: '0'
       NEXTEST_TEST_THREADS: '1'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      SCCACHE_GHA_VERSION: automexia-rust-1.98-v1
     steps:
       - name: Check out repository
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
@@ -149,10 +157,18 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-          key: ci-linux-${{ hashFiles('Cargo.lock') }}
+          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            cargo-sources-v1-${{ runner.os }}-
+
+      - name: Install checksum-verified compiler cache
+        id: sccache
+        uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba
+        with:
+          version: v0.16.0
 
       - name: Install pinned test runner
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-nextest@0.9.137
 
@@ -185,6 +201,10 @@ jobs:
       - name: Shell integration syntax and contract smoke
         run: bash tools/ci/test_shell_sources.sh
 
+      - name: Report compiler cache statistics
+        if: ${{ always() && steps.sccache.outcome == 'success' }}
+        run: sccache --show-stats
+
   dependency-security:
     name: Dependency security
     runs-on: ubuntu-24.04
@@ -199,7 +219,7 @@ jobs:
           persist-credentials: false
 
       - name: Install pinned Rust security tools
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-audit@0.22.0,cargo-deny@0.20.2,cargo-vet@0.10.2
 
@@ -250,7 +270,7 @@ jobs:
 
   release-candidate:
     name: Release candidate gate
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && !startsWith(github.head_ref, 'release/linux/') && github.event.pull_request.head.repo.full_name == github.repository }}
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     permissions:
@@ -291,7 +311,7 @@ jobs:
 
   release-candidate-coverage:
     name: Release candidate Windows coverage
-    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && github.event.pull_request.head.repo.full_name == github.repository }}
+    if: ${{ github.event_name == 'pull_request' && startsWith(github.head_ref, 'release/') && !startsWith(github.head_ref, 'release/linux/') && github.event.pull_request.head.repo.full_name == github.repository }}
     needs:
       - quality
       - release-candidate
@@ -321,7 +341,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'Rust coverage toolchain activation failed' }
 
       - name: Install pinned coverage tool
-        uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026
+        uses: taiki-e/install-action@742a3317eac7bd62f91cd888b4eead5e784ba833
         with:
           tool: cargo-llvm-cov@0.6.18
 

@@ -1,81 +1,76 @@
-# Stabilization direction
+# Public stabilization roadmap
 
-Status: active release work; this public page summarizes quality goals rather
-than the internal execution ledger.
+This roadmap contains only maintenance work for the public free terminal. It
+does not list new products or private feature plans.
 
-Automexia's first release is gated on demonstrated behavior, not a feature
-count. The stabilization program covers:
+## Priorities
 
-- terminal protocol correctness and bounded hostile input;
-- prompt, resize, input, PTY, pane, tab, and shutdown behavior;
-- configuration reload, migration, rollback, and last-known-good recovery;
-- memory, CPU, GPU, storage, handles, threads, processes, queues, caches, and
-  long-session cleanup;
-- deterministic rendering, themes, scaling, clipping, and native visual review;
-- keyboard, IME, focus, high contrast, reduced motion, and screen readers;
-- Windows, Linux/BSD, and macOS native evidence for every platform claimed;
-- packaging, provenance, signing, update, release, and rollback procedures;
-- documentation that clearly separates available, release-gated, and planned
-  behavior.
-
-Command productivity, SSH, provider integrations, and future extensions cannot
-override these gates. A narrow unit test or cross-compile does not prove native
-release readiness.
-
-Detailed task ordering, internal thresholds, host-specific evidence, and
-implementation-agent instructions remain outside the public repository. See
-[Testing](TESTING.md), [Release Trust](RELEASE-TRUST.md), and
-[Readiness Audit](READINESS-AUDIT.md) for public evidence and constraints.
-
-## S0 bounded control strings
-
-Hostile and oversized terminal control strings must remain bounded and covered
-by parser, property, fuzz, and regression evidence before release.
-
-## Verification infrastructure plan
-
-Repository-owned checks should produce deterministic, reviewable evidence and
-fail closed when required scenarios, platforms, artifacts, or owners are
-missing. Native and human evidence stays explicit rather than being inferred
-from a cross-compile or simulated result.
+1. Correctness for VT state, Unicode, reflow, selection, search, images, and
+   alternate-screen behavior.
+2. Native PTY/process lifecycle, resize, output pressure, cancellation, child
+   cleanup, and shutdown.
+3. Route, focus, window, tab, pane, clipboard, IME, and overlay isolation.
+4. Configuration validation, migration, private persistence, recovery, and
+   uninstall.
+5. Shell integration fallback and native-shell compatibility.
+6. System OpenSSH interoperability and explicit inventory safety.
+7. Accessibility, high contrast, reduced motion, scaling, and native
+   assistive-technology evidence.
+8. Startup, input latency, memory, GPU memory, handles, threads, caches, storage,
+   and long-session cleanup.
+9. Package identity, provenance, signatures, install, upgrade, rollback, and
+   uninstall.
+10. Documentation integrity, confidentiality, links, and exact status.
 
 ## Performance proof plan
 
-Performance claims use same-host baselines and measure the real terminal,
-renderer, session, provider, and extension owners. Evidence includes latency
-distributions, throughput, allocations, memory, GPU memory where observable,
-handles, threads, processes, queue and cache growth, storage, cancellation, and
-final cleanup.
+Measure startup, input-to-render latency, sustained output, resize pressure,
+memory, GPU memory where observable, handles, threads, child processes, cache
+and storage growth, cancellation, and final cleanup on the real owning paths.
+Compare release candidates with same-host baselines using documented,
+noise-aware limits. A helper benchmark or cross-compile does not replace
+native end-to-end evidence on a claimed platform.
 
-## S1 executable benchmark pipeline
+## Exit criteria
 
-Repository benchmarks must be reproducible, identify their environment and
-artifact, retain the first failure, and compare against noise-aware thresholds.
-Helper-only measurements cannot substitute for the interactive owning path.
+A stable baseline has current deterministic tests, native evidence for every
+claimed platform, reviewed visual/accessibility evidence, bounded resource
+measurements, clean lifecycle repetition, verified packages, and no known
+real-workflow failure.
 
-## S1 accessibility baseline
+Unreleased advanced and commercial sequencing is private.
 
-Release evidence covers semantics, focus order and restoration, keyboard-only
-operation, high contrast, reduced motion, scaling, and native screen readers.
-Automated trees and events are necessary but do not replace controlled native
-assistive-technology workflows.
+## Assurance evidence anchor compatibility
 
-## S2 enforcement
+These headings preserve source-owned feature-matrix references after the
+public documentation consolidation. They do not expand shipped behavior,
+reintroduce private plans, or replace the current status stated above.
 
-Release enforcement fails closed when required performance, resource, visual,
-accessibility, security, native-platform, packaging, or review evidence is
-missing, stale, tied to another revision, or outside its declared environment.
+### S1 Accessibility Baseline
 
-## Early DevOps and SSH delivery track
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
 
-Remote-operation work follows terminal stabilization and preserves the same
-security, lifecycle, accessibility, resource, and native-platform gates. See
-the [SSH and multi-cloud delivery summary](SSH-CONNECTIVITY-MULTI-ENVIRONMENT-MULTI-CLOUD-PLAN.md).
+### S1 Executable Benchmark Pipeline
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
+
+### S2 Enforcement
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.
 
 ## Command productivity delivery track
 
-Completion, Quick Actions, aliases, and suggestions remain separate from
-command execution. See [Command Productivity](COMMAND-PRODUCTIVITY.md) for the
-current implemented contract and release limitations, and
-[Quick Actions and aliases](DEVOPS-ALIASES.md) for the detailed shipped
-behavior.
+See [Command Productivity](COMMAND-PRODUCTIVITY.md) for the current implemented contract and release limitations. Stabilization requires the source-owned
+policy, persistence, native-shell, UI, security, recovery, performance,
+resource, accessibility, and packaged-artifact evidence to agree before an
+availability claim advances.
+
+Alias-specific scenarios are tracked in
+[DEVOPS-ALIASES.md](DEVOPS-ALIASES.md); their source status does not replace
+native-shell and packaged-artifact evidence.

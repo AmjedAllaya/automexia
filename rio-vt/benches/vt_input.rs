@@ -6,6 +6,7 @@ use criterion::{criterion_group, criterion_main, Criterion, Throughput};
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::grid::row::Row;
+use rio_vt::crosswords::grid::Scroll;
 use rio_vt::crosswords::pos::{Column, Line, Pos, Side};
 use rio_vt::crosswords::square::{Extras, Square};
 use rio_vt::crosswords::style::Style;
@@ -417,6 +418,40 @@ fn bench(c: &mut Criterion) {
         )
     });
     overflow_group.finish();
+
+    // This interaction reproduces the state path behind completion badges
+    // after a window resize: reflow retained command metadata, jump to a
+    // neighbouring prompt in each direction, then publish the visible rows.
+    // Keep the renderer out of the VT benchmark while still measuring every
+    // terminal-owned operation that feeds its bounded projection.
+    let mut resize_navigation_terminal = semantic_result_term();
+    let mut resize_navigation_processor = Processor::default();
+    resize_navigation_processor.advance(
+        &mut resize_navigation_terminal,
+        &semantic_result_stream(256, true),
+    );
+    let mut narrow = true;
+    c.bench_function("command_result_resize_navigation_256", |b| {
+        let mut visible_rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        b.iter(|| {
+            let columns = if narrow { 23 } else { COLS };
+            narrow = !narrow;
+            resize_navigation_terminal.resize(CrosswordsSize::new(columns, ROWS));
+            resize_navigation_terminal.scroll_display(Scroll::Bottom);
+            assert!(resize_navigation_terminal.scroll_to_prompt(false));
+            assert!(resize_navigation_terminal.scroll_to_prompt(true));
+            resize_navigation_terminal.snapshot_visible(
+                &TerminalDamage::Full,
+                resize_navigation_terminal.columns(),
+                &mut visible_rows,
+                &mut styles,
+                &mut extras,
+            );
+            std::hint::black_box(&visible_rows);
+        })
+    });
 }
 
 criterion_group!(benches, bench);

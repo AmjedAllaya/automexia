@@ -38,6 +38,7 @@ In **Settings → Actions → General**:
 anchore/sbom-action@*
 azure/artifact-signing-action@*
 azure/login@*
+mozilla-actions/sccache-action@*
 taiki-e/install-action@*
 ```
 
@@ -181,8 +182,9 @@ sha256sum -c SHA256SUMS
 Linux Early Access publishes to the passive public repository
 `AmjedAllaya/automexia-releases`; it does not publish public assets from the
 private source repository. That repository must remain public, keep Actions
-disabled, protect `main`, protect `v*` release tags, enable private vulnerability
-reporting, and return a successful authenticated response from:
+disabled, protect `main` with required cryptographic commit signatures, protect
+`v*` release tags, enable private vulnerability reporting, and return a
+successful authenticated response from:
 
 ```text
 GET /repos/AmjedAllaya/automexia-releases/immutable-releases
@@ -243,6 +245,11 @@ The Windows job waits for it and ordinary quality, then compares the exact PR
 commit range to the repository's `windows-x86_64-msvc` coverage baseline. The
 split prevents a Linux report from being compared to a Windows baseline and
 prevents fork PRs from consuming Windows minutes.
+
+These stable-release-only jobs explicitly exclude `release/linux/X.Y.Z`.
+Linux Early Access uses the independent, credential-free rehearsal and guarded
+post-merge publication lane described below, so its pull requests cannot be
+captured by the incompatible `release/X.Y.Z` validator.
 
 Standard Windows-hosted time consumes the private repository's included GitHub
 Free minutes at the Windows multiplier. Keep paid overage disabled if the goal
@@ -310,6 +317,31 @@ seven-day private artifact containing
 `REHEARSAL-NOT-A-PUBLIC-RELEASE.txt`. It cannot read release secrets, mint an App
 token, sign, publish, create a tag, or emit a website activation handoff.
 
+The quality job stays inside the standard free Linux runner envelope by using
+one Cargo build job, one nextest thread, development/test profiles without debug
+artifacts, a versioned Cargo registry/Git source cache keyed by `Cargo.lock`, and
+a clean boundary between all-target Clippy and all-feature tests. It also uses
+the reviewed, full-SHA-pinned Mozilla sccache setup Action at sccache v0.16.0.
+That content-addressed compiler cache is restricted to non-shipping quality
+jobs; its explicit `automexia-rust-1.98-v1` generation is the rollback and
+invalidation boundary. Do not add `target` to either cache or reorder/remove the
+cleanup: the policy mutation suite rejects those changes because the first real
+rehearsal exhausted the linker after retaining the lint graph.
+
+Each native x64/Arm64 package job also uses one Cargo build job and disables
+release debug data. Package jobs restore only downloaded Cargo sources; they do
+not set `RUSTC_WRAPPER`, use sccache, or restore compiled `target` objects, so
+every distributed binary remains a cold exact-source build. Quality and both
+native architectures begin after authorization in parallel. Rehearsal and
+release assembly join all three results before any artifact can be retained,
+signed, or published. nFPM v2.43.4 is downloaded as the architecture-matched
+upstream archive and checked against its pinned SHA-256 digest rather than
+compiled from source on every runner. The policy mutation suite rejects any of
+these boundaries being weakened. This follows a real corrected-quality
+rehearsal in which x64 passed but the hosted Arm64 runner shut down during
+compilation with status 143; only a new successful rehearsal counts as native
+package evidence.
+
 Use a separate internal branch named exactly `release/linux/X.Y.Z`. After an
 independent approval and distinct merger, `linux-early-access.yml` reruns the
 Linux release-quality gate, builds x64 and Arm64 packages natively, signs the
@@ -328,10 +360,15 @@ available. See `docs/PUBLIC-RELEASE-DISTRIBUTION.md`.
 
 `nightly.yml` is manual-only in this edition. Daily scheduled fuzz/Miri/sanitizer runs can consume a private Free repository's allowance rapidly. Run **Deep assurance (manual)** before major releases when desired. The specialized S1/S2/F5 workflows are also manual/self-hosted controls.
 
-## 9.1 Local assurance before a push
+## 9.1 Optional local assurance
 
-On every trusted contributor machine, install and verify the free local
-assurance tools once from a clean repository checkout:
+GitHub's free hosted `CI` workflow is the automatic push and pull-request
+authority. The local profile remains available for explicit offline or
+pre-release checks, but the repository pre-push hook is intentionally dormant
+and does not run a pipeline.
+
+On a trusted contributor machine, install and verify the free local assurance
+tools from a clean repository checkout when the manual profile is needed:
 
 ```text
 cargo xtask assurance install-tools
@@ -339,11 +376,14 @@ cargo xtask assurance initialize-vet
 cargo xtask assurance pre-push
 ```
 
-The installer places all downloaded or built tools in the ignored repository
-local `.automexia-tools/` directory. It checksum-verifies Actionlint and
-Gitleaks release archives, pins Semgrep Community Edition, Cargo Audit, Cargo
-Vet, and Zizmor versions, and never stores credentials in that directory. The
-pre-push profile checks the repository readiness gate, workflow pin/policy and
+The installer publishes downloaded or built executables to a shared,
+platform- and version-addressed immutable toolset after verifying its complete
+integrity manifest. Mutable Cargo/Python state, downloads, staging, and process
+temporary data remain separate and never enter the toolset. It checksum-verifies
+Actionlint and Gitleaks release archives, pins Semgrep Community Edition, Cargo
+Audit, Cargo Vet, and Zizmor versions, and never stores credentials in the
+cache. The manually invoked pre-push profile checks the repository readiness
+gate, workflow pin/policy and
 mutation contracts, Actionlint, offline Zizmor, RustSec/Cargo Deny/Cargo Vet,
 Gitleaks against introduced commits and current files, local Semgrep rules, and
 real scanner canaries. `initialize-vet` generates Cargo Vet's source-controlled
@@ -351,6 +391,12 @@ baseline once and verifies an existing complete baseline without rewriting it;
 partial records fail closed. Inspect its generated `supply-chain/` records
 before committing them. It is a dependency-change ratchet, not a substitute for
 reviewing the imported audit criteria.
+
+Scanner canaries must never inherit `GIT_DIR`, `GIT_WORK_TREE`, index, object,
+config, prefix, or replacement state from the calling hook. The Gitleaks canary
+creates and commits only inside its temporary repository, then proves the
+caller's HEAD, worktree status, and local repository configuration did not
+change.
 
 Use `cargo xtask assurance audit-history-secrets` for the separate all-history
 campaign. It remains fail-closed while legacy generic-key findings await
@@ -360,11 +406,15 @@ validated GitHub event SHAs and still scans the complete checked-out working
 tree.
 
 Use `cargo xtask assurance install-hook` only on a machine that has no existing
-pre-push hook. It refuses to replace an existing hook. `release-local` adds
-release policy checks; `deep-source` must run from Linux or a native WSL
-checkout and runs bounded Miri, sanitizer, and fuzz campaigns. These local
-profiles do not claim GitHub plan controls, native macOS/Windows accessibility,
-or signing/notarization evidence.
+pre-push hook. It refuses to replace an existing hook and installs a non-blocking
+placeholder whose assurance command is commented out. A future decision to
+restore automatic local enforcement must deliberately update the hook generator,
+tests, and contributor documentation. `release-local` adds release policy
+checks; `deep-source` must run from Linux or a native WSL checkout and runs
+bounded Miri, sanitizer, and fuzz campaigns. These local profiles do not claim
+GitHub plan controls, native macOS/Windows accessibility, or
+signing/notarization evidence. Cache inspection and dry-run-first cleanup are
+documented in `docs/DEVELOPMENT-CACHE.md`.
 
 ## 10. Trust boundary
 

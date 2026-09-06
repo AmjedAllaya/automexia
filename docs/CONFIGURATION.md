@@ -408,4 +408,4 @@ installs a `rio` alias. Existing Automexia files win. See
 - [CLI and automation](CLI-REFERENCE.md)
 - [Shell integration](SHELL-INTEGRATION.md)
 - [Liquid Hacker UX](LIQUID-HACKER-UX.md)
-- [Architecture](ARCHITECTURE.md#runtime-configuration-transaction)
+- [Architecture](ARCHITECTURE.md#configuration-transaction)
