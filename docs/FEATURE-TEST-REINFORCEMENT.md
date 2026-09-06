@@ -162,6 +162,16 @@ The native nFPM revision is one repository-owned input for both DEB and RPM
 names; the post-download assembler must consume the exact native filenames, and
 mutation coverage must reject a missing, duplicate, zero, or split revision.
 
+Linux Early Access authorization additionally validates the pinned owner's
+author/merger/sender/original/rerun identities, a same-repository merged release
+PR, and exact current-main identity under ADR 0040. The existing
+`tools/ci/public_distribution.py` / `tools/ci/test_public_distribution.py` pair
+owns realistic event and CLI tests, 1 MiB/32-depth/32,768-node bounds, duplicate
+and malformed JSON rejection, no writes, and redacted diagnostics. Mutations
+must reject removed, duplicated, reordered or ignored authorization and forged
+contexts while preserving manual rehearsal isolation and all artifact gates.
+Only the real post-merge run supplies signed-release evidence.
+
 ### contributor-automation-quality-policy
 
 Mutation-test repository validators so deleted owners, weakened limits, stale

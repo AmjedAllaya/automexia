@@ -9,6 +9,12 @@ activation handoff, and rollback procedure are in
 [`docs/PUBLIC-RELEASE-DISTRIBUTION.md`](docs/PUBLIC-RELEASE-DISTRIBUTION.md) and
 [ADR 0037](docs/adr/0037-public-binary-release-distribution.md).
 
+For this Linux lane, [ADR 0040](docs/adr/0040-owner-authorized-linux-releases.md)
+authorizes `AmjedAllaya` alone to author and merge the release PR. No second
+reviewer is required. The workflow checks both original and rerun actors,
+the merged event, repository boundaries and exact current-main commit before
+enabling publication; the signing and native quality gates remain mandatory.
+
 Before release credentials exist, manually dispatch the Linux workflow from an
 exact candidate ref with the Cargo version to obtain the private, unsigned
 native-package rehearsal. The rehearsal is visibly marked as not distributable

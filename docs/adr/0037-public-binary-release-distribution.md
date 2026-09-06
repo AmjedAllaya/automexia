@@ -32,8 +32,10 @@ Linux Early Access uses three distinct owners:
 
 The public contract contains exactly x64 and Arm64 DEB, RPM, and portable tar
 archives. AppImage is not claimed until a separately tested package owner exists.
-Windows remains a Microsoft Store delivery project, and macOS remains planned
-until Developer ID signing and notarization are available.
+Windows and macOS binaries are not published through this Linux-only channel.
+
+[ADR 0040](0040-owner-authorized-linux-releases.md) defines the accepted
+owner-only Linux authorization policy; it preserves this artifact trust boundary.
 
 Publication uses a GitHub App installation token that expires after one hour and
 is restricted to `automexia-releases`. The token requests only repository

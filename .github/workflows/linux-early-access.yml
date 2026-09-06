@@ -43,7 +43,7 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.merge_commit_sha }}
-      - name: Validate rehearsal or independently approved release
+      - name: Validate rehearsal or owner-authorized release
         id: authorize
         shell: bash
         env:
@@ -51,12 +51,6 @@ jobs:
           EVENT_COMMIT: ${{ github.event_name == 'workflow_dispatch' && github.sha || github.event.pull_request.merge_commit_sha }}
           EVENT_NAME: ${{ github.event_name }}
           GH_TOKEN: ${{ github.token }}
-          MERGE_COMMIT: ${{ github.event.pull_request.merge_commit_sha }}
-          MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
-          PR_AUTHOR: ${{ github.event.pull_request.user.login }}
-          PR_BRANCH: ${{ github.event.pull_request.head.ref }}
-          PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
           set -euo pipefail
           [[ "$EVENT_COMMIT" =~ ^[0-9a-f]{40}$ ]]
@@ -68,22 +62,12 @@ jobs:
             version="$DISPATCH_VERSION"
             publish=false
           else
-            [[ "$PR_BRANCH" =~ ^release/linux/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
-              echo 'Linux release branch must be exactly release/linux/X.Y.Z.' >&2
-              exit 1
-            }
-            [[ "$MERGE_COMMIT" == "$EVENT_COMMIT" ]]
-            [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]]
-            [[ "$MERGED_BY" != "$PR_AUTHOR" ]] || {
-              echo 'The release merger must be independent from the pull-request author.' >&2
-              exit 1
-            }
-            approvals="$(
-              gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" |
-                python3 tools/ci/check_pr_policy.py --count-approvals "$PR_AUTHOR" "$PR_HEAD_SHA"
-            )"
-            (( approvals >= 1 )) || { echo 'The exact release head needs a current human approval.' >&2; exit 1; }
-            version="${PR_BRANCH#release/linux/}"
+            current_main="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/heads/main" --jq .object.sha)"
+            version="$(python3 tools/ci/public_distribution.py authorize-release \
+              --event "$GITHUB_EVENT_PATH" --event-name "$EVENT_NAME" \
+              --repository "$GITHUB_REPOSITORY" --actor "$GITHUB_ACTOR" \
+              --triggering-actor "$GITHUB_TRIGGERING_ACTOR" \
+              --commit "$EVENT_COMMIT" --current-main "$current_main")"
             publish=true
           fi
           grep -Fq "version = \"$version\"" Cargo.toml || { echo 'Cargo workspace version does not match the release branch.' >&2; exit 1; }

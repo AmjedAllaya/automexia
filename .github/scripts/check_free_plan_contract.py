@@ -79,6 +79,7 @@ for fragment in (
     "startsWith(github.event.pull_request.head.ref, 'release/linux/')",
     'github.event.pull_request.head.repo.full_name == github.repository',
     'tools/ci/public_distribution.py check-policy',
+    'tools/ci/public_distribution.py authorize-release',
     'permission-contents: write',
     'permission-administration: read',
     'repositories: automexia-releases',
