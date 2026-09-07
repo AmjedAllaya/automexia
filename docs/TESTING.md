@@ -125,6 +125,10 @@ set process-local `RUSTUP_TOOLCHAIN` to the repository pin, then run
 instead verifies the workspace minimum. CI additionally runs the explicit
 locked all-target/all-feature MSRV check. Neither check changes the global
 rustup default. Keep exact-commit hosted results separate from local passes.
+Compiler workflow probes require the explicit Python 3.12 bootstrap, not the
+runner's default Python. `python tools/ci/test_free_security_tools.py --tool gitleaks`
+also validates exact historical exemptions and detection of fresh findings in
+those same repository paths.
 
 For changes that affect Rust code or build behavior, start with:
 

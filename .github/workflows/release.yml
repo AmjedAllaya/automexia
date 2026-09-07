@@ -140,6 +140,10 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
       shell: pwsh
       run: |
@@ -169,6 +173,10 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
       shell: pwsh
       run: |
@@ -205,6 +213,10 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
       shell: pwsh
       run: |
@@ -317,6 +329,10 @@ jobs:
         ref: ${{ needs.authorize.outputs.commit }}
         fetch-depth: 0
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
@@ -374,6 +390,10 @@ jobs:
       with:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
@@ -451,6 +471,10 @@ jobs:
         test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
 
         '
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
@@ -531,6 +555,10 @@ jobs:
       run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
     - name: Install native build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev binutils
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
@@ -738,6 +766,10 @@ jobs:
       with:
         name: signed-inputs-${{ matrix.artifact }}
         path: signed-inputs
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust and packager toolchain
       shell: pwsh
       run: |
@@ -1103,6 +1135,10 @@ jobs:
       with:
         name: ${{ matrix.artifact }}
         path: staged
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |

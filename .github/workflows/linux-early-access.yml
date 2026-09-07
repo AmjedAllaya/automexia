@@ -102,6 +102,10 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Install pinned Rust and native dependencies
         shell: bash
         run: |
@@ -188,6 +192,10 @@ jobs:
           key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             cargo-sources-v1-${{ runner.os }}-
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Require native architecture and install packaging dependencies
         shell: bash
         run: |

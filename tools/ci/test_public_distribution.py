@@ -1390,6 +1390,13 @@ class PublicDistributionTests(unittest.TestCase):
     def test_workflow_policy_rejects_publication_gate_removal(self) -> None:
         DISTRIBUTION.validate_workflow()
         workflow = DISTRIBUTION.PUBLIC_WORKFLOW.read_text(encoding="utf-8")
+        package_start = workflow.index('\n  package:\n')
+        package_end = workflow.index('\n  rehearsal:\n', package_start)
+        package = workflow[package_start:package_end]
+        self.assertEqual(package.count('            ~/.cargo/git\n'), 1)
+        # Target the owning cache, not whichever setup step happens to follow it.
+        cached_package = package.replace('            ~/.cargo/git\n',
+                                         '            ~/.cargo/git\n            target\n', 1)
         mutations = {
             "immutable repository audit": workflow.replace(
                 "repos/$PUBLIC_REPOSITORY/immutable-releases", "repos/$PUBLIC_REPOSITORY", 1
@@ -1578,18 +1585,7 @@ class PublicDistributionTests(unittest.TestCase):
                 1,
             ),
             "native package target cache": workflow.replace(
-                "            ~/.cargo/git\n"
-                "          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n"
-                "          restore-keys: |\n"
-                "            cargo-sources-v1-${{ runner.os }}-\n"
-                "      - name: Require native architecture",
-                "            ~/.cargo/git\n"
-                "            target\n"
-                "          key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}\n"
-                "          restore-keys: |\n"
-                "            cargo-sources-v1-${{ runner.os }}-\n"
-                "      - name: Require native architecture",
-                1,
+                package, cached_package, 1,
             ),
             "native package nFPM download origin": workflow.replace(
                 "https://github.com/goreleaser/nfpm/releases/download/",
@@ -1628,6 +1624,10 @@ class PublicDistributionTests(unittest.TestCase):
                 )
                 path = Path(temporary) / "workflow.yml"
                 path.write_text(mutated, encoding="utf-8")
+                if label == 'native package target cache':
+                    with self.assertRaisesRegex(DISTRIBUTION.DistributionError,
+                                                'native package cache must not retain target build artifacts'):
+                        DISTRIBUTION.validate_workflow(path)
                 with self.assertRaises(DISTRIBUTION.DistributionError):
                     DISTRIBUTION.validate_workflow(path)
 

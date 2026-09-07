@@ -26,6 +26,7 @@ RUST_WORKFLOWS = ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.ym
 COMPILER_EXECUTABLE_ENV = ("RUSTC", "RUSTDOC", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTDOC")
 CACHE_DOCS = ("docs/CI-ASSURANCE.md", "docs/CI-BUILD-PERFORMANCE-PLAN.md", ".github/FREE-PRIVATE-PRODUCTION-SETUP.md")
 COMPILER_DOCS = (".github/TOOLCHAIN-POLICY.md", ".github/PATCH-REPORT.md")
+PYTHON_SETUP = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
 
 
 class ToolchainError(ValueError):
@@ -207,8 +208,16 @@ def _validate_policy(root: Path) -> int:
             if selection != (NIGHTLY if kind == "nightly" else pin):
                 raise ToolchainError(f"{location}: job compiler override differs from policy")
             verified = False
+            python_ready = False
             uses_rust = False
             for step in steps:
+                if str(step.get('uses', '')).startswith('actions/setup-python@'):
+                    if (step['uses'] != PYTHON_SETUP
+                            or step.get('with') != {'python-version': '3.12'}
+                            or step.get('if') is not None
+                            or step.get('continue-on-error') is not None):
+                        raise ToolchainError(f"{location}: Python bootstrap differs from policy")
+                    python_ready = True
                 reject_compiler_executable_override(step.get("env", {}))
                 command = step.get("run", "")
                 if not isinstance(command, str):
@@ -226,6 +235,8 @@ def _validate_policy(root: Path) -> int:
                     raise ToolchainError(f"{location}: step shadows the verified compiler")
                 verification = f"python tools/ci/rust_toolchain.py verify --kind {'msrv' if is_msrv else kind}"
                 if verification in live_lines:
+                    if not python_ready:
+                        raise ToolchainError(f"{location}: Python bootstrap must precede compiler verification")
                     if step.get("if") is not None or step.get("continue-on-error") is not None:
                         raise ToolchainError(f"{location}: compiler verification cannot be skipped or ignored")
                     lines = [line.strip() for line in live_lines.splitlines()]

@@ -277,6 +277,10 @@ MSRV removal and stale cache labels or current compiler documentation. Exercise
 real probe overflow/deadline cleanup and workflow-label disclosure canaries
 with redacted errors. The explicit locked MSRV build remains distinct from the
 development/release pin even when their current versions match.
+Mutation-test compatible Python bootstrap before every compiler probe, including
+the native Ubuntu 22.04 runner. Preserve full-history secret scanning with only
+exact reviewed historical fingerprints; reject expanded exceptions and prove
+real new generic-key/token findings in the same paths remain detectable.
 
 Mutation-test repository validators so deleted owners, weakened limits, stale
 paths, fabricated evidence, missing private-documentation exclusions, and

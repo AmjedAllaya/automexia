@@ -27,6 +27,22 @@ class RustToolchainTests(unittest.TestCase):
     def test_current_policy(self):
         self.assertGreater(contract.validate_policy(), 0)
 
+    def test_compiler_jobs_bootstrap_supported_python_before_verification(self):
+        for name in contract.RUST_WORKFLOWS:
+            workflow = contract.load_workflow(contract.ROOT / '.github/workflows' / name)
+            for index, job in enumerate(workflow['jobs'].values()):
+                steps = job.get('steps', [])
+                for position, step in enumerate(steps):
+                    if 'python tools/ci/rust_toolchain.py verify' not in step.get('run', ''):
+                        continue
+                    with self.subTest(workflow=name, job=index):
+                        # Ubuntu 22.04 ships Python 3.10, without stdlib tomllib.
+                        self.assertTrue(any(
+                            previous.get('uses') == 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1'
+                            and previous.get('with', {}).get('python-version') == '3.12'
+                            for previous in steps[:position]
+                        ))
+
     def test_current_documentation_matches_repository_identity(self):
         pin = tomllib.loads((contract.ROOT / 'rust-toolchain.toml').read_text(encoding='utf-8'))['toolchain']['channel']
         expected = f'automexia-rust-{pin}-v2'
@@ -50,6 +66,27 @@ class RustToolchainTests(unittest.TestCase):
         for index, mutate in enumerate(cases):
             with self.subTest(override=index):
                 self.assert_mutation_rejected(mutate, 'compiler executable')
+
+    def test_python_bootstrap_cannot_be_removed_reordered_or_bypassed(self):
+        def setup(w):
+            return next(step for step in w['jobs']['quality']['steps']
+                        if str(step.get('uses', '')).startswith('actions/setup-python@'))
+        def reorder(w):
+            steps = w['jobs']['quality']['steps']
+            previous = setup(w)
+            steps.remove(previous)
+            steps.append(previous)
+        mutations = (
+            lambda w: setup(w).update(uses='removed'),
+            reorder,
+            lambda w: setup(w).update({'if': 'false'}),
+            lambda w: setup(w).update({'continue-on-error': True}),
+            lambda w: setup(w).update({'with': {'python-version': '3.10'}}),
+            lambda w: setup(w).update(uses='actions/setup-python@' + '1' * 40),
+        )
+        for index, mutation in enumerate(mutations):
+            with self.subTest(mutation=index):
+                self.assert_mutation_rejected(mutation, 'Python bootstrap')
 
     def test_documentation_drift_cannot_bypass_repository_validation(self):
         original = contract.read_text

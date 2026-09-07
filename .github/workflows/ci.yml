@@ -138,6 +138,10 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Install pinned Rust toolchain
         shell: bash
         run: |
@@ -229,6 +233,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Verify effective Rust compiler and Cargo
         shell: bash
         run: |
@@ -299,6 +307,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Validate internal release branch, SemVer, version, and protected paths
         shell: bash
         env:
@@ -349,6 +361,10 @@ jobs:
           fetch-depth: 0
           persist-credentials: false
 
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Install pinned Rust coverage toolchain
         shell: pwsh
         run: |
