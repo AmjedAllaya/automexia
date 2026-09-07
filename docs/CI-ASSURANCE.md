@@ -62,10 +62,15 @@ use. The local gate still uses a fresh bounded target and removes it on exit.
 Ordinary and Linux-release quality jobs install sccache v0.16.0 through the
 reviewed Mozilla Action pinned at commit
 `fc920bf0ec8de6ee65d409111f7ec508035751ba`. The Action verifies its release
-download; Automexia additionally pins the `automexia-rust-1.98-v1` cache
+download; Automexia additionally pins the `automexia-rust-1.96.1-v2` cache
 generation and reports cache statistics. Cache misses, eviction, and service
 limits degrade only performance. `cargo clean` remains between Clippy and
 Nextest to bound the runner filesystem.
+
+The current [compiler identity contract](adr/0047-effective-rust-toolchain-identity.md)
+also verifies the repository pin and independently checks the declared MSRV.
+The historical timings below belong to their recorded commits; they are not
+verification or performance measurements of a later compiler-policy change.
 
 Release package jobs use the shared, lockfile-bound Cargo source cache but never
 the compiler cache or `target`. They remain native cold builds of the exact

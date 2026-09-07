@@ -270,6 +270,14 @@ authorization rather than failing an unrelated branch grammar later.
 
 ### contributor-automation-quality-policy
 
+Verify resolved rustup selection and actual rustc/Cargo release and commit fields,
+not an installed-tool label. Mutate workflow/TOML drift, duplicate/oversized
+structure, skipped or reordered probes, compiler overrides, ignored failures,
+MSRV removal and stale cache labels or current compiler documentation. Exercise
+real probe overflow/deadline cleanup and workflow-label disclosure canaries
+with redacted errors. The explicit locked MSRV build remains distinct from the
+development/release pin even when their current versions match.
+
 Mutation-test repository validators so deleted owners, weakened limits, stale
 paths, fabricated evidence, missing private-documentation exclusions, and
 confidential-data canaries fail closed.

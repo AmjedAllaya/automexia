@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -18,6 +19,16 @@ TEST_TEMP_PARENT = Path(ROOT.anchor) if os.name == "nt" else None
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_compiler_selection_matches_repository_pin(self) -> None:
+        import yaml
+
+        pin = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+        for name in ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml"):
+            with self.subTest(workflow=name):
+                workflow = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))
+                # A global default cannot override the checkout's toolchain file.
+                self.assertEqual(workflow["env"].get("RUSTUP_TOOLCHAIN"), pin)
+
     @staticmethod
     def populate_contract_root(root: Path) -> None:
         shutil.copytree(ROOT / ".github", root / ".github")
@@ -331,7 +342,7 @@ class FreePlanContractTests(unittest.TestCase):
             "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
             "version: v0.16.0",
             "SCCACHE_GHA_ENABLED: 'true'",
-            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "SCCACHE_GHA_VERSION: automexia-rust-1.96.1-v2",
             "RUSTC_WRAPPER: sccache",
             "sccache --show-stats",
             "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
@@ -349,7 +360,7 @@ class FreePlanContractTests(unittest.TestCase):
             ("version: v0.16.0", "version: v0.15.0"),
             ("SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'"),
             (
-                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION: automexia-rust-1.96.1-v2",
                 "SCCACHE_GHA_VERSION: unversioned",
             ),
             ("RUSTC_WRAPPER: sccache", "RUSTC_WRAPPER: rustc"),

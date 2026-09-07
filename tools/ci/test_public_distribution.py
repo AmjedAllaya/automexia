@@ -1522,7 +1522,7 @@ class PublicDistributionTests(unittest.TestCase):
                 "SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'", 1
             ),
             "release quality compiler cache namespace": workflow.replace(
-                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION: automexia-rust-1.96.1-v2",
                 "SCCACHE_GHA_VERSION: unversioned",
                 1,
             ),
@@ -1674,7 +1674,7 @@ class PublicDistributionTests(unittest.TestCase):
             "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
             "version: v0.16.0",
             "SCCACHE_GHA_ENABLED: 'true'",
-            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "SCCACHE_GHA_VERSION: automexia-rust-1.96.1-v2",
             "RUSTC_WRAPPER: sccache",
             "sccache --show-stats",
         ):

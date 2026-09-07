@@ -68,6 +68,7 @@ from check_production_operations_po0 import (
 )
 from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
+from rust_toolchain import validate_policy as validate_rust_toolchain_policy
 from repository_protection import validate_repository as validate_repository_protection
 from release_trust import load_policy as validate_release_trust_policy
 from stable_release import (
@@ -327,6 +328,7 @@ def validate() -> None:
 
     validate_repository_workflows()
     counts["platform workflow matrix"] = 1
+    counts["verified compiler workflow jobs"] = validate_rust_toolchain_policy()
 
     protection_counts = validate_repository_protection()
     counts["repository protection rulesets"] = protection_counts["rulesets"]

@@ -164,7 +164,7 @@ if quality_job is not None:
         'RUSTC_WRAPPER': '      RUSTC_WRAPPER: sccache',
         'SCCACHE_GHA_ENABLED': "      SCCACHE_GHA_ENABLED: 'true'",
         'SCCACHE_GHA_VERSION': (
-            '      SCCACHE_GHA_VERSION: automexia-rust-1.98-v1'
+            '      SCCACHE_GHA_VERSION: automexia-rust-1.96.1-v2'
         ),
     }
     for name, expected_assignment in required_resource_environment.items():

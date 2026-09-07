@@ -9,7 +9,7 @@ This tree is a **clean replacement**, not an overlay. Major fixes relative to th
 * retained merged internal `release/X.Y.Z` as the only stable-release authorization event;
 * added robust latest-human-review counting and optional distinct-merger enforcement;
 * added after-merge mandatory release quality/security tests;
-* pinned Rust 1.98.0 in native release/package jobs;
+* explicitly selects the compiler from `rust-toolchain.toml` and verifies actual rustc/Cargo identity in native release/package jobs;
 * moved GNU/Linux production builds/packages to Ubuntu 22.04 / GLIBC 2.35 baseline;
 * replaced project/enterprise release-manifest coupling with a self-contained allowlist/manifest generator;
 * removed an unconditional dependency on optional hardware evidence;
