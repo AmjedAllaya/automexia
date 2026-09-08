@@ -15,6 +15,12 @@ long-duration evidence remain external where they have not been collected.
 
 ### Navigation, appearance and lifecycle status
 
+**Partially done (native CMD regression open):** rapid worker-driven resizing
+has an intermittent prompt-adjacency failure in native Windows validation.
+Strict assertions remain enabled, with intermediate-commit and concurrent-session
+coverage plus failure-only diagnostics. Passing repetitions do not resolve the
+original failure or establish native Linux/macOS or desktop evidence.
+
 **Partially done (native desktop evidence open):** confirmed window-close and
 Quit dismiss surfaces before cleanup waits. Saturated ConPTY output drains after
 consumer retirement, and final buffered bytes precede EOF. Native Windows

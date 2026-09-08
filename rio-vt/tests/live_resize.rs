@@ -77,12 +77,35 @@ fn native_worker_resize_burst_preserves_output() {
                 "/k".into(),
                 fixture.to_string_lossy().into_owned(),
             ],
+            ResizeDelivery::Burst,
         );
     }
 }
 
 #[cfg(windows)]
-fn run_worker_fixture(shell: &str, arguments: Vec<String>) {
+enum ResizeDelivery {
+    Burst,
+    AwaitWorkerCommit,
+}
+
+#[test]
+#[cfg(windows)]
+fn native_worker_intermediate_resize_commits_preserve_output() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.cmd");
+    run_worker_fixture(
+        "cmd.exe",
+        vec![
+            "/d".into(),
+            "/k".into(),
+            fixture.to_string_lossy().into_owned(),
+        ],
+        ResizeDelivery::AwaitWorkerCommit,
+    );
+}
+
+#[cfg(windows)]
+fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDelivery) {
     use rio_vt::event::sync::FairMutex;
     use rio_vt::event::{EventListener, Msg, RioEvent, WindowSize};
     use rio_vt::performer::{Machine, PtyWorkerHandle};
@@ -164,6 +187,22 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>) {
                     height: 0,
                 }))
                 .expect("resize dispatch");
+            if matches!(delivery, ResizeDelivery::AwaitWorkerCommit) {
+                // Observe the real worker commit, without injecting grid state
+                // or adding shell output that could repair a damaged viewport.
+                let deadline = Instant::now() + Duration::from_secs(10);
+                loop {
+                    let committed = {
+                        let terminal = terminal.lock();
+                        terminal.columns() == cols && terminal.screen_lines() == rows
+                    };
+                    if committed {
+                        break;
+                    }
+                    assert!(Instant::now() < deadline, "worker resize commit deadline");
+                    std::thread::yield_now();
+                }
+            }
             if step % 2 == 1 {
                 std::thread::yield_now();
             }
@@ -191,7 +230,38 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>) {
                 "worker resize {step}"
             );
         }
-        assert_eq!(&actual[first + 8..first + 11], &["", "/example", "lambda"]);
+        assert_eq!(
+            &actual[first + 8..first + 11],
+            &["", "/example", "lambda"],
+            "worker prompt at resize {step} ({cols}x{rows}); later state {:?}",
+            {
+                // Diagnostic only: this assertion still fails even if later
+                // native output repairs the snapshot taken after the title ACK.
+                let started = Instant::now();
+                let deadline = started + Duration::from_millis(250);
+                loop {
+                    let rows = logical_rows(&terminal.lock());
+                    let settled = rows
+                        .iter()
+                        .position(|row| row == "ROW-01  retained output")
+                        .is_some_and(|first| {
+                            (0..8).all(|index| {
+                                rows.get(first + index)
+                                    == Some(&format!(
+                                        "ROW-{:02}  retained output",
+                                        index + 1
+                                    ))
+                            }) && rows
+                                .get(first + 8..first + 11)
+                                .is_some_and(|tail| tail == ["", "/example", "lambda"])
+                        });
+                    if settled || Instant::now() >= deadline {
+                        break (settled, started.elapsed().as_millis());
+                    }
+                    std::thread::sleep(Duration::from_millis(2));
+                }
+            }
+        );
     }
     let probe = fixture_probe(shell, &terminal.lock());
     worker
@@ -309,7 +379,7 @@ fn run_fixture(
     // application worker. Pre-reflowing a standalone grid for every queued size
     // would bypass the worker's authoritative resize/coalescing transaction.
     #[cfg(windows)]
-    run_worker_fixture(shell, arguments.clone());
+    run_worker_fixture(shell, arguments.clone(), ResizeDelivery::Burst);
     run_fixture_session(shell, arguments, policy);
 }
 

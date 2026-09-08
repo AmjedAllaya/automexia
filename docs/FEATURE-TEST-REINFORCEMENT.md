@@ -33,6 +33,13 @@ fixtures or reports.
 
 ### terminal-protocols-grid-history
 
+Native resize coverage must exercise both coalesced bursts and independently
+published intermediate worker sizes, observing the real grid without injecting
+its state. Keep strict output and prompt-adjacency assertions after fixture
+acknowledgments. Failure-only diagnostics record the step, dimensions and a
+bounded later-state observation without turning the original failure into a
+pass. Later isolated or concurrent passes do not clear an unexplained failure.
+
 A parser-created viewport identity journal must retain the first visible cell
 in the first projected row after every resize, as far as history permits. Use
 independent input colors for repeated text and inspect renderer-facing snapshot
