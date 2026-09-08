@@ -47,6 +47,15 @@ combining/bidi/control input, alternate-screen transitions, scrollback, reflow,
 search, selection, cursor state, and exact visible cells. Fuzz every structured
 terminal-input boundary with historical failures retained.
 
+Dependency updates must also preserve every generated emoji variation lookup.
+Enumerate all 708 source-table entries independently of PHF's hash lookup, compare
+the public presentation result, and reject invalid and suffixed keys. Run with
+default features enabled and disabled. A compiler pass did not detect the PHF
+0.14/table mismatch; preserve the matching runtime unless regeneration and these
+complete lookup checks establish compatibility. Linux windowing dependencies
+must retain one compatible Smithay/calloop/decoration generation, with native
+window and renderer evidence kept separate from host compilation.
+
 The parser-driven retained-output journal preserves explicit hard breaks,
 intentional empty lines, spaces across soft wraps, fragmented Unicode and ANSI
 colors across intermediate width/height changes in both directions. Its oracle
