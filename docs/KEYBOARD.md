@@ -147,11 +147,16 @@ and alternate-screen applications keep those keys. macOS Command defaults and
 opt-in Ghostty profiles are unchanged. Explicit custom mappings remain authoritative.
 
 All palette commands now use effective bindings after configuration loading.
-Disabled, removed or absent shortcuts show `Unbound`; typed profile/user labels
-take precedence. A shortcut that is conditional or shadowed is not presented as
+Shortcut chips show only the actual keys, without Legacy, Profile or User source
+badges. Typed profile/user mappings retain precedence. Removed, unavailable or
+conditional direct keys show `Enter`: select that palette action and press Enter.
+This is palette-local activation, not a new global binding. A shortcut that is
+conditional or shadowed is not presented as
 an unconditional launch key. Search-only Shift+Enter is not a global shortcut,
 and clearing history is not the same action as clearing screen and history.
-Unbound actions remain available through the palette. To restore the earlier
+Every catalog action has a direct classic default when navigation and splits are
+enabled. Explicit removals and strict compatibility profiles remain authoritative.
+To restore the earlier
 Ctrl+Shift fresh-split preference explicitly:
 
 ```toml

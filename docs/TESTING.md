@@ -1,5 +1,10 @@
 # Testing
 
+Shortcut coverage includes all classic catalog actions against actual platform
+tables, exact mode/override guards, source-free labels, palette-only Enter, and
+literal CPU glyph pixels at 100–400%. The palette model benchmark is separate
+from native desktop input latency. See ADR 0051 for remaining native gates.
+
 ## QA diagnostic privacy
 
 Run `python3 -m unittest discover -s tools/ci -p test_qa.py` after changing the

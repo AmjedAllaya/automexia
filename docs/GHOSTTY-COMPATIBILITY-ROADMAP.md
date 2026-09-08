@@ -4,6 +4,11 @@ Automexia keeps its own keyboard defaults. An explicit compatibility profile may
 map supported Ghostty 1.3 keyboard behavior without changing terminal, PTY,
 window, tab, pane, or shell ownership.
 
+Classic palette chips now show only resolved keys; Enter is a palette-local
+fallback for removed or profile-absent bindings. New classic defaults do not
+change the pinned Ghostty tables or user tombstones. See
+[the shortcut contract](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md).
+
 ## Ghostty compatibility G0-G6
 
 ## Machine-readable compatibility phase keys

@@ -184,7 +184,7 @@ const SHORTCUT_SEARCH: &str = "Ctrl+F";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH_BACKWARD: &str = "Cmd+B";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SEARCH_BACKWARD: &str = "Shift+Enter";
+const SHORTCUT_SEARCH_BACKWARD: &str = "Alt+Shift+B";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH_GLOBAL: &str = "Cmd+Shift+F";
 #[cfg(not(target_os = "macos"))]
@@ -238,9 +238,9 @@ const SHORTCUT_PREVIEW_IMAGE: &str = "Cmd+Alt+I";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PREVIEW_IMAGE: &str = "Ctrl+Alt+I";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+K";
+const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+Alt+K";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Shift+K";
+const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Alt+K";
 #[cfg(target_os = "macos")]
 const SHORTCUT_QUIT: &str = "Cmd+Q";
 #[cfg(not(target_os = "macos"))]
@@ -628,18 +628,6 @@ fn registry_binding_for_command(
                 })
         })
     })
-}
-
-fn binding_origin_label(origin: automexia_keybindings::BindingOrigin) -> &'static str {
-    use automexia_keybindings::BindingOrigin::*;
-    match origin {
-        BuiltIn => "Built-in",
-        Profile => "Profile",
-        WindowsAdaptation => "Windows",
-        Imported => "Imported",
-        LegacyUser => "Legacy",
-        User => "User",
-    }
 }
 
 const COMMANDS: &[Command] = &[
@@ -1577,23 +1565,7 @@ impl CommandPalette {
         for command in COMMANDS {
             let binding = registry_binding_for_command(registry, command.action);
             let label = if let Some(binding) = binding {
-                let support = binding
-                    .actions
-                    .first()
-                    .and_then(|action| {
-                        automexia_keybindings::resolve_action(action.id.as_str())
-                    })
-                    .map(|schema| schema.support);
-                format!(
-                    "{} · {}{}",
-                    binding.trigger_label(),
-                    binding_origin_label(binding.origin),
-                    if support == Some(automexia_keybindings::SupportLevel::Adapted) {
-                        " ↪"
-                    } else {
-                        ""
-                    }
-                )
+                binding.trigger_label()
             } else if strict_profile
                 || legacy_unbinds
                     .iter()
@@ -1608,12 +1580,19 @@ impl CommandPalette {
     }
 
     fn command_shortcut<'a>(&'a self, command: &'a Command) -> &'a str {
-        self.registry_shortcuts
+        let shortcut = self
+            .registry_shortcuts
             .iter()
             .find_map(|(action, shortcut)| {
                 (*action == command.action).then_some(shortcut.as_str())
             })
-            .unwrap_or(command.shortcut)
+            .unwrap_or(command.shortcut);
+        // These actions remain selectable in the palette. Enter describes that
+        // local activation, not a fabricated global chord or a restored unbind.
+        match shortcut {
+            "Unbound" | "Conditional binding" | "Custom binding" => "Enter",
+            shortcut => shortcut,
+        }
     }
 
     /// Follow `set_binding_registry` with all effective legacy mappings, so
@@ -1669,7 +1648,7 @@ impl CommandPalette {
                         continue;
                     }
                 }
-                label = format!("{} · Legacy", trigger);
+                label = trigger.to_string();
                 // Dedicated Copy/Paste keys are rare. Prefer an ordinary chord
                 // when available, but retain the hardware key as a fallback.
                 if matches!(
@@ -3220,24 +3199,21 @@ mod tests {
                 .unwrap();
             palette.command_shortcut(command).to_string()
         };
-        assert_eq!(shortcut(PaletteAction::TabCreate), "ctrl+shift+t · Profile");
-        assert_eq!(
-            shortcut(PaletteAction::SplitRight),
-            "ctrl+shift+o · Profile"
-        );
-        assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Unbound");
+        assert_eq!(shortcut(PaletteAction::TabCreate), "ctrl+shift+t");
+        assert_eq!(shortcut(PaletteAction::SplitRight), "ctrl+shift+o");
+        assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Enter");
         assert_eq!(
             shortcut(PaletteAction::ScrollToPreviousCommand),
-            "ctrl+shift+page_up · Profile"
+            "ctrl+shift+page_up"
         );
         assert_eq!(
             shortcut(PaletteAction::ScrollToNextCommand),
-            "ctrl+shift+page_down · Profile"
+            "ctrl+shift+page_down"
         );
     }
 
     #[test]
-    fn automexia_typed_unbind_is_visible_as_unbound() {
+    fn automexia_typed_unbind_offers_palette_enter() {
         let registry = automexia_keybindings::compile(&[]).registry.unwrap();
         let mut palette = CommandPalette::new();
         palette.set_binding_registry(
@@ -3249,7 +3225,7 @@ mod tests {
             .iter()
             .find(|command| command.action == PaletteAction::TabCreate)
             .unwrap();
-        assert_eq!(palette.command_shortcut(command), "Unbound");
+        assert_eq!(palette.command_shortcut(command), "Enter");
     }
 
     #[test]
@@ -3289,11 +3265,11 @@ mod tests {
             vec![],
         );
         for (typed, expected) in [
-            (vec![], "ctrl+r · Legacy"),
-            (vec!["ctrl+r=unbind"], "Unbound"),
-            (vec!["ctrl+r=quit"], "Conditional binding"),
-            (vec!["ctrl+r>ctrl+x=quit"], "Conditional binding"),
-            (vec!["ctrl+d=unbind"], "ctrl+r · Legacy"),
+            (vec![], "ctrl+r"),
+            (vec!["ctrl+r=unbind"], "Enter"),
+            (vec!["ctrl+r=quit"], "Enter"),
+            (vec!["ctrl+r>ctrl+x=quit"], "Enter"),
+            (vec!["ctrl+d=unbind"], "ctrl+r"),
         ] {
             let mut config = rio_backend::config::Config::default();
             config.bindings.keybinds = typed.into_iter().map(str::to_string).collect();
@@ -3302,7 +3278,7 @@ mod tests {
             assert_eq!(palette.command_shortcut(command), expected);
         }
         palette.set_effective_bindings(&[], None);
-        assert_eq!(palette.command_shortcut(command), "Unbound");
+        assert_eq!(palette.command_shortcut(command), "Enter");
     }
 
     #[test]

@@ -315,6 +315,10 @@ approved Alt+R/D clone and Shift-for-fresh matrix against actual configured
 defaults as well as isolated platform tables. Cover all effective shortcut labels:
 missing defaults, hardware Copy/Paste fallback, search-only keys, wrong modes,
 typed chains, reload storage bounds and distinct ClearHistory/ClearScreen actions.
+Require complete classic palette defaults, source-free shortcut chips, literal CPU
+glyph pixels and palette-only Enter fallback without recreating removed keys.
+Assert Escape cancellation and exact new destructive-action mode guards, including
+modifier supersets, user overrides and strict-profile isolation.
 Require a left-arrow Back in both header and row, pinned stroke geometry and
 unchanged hit targets; source and coordinate guards do not certify pixels. Native frames,
 physical layouts and accessibility events remain separate gates; a privacy-safe

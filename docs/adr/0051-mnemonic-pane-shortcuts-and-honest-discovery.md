@@ -39,11 +39,11 @@ See [Apple's shortcut reference](https://support.apple.com/en-us/102650).
 | Family reviewed | Result and reason |
 |---|---|
 | Fresh / cloned panes | Change only Windows/Linux/BSD to directional R/D with Shift for fresh; keep independent PTY semantics. |
-| Windows, tabs, close and reorder | Retain conventional N/T/W, Tab, Page and digit controls; distinguish window tabs from local tabs. Never add an easy accidental Quit chord. |
+| Windows, tabs, close and reorder | Retain conventional N/T/W, Tab, Page and digit controls; distinguish window tabs from local tabs. Use deliberate Ctrl+Shift+Q, never bare Escape, for Quit. |
 | Pane focus, cycling and resizing | Retain arrows and F6; Linux's extra resize modifier avoids changing desktop/window-manager policy. |
 | Copy, paste and selection | Retain platform conventions and selection-aware Ctrl+C; preserve shell interrupt and Windows paste. Prefer ordinary chords in labels. |
 | Find, global search and command history | Retain F, Shift for broader search, previous/next Enter controls and command-jump arrows. Do not advertise search-only Shift+Enter as a global launch. |
-| Fonts, zoom, appearance and fullscreen | Retain conventional +/-/0, L for font List and T for Theme. Linux actions with no default show Unbound, not Windows-only guesses. |
+| Fonts, zoom, appearance and fullscreen | Retain conventional +/-/0, L for font List and T for Theme. Linux fullscreen now has its own F11 default. |
 | Settings and application launchers | Retain existing mnemonics and mode restrictions; show the actual configured/platform key. |
 | Palette categories and child lists | Preserve arrow/Tab navigation, explicit Enter, fixed left-arrow Back, Alt+Left, empty-query Backspace and Esc. |
 | Search, Vi, image browsing and modal mnemonics | Preserve scoped owners and visible prompts; no new global single-letter shortcut competes with text input. |
@@ -53,6 +53,32 @@ This prioritizes familiar conventions and truthful discovery over giving every
 infrequent action another global chord. It follows
 [W3C keyboard guidance](https://www.w3.org/WAI/ARIA/apg/practices/keyboard-interface/)
 on predictable focus and shortcut conflicts; this is not a native accessibility claim.
+
+## Complete classic discovery and concise labels
+
+Current source assigns Ctrl+Shift+Q (Quit), Alt+Shift+B (backward pane search),
+Ctrl+Alt+K (clear screen and history) on Windows/Linux/BSD, and F11 for Unix
+fullscreen. macOS adds Cmd+Alt+K for clear screen/history and retains its other
+platform defaults. All catalog commands have direct classic defaults when the
+corresponding navigation/split features are enabled. Quit and ClearScreen added
+here exclude Search, Vi and alternate-screen modes; existing macOS Quit is kept.
+Escape remains cancellation/back or terminal input, not destructive Quit.
+
+Palette chips show only resolved keys. Source provenance remains registry and
+inspector data. An explicitly unbound, shadowed or profile-absent action shows
+Enter for the existing selected-row activation, never a guessed global key.
+No user settings or pinned compatibility tables are migrated. Ctrl+Alt+K avoids
+changing the established history-only binding; layouts with AltGr can use a
+custom mapping or the palette. NVIDIA's statistics shortcuts conflict with the
+approved Alt+R family; configure the external overlay, not a terminal hook.
+
+This keeps the existing core dispatcher, registry, shutdown and renderer owners;
+no new authority, worker, dependency, allocation on key dispatch or persistence.
+[W3C combobox guidance](https://www.w3.org/WAI/ARIA/apg/patterns/combobox/)
+informs Escape cancellation and Enter acceptance, without claiming native AT
+certification. A complete-table test checks real bindings independently of
+labels; literal CPU glyph pixels and geometry cover label output at 100–400%.
+Native desktop/assistive-technology evidence remains external.
 
 ## Verification and recovery
 

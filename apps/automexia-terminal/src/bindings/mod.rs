@@ -1250,6 +1250,7 @@ fn automexia_macos_key_bindings(
 ) -> Vec<KeyBinding> {
     let mut key_bindings = bindings!(
         KeyBinding;
+        "k", ModifiersState::SUPER | ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ClearScreen;
         "0", ModifiersState::SUPER; Action::ResetFontSize;
         "=", ModifiersState::SUPER; Action::IncreaseFontSize;
         "+", ModifiersState::SUPER; Action::IncreaseFontSize;
@@ -1357,6 +1358,9 @@ fn automexia_windows_key_bindings(
 ) -> Vec<KeyBinding> {
     let mut key_bindings = bindings!(
         KeyBinding;
+        "q", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Quit;
+        "k", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ClearScreen;
+        "b", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchBackward;
         ",", ModifiersState::CONTROL; Action::ConfigEditor;
         Key::Named(Insert), ModifiersState::SHIFT, ~BindingMode::VI; Action::PasteSelection;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Copy;
@@ -1459,6 +1463,10 @@ fn automexia_unix_key_bindings(
 ) -> Vec<KeyBinding> {
     let mut key_bindings = bindings!(
         KeyBinding;
+        "q", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Quit;
+        "k", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::ClearScreen;
+        "b", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::VI; Action::SearchBackward;
+        Key::Named(F11); Action::ToggleFullscreen;
         "v", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI; Action::Paste;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::Copy;
         "c", ModifiersState::CONTROL | ModifiersState::SHIFT, +BindingMode::VI; Action::ClearSelection;
@@ -2250,6 +2258,58 @@ mod tests {
                     )),
                     use_splits
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn quit_and_clear_defaults_require_exact_modifiers_and_safe_modes() {
+        for bindings in [
+            automexia_windows_key_bindings(true, true),
+            automexia_unix_key_bindings(true, true),
+        ] {
+            for (key, mods, expected) in [
+                (
+                    "q",
+                    ModifiersState::CONTROL | ModifiersState::SHIFT,
+                    Action::Quit,
+                ),
+                (
+                    "k",
+                    ModifiersState::CONTROL | ModifiersState::ALT,
+                    Action::ClearScreen,
+                ),
+            ] {
+                let trigger = BindingKey::Keycode {
+                    key: Key::Character(key.into()),
+                    location: KeyLocation::Standard,
+                };
+                let matches = |mode: BindingMode, modifiers| {
+                    bindings
+                        .iter()
+                        .filter(|binding| {
+                            binding.is_triggered_by(mode.clone(), modifiers, &trigger)
+                                && binding.action == expected
+                        })
+                        .count()
+                };
+                assert_eq!(matches(BindingMode::empty(), mods), 1);
+                for mode in [
+                    BindingMode::SEARCH,
+                    BindingMode::VI,
+                    BindingMode::ALT_SCREEN,
+                ] {
+                    assert_eq!(matches(mode, mods), 0);
+                }
+                for modifiers in [
+                    ModifiersState::empty(),
+                    ModifiersState::CONTROL,
+                    ModifiersState::ALT,
+                    ModifiersState::SHIFT,
+                    mods | ModifiersState::SUPER,
+                ] {
+                    assert_eq!(matches(BindingMode::empty(), modifiers), 0);
+                }
             }
         }
     }

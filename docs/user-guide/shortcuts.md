@@ -52,6 +52,34 @@ Current source leaves `Ctrl+R` and `Ctrl+D` to the shell for history and delete/
 
 On macOS, fresh splits retain `Cmd+D` / `Cmd+Shift+D`; clone with `Cmd+Alt+Shift+R/D`. Custom bindings remain authoritative. See [migration and palette controls](../KEYBOARD.md#command-palette).
 
+### Complete shortcuts and clean labels
+
+Shortcut chips show the keys only. When a custom binding is removed, shadowed or
+absent from a compatibility profile, `Enter` means select the command in the
+palette and press Enter; it does not recreate a global shortcut.
+
+| Action | Windows / Linux / BSD | macOS |
+|---|---|---|
+| Quit application | `Ctrl+Shift+Q` | `Cmd+Q` |
+| Find backward in pane | `Alt+Shift+B` | `Cmd+B` |
+| Clear screen **and history** | `Ctrl+Alt+K` | `Cmd+Alt+K` |
+| Fullscreen | `F11` | `Ctrl+Cmd+F` |
+
+Quit and clear-screen defaults on Windows/Linux are suppressed in Search, Vi
+and alternate-screen applications. Clear-screen has the same safeguards on
+macOS; its existing Cmd+Q behavior is unchanged. `Esc` keeps cancel/back and
+normal terminal input ownership; it never becomes an application Quit default.
+Clearing screen and history removes retained output; it does not send a shell
+command. Existing history-only shortcuts and explicit overrides are unchanged.
+Ctrl+Alt combinations can interact with AltGr layouts; rebind the clear action
+or activate it with Enter in the palette if necessary.
+
+External overlays may intercept shortcuts before Automexia receives them. NVIDIA
+uses Alt+R and Alt+Shift+R for statistics. To preserve the pane keys, change those
+in NVIDIA's Alt+Z > Settings > Shortcuts; the Statistics settings also own the
+external overlay position. See [NVIDIA's official instructions](https://nvidia.custhelp.com/app/answers/detail/a_id/5084).
+Automexia does not change another application's shortcuts or display settings.
+
 ## Resize panes
 
 Current source preserves ordinary text selections while retained cells reflow
@@ -131,7 +159,7 @@ bracketed paste. The published Linux 0.4.0 prerelease predates this correction.
 | Action | Windows/Linux/BSD | macOS |
 |---|---|---|
 | Find in selected pane | `Ctrl+F` | `Cmd+F` |
-| Find backward in selected pane | Use `Shift+Enter` while search is open | `Cmd+B` |
+| Find backward in selected pane | `Alt+Shift+B` | `Cmd+B` |
 | Search all visible panes | `Ctrl+Shift+F` | `Cmd+Shift+F` |
 | Search all visible panes backward | `Ctrl+Shift+B` | `Cmd+Shift+B` |
 | Scroll to history top / bottom | `Shift+Home` / `Shift+End` | Use registered action/palette if no preferred custom chord |
@@ -183,15 +211,15 @@ While search mode is open:
 | Reset font size | `Ctrl+0` | `Cmd+0` |
 | Increase font size | `Ctrl+=` / `Ctrl++` | `Cmd+=` / `Cmd++` |
 | Decrease font size | `Ctrl+-` | `Cmd+-` |
-| Fullscreen | Windows: `F11` or `Alt+Enter` | `Ctrl+Cmd+F` |
+| Fullscreen | `F11`; Windows also supports `Alt+Enter` | `Ctrl+Cmd+F` |
 | Open config | Windows: `Ctrl+,`; Linux/BSD: `Ctrl+Shift+,` | `Cmd+,` |
 | Command palette | `Ctrl+Shift+P` | `Cmd+Shift+P` |
 | Preview selected image | `Ctrl+Alt+I` | `Cmd+Alt+I` |
 
 Pane font zoom is runtime/pane-local. Reset returns to the configured font size.
 Palette labels reflect effective configuration, including platform differences
-and overrides. `Unbound` means use the palette or assign a custom key; it does not
-mean the action is unavailable. Shift+Enter selects the previous match only while
+and overrides. `Enter` means select the palette action and activate it there;
+it does not create a global binding. Shift+Enter selects the previous match only while
 search is open, not from a normal terminal prompt.
 
 ## Windows-only convenience defaults

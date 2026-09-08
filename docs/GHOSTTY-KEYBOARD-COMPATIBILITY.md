@@ -5,6 +5,11 @@ without changing existing users' shortcuts. `automexia` remains the default.
 The pinned profile is derived from Ghostty 1.3.1 tag `v1.3.1`, commit
 `22efb0be2bbea73e5339f5426fa3b20edabcaa11`.
 
+Classic palette chips now show only resolved keys; Enter is a palette-local
+fallback for removed or profile-absent bindings. New classic defaults do not
+change the pinned Ghostty tables or user tombstones. See
+[the shortcut contract](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md).
+
 ## Current status
 
 | Area | Status | Result |

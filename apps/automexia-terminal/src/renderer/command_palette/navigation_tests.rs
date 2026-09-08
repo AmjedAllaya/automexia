@@ -2,6 +2,147 @@ use super::*;
 use rio_window::keyboard::{Key, ModifiersState, NamedKey};
 
 #[test]
+fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
+    use crate::bindings::{test_platform_defaults, BindingMode};
+    use automexia_keybindings::PlatformFamily::{LinuxBsd, Macos, Windows};
+    let config = rio_backend::config::Config::default();
+    for platform in [Windows, LinuxBsd, Macos] {
+        let bindings = test_platform_defaults(&config, platform);
+        let mut palette = CommandPalette::new();
+        palette.set_effective_bindings(&bindings, None);
+        for command in COMMANDS {
+            // Inspect the actual dispatch table: an Enter fallback must not
+            // conceal a missing default or a mode-only shortcut.
+            assert!(
+                bindings.iter().any(|binding| {
+                    binding.action == legacy_binding_target(command.action)
+                        && binding.is_triggered_by(
+                            BindingMode::empty(),
+                            binding.mods,
+                            &binding.trigger,
+                        )
+                }),
+                "{platform:?}: missing default for {:?}",
+                command.action
+            );
+            let label = palette.command_shortcut(command);
+            assert!(!label.contains('·'), "source badge in {label}");
+            assert!(!label.is_empty());
+            assert_ne!(label, "Unbound");
+            assert_ne!(label, "Enter");
+        }
+        assert!(!bindings.iter().any(|binding| {
+            binding.action == crate::bindings::Action::Quit
+                && binding.mods.is_empty()
+                && matches!(
+                    &binding.trigger,
+                    crate::bindings::BindingKey::Keycode {
+                        key: Key::Named(NamedKey::Escape),
+                        ..
+                    }
+                )
+        }));
+    }
+}
+
+#[test]
+fn palette_only_shortcuts_offer_enter_without_recreating_removed_bindings() {
+    let mut palette = CommandPalette::new();
+    // Make the optional theme action available so the whole catalog is exercised.
+    palette.has_adaptive_theme = true;
+    palette.set_effective_bindings(&[], None);
+    palette.set_enabled(true);
+    for command in COMMANDS {
+        assert_eq!(palette.command_shortcut(command), "Enter");
+        palette.set_query(command.title.into());
+        palette.selected_index = 0;
+        // Fuzzy results can share words; select this action as a user would,
+        // rather than assuming that a full title is always the first match.
+        let index = palette
+            .filtered_rows()
+            .iter()
+            .position(|(_, row)| row.action() == Some(command.action))
+            .unwrap();
+        for _ in 0..index {
+            palette.move_selection_down();
+        }
+        assert_eq!(palette.get_selected_action(), Some(command.action));
+    }
+}
+
+#[test]
+fn shortcut_labels_match_literal_cpu_pixels_at_fractional_scales() {
+    use rio_backend::sugarloaf::{
+        font::{constants, FontData, FontLibrary, FontLibraryData},
+        text::Text,
+    };
+    use std::sync::Arc;
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let config = rio_backend::config::Config::default();
+    let bindings = crate::bindings::test_platform_defaults(
+        &config,
+        automexia_keybindings::PlatformFamily::Windows,
+    );
+    let mut palette = CommandPalette::new();
+    palette.set_effective_bindings(&bindings, None);
+    let cases = [
+        (PaletteAction::CloneSplitRight, "alt+r"),
+        (PaletteAction::SplitRight, "shift+alt+r"),
+        (PaletteAction::SearchBackward, "shift+alt+b"),
+        (PaletteAction::ClearScreen, "ctrl+alt+k"),
+        (PaletteAction::Quit, "ctrl+shift+q"),
+    ];
+    for scale in [1.0, 1.25, 2.0, 4.0] {
+        let (width, height) = ((240.0 * scale) as u32, (160.0 * scale) as u32);
+        let render = |literal: bool| {
+            let mut text = Text::new(&fonts);
+            text.init_cpu();
+            text.set_scale_factor(scale);
+            for (row, (action, expected)) in cases.iter().enumerate() {
+                let command = COMMANDS.iter().find(|c| c.action == *action).unwrap();
+                let label = if literal {
+                    expected
+                } else {
+                    palette.command_shortcut(command)
+                };
+                text.draw(
+                    12.0,
+                    10.0 + row as f32 * 28.0,
+                    label,
+                    &DrawOpts {
+                        font_size: SHORTCUT_FONT_SIZE,
+                        ..Default::default()
+                    },
+                );
+            }
+            let mut pixels = vec![0x00081218; (width * height) as usize];
+            text.render_cpu_base(&mut pixels, width, height);
+            text.render_cpu_modal(&mut pixels, width, height);
+            pixels
+        };
+        // Independent literal strings detect accidental suffixes, substitutions
+        // and extra glyphs; shared font rasterization is not a font-quality oracle.
+        let actual = render(false);
+        assert_eq!(actual, render(true), "zero-tolerance shortcut glyph pixels");
+        assert!(actual.iter().any(|pixel| *pixel != 0x00081218));
+        if scale == 1.0 {
+            if let Some(path) = std::env::var_os("AUTOMEXIA_SHORTCUT_PREVIEW") {
+                image_rs::RgbImage::from_fn(width, height, |x, y| {
+                    let pixel = actual[(y * width + x) as usize];
+                    image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+                })
+                .save(path)
+                .expect("public shortcut preview");
+            }
+        }
+    }
+}
+
+#[test]
 fn all_platform_palette_labels_match_real_defaults_not_platform_guesses() {
     use crate::bindings::{default_key_bindings, registry, test_platform_defaults};
     use automexia_keybindings::PlatformFamily::{LinuxBsd, Macos, Windows};
@@ -34,19 +175,37 @@ fn all_platform_palette_labels_match_real_defaults_not_platform_guesses() {
         ] {
             assert_eq!(
                 shortcut(action),
-                format!("{expected} · Legacy"),
+                expected.to_string(),
                 "{platform:?} {action:?}"
             );
         }
-        // These were advertised as launch shortcuts despite being unbound or
-        // performing a different action. Clearing history is not ClearScreen.
-        assert_eq!(shortcut(PaletteAction::ClearScreen), "Unbound");
-        if platform != Macos {
-            assert_eq!(shortcut(PaletteAction::Quit), "Unbound");
-            assert_eq!(shortcut(PaletteAction::SearchBackward), "Unbound");
-        }
+        // ClearScreen clears the viewport and history; keep its distinct chord.
+        assert_eq!(
+            shortcut(PaletteAction::ClearScreen),
+            if platform == Macos {
+                "alt+super+k"
+            } else {
+                "ctrl+alt+k"
+            }
+        );
+        assert_eq!(
+            shortcut(PaletteAction::Quit),
+            if platform == Macos {
+                "super+q"
+            } else {
+                "ctrl+shift+q"
+            }
+        );
+        assert_eq!(
+            shortcut(PaletteAction::SearchBackward),
+            if platform == Macos {
+                "super+b"
+            } else {
+                "shift+alt+b"
+            }
+        );
         if platform == LinuxBsd {
-            assert_eq!(shortcut(PaletteAction::ToggleFullscreen), "Unbound");
+            assert_eq!(shortcut(PaletteAction::ToggleFullscreen), "f11");
         }
         assert_eq!(palette.registry_shortcuts.len(), COMMANDS.len());
         palette.set_effective_bindings(&bindings, None);
@@ -75,13 +234,10 @@ fn shortcut_labels_reject_wrong_modes_and_follow_typed_tombstones() {
     bindings.retain(|b| b.action == crate::bindings::Action::ConfigEditor);
     let trigger = registry::legacy_trigger(&bindings[0]).unwrap().to_string();
     for (directive, expected) in [
-        (format!("{trigger}=unbind"), "Unbound".to_owned()),
-        (format!("{trigger}=quit"), "Conditional binding".to_owned()),
-        (
-            format!("{trigger}>alt+x=quit"),
-            "Conditional binding".to_owned(),
-        ),
-        ("alt+f8=open_config".to_owned(), "alt+f8 · User".to_owned()),
+        (format!("{trigger}=unbind"), "Enter".to_owned()),
+        (format!("{trigger}=quit"), "Enter".to_owned()),
+        (format!("{trigger}>alt+x=quit"), "Enter".to_owned()),
+        ("alt+f8=open_config".to_owned(), "alt+f8".to_owned()),
     ] {
         config.bindings.keybinds = vec![directive];
         let snapshot = registry::build(&config).unwrap();
@@ -95,7 +251,7 @@ fn shortcut_labels_reject_wrong_modes_and_follow_typed_tombstones() {
     }
     bindings[0].mode = crate::bindings::BindingMode::SEARCH;
     palette.set_effective_bindings(&bindings, None);
-    assert_eq!(palette.command_shortcut(settings), "Unbound");
+    assert_eq!(palette.command_shortcut(settings), "Enter");
     assert_eq!(palette.registry_shortcuts.len(), COMMANDS.len());
 }
 
@@ -155,7 +311,7 @@ fn typed_search_label_preserves_the_dispatchers_forward_pane_scope() {
     let label = |action| {
         palette.command_shortcut(COMMANDS.iter().find(|c| c.action == action).unwrap())
     };
-    assert_eq!(label(PaletteAction::SearchForward), "alt+f8 · User");
+    assert_eq!(label(PaletteAction::SearchForward), "alt+f8");
     for action in [
         PaletteAction::SearchBackward,
         PaletteAction::SearchGlobalForward,
@@ -163,7 +319,7 @@ fn typed_search_label_preserves_the_dispatchers_forward_pane_scope() {
     ] {
         assert_ne!(
             label(action),
-            "alt+f8 · User",
+            "alt+f8",
             "typed start_search starts forward in one pane"
         );
     }
@@ -192,9 +348,9 @@ fn non_pane_shortcuts_follow_effective_bindings_and_removal() {
         .find(|c| c.action == PaletteAction::ConfigEditor)
         .unwrap();
     palette.set_effective_bindings(&bindings, None);
-    assert_eq!(palette.command_shortcut(command), "alt+f8 · Legacy");
+    assert_eq!(palette.command_shortcut(command), "alt+f8");
     palette.set_effective_bindings(&[], None);
-    assert_eq!(palette.command_shortcut(command), "Unbound");
+    assert_eq!(palette.command_shortcut(command), "Enter");
 }
 
 #[test]
@@ -517,11 +673,11 @@ fn actual_default_clone_labels_follow_unbind_and_profile_replacement() {
     let mut config = Config::default();
     let snapshot = registry::build(&config).unwrap();
     palette.set_effective_bindings(&default_key_bindings(&config), snapshot.as_ref());
-    assert_ne!(palette.command_shortcut(command), "Unbound");
+    assert_ne!(palette.command_shortcut(command), "Enter");
     config.bindings.keybinds = vec![format!("{trigger}=unbind")];
     let snapshot = registry::build(&config).unwrap();
     palette.set_effective_bindings(&default_key_bindings(&config), snapshot.as_ref());
-    assert_eq!(palette.command_shortcut(command), "Unbound");
+    assert_eq!(palette.command_shortcut(command), "Enter");
     config.keyboard.binding_profile = automexia_keybindings::ProfileId::Ghostty13;
     config.bindings.keybinds.clear();
     if cfg!(target_os = "macos") {
@@ -533,7 +689,7 @@ fn actual_default_clone_labels_follow_unbind_and_profile_replacement() {
     }
     let snapshot = registry::build(&config).unwrap();
     palette.set_effective_bindings(&default_key_bindings(&config), snapshot.as_ref());
-    assert_eq!(palette.command_shortcut(command), "Unbound");
+    assert_eq!(palette.command_shortcut(command), "Enter");
 }
 
 #[test]
@@ -601,8 +757,8 @@ fn fresh_split_labels_follow_actual_configuration_and_preserve_typed_bindings() 
     let mut config = Config::default();
     config.navigation.use_split = false;
     refresh(&mut palette, &config);
-    assert_eq!(palette.command_shortcut(right), "Unbound");
-    assert_eq!(palette.command_shortcut(down), "Unbound");
+    assert_eq!(palette.command_shortcut(right), "Enter");
+    assert_eq!(palette.command_shortcut(down), "Enter");
 
     config.bindings.keys.push(KeyBinding {
         key: "y".into(),
@@ -612,10 +768,10 @@ fn fresh_split_labels_follow_actual_configuration_and_preserve_typed_bindings() 
         mode: "~Search|~Vi".into(),
     });
     refresh(&mut palette, &config);
-    assert_eq!(palette.command_shortcut(right), "ctrl+shift+y · Legacy");
+    assert_eq!(palette.command_shortcut(right), "ctrl+shift+y");
     config.bindings.keybinds = vec!["alt+q=new_split:right".into()];
     refresh(&mut palette, &config);
-    assert!(palette.command_shortcut(right).starts_with("alt+q · "));
+    assert!(palette.command_shortcut(right).eq("alt+q"));
 
     config.bindings.keys.clear();
     config.bindings.keybinds = vec![if cfg!(target_os = "macos") {
@@ -625,7 +781,7 @@ fn fresh_split_labels_follow_actual_configuration_and_preserve_typed_bindings() 
     }];
     config.navigation.use_split = true;
     refresh(&mut palette, &config);
-    assert_eq!(palette.command_shortcut(right), "Unbound");
+    assert_eq!(palette.command_shortcut(right), "Enter");
     config.keyboard.binding_profile = automexia_keybindings::ProfileId::Ghostty13;
     config.bindings.keybinds.clear();
     if cfg!(target_os = "macos") {
@@ -636,7 +792,7 @@ fn fresh_split_labels_follow_actual_configuration_and_preserve_typed_bindings() 
         return;
     }
     refresh(&mut palette, &config);
-    assert_ne!(palette.command_shortcut(right), "Unbound");
+    assert_ne!(palette.command_shortcut(right), "Enter");
     assert!(!palette.command_shortcut(right).contains("Legacy"));
 }
 

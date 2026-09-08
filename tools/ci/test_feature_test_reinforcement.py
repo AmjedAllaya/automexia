@@ -379,6 +379,10 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 ("checker_reinforcements", "fixed unsent editor input"),
             ),
             "windows-tabs-sessions-input": (
+                ("needed_tests", "Complete classic palette defaults"),
+                ("needed_tests", "source-free shortcut chips"),
+                ("needed_tests", "palette-only Enter fallback"),
+                ("needed_tests", "Escape cancellation"),
                 ("needed_tests", "resizes immediately before Ctrl+Shift+Up/Down"),
                 ("needed_tests", "intersecting badge rectangles"),
                 ("needed_tests", "intersecting prompt-context rectangles"),

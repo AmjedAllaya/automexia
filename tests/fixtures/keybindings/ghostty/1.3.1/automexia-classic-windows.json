@@ -901,6 +901,36 @@
       "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(Tab), location: Standard }"
     },
     {
+      "action": "Quit",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"q\"), location: Standard }"
+    },
+    {
+      "action": "ClearScreen",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"k\"), location: Standard }"
+    },
+    {
+      "action": "SearchBackward",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"b\"), location: Standard }"
+    },
+    {
       "action": "ConfigEditor",
       "effective": true,
       "mode": "BindingMode(0x0)",

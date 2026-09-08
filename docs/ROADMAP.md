@@ -55,7 +55,10 @@ six categories, retains global search and provides Back/paging/mouse navigation.
 Alt+R/D clones right/down; adding Shift creates a fresh pane on Windows/Linux/BSD.
 Ctrl+R/D and explicit bindings are preserved; shell Alt editing is deliberately
 replaced only in normal mode. Back uses a left arrow, and all palette labels
-follow effective bindings. Source tests do not certify native pixels, keyboard
+follow effective bindings without source badges. All classic catalog actions have
+direct defaults; removed/profile-absent keys show palette-local Enter. Escape
+remains cancellation; Windows/Linux Quit is Ctrl+Shift+Q. Source tests and literal
+CPU glyph pixels do not certify native desktop pixels, keyboard
 layouts or screen readers. See [controls](KEYBOARD.md#command-palette) and
 [shortcut audit](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md).
 
