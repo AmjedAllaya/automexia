@@ -20,6 +20,13 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_buffered_native_probe_receipt_cannot_be_removed(self) -> None:
+        document = copy.deepcopy(self.document)
+        feature = next(row for row in document['features'] if row['id'] == 'pty-scheduler-process-lifecycle')
+        feature['needed_tests'] = [text.replace('Buffered native probes verify every consumed key value and ordinal', 'removed evidence') for text in feature['needed_tests']]
+        with self.assertRaises(REINFORCEMENT.ReinforcementError):
+            self.validate(document)
+
     def test_shortcut_cross_owner_guards_cannot_be_deleted_or_reordered(self) -> None:
         for owner, old, new in [
             ("screen", "if self.renderer.command_palette.is_enabled() {", "if false {"),
@@ -495,6 +502,8 @@ class FeatureTestReinforcementTests(unittest.TestCase):
         for field, detail in (
             ("needed_tests", "content-bound dirty fingerprints"),
             ("needed_tests", "logical artifact announcements"),
+            ("needed_tests", "pre-descent cache pruning"),
+            ("needed_tests", "unreadable source"),
             ("verification_reinforcements", "before/after source identity drift"),
         ):
             with self.subTest(field=field):

@@ -285,29 +285,30 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
         "isolated PowerShell prompt did not start"
     );
 
-    let token = "AMX_CONPTY_HISTORY_73491";
-    let command = format!("Write-Output '{token}'\r");
+    let marker = "AMX_CONPTY_HISTORY_73491";
+    let command = format!("Write-Output '{marker}'\r");
     pty.writer().write_all(command.as_bytes()).unwrap();
     let seeded = read_until(
         &mut pty,
         Instant::now() + Duration::from_secs(10),
         |output| {
-            output.match_indices(token).count() >= 2 && output.contains("AMX_PTY_PROMPT>")
+            output.match_indices(marker).count() >= 2
+                && output.contains("AMX_PTY_PROMPT>")
         },
     );
     assert!(
-        seeded.match_indices(token).count() >= 2,
+        seeded.match_indices(marker).count() >= 2,
         "PowerShell history seed did not complete",
     );
     let up_started = Instant::now();
     pty.writer().write_all(b"\x1b[38;72;0;1;256;1_").unwrap();
     let recalled = read_until(&mut pty, up_started + Duration::from_secs(2), |output| {
-        output.contains(token)
+        output.contains(marker)
     });
     let up_elapsed = up_started.elapsed();
     println!("direct ConPTY PowerShell Up Arrow recall: {up_elapsed:?}");
     assert!(
-        recalled.contains(token),
+        recalled.contains(marker),
         "Up Arrow input stalled before reaching PSReadLine"
     );
     assert!(

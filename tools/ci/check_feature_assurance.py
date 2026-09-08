@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import sys
@@ -44,11 +45,26 @@ class AssuranceError(ValueError):
 
 def benchmark_targets(root: Path) -> set[str]:
     """Return product benchmark owners without scanning generated/private copies."""
-    return {
-        path.relative_to(root).as_posix()
-        for path in root.glob("**/benches/*.rs")
-        if not EXCLUDED_TREE_PARTS.intersection(path.relative_to(root).parts)
-    }
+    def unreadable_source(error: OSError) -> None:
+        raise AssuranceError("benchmark inventory cannot read a source directory") from error
+
+    targets: set[str] = set()
+    for directory, children, filenames in os.walk(root, topdown=True, followlinks=False, onerror=unreadable_source):
+        base = Path(directory)
+        # Prune before descent: filtering glob results still scans every cached
+        # build and tool installation, and glob can suppress source-read errors.
+        children[:] = [
+            name for name in children
+            if name not in EXCLUDED_TREE_PARTS
+            and not (base / name).is_symlink()
+            and not getattr(base / name, "is_junction", lambda: False)()
+        ]
+        if base.name == "benches":
+            targets.update(
+                (base / name).relative_to(root).as_posix()
+                for name in filenames if name.endswith(".rs")
+            )
+    return targets
 
 
 def workspace_members(root: Path) -> set[str]:

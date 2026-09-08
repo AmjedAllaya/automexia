@@ -97,6 +97,12 @@ bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
 
+Queue native probes before the input consumer blocks, then compare every
+consumed key value and ordinal in a bounded cumulative acknowledgment. Keep
+per-step acknowledgment, cursor/output invariance, real CMD line editing and
+successful child exit separate. A title-only channel can coalesce intermediate
+updates; neither the last counter alone nor arbitrary sleeps prove no lost input.
+
 Real ConsoleHost editor tests must silently shrink/grow before typing, compare
 native and VT cursor rows, preserve isolated history, and finish repeated child
 and worker cleanup. Keep the native protocol cursor unchanged by prompt-metadata
@@ -586,6 +592,26 @@ coverage must reject a missing or relaxed limit, wrapper, cleanup path, partial
 failure diagnostic, or real-process oracle.
 
 ### stabilization-release-assurance
+
+QA evidence must reject empty or stale JUnit, duplicate identities, inconsistent
+counts, invalid encoding, DTD/entity declarations and over-limit reports. Preserve valid
+failed reports and require fresh report identity after each nextest run. Execute
+XML-safe redaction roundtrips on written text, attributes and CDATA, preserving
+exact test outcomes and enforcing the serialized artifact ceiling. Execute
+all benchmark scenarios in test mode separately from controlled timing evidence;
+continue independent tests after failures without weakening flaky-result gates.
+Exercise exact free-space boundaries and overridden, uncreated build targets;
+never silently clean unrelated caches or describe an interrupted run as passed.
+Benchmark inventory must prune excluded trees before descent, with independent
+directory-operation counts that remain constant as cache fixtures grow. Denied
+source reads must fail closed instead of silently reducing coverage.
+
+Private provider transient deletion failures must retain authoritative records
+until a retry really removes the owned file. Test native sharing violations,
+immediate handle retirement, all five retirement paths, unauthorized-caller
+isolation and retry before expiry without reactivation after clock rollback,
+repeated revoke/shutdown, exact file/root removal and capacity recovery; preserve
+content-free checkpoints and unexplained historical stalls as unresolved evidence.
 
 Keep first failures, compare same-host performance baselines, require bounded
 resource growth and cleanup, and bind release evidence to the exact commit and

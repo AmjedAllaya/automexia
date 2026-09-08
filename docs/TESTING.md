@@ -72,6 +72,41 @@ from native desktop input latency. See ADR 0051 for remaining native gates.
 
 ## QA diagnostic privacy
 
+Benchmark inventory prunes build, tool and private directories before entering
+them; ignored-file filtering after recursive traversal is insufficient. Native
+directory-operation tests keep source visits constant as cache fixtures grow,
+and unreadable source directories fail the inventory instead of disappearing
+from its results.
+Full Python discovery names each active test in the bounded diagnostic log so a
+deadline does not leave only an anonymous sequence of completed-test dots.
+The documentation publication checker likewise prunes private, build and tool
+roots before traversal. Its distinct root-only exclusion policy stays local;
+nested public source directories remain covered, and read failures are errors.
+
+The QA runner rejects missing, stale, empty, malformed, oversized, invalid-UTF-8,
+entity-bearing and count-inconsistent JUnit reports. Reports are bounded to
+100,000 XML nodes and eight nesting levels. Suite/test identities must
+be unique, and reported outcomes must match actual cases. Valid failed reports
+are retained as failure evidence, never converted into passing tests. The exact
+previous report digest prevents a failed build from reusing an older report.
+Redaction operates on XML text and attributes before serialization. Parse the
+written artifact again in regressions, including CDATA and failure messages;
+valid input alone does not prove that a redacted report remains consumable.
+Native nextest runs use `--no-fail-fast`; retries still fail the flaky-result
+gate. Ordinary QA also runs every enabled workspace benchmark in test mode;
+this exercises correctness assertions, not a controlled performance comparison.
+The polling benchmark requires every registration exactly once, a bounded poll
+deadline and joined producer threads before the next iteration. Its timing now
+includes complete worker cleanup; do not compare it to old detached-worker
+numbers as if the measured workloads were identical.
+
+Before Cargo steps, QA checks a 4 GiB minimum free-space reserve for workspace
+artifacts and environment-selected target/build directories. Uncreated targets
+are checked against their nearest existing ancestor. Results contain numeric
+byte counts, not machine paths; insufficient or unavailable space blocks build
+commands without deleting caches. The reserve is not a guarantee that a cold
+build fits. Monitor long builds and use the documented storage preview workflow.
+
 Run `python3 -m unittest discover -s tools/ci -p test_qa.py` after changing the
 QA runner. Fictional-path regressions cover workspace/home precedence, case
 changes, slash variants, escaped tracebacks and literal regex characters. A real
@@ -80,6 +115,31 @@ while the original nonzero exit and failed verdict remain intact. Existing
 output ceilings, timeout cleanup and source-identity checks remain mandatory.
 Re-scan generated evidence before sharing it; a later passing run does not
 clear an unexplained earlier failure.
+
+## Native acknowledgment and private cleanup regressions
+
+Run `cargo test -p rio-vt --test live_resize --locked -- --test-threads=1`.
+The Windows fixture keeps CMD-produced output and the CMD `SET /P` editor case.
+Non-echoing probes use the same buffered `Console.ReadKey` helper as PowerShell:
+`PAUSE` can discard typeahead between READY and the next read. The buffered
+regression queues twelve keys and compares a cumulative native receipt containing
+every literal key value and ordinal, while requiring unchanged output/cursor and
+successful child exit. Per-step tests independently check each acknowledgment.
+The cumulative form accounts for native coalescing of rapid title changes;
+accepting only the last counter would not establish exact consumed input.
+
+Run `cargo test -p automexia-terminal --lib --locked provider_transients::tests`.
+Windows coverage holds a real deny-sharing file handle across revoke and
+shutdown, requires retained cleanup ownership on failure, releases the handle,
+then verifies successful retry, empty records and removed private root. The
+test matrix covers revoke, disable, session retirement, expiry and shutdown: handles
+are immediately unusable even if file deletion fails, cleanup can retry before
+the original expiry, and wrong-session/generation callers cannot retire them.
+Restored file access or clock rollback must never reactivate a retired handle.
+Repeated capacity/disable/shutdown cycles use exact file counts and content-free phase
+checkpoints. A later pass does not explain a previously observed long filesystem
+stall; retain that failure until its cause is identified. These are process and
+filesystem tests, not desktop pixels or assistive-technology certification.
 
 ## Operational status colour regression
 

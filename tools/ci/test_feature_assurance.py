@@ -6,9 +6,11 @@ from __future__ import annotations
 import copy
 import importlib.util
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("check_feature_assurance.py")
@@ -48,6 +50,53 @@ class FeatureAssuranceTests(unittest.TestCase):
                 ASSURANCE.benchmark_targets(root),
                 {"crate/benches/real.rs"},
             )
+
+    def test_benchmark_inventory_prunes_caches_before_traversal(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            source = root / "crate" / "benches" / "real.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text("fn main() {}\n", encoding="utf-8")
+            scandir = os.scandir
+            expected_visits = {".", "crate", "crate/benches"}
+            for cache_size in (1, 32):
+                for excluded in ("target", ".git", ".automexia-private", ".automexia-tools"):
+                    for index in range(cache_size):
+                        cache = root / excluded / str(index) / "benches"
+                        cache.mkdir(parents=True, exist_ok=True)
+                        (cache / "copy.rs").write_text("fn main() {}\n", encoding="utf-8")
+                visited = []
+
+                def observe(directory):
+                    relative = Path(directory).relative_to(root).as_posix()
+                    visited.append(relative)
+                    self.assertFalse(
+                        {"target", ".git", ".automexia-private", ".automexia-tools"}.intersection(Path(relative).parts),
+                        "cache traversal must be pruned, not filtered afterward",
+                    )
+                    return scandir(directory)
+
+                # Operation counts remain constant as ignored trees grow. Merely
+                # comparing returned paths let cache-size-dependent stalls escape.
+                with mock.patch("os.scandir", side_effect=observe):
+                    self.assertEqual(ASSURANCE.benchmark_targets(root), {"crate/benches/real.rs"})
+                self.assertEqual(set(visited), expected_visits)
+                self.assertEqual(len(visited), len(expected_visits))
+
+    def test_benchmark_inventory_does_not_hide_unreadable_source(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "crate").mkdir()
+            scandir = os.scandir
+
+            def deny_source(directory):
+                if Path(directory) == root / "crate":
+                    raise PermissionError("fixture source denied")
+                return scandir(directory)
+
+            with mock.patch("os.scandir", side_effect=deny_source):
+                with self.assertRaisesRegex(ASSURANCE.AssuranceError, "benchmark inventory cannot read"):
+                    ASSURANCE.benchmark_targets(root)
 
     def test_missing_documentation_type_is_rejected(self) -> None:
         document = copy.deepcopy(self.document)

@@ -70,21 +70,30 @@ fn logical_rows<U: rio_vt::event::EventListener>(
 #[test]
 #[cfg(windows)]
 fn native_cmd_fixture_acknowledgments_do_not_move_cursor_or_output() {
+    assert_cmd_fixture_acknowledgments(false);
+}
+
+#[test]
+#[cfg(windows)]
+fn native_cmd_fixture_consumes_buffered_probes_without_losing_acknowledgments() {
+    assert_cmd_fixture_acknowledgments(true);
+}
+
+#[cfg(windows)]
+fn assert_cmd_fixture_acknowledgments(buffered: bool) {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/live-resize-output.cmd");
-    let mut pty = teletypewriter::create_pty(
-        Some("cmd.exe"),
-        vec![
-            "/d".into(),
-            "/k".into(),
-            fixture.to_string_lossy().into_owned(),
-        ],
-        &None,
-        None,
-        100,
-        24,
-    )
-    .unwrap_or_else(|_| panic!("native probe fixture launch"));
+    let mut arguments = vec![
+        "/d".into(),
+        "/k".into(),
+        fixture.to_string_lossy().into_owned(),
+    ];
+    if buffered {
+        arguments.extend(["short".into(), "buffered".into()]);
+    }
+    let mut pty =
+        teletypewriter::create_pty(Some("cmd.exe"), arguments, &None, None, 100, 24)
+            .unwrap_or_else(|_| panic!("native probe fixture launch"));
     let mut terminal = Crosswords::new(
         CrosswordsSize::new(100, 24),
         CursorShape::Block,
@@ -98,25 +107,54 @@ fn native_cmd_fixture_acknowledgments_do_not_move_cursor_or_output() {
     receive_until(&mut pty, &mut terminal, &mut parser, b"RESIZE-READY\x07");
     let cursor = terminal.grid.cursor.pos;
     let rows = logical_rows(&terminal);
-    for step in 0..12 {
+    if buffered {
+        // READY may reach the parent before the next native read begins. Queue
+        // all probes to expose consumers (such as PAUSE) that flush typeahead.
+        let probes = fixture_probe("cmd.exe", &terminal).repeat(12);
         pty.writer()
-            .write_all(fixture_probe("cmd.exe", &terminal))
-            .expect("native probe");
-        receive_until(
-            &mut pty,
-            &mut terminal,
-            &mut parser,
-            format!("RESIZE-ACK-{step}\x07").as_bytes(),
-        );
-        assert_eq!(
-            terminal.grid.cursor.pos, cursor,
-            "the acknowledgment must not inject a newline"
-        );
-        assert_eq!(
-            logical_rows(&terminal),
-            rows,
-            "the probe must not repaint or move output"
-        );
+            .write_all(&probes)
+            .expect("buffered native probes");
+        let received =
+            receive_until(&mut pty, &mut terminal, &mut parser, b"RESIZE-ACK-11\x07");
+        // Assert all twelve actual key values and ordinals, not only the last
+        // loop counter. One cumulative native receipt survives title coalescing
+        // without relaxing the no-loss/no-duplication/ordered-input contract.
+        let start = received
+            .windows(b"RESIZE-PROBE-0=".len())
+            .rposition(|part| part == b"RESIZE-PROBE-0=")
+            .expect("complete native probe receipt");
+        let end = received[start..]
+            .iter()
+            .position(|byte| *byte == 7)
+            .expect("terminated native probe receipt");
+        let mut expected = (0..12)
+            .map(|step| format!("RESIZE-PROBE-{step}=120;"))
+            .collect::<String>();
+        expected.push_str("RESIZE-ACK-11");
+        assert_eq!(&received[start..start + end], expected.as_bytes());
+        assert_eq!(terminal.grid.cursor.pos, cursor);
+        assert_eq!(logical_rows(&terminal), rows);
+    } else {
+        for step in 0..12 {
+            pty.writer()
+                .write_all(fixture_probe("cmd.exe", &terminal))
+                .expect("native probe");
+            receive_until(
+                &mut pty,
+                &mut terminal,
+                &mut parser,
+                format!("RESIZE-ACK-{step}\x07").as_bytes(),
+            );
+            assert_eq!(
+                terminal.grid.cursor.pos, cursor,
+                "the acknowledgment must not inject a newline"
+            );
+            assert_eq!(
+                logical_rows(&terminal),
+                rows,
+                "the probe must not repaint or move output"
+            );
+        }
     }
     pty.writer()
         .write_all(fixture_release("cmd.exe", &terminal))

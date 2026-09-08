@@ -6,10 +6,11 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import os
 from pathlib import Path, PurePosixPath
 import re
 import sys
-from typing import Any
+from typing import Any, Iterator
 
 from check_documentation_hygiene import (
     DocumentationHygieneError,
@@ -256,6 +257,23 @@ def private_boundary_is_enabled(root: Path) -> bool:
     return False
 
 
+def public_markdown_paths(root: Path) -> Iterator[Path]:
+    excluded_roots = {PRIVATE_PATH, ".automexia-tools", ".git", "target", "artifacts"}
+
+    def unreadable_public(error: OSError) -> None:
+        raise DocumentationPackError("cannot read a public documentation directory") from error
+
+    for directory, children, filenames in os.walk(root, topdown=True, followlinks=False, onerror=unreadable_public):
+        base = Path(directory)
+        # This publication policy excludes root-owned private/generated data.
+        # Nested source directories remain in scope, unlike benchmark caches.
+        if base == root:
+            children[:] = [name for name in children if name not in excluded_roots]
+        for name in filenames:
+            if name.endswith(".md"):
+                yield base / name
+
+
 def validate_private_boundary(root: Path) -> dict[str, int]:
     legacy = root / PACK_PATH
     if legacy.exists() or legacy.is_symlink():
@@ -308,11 +326,8 @@ def validate_private_boundary(root: Path) -> dict[str, int]:
         )
 
     public_count = 0
-    excluded_roots = {PRIVATE_PATH, ".git", "target", "artifacts"}
-    for path in root.rglob("*.md"):
+    for path in public_markdown_paths(root):
         relative = path.relative_to(root)
-        if relative.parts and relative.parts[0] in excluded_roots:
-            continue
         if path.is_symlink():
             raise DocumentationPackError(
                 f"public Markdown must not be a symbolic link: {relative.as_posix()}"

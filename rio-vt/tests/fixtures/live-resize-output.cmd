@@ -11,14 +11,25 @@ if "%~1"=="wide" (
 )
 echo ]133;D;0]133;A;aid=2
 echo ]133;P;k=c;aid=2/example
-<nul set /p "=]133;P;k=c;aid=2lambda ]133;B]2;RESIZE-READY"
-rem PAUSE reads a single non-echoing key. SET /P plus Enter adds a native newline
-rem and can scroll during repaint, so it is only used by the explicit editor case.
+<nul set /p "=]133;P;k=c;aid=2lambda ]133;B"
+rem PAUSE flushes buffered input, racing the parent's resize acknowledgment.
+rem Keep CMD output and line-editor coverage; use a non-echoing buffered reader
+rem for the no-redraw acknowledgment protocol shared with PowerShell.
+if "%~2"=="line" goto line_probe
+if "%~2"=="buffered" (
+    powershell.exe -NoLogo -NoProfile -NonInteractive -File "%~dp0live-resize-ack.ps1" -CumulativeReceipt
+) else (
+    powershell.exe -NoLogo -NoProfile -NonInteractive -File "%~dp0live-resize-ack.ps1"
+)
+if errorlevel 1 exit /b 1
+goto exit_probe
+:line_probe
+<nul set /p "=]2;RESIZE-READY"
 for /l %%n in (0,1,11) do (
-    if "%~2"=="line" (set /p "probe=") else (pause >nul)
+    set /p "probe="
     <nul set /p "=]2;RESIZE-ACK-%%n"
 )
-rem Exit is a separate line-input handshake, after all viewport assertions.
-rem Unlike PAUSE, this accepts a release already buffered by the parent.
+:exit_probe
+rem Exit is a separate buffered line-input handshake after viewport assertions.
 set /p "probe="
 exit 0

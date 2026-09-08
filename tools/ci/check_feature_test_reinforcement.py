@@ -104,7 +104,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
         "verification_reinforcements": ("complete graph, license and file-hash preservation",),
     },
     "stabilization-release-assurance-s1-s2": {
-        "needed_tests": ("content-bound dirty fingerprints", "logical artifact announcements"),
+        "needed_tests": ("content-bound dirty fingerprints", "logical artifact announcements", "pre-descent cache pruning", "unreadable source"),
         "verification_reinforcements": ("before/after source identity drift",),
     },
     "terminal-protocols-grid-history": {
@@ -144,6 +144,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "pty-scheduler-process-lifecycle": {
         "needed_tests": (
+            "Buffered native probes verify every consumed key value and ordinal",
             "Confirmed window dismissal",
             "Saturated native output",
             "fake-clock input-settle deadlines",

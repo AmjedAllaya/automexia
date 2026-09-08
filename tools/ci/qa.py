@@ -28,6 +28,11 @@ MAX_LOG_BYTES = 2 * 1024 * 1024
 MAX_TAIL_CHARS = 4096
 MAX_BUNDLE_FILE_BYTES = 16 * 1024 * 1024
 MAX_BUNDLE_BYTES = 64 * 1024 * 1024
+MAX_JUNIT_BYTES = 8 * 1024 * 1024
+MAX_JUNIT_NODES = 100_000
+MAX_JUNIT_DEPTH = 8
+# Match the build runner's minimum reserve; this is not a cold-build estimate.
+MIN_QA_FREE_BYTES = 4 * 1024 * 1024 * 1024
 DEFAULT_STEP_TIMEOUT_SECONDS = 30 * 60
 STEP_TIMEOUT_SECONDS = {
     "qa-runner-self-tests": 120,
@@ -46,6 +51,7 @@ STEP_TIMEOUT_SECONDS = {
     "clippy": 3600,
     "nextest": 3000,
     "component-host": 900,
+    "benchmark-smoke": 3600,
     "doctests": 1800,
     "resize-stress": 1800,
     "session-clone": 1800,
@@ -608,21 +614,119 @@ def run_step(
         "error": error,
     }
 
-def collect_junit(run_dir: pathlib.Path) -> dict[str, object]:
+def read_junit() -> bytes:
     source = ROOT / "target" / "nextest" / "ci" / "junit.xml"
+    metadata = source.lstat()
+    if not stat.S_ISREG(metadata.st_mode) or getattr(metadata, 'st_file_attributes', 0) & getattr(stat, 'FILE_ATTRIBUTE_REPARSE_POINT', 0):
+        raise ValueError('JUnit evidence must be a regular non-link file')
+    with source.open('rb') as stream:
+        payload = stream.read(MAX_JUNIT_BYTES + 1)
+    if len(payload) > MAX_JUNIT_BYTES:
+        raise ValueError('JUnit report exceeds the 8 MiB artifact ceiling')
+    return payload
+
+
+def junit_fingerprint() -> str | None:
+    try:
+        return hashlib.sha256(read_junit()).hexdigest()
+    except (OSError, ValueError):
+        return None
+
+
+def validate_junit(payload: str) -> tuple[element_tree.Element, dict[str, int]]:
+    # Nextest's Jenkins report is evidence, not merely well-formed XML. Reject
+    # entity declarations before parsing and reconcile counts independently.
+    if '<!DOCTYPE' in payload or '<!ENTITY' in payload:
+        raise ValueError('JUnit declarations are not permitted')
+    parser = element_tree.XMLPullParser(events=('start', 'end'))
+    depth = nodes = 0
+    root = None
+    # Incremental events enforce structure limits before building an entire
+    # adversarial tree; the byte ceiling alone does not bound XML nesting.
+    for offset in range(0, len(payload), 4096):
+        parser.feed(payload[offset:offset + 4096])
+        for event, element in parser.read_events():
+            if event == 'start':
+                depth += 1
+                nodes += 1
+                if root is None:
+                    root = element
+                if depth > MAX_JUNIT_DEPTH or nodes > MAX_JUNIT_NODES:
+                    raise ValueError('JUnit XML structure exceeds its depth/node ceiling')
+            else:
+                depth -= 1
+    parser.close()
+    if root is None:
+        raise ValueError('JUnit evidence requires a document element')
+    if root.tag != 'testsuites' or not len(root):
+        raise ValueError('JUnit evidence requires nonempty test suites')
+    totals = dict.fromkeys(('tests', 'failures', 'errors', 'skipped'), 0)
+    identities: set[tuple[str, str, str]] = set()
+    suite_names: set[str] = set()
+
+    def check_counts(element: element_tree.Element, actual: dict[str, int]) -> None:
+        for name, count in actual.items():
+            value = element.get(name)
+            if name == 'skipped' and value is None:
+                continue  # Jenkins does not require an aggregate skipped field.
+            if value is None or re.fullmatch(r'[0-9]{1,9}', value) is None or int(value) != count:
+                raise ValueError('JUnit counts disagree with test evidence')
+
+    for suite in root:
+        suite_name = suite.get('name', '')
+        if suite.tag != 'testsuite' or not suite_name.strip() or suite_name in suite_names:
+            raise ValueError('JUnit suite identity is missing or duplicated')
+        suite_names.add(suite_name)
+        counts = dict.fromkeys(totals, 0)
+        for case in suite.findall('testcase'):
+            name, classname = case.get('name', ''), case.get('classname', '')
+            identity = (suite_name, classname, name)
+            if not name.strip() or not classname.strip() or identity in identities:
+                raise ValueError('JUnit test identity is missing or duplicated')
+            identities.add(identity)
+            counts['tests'] += 1
+            outcomes = {key: len(case.findall(tag)) for key, tag in (('failures', 'failure'), ('errors', 'error'), ('skipped', 'skipped'))}
+            if sum(outcomes.values()) > 1:
+                raise ValueError('JUnit test has contradictory outcomes')
+            for key, count in outcomes.items():
+                counts[key] += count
+        check_counts(suite, counts)
+        for key, count in counts.items():
+            totals[key] += count
+    if totals['tests'] == 0:
+        raise ValueError('JUnit evidence contains no tests')
+    check_counts(root, totals)
+    return root, totals
+
+
+def collect_junit(run_dir: pathlib.Path, *, previous_digest: str | None = None) -> dict[str, object]:
     destination = run_dir / "artifacts" / "nextest-junit.xml"
     try:
-        payload = source.read_text(encoding="utf-8", errors="replace")
-        if len(payload.encode("utf-8")) > 8 * 1024 * 1024:
-            raise ValueError("JUnit report exceeds the 8 MiB artifact ceiling")
-        element_tree.fromstring(payload)
-        atomic_write(destination, REDACT(payload))
+        raw = read_junit()
+        if previous_digest is not None and hashlib.sha256(raw).hexdigest() == previous_digest:
+            raise ValueError('JUnit report was not replaced by this test run')
+        payload = raw.decode('utf-8')
+        root, counts = validate_junit(payload)
+        # Redact values before XML serialization: raw replacement can introduce
+        # angle-bracket markers into attributes/text and corrupt the artifact.
+        for element in root.iter():
+            for name, value in element.attrib.items():
+                element.set(name, REDACT(value))
+            if element.text:
+                element.text = REDACT(element.text)
+            if element.tail:
+                element.tail = REDACT(element.tail)
+        redacted = element_tree.tostring(root, encoding='unicode')
+        if len(redacted.encode('utf-8')) > MAX_JUNIT_BYTES:
+            raise ValueError('Redacted JUnit report exceeds the 8 MiB artifact ceiling')
+        atomic_write(destination, redacted)
         print("PASS: junit-artifact", flush=True)
         return {
             "name": "junit-artifact",
             "status": "pass",
             "required": True,
             "artifact": destination.relative_to(run_dir).as_posix(),
+            "counts": counts,
         }
     except (OSError, ValueError, element_tree.ParseError) as error:
         message = REDACT(f"{type(error).__name__}: {error}")
@@ -633,6 +737,33 @@ def collect_junit(run_dir: pathlib.Path) -> dict[str, object]:
             "required": True,
             "error": message,
         }
+
+
+def storage_preflight() -> dict[str, object]:
+    result: dict[str, object] = {'name': 'storage-preflight', 'required': True, 'minimum_free_bytes': MIN_QA_FREE_BYTES}
+    try:
+        # The workspace build-dir remains independent of an overridden final
+        # target-dir. Measure both, including overrides not created yet, without
+        # persisting either location or deleting another task's cache.
+        targets = [ROOT / 'target']
+        for variable in ('CARGO_TARGET_DIR', 'CARGO_BUILD_BUILD_DIR'):
+            value = os.environ.get(variable, '')
+            if value:
+                value = value.replace('{workspace-root}', str(ROOT))
+                if '{' in value or '}' in value:
+                    raise ValueError('Unsupported build-directory template')
+                target = pathlib.Path(value)
+                targets.append(target if target.is_absolute() else ROOT / target)
+        free_values = []
+        for target in targets:
+            while not target.exists() and target != target.parent:
+                target = target.parent
+            free_values.append(shutil.disk_usage(target).free)
+        free = min(free_values)
+        result.update(status='pass' if free >= MIN_QA_FREE_BYTES else 'fail', free_bytes=free)
+    except (OSError, ValueError):
+        result.update(status='fail', error='Build-volume free space could not be measured')
+    return result
 
 
 def skipped(name: str, reason: str, *, external: bool = False) -> dict[str, object]:
@@ -778,6 +909,7 @@ def main() -> int:
                 "tools/ci",
                 "-p",
                 "test_*.py",
+                "-v",
             ],
             None,
         ),
@@ -948,7 +1080,7 @@ def main() -> int:
         ),
         (
             "nextest",
-            ["cargo", "nextest", "run", "--workspace", "--locked", "--profile", "ci"],
+            ["cargo", "nextest", "run", "--workspace", "--locked", "--profile", "ci", "--no-fail-fast"],
             None,
         ),
         ("doctests", ["cargo", "test", "--workspace", "--doc", "--locked"], None),
@@ -956,9 +1088,12 @@ def main() -> int:
         # per-test deadlines but does not overwrite that separate CI report.
         (
             "component-host",
-            ["cargo", "nextest", "run", "-p", "automexia-ecosystem-runtime", "--all-features", "--locked", "--profile", "default"],
+            ["cargo", "nextest", "run", "-p", "automexia-ecosystem-runtime", "--all-features", "--locked", "--profile", "default", "--no-fail-fast"],
             None,
         ),
+        # Criterion's test mode executes every enabled benchmark scenario once;
+        # it catches broken cases without claiming controlled performance data.
+        ("benchmark-smoke", ["cargo", "test", "--workspace", "--all-features", "--benches", "--locked"], None),
         ("resize-stress", ["cargo", "xtask", "test", "resize-stress"], None),
         ("session-clone", ["cargo", "xtask", "test", "session-clone"], None),
         (
@@ -1030,10 +1165,16 @@ def main() -> int:
                 ),
             )
 
-    steps: list[dict[str, object]] = []
+    reserve = storage_preflight()
+    print(f"{str(reserve['status']).upper()}: storage-preflight {json.dumps(reserve, sort_keys=True)}", flush=True)
+    steps: list[dict[str, object]] = [reserve]
+    previous_junit = junit_fingerprint()
     for index, (name, command, env_add) in enumerate(commands, 1):
+        if command[0] == 'cargo' and storage_preflight()['status'] != 'pass':
+            steps.append({'name': name, 'status': 'fail', 'required': True, 'error': 'Build-volume minimum free-space reserve unavailable; command not started'})
+            continue
         steps.append(run_step(run_dir, index, name, command, env_add=env_add))
-    steps.append(collect_junit(run_dir))
+    steps.append(collect_junit(run_dir, previous_digest=previous_junit))
 
     next_index = len(steps) + 1
     s1_evidence = os.environ.get("AUTOMEXIA_QA_S1_EVIDENCE", "").strip()
