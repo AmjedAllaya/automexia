@@ -5,23 +5,24 @@ from __future__ import annotations
 
 import argparse
 import collections
+import codecs
 import datetime as dt
 import hashlib
 import html
+import io
 import json
 import os
 import pathlib
 import platform
 import re
 import shutil
-import signal
 import stat
-import subprocess
 import sys
-import threading
 import time
 import zipfile
 import xml.etree.ElementTree as element_tree
+
+import qa_process
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 MAX_LOG_BYTES = 2 * 1024 * 1024
@@ -129,58 +130,22 @@ def make_redactor():
 REDACT = make_redactor()
 
 
-def popen_group_options() -> dict[str, object]:
-    if os.name == "nt":
-        return {"creationflags": subprocess.CREATE_NEW_PROCESS_GROUP}
-    return {"start_new_session": True}
-
-
-def terminate_process_tree(process: subprocess.Popen[str]) -> None:
-    if process.poll() is not None:
-        return
-    if os.name == "nt":
-        try:
-            subprocess.run(
-                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                timeout=10,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired):
-            pass
-    else:
-        try:
-            os.killpg(process.pid, signal.SIGKILL)
-        except (OSError, ProcessLookupError):
-            pass
-    if process.poll() is None:
-        process.kill()
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
-        process.kill()
-        process.wait()
-
 def bounded_capture(command: list[str], timeout_seconds: int = 15) -> str | None:
+    output = bytearray()
+
+    def consume(chunk: bytes) -> None:
+        if len(output) + len(chunk) > 32768:
+            raise ValueError('version output exceeded its byte ceiling')
+        output.extend(chunk)
+
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=ROOT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            **popen_group_options(),
+        result = qa_process.run(
+            command, cwd=ROOT, timeout_seconds=timeout_seconds, consume=consume,
         )
-        try:
-            output, _ = process.communicate(timeout=timeout_seconds)
-        except subprocess.TimeoutExpired:
-            terminate_process_tree(process)
+        if result.return_code != 0 or result.timed_out or result.error:
             return None
-        return REDACT(output.replace(chr(0), ""))[:32768]
-    except OSError:
+        return REDACT(output.decode('utf-8', errors='replace').replace(chr(0), ""))
+    except (OSError, ValueError):
         return None
 
 
@@ -298,21 +263,8 @@ def collect_host_manifest() -> dict[str, object]:
     return manifest
 
 def git_value(*args: str) -> str:
-    try:
-        result = subprocess.run(
-            ["git", *args],
-            cwd=ROOT,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.DEVNULL,
-            timeout=15,
-            check=False,
-        )
-        return result.stdout.strip() if result.returncode == 0 else "unavailable"
-    except (OSError, subprocess.TimeoutExpired):
-        return "unavailable"
+    output = bounded_capture(['git', *args])
+    return output.strip() if output is not None else 'unavailable'
 
 
 MAX_SOURCE_STATUS_BYTES = 1024 * 1024
@@ -325,38 +277,22 @@ SOURCE_STATUS_TIMEOUT_SECONDS = 20
 def source_status_bytes() -> bytes | None:
     """Read raw NUL-delimited status without truncation or disclosure to logs."""
     data = bytearray()
-    invalid = threading.Event()
+
+    def consume(chunk: bytes) -> None:
+        if len(data) + len(chunk) > MAX_SOURCE_STATUS_BYTES:
+            raise ValueError('source inventory exceeds its byte ceiling')
+        data.extend(chunk)
+
     try:
-        process = subprocess.Popen(
+        result = qa_process.run(
             ["git", "--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false", "status",
              "--porcelain=v1", "-z", "--untracked-files=all"],
-            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
-            **popen_group_options(),
+            cwd=ROOT, timeout_seconds=SOURCE_STATUS_TIMEOUT_SECONDS,
+            consume=consume, merge_stderr=False,
         )
-    except OSError:
+    except (OSError, ValueError):
         return None
-
-    def collect() -> None:
-        try:
-            with process.stdout:
-                while chunk := process.stdout.read(8192):
-                    if len(data) + len(chunk) > MAX_SOURCE_STATUS_BYTES:
-                        invalid.set()
-                        return
-                    data.extend(chunk)
-        except (OSError, ValueError):
-            invalid.set()
-
-    reader = threading.Thread(target=collect, daemon=True, name="automexia-qa-source-status")
-    reader.start()
-    try:
-        process.wait(timeout=SOURCE_STATUS_TIMEOUT_SECONDS)
-    except subprocess.TimeoutExpired:
-        invalid.set()
-        terminate_process_tree(process)
-    finally:
-        reader.join(timeout=5)
-    if reader.is_alive() or invalid.is_set() or process.returncode != 0:
+    if result.return_code != 0 or result.timed_out or result.error:
         return None
     return bytes(data)
 
@@ -473,23 +409,9 @@ def run_step(
         environment.update(env_add)
     error = None
     return_code = None
-    timeout_seconds = timeout_seconds or STEP_TIMEOUT_SECONDS.get(
-        name, DEFAULT_STEP_TIMEOUT_SECONDS
-    )
+    if timeout_seconds is None:
+        timeout_seconds = STEP_TIMEOUT_SECONDS.get(name, DEFAULT_STEP_TIMEOUT_SECONDS)
     try:
-        process = subprocess.Popen(
-            command,
-            cwd=ROOT,
-            env=environment,
-            text=True,
-            encoding="utf-8",
-            errors="replace",
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            **popen_group_options(),
-        )
-        assert process.stdout is not None
-        reader_errors: list[str] = []
         with log_path.open("w", encoding="utf-8", newline="\n") as log:
 
             def record_line(raw_line: str) -> None:
@@ -519,76 +441,57 @@ def run_step(
                 captured = MAX_LOG_BYTES
                 truncated = True
 
-            def drain_output() -> None:
-                pending = ""
-                suppressing_long_line = False
-                try:
-                    while True:
-                        chunk = process.stdout.read(8192)
-                        if not chunk:
-                            break
-                        while chunk:
-                            if suppressing_long_line:
-                                newline = chunk.find("\n")
-                                if newline < 0:
-                                    chunk = ""
-                                    continue
-                                chunk = chunk[newline + 1 :]
-                                suppressing_long_line = False
-                                continue
-                            newline = chunk.find("\n")
-                            if newline >= 0:
-                                candidate = pending + chunk[: newline + 1]
-                                pending = ""
-                                chunk = chunk[newline + 1 :]
-                                if len(candidate) > MAX_TAIL_CHARS:
-                                    record_line("[overlong output line suppressed]\n")
-                                else:
-                                    record_line(candidate)
-                                continue
-                            pending += chunk
-                            chunk = ""
-                            if len(pending) > MAX_TAIL_CHARS:
-                                record_line("[overlong output line suppressed]\n")
-                                pending = ""
-                                suppressing_long_line = True
-                    if pending and not suppressing_long_line:
-                        record_line(pending)
-                except (OSError, ValueError) as exception:
-                    reader_errors.append(
-                        REDACT(f"output reader {type(exception).__name__}: {exception}")
-                    )
-
-            reader = threading.Thread(
-                target=drain_output,
-                name=f"qa-output-{name}",
-                daemon=True,
+            pending = ""
+            suppressing_long_line = False
+            decoder = io.IncrementalNewlineDecoder(
+                codecs.getincrementaldecoder('utf-8')(errors='replace'), translate=True,
             )
-            reader.start()
-            try:
-                return_code = process.wait(timeout=timeout_seconds)
-            except subprocess.TimeoutExpired:
-                timed_out = True
-                error = f"TimeoutExpired: exceeded {timeout_seconds} seconds"
-                terminate_process_tree(process)
-                return_code = process.returncode
-            reader.join(timeout=15)
-            if reader.is_alive():
-                process.stdout.close()
-                reader.join(timeout=5)
-                reader_errors.append(
-                    "output reader did not terminate after process cleanup"
-                )
-            else:
-                process.stdout.close()
-            if reader_errors:
-                error = "; ".join(reader_errors)
+
+            def consume_text(chunk: str) -> None:
+                nonlocal pending, suppressing_long_line
+                while chunk:
+                    if suppressing_long_line:
+                        newline = chunk.find("\n")
+                        if newline < 0:
+                            chunk = ""
+                            continue
+                        chunk = chunk[newline + 1 :]
+                        suppressing_long_line = False
+                        continue
+                    newline = chunk.find("\n")
+                    if newline >= 0:
+                        candidate = pending + chunk[: newline + 1]
+                        pending = ""
+                        chunk = chunk[newline + 1 :]
+                        if len(candidate) > MAX_TAIL_CHARS:
+                            record_line("[overlong output line suppressed]\n")
+                        else:
+                            record_line(candidate)
+                        continue
+                    pending += chunk
+                    chunk = ""
+                    if len(pending) > MAX_TAIL_CHARS:
+                        record_line("[overlong output line suppressed]\n")
+                        pending = ""
+                        suppressing_long_line = True
+
+            result = qa_process.run(
+                command, cwd=ROOT, environment=environment,
+                timeout_seconds=timeout_seconds,
+                consume=lambda raw: consume_text(decoder.decode(raw)),
+            )
+            return_code, timed_out, error = result.return_code, result.timed_out, result.error
+            # The native owner has joined the only decoder/log consumer before
+            # this final flush, including fragmented UTF-8 and a trailing CR.
+            consume_text(decoder.decode(b'', final=True))
+            if pending and not suppressing_long_line:
+                record_line(pending)
         status = (
             "pass"
             if return_code == 0 and not timed_out and error is None
             else "fail"
         )
-    except OSError as exception:
+    except (OSError, ValueError) as exception:
         status = "fail"
         error = REDACT(f"{type(exception).__name__}: {exception}")
         atomic_write(log_path, error + "\n")

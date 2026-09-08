@@ -263,6 +263,18 @@ pinned `cargo-llvm-cov 0.6.18` run on the exact hosted release commit.
 
 ## Local verification
 
+QA step, tool-version, source-status and compiler-probe processes share the contained lifecycle
+owner described in [ADR 0057](adr/0057-contained-contributor-qa-processes.md).
+An exited parent cannot leave a descendant holding the runner's output reader.
+Commands receive closed stdin; completion retains their actual exit and final
+output, then retires the process group and readers. Cleanup has a separate
+five-second ceiling. An incomplete native cleanup fails and blocks further
+launches in that interpreter instead of claiming success. Run
+`python tools/ci/test_qa.py` and `python tools/ci/test_qa_process.py` for focused
+coverage; full Python discovery includes both. Windows job tests and Linux pidfd
+tests are native evidence only for the host that executed them. macOS and hosted
+CI are separate gates, not implied by local success.
+
 Run fast CI-policy evidence first:
 
 ```text

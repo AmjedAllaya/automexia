@@ -20,6 +20,26 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_qa_admission_cleanup_and_consumers_cannot_drift(self) -> None:
+        REINFORCEMENT._validate_qa_process_sources(self.native_sources)
+        for owner, old, new in (
+            ('qa_process', 'job.assign(process)', 'pass'),
+            ('qa_process', "process.stdin.write(b'G')", 'pass'),
+            ('qa_process', 'reader.join(timeout=', 'reader.join_without_deadline(timeout='),
+            ('qa_process', 'os.killpg(process.pid, signal.SIGKILL)', 'process.kill()'),
+            ('qa_process', '_quarantine = (process, job, readers)', '_quarantine = None'),
+            ('qa_process', 'CLEANUP_SECONDS = 5.0', 'CLEANUP_SECONDS = 500.0'),
+            ('qa_process', '0x2000', '0'),
+            ('qa', 'qa_process.run(', 'other_owner.run('),
+            ('compiler_probe', 'qa_process.run(', 'other_owner.run('),
+        ):
+            with self.subTest(owner=owner, mutation=old):
+                sources = self.native_sources.copy()
+                self.assertIn(old, sources[owner])
+                sources[owner] = sources[owner].replace(old, new, 1)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_qa_process_sources(sources)
+
     def test_confirmed_child_exit_owner_and_order_cannot_drift(self) -> None:
         REINFORCEMENT._validate_child_exit_sources(self.native_sources)
         for old, new in [

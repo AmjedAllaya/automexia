@@ -1353,6 +1353,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     )?;
 
     let qa = read(&root().join("tools/ci/qa.py"))?;
+    let qa_process = read(&root().join("tools/ci/qa_process.py"))?;
     require(
         qa.contains("MAX_LOG_BYTES = 2 * 1024 * 1024")
             && qa.contains("MAX_BUNDLE_BYTES = 64 * 1024 * 1024")
@@ -1360,8 +1361,10 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("environment_dumped\": False")
             && qa.contains("{\".etl\", \".png\", \".info\"}")
             && qa.contains("timeout_seconds")
-            && qa.contains("[\"taskkill\", \"/PID\"")
-            && qa.contains("os.killpg(process.pid")
+            && qa.contains("qa_process.run(")
+            && qa_process.contains("os.killpg(process.pid")
+            && qa_process.contains("AssignProcessToJobObject")
+            && root().join("tools/ci/test_qa_process.py").is_file()
             && qa.contains("collect_host_manifest()")
             && qa.contains("AUTOMEXIA_NATIVE_RESOURCE_REPORT")
             && qa.contains("JUnit report exceeds the 8 MiB artifact ceiling")

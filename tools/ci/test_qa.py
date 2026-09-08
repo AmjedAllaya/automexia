@@ -289,14 +289,14 @@ class QaRunnerTests(unittest.TestCase):
         self.assertFalse(QA.source_identity_stable(invalid_commit, invalid_commit))
 
     def test_source_status_capture_has_real_process_byte_and_deadline_bounds(self) -> None:
-        spawn = subprocess.Popen
-        children = []
+        run = QA.qa_process.run
+        results = []
         def fixture_process(_command, **kwargs):
             if _command[0] != "git":
-                return spawn(_command, **kwargs)
-            child = spawn([sys.executable, "-c", code], **kwargs)
-            children.append(child)
-            return child
+                return run(_command, **kwargs)
+            result = run([sys.executable, "-c", code], **kwargs)
+            results.append(result)
+            return result
         for code, expected, should_timeout in (
             ("import sys;sys.stdout.buffer.write(b'?? fixture\\0')", b"?? fixture\0", False),
             ("import sys;sys.stdout.buffer.write(b'x'*65536)", None, False),
@@ -306,15 +306,14 @@ class QaRunnerTests(unittest.TestCase):
             # process termination or the resulting byte/deadline oracle.
             with (
                 self.subTest(expected=expected),
-                mock.patch.object(QA.subprocess, "Popen", side_effect=fixture_process),
+                mock.patch.object(QA.qa_process, "run", side_effect=fixture_process),
                 mock.patch.object(QA, "MAX_SOURCE_STATUS_BYTES", 1024),
                 mock.patch.object(QA, "SOURCE_STATUS_TIMEOUT_SECONDS", 0.5 if should_timeout else 10),
-                mock.patch.object(QA, "terminate_process_tree", wraps=QA.terminate_process_tree) as cleanup,
             ):
                 self.assertEqual(QA.source_status_bytes(), expected)
-                self.assertEqual(cleanup.called, should_timeout)
-            self.assertIsNotNone(children[-1].poll())
-            self.assertFalse(any(thread.name == "automexia-qa-source-status" for thread in threading.enumerate()))
+                self.assertEqual(results[-1].timed_out, should_timeout)
+            self.assertIsNone(QA.qa_process._quarantine)
+            self.assertFalse(any(thread.name.startswith('automexia-qa-') for thread in threading.enumerate()))
 
     def test_qa_main_fails_the_report_when_source_changes_even_if_all_commands_pass(self) -> None:
         for final, expected in (("b" * 64, 0), ("c" * 64, 1), ("unavailable", 1)):
@@ -375,6 +374,65 @@ class QaRunnerTests(unittest.TestCase):
             self.assertLess(elapsed, 15)
             self.assertIn("TimeoutExpired", str(result["error"]))
             self.assertFalse(sentinel.exists())
+
+    def test_exited_parent_cannot_leave_reader_waiting_for_descendant_stdout(self) -> None:
+        # The private stderr handshake proves the descendant owns stdout before
+        # its parent exits. Its finite lifetime makes the pre-fix failure safe.
+        child = (
+            "import sys,time;print('retained tail',flush=True);"
+            "print('ready',file=sys.stderr,flush=True);time.sleep(25)"
+        )
+        parent = (
+            "import subprocess,sys;"
+            f"p=subprocess.Popen([sys.executable,'-c',{child!r}],"
+            "stdout=sys.stdout,stderr=subprocess.PIPE);"
+            "assert p.stderr.readline().rstrip(b'\\r\\n')==b'ready';"
+            "print('parent complete',flush=True)"
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            run_dir = pathlib.Path(temporary)
+            started = time.monotonic()
+            result = self.run_step_quiet(
+                run_dir, 1, 'parent-exit-contract',
+                [sys.executable, '-c', parent], timeout_seconds=1,
+            )
+            elapsed = time.monotonic() - started
+            self.assertEqual(result['status'], 'pass')
+            self.assertEqual(result['return_code'], 0)
+            self.assertFalse(result['timed_out'])
+            self.assertLess(elapsed, 6, 'parent completion must retire inherited pipes')
+            self.assertEqual(
+                (run_dir / result['log']).read_text(encoding='utf-8'),
+                'retained tail\nparent complete\n',
+            )
+        self.assertFalse(any(t.name.startswith('automexia-qa-') for t in threading.enumerate()))
+
+    def test_version_capture_byte_boundaries_and_failures(self) -> None:
+        for size in (0, 32767, 32768, 32769):
+            with self.subTest(size=size):
+                result = QA.bounded_capture([sys.executable, '-c', f'import os;os.write(1,b"x"*{size})'])
+                self.assertEqual(result, 'x' * size if size <= 32768 else None)
+        self.assertIsNone(QA.bounded_capture([sys.executable, '-c', 'import sys;sys.exit(7)']))
+        self.assertIsNone(QA.bounded_capture([sys.executable, '-c', 'import time;time.sleep(15)'], timeout_seconds=0.25))
+        self.assertIsNone(QA.bounded_capture([sys.executable, '-c', 'pass'], timeout_seconds=0))
+
+    def test_log_incremental_decoder_retains_split_unicode_and_native_newlines(self) -> None:
+        code = 'import os;[os.write(1,bytes([b])) for b in b"first\\r\\n\\xe7\\x95\\x8c\\rfinal\\r"]'
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            # Force real pipe fragmentation rather than assuming OS write sizes
+            # correspond to reader chunk boundaries.
+            with mock.patch.object(QA.qa_process, 'CHUNK_BYTES', 1):
+                result = self.run_step_quiet(root, 1, 'decoder-contract', [sys.executable, '-c', code], timeout_seconds=5)
+            self.assertEqual(result['status'], 'pass')
+            self.assertEqual((root / result['log']).read_text(encoding='utf-8'), 'first\n界\nfinal\n')
+
+    def test_explicit_zero_step_deadline_is_rejected_instead_of_defaulted(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            result = self.run_step_quiet(pathlib.Path(temporary), 1, 'zero-deadline', [sys.executable, '-c', 'pass'], timeout_seconds=0)
+        self.assertEqual(result['status'], 'fail')
+        self.assertEqual(result['timeout_seconds'], 0)
+        self.assertIsNone(result['return_code'])
 
     def test_local_prefix_redaction_handles_case_and_escaped_spellings(self) -> None:
         # Failed assertion messages can lowercase an escaped traceback. Keep

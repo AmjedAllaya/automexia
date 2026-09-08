@@ -255,6 +255,27 @@ class RustToolchainTests(unittest.TestCase):
         self.assertEqual(result.returncode, 1)
         self.assertNotIn("private-environment-canary", result.stdout + result.stderr)
 
+    def test_native_probe_parent_exit_and_exact_byte_boundaries(self):
+        child = 'import os,time;os.write(2,b"ready\\n");time.sleep(15)'
+        parent = (
+            'import subprocess,sys;'
+            f'p=subprocess.Popen([sys.executable,"-c",{child!r}],stderr=subprocess.PIPE);'
+            'assert p.stderr.readline()==b"ready\\n";'
+            'sys.stdout.buffer.write(b"fixture")'
+        )
+        self.assertEqual(contract.probe([sys.executable, '-c', parent], timeout=2), 'fixture')
+        for size in (0, 4095, 4096, 4097):
+            code = f'import os;os.write(1,b"x"*{size})'
+            with self.subTest(size=size):
+                if size > 4096:
+                    with self.assertRaises(contract.ToolchainError):
+                        contract.probe([sys.executable, '-c', code])
+                else:
+                    self.assertEqual(contract.probe([sys.executable, '-c', code]), 'x' * size)
+        with self.assertRaises(contract.ToolchainError):
+            contract.probe([sys.executable, '-c', 'pass'], maximum=0)
+        self.assertFalse(any(t.name.startswith('automexia-qa-') for t in threading.enumerate()))
+
 
 if __name__ == "__main__":
     unittest.main()

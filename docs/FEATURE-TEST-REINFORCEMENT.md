@@ -574,6 +574,18 @@ authorization rather than failing an unrelated branch grammar later.
 
 ### contributor-automation-quality-policy
 
+`tools/ci/qa_process.py` and `tools/ci/test_qa_process.py` reinforce the existing
+QA owner with parent-exit retained-pipe regressions, exact descendant identities,
+gated admission, separate exit receipts, joined readers, argument/capture limits,
+interruption, concurrency rejection and repeated cleanup. Test completion and
+deadline separately; preserve final bytes and nonzero status. Native Windows
+handles or Linux pidfds must be acquired before allowing the parent to exit.
+Failed cleanup retains ownership and blocks more launches. Mutation-check native
+admission/cleanup order as supplementary evidence, not a substitute for live
+process tests. Record startup overhead and repeated handle/thread counts; keep
+macOS and unavailable hosted validation external. See
+[ADR 0057](adr/0057-contained-contributor-qa-processes.md).
+
 QA diagnostic privacy tests exercise case-folded and escaped local prefixes
 through the real failed-subprocess capture path. Use fictional roots and exact
 logical-label expectations, preserve the original nonzero exit and failed

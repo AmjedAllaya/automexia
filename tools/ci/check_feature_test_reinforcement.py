@@ -88,6 +88,9 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "contributor-automation-quality-policy": {
+        "needed_tests": ("parent-exit retained-pipe", "exact descendant identities", "joined readers"),
+    },
     "prompt-context-devops-semantics": {
         "needed_tests": ("Lifecycle versus readiness", "condition polarity", "mixed failure counts", "parser-to-grid status colours", "kind-prefixed pods", "zero-count log prefixes"),
         "verification_reinforcements": ("literal status-colour oracles", "explicit ANSI", "disabled extension"),
@@ -289,6 +292,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
 }
 
 NATIVE_CONTRACT_SOURCES = {
+    "qa": "tools/ci/qa.py",
+    "qa_process": "tools/ci/qa_process.py",
+    "compiler_probe": "tools/ci/rust_toolchain.py",
     "pty_worker": "rio-vt/src/performer/mod.rs",
     "pty_exit_tests": "rio-vt/src/performer/tests/resize_worker.rs",
     "shortcut_preferences": "apps/automexia-terminal/src/automexia/preferences.rs",
@@ -461,6 +467,17 @@ def _validate_child_exit_sources(sources: dict[str, str]) -> None:
                        ("assert_eq!(publications,expected,",), "exact exit sequence")
 
 
+def _validate_qa_process_sources(sources: dict[str, str]) -> None:
+    helper = sources['qa_process']
+    _require_order(helper, ('job.assign(process)', "process.stdin.write(b'G')"), 'QA native admission')
+    _require_order(helper, ('job.terminate()', 'process.wait(timeout=', 'reader.join(timeout=', 'stream.close()', '_launch_lock.release()'), 'QA native cleanup')
+    _require_fragments(helper, ('CLEANUP_SECONDS = 5.0', 'CONTROL_BYTES = 32', 'CHUNK_BYTES = 8192', 'MAX_ARGUMENTS = 512', 'MAX_COMMAND_BYTES = 65536', '0x2000', 'os.killpg(process.pid, signal.SIGKILL)', '_quarantine = (process, job, readers)', 'sys.stdin.buffer.read(1)', 'state[\'code\'] = code'), 'QA bounded ownership')
+    if sources['qa'].count('qa_process.run(') != 3:
+        raise ReinforcementError('QA steps, version and source status must use one lifecycle owner')
+    if sources['compiler_probe'].count('qa_process.run(') != 1:
+        raise ReinforcementError('compiler identity must use the same bounded lifecycle owner')
+
+
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
@@ -468,6 +485,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
 
     _validate_shortcut_editor_sources(sources)
     _validate_child_exit_sources(sources)
+    _validate_qa_process_sources(sources)
 
     stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
                            "if !native_gui {", "default resize stress dispatch")

@@ -8,12 +8,10 @@ import json
 import os
 from pathlib import Path
 import re
-import subprocess
 import sys
-import threading
 import tomllib
 
-from qa import popen_group_options, terminate_process_tree
+import qa_process
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -67,40 +65,19 @@ def probe(command: list[str], *, timeout: float = PROBE_TIMEOUT,
           maximum: int = MAX_PROBE_BYTES) -> str:
     """Read bounded tool identity, never copy arbitrary tool output into errors."""
     data = bytearray()
-    overflow = threading.Event()
-    try:
-        process = subprocess.Popen(command, cwd=ROOT, stdout=subprocess.PIPE,
-                                   stderr=subprocess.STDOUT, **popen_group_options())
-    except OSError as error:
-        raise ToolchainError("compiler identity tool is unavailable") from error
+    if not isinstance(maximum, int) or not 0 < maximum <= MAX_PROBE_BYTES:
+        raise ToolchainError("compiler identity probe has invalid bounds")
 
-    def collect() -> None:
-        try:
-            with process.stdout:
-                while chunk := process.stdout.read(1024):
-                    if len(data) + len(chunk) > maximum:
-                        overflow.set()
-                        terminate_process_tree(process)
-                        return
-                    data.extend(chunk)
-        except (OSError, ValueError):
-            overflow.set()
+    def collect(chunk: bytes) -> None:
+        if len(data) + len(chunk) > maximum:
+            raise ToolchainError("compiler identity exceeds its byte ceiling")
+        data.extend(chunk)
 
-    reader = threading.Thread(target=collect, name="automexia-compiler-probe")
-    reader.start()
-    failed = False
     try:
-        failed = process.wait(timeout=timeout) != 0
-    except subprocess.TimeoutExpired:
-        failed = True
-        terminate_process_tree(process)
-    finally:
-        reader.join(timeout=timeout)
-        if reader.is_alive():
-            terminate_process_tree(process)
-            reader.join(timeout=PROBE_TIMEOUT)
-            failed = True
-    if failed or overflow.is_set() or reader.is_alive():
+        result = qa_process.run(command, cwd=ROOT, timeout_seconds=timeout, consume=collect)
+    except (OSError, ValueError) as error:
+        raise ToolchainError("compiler identity probe is unavailable or invalid") from error
+    if result.return_code != 0 or result.timed_out or result.error:
         raise ToolchainError("compiler identity probe failed or exceeded its bounds")
     try:
         return bytes(data).decode("utf-8", errors="strict")
