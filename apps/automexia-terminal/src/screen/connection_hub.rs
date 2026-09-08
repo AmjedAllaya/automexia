@@ -890,10 +890,6 @@ impl Screen<'_> {
             self.mark_dirty();
         }
     }
-
-    pub fn shutdown_connection_hub(&self) {
-        self.connection_hub.shutdown();
-    }
 }
 
 #[cfg(test)]

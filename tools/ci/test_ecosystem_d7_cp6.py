@@ -8,6 +8,7 @@ import importlib.util
 import json
 from pathlib import Path
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("check_ecosystem_d7_cp6.py")
@@ -40,6 +41,28 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         self.assertEqual(counts["limits"], 28)
         self.assertEqual(counts["external_gates"], 10)
         self.assertEqual(counts["source_files"], 18)
+
+    def test_component_interrupt_guards_and_regressions_cannot_be_removed(self) -> None:
+        owner = CHECKER.ROOT / "automexia-ecosystem-runtime/src/sandbox.rs"
+        original_read = Path.read_text
+        source = original_read(owner, encoding="utf-8")
+        for guard in (
+            "epoch_deadline_callback", "CompleteCallOnDrop",
+            "self.deadline.saturating_duration_since",
+            "interrupt_before_store_arming_never_enters_guest",
+            "shared_engine_ticks_interrupt_only_the_cancelled_store",
+            "completed_call_does_not_disarm_a_reused_cancellation_token",
+            "worker_unwind_wakes_and_joins_its_watchdog",
+            "epoch_deadline_covers_component_instantiation_start_functions",
+        ):
+            with self.subTest(guard=guard):
+                def read(path, *args, **kwargs):
+                    if path == owner:
+                        return source.replace(guard, "removed_contract")
+                    return original_read(path, *args, **kwargs)
+                with mock.patch.object(Path, "read_text", read):
+                    with self.assertRaises(CHECKER.EcosystemContractError):
+                        CHECKER.validate_repository()
 
     def test_acceptance_receipt_cannot_gain_release_authority_or_drift_digest(self) -> None:
         release = copy.deepcopy(self.acceptance)

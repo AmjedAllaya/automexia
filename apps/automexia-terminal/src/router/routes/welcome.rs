@@ -251,7 +251,7 @@ fn draw_centered(
         bold,
         ..DrawOpts::default()
     };
-    let visible = elide_end(sugarloaf, text, width, font_size);
+    let visible = elide_end(sugarloaf, text, width, &opts);
     let measured = sugarloaf.text_mut().measure(&visible, &opts);
     sugarloaf.text_mut().draw(
         x + ((width - measured) * 0.5).max(0.0),

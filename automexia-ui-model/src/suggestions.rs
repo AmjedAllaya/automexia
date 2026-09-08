@@ -9,6 +9,7 @@ use automexia_command_productivity::suggestions::{
     CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource, RankedCandidate,
     SuggestionLimits,
 };
+use automexia_extension_api::compact_label_preserving_whitespace;
 use serde::{Deserialize, Serialize};
 use unicode_segmentation::UnicodeSegmentation;
 
@@ -178,11 +179,17 @@ impl SuggestionSurface {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SurfaceError {
     InvalidGeometry,
+    InvalidCandidates,
 }
 
 impl fmt::Display for SurfaceError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("invalid suggestion surface geometry")
+        formatter.write_str(match self {
+            Self::InvalidGeometry => "invalid suggestion surface geometry",
+            Self::InvalidCandidates => {
+                "suggestion surface input exceeds presentation limits"
+            }
+        })
     }
 }
 
@@ -193,6 +200,7 @@ pub fn project_surface(
     candidates: &[RankedCandidate],
 ) -> Result<SuggestionSurface, SurfaceError> {
     validate_request(request)?;
+    validate_candidate_bounds(candidates)?;
     let geometry = SuggestionGeometry::default();
     let motion = if request.reduced_motion { 0 } else { 120 };
     if candidates.is_empty() {
@@ -335,6 +343,23 @@ fn validate_request(request: &SurfaceRequest) -> Result<(), SurfaceError> {
     Ok(())
 }
 
+fn validate_candidate_bounds(candidates: &[RankedCandidate]) -> Result<(), SurfaceError> {
+    // The broker still validates identity, content and authority. This public
+    // projection boundary bounds copying and sorting, including full semantics.
+    if candidates.len() > SuggestionLimits::CANDIDATE_COUNT
+        || candidates.iter().any(|ranked| {
+            ranked.candidate.display.len() > SuggestionLimits::CANDIDATE_BYTES
+                || ranked.candidate.insertion.len() > SuggestionLimits::CANDIDATE_BYTES
+                || ranked.candidate.description.len()
+                    > SuggestionLimits::DESCRIPTION_BYTES
+                || ranked.matched_graphemes.len() > SuggestionLimits::CANDIDATE_BYTES
+        })
+    {
+        return Err(SurfaceError::InvalidCandidates);
+    }
+    Ok(())
+}
+
 fn compact_surface(
     request: &SurfaceRequest,
     geometry: &SuggestionGeometry,
@@ -378,24 +403,31 @@ fn project_option(
     selected: usize,
     pointer_highlight: Option<usize>,
 ) -> SuggestionOption {
-    let display = truncate_graphemes(&ranked.candidate.display, 72);
-    let description = truncate_graphemes(&ranked.candidate.description, 96);
+    let display = compact_label_preserving_whitespace(&ranked.candidate.display, 72);
+    let description =
+        compact_label_preserving_whitespace(&ranked.candidate.description, 96);
     let kind = kind_label(ranked.candidate.kind).to_string();
     let source = source_label(ranked.candidate.source).to_string();
     let freshness = freshness_label(ranked.candidate.freshness).to_string();
     let risk = risk_label(ranked.candidate.risk).to_string();
-    let accessible = format!(
-        "{display}, {kind}, {description}, {source}, {freshness}, {risk}, {} of {set_size}",
+    let accessible_name = format!(
+        "{}, {kind}, {}, {source}, {freshness}, {risk}, {} of {set_size}",
+        ranked.candidate.display,
+        ranked.candidate.description,
         index + 1
     );
-    let accessible_name = truncate_graphemes(&accessible, 240);
     let display_graphemes = display.graphemes(true).count();
-    let matched_graphemes = ranked
+    // An elision marker is generated UI, not an original candidate cluster.
+    let retained_graphemes =
+        display_graphemes - usize::from(display != ranked.candidate.display);
+    let mut matched_graphemes: Vec<_> = ranked
         .matched_graphemes
         .iter()
         .copied()
-        .filter(|index| *index < display_graphemes)
+        .filter(|index| *index < retained_graphemes)
         .collect();
+    matched_graphemes.sort_unstable();
+    matched_graphemes.dedup();
     SuggestionOption {
         candidate_id: ranked.candidate.candidate_id,
         role: "option",
@@ -413,22 +445,6 @@ fn project_option(
         position: index + 1,
         set_size,
     }
-}
-
-fn truncate_graphemes(value: &str, maximum: usize) -> String {
-    let mut graphemes = value.graphemes(true);
-    let mut output = graphemes.by_ref().take(maximum).collect::<String>();
-    if graphemes.next().is_some() {
-        if maximum > 0 {
-            let mut shortened =
-                output.graphemes(true).take(maximum - 1).collect::<String>();
-            shortened.push('…');
-            output = shortened;
-        } else {
-            output.clear();
-        }
-    }
-    output
 }
 
 const fn kind_label(value: CandidateKind) -> &'static str {
@@ -568,8 +584,11 @@ mod tests {
 
     #[test]
     fn grapheme_truncation_never_splits_combining_or_emoji_sequences() {
-        assert_eq!(truncate_graphemes("a\u{301}bc", 2), "a\u{301}…");
-        assert_eq!(truncate_graphemes("👨‍💻abc", 2), "👨‍💻…");
+        assert_eq!(
+            compact_label_preserving_whitespace("a\u{301}bc", 2),
+            "a\u{301}…"
+        );
+        assert_eq!(compact_label_preserving_whitespace("👨‍💻abc", 2), "👨‍💻…");
     }
 
     #[test]

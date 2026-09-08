@@ -16,6 +16,8 @@ import re
 import sys
 from typing import Any
 
+from markdown_anchors import markdown_anchors as _markdown_anchors
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONTRACT = ROOT / "tests/assurance/feature-test-reinforcement-v1.json"
@@ -86,20 +88,52 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "prompt-context-devops-semantics": {
+        "needed_tests": ("Lifecycle versus readiness", "condition polarity", "mixed failure counts", "parser-to-grid status colours", "kind-prefixed pods", "zero-count log prefixes"),
+        "verification_reinforcements": ("literal status-colour oracles", "explicit ANSI", "disabled extension"),
+        "checker_reinforcements": ("lifecycle/readiness semantics",),
+    },
+    "ecosystem-d7-cp6-proposal": {
+        "needed_tests": ("pre-arming interrupts", "shared-engine ticks", "reused cancellation tokens", "worker-unwind cleanup"),
+        "verification_reinforcements": ("invocation-local completion", "joined watchdogs"),
+    },
+    "packaging-release-provenance": {
+        "needed_tests": ("recomputed-checksum SBOM privacy", "Minimal publication rejects full inventories",
+                         "rehashed private paths and identifiers", "non-private retention",
+                         "real ephemeral-key Minisign tamper coverage"),
+        "verification_reinforcements": ("complete graph, license and file-hash preservation",),
+    },
+    "stabilization-release-assurance-s1-s2": {
+        "needed_tests": ("content-bound dirty fingerprints", "logical artifact announcements"),
+        "verification_reinforcements": ("before/after source identity drift",),
+    },
     "terminal-protocols-grid-history": {
         "needed_tests": (
+            "Live child resize acknowledgments",
+            "Real ConsoleHost editor",
+            "native protocol cursor",
+            "worker-owned coalesced resize transactions",
+            "ConPTY history/live seams",
+            "viewport identity journal",
+            "parser-created selection journal",
+            "hard-line journal",
             "boundary-only CMD D",
             "pre-epoch",
             "timezone or DST transitions",
             "resize followed by previous/next command navigation",
         ),
         "verification_reinforcements": (
+            "native repaint content before child exit",
+            "first visible cell and snapshot styles",
+            "unselected control grid",
+            "text, hard-break, whitespace and style faults",
             "source prompt, following-prompt boundary",
             "no shell-provided timestamp text",
             "duplicate IDs",
             "successful frame presentation",
         ),
         "checker_reinforcements": (
+            "never substitute a post-exit captured stream",
             "local timezone conversion",
             "no-PTY side-effect coverage",
             "resize-navigation assurance",
@@ -108,11 +142,25 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "pty-scheduler-process-lifecycle": {
         "needed_tests": (
+            "Confirmed window dismissal",
+            "Saturated native output",
+            "fake-clock input-settle deadlines",
+            "buffered-input ordering",
+            "broken-pipe error-then-drop",
+            "Nonblocking pane retirement",
+            "thread-local destruction gates",
+            "capacity recovery",
+            "parked split/local-tab exit journal",
             "Ordinary and exact Windows ConPTY",
             "broadcast-first teardown",
             "parked",
         ),
         "verification_reinforcements": (
+            "500 ms desktop ceiling",
+            "actual join acknowledgements",
+            "no UI-thread joins",
+            "surviving channels remain empty and connected",
+            "restore refresh precedes visibility",
             "exact temporary-fixture process identities before close",
             "ConPTY reparenting",
             "multi-session wall-clock ceiling",
@@ -120,6 +168,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "no sequential deadline multiplication",
         ),
         "checker_reinforcements": (
+            "dismissal-before-wait ordering",
             "ordinary Job ownership",
             "broadcast-before-join ordering",
             "exact pre-close process identity",
@@ -128,6 +177,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "renderer-fonts-responsive-ui": {
         "needed_tests": (
+            "Short inset command markers",
+            "quantized contrast on all surfaces",
+            "parser-created table row bands",
             "threshold-minus-one",
             "40 logical-pixel interaction targets",
             "zero PTY input",
@@ -148,6 +200,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
         ),
         "verification_reinforcements": (
             "42-pixel header",
+            "decorative and focus roles",
+            "exact row-gap pixel coverage",
+            "exact marker pixel coverage",
             "full-shelf RGBA",
             "ownership before pane selection",
             "1,024-row event bound",
@@ -165,6 +220,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
         ),
         "checker_reinforcements": (
             "184-pixel default tab cap",
+            "all-surface contrast requirements",
+            "row-band benchmark and unchanged copy bytes",
+            "marker geometry benchmarks and native inset checks",
             "modal event ownership",
             "no-fabrication behavior",
             "one-badge-per-row ownership",
@@ -180,6 +238,18 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "windows-tabs-sessions-input": {
         "needed_tests": (
+            "Persistent header Back",
+            "independent legacy scoring",
+            "exhaustive category coverage",
+            "held Enter",
+            "shifted punctuation",
+            "Alt+R/D clone",
+            "all effective shortcut labels",
+            "left-arrow Back",
+            "strict-profile isolation",
+            "shell-owned Ctrl+R and Ctrl+D",
+            "single-message captured-target paste",
+            "typed fallback and reset",
             "resizes immediately before Ctrl+Shift+Up/Down",
             "intersecting badge rectangles",
             "intersecting prompt-context rectangles",
@@ -187,6 +257,10 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "ConPTY reparenting",
         ),
         "verification_reinforcements": (
+            "no clone action",
+            "shared palette activation owner",
+            "sibling silence and unchanged selection on rejection",
+            "explicit user mappings",
             "all command-result paint rectangles",
             "visible snapshot publication",
             "six-second controlled Windows",
@@ -202,12 +276,14 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
 }
 
 NATIVE_CONTRACT_SOURCES = {
+    "palette": "apps/automexia-terminal/src/renderer/command_palette.rs",
     "screen": "apps/automexia-terminal/src/screen/mod.rs",
     "application": "apps/automexia-terminal/src/application.rs",
     "context": "apps/automexia-terminal/src/context/mod.rs",
     "router": "apps/automexia-terminal/src/router/mod.rs",
     "windows_pty": "teletypewriter/src/windows/mod.rs",
     "windows_conpty": "teletypewriter/src/windows/conpty.rs",
+    "windows_pipes": "teletypewriter/src/windows/pipes.rs",
     "sugarloaf_cpu": "sugarloaf/src/renderer/cpu.rs",
     "native_driver": "tests/integration/resize-stress-windows.ps1",
 }
@@ -266,22 +342,6 @@ def _repository_path(root: Path, reference: str, owner: str) -> Path:
     return path
 
 
-def _markdown_anchors(path: Path) -> set[str]:
-    anchors: set[str] = set()
-    occurrences: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
-            continue
-        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
-        duplicate = occurrences.get(slug, 0)
-        occurrences[slug] = duplicate + 1
-        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
-    return anchors
-
-
 def _load_json(path: Path, owner: str) -> Any:
     def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -329,6 +389,34 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     if missing:
         raise ReinforcementError(f"native assurance sources are missing {sorted(missing)}")
 
+    dispatch = _source_slice(
+        sources["screen"], "pub fn process_key_bindings(", "match &action {",
+        "shortcut dispatch work",
+    )
+    _require_order(
+        dispatch,
+        ("let logical_key =", "for i in 0..self.bindings.len()",
+         "if binding.is_triggered_by", "let action = binding.action.clone();"),
+        "shortcut dispatch work",
+    )
+    if dispatch.count("let action = binding.action.clone();") != 1:
+        raise ReinforcementError("shortcut dispatch clones unmatched actions")
+
+    palette = sources["palette"]
+    labels = _source_slice(palette, "pub fn set_effective_bindings(", "pub fn set_enabled(", "effective shortcut labels")
+    _require_fragments(labels, ("for command in COMMANDS", "legacy_binding_target(action)",
+                               "suppresses_legacy_trigger", "SequenceResolution::NoMatch"),
+                       "effective shortcut labels")
+    _require_fragments(palette, (
+        "icon: CommandIcon::Back,",
+        "for [x1, y1, x2, y2] in BACK_ARROW_STROKES",
+        "canvas.line(x1, y1, x2, y2);",
+    ), "Back arrow")
+    header = _source_slice(palette, "let input_icon_well =", "let text_x =", "Back header")
+    _require_fragments(header, ("CommandIcon::Back,",), "Back header")
+    if sources["screen"].count(".set_effective_bindings(") != 2:
+        raise ReinforcementError("palette labels require construction and reload owners")
+
     frame = _source_slice(
         sources["screen"],
         "let force_present_for_control = self.native_test_present_after_control;",
@@ -368,7 +456,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     )
     _require_order(
         close_window,
-        ("manager.request_pty_shutdown()", "remove_window", "drop(route)"),
+        ("route.window.winit_window.set_visible(false)", "manager.request_pty_shutdown()", "remove_window", "drop(route)"),
         "window shutdown",
     )
     application_exit = _source_slice(
@@ -379,7 +467,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     )
     _require_order(
         application_exit,
-        ("self.router.request_pty_shutdown()", "event_loop.exit()"),
+        ("self.router.hide_windows_for_exit()", "self.router.request_pty_shutdown()", "event_loop.exit()"),
         "application shutdown request",
     )
     final_exit = _source_slice(
@@ -391,8 +479,11 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _require_order(
         final_exit,
         (
+            "self.router.hide_windows_for_exit()",
             "self.router.request_pty_shutdown()",
             "self.router.routes.clear()",
+            "self.preference_writer.shutdown",
+            "finish_shutdown(Duration::from_secs(10))",
             "std::process::exit(0)",
         ),
         "final application shutdown",
@@ -409,12 +500,34 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         ("self.shutdown_requested.swap(true", "send(Msg::Shutdown)"),
         "context shutdown idempotence",
     )
+    undo_restore = _source_slice(
+        sources["context"], "pub fn undo_topology(", "fn undo_topology_model", "parked restore publication"
+    )
+    _require_order(
+        undo_restore,
+        ("self.undo_topology_model()", "self.current_grid_mut().update_dimensions(sugarloaf)", "self.keep_only_active_context_visible(sugarloaf)"),
+        "parked restore publication",
+    )
     route_quit = _source_slice(
         sources["router"], "pub fn quit(&mut self)", "pub fn open_config", "route quit"
     )
     _require_fragments(route_quit, ("context_manager.quit()",), "route quit")
     if "process::exit" in route_quit:
         raise ReinforcementError("route quit bypasses application-owned shutdown")
+    if "shutdown_connection_hub()" in route_quit:
+        raise ReinforcementError("route quit blocks on shared services before application exit")
+    hiding = _source_slice(sources["router"], "pub fn hide_windows_for_exit", "pub fn shutdown_services", "window dismissal")
+    _require_order(hiding, ("for route in self.routes.values() {", "route.window.winit_window.set_visible(false)"), "window dismissal")
+    pipes = sources["windows_pipes"]
+    discard = _source_slice(pipes, "pub(super) fn discard_remaining", "pub fn new", "retired native output")
+    _require_order(discard, ("self.inner.wait_tag.lock()", "self.inner.discard.store(true", "self.inner.sig_buffer_not_full.notify_one()"), "retired native output")
+    _require_fragments(pipes, ("&& !inner.discard.load(Ordering::SeqCst)", "if inner.discard.load(Ordering::SeqCst)", "saturated_output_drains_after_the_terminal_consumer_retires", "native_pipe_exit_preserves_final_buffered_output_before_eof"), "native drain tests and wakeup")
+    pipe_read = _source_slice(pipes, "impl io::Read for EventedAnonRead", "impl Evented for EventedAnonRead", "native output EOF")
+    _require_order(pipe_read, ("self.inner.wait_tag.lock()", "if self.consumer.is_empty()", "self.error_receiver.try_recv()", "self.consumer.read_to_slice(buf)"), "native output EOF")
+    pty_drop = _source_slice(sources["windows_pty"], "impl Drop for Pty", "// Creates conpty", "native drop drain")
+    _require_fragments(pty_drop, ("self.conout.discard_remaining()",), "native drop drain")
+    pty_shutdown = _source_slice(sources["windows_pty"], "fn shutdown_owned_process_tree", "fn wait_for_job_empty", "native shutdown drain")
+    _require_order(pty_shutdown, ("self.conout.discard_remaining()", "self.conin.write_all", "Duration::from_secs(2)", "terminate_managed_job()", "Duration::from_secs(3)"), "native shutdown drain")
 
     ordinary_pty = _source_slice(
         sources["windows_pty"],
@@ -513,11 +626,15 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         (
             "Get-AutomexiaOwnedProcessIds $process.Id $configRoot",
             "$process.CloseMainWindow()",
+            "$shutdownTimer.ElapsedMilliseconds -lt 500",
+            "if ([AutomexiaResizeDriver]::IsWindowVisible($window))",
+            "$process.WaitForExit(15000)",
             "$remainingOwnedProcesses",
             "$MaximumOwnedShutdownMilliseconds",
         ),
         "native process shutdown",
     )
+    _require_fragments(driver, ("$windowCloseTimer.ElapsedMilliseconds -lt 500", "if ([AutomexiaResizeDriver]::IsWindowVisible($newWindow))", "dismissal_ceiling_milliseconds = 500"), "separate native window dismissal")
 
 
 def _load_native_contract_sources(root: Path) -> dict[str, str]:

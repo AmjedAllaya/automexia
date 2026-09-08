@@ -17,7 +17,7 @@ permissions:
   pull-requests: read
 
 env:
-  AUTOMEXIA_RUST_TOOLCHAIN: 1.98.0
+  RUSTUP_TOOLCHAIN: '1.96.1'
   CARGO_INCREMENTAL: 0
   CARGO_TERM_COLOR: always
   PUBLIC_REPOSITORY: AmjedAllaya/automexia-releases
@@ -96,7 +96,6 @@ jobs:
       NEXTEST_TEST_THREADS: '1'
       RUSTC_WRAPPER: sccache
       SCCACHE_GHA_ENABLED: 'true'
-      SCCACHE_GHA_VERSION: automexia-rust-1.98-v1
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
         with:
@@ -106,8 +105,9 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rustup toolchain install "$AUTOMEXIA_RUST_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
-          rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+          rustc --version
+          printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
       - name: Cache Cargo registry and Git sources
@@ -193,8 +193,8 @@ jobs:
         run: |
           set -euo pipefail
           test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
-          rustup toolchain install "$AUTOMEXIA_RUST_TOOLCHAIN" --profile minimal
-          rustup default "$AUTOMEXIA_RUST_TOOLCHAIN"
+          rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+          rustc --version
           rustup target add "${{ matrix.target }}"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends appstream cpio desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libwayland-dev libx11-xcb-dev libxkbcommon-dev lintian ncurses-bin rpm scdoc
@@ -310,9 +310,9 @@ jobs:
           cp docs/public-release/INSTALL.md release-bundle/INSTALL.md
           cp docs/public-release/UNINSTALL.md release-bundle/UNINSTALL.md
           cp docs/public-release/RELEASE-NOTES.md release-bundle/RELEASE-NOTES.md
-          cp THIRD_PARTY_NOTICES.md release-bundle/THIRD_PARTY_NOTICES.md
+          cp docs/public-release/THIRD_PARTY_NOTICES.md release-bundle/THIRD_PARTY_NOTICES.md
           printf 'untrusted comment: Automexia release verification key\n%s\n' "$RELEASE_MINISIGN_PUBLIC_KEY" > release-bundle/automexia-release-key.pub
-          mkdir -p sbom-input/packages
+          mkdir -p sbom-input/packages sbom-private sbom-reviewed
           cp release-bundle/*.deb release-bundle/*.rpm release-bundle/*.tar.gz sbom-input/packages/
           cp Cargo.lock sbom-input/Cargo.lock
       - name: Generate SPDX SBOM
@@ -320,15 +320,38 @@ jobs:
         with:
           path: sbom-input
           format: spdx-json
-          output-file: release-bundle/automexia-terminal.spdx.json
+          syft-version: v1.51.1
+          output-file: sbom-private/automexia-terminal.spdx.json
           upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
       - name: Generate CycloneDX SBOM
         uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
         with:
           path: sbom-input
           format: cyclonedx-json
-          output-file: release-bundle/automexia-terminal.cdx.json
+          syft-version: v1.51.1
+          output-file: sbom-private/automexia-terminal.cdx.json
           upload-artifact: false
+          upload-release-assets: false
+          dependency-snapshot: false
+      - name: Validate private build inventories
+        shell: bash
+        env:
+          RELEASE_VERSION: ${{ needs.authorize.outputs.version }}
+        run: |
+          set -euo pipefail
+          python3 tools/ci/public_distribution.py prepare-sboms --source sbom-private --output sbom-reviewed --scan-root sbom-input --version "$RELEASE_VERSION"
+          python3 tools/ci/public_distribution.py verify-documents --directory release-bundle
+      - name: Retain inventories only in the private source repository
+        if: github.event.repository.private == true
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: private-build-inventories
+          path: sbom-reviewed
+          if-no-files-found: error
+          retention-days: 7
+          compression-level: 0
       - name: Create and verify the detached checksum signature
         shell: bash
         env:
@@ -362,6 +385,13 @@ jobs:
           if-no-files-found: error
           retention-days: 7
           compression-level: 0
+      - name: Remove private scanner scratch
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          # Only job-owned scan scratch, never the source checkout or signed bundle.
+          rm -rf -- sbom-private sbom-input sbom-reviewed
 
   publish:
     name: Publish immutable public Linux prerelease
@@ -437,22 +467,22 @@ jobs:
             exit 1
           fi
           mapfile -d '' assets < <(find release-bundle -maxdepth 1 -type f -print0 | sort -z)
-          test "${#assets[@]}" -eq 16
+          test "${#assets[@]}" -eq 14
           created_release_url="$(gh release create "$tag" "${assets[@]}" --repo "$PUBLIC_REPOSITORY" --draft --prerelease --title "Automexia Terminal $tag — Linux Early Access" --notes-file release-bundle/RELEASE-NOTES.md)"
           release_id="$(gh release view "$tag" --repo "$PUBLIC_REPOSITORY" --json databaseId --jq '.databaseId')"
           [[ "$release_id" =~ ^[1-9][0-9]{0,19}$ ]]
           gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-draft.json"
-          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-draft.json" --release-id "$release_id" --created-url "$created_release_url" --bundle release-bundle --stage draft
+          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v2.json --release-json "$RUNNER_TEMP/release-draft.json" --release-id "$release_id" --created-url "$created_release_url" --bundle release-bundle --stage draft
           gh api -H "$api_header" --method PATCH "repos/$PUBLIC_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=true -f make_latest=false >/dev/null
           gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-published.json"
-          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-published.json" --release-id "$release_id" --bundle release-bundle --stage published
+          python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v2.json --release-json "$RUNNER_TEMP/release-published.json" --release-id "$release_id" --bundle release-bundle --stage published
           gh release verify "$tag" --repo "$PUBLIC_REPOSITORY" --format json > "$RUNNER_TEMP/release-attestation.json"
           test -s "$RUNNER_TEMP/release-attestation.json"
           for asset in "${assets[@]}"; do
             gh release verify-asset "$tag" "$asset" --repo "$PUBLIC_REPOSITORY" --format json >/dev/null
           done
           mkdir -p activation
-          python3 tools/ci/public_distribution.py activation-handoff --manifest release-bundle/public-distribution-manifest-v1.json --output activation/website-activation.json
+          python3 tools/ci/public_distribution.py activation-handoff --manifest release-bundle/public-distribution-manifest-v2.json --output activation/website-activation.json
       - name: Retain exact website activation handoff
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
         with:

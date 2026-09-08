@@ -105,7 +105,7 @@ public static class AutomexiaResizeDriver {
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
-    private static extern bool IsWindowVisible(IntPtr hWnd);
+    public static extern bool IsWindowVisible(IntPtr hWnd);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -1793,11 +1793,16 @@ $rendererConfig
     $resultGutter = [double]$resultDivider[1] - $resultSurfaceBottom
     if ([double]$resultSurface[2] -lt 4.0 -or
         [double]$resultSurface[3] -lt 1.0 -or
-        [double]$resultDivider[2] -lt [double]$resultSurface[2] -or
+        [double]$resultDivider[2] -lt 1.0 -or
+        [double]$resultDivider[2] -gt 48.0 -or
+        [double]$resultDivider[2] -gt ([double]$resultSurface[2] + 4.0) * 0.25 -or
+        [double]$resultDivider[0] -le [double]$resultSurface[0] -or
+        ([double]$resultDivider[0] + [double]$resultDivider[2]) -ge
+            ([double]$resultSurface[0] + [double]$resultSurface[2]) -or
         $resultGutter -lt 6.0 -or
         $resultGutter -gt 12.5) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw "Command-result surface geometry is clipped or lacks its breathing gutter: gutter=$resultGutter"
+        throw 'Command-result geometry must keep its gutter and a short inset marker, not a pane divider'
     }
     $resultOpacity = @($historyReady.command_result_opacity)
     if ($resultOpacity.Count -ne 3 -or
@@ -3927,6 +3932,46 @@ $rendererConfig
     # The snapshot that acknowledges a control is published before that dirty
     # frame is presented. Wait one additional renderer generation.
     $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteSnapshot.sequence)
+    if ([int]$palettePresented.palette_total_results -ne 6 -or
+        -not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Command categories;')) {
+        throw 'The native command palette did not open its six-category root'
+    }
+    $paletteRootPanel = Get-ActiveAutomexiaPanel $palettePresented
+    $paletteRoot = $palettePresented
+    # Browse the real hierarchy before testing overflow; the short category
+    # root must not be padded with fake commands just to make a wheel test pass.
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x28, $true)) {
+        throw 'Could not select the native Panes and Sessions category'
+    }
+    $paletteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    } while ([int]$palettePresented.palette_selected_index -ne 1 -and
+             [DateTime]::UtcNow -lt $paletteDeadline)
+    if ([int]$palettePresented.palette_selected_index -ne 1 -or
+        -not [bool]$palettePresented.palette_enabled) {
+        throw 'Native category selection did not become ready'
+    }
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x0D, $false)) {
+        throw 'Could not enter the native Panes and Sessions category'
+    }
+    $paletteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    } while (-not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Panes & Sessions;') -and
+             [DateTime]::UtcNow -lt $paletteDeadline)
+    $paletteCategoryPanel = Get-ActiveAutomexiaPanel $palettePresented
+    if (-not [bool]$palettePresented.palette_enabled -or
+        -not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Panes & Sessions;') -or
+        [int]$palettePresented.palette_total_results -ne 12 -or
+        [int64]$paletteCategoryPanel.route_id -ne [int64]$paletteRootPanel.route_id -or
+        [int]$palettePresented.display_offset -ne [int]$paletteRoot.display_offset -or
+        [int]$palettePresented.cursor_column -ne [int]$paletteRoot.cursor_column -or
+        [int]$palettePresented.cursor_row -ne [int]$paletteRoot.cursor_row -or
+        [string]$paletteCategoryPanel.raw_cursor_line_text -ne [string]$paletteRootPanel.raw_cursor_line_text) {
+        throw 'Native category entry changed terminal state, ran a command, or lost its Back row'
+    }
+    $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
     if ([int]$palettePresented.palette_total_results -le
             [int]$palettePresented.palette_visible_results -or
         [int]$palettePresented.palette_scroll_offset -ne 0) {
@@ -4079,9 +4124,17 @@ $rendererConfig
     Send-AutomexiaTestControl 'new-window:9001'
     $windows = Wait-AutomexiaWindowCount -Expected 2
     $newWindow = @($windows | Where-Object { $_ -ne $window })[0]
+    $windowCloseTimer = [Diagnostics.Stopwatch]::StartNew()
     if (-not [AutomexiaResizeDriver]::PostMessage(
         $newWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
         throw 'Could not post WM_CLOSE to the secondary Automexia window'
+    }
+    while ([AutomexiaResizeDriver]::IsWindowVisible($newWindow) -and
+           $windowCloseTimer.ElapsedMilliseconds -lt 500) {
+        Start-Sleep -Milliseconds 5
+    }
+    if ([AutomexiaResizeDriver]::IsWindowVisible($newWindow)) {
+        throw 'Secondary window dismissal waited for resource cleanup'
     }
     $remaining = Wait-AutomexiaWindowCount -Expected 1
     $process.Refresh()
@@ -4336,6 +4389,16 @@ $rendererConfig
     if (-not $process.CloseMainWindow()) {
         throw 'Automexia did not accept the native close request'
     }
+    # Window retirement and child/resource teardown are different observations.
+    # A process-exit ceiling alone previously allowed seconds of visible lag.
+    while ([AutomexiaResizeDriver]::IsWindowVisible($window) -and
+           $shutdownTimer.ElapsedMilliseconds -lt 500) {
+        Start-Sleep -Milliseconds 5
+    }
+    $dismissalMilliseconds = $shutdownTimer.ElapsedMilliseconds
+    if ([AutomexiaResizeDriver]::IsWindowVisible($window)) {
+        throw 'Final window dismissal waited for resource cleanup'
+    }
     if (-not $process.WaitForExit(15000)) {
         throw 'Automexia did not exit within the native shutdown budget'
     }
@@ -4360,6 +4423,8 @@ $rendererConfig
         $reportData = $report | ConvertFrom-Json
         $reportData | Add-Member -NotePropertyName owned_process_tree_shutdown -NotePropertyValue ([ordered]@{
             descendant_count = $ownedDescendantsAtShutdown.Count
+            dismissal_milliseconds = $dismissalMilliseconds
+            dismissal_ceiling_milliseconds = 500
             elapsed_milliseconds = $shutdownTimer.ElapsedMilliseconds
             ceiling_milliseconds = $MaximumOwnedShutdownMilliseconds
             owner_exited = $true

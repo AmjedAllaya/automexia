@@ -98,14 +98,16 @@ fn drain_to_exit(mut pty: Pty, expected_bytes: usize) -> usize {
 
 fn pty_io(c: &mut Criterion) {
     let mut startup = c.benchmark_group("pty_process");
-    startup.sample_size(10);
+    // Process startup is noisy; retain enough samples to compare changes
+    // without confusing one scheduler/antivirus outlier with a PTY regression.
+    startup.sample_size(30);
     startup.bench_function("startup_to_output_and_clean_exit", |b| {
         b.iter(|| black_box(drain_to_exit(spawn_output_pty(0), 0)))
     });
     startup.finish();
 
     let mut throughput = c.benchmark_group("pty_output");
-    throughput.sample_size(10);
+    throughput.sample_size(30);
     throughput.throughput(Throughput::Bytes(THROUGHPUT_BYTES as u64));
     throughput.bench_function("sustained_1_mib_and_clean_exit", |b| {
         b.iter(|| {

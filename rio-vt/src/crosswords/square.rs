@@ -142,6 +142,8 @@ bitflags! {
         const HYPERLINK        = 1 << 2;
  /// Cell carries multi-codepoint grapheme cluster. Lookup via extras_id.
         const GRAPHEME         = 1 << 3;
+ /// Unused cells after a native scrollback seam, not terminal whitespace.
+        const REFLOW_PADDING   = 1 << 4;
     }
 }
 
@@ -523,6 +525,17 @@ impl LineLength for Row<Square> {
         let mut length = Column(0);
 
         if self[Column(self.len() - 1)].wrapline() {
+            if self[Column(self.len() - 1)].contains_cell_flag(CellFlags::REFLOW_PADDING)
+            {
+                return Column(
+                    self.inner
+                        .iter()
+                        .position(|cell| {
+                            cell.contains_cell_flag(CellFlags::REFLOW_PADDING)
+                        })
+                        .unwrap_or(self.len()),
+                );
+            }
             return Column(self.len());
         }
 

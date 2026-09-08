@@ -11,6 +11,8 @@ import sys
 import tomllib
 from typing import Any
 
+from markdown_anchors import markdown_anchors
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_MATRIX = ROOT / "tests/assurance/feature-matrix.json"
@@ -63,22 +65,6 @@ def evidence_path(root: Path, reference: str) -> Path:
     except ValueError as error:
         raise AssuranceError(f"evidence escapes the repository: {reference}") from error
     return path
-
-
-def markdown_anchors(path: Path) -> set[str]:
-    anchors: set[str] = set()
-    occurrences: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
-            continue
-        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
-        duplicate = occurrences.get(slug, 0)
-        occurrences[slug] = duplicate + 1
-        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
-    return anchors
 
 
 def validate_fragment(path: Path, reference: str) -> None:

@@ -41,6 +41,10 @@ PTY splits are not changed into another terminal's internal ownership model.
 Platform-global shortcuts remain owned by the operating-system hotkey adapter;
 focused bindings remain route-scoped.
 
+Current grouped command discovery changes browsing, not the pinned profile.
+Automexia's replacement split and clone chords remain outside strict Ghostty
+defaults; override/unbind and palette-label regressions preserve that separation.
+
 ## Current delivery status
 
 The compatibility work remains split into the following independently evidenced

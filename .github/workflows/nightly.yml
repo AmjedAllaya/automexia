@@ -6,7 +6,7 @@ permissions:
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-  AUTOMEXIA_RUST_TOOLCHAIN: 1.98.0
+  RUSTUP_TOOLCHAIN: '1.96.1'
 jobs:
   native-gui-resize-stress:
     name: Native Windows GUI resize and history latency

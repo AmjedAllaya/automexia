@@ -165,7 +165,6 @@ impl Route<'_> {
 
     #[inline]
     pub fn quit(&mut self) {
-        self.window.screen.shutdown_connection_hub();
         self.window.screen.context_manager.quit();
     }
 
@@ -194,6 +193,20 @@ impl Route<'_> {
         // Handle command palette input first (works in all routes)
         if self.window.screen.renderer.command_palette.is_enabled() {
             if key_event.state == ElementState::Pressed {
+                if self
+                    .window
+                    .screen
+                    .renderer
+                    .command_palette
+                    .handle_navigation_key(
+                        &key_event.logical_key,
+                        self.window.screen.modifiers.state(),
+                        key_event.repeat,
+                    )
+                {
+                    self.request_overlay_redraw();
+                    return true;
+                }
                 match &key_event.logical_key {
                     Key::Named(NamedKey::Escape) => {
                         if self.window.screen.leave_action_detail() {
@@ -232,144 +245,7 @@ impl Route<'_> {
                         self.request_overlay_redraw();
                     }
                     Key::Named(NamedKey::Enter) => {
-                        // Snapshot what the palette wants to do FIRST,
-                        // before taking a mut-borrow on it, so we can
-                        // freely call other `self.window.screen.*`
-                        // methods in the match arms without tripping
-                        // the borrow checker on nested disjoint borrows.
-                        let selected_font = self
-                            .window
-                            .screen
-                            .renderer
-                            .command_palette
-                            .get_selected_font();
-                        let selected_market_id = self
-                            .window
-                            .screen
-                            .renderer
-                            .command_palette
-                            .get_selected_market_id();
-                        let selected_action = self
-                            .window
-                            .screen
-                            .renderer
-                            .command_palette
-                            .get_selected_action();
-                        let selected_quick_action = self
-                            .window
-                            .screen
-                            .renderer
-                            .command_palette
-                            .get_selected_action_item_id();
-                        let quick_action_review = self
-                            .window
-                            .screen
-                            .renderer
-                            .command_palette
-                            .get_review_choice();
-                        let is_quick_action_placeholder = self
-                            .window
-                            .screen
-                            .renderer
-                            .command_palette
-                            .is_action_placeholder();
-                        use crate::renderer::command_palette::PaletteAction;
-
-                        if is_quick_action_placeholder {
-                            let value =
-                                self.window.screen.renderer.command_palette.query.clone();
-                            self.window.screen.submit_action_placeholder(value);
-                            self.request_overlay_redraw();
-                            return true;
-                        }
-
-                        if let Some(action_id) = selected_quick_action {
-                            self.window.screen.begin_action_review(&action_id);
-                            self.request_overlay_redraw();
-                            return true;
-                        }
-
-                        if let Some(choice) = quick_action_review {
-                            self.window.screen.apply_reviewed_action(choice, clipboard);
-                            self.request_overlay_redraw();
-                            return true;
-                        }
-
-                        // Fonts-mode Enter: copy the family name to
-                        // the system clipboard and close. The copy
-                        // icon on each row advertises this.
-                        if let Some(font) = selected_font {
-                            clipboard.set(
-                                rio_backend::clipboard::ClipboardType::Clipboard,
-                                font,
-                            );
-                            self.window
-                                .screen
-                                .renderer
-                                .command_palette
-                                .set_enabled(false);
-                            self.request_overlay_redraw();
-                            return true;
-                        }
-
-                        if let Some(extension_id) = selected_market_id {
-                            match crate::automexia::runtime::toggle(&extension_id) {
-                                Ok(_) => {
-                                    // Manager generation changes atomically. The requested redraw
-                                    // lets Renderer::run synchronize the state and force full damage
-                                    // for every visible split before row emission.
-                                    let items = crate::automexia::runtime::market_items();
-                                    self.window
-                                        .screen
-                                        .renderer
-                                        .command_palette
-                                        .enter_market_mode(items);
-                                }
-                                Err(error) => tracing::warn!(
-                                    "extension activation change failed for {}: {}",
-                                    extension_id,
-                                    error
-                                ),
-                            }
-                            self.request_overlay_redraw();
-                            return true;
-                        }
-
-                        match selected_action {
-                            Some(PaletteAction::OpenMarket) => {
-                                self.window.screen.open_extension_marketplace();
-                            }
-                            Some(PaletteAction::OpenActions) => {
-                                self.window.screen.open_action_center();
-                            }
-                            // `ListFonts` stays inside the palette —
-                            // swap the palette's contents from the
-                            // command list to the registered font
-                            // family names and keep it open.
-                            Some(PaletteAction::ListFonts) => {
-                                self.window.screen.open_font_browser();
-                            }
-                            // Any other command is a one-shot: close
-                            // the palette first, then dispatch.
-                            Some(action) => {
-                                self.window
-                                    .screen
-                                    .renderer
-                                    .command_palette
-                                    .set_enabled(false);
-                                self.window
-                                    .screen
-                                    .execute_palette_action(action, clipboard);
-                            }
-                            // No match at all — Enter just closes.
-                            None => {
-                                self.window
-                                    .screen
-                                    .renderer
-                                    .command_palette
-                                    .set_enabled(false);
-                            }
-                        }
+                        self.window.screen.activate_palette_selection(clipboard);
                         self.request_overlay_redraw();
                     }
                     Key::Named(NamedKey::Backspace) => {
@@ -541,6 +417,7 @@ pub struct Router<'a> {
     quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
     connection_hub: crate::automexia::connections::ConnectionHubRuntime,
     external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
+    pub(crate) workers: crate::performer::PtyWorkerRegistry,
 }
 
 impl Router<'_> {
@@ -580,12 +457,21 @@ impl Router<'_> {
                 crate::automexia::quick_actions::QuickActionRuntime::open_default(),
             connection_hub,
             external_tool_runner,
+            workers: crate::performer::PtyWorkerRegistry::default(),
         }
     }
 
     #[inline]
     pub fn propagate_error_to_next_route(&mut self, error: RioError) {
         self.propagated_report = Some(error);
+    }
+
+    /// Called only after close confirmation, on the native event thread.
+    /// Keep queued native destruction independent of final cleanup latency.
+    pub fn hide_windows_for_exit(&self) {
+        for route in self.routes.values() {
+            route.window.winit_window.set_visible(false);
+        }
     }
 
     pub fn shutdown_services(&self) {
@@ -685,6 +571,7 @@ impl Router<'_> {
             self.quick_actions.clone(),
             self.connection_hub.clone(),
             self.external_tool_runner.clone(),
+            self.workers.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         let route = Route::new(Assistant::new(), RoutePath::Terminal, window);
@@ -752,6 +639,7 @@ impl Router<'_> {
             self.quick_actions.clone(),
             self.connection_hub.clone(),
             self.external_tool_runner.clone(),
+            self.workers.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
 
@@ -791,6 +679,7 @@ impl Router<'_> {
             self.quick_actions.clone(),
             self.connection_hub.clone(),
             self.external_tool_runner.clone(),
+            self.workers.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
         self.routes.insert(
@@ -827,6 +716,7 @@ impl Router<'_> {
             self.quick_actions.clone(),
             self.connection_hub.clone(),
             self.external_tool_runner.clone(),
+            self.workers.clone(),
         );
         self.routes.insert(
             window.winit_window.id().into(),
@@ -958,6 +848,7 @@ impl<'a> RouteWindow<'a> {
         quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
         connection_hub: crate::automexia::connections::ConnectionHubRuntime,
         external_tool_runner: crate::context::external_tool_runner::ExternalToolRunner,
+        workers: crate::performer::PtyWorkerRegistry,
     ) -> RouteWindow<'a> {
         #[allow(unused_mut)]
         let mut window_builder =
@@ -997,6 +888,7 @@ impl<'a> RouteWindow<'a> {
             font_library,
             open_url,
             crate::screen::ScreenServices {
+                workers,
                 action_surface: crate::screen::action_surface::Controller::new(
                     quick_actions,
                 ),

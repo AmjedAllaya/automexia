@@ -73,6 +73,11 @@ and forwards the normal encoded key to the PTY. A later exact bind restores an
 application owner. Strict Ghostty mode does not inject Automexia clone or
 pane-local-tab shortcuts; those actions remain available from the palette.
 
+Current Automexia split and clone defaults are listed in
+[Keyboard](KEYBOARD.md#command-palette). The grouped palette is shared by both
+profiles, but grouping does not inject the new Automexia chords into Ghostty.
+Pinned generated fixtures and profile version remain unchanged.
+
 ## Discover effective actions and shortcuts
 
 These commands run before GUI initialization and do not start Ghostty:

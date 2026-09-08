@@ -24,9 +24,9 @@ the action is mode-sensitive.
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
-| `Ctrl+Shift+R` / `Ctrl+Shift+D` | Fresh default-shell split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone the active shell/profile/directory into an independent split right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send shell history-search / EOF control byte displaced by cloning. |
+| `Alt+Shift+R` / `Alt+Shift+D` | Fresh default-shell split right / down. Add Shift to start fresh. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| `Alt+R` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
 | `Alt+Arrow` | Select the nearest pane geometrically. |
 | `F6` / `Shift+F6` | Cycle to next / previous pane. |
 | `Alt+Shift+Arrow` | Resize the selected split on Windows. |
@@ -89,8 +89,8 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Previous / next local tab in the selected pane. |
 | `Cmd+1` … `Cmd+8`; `Cmd+9` | Select window tab 1…8; select the last tab. |
 | `Cmd+D` / `Cmd+Shift+D` | Fresh split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone active session right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send history search / EOF to the shell. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` | Clone active session right / down with an independent PTY. |
 | `Cmd+Alt+Arrow` | Select a neighboring pane. |
 | `Cmd+]` / `Cmd+[` | Cycle next / previous pane. |
 | `Ctrl+Cmd+Arrow` | Resize the selected split. |
@@ -114,6 +114,65 @@ remains platform-neutral. A pointer click without a drag is never reused as
 the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
 non-empty text/paste/IME input exits selection mode before the input is
 forwarded to the shell. Search and Vi mode retain their own input ownership.
+
+## Command palette
+
+`Ctrl+Shift+P` (`Cmd+Shift+P` on macOS) opens six categories: Tabs & Windows,
+Panes & Sessions, Search & History, Clipboard & Input, Appearance, and Tools.
+Type to search all commands, even inside a category; category names also match.
+Clear the query to return to that category. No match leaves the palette open.
+
+| Control | Result |
+|---|---|
+| Up / Down, Tab / Shift+Tab | Select the previous / next row without executing. |
+| Enter or click | Open the selected category or explicitly activate the selected command. |
+| Right | Open a selected category only. |
+| Fixed Back button, Back row, Alt+Left, or Backspace with an empty query | Return to categories and restore the category selection. |
+| Home / End; PageUp / PageDown | First / last row; previous / next page. |
+| Mouse wheel / trackpad | Scroll the palette, keeping selection visible. |
+| Esc | Close without executing; reviewed Quick Action detail retains its existing Back behavior. |
+
+The palette fits its contents and available height. Overflow retains a vertical
+indicator. Query input is limited to 4 KiB, stays in the palette and never reaches
+the PTY. Holding Enter across a category transition does not run its first action.
+The header Back button stays visible when the list scrolls; narrow panes use
+its arrow-only variant. Font and extension browsing support Back or Alt+Left to
+return to their parent category with the originating command selected.
+
+The pane mnemonics are **R = right**, **D = down**, **Shift = fresh** on
+Windows/Linux/BSD. These replace Alt+Shift+Plus/Minus and the previous
+Alt+Shift+R/D clone defaults in current source only. Ctrl+R/D still belong to the
+shell. Alt+R/D now belong to pane creation in normal terminal mode; Search, Vi
+and alternate-screen applications keep those keys. macOS Command defaults and
+opt-in Ghostty profiles are unchanged. Explicit custom mappings remain authoritative.
+
+All palette commands now use effective bindings after configuration loading.
+Disabled, removed or absent shortcuts show `Unbound`; typed profile/user labels
+take precedence. A shortcut that is conditional or shadowed is not presented as
+an unconditional launch key. Search-only Shift+Enter is not a global shortcut,
+and clearing history is not the same action as clearing screen and history.
+Unbound actions remain available through the palette. To restore the earlier
+Ctrl+Shift fresh-split preference explicitly:
+
+```toml
+[bindings]
+keys = [
+  { key = "R", with = "control | shift", action = "SplitRight" },
+  { key = "D", with = "control | shift", action = "SplitDown" },
+]
+```
+
+Alt+D and Alt+R normally perform word deletion and line restoration in common
+shell editors. This is an intentional, user-approved tradeoff for simpler pane
+shortcuts. To restore shell ownership, add these entries to your existing keys list:
+
+```toml
+{ key = "R", with = "alt", action = "ReceiveChar" },
+{ key = "D", with = "alt", action = "ReceiveChar" },
+```
+
+No settings file is rewritten. See [shortcut audit and decision](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md)
+for platform rationale, retained controls and native verification limits.
 
 ## Search mode
 
@@ -217,10 +276,12 @@ actions are rejected and do not silently remove the matching default.
 
 ## Ownership and precedence
 
-Known maintenance issue: current Automexia defaults use Ctrl+R/Ctrl+D for
-cloning, as listed above, displacing familiar shell controls. The
-[current status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys)
-records this limitation; the tables above remain the current-behavior reference.
+Current source defaults leave Ctrl+R/Ctrl+D to the shell. The published 0.4.0
+package predates this correction. Clone actions remain in the command palette
+and can be assigned explicitly using `CloneSplitRight` / `CloneSplitDown`.
+Existing user mappings are preserved; remove a custom mapping to regain shell
+ownership. Ctrl+Alt+R/Ctrl+Alt+D are no longer rewritten as bare control bytes.
+See [ADR 0041](adr/0041-shell-owned-history-and-eof-shortcuts.md).
 
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse

@@ -99,5 +99,30 @@ fn services(c: &mut Criterion) {
     runtime::shutdown_background_services();
 }
 
-criterion_group!(benches, services);
+fn semantic_statuses(c: &mut Criterion) {
+    let mut group = c.benchmark_group("semantic_statuses");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    for (name, row) in [
+        ("completed", "batch 0/1 Completed 0 4h".to_owned()),
+        ("ready", "example api 2/2 Running 0 4h".to_owned()),
+        ("failed", "api 0/1 CrashLoopBackOff 2 1m".to_owned()),
+        ("container", "web Up 2 minutes (healthy)".to_owned()),
+        (
+            "ordinary",
+            "ordinary terminal text without operational state".to_owned(),
+        ),
+        ("wide", "x".repeat(8192)),
+        ("over_limit", "x".repeat(32769)),
+    ] {
+        group.bench_function(name, |b| {
+            b.iter(|| black_box(runtime::classify_row_text(black_box(&row))))
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(benches, services, semantic_statuses);
 criterion_main!(benches);

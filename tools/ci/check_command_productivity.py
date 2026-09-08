@@ -783,6 +783,50 @@ def source_files(root: Path, relative: str) -> list[Path]:
     return sorted(files)
 
 
+def renderer_benchmark_source_root(root: Path) -> Path:
+    """Scan the exact non-runtime harness; a missing src is not a general exemption."""
+    member = root / "tools/renderer-benchmarks"
+    manifest = member / "Cargo.toml"
+    if any(path.is_symlink() for path in (root / "tools", member, manifest)):
+        raise CommandProductivityError("benchmark-only source must not use a symbolic link")
+    try:
+        if not manifest.is_file():
+            raise CommandProductivityError("benchmark-only manifest must be a regular file")
+        document = tomllib.loads(bounded_read_text(
+            manifest, POLICY_DOCUMENT_MAX_BYTES, "benchmark-only manifest"
+        ))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError, CommandProductivityError):
+        raise CommandProductivityError(
+            "benchmark-only manifest is missing, malformed, linked or outside policy bounds"
+        ) from None
+    package = document.get("package")
+    benchmarks = document.get("bench")
+    valid_benchmark = (
+        isinstance(benchmarks, list) and len(benchmarks) == 1
+        and isinstance(benchmarks[0], dict)
+        and set(benchmarks[0]) == {"name", "harness"}
+        and benchmarks[0]["name"] == "text_fit"
+        and benchmarks[0]["harness"] is False
+    )
+    disabled = ("autolib", "autobins", "autoexamples", "autotests", "autobenches", "build")
+    if (
+        not isinstance(package, dict)
+        or package.get("name") != "automexia-renderer-benchmarks"
+        or package.get("publish") is not False
+        or any(package.get(key) is not False for key in disabled)
+        or any(key in document for key in ("lib", "bin", "example", "test"))
+        or not valid_benchmark
+        or any(path.exists() or path.is_symlink() for path in (member / "src", member / "build.rs"))
+    ):
+        raise CommandProductivityError("renderer package no longer has the reviewed benchmark-only contract")
+    source = member / "benches/text_fit.rs"
+    if source.is_symlink() or (member / "benches").is_symlink():
+        raise CommandProductivityError("benchmark-only source must not use a symbolic link")
+    if not source.is_file():
+        raise CommandProductivityError("benchmark-only text_fit source is missing")
+    return member / "benches"
+
+
 def workspace_runtime_files(root: Path) -> list[Path]:
     manifest = root / "Cargo.toml"
     with manifest.open("rb") as source:
@@ -805,14 +849,16 @@ def workspace_runtime_files(root: Path) -> list[Path]:
         if member == "tools/xtask":
             continue
         member_root = root / member
-        source_root = member_root / "src"
+        source_root = (renderer_benchmark_source_root(root)
+                       if member == "tools/renderer-benchmarks" else member_root / "src")
+        source_relative = source_root.relative_to(root).as_posix()
         if not source_root.is_dir():
             raise CommandProductivityError(
-                f"workspace runtime source directory is missing: {member}/src"
+                f"workspace runtime source directory is missing: {source_relative}"
             )
         if member_root.is_symlink() or source_root.is_symlink():
             raise CommandProductivityError(
-                f"workspace runtime source must not be a symbolic link: {member}/src"
+                f"workspace runtime source must not be a symbolic link: {source_relative}"
             )
         for path in source_root.rglob("*"):
             entry_count += 1

@@ -3,6 +3,15 @@ mod osc;
 pub mod parser;
 
 #[cfg(feature = "pty")]
+mod sender;
+#[cfg(feature = "pty")]
+mod workers;
+#[cfg(feature = "pty")]
+pub use sender::PtySender;
+#[cfg(feature = "pty")]
+pub use workers::{PtyWorkerLease, PtyWorkerRegistry};
+
+#[cfg(feature = "pty")]
 use crate::crosswords::Crosswords;
 #[cfg(feature = "pty")]
 use crate::event::sync::FairMutex;
@@ -45,8 +54,8 @@ where
         .expect("thread spawn works")
 }
 
-/// Join ownership for one PTY worker without allowing route teardown to block
-/// forever on a stalled platform primitive.
+/// Join ownership for one PTY worker. Use PtyWorkerRegistry for UI retirement;
+/// direct native joins can include platform thread-local destruction.
 #[cfg(feature = "pty")]
 pub struct PtyWorkerHandle<T> {
     thread: Option<JoinHandle<T>>,
@@ -55,8 +64,9 @@ pub struct PtyWorkerHandle<T> {
 
 #[cfg(feature = "pty")]
 impl<T> PtyWorkerHandle<T> {
-    /// Wait at most `timeout` for worker completion, then join the finished
-    /// thread. A timeout leaves the handle joinable for a later shutdown pass.
+    /// Wait for worker completion, then join. Native thread-local destruction
+    /// can outlive both the body notification and Rust's finished hint. UI
+    /// callers must use PtyWorkerRegistry instead of waiting/joining directly.
     pub fn join_timeout(&mut self, timeout: std::time::Duration) -> bool {
         match self.completion.recv_timeout(timeout) {
             Ok(()) | Err(mpsc::RecvTimeoutError::Disconnected) => self
@@ -126,6 +136,26 @@ fn coalesce_channel_messages(messages: impl IntoIterator<Item = Msg>) -> Vec<Msg
     coalesced
 }
 
+/// Stop at input until its bytes have reached the PTY. Merely adding input to
+/// a write queue is not an ordering barrier against the next native resize.
+#[cfg(feature = "pty")]
+fn next_channel_batch(
+    receiver: &mut PeekableReceiver<Msg>,
+) -> impl Iterator<Item = Msg> + '_ {
+    let mut remaining = 128;
+    std::iter::from_fn(move || {
+        if remaining == 0 {
+            return None;
+        }
+        let message = receiver.recv()?;
+        remaining -= 1;
+        if matches!(message, Msg::Input(_) | Msg::Shutdown) {
+            remaining = 0;
+        }
+        Some(message)
+    })
+}
+
 #[cfg(feature = "pty")]
 trait PtyMessageSink {
     fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()>;
@@ -134,19 +164,41 @@ trait PtyMessageSink {
 }
 
 #[cfg(feature = "pty")]
-struct LivePtyMessageSink<'a, T> {
+struct LivePtyMessageSink<'a, T, U: EventListener> {
     pty: &'a mut T,
+    terminal: &'a Arc<FairMutex<Crosswords<U>>>,
     write_list: &'a mut VecDeque<Cow<'static, [u8]>>,
+    #[cfg(windows)]
+    resize_input_not_before: &'a mut Option<Instant>,
 }
 
 #[cfg(feature = "pty")]
-impl<T: teletypewriter::EventedPty> PtyMessageSink for LivePtyMessageSink<'_, T> {
+impl<T: teletypewriter::EventedPty, U: EventListener> PtyMessageSink
+    for LivePtyMessageSink<'_, T, U>
+{
     fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()> {
-        self.pty.set_winsize(size.into())
+        self.pty.set_winsize(size.into())?;
+        let mut terminal = self.terminal.lock();
+        #[cfg(windows)]
+        let grid_changed = terminal.columns() != size.cols as usize
+            || terminal.screen_lines() != size.rows as usize;
+        terminal.commit_worker_resize(size.cols as usize, size.rows as usize);
+        drop(terminal);
+        // PSReadLine skips cursor reconciliation for 50 ms after rendering.
+        // Keep that native fast path from using pre-resize coordinates. The
+        // worker continues reading output; neither the UI nor a thread sleeps.
+        #[cfg(windows)]
+        if grid_changed {
+            *self.resize_input_not_before =
+                Some(Instant::now() + std::time::Duration::from_millis(50));
+        }
+        Ok(())
     }
 
     fn input(&mut self, input: Cow<'static, [u8]>) {
-        self.write_list.push_back(input);
+        if !input.is_empty() {
+            self.write_list.push_back(input);
+        }
     }
 
     fn shutdown(&mut self) {
@@ -201,7 +253,8 @@ fn deliver_channel_messages(
 
 #[cfg(feature = "pty")]
 pub struct Machine<T: teletypewriter::EventedPty, U: EventListener> {
-    sender: channel::Sender<Msg>,
+    sender: PtySender,
+    shutdown_registration: corcovado::Registration,
     receiver: PeekableReceiver<Msg>,
     pty: T,
     poll: corcovado::Poll,
@@ -218,10 +271,34 @@ pub struct State {
     write_list: VecDeque<Cow<'static, [u8]>>,
     writing: Option<Writing>,
     parser: handler::Processor,
+    resize_input_not_before: Option<Instant>,
 }
 
 #[cfg(feature = "pty")]
 impl State {
+    fn input_ready(&self, now: Instant) -> bool {
+        self.resize_input_not_before
+            .is_none_or(|deadline| now >= deadline)
+    }
+
+    fn input_poll_timeout(
+        &self,
+        now: Instant,
+        writable_interest: bool,
+    ) -> Option<std::time::Duration> {
+        if !self.needs_write() {
+            return None;
+        }
+        if let Some(deadline) = self
+            .resize_input_not_before
+            .filter(|deadline| *deadline > now)
+        {
+            return Some(deadline.duration_since(now));
+        }
+        // The deadline can expire between registration and the next poll.
+        // Do not wait forever on a read-only registration with buffered input.
+        (!writable_interest).then_some(std::time::Duration::ZERO)
+    }
     #[inline]
     fn ensure_next(&mut self) {
         if self.writing.is_none() {
@@ -296,10 +373,21 @@ where
         route_id: usize,
     ) -> Result<Machine<T, U>, Box<dyn std::error::Error>> {
         let (sender, receiver) = channel::channel();
+        let (sender, shutdown_registration) = PtySender::managed(sender);
         let poll = corcovado::Poll::new()?;
+
+        // All Windows PTY sessions (including wsl.exe) use ConPTY. Its mutable
+        // viewport cannot pull prior history back when the window grows.
+        #[cfg(windows)]
+        {
+            let mut terminal = terminal.lock();
+            terminal.set_resize_policy(crate::crosswords::ResizePolicy::Conpty);
+            terminal.enable_worker_resize();
+        }
 
         Ok(Machine {
             sender,
+            shutdown_registration,
             receiver: PeekableReceiver::new(receiver),
             poll,
             pty,
@@ -409,16 +497,32 @@ where
     ///
     /// Returns `false` when a shutdown message was received.
     fn drain_recv_channel(&mut self, state: &mut State) -> bool {
-        let messages = std::iter::from_fn(|| self.receiver.recv());
+        // Explicit cancellation need not wait for unsent input or a full pipe.
+        if self.sender.shutdown_requested() {
+            if let Err(error) = self.pty.shutdown_owned_process_tree() {
+                warn!("managed PTY process-tree shutdown did not confirm completion: {error}");
+            }
+            return false;
+        }
+        if state.needs_write() {
+            return true;
+        }
+        let messages = next_channel_batch(&mut self.receiver);
         let mut sink = LivePtyMessageSink {
             pty: &mut self.pty,
+            terminal: &self.terminal,
             write_list: &mut state.write_list,
+            #[cfg(windows)]
+            resize_input_not_before: &mut state.resize_input_not_before,
         };
         deliver_channel_messages(messages, &mut sink, &mut self.last_window_size)
     }
 
     #[inline]
     fn pty_write(&mut self, state: &mut State) -> io::Result<()> {
+        if !state.input_ready(Instant::now()) {
+            return Ok(());
+        }
         state.ensure_next();
 
         'write_many: while let Some(mut current) = state.take_current() {
@@ -450,7 +554,7 @@ where
         Ok(())
     }
 
-    pub fn channel(&self) -> channel::Sender<Msg> {
+    pub fn channel(&self) -> PtySender {
         self.sender.clone()
     }
 
@@ -462,11 +566,19 @@ where
 
             let mut tokens = (0..).map(Into::into);
 
-            // The channel is drained to empty on every wakeup, which clears
-            // its readiness and re-arms the next edge transition, so plain
-            // edge (no oneshot, no re-registration) is enough. Level would go
-            // through the readiness queue's re-enqueue path, which is much
-            // more expensive per wakeup.
+            let shutdown_token = tokens.next().unwrap();
+            self.poll
+                .register(
+                    &self.shutdown_registration,
+                    shutdown_token,
+                    Ready::readable(),
+                    PollOpt::edge(),
+                )
+                .unwrap();
+
+            // Remaining channel batches use an immediate poll once pending
+            // writes drain; this retains edge-triggered wakeups without losing
+            // an input/resize boundary or spinning while a write is deferred.
             let channel_token = tokens.next().unwrap();
             self.poll
                 .register(
@@ -496,9 +608,19 @@ where
             'event_loop: loop {
                 // Wakeup the event loop when a synchronized update timeout was reached.
                 let handler = state.parser.sync_timeout();
-                let timeout = handler
+                let mut timeout = handler
                     .sync_timeout()
                     .map(|st| st.saturating_duration_since(Instant::now()));
+                if let Some(wait) =
+                    state.input_poll_timeout(Instant::now(), last_interest.is_writable())
+                {
+                    timeout = Some(timeout.map_or(wait, |sync| sync.min(wait)));
+                }
+                if self.sender.shutdown_requested()
+                    || (!state.needs_write() && self.receiver.peek().is_some())
+                {
+                    timeout = Some(std::time::Duration::ZERO);
+                }
 
                 events.clear();
                 if let Err(err) = self.poll.poll(&mut events, timeout) {
@@ -511,8 +633,14 @@ where
                     }
                 }
 
-                // Handle synchronized update timeout.
-                if events.is_empty() && self.receiver.peek().is_none() {
+                // A native input deadline must not postpone synchronized-output
+                // expiry or turn an expired sync timeout into a busy poll.
+                if state
+                    .parser
+                    .sync_timeout()
+                    .sync_timeout()
+                    .is_some_and(|deadline| deadline <= Instant::now())
+                {
                     let mut terminal = self.terminal.lock();
                     state.parser.stop_sync(&mut *terminal);
 
@@ -526,11 +654,22 @@ where
                             self.window_id,
                         );
                     }
-
-                    continue;
                 }
 
                 // Handle channel events, if there are any.
+                if self.sender.shutdown_requested() {
+                    self.drain_recv_channel(&mut state);
+                    break;
+                }
+                #[cfg(windows)]
+                if self.receiver.peek().is_some() {
+                    // Parse available old-size output before committing a new
+                    // native/grid size; the SPSC adapter keeps this nonblocking.
+                    if let Err(err) = self.pty_read(&mut state, &mut buf, true) {
+                        error!("Error draining output before native resize: {err}");
+                        break;
+                    }
+                }
                 if !self.drain_recv_channel(&mut state) {
                     break;
                 }
@@ -544,7 +683,7 @@ where
                 // cycle from every key press and is especially important on
                 // Windows, where re-registering an already-writable synthetic
                 // readiness source can otherwise defer delivery noticeably.
-                if state.needs_write() {
+                if state.needs_write() && state.input_ready(Instant::now()) {
                     if let Err(err) = self.pty_write(&mut state) {
                         error!("Error writing queued input to PTY: {err}");
                         break 'event_loop;
@@ -629,7 +768,7 @@ where
 
                 // Update the PTY registration when write interest changed.
                 let mut interest = Ready::readable();
-                if state.needs_write() {
+                if state.needs_write() && state.input_ready(Instant::now()) {
                     interest.insert(Ready::writable());
                 }
                 if interest != last_interest {
@@ -642,6 +781,7 @@ where
 
             // The evented instances are not dropped here so deregister them explicitly.
             let _ = self.poll.deregister(&self.receiver.rx);
+            let _ = self.poll.deregister(&self.shutdown_registration);
             let _ = self.pty.deregister(&self.poll);
 
             drop((self, state));
@@ -659,6 +799,101 @@ mod tests {
     use super::*;
     use crate::event::WindowSize;
     use proptest::prelude::*;
+
+    mod resize_worker;
+
+    #[test]
+    fn native_resize_input_deadline_is_bounded_and_does_not_delay_normal_input() {
+        let now = Instant::now();
+        let mut state = State::default();
+        assert!(state.input_ready(now));
+        state.resize_input_not_before = Some(now + std::time::Duration::from_millis(50));
+        assert!(!state.input_ready(now));
+        assert!(!state.input_ready(now + std::time::Duration::from_millis(49)));
+        assert!(state.input_ready(now + std::time::Duration::from_millis(50)));
+        assert!(state.input_ready(now + std::time::Duration::from_secs(1)));
+        assert!(!state.needs_write(), "a resize never fabricates input");
+    }
+
+    #[test]
+    fn elapsed_resize_deadline_rearms_writes_without_busy_or_infinite_polling() {
+        use std::time::Duration;
+        let now = Instant::now();
+        let mut state = State {
+            resize_input_not_before: Some(now + Duration::from_millis(50)),
+            ..State::default()
+        };
+        assert_eq!(state.input_poll_timeout(now, false), None);
+        state.write_list.push_back(Cow::Borrowed(b"a"));
+        assert_eq!(
+            state.input_poll_timeout(now, false),
+            Some(Duration::from_millis(50))
+        );
+        assert_eq!(
+            state.input_poll_timeout(now + Duration::from_millis(49), true),
+            Some(Duration::from_millis(1))
+        );
+        assert_eq!(
+            state.input_poll_timeout(now + Duration::from_millis(50), false),
+            Some(Duration::ZERO)
+        );
+        assert_eq!(
+            state.input_poll_timeout(now + Duration::from_millis(51), true),
+            None
+        );
+        state.write_list.clear();
+        assert_eq!(
+            state.input_poll_timeout(now + Duration::from_millis(51), false),
+            None
+        );
+    }
+
+    #[test]
+    fn channel_batch_stops_before_resize_can_overtake_buffered_input() {
+        let (sender, receiver) = channel::channel();
+        let mut receiver = PeekableReceiver::new(receiver);
+        let size = WindowSize {
+            cols: 80,
+            rows: 24,
+            width: 0,
+            height: 0,
+        };
+        sender.send(Msg::Resize(size)).unwrap();
+        sender.send(Msg::Input(Cow::Borrowed(b"typed"))).unwrap();
+        sender
+            .send(Msg::Resize(WindowSize { rows: 12, ..size }))
+            .unwrap();
+        let batch: Vec<_> = next_channel_batch(&mut receiver).collect();
+        assert_eq!(batch.len(), 2);
+        assert!(matches!(batch[0], Msg::Resize(_)));
+        assert!(matches!(batch[1], Msg::Input(_)));
+        assert!(matches!(receiver.peek(), Some(Msg::Resize(next)) if next.rows == 12));
+    }
+
+    #[test]
+    fn channel_batch_has_a_fairness_bound_and_keeps_shutdown_order() {
+        let (sender, receiver) = channel::channel();
+        let mut receiver = PeekableReceiver::new(receiver);
+        let size = WindowSize {
+            cols: 80,
+            rows: 24,
+            width: 0,
+            height: 0,
+        };
+        for _ in 0..129 {
+            sender.send(Msg::Resize(size)).unwrap();
+        }
+        sender.send(Msg::Shutdown).unwrap();
+        sender
+            .send(Msg::Input(Cow::Borrowed(b"not delivered")))
+            .unwrap();
+        assert_eq!(next_channel_batch(&mut receiver).count(), 128);
+        let tail: Vec<_> = next_channel_batch(&mut receiver).collect();
+        assert_eq!(tail.len(), 2);
+        assert!(matches!(tail[0], Msg::Resize(_)));
+        assert!(matches!(tail[1], Msg::Shutdown));
+        assert!(matches!(receiver.peek(), Some(Msg::Input(_))));
+    }
 
     #[derive(Clone, Debug)]
     enum ResizeQueueModelMessage {

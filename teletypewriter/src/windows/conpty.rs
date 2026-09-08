@@ -364,9 +364,15 @@ pub fn new(
 }
 
 impl Conpty {
-    pub fn on_resize(&mut self, window_size: Winsize) {
+    pub fn on_resize(&mut self, window_size: Winsize) -> Result<()> {
         let result = unsafe { (self.api.resize)(self.handle, window_size.into()) };
-        assert_eq!(result, S_OK);
+        if result < 0 {
+            Err(Error::other(format!(
+                "ConPTY resize failed (HRESULT {result:#010x})"
+            )))
+        } else {
+            Ok(())
+        }
     }
 
     pub fn terminate_managed_job(&self) -> Result<()> {
@@ -440,4 +446,67 @@ fn create_managed_job() -> Result<OwnedHandle> {
         return Err(Error::last_os_error());
     }
     Ok(job)
+}
+
+#[cfg(test)]
+mod resize_tests {
+    use super::*;
+
+    unsafe extern "system" fn create_stub(
+        _: COORD,
+        _: HANDLE,
+        _: HANDLE,
+        _: u32,
+        _: *mut HPCON,
+    ) -> HRESULT {
+        S_OK
+    }
+    unsafe extern "system" fn close_stub(_: HPCON) {}
+    unsafe extern "system" fn resize_stub(_: HPCON, size: COORD) -> HRESULT {
+        if size.X == 0 {
+            0x80070057u32 as i32
+        } else {
+            S_OK
+        }
+    }
+
+    #[test]
+    fn native_resize_failure_is_retryable_without_panicking() {
+        // Inject only the native ABI result; exercise the production adapter
+        // and its normal drop path without creating or closing a real handle.
+        let mut conpty = Conpty {
+            handle: 0,
+            api: ConptyApi {
+                create: create_stub,
+                resize: resize_stub,
+                close: close_stub,
+            },
+            managed_job: None,
+        };
+        let invalid = crate::WinsizeBuilder {
+            cols: 0,
+            rows: 24,
+            width: 0,
+            height: 0,
+        }
+        .build();
+        let error = conpty
+            .on_resize(invalid)
+            .expect_err("native HRESULT must propagate");
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(
+            error.to_string(),
+            "ConPTY resize failed (HRESULT 0x80070057)"
+        );
+        let valid = crate::WinsizeBuilder {
+            cols: 80,
+            rows: 24,
+            width: 0,
+            height: 0,
+        }
+        .build();
+        conpty
+            .on_resize(valid)
+            .expect("a later valid resize succeeds");
+    }
 }

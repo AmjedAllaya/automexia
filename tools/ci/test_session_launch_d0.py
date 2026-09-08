@@ -14,6 +14,23 @@ import check_session_launch_d0 as policy
 
 
 class SessionLaunchD0ContractTests(unittest.TestCase):
+    def test_nonblocking_worker_retirement_contract_cannot_regress(self) -> None:
+        original = policy.bounded_text
+        mutations = [
+            ("workers.rs", "reaper.jobs.try_send", "reaper.jobs.send"),
+            ("workers.rs", "const MAX_WORKERS: usize = 256", "const MAX_WORKERS: usize = 999999"),
+            ("tests.rs", "retirement_and_shutdown_deadline_do_not_wait_for_native_tls_destructors", "removed_destructor_case"),
+            ("mod.rs", "drop(self._io_thread.take());", "drop(self._io_thread.take()); worker.join_timeout(timeout);"),
+        ]
+        for filename, before, after in mutations:
+            with self.subTest(filename=filename, mutation=before):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    return source.replace(before, after) if path.name == filename else source
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaises(policy.SessionLaunchD0Error):
+                        policy.validate_sources(self.contract)
+
     @classmethod
     def setUpClass(cls) -> None:
         # Load the canonical contract once; every mutation starts from an isolated

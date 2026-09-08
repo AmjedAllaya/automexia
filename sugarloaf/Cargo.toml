@@ -27,6 +27,10 @@ repository = "https://github.com/raphamorim/sugarloaf"
 [lib]
 crate-type = ["rlib"]
 
+[[bench]]
+name = "ui_text"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]

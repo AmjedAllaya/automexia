@@ -29,7 +29,7 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreaterEqual(counts["features"], 12)
         self.assertGreaterEqual(counts["components"], 20)
         self.assertGreater(counts["evidence"], counts["features"] * 9)
-        self.assertEqual(counts["benchmarks"], 19)
+        self.assertEqual(counts["benchmarks"], 22)
         self.assertEqual(counts["fuzz_targets"], 18)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 
@@ -117,6 +117,19 @@ class FeatureAssuranceTests(unittest.TestCase):
         ):
             ASSURANCE.validate_document(document)
 
+    def test_ui_text_benchmark_requires_the_renderer_performance_owner(self) -> None:
+        for benchmark in ("sugarloaf/benches/ui_text.rs",
+                          "tools/renderer-benchmarks/benches/text_fit.rs"):
+            with self.subTest(benchmark=benchmark):
+                document = copy.deepcopy(self.document)
+                feature = next(item for item in document["features"]
+                               if item["id"] == "renderer-fonts-responsive-ui")
+                self.assertIn(benchmark, ASSURANCE.benchmark_targets(ASSURANCE.ROOT))
+                evidence = feature["quality"]["performance"]["evidence"]
+                evidence[evidence.index(benchmark)] = "sugarloaf/src/text.rs"
+                with self.assertRaisesRegex(ASSURANCE.AssuranceError, "benchmark targets missing"):
+                    ASSURANCE.validate_document(document)
+
     def test_orphaned_fuzz_target_is_rejected(self) -> None:
         document = copy.deepcopy(self.document)
         feature = next(
@@ -129,6 +142,24 @@ class FeatureAssuranceTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(ASSURANCE.AssuranceError, "fuzz targets missing"):
             ASSURANCE.validate_document(document)
+
+    def test_text_benchmark_requires_performance_evidence_not_a_reference_count(self) -> None:
+        document = copy.deepcopy(self.document)
+        feature = next(
+            item for item in document["features"]
+            if item["id"] == "extension-contract-runtime"
+        )
+        benchmark = "automexia-extension-api/benches/text_compaction.rs"
+        self.assertIn(benchmark, ASSURANCE.benchmark_targets(ASSURANCE.ROOT))
+        evidence = feature["quality"]["performance"]["evidence"]
+        index = evidence.index(benchmark)
+        # Keep the evidence count and the path elsewhere: neither proves a
+        # performance owner when the actual benchmark loses that classification.
+        evidence[index] = "automexia-extension-api/tests/text_boundaries.rs"
+        feature["quality"]["correctness"]["evidence"].append(benchmark)
+        with self.assertRaisesRegex(ASSURANCE.AssuranceError, "benchmark targets missing"):
+            ASSURANCE.validate_document(document)
+
     def test_not_applicable_requires_an_explicit_rationale(self) -> None:
         document = copy.deepcopy(self.document)
         document["features"][0]["quality"]["performance"] = {

@@ -4,15 +4,13 @@
 // LICENSE file in the root directory of this source tree.
 
 use crate::renderer::responsive::Viewport;
+use crate::renderer::ui_theme::{
+    BORDER, CARD, MODAL_SCRIM as SCRIM, MODAL_SHADOW as SHADOW, OUTLINE,
+    SURFACE as CANCEL, SURFACE_RAISED as CANCEL_HOVER,
+};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-const SCRIM: [f32; 4] = [0.0, 0.012, 0.028, 0.82];
-const SHADOW: [f32; 4] = [0.0, 0.0, 0.0, 0.52];
-const OUTLINE: [f32; 4] = [0.0, 0.67, 0.94, 1.0];
-const CARD: [f32; 4] = [0.012, 0.035, 0.062, 1.0];
-const CANCEL: [f32; 4] = [0.025, 0.105, 0.155, 1.0];
-const CANCEL_HOVER: [f32; 4] = [0.035, 0.18, 0.25, 1.0];
 const QUIT: [f32; 4] = [0.37, 0.025, 0.07, 1.0];
 const QUIT_HOVER: [f32; 4] = [0.53, 0.03, 0.11, 1.0];
 const QUIT_OUTLINE: [f32; 4] = [1.0, 0.30, 0.42, 1.0];
@@ -206,7 +204,7 @@ impl ConfirmQuit {
             card.y,
             card.width,
             card.height,
-            OUTLINE,
+            BORDER,
             14.0,
         );
         rounded(

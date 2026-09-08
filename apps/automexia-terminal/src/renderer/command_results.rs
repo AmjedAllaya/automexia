@@ -12,6 +12,8 @@ use rio_backend::sugarloaf::Sugarloaf;
 
 use crate::automexia::ui::{CommandResultAnchor, COMMAND_RESULT_PROMPT_RESERVE};
 
+mod rows;
+
 const ORDER: u8 = 19;
 const RESULT_LABEL_FONT_ROW_RATIO: f32 = 0.62;
 const RESULT_LABEL_MAX_FONT_SIZE: f32 = 14.0;
@@ -51,21 +53,13 @@ fn result_label_maximum_width(anchor_width: f32) -> f32 {
             - RESULT_LABEL_CONTEXT_GAP,
     )
 }
-/// Keep the result boundary inside the following prompt's already-reserved
-/// context row. Nothing is inserted into the terminal grid or PTY stream.
+/// A short inset accent marks a command, never an edge-to-edge pane boundary.
+/// Use the following prompt's reserved row; no terminal cells or PTY writes.
 fn command_result_divider(anchor: &CommandResultAnchor) -> Option<[f32; 4]> {
     if !anchor.separates_next_prompt {
         return None;
     }
-    let inset = (anchor.height * 0.1).clamp(1.0, 2.0);
-    let height = (anchor.height * 0.05).clamp(1.0, 1.5);
-    let width = anchor.width - inset * 2.0;
-    (width >= 1.0).then_some([
-        anchor.x + inset,
-        anchor.y + (anchor.height * 0.08).clamp(0.5, 1.5),
-        width,
-        height,
-    ])
+    rows::boundary_marker([anchor.x, anchor.y, anchor.width, anchor.height])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -74,7 +68,7 @@ struct CommandResultVisual {
     divider: [f32; 4],
 }
 
-/// Build a low-density result surface inside proven output bounds. The fill
+/// Build the envelope for row-band fills inside proven output bounds. The fill
 /// ends before the following reserved prompt row, leaving a visible 4-8 px
 /// breathing gutter without adding rows or changing PTY bytes.
 fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVisual> {
@@ -353,16 +347,19 @@ impl CommandResults {
                 let pulse_alpha = self.pulse.alpha_for(anchor, now);
                 let mut surface_color = accent_color;
                 surface_color[3] = RESULT_SURFACE_ALPHA + pulse_alpha;
-                sugarloaf.rect(
-                    None,
-                    visual.surface[0],
-                    visual.surface[1],
-                    visual.surface[2],
-                    visual.surface[3],
-                    surface_color,
-                    0.0,
-                    ORDER - 4,
-                );
+                for [x, y, width, height] in rows::surfaces(visual.surface, anchor.height)
+                {
+                    sugarloaf.rect(
+                        None,
+                        x,
+                        y,
+                        width,
+                        height,
+                        surface_color,
+                        0.0,
+                        ORDER - 4,
+                    );
+                }
             }
             let divider = visual
                 .map(|visual| visual.divider)
@@ -523,6 +520,10 @@ fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
         (color[3] * 255.0) as u8,
     ]
 }
+
+#[cfg(test)]
+#[path = "command_results/row_tests.rs"]
+mod row_tests;
 
 #[cfg(test)]
 mod tests {

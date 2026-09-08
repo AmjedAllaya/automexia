@@ -24,9 +24,9 @@ the action is mode-sensitive.
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
-| `Ctrl+Shift+R` / `Ctrl+Shift+D` | Fresh default-shell split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone the active shell/profile/directory into an independent split right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send shell history-search / EOF control byte displaced by cloning. |
+| `Alt+Shift+R` / `Alt+Shift+D` | Fresh default-shell split right / down. Add Shift to start fresh. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| `Alt+R` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
 | `Alt+Arrow` | Select the nearest pane geometrically. |
 | `F6` / `Shift+F6` | Cycle to next / previous pane. |
 | `Alt+Shift+Arrow` | Resize the selected split on Windows. |
@@ -89,8 +89,8 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Previous / next local tab in the selected pane. |
 | `Cmd+1` … `Cmd+8`; `Cmd+9` | Select window tab 1…8; select the last tab. |
 | `Cmd+D` / `Cmd+Shift+D` | Fresh split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone active session right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send history search / EOF to the shell. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` | Clone active session right / down with an independent PTY. |
 | `Cmd+Alt+Arrow` | Select a neighboring pane. |
 | `Cmd+]` / `Cmd+[` | Cycle next / previous pane. |
 | `Ctrl+Cmd+Arrow` | Resize the selected split. |
@@ -114,6 +114,17 @@ remains platform-neutral. A pointer click without a drag is never reused as
 the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
 non-empty text/paste/IME input exits selection mode before the input is
 forwarded to the shell. Search and Vi mode retain their own input ownership.
+
+## Command palette
+
+The palette opens six categories with global type-to-search, a fixed Back button and Back row,
+Alt+Left, empty-query Backspace, paging and mouse scrolling. Empty results stay
+editable; held Enter cannot activate through category entry. See the canonical
+[palette controls and shortcut migration](../KEYBOARD.md#command-palette).
+
+Closing a pane/local tab removes its surface without waiting for the shell's
+native shutdown. Cleanup remains owned in the background. A temporary session
+capacity error means closing sessions must finish before another can start.
 
 ## Search mode
 
@@ -216,6 +227,12 @@ do not use it with untrusted values or arguments that require quoting. Unknown
 actions are rejected and do not silently remove the matching default.
 
 ## Ownership and precedence
+
+Current source restores shell-owned Ctrl+R/Ctrl+D; published 0.4.0 predates the
+correction. Explicit user mappings remain unchanged. Clone actions are
+discoverable in the palette and have the non-shell chords listed above.
+Ctrl+Alt+R/Ctrl+Alt+D now use normal terminal encoding, not a forced bare byte.
+See [ADR 0041](../adr/0041-shell-owned-history-and-eof-shortcuts.md).
 
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse

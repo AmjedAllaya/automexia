@@ -27,6 +27,29 @@ for terminal cells, process lifetime, routes, focus, or persisted settings.
 
 ## Terminal and session ownership
 
+The native PTY adapter selects the core grid's resize policy before output is
+served. ConPTY (including WSL on Windows) retains its history-free mutable
+viewport origin; Unix PTYs retain their native reflow behavior. Wrapped history
+seams use non-content padding rather than a duplicate output cache. Prompt
+editing does not authorize claiming historical repaint rows. See
+[ADR 0048](adr/0048-native-resize-and-prompt-ownership.md).
+For managed ConPTY sessions, the PTY worker commits native and grid dimensions
+from the same coalesced resize. UI requests update cell metrics without reflowing
+ahead of that transaction. Renderer snapshots use the last committed grid and
+refresh after its damage event; a failed native resize cannot advance grid size.
+
+ConPTY prompt recovery cannot move the native protocol cursor. Input remains
+ordered through the PTY write adapter before later resizes; channel batches are
+bounded. Successful Windows character-grid changes allow a 50 ms asynchronous
+input-settle interval for native editor compatibility, while output and shutdown
+remain live. Ordinary input and Unix PTYs have no such interval. See ADR 0048
+for the measured failure, tradeoff and removal criteria.
+
+Selection endpoint tracking belongs to the existing VT grid resize traversal,
+with two fixed-size trackers and no alternate terminal buffer. The
+[selection reflow contract](adr/0043-retained-selection-reflow.md) defines
+cropping, eviction and rectangular-selection behavior.
+
 A session owns exactly one PTY or ConPTY endpoint, child-process lifecycle,
 terminal state, ordered input queue, resize generation, and exit outcome. Panes
 and tabs reference sessions through stable route identities. Closing a view
@@ -77,6 +100,105 @@ usable and clean up its workers, queues, caches, and temporary state.
 Network, credential, provider, filesystem, and process authority do not belong
 on input, PTY, resize, startup, or renderer hot paths.
 
+Plain operational status classification stays in the optional `automexia-devops`
+extension. Its bounded, allocation-free recognizer distinguishes lifecycle from
+readiness; the core grid emitter maps generic severity to active palette colours
+and preserves explicit application ANSI. No provider access, worker or persisted
+state participates in this row path. See
+[ADR 0052](adr/0052-truthful-operational-status-colours.md).
+
+Grapheme boundaries and label compaction belong to the capability-free
+`automexia-extension-api::text` owner. Its public helpers distinguish trimmed
+labels from whitespace-preserving display text and borrowed prefix slices.
+Compaction counts the ellipsis within the grapheme limit; it is not a byte,
+terminal-cell or pixel limit. Consumers retain original values and own their
+input limits. Font measurement and visual fitting remain renderer responsibilities.
+The text benchmark's Criterion dependency is development-only.
+The suggestion presentation model uses the whitespace-preserving contract for
+visual labels only. Its bounded full accessible name and insertion value remain
+separate from shortened labels; generated ellipses never inherit match indices.
+Candidate identity and acceptance authority remain with the application broker.
+Connection Hub adapters retain their existing extra-ellipsis and wrapping
+policies but obtain cluster boundaries from that same shared text owner. They
+do not shorten the underlying connection or review model.
+
+Sugarloaf's grid CPU path uses private cpu_raster primitives for opaque RGB
+packing, rounded premultiplied source-over, grayscale masks and color glyphs.
+The caller owns its destination buffer, atlas, row/cursor state and resource
+lifetime. Mask text colors are straight RGBA; color-atlas bytes are already
+premultiplied. Background normalization and fill policy remain in the grid.
+Immediate-mode Text currently retains its own equivalent scalar blits; the
+legacy rich-text CPU renderer has a distinct SWAR/SIMD rounding contract.
+These are not shared GPU allocation, shader or synchronization authorities.
+
+Sugarloaf's immediate-mode text owner retains at most 512 shaped runs and
+2 MiB of text/glyph-vector payload, with capacity-aware accounting, FIFO
+eviction and full text/font/style identity checks behind its hash index.
+Oversized runs are usable without being cached; immutable shared runs avoid
+cloning glyph arrays on a cache hit. These are retained-payload bounds, not
+total process-memory or transient shaping-input limits. Shape, ascent and
+private text-atlas keys use the actual rounded raster size, independently of
+the grid atlas's quarter-pixel units. No GPU ownership or extension edge changes.
+The existing Sugarloaf font-reload boundary also replaces the immediate Text
+library, discards pending labels and invalidates font-derived caches and atlas
+slots. It retains backend allocations and scale, and does not discover fonts
+or initialize an unused backend. The CPU presentation cache is invalidated by
+that same reload boundary, so unchanged draw-instance bytes cannot suppress
+the repaint after a font change.
+
+Responsive label fitting has a renderer-local implementation in
+apps/automexia-terminal/src/renderer/text_fit.rs; the responsive surface owns
+the active-font adapter. It measures whole candidates with the same DrawOpts
+used to draw them, preserves whitespace and source grapheme boundaries, and
+includes the marker in the measured budget. Work is limited to a 16 KiB source
+view, 2,048 retained graphemes and 26 measurement probes. An incomplete boundary
+at the view edge is not retained. Non-monotonic shaping can produce a conservative
+fit; the contract is a confirmed finite advance within the available width,
+not maximal filling, arbitrary ink-overhang clipping or additional bidi support.
+This module adds no extension, persistence or filesystem authority and does not
+change underlying editable or accessible values. Font resolution stays with Text.
+Probe strings reuse one fallibly grown buffer capped at the source-view bytes
+plus the three-byte marker. Confirmed offsets use the existing SmallVec owner
+with 64 inline slots and bounded spill capacity. The final display is rebuilt
+from the exact measured winner; unchanged labels continue to borrow their source.
+
+Suggestion label drawing lives in the private renderer sibling
+apps/automexia-terminal/src/renderer/suggestion_text.rs. Its thin overlay
+adapters retain theme conversion, layout, hit targets and activation ownership.
+Plain and matched labels use the same bounded fitter. Matched candidates are
+measured as the exact styled runs that will be drawn; drawing reuses the
+returned advances. Runs borrow source slices, and explicit marker provenance
+keeps generated ASCII dots neutral even across Unicode Prepend boundaries.
+Adjacent neutral source and marker text remain one shaped run. Literal source
+dots retain their match ownership. These fitting guarantees do not certify
+arbitrary glyph-ink clipping; full editable and accessible values remain intact.
+
+The unpublished `tools/renderer-benchmarks` package measures this private module
+by path inclusion, without a runtime library or application-binary build.
+Only development dependencies and its explicit benchmark target are permitted;
+no workspace package may depend on it. See
+[ADR 0047](adr/0047-private-renderer-benchmark-boundary.md).
+
+## Output readability
+
+Command-result row bands belong to the core renderer's private
+`command_results/rows.rs` geometry owner. It splits proven visible output bounds
+into inset fixed-grid bands; it never detects commands, parses tables, modifies
+cells or inserts blank rows. The existing completion owner retains colour, pulse,
+prompt gutter and route identity. The iterator allocates no storage, derives each
+position from its index to avoid accumulated fractional drift, rejects nonfinite
+geometry and caps work at 8,192 bands per surface. Existing CPU/GPU rectangle
+submission consumes the same geometry. The private renderer benchmark includes
+this module directly; no extension, persistence or dependency boundary changes.
+
+The same geometry owner gives command boundaries a short leading accent rather
+than a pane-spanning line: at most 48 logical pixels, at most one quarter of the
+pane width, with a leading inset up to 12 pixels. Invalid or unpaintably small
+rectangles are omitted. Structural pane dividers and their pointer targets stay
+with the layout owner. Status/timestamp labels, output bands, prompt reservations
+and the completion pulse are unchanged. This is draw-only core feedback under
+ADR 0035, not an optional extension or a terminal-grid mutation.
+
 ## VT control-string trust boundary
 
 Terminal output is untrusted input. CSI, OSC, DCS, APC, image protocols,
@@ -90,8 +212,20 @@ oversized, Unicode, control-character, and historical failure cases.
 
 ## PTY and process lifecycle
 
+PTY input channels retain a dedicated cancellation wakeup shared by their sender
+clones. Closing a pane can therefore retire its worker even while a partial
+write blocks subsequent resizes; the input queue is neither copied nor drained
+by the cancellation path. The existing worker remains the sole process owner.
+
 Processes are launched from a typed executable plus an exact argument array.
 Structured actions do not use shell command concatenation or implicit Enter.
+
+Clipboard delivery stays in the application context owner. It captures route
+and terminal identity before the OS read, validates that owner again, and queues
+one bounded paste frame without redirecting to later focus. Selection and scroll
+changes apply only to the accepting context. See
+[ADR 0042](adr/0042-route-bound-paste-transactions.md) for limits, pointer
+ownership, rejection and the remaining native evidence requirements.
 
 The session owner is responsible for:
 
@@ -114,6 +248,14 @@ path. [ADR 0038](adr/0038-owned-pty-trees-and-broadcast-shutdown.md) owns this
 lifecycle invariant.
 
 ## Renderer and snapshots
+
+The private `renderer/ui_theme.rs` owner separates decorative card borders from
+actionable focus outlines and owns shared palette, Hub and confirmation colours.
+Theme text is contrast-corrected against the lightest shared chrome surface with
+headroom for byte quantization; terminal colours remain configuration-owned.
+Palette trailing labels use the existing bounded font-measured fitter and retain
+full action values. This adds no dependencies, I/O, workers, animation or state
+owner. Existing modal geometry, input routing and vector-icon owners are retained.
 
 The renderer consumes immutable, generation-labelled snapshots. Expensive
 layout, search, image, font, or accessibility work is bounded and cancellable.
@@ -148,10 +290,39 @@ versioned, collision-tested, and layered before user overrides. Invalid
 compilation preserves the previous complete binding registry, while native
 shell control keys retain documented fallthrough.
 
-The current default table still intercepts bare Ctrl+R/Ctrl+D for cloning;
-fallthrough is therefore profile- and mode-specific, not a universal current
-guarantee. Both the typed registry and legacy fallback affect current input
-routing. See [native shell key status](TERMINAL-MAINTENANCE-REQUIREMENTS.md#native-shell-control-keys).
+Current source leaves bare Ctrl+R/Ctrl+D shell-owned in normal terminal input.
+Both the typed registry and legacy fallback affect dispatch, and explicit user
+bindings and modal ownership remain authoritative. Clone actions retain their
+existing session owner and palette entry with directional Alt chords. The published
+0.4.0 package predates this correction. See
+[ADR 0041](adr/0041-shell-owned-history-and-eof-shortcuts.md).
+
+The grouped palette retains one exhaustive action/category projection in its
+private navigation module. Both keyboard and pointer activation use the same
+application method; navigation rows cannot become terminal actions. No extension,
+worker, persistence or dependency boundary is added. See
+[ADR 0049](adr/0049-grouped-command-discovery-and-pane-shortcuts.md).
+
+Pane removal sends shutdown and retires a lease without a worker join on the UI
+thread. Router injects the single bounded worker registry into every launch.
+One idle-blocking cleanup service retains all joins, with pre-launch capacity
+reservation, bounded acknowledgements and a shared final shutdown budget.
+Palette Back uses shared header draw/hit geometry; matching avoids per-candidate
+query normalization and rendering filters only once. See
+[ADR 0050](adr/0050-nonblocking-session-retirement.md).
+
+Confirmed window closure dismisses native surfaces before route destruction or
+service waits; explicit Quit retains one application shutdown owner. Native PTY
+cleanup remains joined after dismissal. ConPTY's reader switches to bounded
+discard-only draining once its consumer retires, so a full ring cannot block
+native close. A live consumer receives its final buffered bytes before EOF.
+
+Current Windows/Linux/BSD pane defaults use Alt+R/D for clone and add Shift for
+fresh; these deliberately replace shell Alt editing only in normal mode.
+Every palette action reconciles its label with effective bindings during
+construction/reload, not input/render. Back shares a dedicated left-arrow vector
+in its fixed header and row. See
+[ADR 0051](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md).
 
 ## Configuration transaction
 
@@ -237,6 +408,13 @@ High contrast, reduced motion, long/localized text, Unicode, IME, and high scale
 are first-class cases.
 
 ## Persistence
+
+Connection Library and managed receipts use the private application module
+`connections/persistence_support.rs` for bounded in-memory serialization. The
+stores retain their document limits, pretty-JSON formats, validation, errors and
+recovery policy. Capacity requests are fallible and capped; memory-writer flush
+does not imply file sync or crash durability. SSH metadata retains an
+extension-local writer instead of depending on the application.
 
 Every persisted format has one owner, a version, strict limits, private-data
 rules, corruption behavior, recovery behavior, and uninstall policy. Writes do

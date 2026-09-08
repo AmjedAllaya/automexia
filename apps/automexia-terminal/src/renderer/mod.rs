@@ -12,7 +12,9 @@ pub mod responsive;
 pub mod scrollbar;
 pub mod search;
 pub mod session_footer;
+mod suggestion_text;
 pub mod suggestions;
+pub(crate) mod text_fit;
 pub mod trail_cursor;
 pub(crate) mod ui_theme;
 pub mod utils;
@@ -2449,6 +2451,17 @@ mod prompt_visual_anchor_tests {
 
     #[test]
     fn resize_then_command_navigation_never_projects_overlapping_result_badges() {
+        for policy in [
+            rio_backend::crosswords::ResizePolicy::Reflow,
+            rio_backend::crosswords::ResizePolicy::Conpty,
+        ] {
+            assert_resize_navigation_projection(policy);
+        }
+    }
+
+    fn assert_resize_navigation_projection(
+        policy: rio_backend::crosswords::ResizePolicy,
+    ) {
         let mut terminal = Crosswords::new(
             CrosswordsSize::new(96, 10),
             rio_backend::ansi::CursorShape::Block,
@@ -2457,6 +2470,7 @@ mod prompt_visual_anchor_tests {
             0,
             1_024,
         );
+        terminal.set_resize_policy(policy);
         let mut processor = Processor::default();
         let mut stream = Vec::new();
         for command in 1..=6 {

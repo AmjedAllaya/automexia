@@ -3,6 +3,7 @@
 mod controller;
 mod direct_openssh;
 mod library;
+mod persistence_support;
 mod provider_transients;
 mod providers;
 mod receipts;

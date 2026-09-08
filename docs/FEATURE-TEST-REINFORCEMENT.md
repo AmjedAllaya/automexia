@@ -33,10 +33,39 @@ fixtures or reports.
 
 ### terminal-protocols-grid-history
 
+A parser-created viewport identity journal must retain the first visible cell
+in the first projected row after every resize, as far as history permits. Use
+independent input colors for repeated text and inspect renderer-facing snapshot
+styles as well as live-follow sibling cells. Cover one-column output, height-only
+changes, blank hard lines, selection, inactive normal buffers, alternate screens,
+and actual anchor eviction/absorption. Reject PTY writes. Saved same-host
+scrolled/unselected/selected benchmarks measure the combined core path; preserve
+separate native redraw, pixel and accessibility gates.
+
 Reinforce fragmented and malformed control sequences, Unicode widths,
 combining/bidi/control input, alternate-screen transitions, scrollback, reflow,
 search, selection, cursor state, and exact visible cells. Fuzz every structured
 terminal-input boundary with historical failures retained.
+
+The parser-driven retained-output journal preserves explicit hard breaks,
+intentional empty lines, spaces across soft wraps, fragmented Unicode and ANSI
+colors across intermediate width/height changes in both directions. Its oracle
+is fault-tested against text, hard-break, whitespace and style mutations.
+Substring counts or restored-width-only checks cannot replace this assertion.
+This does not establish selection retention, native shell repaint, renderer
+geometry or pixels; those remain distinct evidence owners.
+
+Selection reflow uses a separate parser-created selection journal: select once,
+resize both directions, and assert exact copy bytes and anchor sides at every
+intermediate geometry. Include wide/combining characters, semantic and line
+selections, alternate-screen cropping, invalid points, zero-history eviction and
+rectangular-selection invalidation. Compare all retained cells with an independently
+resized unselected terminal. Measure combined reflow/copy/visible-snapshot work
+over deep bounded history; do not call a parser-only pass native pixel evidence.
+Check the next Vi motion as well as its cursor/anchor coordinates, preserving
+unrelated cursor ownership. The Windows PowerShell/ConPTY fixture uses bounded
+UTF-8 output and requires both parsed completion and successful child exit before
+retained-output reflow; live redraw and native selection gestures remain separate.
 
 For command completion metadata, include multiple adjacent prompt lifecycles
 whose source result and preceding boundary share a physical prompt row. Resize
@@ -45,6 +74,47 @@ compare stable IDs, timestamps, boundaries, visible rows, and unchanged PTY
 bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
+
+Real ConsoleHost editor tests must silently shrink/grow before typing, compare
+native and VT cursor rows, preserve isolated history, and finish repeated child
+and worker cleanup. Keep the native protocol cursor unchanged by prompt-metadata
+repair at every fragment boundary. Use fake-clock input-settle deadlines and
+buffered-input ordering tests to reject busy polls, lost expiry wakeups, resets
+from failed/duplicate resizes and input overtaking. Preserve ordinary-input and
+Unix zero-delay behavior; native frames and assistive-technology checks remain
+separate external evidence.
+
+Native broken-pipe error-then-drop tests must preserve single join ownership for
+both directions. Repeat editor lifecycles in a shared test process as well as
+isolated native cases; retain and diagnose the first abort before claiming a pass.
+
+Pane-close regressions must distinguish immediate UI retirement from eventual
+native process termination. Gate real worker-body and native thread-local
+destruction independently: a finished hint is not an actual join acknowledgement.
+Cover 256-slot reservation saturation, failed launches, panic, queued cleanup,
+capacity recovery, repeated close/open, bounded stale acknowledgements and one
+shared final deadline. Verify exact pre-close OS process handles, not only the
+worker count. No application input/close path may join a foreign worker.
+
+Confirmed-close coverage must distinguish native surface dismissal from process
+cleanup. Test single-window close, explicit Quit and the final callback, with
+cancelled confirmation and sibling windows preserved. Require dismissal before
+service/PTY waits; a queued native destructor is not immediate disappearance.
+The controlled Windows harness has a separate 500 ms dismissal ceiling.
+Saturate the actual native output ring, retire its consumer, require completion
+acknowledgement, and verify exact final bytes before EOF in live consumers.
+Repeat real ConPTY shutdown and fallback drop with captured process handles.
+Keep existing native grace/force budgets and actual join/TLS evidence intact.
+
+Live resize evidence is owned by `rio-vt/tests/live_resize.rs`; exact parser,
+selection, search, snapshot and native-seam regressions are owned by
+`rio-vt/tests/resize_repaint.rs`. Keep the native child alive through all resize
+transitions and require bounded acknowledgments plus successful exit. Cover
+fragmented full/trailing EL without historical-output prompt ownership, native
+history/live seams, unused bottom rows, Unicode and intentional blank lines.
+The `native_resize_snapshot_*` benchmark retains one bounded terminal across
+cycles. Native desktop/GPU, accessibility and unexecuted Linux/macOS environments
+remain external evidence, not inferred passes.
 
 Reinforce exact executable/argument launch, ordered input, resize/output storms,
 interrupt, EOF, exit, cancellation, close, and shutdown on each native adapter.
@@ -63,7 +133,97 @@ temporary-fixture process identities before close so ConPTY reparenting cannot
 escape a parent-only oracle; require every identity and owner to exit inside a
 declared many-session wall-clock ceiling.
 
+Exercise the parked split/local-tab exit journal through the real context and
+Taffy owners: all exit orders, selected and inactive routes, unknown/late exits,
+independent windows, undo/redo and repeated cleanup. Compare real shutdown
+channels and weak terminal references: surviving channels remain empty and
+connected, while only the removed owner is dropped. Require live window size,
+scale, margins and font metrics on restore even when padding did not change;
+restore refresh precedes visibility. Saved zoom/unzoom styles must also use the
+new extent and DPI. Native sibling output, process identities,
+resource ceilings and pixels remain independent of these model-path checks.
+
 ### renderer-fonts-responsive-ui
+
+Command-versus-pane distinction requires short inset command markers, literal
+48-pixel/quarter-pane caps, invalid and tiny geometry, exact marker pixel coverage
+and preserved structural hit targets. Traverse adjacent parsed output and silent
+commands, reflow, scroll and previous/next navigation; preserve timestamp identity,
+copy bytes and cursor. Keep marker geometry benchmarks and native inset checks;
+mutation tests must reject removal of the non-colour distinction requirement.
+Native frame and screen-reader evidence stays separate from controlled specimens.
+
+Shared chrome requires independent quantized contrast on all surfaces, separate
+decorative and focus roles, literal RGBA token evidence, and real-font trailing
+label fitting at fractional scales. Retain complete action values, hit geometry,
+existing icon meaning and configured terminal colours/fonts. Reject one-channel
+token drift and loss of all-surface contrast requirements in checker mutations.
+Inspect controlled specimens without treating them as native app captures; exact
+CPU/GPU frames and assistive-technology delivery remain external when unavailable.
+
+Command-result row bands require parser-created Kubernetes, container and generic
+table fixtures, Unicode/wrapped rows, retained selection/copy and scroll/resize
+projection. Assert independent literal row coordinates and exact pixel-centre
+coverage, including every gap and surface edge. Cover single/clipped rows,
+fractional metrics, invalid/nonfinite geometry, the 8,192-band ceiling, all result
+tones and reduced motion. Benchmark the actual allocation-free iterator in the
+private renderer harness. Keep terminal bytes/cell positions unchanged; do not
+infer table schemas or insert blank rows. A fictional controlled preview and
+geometry raster do not replace native CPU/GPU frames, theme/scale review or
+assistive-technology delivery. Missing native evidence stays external.
+
+Keep literal responsive whitespace, marker-budget, unchanged-storage and
+Unicode cuts independent of the renderer-local helper. Reproduce the old scalar
+and rounded-font-width failures. Verify finite whole-candidate advances with the
+exact drawing options, bounded partial-context handling, both edges, source
+retention, generated-marker identity and conservative non-monotonic fitting.
+Pin resource ceilings independently; exercise oversized single clusters and
+regional-indicator context. Preserve exact characterized probe order and retained
+source identity. Assert bounded amortized capacity, borrowed reused probe storage,
+inline/spilled offset limits and no stale bytes after overshoot. Compare
+prepared-font fresh-owner CPU pixels across styles, fractional sizes and scales;
+keep ink clipping and native UI claims
+separate. The helper benchmark must include its production
+owner directly and remain registered as renderer performance evidence; a
+same-count replacement with a non-benchmark reference must fail validation.
+The isolated development harness additionally requires Cargo-metadata mutations
+rejecting publication, missing/extra/conditional targets, non-development or
+unreviewed dependencies, inverse renamed edges and a duplicate application
+harness. Confirm the selected build graph does not compile the application,
+without changing release optimization or weakening the complete workspace gate.
+
+Suggestion fitting must preserve literal cuts and whitespace, measure the exact
+styled runs that are drawn and retain borrowed source storage. Reproduce
+generated-dot highlight leakage and nonfinite-budget draws; preserve existing
+pixels on rejection. Cover Prepend/control boundaries, literal source dots and
+real-font source ceilings. Compare independent literal normal/highlighted CPU
+draws across sizes/scales, preserve full values, overlay geometry and broker
+no-execution tests, and benchmark the actual label/description drawing owner.
+Keep ink clipping and native accessibility as separate evidence requirements.
+
+CPU primitive characterizations require independent literal channel/alpha
+pixels, repeated source-over, mask/color atlas samples, all edges/corners,
+empty/offscreen dimensions, atlas boundaries and destination suffixes.
+Exercise actual atlas insertion, row writes, cursor draw order/colors, clearing
+and repeated warmed storage retention. Benchmark the real cached-grid paint
+and row-update/paint owners separately from immediate text; do not infer global
+allocator, native window or GPU results from CPU buffer tests.
+
+Immediate text-cache regressions compare cached measurement and exact CPU
+pixels with fresh bundled-font owners after adjacent rounded-size and scale
+transitions. Require nonempty finalized frames, forced digest collisions,
+entry and retained-byte ceilings, spare-capacity accounting, oversized-run
+bypass, FIFO eviction and released immutable runs. Register the actual Text
+measurement/draw benchmark with the renderer performance owner; its mutation
+must reject a missing benchmark even if the reference count stays unchanged.
+Font replacement must alternate visibly distinct prepared fonts and variable
+weights, compare fresh-owner CPU pixels and widths after each transition,
+release old shape/font identities and queued base/modal labels, retain atlas
+allocations and scale, and leave unused backends uninitialized. Review the
+application reload call and CPU frame-skip invalidation together. Benchmark
+replacement plus raster separately from full-owner reconstruction. Retained
+payload bounds are not total allocator/RSS evidence; interactive font reload,
+native GPU/window and assistive-technology validation remain separate contracts.
 
 Reinforce immutable generation-labelled snapshots, font fallback, cell geometry,
 clipping, z-order, cursor, selection, themes, high contrast, reduced motion, and
@@ -96,6 +256,49 @@ masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
 
+Keep header Back available independently of result scrolling and active search.
+Keep event normalization outside the shortcut candidate loop and action cloning
+inside the matched branch. Source-order mutation guards complement, not replace,
+the configured platform tables, overrides, physical keys and mode tests.
+Test category and font/extension parent restoration at narrow and HiDPI sizes,
+input/Back/ESC non-intersection, no executable action from Back and unchanged
+Unicode scores against an independent pre-optimization oracle. Benchmark the
+real model navigation sequence separately from native frame/input latency.
+
+Grouped palette regressions require exhaustive category coverage, bidirectional
+Back restoration, global command/category search, empty results, held Enter,
+query limits, Shift+Tab, paging, responsive pointer hit tests and wheel reset.
+Navigation rows expose no executable action. Keyboard and pointer dispatch must
+share the application activation owner. Check fresh and clone chords independently
+on every platform, retired shifted punctuation, disabled splits, mode suppression,
+typed tombstones, explicit overrides and strict-profile isolation. Verify the
+approved Alt+R/D clone and Shift-for-fresh matrix against actual configured
+defaults as well as isolated platform tables. Cover all effective shortcut labels:
+missing defaults, hardware Copy/Paste fallback, search-only keys, wrong modes,
+typed chains, reload storage bounds and distinct ClearHistory/ClearScreen actions.
+Require a left-arrow Back in both header and row, pinned stroke geometry and
+unchanged hit targets; source and coordinate guards do not certify pixels. Native frames,
+physical layouts and accessibility events remain separate gates; a privacy-safe
+semantic summary is not proof of native screen-reader delivery.
+
+Shell-control regressions must exercise complete Windows, macOS and Unix
+default tables with splits enabled and disabled, plus typed Automexia fallback,
+pinned profiles, explicit user overrides and reset. Assert exact control bytes
+and no clone action in normal and alternate-screen input. Test palette reload
+against actual configured clone mappings, typed tombstones and overlapping
+sequences; unbound actions remain discoverable. Never migrate a user mapping by
+guessing its provenance. Native shell/PTY and physical keyboard/IME evidence are
+separate requirements, not inferred from a binding-table pass.
+
+Clipboard regressions must traverse the real terminal mode parser and capture
+one complete queue transaction, including bracket delimiters and exact Unicode
+bytes. Assert sibling silence after a focus change between target capture and
+delivery, and reject removed, replaced, closing and disconnected destinations.
+Cover empty/byte-limit text, ESC/ETX injection, raw input and newline semantics;
+rejection must preserve selection and scroll. Pointer tests must distinguish
+terminal cells from pane chrome and preserve copy-before-paste selection and
+per-button release ownership. Native clipboard/IME evidence remains separate.
+
 Reinforce independent windows, global and pane-local tabs, fresh/cloned splits,
 route and focus isolation, geometric navigation, pointer routing, divider
 resize, clipboard, IME, search scope, overlays, and focus restoration.
@@ -123,7 +326,23 @@ Reinforce bounded route-scoped prompt metadata, directory and status updates,
 Git state, long and hostile labels, stale generation rejection, and redaction.
 Context rendering must never change commands or trigger network work.
 
+Operational status colour assurance must distinguish lifecycle from readiness:
+completed pods/clean exits, full/partial/invalid readiness, init failures,
+condition polarity, paused/starting/unhealthy containers, unknown table states,
+misleading names, kind-prefixed pods, zero-count log prefixes, declared log levels,
+negated success and mixed failure counts.
+Require literal status oracles, parser-to-grid colour delivery, exact controlled
+CPU pixels, configured/explicit ANSI preservation, unchanged source/copy and
+disabled-extension behavior. Exercise bounded hostile rows and benchmark the
+allocation-free classifier without conflating helper timings with native frame
+latency. Native GPU and screen-reader evidence remains a separate gate.
+
 ### openssh-inventory-persistence
+
+SSH's intentionally extension-local bounded JSON writer needs literal format,
+validation-order, UTF-8, empty/exact/over-limit, rejected-write integrity and
+large-then-small reservation checks. Keep its 8 MiB byte/capacity contract
+separate from native permissions, recovery and allocator-RSS evidence.
 
 Reinforce explicit file selection, bounded includes and record counts,
 duplicates, malformed data, links, replacement, revocation, public metadata,
@@ -136,6 +355,12 @@ Reinforce version negotiation, strict message schemas and ceilings, exact
 capability denial, session isolation, cancellation, queue saturation, stale
 generation rejection, crash/restart, disable, uninstall, and shutdown. Optional
 failure must leave the core terminal functional.
+
+The shared text owner has independent literal-cluster characterization for
+trimmed and whitespace-preserving labels, borrowed prefix storage, zero/one,
+exact and over-limit values, combining marks, emoji, Indic text and long inputs.
+Its same-host benchmark compares short and long compaction without implying
+pixel fitting, screen-reader correctness or an allocator/RSS measurement.
 
 ### image-protocols-local-preview
 
@@ -183,6 +408,25 @@ offline tests neither activate downloads nor certify rendered pixels.
 The real classic-protection self-approval blocker is also a regression seed:
 require bounded classic review evidence as well as rulesets, reject type/value
 drift, and mutate its API fetch and CLI wiring without expanding App authority.
+
+
+Minimal public metadata tests must reject full inventories, unknown manifest
+fields, private identifiers and paths in documents even after rehashing,
+incorrect review-policy digests, removed notices, altered verification comments,
+and retention outside the private source repository. Preserve schema-1 first
+release compatibility without allowing a downgrade for another version. Run
+real ephemeral-key Minisign verification and tamper rejection where available;
+mocked signatures do not prove cryptographic interoperability.
+
+Private SBOM privacy tests must retain the recomputed-checksum leak regression,
+real preparation CLI, full dependency/license/file-hash preservation, cross-format
+input identities, virtual versus host scan paths, nested/encoded unsafe metadata,
+duplicate/dangling references, malformed and bounded input, atomic-write failure
+and untouched private inputs. The shared release-trust suite must accept Syft's
+versionless file/root entries without counting them as dependencies. Workflow
+mutations reject raw-output uploads, generator drift, skipped/duplicated/moved
+preparation, suppressed failure and missing scratch cleanup before claiming
+current-source verification. Hosted publication remains separate evidence.
 Read-only App governance must combine REST rules with repository/identity-bound
 GraphQL bypass evidence. Preserve the real omitted REST field and redacted
 nonempty GraphQL actor as regression seeds. Test zero/nonzero/inconsistent
@@ -206,6 +450,25 @@ Linux-namespace exclusion; the selector must reject that overlap before stable
 authorization rather than failing an unrelated branch grammar later.
 
 ### contributor-automation-quality-policy
+
+`.github/scripts/check_free_plan_contract.py` and
+`tools/ci/test_free_plan_contract.py` own compiler assurance. Compare every stable workflow's effective Rustup
+selector with the bounded canonical pin, not just find an install command.
+Mutate missing, nested, duplicate, floating and mismatched selectors; malformed,
+oversized and missing pin files; legacy overrides; global-default changes; and
+cache generations that no longer follow the compiler. Keep failure messages
+path-free and explicit nightly overrides unchanged. Host toolchain inspection
+and hosted execution remain distinct from the static contract mutation suite.
+Validate workflow expressions with Actionlint as an independent parser. Execute
+the real cache initializer in native Linux Bash and compare exact environment
+file bytes; reject misplaced initialization, duplicate writes, clobbered prior
+values and unsupported job-level `env` context references.
+
+The shared Markdown-anchor owner needs independent literal fixtures and actual
+consumer mutations for Unicode, markup, duplicate headings, missing references,
+invalid UTF-8 and missing files. Reject fenced-only references and test both
+natural-suffix collision orderings. All three production checkers must
+use the same parser without turning their tests into its own result oracle.
 
 Mutation-test repository validators so deleted owners, weakened limits, stale
 paths, fabricated evidence, missing private-documentation exclusions, and
@@ -261,6 +524,12 @@ public product schedule or commercial feature announcement.
 Reinforce the pure policy/schema boundary with exact limits, hostile structured
 input, deterministic decisions, and proof of no process, network, credential,
 profile, or execution authority.
+The renderer benchmark-only workspace member is not a missing-runtime-source
+exemption: scan its Rust sources after validating its exact non-product target
+contract. Mutate automatic target discovery, build/runtime sources, target path,
+hidden features, integer/boolean confusion, malformed/oversized manifests and
+symlinks. Preserve ordinary missing-source rejection, global file-count limits
+and redacted errors; the architecture metadata checker separately guards edges.
 
 ### command-productivity-cp2-persistence
 
@@ -312,6 +581,14 @@ gate required before a proposal may change public behavior.
 
 ### command-productivity-cp51-proposal
 
+Suggestion-model regressions must keep full bounded accessible text and insertion
+bytes while visually compacting graphemes. Test exact/over byte limits, invalid
+offscreen candidates, preserved whitespace, sorted unique visible match indices,
+and unhighlighted generated ellipses. Verify keyboard and pointer acceptance
+through the real validation/ranking/controller path, exact replacement bytes,
+no execution and final worker cleanup. Model evidence is not a native
+screen-reader claim and does not change preview activation.
+
 Require proposal-only owners to remain nonactivated until architecture,
 capability, persistence, native-platform, UX, performance, and negative-side-
 effect contracts are accepted and independently evidenced.
@@ -324,15 +601,38 @@ and terminal hot-path authority; detailed future planning remains private.
 
 ### ecosystem-d7-cp6-proposal
 
+All-feature host assurance must cover pre-arming interrupts, shared-engine ticks,
+reused cancellation tokens and worker-unwind cleanup. Require invocation-local
+completion, a persistent absolute deadline, store-local interruption decisions
+and joined watchdogs. Use a finite emergency fuel budget in deliberate lost-tick
+mutations; retain the native infinite-loop failure separately. Default-feature
+QA is not evidence for code behind the component-host feature, and none of these
+source tests grants product activation.
+
 Keep optional ecosystem proposals behind explicit capability, signing,
 sandboxing, lifecycle, disable/uninstall, resource, and failure-isolation gates.
 This anchor is not an availability claim.
 
 ### stabilization-release-assurance-s1-s2
 
+Use explicit fixture clocks for dated evidence and validate a positive baseline
+before negative mutations. Pin exact age/skew boundaries independently and
+retain the real-clock expired-evidence rejection; calendar aging must not make
+an unrelated mutation pass. Synthetic fixtures never certify native runs.
+
 Reinforce staged stabilization with exact failure retention, same-host baselines,
 native evidence, packaged-artifact identity, bounded resources, cleanup, and
 explicit external gates before release claims advance.
+
+QA source evidence must use content-bound dirty fingerprints, not status-line
+hashes. Mutate an already-dirty file without changing its status and prove the
+identity changes. Exercise untracked/deleted/renamed files, Unicode names,
+byte/file/total limits, link rejection, unavailable Git, subprocess deadlines and
+cleanup. An actual QA report must fail on before/after identity drift even when
+all mocked test commands pass; unavailable identities must never compare equal
+as passing evidence. Keep source contents and private paths out of reports.
+Exercise logical artifact announcements through the actual CLI on successful
+and failed runs, including optional bundle creation; reject checkout disclosure.
 
 ### connection-hub-f2-models
 
@@ -354,11 +654,24 @@ last-known-good behavior.
 
 ### connection-hub-m1-product
 
+Keep independent binary-owned truncation and wrapping fixtures with literal
+combining, joined emoji and regional-indicator clusters. Retain whitespace,
+extra-ellipsis and zero/one/exact-limit policies; wrapped review text must
+concatenate to the original bytes. Preserve focus, pointer targets and full
+model values; grapheme counts do not prove pixel fitting or native rendering.
+
 Reinforce the read-only keyboard workflow, focus restoration, accessibility,
 responsive layouts, review-before-activation, and proof that browsing or
 selection sends no PTY input and starts no connection.
 
 ### connection-hub-f3-library
+
+Exercise the actual pretty-JSON serializer with a half-budget-plus-one string
+and its final quote; assert exact bytes and capacity within the document limit.
+Keep independent literal format/escaping and validation-order fixtures. Shared
+writer properties must cover zero/exact/over-limit, UTF-8, accumulated writes,
+overflow rejection, unchanged accepted bytes on error and in-memory flush.
+Keep native recovery/permission and allocator-RSS claims separate.
 
 Reinforce bounded user-private connection metadata, atomic persistence,
 conflicts, permissions, import/export, rollback, disable, uninstall, corruption,

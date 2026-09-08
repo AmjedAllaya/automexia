@@ -16,8 +16,9 @@ package is included. Website download activation is separate.
 [Remove](https://github.com/AmjedAllaya/automexia-releases/blob/main/UNINSTALL.md)
 
 Every package is published with an exact SHA-256 manifest, a detached minisign
-signature, a public verification key, SPDX and CycloneDX SBOMs, installation and
-removal guidance, and third-party notices. The release manifest binds the public
+signature, a public verification key, installation and removal guidance, and
+third-party notices. Complete build inventories are not public release assets.
+The minimal release manifest binds the public
 files to the reviewed private-source commit without publishing private source or
 debug symbols.
 

@@ -6,7 +6,9 @@
 
 use std::borrow::Cow;
 
-use rio_backend::sugarloaf::{Attributes, Sugarloaf};
+use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
+
+use super::text_fit::{fit_end, fit_start};
 
 const COMPACT_WIDTH: f32 = 840.0;
 const MINIMAL_WIDTH: f32 = 480.0;
@@ -187,16 +189,17 @@ fn finite_non_negative(value: f32) -> f32 {
 }
 
 /// Keep the start of a UI label and replace an overflowing tail with an
-/// ellipsis. Width is measured with the renderer's active font fallback.
+/// ellipsis. Measure the same shaped candidates and options used for drawing.
 pub fn elide_end<'a>(
     sugarloaf: &mut Sugarloaf,
     value: &'a str,
     max_width: f32,
-    font_size: f32,
+    options: &DrawOpts,
 ) -> Cow<'a, str> {
-    elide_end_with_widths(value, max_width, |character| {
-        sugarloaf.char_advance(character, Attributes::default(), font_size)
+    fit_end(value, max_width, "…", |candidate, _| {
+        sugarloaf.text_mut().measure(candidate, options)
     })
+    .display
 }
 
 /// Keep the editable end of a long value visible, prefixing it with an
@@ -205,83 +208,41 @@ pub fn elide_start<'a>(
     sugarloaf: &mut Sugarloaf,
     value: &'a str,
     max_width: f32,
-    font_size: f32,
+    options: &DrawOpts,
 ) -> Cow<'a, str> {
-    elide_start_with_widths(value, max_width, |character| {
-        sugarloaf.char_advance(character, Attributes::default(), font_size)
+    fit_start(value, max_width, "…", |candidate, _| {
+        sugarloaf.text_mut().measure(candidate, options)
     })
-}
-
-fn elide_end_with_widths<'a>(
-    value: &'a str,
-    max_width: f32,
-    mut width: impl FnMut(char) -> f32,
-) -> Cow<'a, str> {
-    const ELLIPSIS: char = '…';
-    if max_width <= 0.0 {
-        return Cow::Borrowed("");
-    }
-    let ellipsis_width = width(ELLIPSIS);
-    let mut used = 0.0;
-    for (index, character) in value.char_indices() {
-        let character_width = width(character);
-        if used + character_width > max_width {
-            if ellipsis_width > max_width {
-                return Cow::Borrowed("");
-            }
-            let mut end = index;
-            while end > 0 && used + ellipsis_width > max_width {
-                let (previous_index, previous) = value[..end]
-                    .char_indices()
-                    .next_back()
-                    .expect("non-empty prefix");
-                used -= width(previous);
-                end = previous_index;
-            }
-            let mut output = String::from(&value[..end]);
-            output.push(ELLIPSIS);
-            return Cow::Owned(output);
-        }
-        used += character_width;
-    }
-    Cow::Borrowed(value)
-}
-
-fn elide_start_with_widths<'a>(
-    value: &'a str,
-    max_width: f32,
-    mut width: impl FnMut(char) -> f32,
-) -> Cow<'a, str> {
-    const ELLIPSIS: char = '…';
-    if max_width <= 0.0 {
-        return Cow::Borrowed("");
-    }
-    let characters: Vec<char> = value.chars().collect();
-    let widths: Vec<f32> = characters.iter().copied().map(&mut width).collect();
-    if widths.iter().sum::<f32>() <= max_width {
-        return Cow::Borrowed(value);
-    }
-    let ellipsis_width = width(ELLIPSIS);
-    if ellipsis_width > max_width {
-        return Cow::Borrowed("");
-    }
-    let mut used = ellipsis_width;
-    let mut start = characters.len();
-    for index in (0..characters.len()).rev() {
-        if used + widths[index] > max_width {
-            break;
-        }
-        used += widths[index];
-        start = index;
-    }
-    let mut output = String::from(ELLIPSIS);
-    output.extend(characters[start..].iter());
-    Cow::Owned(output)
+    .display
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Independent scalar-width oracles preserve these literal characterization
+    // fixtures. Production measures whole candidates through the Text owner.
+    fn elide_end_with_widths(
+        value: &str,
+        maximum: f32,
+        mut width: impl FnMut(char) -> f32,
+    ) -> Cow<'_, str> {
+        fit_end(value, maximum, "…", |candidate, _| {
+            candidate.chars().map(&mut width).sum()
+        })
+        .display
+    }
+
+    fn elide_start_with_widths(
+        value: &str,
+        maximum: f32,
+        mut width: impl FnMut(char) -> f32,
+    ) -> Cow<'_, str> {
+        fit_start(value, maximum, "…", |candidate, _| {
+            candidate.chars().map(&mut width).sum()
+        })
+        .display
+    }
 
     #[test]
     fn invalid_scale_and_dimensions_are_sanitized() {
@@ -424,5 +385,106 @@ mod tests {
             elide_start_with_widths("feature/very-long", 10.0, |_| 1.0),
             "…very-long"
         );
+    }
+
+    #[test]
+    fn fitting_preserves_whitespace_marker_budget_and_unchanged_storage() {
+        for (value, maximum, end, start) in [
+            ("", 1.0, "", ""),
+            ("abc", 0.0, "", ""),
+            ("abc", 0.5, "", ""),
+            ("abc", 1.0, "…", "…"),
+            ("abc", 2.0, "a…", "…c"),
+            ("abc", 3.0, "abc", "abc"),
+            (" a b ", 4.0, " a …", "… b "),
+        ] {
+            assert_eq!(elide_end_with_widths(value, maximum, |_| 1.0), end);
+            assert_eq!(elide_start_with_widths(value, maximum, |_| 1.0), start);
+        }
+        let original = String::from("An unchanged label");
+        for result in [
+            elide_end_with_widths(&original, 100.0, |_| 1.0),
+            elide_start_with_widths(&original, 100.0, |_| 1.0),
+        ] {
+            assert!(matches!(result, Cow::Borrowed(_)));
+            assert!(std::ptr::eq(result.as_ptr(), original.as_ptr()));
+        }
+    }
+
+    #[test]
+    fn fitting_preserves_nonuniform_advance_budget() {
+        let width = |value| if value == '界' { 2.0 } else { 1.0 };
+        assert_eq!(elide_end_with_widths("界", 2.0, width), "界");
+        assert_eq!(elide_end_with_widths("界x", 2.0, width), "…");
+        assert_eq!(elide_start_with_widths("界x", 2.0, width), "…x");
+    }
+
+    #[test]
+    fn fitting_never_slices_combining_or_joined_graphemes() {
+        assert_eq!(elide_end_with_widths("a\u{301}bc", 2.0, |_| 1.0), "…");
+        assert_eq!(elide_end_with_widths("a👨\u{200d}💻z", 4.0, |_| 1.0), "a…");
+        assert_eq!(elide_start_with_widths("qa\u{301}", 2.0, |_| 1.0), "…");
+    }
+
+    #[test]
+    fn fitting_rejects_nonfinite_geometry_without_measuring() {
+        for maximum in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.0] {
+            assert_eq!(
+                elide_end_with_widths("label", maximum, |_| panic!(
+                    "invalid geometry must not shape"
+                )),
+                ""
+            );
+            assert_eq!(
+                elide_start_with_widths("label", maximum, |_| panic!(
+                    "invalid geometry must not shape"
+                )),
+                ""
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn fitted_label_respects_actual_rounded_font_measurement() {
+        use rio_backend::sugarloaf::{
+            font::{constants, FontData, FontLibrary, FontLibraryData},
+            swash,
+            text::{DrawOpts, Text},
+        };
+        use std::sync::Arc;
+        let mut data = FontLibraryData::default();
+        data.insert(
+            FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap(),
+        );
+        for _ in 0..3 {
+            data.insert_alias(0);
+        }
+        let fonts = FontLibrary {
+            inner: Arc::new(parking_lot::RwLock::new(data)),
+        };
+        let font =
+            swash::FontRef::from_index(constants::FONT_CASCADIA_CODE_NF, 0).unwrap();
+        let metrics = font.glyph_metrics(&[]);
+        let units = f32::from(font.metrics(&[]).units_per_em);
+        let options = DrawOpts {
+            font_size: 12.6,
+            ..DrawOpts::default()
+        };
+        let advance = |character: char| {
+            metrics.advance_width(font.charmap().map(character as u32))
+                * options.font_size
+                / units
+        };
+        // The old app path uses these unrounded isolated advances. The actual
+        // prepared-font shaper is an independent oracle for the emitted label.
+        let maximum = advance('W') * 6.0 + 0.01;
+        let mut text = Text::new(&fonts);
+        let display = fit_end("WWWWWWWW", maximum, "…", |candidate, _| {
+            text.measure(candidate, &options)
+        })
+        .display;
+        let actual = Text::new(&fonts).measure(&display, &options);
+        assert!(actual <= maximum, "actual width {actual} exceeds {maximum}");
     }
 }

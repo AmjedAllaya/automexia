@@ -18,6 +18,26 @@ Automexia is designed to work with **zero configuration**. The most maintainable
 
 This separation prevents the global config from becoming a collection of one-off project assumptions.
 
+## Understand what controls the appearance
+
+Fonts and line height control text density; themes control colors; window and
+navigation settings control the surrounding terminal chrome. Cursor settings
+control the insertion indicator. Start with a readable font and a solid
+background, then adjust one of these groups at a time. Check both a narrow split
+and a full-size pane before keeping a change.
+
+The [visual language](../LIQUID-HACKER-UX.md) explains the existing hierarchy:
+terminal content first, a clear active pane, restrained accents and compact
+supporting controls. Appearance controls do not rewrite retained output or grant
+execution authority. Platform-specific effects and unsupported settings must not be
+assumed available merely because a theme looks similar on another system.
+
+Application dialogs retain Automexia's blue-black surfaces and brighter focus
+cues. The palette, Connection Hub and quit confirmation use quieter borders and
+clearer label hierarchy; palette shortcut badges are visually shortened when
+space is limited. This does not change a binding or your terminal font, ANSI
+colours, tab colour, line height or saved settings. No reset or migration is needed.
+
 ## 1. Create a starter config
 
 Run:
@@ -240,3 +260,12 @@ For every available key, type, range, default, and platform override, use [Confi
 The [terminal interaction status](../TERMINAL-INTERACTION-REQUIREMENTS.md)
 identifies current UI and persistence owners. This guide describes only
 settings supported by current source, not additional configuration options.
+
+Opening the configuration uses the configured external editor; it should not
+be confused with an editor for every preference inside the terminal. The
+application-owned runtime-preference overlay stores font size and forced
+light/dark appearance, not every setting in this guide. Other declarative
+preferences remain in `config.toml`. See
+[runtime preference ownership](../adr/0036-application-owned-runtime-user-preferences.md)
+for precedence, reset, recovery and storage limits. Existing configuration
+support does not establish release or native evidence for every combination.

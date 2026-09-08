@@ -8,9 +8,11 @@ import importlib.util
 import io
 import json
 import pathlib
+import subprocess
 import sys
 import tempfile
 import time
+import threading
 import unittest
 from unittest import mock
 import zipfile
@@ -24,6 +26,168 @@ SPEC.loader.exec_module(QA)
 
 
 class QaRunnerTests(unittest.TestCase):
+    def test_cli_artifact_announcements_never_include_the_checkout_root(self) -> None:
+        # Stub only external execution/host observations. The real CLI still
+        # writes and packages its reports, so this exercises the leaking path.
+        for status in ("pass", "fail"):
+            with self.subTest(status=status), tempfile.TemporaryDirectory() as temporary:
+                root = pathlib.Path(temporary)
+                junit = root / "target" / "nextest" / "ci" / "junit.xml"
+                junit.parent.mkdir(parents=True)
+                junit.write_text("<testsuites/>", encoding="utf-8")
+                output = io.StringIO()
+                observed_commands = {}
+
+                def external_step(_run_dir, _index, name, _command, **_kwargs):
+                    observed_commands[name] = _command
+                    return {"name": name, "command": "fixture command", "status": status if name == "component-host" else "pass",
+                            "required": True, "duration_seconds": 0}
+
+                with contextlib.ExitStack() as stack:
+                    stack.enter_context(mock.patch.object(QA, "ROOT", root))
+                    stack.enter_context(mock.patch.object(sys, "argv", ["qa.py", "--full", "--bundle"]))
+                    stack.enter_context(mock.patch.dict(QA.os.environ, {"AUTOMEXIA_QA_RUN_LABEL": "fixture-run"}, clear=True))
+                    stack.enter_context(mock.patch.object(QA, "git_value", return_value="a" * 40))
+                    stack.enter_context(mock.patch.object(QA, "dirty_fingerprint", return_value="b" * 64))
+                    stack.enter_context(mock.patch.object(QA, "collect_host_manifest", return_value={}))
+                    stack.enter_context(mock.patch.object(QA, "safe_version", return_value="fixture"))
+                    stack.enter_context(mock.patch.object(QA, "run_step", side_effect=external_step))
+                    stack.enter_context(contextlib.redirect_stdout(output))
+                    result = QA.main()
+
+                self.assertEqual(result, 0 if status == "pass" else 1)
+                self.assertEqual(observed_commands["component-host"],
+                                 ["cargo", "nextest", "run", "-p", "automexia-ecosystem-runtime", "--all-features", "--locked", "--profile", "default"])
+                summary = json.loads((root / "target/qa/fixture-run/summary.json").read_text(encoding="utf-8"))
+                self.assertEqual(summary["required_failures"], [] if status == "pass" else ["component-host"])
+                self.assertEqual(QA.STEP_TIMEOUT_SECONDS["component-host"], 900)
+                self.assertTrue("Evidence report: target/qa/fixture-run/report.html" in output.getvalue(),
+                                "report announcement must use its repository-relative logical location")
+                self.assertTrue("Evidence bundle: target/qa/fixture-run.zip" in output.getvalue(),
+                                "bundle announcement must use its repository-relative logical location")
+                self.assertFalse(str(root) in output.getvalue(), "local root reached CLI output")
+                self.assertTrue((root / "target/qa/fixture-run/report.html").is_file())
+                self.assertTrue((root / "target/qa/fixture-run.zip").is_file())
+
+    def test_dirty_fingerprint_changes_when_only_existing_dirty_content_changes(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "fixture.txt").write_text("first", encoding="utf-8")
+            with mock.patch.object(QA, "ROOT", root), mock.patch.object(QA, "source_status_bytes", return_value=b" M fixture.txt\0"):
+                before = QA.dirty_fingerprint()
+                (root / "fixture.txt").write_text("other", encoding="utf-8")
+                after = QA.dirty_fingerprint()
+            self.assertNotEqual(before, after, "status-only hashes cannot identify tested source")
+
+    def test_source_content_identity_covers_untracked_rename_delete_and_unicode(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            name = "fixture space-界.txt"
+            (root / name).write_bytes(b"first")
+            raw = b"R  " + name.encode() + b"\0old.txt\0?? untracked.txt\0"
+            first = QA.fingerprint_status_contents(raw, root)
+            (root / "untracked.txt").write_bytes(b"content")
+            second = QA.fingerprint_status_contents(raw, root)
+            self.assertNotEqual(first, second)
+            (root / name).unlink()
+            self.assertNotEqual(second, QA.fingerprint_status_contents(raw, root))
+            self.assertEqual(QA.fingerprint_status_contents(b"", root), QA.fingerprint_status_contents(b"", root))
+
+    def test_real_git_inventory_and_same_status_content_edits_have_distinct_identities(self) -> None:
+        # This disposable empty repository has no commit, hooks or remote and
+        # never stages or changes the contributor's actual working tree.
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            subprocess.run(["git", "init", "--quiet", "--template=", str(root)], check=True, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            fixture = root / "fixture space-界.txt"
+            fixture.write_bytes(b"first")
+            with mock.patch.object(QA, "ROOT", root):
+                before = QA.dirty_fingerprint()
+                raw_before = QA.source_status_bytes()
+                fixture.write_bytes(b"other")
+                after = QA.dirty_fingerprint()
+                self.assertEqual(raw_before, QA.source_status_bytes())
+                self.assertNotEqual(before, "unavailable")
+                self.assertNotEqual(after, "unavailable")
+                self.assertNotEqual(before, after)
+
+    def test_source_content_identity_fails_closed_on_limits_and_unsafe_inventory(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = pathlib.Path(temporary)
+            (root / "fixture").write_bytes(b"1234")
+            for raw in (b"bad", b"?? ../outside\0", b"?? /outside\0", b"?? D:/outside\0", b"?? .git/config\0", b"R  fixture\0"):
+                with self.subTest(raw=raw), self.assertRaises((ValueError, StopIteration)):
+                    QA.fingerprint_status_contents(raw, root)
+            for limit, value in (("MAX_SOURCE_FILE_BYTES", 3), ("MAX_SOURCE_TOTAL_BYTES", 3), ("MAX_SOURCE_FILES", 0), ("MAX_SOURCE_STATUS_BYTES", 3)):
+                with mock.patch.object(QA, limit, value), self.assertRaises(ValueError):
+                    QA.fingerprint_status_contents(b" M fixture\0", root)
+            for limit in ("MAX_SOURCE_FILE_BYTES", "MAX_SOURCE_TOTAL_BYTES"):
+                with mock.patch.object(QA, limit, 4):
+                    self.assertEqual(len(QA.fingerprint_status_contents(b" M fixture\0", root)), 64)
+
+    def test_source_identity_rejects_changed_or_unavailable_evidence(self) -> None:
+        valid = ("a" * 40, "b" * 64)
+        self.assertTrue(QA.source_identity_stable(valid, valid))
+        for other in (("c" * 40, valid[1]), (valid[0], "c" * 64), ("unavailable", valid[1]), (valid[0], "unavailable"), ("", "")):
+            self.assertFalse(QA.source_identity_stable(valid, other))
+            if "unavailable" in other or other == ("", ""):
+                self.assertFalse(QA.source_identity_stable(other, other))
+        with mock.patch.object(QA, "source_status_bytes", return_value=None):
+            self.assertEqual(QA.dirty_fingerprint(), "unavailable")
+        invalid_commit = ("a" * 41, "b" * 64)
+        self.assertFalse(QA.source_identity_stable(invalid_commit, invalid_commit))
+
+    def test_source_status_capture_has_real_process_byte_and_deadline_bounds(self) -> None:
+        spawn = subprocess.Popen
+        children = []
+        def fixture_process(_command, **kwargs):
+            if _command[0] != "git":
+                return spawn(_command, **kwargs)
+            child = spawn([sys.executable, "-c", code], **kwargs)
+            children.append(child)
+            return child
+        for code, expected, should_timeout in (
+            ("import sys;sys.stdout.buffer.write(b'?? fixture\\0')", b"?? fixture\0", False),
+            ("import sys;sys.stdout.buffer.write(b'x'*65536)", None, False),
+            ("import time;time.sleep(30)", None, True),
+        ):
+            # Mock only Git's executable output, not pipe ownership, collection,
+            # process termination or the resulting byte/deadline oracle.
+            with (
+                self.subTest(expected=expected),
+                mock.patch.object(QA.subprocess, "Popen", side_effect=fixture_process),
+                mock.patch.object(QA, "MAX_SOURCE_STATUS_BYTES", 1024),
+                mock.patch.object(QA, "SOURCE_STATUS_TIMEOUT_SECONDS", 0.5 if should_timeout else 10),
+                mock.patch.object(QA, "terminate_process_tree", wraps=QA.terminate_process_tree) as cleanup,
+            ):
+                self.assertEqual(QA.source_status_bytes(), expected)
+                self.assertEqual(cleanup.called, should_timeout)
+            self.assertIsNotNone(children[-1].poll())
+            self.assertFalse(any(thread.name == "automexia-qa-source-status" for thread in threading.enumerate()))
+
+    def test_qa_main_fails_the_report_when_source_changes_even_if_all_commands_pass(self) -> None:
+        for final, expected in (("b" * 64, 0), ("c" * 64, 1), ("unavailable", 1)):
+            with self.subTest(final=final), tempfile.TemporaryDirectory() as temporary:
+                root = pathlib.Path(temporary)
+                def successful_step(_directory, _index, name, *_args, **_kwargs):
+                    return {"name": name, "status": "pass", "required": True}
+                with (
+                    mock.patch.object(QA, "ROOT", root),
+                    mock.patch.object(sys, "argv", ["qa.py", "--full"]),
+                    mock.patch.dict(QA.os.environ, {"AUTOMEXIA_QA_RUN_LABEL": "identity-fixture"}, clear=True),
+                    mock.patch.object(QA, "run_step", side_effect=successful_step),
+                    mock.patch.object(QA, "collect_junit", return_value={"name": "junit", "status": "pass", "required": True}),
+                    mock.patch.object(QA, "dirty_fingerprint", side_effect=["b" * 64, final]),
+                    mock.patch.object(QA, "git_value", return_value="a" * 40),
+                    mock.patch.object(QA, "safe_version", return_value="fixture-version"),
+                    mock.patch.object(QA, "collect_host_manifest", return_value={}),
+                    contextlib.redirect_stdout(io.StringIO()),
+                ):
+                    self.assertEqual(QA.main(), expected)
+                report = json.loads((root / "target/qa/identity-fixture/summary.json").read_text())
+                self.assertEqual(report["status"], "pass" if expected == 0 else "fail")
+                self.assertEqual(report["required_failures"], [] if expected == 0 else ["source-identity-stable"])
+
     @staticmethod
     def run_step_quiet(*args, **kwargs):
         with contextlib.redirect_stdout(io.StringIO()):

@@ -452,6 +452,78 @@ fn ui_controller_rejects_cross_route_snapshot_before_rendering() {
     assert!(controller.surface().is_none());
 }
 
+#[test]
+fn visually_shortened_candidates_keep_full_semantics_and_exact_editor_replacement() {
+    for pointer in [false, true] {
+        let service = SuggestionService::default();
+        service.set_config(SuggestionConfig::preview_only());
+        let route = route(1, ShellKind::PowerShell, "2.4.5");
+        let capability = SuggestionCapability::from_bytes([23; 32]);
+        service.register_route(route.clone(), capability).unwrap();
+        let request = request(&route, capability, 1);
+        let mut input = batch(&request);
+        let insertion = format!("ch{}", "e\u{301}".repeat(80));
+        let description = "文".repeat(100);
+        input.candidates[0].candidate.display = insertion.clone();
+        input.candidates[0].candidate.insertion = insertion.clone();
+        input.candidates[0].candidate.description = description.clone();
+
+        // Submit the original bounded candidate through validation/ranking;
+        // do not inject the projected option or native replacement under test.
+        let snapshot = service
+            .try_submit(request.clone(), vec![input])
+            .unwrap()
+            .wait_timeout(Duration::from_secs(2))
+            .expect("bounded Unicode candidate publication")
+            .unwrap();
+        let mut controller = SuggestionUiController::new(service);
+        let surface = controller
+            .publish(request.clone(), snapshot, surface_request(), 1_000)
+            .unwrap();
+        assert_eq!(
+            surface.options[0].display,
+            format!("ch{}…", "e\u{301}".repeat(69))
+        );
+        assert_eq!(surface.options[0].accessible_value, insertion);
+        assert_eq!(surface.options[0].accessible_name, format!(
+            "{insertion}, command, {description}, native shell, current, changes state, 1 of 1"
+        ));
+        let point = Point::new(
+            surface.bounds.x + 8.0,
+            surface.bounds.y + surface.header_height + 4.0,
+        );
+        let current = AcceptanceContext::from_request(&request);
+        let accepted = if pointer {
+            controller.pointer_moved(point).unwrap();
+            controller.pointer_accept(&current).unwrap()
+        } else {
+            controller
+                .handle_key(
+                    SuggestionInteractionKey::Tab,
+                    SuggestionAcceptanceKeys {
+                        tab: true,
+                        right_arrow: false,
+                    },
+                    &current,
+                )
+                .unwrap()
+        };
+        let SuggestionInteractionOutcome::Replace(replacement) = accepted else {
+            panic!("explicit acceptance must return a typed editor replacement");
+        };
+        let actual = replacement
+            .revalidate(&current, &request.capability)
+            .unwrap();
+        assert_eq!(actual.span, request.replacement_span);
+        assert_eq!(actual.bytes, insertion.as_bytes());
+        assert!(!replacement.execute);
+        assert!(!actual.bytes.contains(&b'\n'));
+        controller.service().disable();
+        assert!(!controller.service().worker_running());
+        assert_eq!(controller.service().health().cache_bytes, 0);
+    }
+}
+
 struct OneByteReader(Cursor<Vec<u8>>);
 
 impl Read for OneByteReader {

@@ -51,6 +51,9 @@ pub struct Mouse {
     /// preview. The matching release is consumed as well, so a child
     /// application never receives a split mouse-event pair.
     pub image_preview_click_latched: bool,
+    /// Host-owned secondary presses must not leak a release after modifiers
+    /// or terminal mouse mode change. Right and middle can be held together.
+    pub(crate) clipboard_press_latches: [bool; 2],
 }
 
 impl Default for Mouse {
@@ -74,11 +77,28 @@ impl Default for Mouse {
             last_cell: None,
             hint_click_latched: None,
             image_preview_click_latched: false,
+            clipboard_press_latches: [false; 2],
         }
     }
 }
 
 impl Mouse {
+    pub fn set_clipboard_press(&mut self, button: MouseButton, owned: bool) {
+        match button {
+            MouseButton::Right => self.clipboard_press_latches[0] = owned,
+            MouseButton::Middle => self.clipboard_press_latches[1] = owned,
+            _ => {}
+        }
+    }
+
+    pub fn take_clipboard_release(&mut self, button: MouseButton) -> bool {
+        match button {
+            MouseButton::Right => std::mem::take(&mut self.clipboard_press_latches[0]),
+            MouseButton::Middle => std::mem::take(&mut self.clipboard_press_latches[1]),
+            _ => false,
+        }
+    }
+
     pub fn new(multiplier: f64, divider: f64) -> Self {
         Self {
             multiplier,
@@ -188,6 +208,23 @@ pub mod test {
             y,
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn clipboard_release_ownership_is_per_button_and_consumed_once() {
+        let mut mouse = Mouse::default();
+        mouse.set_clipboard_press(MouseButton::Right, true);
+        mouse.set_clipboard_press(MouseButton::Middle, true);
+        assert!(!mouse.take_clipboard_release(MouseButton::Left));
+        assert!(mouse.take_clipboard_release(MouseButton::Right));
+        assert!(!mouse.take_clipboard_release(MouseButton::Right));
+        assert!(mouse.take_clipboard_release(MouseButton::Middle));
+        mouse.set_clipboard_press(MouseButton::Right, true);
+        mouse.set_clipboard_press(MouseButton::Right, false);
+        assert!(
+            !mouse.take_clipboard_release(MouseButton::Right),
+            "reported press retains its release"
+        );
     }
 
     /// Canonical stride: cell width = 9 (u32). Boundaries at 0, 9, 18, 27.

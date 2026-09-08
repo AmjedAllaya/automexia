@@ -11,6 +11,51 @@ root = Path('.github')
 wf = root / 'workflows'
 errors: list[str] = []
 
+# Rustup's environment selector takes precedence over checkout and runner
+# defaults. Validate the selected compiler, not merely an installation command.
+compiler_pin = None
+try:
+    pin_path = Path('rust-toolchain.toml')
+    if pin_path.is_symlink() or not pin_path.is_file():
+        raise ValueError
+    with pin_path.open('rb') as pin_file:
+        pin_bytes = pin_file.read(16 * 1024 + 1)
+    if len(pin_bytes) > 16 * 1024:
+        raise ValueError
+    toolchain = tomllib.loads(pin_bytes.decode('utf-8')).get('toolchain')
+    if not isinstance(toolchain, dict):
+        raise ValueError
+    channel = toolchain.get('channel')
+    if not isinstance(channel, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', channel):
+        raise ValueError
+    compiler_pin = channel
+except (OSError, ValueError):
+    errors.append('compiler authority must be a regular bounded rust-toolchain.toml with an exact version')
+if Path('rust-toolchain').exists() or Path('rust-toolchain').is_symlink():
+    errors.append('compiler authority must not be shadowed by legacy rust-toolchain')
+
+compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml')
+for workflow_name in compiler_workflows:
+    workflow_text = (wf / workflow_name).read_text(encoding='utf-8')
+    selectors = re.findall(r'(?m)^[ \t]*RUSTUP_TOOLCHAIN:[^\n]*$', workflow_text)
+    if compiler_pin is None or selectors != [f"  RUSTUP_TOOLCHAIN: '{compiler_pin}'"]:
+        errors.append(f'{workflow_name} compiler selection must match the repository pin exactly once at workflow scope')
+    if 'AUTOMEXIA_RUST_TOOLCHAIN' in workflow_text or 'rustup default' in workflow_text:
+        errors.append(f'{workflow_name} compiler selection must use RUSTUP_TOOLCHAIN without changing runner defaults')
+
+compiler_cache_initializer = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
+for workflow_name in ('ci.yml', 'linux-early-access.yml'):
+    cache_text = (wf / workflow_name).read_text(encoding='utf-8')
+    quality = re.search(r'(?ms)^  quality:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)', cache_text)
+    body = quality.group('body') if quality else ''
+    # A job-level env expression cannot refer to env. Initialize the runner
+    # environment before the cache action reads it, without clobbering the file.
+    cache_lines = [line for line in cache_text.splitlines() if 'SCCACHE_GHA_VERSION' in line]
+    setup = body.find(compiler_cache_initializer)
+    startup = body.find('- name: Install checksum-verified compiler cache')
+    if cache_lines != ['          ' + compiler_cache_initializer] or not 0 <= setup < startup:
+        errors.append(f'{workflow_name} compiler cache must initialize its selected-toolchain generation before startup')
+
 EXPECTED_WORKFLOWS = {
     'ci.yml',
     'f5-openssh-assurance.yml',
@@ -163,9 +208,6 @@ if quality_job is not None:
         'NEXTEST_TEST_THREADS': "      NEXTEST_TEST_THREADS: '1'",
         'RUSTC_WRAPPER': '      RUSTC_WRAPPER: sccache',
         'SCCACHE_GHA_ENABLED': "      SCCACHE_GHA_ENABLED: 'true'",
-        'SCCACHE_GHA_VERSION': (
-            '      SCCACHE_GHA_VERSION: automexia-rust-1.98-v1'
-        ),
     }
     for name, expected_assignment in required_resource_environment.items():
         assignments = re.findall(

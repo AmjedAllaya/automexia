@@ -60,6 +60,24 @@ Avoid:
 - any price, revenue, customer, compliance, or availability claim that lacks
   published evidence.
 
+## Application chrome
+
+Automexia retains blue-black surfaces, cool readable text and its cyan, purple,
+blue, lime, amber and coral vector-icon vocabulary. Passive card borders are
+subdued; brighter cyan marks keyboard input and palette selection. Ordinary
+labels remain regular-weight, with bold reserved for headings and active titles.
+Palette key labels use 11 logical pixels and fit within a bounded trailing area.
+
+The palette, Connection Hub and quit confirmation share the renderer's existing
+surface tokens. Modal cards, controls and keycaps use a restrained rounded
+hierarchy; danger controls retain their distinct warning treatment. No blur,
+new motion, font download or terminal-colour override is introduced.
+See [visual language](LIQUID-HACKER-UX.md) for scope and validation limits.
+
+Command boundaries use a short, inset status-coloured accent. Continuous
+edge-to-edge rules remain structural pane/footer cues. Timestamp and status
+symbols retain their meaning, so the distinction does not rely on hue alone.
+
 ## Visual asset workflow
 
 The canonical source image is

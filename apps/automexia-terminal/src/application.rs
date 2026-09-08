@@ -390,6 +390,9 @@ impl Application<'_> {
             .routes
             .get(&window_id)
             .map(|route| {
+                // Native destruction can be queued behind the final callback.
+                // Dismiss the confirmed window before any destructor can wait.
+                route.window.winit_window.set_visible(false);
                 let manager = &route.window.screen.context_manager;
                 (manager.route_ids(), manager.request_pty_shutdown())
             })
@@ -406,6 +409,7 @@ impl Application<'_> {
     }
 
     fn request_application_exit(&mut self, event_loop: &ActiveEventLoop) {
+        self.router.hide_windows_for_exit();
         let shutdown_requests = self.router.request_pty_shutdown();
         tracing::debug!(
             shutdown_requests,
@@ -1787,6 +1791,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
 
+                if state == ElementState::Pressed {
+                    route.window.screen.mouse.set_clipboard_press(button, true);
+                }
+
                 match state {
                     ElementState::Pressed => {
                         // Calculate time since the last click to handle double/triple clicks.
@@ -1919,8 +1927,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // click always uses the target pane's cwd and shell
                         // metadata. The click still does not start a
                         // selection merely because focus changed.
-                        let selected_new_panel = button == MouseButton::Left
-                            && route.window.screen.select_current_based_on_mouse();
+                        let selected_new_panel = match button {
+                            MouseButton::Left => {
+                                route.window.screen.select_current_based_on_mouse()
+                            }
+                            MouseButton::Right | MouseButton::Middle => {
+                                let Some(changed) =
+                                    route.window.screen.select_mouse_clipboard_target()
+                                else {
+                                    return;
+                                };
+                                changed
+                            }
+                            _ => false,
+                        };
                         if selected_new_panel {
                             route.request_redraw();
                         }
@@ -1950,7 +1970,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // Always try panel switching first: if the click
                         // targets a different panel, switch to it regardless
                         // of mouse mode (e.g. neovim capturing clicks).
-                        if selected_new_panel {
+                        if selected_new_panel && button == MouseButton::Left {
                             // Focus change owns this click.
                         } else if should_report_terminal_mouse(
                             route.window.screen.modifiers.state().shift_key(),
@@ -1975,10 +1995,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 .screen
                                 .mouse_report(code, ElementState::Pressed);
 
-                            route.window.screen.process_mouse_bindings(
-                                button,
-                                &mut self.router.clipboard,
-                            );
+                            route.window.screen.mouse.set_clipboard_press(button, false);
                         } else {
                             // Load mouse point, treating message bar and padding as the closest square.
                             let display_offset = route.window.screen.display_offset();
@@ -2007,6 +2024,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             let timer_id =
                                 TimerId::new(Topic::SelectionScrolling, scroll_timer_id);
                             self.scheduler.unschedule(timer_id);
+                        }
+
+                        if route.window.screen.mouse.take_clipboard_release(button) {
+                            return;
                         }
 
                         if button == MouseButton::Left
@@ -3052,7 +3073,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let control_flow = match self.scheduler.update() {
+        let scheduled = self.scheduler.update();
+        let cleanup = self.router.workers.poll_cleanup();
+        let next_wake = scheduled.into_iter().chain(cleanup).min();
+        let control_flow = match next_wake {
             Some(instant) => ControlFlow::WaitUntil(instant),
             None => ControlFlow::Wait,
         };
@@ -3111,17 +3135,23 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // OS-driven termination may bypass the explicit Quit event. Start every
         // owned PTY concurrently before waiting on settings, services, or route
         // destructors in that path as well.
+        self.router.hide_windows_for_exit();
         let shutdown_requests = self.router.request_pty_shutdown();
         tracing::debug!(shutdown_requests, "final PTY shutdown broadcast completed");
+        // Destroy native surfaces before service waits, including backends
+        // without visibility control. Context drops only retire worker leases.
+        self.router.routes.clear();
         if !self.preference_writer.shutdown(Duration::from_secs(2)) {
             tracing::warn!(
                 "saved terminal settings did not finish flushing before shutdown"
             );
         }
         self.router.shutdown_services();
-        // Ensure that all the windows are dropped, so the destructors for
-        // Renderer and contexts ran.
-        self.router.routes.clear();
+
+        let pending = self.router.workers.finish_shutdown(Duration::from_secs(10));
+        if pending != 0 {
+            tracing::error!(pending, "PTY workers remain at final application exit");
+        }
 
         // SAFETY: The clipboard must be dropped before the event loop, so
         // replace it with a safe no-op placeholder.

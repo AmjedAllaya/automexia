@@ -525,6 +525,17 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 ):
                     POLICY.source_files(root, "shell-integration")
 
+    def test_missing_runtime_directory_is_not_treated_as_benchmark_only(self) -> None:
+        # A benchmark-only workspace member is not permission to skip source
+        # scanning or accept an arbitrary missing runtime directory.
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "Cargo.toml").write_text(
+                '[workspace]\nmembers = ["ordinary-package"]\n', encoding="utf-8"
+            )
+            with self.assertRaisesRegex(POLICY.CommandProductivityError, "runtime source directory is missing"):
+                POLICY.workspace_runtime_files(root)
+
     def test_workspace_member_cannot_escape_repository_boundary(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -537,6 +548,105 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 "escapes the repository boundary",
             ):
                 POLICY.workspace_runtime_files(root)
+
+    @staticmethod
+    def benchmark_workspace(root: Path, mutation=lambda source: source) -> Path:
+        (root / "Cargo.toml").write_text(
+            '[workspace]\nmembers = ["tools/renderer-benchmarks"]\n', encoding="utf-8"
+        )
+        member = root / "tools/renderer-benchmarks"
+        (member / "benches").mkdir(parents=True)
+        manifest = '''[package]
+name = "automexia-renderer-benchmarks"
+version = "0.0.0"
+publish = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+build = false
+[[bench]]
+name = "text_fit"
+harness = false
+'''
+        (member / "Cargo.toml").write_text(mutation(manifest), encoding="utf-8")
+        source = member / "benches/text_fit.rs"
+        source.write_text("fn main() {}\n", encoding="utf-8")
+        return source
+
+    def test_benchmark_only_workspace_sources_are_scanned_not_skipped(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.benchmark_workspace(root)
+            helper = source.with_name("helper.rs")
+            helper.write_text("fn helper() {}\n", encoding="utf-8")
+            self.assertEqual(POLICY.workspace_runtime_files(root), sorted([source, helper]))
+
+    def test_benchmark_workspace_rejects_runtime_and_hidden_target_mutations(self) -> None:
+        mutations = [
+            lambda text: text.replace('publish = false', 'publish = true'),
+            lambda text: text.replace('name = "automexia-renderer-benchmarks"', 'name = "ordinary"'),
+            lambda text: text.replace('build = false', 'build = "build.rs"'),
+            lambda text: text.replace('name = "text_fit"', 'name = "hidden"'),
+            lambda text: text + '\n[lib]\npath = "benches/text_fit.rs"\n',
+            lambda text: text + '\n[[bin]]\nname = "hidden"\n',
+            lambda text: text + '\n[[test]]\nname = "hidden"\n',
+            lambda text: text + '\n[[example]]\nname = "hidden"\n',
+            lambda text: text + '\n[[bench]]\nname = "hidden"\n',
+            lambda text: text + 'path = "../outside.rs"\n',
+            lambda text: text + 'required-features = ["hidden"]\n',
+            lambda text: text.replace('harness = false', 'harness = true'),
+            lambda text: text.replace('harness = false', 'harness = 0'),
+        ]
+        mutations.extend(lambda text, key=key: text.replace(key + ' = false', key + ' = true')
+                         for key in ['autolib', 'autobins', 'autoexamples', 'autotests', 'autobenches'])
+        for index, mutation in enumerate(mutations):
+            with self.subTest(mutation=index), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.benchmark_workspace(root, mutation)
+                with self.assertRaisesRegex(POLICY.CommandProductivityError, "benchmark-only"):
+                    POLICY.workspace_runtime_files(root)
+
+    def test_benchmark_manifest_failure_is_bounded_and_redacted(self) -> None:
+        for data in [b'package = [', b'\xff', b'#' * (POLICY.POLICY_DOCUMENT_MAX_BYTES + 1)]:
+            with tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.benchmark_workspace(root)
+                (root / 'tools/renderer-benchmarks/Cargo.toml').write_bytes(data)
+                with self.assertRaises(POLICY.CommandProductivityError) as failure:
+                    POLICY.workspace_runtime_files(root)
+                self.assertEqual(str(failure.exception),
+                                 'benchmark-only manifest is missing, malformed, linked or outside policy bounds')
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.benchmark_workspace(root)
+            source.unlink()
+            with self.assertRaisesRegex(POLICY.CommandProductivityError, 'benchmark-only text_fit source is missing'):
+                POLICY.workspace_runtime_files(root)
+
+    def test_benchmark_workspace_keeps_source_bounds_and_link_rejection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = self.benchmark_workspace(root)
+            source.with_name("helper.rs").write_text("fn helper() {}\n", encoding="utf-8")
+            with patch.object(POLICY, "SCANNED_SOURCE_MAX_FILES", 1):
+                with self.assertRaisesRegex(POLICY.CommandProductivityError, "file scan limit"):
+                    POLICY.workspace_runtime_files(root)
+            with patch.object(Path, "is_symlink", autospec=True, side_effect=lambda path: path == source):
+                with self.assertRaisesRegex(POLICY.CommandProductivityError, "symbolic link"):
+                    POLICY.workspace_runtime_files(root)
+
+    def test_benchmark_workspace_rejects_unexpected_runtime_source_or_build_script(self) -> None:
+        for extra in ["src/lib.rs", "build.rs"]:
+            with self.subTest(extra=extra), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                self.benchmark_workspace(root)
+                path = root / "tools/renderer-benchmarks" / extra
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text("fn main() {}\n", encoding="utf-8")
+                with self.assertRaisesRegex(POLICY.CommandProductivityError, "benchmark-only"):
+                    POLICY.workspace_runtime_files(root)
 
     def test_missing_ci_wiring_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

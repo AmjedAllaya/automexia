@@ -13,7 +13,7 @@ unlisted product capability is available.
 |---|---|---|
 | Terminal emulation | VT/CSI/OSC/DCS parsing, Unicode text, scrollback, reflow, search, mouse reporting, and keyboard selection | [Architecture](ARCHITECTURE.md), [testing](TESTING.md) |
 | Native shell sessions | Unix PTY and Windows ConPTY launch, resize, ordered input, exit reporting, and cleanup | [Platforms](PLATFORMS.md), [troubleshooting](TROUBLESHOOTING.md) |
-| Windows, tabs, and panes | Independent windows, tabs, pane-local tabs, splits, focus movement, and divider resizing | [Keyboard](KEYBOARD.md), [terminal guide](guide/terminal-experience.md) |
+| Windows, tabs, and panes | Independent windows, tabs, pane-local tabs, mnemonic fresh/cloned splits, focus movement, divider resizing and grouped discovery with left-arrow Back; current-source shortcut labels follow effective configuration | [Keyboard](KEYBOARD.md), [terminal guide](guide/terminal-experience.md) |
 | Search and selection | Scoped search, keyboard and pointer selection, copy, paste, and command navigation | [Keyboard](KEYBOARD.md), [productivity guide](user-guide/productivity.md) |
 | Appearance | Fonts, themes, opacity, cursor choices, line spacing, and saved appearance preferences | [Configuration](CONFIGURATION.md), [customization](user-guide/customization.md) |
 | Shell integration | Session-local integration for supported shells, prompt metadata, and object-preserving listings | [Shell integration](SHELL-INTEGRATION.md) |

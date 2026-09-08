@@ -183,6 +183,7 @@ enum SecondaryClickClipboardAction {
 enum PointerPaneFocusReason {
     Click,
     Wheel,
+    ClipboardClick,
 }
 
 impl PointerPaneFocusReason {
@@ -550,6 +551,7 @@ struct NativeWindowSnapshot {
     palette_selected_index: usize,
     palette_visible_results: usize,
     palette_total_results: usize,
+    palette_accessibility_summary: Option<String>,
     confirm_quit_active: bool,
     connection_hub_active: bool,
     connection_hub_route: Option<&'static str>,
@@ -768,6 +770,8 @@ fn write_native_resize_snapshot(
     snapshot["palette_visible_results"] =
         serde_json::json!(window.palette_visible_results);
     snapshot["palette_total_results"] = serde_json::json!(window.palette_total_results);
+    snapshot["palette_accessibility_summary"] =
+        serde_json::json!(window.palette_accessibility_summary);
     snapshot["compatibility_inspector_active"] =
         serde_json::json!(window.compatibility_inspector_active);
     snapshot["compatibility_inspector_accessibility_summary"] =
@@ -873,6 +877,7 @@ impl ConsumedWin32KeyReleases {
 }
 
 pub(crate) struct ScreenServices {
+    pub(crate) workers: crate::performer::PtyWorkerRegistry,
     pub(crate) action_surface: action_surface::Controller,
     pub(crate) suggestions: crate::automexia::suggestions::SuggestionService,
     pub(crate) connection_hub: crate::automexia::connections::ConnectionHubController,
@@ -969,6 +974,7 @@ impl Screen<'_> {
         let raw_window_handle = window_properties.raw_window_handle;
         let raw_display_handle = window_properties.raw_display_handle;
         let ScreenServices {
+            workers,
             action_surface,
             suggestions,
             connection_hub,
@@ -1064,6 +1070,9 @@ impl Screen<'_> {
             config.keyboard.binding_profile,
             &legacy_unbinds,
         );
+        renderer
+            .command_palette
+            .set_effective_bindings(&bindings, binding_registry.as_ref());
 
         let is_native = config.navigation.is_native();
 
@@ -1075,6 +1084,7 @@ impl Screen<'_> {
         );
 
         let context_manager_config = context::ContextManagerConfig {
+            workers,
             #[cfg(test)]
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
@@ -1572,6 +1582,17 @@ impl Screen<'_> {
         self.select_current_based_on_pointer(PointerPaneFocusReason::Wheel)
     }
 
+    pub fn select_mouse_clipboard_target(&mut self) -> Option<bool> {
+        if self.renderer.command_palette.is_enabled() || self.search_active() {
+            return None;
+        }
+        let mouse = &self.mouse;
+        self.context_manager
+            .current_grid()
+            .find_terminal_at_position(mouse.x as f32, mouse.y as f32)?;
+        Some(self.select_current_based_on_pointer(PointerPaneFocusReason::ClipboardClick))
+    }
+
     #[inline]
     fn select_current_based_on_pointer(
         &mut self,
@@ -1687,6 +1708,9 @@ impl Screen<'_> {
                 config.keyboard.binding_profile,
                 &legacy_unbinds,
             );
+            self.renderer
+                .command_palette
+                .set_effective_bindings(&self.bindings, self.binding_registry.as_ref());
         }
 
         // Apply configuration in-place. Replacing the renderer here used to
@@ -2254,8 +2278,7 @@ impl Screen<'_> {
             if binding.is_triggered_by(binding_mode.to_owned(), mods, &button) {
                 match binding.action {
                     Act::PasteSelection => {
-                        let content = clipboard.get(ClipboardType::Selection);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Selection);
                     }
                     Act::Paste if button == MouseButton::Right => {
                         match secondary_click_clipboard_action(
@@ -2266,10 +2289,10 @@ impl Screen<'_> {
                                 self.clear_selection();
                             }
                             SecondaryClickClipboardAction::PasteClipboard => {
-                                let content = clipboard.get(ClipboardType::Clipboard);
-                                if !content.is_empty() {
-                                    self.paste(&content, true);
-                                }
+                                self.paste_from_clipboard(
+                                    clipboard,
+                                    ClipboardType::Clipboard,
+                                );
                             }
                         }
                     }
@@ -2290,48 +2313,45 @@ impl Screen<'_> {
         let binding_mode = BindingMode::new(mode, search_active);
         let mut ignore_chars = None;
 
+        // Normalize once per event, not once per configured candidate. Keep
+        // physical and logical keys separate so explicit scancodes retain ownership.
+        let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
+            // Windows may expose Ctrl+Alt as AltGr and mangle the logical
+            // key into an unidentified/composed value. Normalize before
+            // character classification so explicit Ctrl+Alt remains reachable.
+            match key.key_without_modifiers() {
+                Key::Character(character) => {
+                    Key::Character(character.to_lowercase().into())
+                }
+                key => key,
+            }
+        } else if let Key::Character(ch) = key.logical_key.as_ref() {
+            // Modified character bindings use the uncomposed spelling; ordinary
+            // characters retain the layout's logical value, case-insensitively.
+            if mods.shift_key() || mods.alt_key() {
+                key.key_without_modifiers()
+            } else {
+                Key::Character(ch.to_lowercase().into())
+            }
+        } else {
+            key.logical_key.clone()
+        };
+        let logical_match = BindingKey::Keycode {
+            key: logical_key,
+            location: key.location,
+        };
+        let physical_match = BindingKey::Scancode(key.physical_key);
+
         for i in 0..self.bindings.len() {
             let binding = &self.bindings[i];
-            let trigger = &binding.trigger;
-            let action = binding.action.clone();
-
-            // We don't want the key without modifier, because it means something else most of
-            // the time. However what we want is to manually lowercase the character to account
-            // for both small and capital letters on regular characters at the same time.
-            let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
-                // Windows may expose Ctrl+Alt as AltGr and mangle the logical
-                // key into an unidentified/composed value. Normalize before
-                // character classification so Ctrl+Alt shell-control
-                // passthroughs and other application shortcuts remain
-                // reachable.
-                match key.key_without_modifiers() {
-                    Key::Character(character) => {
-                        Key::Character(character.to_lowercase().into())
-                    }
-                    key => key,
-                }
-            } else if let Key::Character(ch) = key.logical_key.as_ref() {
-                // Match `Alt` bindings without `Alt` being applied, otherwise they use the
-                // composed chars, which are not intuitive to bind.
-                //
-                if mods.shift_key() || mods.alt_key() {
-                    key.key_without_modifiers()
-                } else {
-                    Key::Character(ch.to_lowercase().into())
-                }
-            } else {
-                key.logical_key.clone()
+            let key_match = match &binding.trigger {
+                BindingKey::Scancode(_) => &physical_match,
+                BindingKey::Keycode { .. } => &logical_match,
             };
 
-            let key_match = match (&trigger, logical_key) {
-                (BindingKey::Scancode(_), _) => BindingKey::Scancode(key.physical_key),
-                (_, code) => BindingKey::Keycode {
-                    key: code,
-                    location: key.location,
-                },
-            };
-
-            if binding.is_triggered_by(binding_mode.to_owned(), mods, &key_match) {
+            if binding.is_triggered_by(binding_mode.clone(), mods, key_match) {
+                // Only matched actions need ownership across mutable dispatch.
+                let action = binding.action.clone();
                 *ignore_chars.get_or_insert(true) &= action != Act::ReceiveChar;
 
                 match &action {
@@ -2340,15 +2360,13 @@ impl Screen<'_> {
                         self.paste(s, false);
                     }
                     Act::Paste => {
-                        let content = clipboard.get(ClipboardType::Clipboard);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
                     }
                     Act::ClearSelection => {
                         self.clear_selection();
                     }
                     Act::PasteSelection => {
-                        let content = clipboard.get(ClipboardType::Selection);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Selection);
                     }
                     Act::Copy => {
                         self.copy_selection(ClipboardType::Clipboard, clipboard);
@@ -4008,6 +4026,46 @@ impl Screen<'_> {
             .is_none()
     }
 
+    /// One activation owner for pointer and keyboard. Navigation and empty
+    /// results cannot fall through into command execution or PTY input.
+    pub fn activate_palette_selection(&mut self, clipboard: &mut Clipboard) {
+        use crate::renderer::command_palette::PaletteAction;
+        if self.renderer.command_palette.activate_navigation() {
+            return;
+        }
+        if self.renderer.command_palette.is_action_placeholder() {
+            self.submit_action_placeholder(self.renderer.command_palette.query.clone());
+        } else if let Some(id) =
+            self.renderer.command_palette.get_selected_action_item_id()
+        {
+            self.begin_action_review(&id);
+        } else if let Some(choice) = self.renderer.command_palette.get_review_choice() {
+            self.apply_reviewed_action(choice, clipboard);
+        } else if let Some(font) = self.renderer.command_palette.get_selected_font() {
+            clipboard.set(rio_backend::clipboard::ClipboardType::Clipboard, font);
+            self.renderer.command_palette.set_enabled(false);
+        } else if let Some(id) = self.renderer.command_palette.get_selected_market_id() {
+            match crate::automexia::runtime::toggle(&id) {
+                Ok(_) => self
+                    .renderer
+                    .command_palette
+                    .enter_market_mode(crate::automexia::runtime::market_items()),
+                Err(_) => tracing::warn!("extension activation change failed"),
+            }
+        } else {
+            match self.renderer.command_palette.get_selected_action() {
+                Some(PaletteAction::OpenMarket) => self.open_extension_marketplace(),
+                Some(PaletteAction::OpenActions) => self.open_action_center(),
+                Some(PaletteAction::ListFonts) => self.open_font_browser(),
+                Some(action) => {
+                    self.renderer.command_palette.set_enabled(false);
+                    self.execute_palette_action(action, clipboard);
+                }
+                None => {}
+            }
+        }
+    }
+
     // return true if the click was handled by the island
     #[inline]
     pub fn handle_palette_click(&mut self, clipboard: &mut Clipboard) -> bool {
@@ -4021,6 +4079,15 @@ impl Screen<'_> {
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
+        if self.renderer.command_palette.try_back_click(
+            mouse_x,
+            mouse_y,
+            (window_width, window_size.height, scale_factor),
+        ) {
+            self.mark_dirty();
+            return true;
+        }
+
         match self.renderer.command_palette.hit_test(
             mouse_x,
             mouse_y,
@@ -4030,29 +4097,7 @@ impl Screen<'_> {
         ) {
             Ok(Some(index)) => {
                 self.renderer.command_palette.selected_index = index;
-                if self.renderer.command_palette.is_action_placeholder() {
-                    let value = self.renderer.command_palette.query.clone();
-                    self.submit_action_placeholder(value);
-                } else if let Some(action_id) =
-                    self.renderer.command_palette.get_selected_action_item_id()
-                {
-                    self.begin_action_review(&action_id);
-                } else if let Some(choice) =
-                    self.renderer.command_palette.get_review_choice()
-                {
-                    self.apply_reviewed_action(choice, clipboard);
-                } else if let Some(action) =
-                    self.renderer.command_palette.get_selected_action()
-                {
-                    if action
-                        == crate::renderer::command_palette::PaletteAction::OpenActions
-                    {
-                        self.open_action_center();
-                    } else {
-                        self.renderer.command_palette.set_enabled(false);
-                        self.execute_palette_action(action, clipboard);
-                    }
-                }
+                self.activate_palette_selection(clipboard);
                 self.mark_dirty();
                 true
             }
@@ -5818,11 +5863,47 @@ impl Screen<'_> {
         self.mouse.accumulated_scroll.y %= height;
     }
 
+    pub(crate) fn paste_from_clipboard(
+        &mut self,
+        clipboard: &mut Clipboard,
+        source: ClipboardType,
+    ) -> bool {
+        // Capture identity before asking the OS provider. No caller may derive
+        // the destination from focus after a delayed clipboard read.
+        let target = self.context_manager.current().paste_target();
+        let content = clipboard.get(source);
+        if self.search_active() {
+            self.paste(&content, true);
+            !content.is_empty()
+        } else {
+            self.finish_paste(target, &content, true)
+        }
+    }
+
+    fn finish_paste(
+        &mut self,
+        target: context::paste::PasteTarget,
+        text: &str,
+        bracketed: bool,
+    ) -> bool {
+        match self.context_manager.deliver_paste(target, text, bracketed) {
+            Ok(sent) => sent,
+            Err(_) => {
+                self.renderer.assistant.set_error(RioError {
+                    level: RioErrorLevel::Warning,
+                    report: RioErrorType::PasteRejected,
+                });
+                self.context_manager.request_render();
+                false
+            }
+        }
+    }
+
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
         let search_active = self.search_active();
         if search_active {
-            for c in text.chars() {
+            for c in text.chars().take(MAX_SEARCH_QUERY_BYTES) {
                 self.search_input(c);
             }
             return;
@@ -5832,52 +5913,8 @@ impl Screen<'_> {
             return;
         }
 
-        // Every payload forwarded to the PTY exits terminal selection mode.
-        // This includes plain/application-cursor arrows, normal text,
-        // clipboard paste, and IME commits.
-        self.scroll_bottom_when_cursor_not_visible();
-        self.clear_selection();
-
-        if bracketed && self.get_mode().contains(Mode::BRACKETED_PASTE) {
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(&b"\x1b[200~"[..]);
-
-            // Write filtered escape sequences.
-            //
-            // We remove `\x1b` to ensure it's impossible for the pasted text to write the bracketed
-            // paste end escape `\x1b[201~` and `\x03` since some shells incorrectly terminate
-            // bracketed paste on its receival.
-            let filtered = text.replace(['\x1b', '\x03'], "");
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(filtered.into_bytes());
-
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(&b"\x1b[201~"[..]);
-        } else {
-            let payload = if bracketed {
-                // In non-bracketed (ie: normal) mode, terminal applications cannot distinguish
-                // pasted data from keystrokes.
-                //
-                // In theory, we should construct the keystrokes needed to produce the data we are
-                // pasting... since that's neither practical nor sensible (and probably an
-                // impossible task to solve in a general way), we'll just replace line breaks
-                // (windows and unix style) with a single carriage return (\r, which is what the
-                // Enter key produces).
-                text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
-            } else {
-                // When we explicitly disable bracketed paste don't manipulate with the input,
-                // so we pass user input as is.
-                text.to_owned().into_bytes()
-            };
-
-            self.ctx_mut().current_mut().messenger.send_write(payload);
-        }
+        let target = self.context_manager.current().paste_target();
+        self.finish_paste(target, text, bracketed);
     }
 
     pub(crate) fn render_welcome(&mut self) {
@@ -6014,8 +6051,7 @@ impl Screen<'_> {
                 self.copy_selection(ClipboardType::Clipboard, clipboard);
             }
             PaletteAction::Paste => {
-                let content = clipboard.get(ClipboardType::Clipboard);
-                self.paste(&content, true);
+                self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
             }
             PaletteAction::ScrollToPreviousCommand => {
                 self.scroll_to_command(false);
@@ -6257,6 +6293,7 @@ impl Screen<'_> {
                     palette_selected_index: palette_scroll_state.1,
                     palette_visible_results: palette_scroll_state.2,
                     palette_total_results: palette_scroll_state.3,
+                    palette_accessibility_summary: self.renderer.command_palette.accessibility_summary(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
                     connection_hub_active: self.connection_hub.is_active(),
                     connection_hub_route: self
@@ -8119,6 +8156,7 @@ mod tests {
     fn wheel_focus_preserves_selection_while_click_focus_clears_it() {
         assert!(PointerPaneFocusReason::Click.clears_target_selection());
         assert!(!PointerPaneFocusReason::Wheel.clears_target_selection());
+        assert!(!PointerPaneFocusReason::ClipboardClick.clears_target_selection());
     }
 
     #[test]

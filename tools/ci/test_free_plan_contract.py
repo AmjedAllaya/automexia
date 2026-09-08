@@ -8,6 +8,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import tomllib
 import unittest
 from pathlib import Path
 
@@ -15,12 +16,14 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / ".github" / "scripts" / "check_free_plan_contract.py"
 TEST_TEMP_PARENT = Path(ROOT.anchor) if os.name == "nt" else None
+CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
 
 
 class FreePlanContractTests(unittest.TestCase):
     @staticmethod
     def populate_contract_root(root: Path) -> None:
         shutil.copytree(ROOT / ".github", root / ".github")
+        shutil.copy2(ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
         for package in ("sugarloaf", "rio-backend"):
             (root / package).mkdir()
             shutil.copy2(
@@ -29,12 +32,12 @@ class FreePlanContractTests(unittest.TestCase):
             )
 
     def run_checker_with_replacement(
-        self, old: str, new: str
+        self, old: str, new: str, workflow_name: str = "ci.yml"
     ) -> subprocess.CompletedProcess[str]:
         with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
             root = Path(temporary)
             self.populate_contract_root(root)
-            workflow = root / ".github" / "workflows" / "ci.yml"
+            workflow = root / ".github" / "workflows" / workflow_name
             source = workflow.read_text(encoding="utf-8")
             self.assertIn(old, source)
             workflow.write_text(source.replace(old, new, 1), encoding="utf-8")
@@ -108,6 +111,167 @@ class FreePlanContractTests(unittest.TestCase):
     def test_current_contract_passes(self) -> None:
         completed = self.run_checker()
         self.assertEqual(completed.returncode, 0, completed.stderr)
+
+    def test_floating_workflow_compiler_is_rejected(self) -> None:
+        # Installing one compiler must not leave the checkout selecting another.
+        completed = self.run_checker_with_replacement(
+            "RUSTUP_TOOLCHAIN: '1.96.1'",
+            "RUSTUP_TOOLCHAIN: 'stable'",
+        )
+        self.assertNotEqual(completed.returncode, 0, completed.stderr)
+        self.assertIn("compiler", completed.stderr)
+
+    def test_every_stable_workflow_selects_the_canonical_compiler(self) -> None:
+        pin = tomllib.loads(
+            (ROOT / "rust-toolchain.toml").read_text(encoding="utf-8")
+        )["toolchain"]["channel"]
+        assignment = f"  RUSTUP_TOOLCHAIN: '{pin}'"
+        # These independent mutations cover selection, scope and ambiguity; a
+        # matching install command alone did not enforce the effective compiler.
+        for workflow_name in (
+            "ci.yml", "linux-early-access.yml", "release.yml", "nightly.yml"
+        ):
+            for replacement in (
+                "  RUSTUP_TOOLCHAIN: '0.0.0'",
+                "  RUSTUP_TOOLCHAIN: 'stable'",
+                "",
+                "    " + assignment,
+                assignment + "\n" + assignment,
+            ):
+                with self.subTest(workflow=workflow_name, replacement=replacement):
+                    completed = self.run_checker_with_replacement(
+                        assignment, replacement, workflow_name
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertIn(
+                        f"{workflow_name} compiler selection", completed.stderr
+                    )
+
+    def test_compiler_authority_is_bounded_exact_and_fail_closed(self) -> None:
+        source = (ROOT / "rust-toolchain.toml").read_bytes()
+        limit = 16 * 1024
+        at_limit = source + b"\n#" + b"p" * (limit - len(source) - 2)
+        cases = (
+            (None, False),
+            (b"[toolchain", False),
+            (b"toolchain = []", False),
+            (b"[toolchain]\nchannel = 123", False),
+            (b'[toolchain]\nchannel = "stable"', False),
+            (b"\xff", False),
+            (at_limit, True),
+            (at_limit + b"p", False),
+        )
+        for index, (content, valid) in enumerate(cases):
+            with self.subTest(case=index), tempfile.TemporaryDirectory(
+                dir=TEST_TEMP_PARENT
+            ) as temporary:
+                root = Path(temporary)
+                self.populate_contract_root(root)
+                command = [sys.executable, str(CHECKER)]
+                baseline = subprocess.run(
+                    command, cwd=root, capture_output=True, text=True,
+                    timeout=30, check=False,
+                )
+                self.assertEqual(baseline.returncode, 0, baseline.stderr)
+                path = root / "rust-toolchain.toml"
+                if content is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(content)
+                completed = subprocess.run(
+                    command, cwd=root, capture_output=True, text=True,
+                    timeout=30, check=False,
+                )
+                self.assertEqual(completed.returncode == 0, valid, completed.stderr)
+                if not valid:
+                    self.assertIn("compiler authority", completed.stderr)
+                    self.assertNotIn(str(root), completed.stderr)
+                    self.assertNotIn("Traceback", completed.stderr)
+
+    def test_legacy_override_and_global_default_mutation_are_rejected(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            root = Path(temporary)
+            self.populate_contract_root(root)
+            # The legacy file wins over rust-toolchain.toml, even with both
+            # present; a stale contributor artifact must not silently win.
+            (root / "rust-toolchain").write_text("stable\n", encoding="utf-8")
+            completed = subprocess.run(
+                [sys.executable, str(CHECKER)], cwd=root, capture_output=True,
+                text=True, timeout=30, check=False,
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("shadowed by legacy rust-toolchain", completed.stderr)
+        for workflow_name in ("ci.yml", "linux-early-access.yml", "release.yml"):
+            completed = self.run_checker_with_replacement(
+                "rustc --version", 'rustup default "$RUSTUP_TOOLCHAIN"', workflow_name
+            )
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("without changing runner defaults", completed.stderr)
+
+    def test_linux_release_cache_cannot_ignore_the_selected_compiler(self) -> None:
+        completed = self.run_checker_with_replacement(
+            "SCCACHE_GHA_VERSION=automexia-rust-%s-v1",
+            "SCCACHE_GHA_VERSION: automexia-rust-stale-v1",
+            "linux-early-access.yml",
+        )
+        self.assertNotEqual(completed.returncode, 0)
+        self.assertIn("compiler cache", completed.stderr)
+
+    def test_quality_cache_is_initialized_once_before_startup(self) -> None:
+        for workflow_name in ("ci.yml", "linux-early-access.yml"):
+            source = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+            self.assertEqual(source.count(CACHE_INITIALIZER), 1)
+            self.assertLess(source.index(CACHE_INITIALIZER), source.index("id: sccache"))
+            self.assertNotIn("SCCACHE_GHA_VERSION:", source)
+            # GitHub rejects env-context references in job-level env. Keep the
+            # runner-file handoff before sccache starts, and preserve other values.
+            for replacement in (
+                "",
+                CACHE_INITIALIZER + "\n          " + CACHE_INITIALIZER,
+                "# " + CACHE_INITIALIZER,
+                CACHE_INITIALIZER.replace('"$RUSTUP_TOOLCHAIN"', '"stable"'),
+                CACHE_INITIALIZER.replace(">>", ">"),
+                'SCCACHE_GHA_VERSION: automexia-rust-${{ env.RUSTUP_TOOLCHAIN }}-v1',
+            ):
+                with self.subTest(workflow=workflow_name, replacement=replacement):
+                    completed = self.run_checker_with_replacement(
+                        CACHE_INITIALIZER, replacement, workflow_name
+                    )
+                    self.assertNotEqual(completed.returncode, 0)
+                    self.assertIn("compiler cache", completed.stderr)
+            moved = source.replace("          " + CACHE_INITIALIZER + "\n", "")
+            moved = moved.replace("        id: sccache", "          " + CACHE_INITIALIZER + "\n        id: sccache")
+            completed = self.run_checker_with_replacement(source, moved, workflow_name)
+            self.assertNotEqual(completed.returncode, 0)
+            self.assertIn("compiler cache", completed.stderr)
+
+    @unittest.skipUnless(sys.platform == "linux", "native Linux Bash runner contract")
+    def test_linux_runner_cache_handoff_preserves_environment_file(self) -> None:
+        bash = shutil.which("bash")
+        self.assertIsNotNone(bash, "native Linux workflow tests require Bash")
+        for workflow_name in ("ci.yml", "linux-early-access.yml"):
+            source = (ROOT / ".github/workflows" / workflow_name).read_text(encoding="utf-8")
+            lines = [line.strip() for line in source.splitlines() if "SCCACHE_GHA_VERSION" in line]
+            self.assertEqual(len(lines), 1)
+            for pin, expected in (
+                ("1.96.1", "OTHER=kept\nSCCACHE_GHA_VERSION=automexia-rust-1.96.1-v1\n"),
+                ("2.0.0", "OTHER=kept\nSCCACHE_GHA_VERSION=automexia-rust-2.0.0-v1\n"),
+            ):
+                with self.subTest(workflow=workflow_name, pin=pin), tempfile.TemporaryDirectory() as temporary:
+                    root = Path(temporary)
+                    script = root / "setup.sh"
+                    script.write_text("set -euo pipefail\n" + lines[0] + "\n", encoding="utf-8")
+                    handoff = root / "environment"
+                    handoff.write_text("OTHER=kept\n", encoding="utf-8")
+                    completed = subprocess.run(
+                        [bash, "--noprofile", "--norc", str(script)],
+                        env={**os.environ, "RUSTUP_TOOLCHAIN": pin, "GITHUB_ENV": str(handoff)},
+                        capture_output=True, timeout=15, check=False,
+                    )
+                    self.assertEqual(completed.returncode, 0)
+                    self.assertEqual(completed.stdout, b"")
+                    self.assertEqual(completed.stderr, b"")
+                    self.assertEqual(handoff.read_text(encoding="utf-8"), expected)
 
     def test_stable_release_does_not_start_for_linux_early_access(self) -> None:
         exclusion = "!startsWith(github.event.pull_request.head.ref, 'release/linux/') &&"
@@ -331,7 +495,7 @@ class FreePlanContractTests(unittest.TestCase):
             "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
             "version: v0.16.0",
             "SCCACHE_GHA_ENABLED: 'true'",
-            "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+            "SCCACHE_GHA_VERSION=automexia-rust-%s-v1",
             "RUSTC_WRAPPER: sccache",
             "sccache --show-stats",
             "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
@@ -349,7 +513,7 @@ class FreePlanContractTests(unittest.TestCase):
             ("version: v0.16.0", "version: v0.15.0"),
             ("SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'"),
             (
-                "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+                "SCCACHE_GHA_VERSION=automexia-rust-%s-v1",
                 "SCCACHE_GHA_VERSION: unversioned",
             ),
             ("RUSTC_WRAPPER: sccache", "RUSTC_WRAPPER: rustc"),

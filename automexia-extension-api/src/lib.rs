@@ -6,7 +6,10 @@
 
 mod text;
 
-pub use text::{compact_label, compact_middle};
+pub use text::{
+    compact_label, compact_label_preserving_whitespace, compact_middle,
+    split_grapheme_prefix,
+};
 
 use std::fmt;
 use std::path::PathBuf;

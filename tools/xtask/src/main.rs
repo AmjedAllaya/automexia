@@ -1,5 +1,7 @@
+mod chrome_contract;
 mod completion;
 mod keybindings;
+mod renderer_benchmarks;
 mod visual_diff;
 
 use process_wrap::std::CommandWrap;
@@ -2620,6 +2622,14 @@ fn powershell_identity_fixture_is_fictional(source: &str) -> bool {
         && !source.contains("GetBytes($env:ComSpec)")
 }
 
+fn verify_text_benchmark_dependency(dependency: &serde_json::Value) -> TaskResult {
+    require(
+        dependency["name"].as_str() != Some("criterion")
+            || dependency["kind"].as_str() == Some("dev"),
+        "extension-api Criterion dependency must remain development-only",
+    )
+}
+
 fn verify_architecture() -> TaskResult {
     run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
     run_python("tools/ci/test_github_free_assurance.py")?;
@@ -2642,6 +2652,7 @@ fn verify_architecture() -> TaskResult {
     let packages = metadata["packages"]
         .as_array()
         .ok_or("cargo metadata omitted packages")?;
+    renderer_benchmarks::verify(packages)?;
     let frontend = packages
         .iter()
         .find(|package| package["name"].as_str() == Some(identity.package_name.as_str()))
@@ -2662,7 +2673,7 @@ fn verify_architecture() -> TaskResult {
         ),
         (
             "automexia-extension-api",
-            &["serde", "serde_json", "unicode-segmentation"],
+            &["criterion", "serde", "serde_json", "unicode-segmentation"],
         ),
         (
             "automexia-extension-runtime",
@@ -2849,6 +2860,9 @@ fn verify_architecture() -> TaskResult {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
+            if name == "automexia-extension-api" {
+                verify_text_benchmark_dependency(dependency)?;
+            }
             require(
                 allowed_dependencies.contains(&dependency_name),
                 &format!(
@@ -2952,23 +2966,16 @@ fn verify_architecture() -> TaskResult {
     let bindings = read(&app.join("src/bindings/mod.rs"))?;
     let palette = read(&app.join("src/renderer/command_palette.rs"))?;
     require(
-        bindings.contains(
-            r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
-        ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
-        ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into())"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into())"#,
-        ) && palette.contains("Clone Active Session Right")
+        !bindings.contains("fn clone_split_key_bindings")
+            && bindings.contains("fn platform_defaults_preserve_shell_history_and_eof_input")
+            && bindings.contains("fn explicit_clone_bindings_survive_default_and_reset_changes")
+            && bindings.contains("fn pane_creation_defaults_are_directional_and_leave_shell_controls_alone")
+            && pane_shortcut_defaults_present(&bindings)
+            && palette.contains("Clone Active Session Right")
             && palette.contains("Clone Active Session Down")
             && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
             && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
-        "Automexia classic fresh-split, clone, and explicit shell-control shortcuts are not distinct",
+        "shell-owned defaults, explicit clone overrides, and fresh-split discovery are not preserved",
     )?;
     let layout_source = read(&app.join("src/layout/mod.rs"))?;
     require(
@@ -3333,6 +3340,7 @@ fn verify_architecture() -> TaskResult {
     )?;
     let application = read(&app.join("src/application.rs"))?;
     let confirm_quit = read(&app.join("src/renderer/confirm_quit.rs"))?;
+    let chrome_theme = read(&app.join("src/renderer/ui_theme.rs"))?;
     let modal_renderer = read(&root().join("sugarloaf/src/renderer/mod.rs"))?;
     let modal_sugarloaf = read(&root().join("sugarloaf/src/sugarloaf.rs"))?;
     let modal_text = read(&root().join("sugarloaf/src/text.rs"))?;
@@ -3340,7 +3348,7 @@ fn verify_architecture() -> TaskResult {
         palette.contains("sugarloaf.begin_modal_layer()")
             && palette.contains("sugarloaf.end_modal_layer()")
             && !palette.contains("text_mut().clear()")
-            && confirm_quit.contains("const SCRIM:")
+            && chrome_contract::shared_modal_tokens(&palette, &confirm_quit, &chrome_theme)
             && confirm_quit.contains("ConfirmQuitAction")
             && confirm_quit.contains("hit_test_requires_an_active_explicit_button")
             && confirm_quit.contains("layout_stays_inside_extreme_viewports")
@@ -3696,6 +3704,22 @@ fn verify_architecture() -> TaskResult {
     }
     println!("PASS: dependency graph and render/PTY/extension boundaries verified");
     Ok(())
+}
+
+fn pane_shortcut_defaults_present(bindings: &str) -> bool {
+    // Windows and Unix own separate platform tables. Both must retain all four
+    // approved chords and all three terminal-mode exclusions.
+    [
+        r#""r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+        r#""d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
+        r#""r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
+        r#""d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
+    ]
+    .iter()
+    .all(|fragment| bindings.matches(fragment).count() == 2)
+        && ["+", "=", "-", "_"].iter().all(|key| {
+            !bindings.contains(&format!(r#""{key}", ModifiersState::ALT | ModifiersState::SHIFT,"#))
+        })
 }
 
 /// Recognize both direct assignment and allocation-preserving `clone_from`
@@ -4839,6 +4863,54 @@ fn display_relative_or_absolute(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pane_shortcut_contract_rejects_missing_chords_modes_and_retired_aliases() {
+        let source = super::read(
+            &super::root().join("apps/automexia-terminal/src/bindings/mod.rs"),
+        )
+        .unwrap();
+        assert!(super::pane_shortcut_defaults_present(&source));
+        for (key, modifiers, action) in [
+            ("r", "ModifiersState::ALT", "CloneSplitRight"),
+            ("d", "ModifiersState::ALT", "CloneSplitDown"),
+            (
+                "r",
+                "ModifiersState::ALT | ModifiersState::SHIFT",
+                "SplitRight",
+            ),
+            (
+                "d",
+                "ModifiersState::ALT | ModifiersState::SHIFT",
+                "SplitDown",
+            ),
+        ] {
+            let fragment = format!(
+                r#""{key}", {modifiers}, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::{action}"#
+            );
+            for replacement in [
+                String::new(),
+                fragment.replace("~BindingMode::ALT_SCREEN, ", ""),
+            ] {
+                assert!(!super::pane_shortcut_defaults_present(&source.replacen(
+                    &fragment,
+                    &replacement,
+                    1
+                )));
+                let (prefix, suffix) = source.rsplit_once(&fragment).unwrap();
+                assert!(!super::pane_shortcut_defaults_present(&format!(
+                    "{prefix}{replacement}{suffix}"
+                )));
+            }
+        }
+        for key in ["+", "=", "-", "_"] {
+            let restored = format!(
+                r#"{source}
+                "{key}", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SplitRight;"#
+            );
+            assert!(!super::pane_shortcut_defaults_present(&restored));
+        }
+    }
+
     use super::*;
 
     #[test]
@@ -4974,6 +5046,32 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn text_benchmark_dependency_rejects_runtime_build_and_renamed_mutations() {
+        for kind in [
+            serde_json::Value::Null,
+            serde_json::json!("build"),
+            serde_json::json!("normal"),
+            serde_json::json!("DEV"),
+        ] {
+            for renamed in [serde_json::Value::Null, serde_json::json!("metrics")] {
+                let mut dependency = serde_json::json!({
+                    "name": "criterion", "kind": kind, "rename": renamed,
+                    "target": "cfg(unix)"
+                });
+                assert!(verify_text_benchmark_dependency(&dependency).is_err());
+                dependency["kind"] = serde_json::json!("dev");
+                assert!(verify_text_benchmark_dependency(&dependency).is_ok());
+                dependency.as_object_mut().unwrap().remove("kind");
+                assert!(verify_text_benchmark_dependency(&dependency).is_err());
+            }
+        }
+        assert!(verify_text_benchmark_dependency(
+            &serde_json::json!({"name": "serde", "kind": null})
+        )
+        .is_ok());
     }
 
     #[test]

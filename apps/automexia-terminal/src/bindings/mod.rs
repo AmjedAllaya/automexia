@@ -732,6 +732,28 @@ pub fn default_mouse_bindings() -> Vec<MouseBinding> {
 }
 
 pub fn default_key_bindings(config: &rio_backend::config::Config) -> Vec<KeyBinding> {
+    key_bindings_with_platform(config, platform_key_bindings)
+}
+
+#[cfg(test)]
+pub(crate) fn test_platform_defaults(
+    config: &rio_backend::config::Config,
+    platform: automexia_keybindings::PlatformFamily,
+) -> Vec<KeyBinding> {
+    use automexia_keybindings::PlatformFamily;
+    key_bindings_with_platform(config, |navigation, splits, keyboard| match platform {
+        PlatformFamily::Windows => automexia_windows_key_bindings(navigation, splits),
+        PlatformFamily::LinuxBsd => automexia_unix_key_bindings(navigation, splits),
+        PlatformFamily::Macos => {
+            automexia_macos_key_bindings(navigation, splits, keyboard)
+        }
+    })
+}
+
+fn key_bindings_with_platform(
+    config: &rio_backend::config::Config,
+    platform: impl FnOnce(bool, bool, ConfigKeyboard) -> Vec<KeyBinding>,
+) -> Vec<KeyBinding> {
     if config.keyboard.binding_profile != automexia_keybindings::ProfileId::Automexia {
         return config_key_bindings(config.bindings.keys.to_owned(), Vec::new());
     }
@@ -854,7 +876,7 @@ pub fn default_key_bindings(config: &rio_backend::config::Config) -> Vec<KeyBind
         Key::Named(Tab),       ModifiersState::SHIFT | ModifiersState::ALT, ~BindingMode::VI, ~BindingMode::SEARCH, ~BindingMode::ALL_KEYS_AS_ESC, ~BindingMode::DISAMBIGUATE_KEYS; Action::Esc("\x1b\x1b[Z".into());
     ));
 
-    bindings.extend(platform_key_bindings(
+    bindings.extend(platform(
         config.navigation.has_navigation_key_bindings(),
         config.navigation.use_split,
         config.keyboard.clone(),
@@ -1206,17 +1228,6 @@ pub fn create_hint_bindings(
     hint_bindings
 }
 
-fn clone_split_key_bindings() -> Vec<KeyBinding> {
-    bindings!(
-        KeyBinding;
-        "r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
-        "d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
-        // Keep the displaced shell controls available explicitly.
-        "r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into());
-        "d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into());
-    )
-}
-
 /// Automexia's original non-macOS tab scopes.
 ///
 /// - Ctrl+T adds a window-level tab.
@@ -1316,11 +1327,12 @@ fn automexia_macos_key_bindings(
     }
 
     if use_splits {
-        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
             "d", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
             "d", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
+            "r", ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            "d", ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
             "]", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             "[", ModifiersState::SUPER, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
             Key::Named(ArrowLeft), ModifiersState::SUPER | ModifiersState::ALT; Action::SelectPaneLeft;
@@ -1415,11 +1427,13 @@ fn automexia_windows_key_bindings(
     }
 
     if use_splits {
-        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
-            "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
-            "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
+            // R/D gives direction; Shift starts fresh instead of cloning.
+            "r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            "d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
+            "r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            "d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
             Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft;
@@ -1496,11 +1510,13 @@ fn automexia_unix_key_bindings(
     }
 
     if use_splits {
-        key_bindings.extend(clone_split_key_bindings());
         key_bindings.extend(bindings!(
             KeyBinding;
-            "r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
-            "d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
+            // R/D gives direction; Shift starts fresh instead of cloning.
+            "r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight;
+            "d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown;
+            "r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight;
+            "d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown;
             Key::Named(F6), ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectNextSplit;
             Key::Named(F6), ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SelectPrevSplit;
             Key::Named(ArrowLeft), ModifiersState::ALT; Action::SelectPaneLeft;
@@ -1517,7 +1533,7 @@ fn automexia_unix_key_bindings(
     key_bindings
 }
 
-#[cfg(all(target_os = "windows", not(test)))]
+#[cfg(target_os = "windows")]
 pub fn platform_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
@@ -1526,7 +1542,7 @@ pub fn platform_key_bindings(
     automexia_windows_key_bindings(use_navigation_key_bindings, use_splits)
 }
 
-#[cfg(not(any(target_os = "macos", target_os = "windows", test)))]
+#[cfg(not(any(target_os = "macos", target_os = "windows")))]
 pub fn platform_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
@@ -1535,7 +1551,7 @@ pub fn platform_key_bindings(
     automexia_unix_key_bindings(use_navigation_key_bindings, use_splits)
 }
 
-#[cfg(all(target_os = "macos", not(test)))]
+#[cfg(target_os = "macos")]
 pub fn platform_key_bindings(
     use_navigation_key_bindings: bool,
     use_splits: bool,
@@ -1553,11 +1569,6 @@ pub fn platform_key_bindings(
         "m", ModifiersState::SUPER; Action::Minimize;
     ));
     key_bindings
-}
-
-#[cfg(test)]
-pub fn platform_key_bindings(_: bool, _: bool, _: ConfigKeyboard) -> Vec<KeyBinding> {
-    vec![]
 }
 
 #[cfg(test)]
@@ -2195,63 +2206,256 @@ mod tests {
     }
 
     #[test]
-    fn bare_ctrl_clone_shortcuts_preserve_alt_shell_passthroughs() {
-        let bindings = clone_split_key_bindings();
-        assert_eq!(bindings.len(), 4);
-        assert_eq!(bindings[0].action, Action::CloneSplitRight);
-        assert_eq!(bindings[1].action, Action::CloneSplitDown);
-        for binding in &bindings[..2] {
-            assert_eq!(binding.mods, ModifiersState::CONTROL);
-            assert!(binding.notmode.contains(BindingMode::SEARCH));
-            assert!(binding.notmode.contains(BindingMode::VI));
-            assert!(!binding.is_triggered_by(
-                BindingMode::SEARCH,
-                binding.mods,
-                &binding.trigger
-            ));
-            assert!(!binding.is_triggered_by(
-                BindingMode::VI,
-                binding.mods,
-                &binding.trigger
-            ));
-            assert!(binding.is_triggered_by(
-                BindingMode::empty(),
-                ModifiersState::CONTROL,
-                &binding.trigger
-            ));
+    fn platform_defaults_preserve_shell_history_and_eof_input() {
+        for use_splits in [false, true] {
+            for (platform, bindings) in [
+                ("Windows", automexia_windows_key_bindings(true, use_splits)),
+                ("Unix", automexia_unix_key_bindings(true, use_splits)),
+                (
+                    "macOS",
+                    automexia_macos_key_bindings(
+                        true,
+                        use_splits,
+                        ConfigKeyboard::default(),
+                    ),
+                ),
+            ] {
+                // Exercise complete platform tables: a helper-only test missed
+                // the fallback owner that consumed Readline input in real panes.
+                for (text, expected) in [("r", 0x12), ("d", 0x04)] {
+                    let key = Key::Character(text.into());
+                    let trigger = BindingKey::Keycode {
+                        key: key.clone(),
+                        location: KeyLocation::Standard,
+                    };
+                    for mode in [BindingMode::empty(), BindingMode::ALT_SCREEN] {
+                        assert!(
+                            !bindings.iter().any(|binding| binding.is_triggered_by(
+                                mode.clone(),
+                                ModifiersState::CONTROL,
+                                &trigger,
+                            )),
+                            "{platform} consumed shell Ctrl+{text} in {mode:?}"
+                        );
+                    }
+                    assert_eq!(
+                        ctrl_seq(&key, text, ModifiersState::CONTROL),
+                        Some(expected),
+                    );
+                }
+                assert_eq!(
+                    bindings.iter().any(|binding| matches!(
+                        binding.action,
+                        Action::CloneSplitRight | Action::CloneSplitDown
+                    )),
+                    use_splits
+                );
+            }
         }
-        assert_eq!(
-            bindings[2].mods,
-            ModifiersState::CONTROL | ModifiersState::ALT
-        );
-        assert_eq!(
-            bindings[3].mods,
-            ModifiersState::CONTROL | ModifiersState::ALT
-        );
-        assert!(matches!(&bindings[2].action, Action::Esc(value) if value == "\x12"));
-        assert!(matches!(&bindings[3].action, Action::Esc(value) if value == "\x04"));
     }
 
     #[test]
-    fn user_binding_can_override_a_clone_shortcut() {
-        let updated = config_key_bindings(
-            vec![ConfigKeyBinding {
-                key: "r".to_string(),
-                action: "receivechar".to_string(),
-                with: "control".to_string(),
+    fn pane_creation_defaults_are_directional_and_leave_shell_controls_alone() {
+        for bindings in [
+            automexia_windows_key_bindings(true, true),
+            automexia_unix_key_bindings(true, true),
+        ] {
+            for (key, modifiers, action) in [
+                (
+                    "r",
+                    ModifiersState::ALT | ModifiersState::SHIFT,
+                    Action::SplitRight,
+                ),
+                (
+                    "d",
+                    ModifiersState::ALT | ModifiersState::SHIFT,
+                    Action::SplitDown,
+                ),
+                ("r", ModifiersState::ALT, Action::CloneSplitRight),
+                ("d", ModifiersState::ALT, Action::CloneSplitDown),
+            ] {
+                assert_action_binding(
+                    &bindings,
+                    Key::Character(key.into()),
+                    modifiers,
+                    action,
+                );
+            }
+        }
+        let bindings =
+            automexia_macos_key_bindings(true, true, ConfigKeyboard::default());
+        for (key, action) in [
+            ("r", Action::CloneSplitRight),
+            ("d", Action::CloneSplitDown),
+        ] {
+            assert_action_binding(
+                &bindings,
+                Key::Character(key.into()),
+                ModifiersState::SUPER | ModifiersState::ALT | ModifiersState::SHIFT,
+                action,
+            );
+        }
+    }
+
+    #[test]
+    fn explicit_clone_bindings_survive_default_and_reset_changes() {
+        for (key, name, action) in [
+            ("r", "CloneSplitRight", Action::CloneSplitRight),
+            ("d", "CloneSplitDown", Action::CloneSplitDown),
+        ] {
+            let mut config = rio_backend::config::Config::default();
+            config.bindings.keys.push(ConfigKeyBinding {
+                key: key.into(),
+                action: name.into(),
+                with: "control".into(),
                 esc: String::new(),
-                mode: String::new(),
-            }],
-            clone_split_key_bindings(),
-        );
-        assert_eq!(updated.len(), 4);
-        assert!(updated.iter().any(|binding| {
-            binding.mods == ModifiersState::CONTROL
-                && binding.action == Action::ReceiveChar
-        }));
-        assert!(updated
-            .iter()
-            .any(|binding| binding.action == Action::CloneSplitDown));
+                mode: "~Search|~Vi".into(),
+            });
+            let unchanged = config.bindings.keys.clone();
+            for _ in 0..2 {
+                assert_action_binding(
+                    &default_key_bindings(&config),
+                    Key::Character(key.into()),
+                    ModifiersState::CONTROL,
+                    action.clone(),
+                );
+                assert_eq!(config.bindings.keys, unchanged);
+            }
+            config.bindings.keys.clear();
+            let trigger = BindingKey::Keycode {
+                key: Key::Character(key.into()),
+                location: KeyLocation::Standard,
+            };
+            assert!(!default_key_bindings(&config).iter().any(|binding| binding
+                .is_triggered_by(
+                    BindingMode::empty(),
+                    ModifiersState::CONTROL,
+                    &trigger
+                )));
+        }
+    }
+
+    #[test]
+    fn new_pane_chords_are_unique_mode_scoped_and_user_replaceable() {
+        for defaults in [
+            automexia_windows_key_bindings(true, true),
+            automexia_unix_key_bindings(true, true),
+        ] {
+            for (key, modifiers) in [
+                ("r", ModifiersState::ALT),
+                ("d", ModifiersState::ALT),
+                ("r", ModifiersState::ALT | ModifiersState::SHIFT),
+                ("d", ModifiersState::ALT | ModifiersState::SHIFT),
+            ] {
+                let trigger = BindingKey::Keycode {
+                    key: Key::Character(key.into()),
+                    location: KeyLocation::Standard,
+                };
+                assert_eq!(
+                    defaults
+                        .iter()
+                        .filter(|binding| binding.is_triggered_by(
+                            BindingMode::empty(),
+                            modifiers,
+                            &trigger
+                        ))
+                        .count(),
+                    1
+                );
+                for mode in [
+                    BindingMode::SEARCH,
+                    BindingMode::VI,
+                    BindingMode::ALT_SCREEN,
+                ] {
+                    assert!(!defaults.iter().any(|binding| binding.is_triggered_by(
+                        mode.clone(),
+                        modifiers,
+                        &trigger
+                    )));
+                }
+                if matches!(key, "r" | "d") {
+                    assert!(!defaults.iter().any(|binding| binding.is_triggered_by(
+                        BindingMode::empty(),
+                        ModifiersState::CONTROL | ModifiersState::SHIFT,
+                        &trigger
+                    )));
+                }
+            }
+            let rebound = config_key_bindings(
+                vec![ConfigKeyBinding {
+                    key: "r".into(),
+                    with: "alt".into(),
+                    action: "ReceiveChar".into(),
+                    esc: String::new(),
+                    mode: String::new(),
+                }],
+                defaults,
+            );
+            assert_action_binding(
+                &rebound,
+                Key::Character("r".into()),
+                ModifiersState::ALT,
+                Action::ReceiveChar,
+            );
+            assert!(!rebound
+                .iter()
+                .any(|binding| binding.action == Action::CloneSplitRight));
+            assert!(rebound
+                .iter()
+                .any(|binding| binding.action == Action::SplitRight));
+        }
+    }
+
+    #[test]
+    fn pane_mnemonics_have_no_retired_aliases_and_disabled_splits_restore_input() {
+        use automexia_keybindings::PlatformFamily::{LinuxBsd, Windows};
+        for platform in [Windows, LinuxBsd] {
+            for enabled in [false, true] {
+                let mut config = rio_backend::config::Config::default();
+                config.navigation.use_split = enabled;
+                let defaults = test_platform_defaults(&config, platform);
+                for key in ["+", "=", "-", "_"] {
+                    let trigger = BindingKey::Keycode {
+                        key: Key::Character(key.into()),
+                        location: KeyLocation::Standard,
+                    };
+                    assert!(!defaults.iter().any(|binding| binding.is_triggered_by(
+                        BindingMode::empty(),
+                        ModifiersState::ALT | ModifiersState::SHIFT,
+                        &trigger,
+                    )));
+                }
+                for (key, modifiers) in [
+                    ("r", ModifiersState::ALT),
+                    ("d", ModifiersState::ALT),
+                    ("r", ModifiersState::ALT | ModifiersState::SHIFT),
+                    ("d", ModifiersState::ALT | ModifiersState::SHIFT),
+                ] {
+                    let trigger = BindingKey::Keycode {
+                        key: Key::Character(key.into()),
+                        location: KeyLocation::Standard,
+                    };
+                    for mode in [
+                        BindingMode::empty(),
+                        BindingMode::SEARCH,
+                        BindingMode::VI,
+                        BindingMode::ALT_SCREEN,
+                    ] {
+                        assert_eq!(
+                            defaults
+                                .iter()
+                                .filter(|binding| binding.is_triggered_by(
+                                    mode.clone(),
+                                    modifiers,
+                                    &trigger,
+                                ))
+                                .count(),
+                            usize::from(enabled && mode.is_empty())
+                        );
+                    }
+                }
+            }
+        }
     }
 
     #[test]
@@ -2457,7 +2661,7 @@ mod tests {
     #[test]
     fn automexia_windows_defaults_restore_the_classic_workflow() {
         let config = rio_backend::config::Config::default();
-        let inherited = default_key_bindings(&config);
+        let inherited = key_bindings_with_platform(&config, |_, _, _| Vec::new());
         let bindings = automexia_windows_key_bindings(true, true);
         assert_no_overlapping_shortcuts("Windows", &bindings);
         assert_no_cross_table_overlaps("Windows", &inherited, &bindings);
@@ -2491,20 +2695,14 @@ mod tests {
         assert_action_binding(
             &bindings,
             Key::Character("r".into()),
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ModifiersState::ALT | ModifiersState::SHIFT,
             Action::SplitRight,
         );
         assert_action_binding(
             &bindings,
             Key::Character("d".into()),
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ModifiersState::ALT | ModifiersState::SHIFT,
             Action::SplitDown,
-        );
-        assert_action_binding(
-            &bindings,
-            Key::Character("r".into()),
-            ModifiersState::CONTROL,
-            Action::CloneSplitRight,
         );
         assert_action_binding(
             &bindings,
@@ -2553,7 +2751,7 @@ mod tests {
     #[test]
     fn automexia_unix_defaults_restore_the_classic_workflow() {
         let config = rio_backend::config::Config::default();
-        let inherited = default_key_bindings(&config);
+        let inherited = key_bindings_with_platform(&config, |_, _, _| Vec::new());
         let bindings = automexia_unix_key_bindings(true, true);
         assert_no_cross_table_overlaps("Unix", &inherited, &bindings);
         assert_feature_launcher_bindings(&bindings, ModifiersState::CONTROL);
@@ -2594,14 +2792,8 @@ mod tests {
         assert_action_binding(
             &bindings,
             Key::Character("r".into()),
-            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ModifiersState::ALT | ModifiersState::SHIFT,
             Action::SplitRight,
-        );
-        assert_action_binding(
-            &bindings,
-            Key::Character("r".into()),
-            ModifiersState::CONTROL,
-            Action::CloneSplitRight,
         );
         assert_action_binding(
             &bindings,
@@ -2656,7 +2848,7 @@ mod tests {
     #[test]
     fn automexia_macos_defaults_restore_the_classic_workflow() {
         let config = rio_backend::config::Config::default();
-        let inherited = default_key_bindings(&config);
+        let inherited = key_bindings_with_platform(&config, |_, _, _| Vec::new());
         let bindings =
             automexia_macos_key_bindings(true, true, ConfigKeyboard::default());
         assert_no_cross_table_overlaps("macOS", &inherited, &bindings);
@@ -2731,12 +2923,6 @@ mod tests {
             Key::Character("t".into()),
             ModifiersState::SUPER | ModifiersState::SHIFT,
             Action::LocalTabCreateNew,
-        );
-        assert_action_binding(
-            &bindings,
-            Key::Character("r".into()),
-            ModifiersState::CONTROL,
-            Action::CloneSplitRight,
         );
         assert_action_binding(
             &bindings,

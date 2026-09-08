@@ -14,10 +14,17 @@ pub(crate) const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
 pub(crate) const MODAL_SCRIM: [f32; 4] = [0.0, 0.012, 0.028, 0.82];
 pub(crate) const MODAL_SHADOW: [f32; 4] = [0.0, 0.0, 0.0, 0.52];
-pub(crate) const CARD: [f32; 4] = [0.008, 0.027, 0.050, 1.0];
-pub(crate) const SURFACE: [f32; 4] = [0.012, 0.046, 0.080, 1.0];
-pub(crate) const SURFACE_RAISED: [f32; 4] = [0.022, 0.125, 0.205, 1.0];
-pub(crate) const OUTLINE: [f32; 4] = [0.055, 0.42, 0.66, 1.0];
+pub(crate) const CARD: [f32; 4] = [0.027, 0.047, 0.067, 1.0];
+pub(crate) const SURFACE: [f32; 4] = [0.055, 0.094, 0.129, 1.0];
+pub(crate) const SURFACE_RAISED: [f32; 4] = [0.082, 0.176, 0.231, 1.0];
+/// Decorative edges must not substitute for the brighter focus/selection cue.
+pub(crate) const BORDER: [f32; 4] = [0.161, 0.255, 0.310, 1.0];
+pub(crate) const OUTLINE: [f32; 4] = [0.20, 0.68, 0.80, 1.0];
+pub(crate) const TEXT: [f32; 4] = [0.882, 0.914, 0.937, 1.0];
+pub(crate) const MUTED_TEXT: [f32; 4] = [0.604, 0.675, 0.722, 1.0];
+pub(crate) const CARD_RADIUS: f32 = 14.0;
+pub(crate) const CONTROL_RADIUS: f32 = 8.0;
+pub(crate) const KEYCAP_RADIUS: f32 = 5.0;
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct UiTheme {
     pub(crate) background: [f32; 4],
@@ -52,10 +59,17 @@ impl UiTheme {
             surface,
             raised,
             outline: OUTLINE,
-            text: ensure_contrast(configured_foreground, background, MIN_TEXT_CONTRAST),
-            muted_text: ensure_contrast(configured_muted, background, MIN_TEXT_CONTRAST),
+            // Raised is the lightest of these dark surfaces. Resolve against it
+            // with headroom for the Text API's 8-bit colour conversion.
+            text: chrome_label(configured_foreground, raised),
+            muted_text: chrome_label(configured_muted, raised),
         }
     }
+}
+
+fn chrome_label(mut color: [f32; 4], surface: [f32; 4]) -> [f32; 4] {
+    color[3] = 1.0;
+    ensure_contrast(color, surface, MIN_TEXT_CONTRAST + 0.1)
 }
 
 #[inline]
@@ -80,8 +94,27 @@ pub(crate) fn color_u8(color: [f32; 4]) -> [u8; 4] {
 }
 
 #[cfg(test)]
+#[path = "ui_theme_tests.rs"]
+mod polish_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn shared_labels_remain_readable_on_raised_surfaces() {
+        // A label safe on the card can fail when reused on a selected control.
+        let theme = UiTheme::resolve([0.0; 4], [0.50; 4], [0.47; 4]);
+        for surface in [theme.background, theme.surface, theme.raised] {
+            for label in [theme.text, theme.muted_text] {
+                assert!(
+                    automexia_ui_model::contrast_ratio(label, surface)
+                        >= MIN_TEXT_CONTRAST,
+                    "shared label loses contrast on a surface"
+                );
+            }
+        }
+    }
 
     #[test]
     fn modal_tokens_are_opaque_and_text_meets_the_project_contrast_floor() {

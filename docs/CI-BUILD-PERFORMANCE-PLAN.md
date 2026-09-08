@@ -65,7 +65,8 @@ The implementation and exact-commit evidence now satisfy acceptance criteria
   without the redundant standalone Cargo check; focused `cargo xtask check`
   retains it;
 - ordinary and release quality jobs use the exact reviewed sccache Action,
-  v0.16.0, and `automexia-rust-1.98-v1` generation, then report statistics;
+  v0.16.0, and `automexia-rust-<selected-version>-v1` generation derived from
+  the repository-pinned `RUSTUP_TOOLCHAIN`, then report statistics;
 - package jobs reject compiler-cache inputs and restore only the shared,
   versioned, lockfile-bound Cargo source cache;
 - quality, x64 packages, and Arm64 packages start after authorization, while

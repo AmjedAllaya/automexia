@@ -26,7 +26,7 @@ including open-source ideas, and commercial strategy.
 | Remote tools and WSL | [Remote and WSL](user-guide/remote-and-wsl.md) |
 | System OpenSSH and explicit inventory | [OpenSSH and remote shells](user-guide/connection-hub-and-ssh.md) |
 | Appearance and behavior | [Customization](user-guide/customization.md) |
-| Shortcuts | [Shortcuts](user-guide/shortcuts.md) |
+| Shortcuts | [Shortcuts](user-guide/shortcuts.md), [shortcut-family audit](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md) |
 
 ## Reference
 

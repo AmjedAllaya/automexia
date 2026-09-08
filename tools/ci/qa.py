@@ -45,6 +45,7 @@ STEP_TIMEOUT_SECONDS = {
     "shell-contracts": 900,
     "clippy": 3600,
     "nextest": 3000,
+    "component-host": 900,
     "doctests": 1800,
     "resize-stress": 1800,
     "session-clone": 1800,
@@ -304,11 +305,134 @@ def git_value(*args: str) -> str:
         return "unavailable"
 
 
+MAX_SOURCE_STATUS_BYTES = 1024 * 1024
+MAX_SOURCE_FILES = 8192
+MAX_SOURCE_FILE_BYTES = 16 * 1024 * 1024
+MAX_SOURCE_TOTAL_BYTES = 64 * 1024 * 1024
+SOURCE_STATUS_TIMEOUT_SECONDS = 20
+
+
+def source_status_bytes() -> bytes | None:
+    """Read raw NUL-delimited status without truncation or disclosure to logs."""
+    data = bytearray()
+    invalid = threading.Event()
+    try:
+        process = subprocess.Popen(
+            ["git", "--no-pager", "--no-optional-locks", "-c", "core.fsmonitor=false", "status",
+             "--porcelain=v1", "-z", "--untracked-files=all"],
+            cwd=ROOT, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL,
+            **popen_group_options(),
+        )
+    except OSError:
+        return None
+
+    def collect() -> None:
+        try:
+            with process.stdout:
+                while chunk := process.stdout.read(8192):
+                    if len(data) + len(chunk) > MAX_SOURCE_STATUS_BYTES:
+                        invalid.set()
+                        return
+                    data.extend(chunk)
+        except (OSError, ValueError):
+            invalid.set()
+
+    reader = threading.Thread(target=collect, daemon=True, name="automexia-qa-source-status")
+    reader.start()
+    try:
+        process.wait(timeout=SOURCE_STATUS_TIMEOUT_SECONDS)
+    except subprocess.TimeoutExpired:
+        invalid.set()
+        terminate_process_tree(process)
+    finally:
+        reader.join(timeout=5)
+    if reader.is_alive() or invalid.is_set() or process.returncode != 0:
+        return None
+    return bytes(data)
+
+
+def fingerprint_status_contents(status: bytes, root: pathlib.Path) -> str:
+    """Hash dirty content and Git state; never serialize source bytes or paths."""
+    if len(status) > MAX_SOURCE_STATUS_BYTES or (status and not status.endswith(b"\0")):
+        raise ValueError("invalid source inventory")
+    entries = iter(status.split(b"\0")[:-1])
+    paths: set[bytes] = set()
+    for entry in entries:
+        if len(entry) < 4 or entry[2:3] != b" ":
+            raise ValueError("invalid source inventory")
+        paths.add(entry[3:])
+        if b"R" in entry[:2] or b"C" in entry[:2]:
+            paths.add(next(entries))
+        if len(paths) > MAX_SOURCE_FILES:
+            raise ValueError("source inventory exceeds limit")
+    digest = hashlib.sha256(b"automexia-qa-content-v1\0" + status)
+    total = 0
+    for raw_path in sorted(paths):
+        relative = pathlib.PurePosixPath(os.fsdecode(raw_path))
+        if relative.is_absolute() or not relative.parts or any(part in ("..", ".git") for part in relative.parts) or b"\\" in raw_path or b":" in raw_path:
+            raise ValueError("unsafe source inventory path")
+        path = root.joinpath(*relative.parts)
+        # Do not follow an untracked symlink/junction into private host storage.
+        if any(parent.is_symlink() or (hasattr(parent, "is_junction") and parent.is_junction()) for parent in path.parents if parent != root and root in parent.parents):
+            raise ValueError("source inventory crosses a link")
+        digest.update(len(raw_path).to_bytes(8, "big"))
+        digest.update(raw_path)
+        try:
+            before = path.lstat()
+        except FileNotFoundError:
+            digest.update(b"missing\0")
+            continue
+        if stat.S_ISLNK(before.st_mode):
+            payload = os.fsencode(os.readlink(path))
+            if len(payload) > MAX_SOURCE_FILE_BYTES:
+                raise ValueError("source link exceeds limit")
+            total += len(payload)
+            if total > MAX_SOURCE_TOTAL_BYTES:
+                raise ValueError("source contents exceed total limit")
+            digest.update(b"link\0" + payload)
+            continue
+        if not stat.S_ISREG(before.st_mode) or before.st_size > MAX_SOURCE_FILE_BYTES:
+            raise ValueError("source file exceeds limit or is not regular")
+        total += before.st_size
+        if total > MAX_SOURCE_TOTAL_BYTES:
+            raise ValueError("source contents exceed total limit")
+        digest.update(b"file\0" + before.st_mode.to_bytes(8, "big") + before.st_size.to_bytes(8, "big"))
+        with path.open("rb") as source:
+            opened = os.fstat(source.fileno())
+            if (opened.st_dev, opened.st_ino, opened.st_size) != (before.st_dev, before.st_ino, before.st_size):
+                raise ValueError("source changed while opening")
+            remaining = before.st_size
+            while remaining:
+                chunk = source.read(min(remaining, 1024 * 1024))
+                if not chunk:
+                    raise ValueError("source changed while hashing")
+                digest.update(chunk)
+                remaining -= len(chunk)
+            if source.read(1):
+                raise ValueError("source grew while hashing")
+        after = path.lstat()
+        if (before.st_dev, before.st_ino, before.st_size, before.st_mtime_ns, before.st_ctime_ns) != (after.st_dev, after.st_ino, after.st_size, after.st_mtime_ns, after.st_ctime_ns):
+            raise ValueError("source changed while hashing")
+    return digest.hexdigest()
+
+
 def dirty_fingerprint() -> str:
-    status = git_value("status", "--porcelain=v1", "--untracked-files=all")
-    if status == "unavailable":
+    try:
+        status = source_status_bytes()
+        if status is None:
+            return "unavailable"
+        result = fingerprint_status_contents(status, ROOT)
+        return result if source_status_bytes() == status else "unavailable"
+    except (OSError, ValueError, StopIteration, OverflowError):
         return "unavailable"
-    return hashlib.sha256(status.encode("utf-8")).hexdigest()
+
+
+def source_identity_stable(before: tuple[str, str], after: tuple[str, str]) -> bool:
+    return (
+        before == after
+        and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", before[0]) is not None
+        and re.fullmatch(r"[0-9a-f]{64}", before[1]) is not None
+    )
 
 
 def command_label(command: list[str]) -> str:
@@ -635,6 +759,7 @@ def main() -> int:
         run_id = dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ") + f"-{os.getpid()}"
     run_dir = ROOT / "target" / "qa" / run_id
     run_dir.mkdir(parents=True, exist_ok=False)
+    source_before = (git_value("rev-parse", "HEAD"), dirty_fingerprint())
 
     commands: list[tuple[str, list[str], dict[str, str] | None]] = [
         ("qa-runner-self-tests", [sys.executable, "tools/ci/test_qa.py"], None),
@@ -823,6 +948,13 @@ def main() -> int:
             None,
         ),
         ("doctests", ["cargo", "test", "--workspace", "--doc", "--locked"], None),
+        # Keep the workspace CI JUnit intact. The no-retry default profile has
+        # per-test deadlines but does not overwrite that separate CI report.
+        (
+            "component-host",
+            ["cargo", "nextest", "run", "-p", "automexia-ecosystem-runtime", "--all-features", "--locked", "--profile", "default"],
+            None,
+        ),
         ("resize-stress", ["cargo", "xtask", "test", "resize-stress"], None),
         ("session-clone", ["cargo", "xtask", "test", "session-clone"], None),
         (
@@ -1184,6 +1316,13 @@ def main() -> int:
         )
     )
 
+    source_after = (git_value("rev-parse", "HEAD"), dirty_fingerprint())
+    steps.append({
+        "name": "source-identity-stable", "required": True,
+        "status": "pass" if source_identity_stable(source_before, source_after) else "fail",
+        "reason": "Source commit and bounded content fingerprint must remain unchanged throughout QA.",
+    })
+    print(f"{steps[-1]['status'].upper()}: source-identity-stable", flush=True)
     required_failures = [
         step["name"]
         for step in steps
@@ -1196,8 +1335,11 @@ def main() -> int:
         "required_failures": required_failures,
         "created_utc": dt.datetime.now(dt.timezone.utc).isoformat(),
         "source": {
-            "commit": git_value("rev-parse", "HEAD"),
-            "dirty_fingerprint_sha256": dirty_fingerprint(),
+            "commit": source_after[0],
+            "dirty_fingerprint_sha256": source_after[1],
+            "fingerprint_kind": "automexia-qa-content-v1",
+            "initial_commit": source_before[0],
+            "initial_dirty_fingerprint_sha256": source_before[1],
         },
         "host": collect_host_manifest(),
         "tools": {
@@ -1223,8 +1365,8 @@ def main() -> int:
     if args.bundle:
         bundle_path = run_dir.with_suffix(".zip")
         build_bundle(run_dir, bundle_path)
-        print(f"Evidence bundle: {bundle_path}")
-    print(f"Evidence report: {run_dir / 'report.html'}")
+        print(f"Evidence bundle: {bundle_path.relative_to(ROOT).as_posix()}")
+    print(f"Evidence report: {(run_dir / 'report.html').relative_to(ROOT).as_posix()}")
     return 0 if not required_failures else 1
 
 

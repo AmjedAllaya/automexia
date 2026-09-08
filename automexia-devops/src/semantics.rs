@@ -1,27 +1,37 @@
 use automexia_extension_api::SemanticSeverity;
 
+mod workloads;
+
+const MAX_ROW_BYTES: usize = 32 * 1024;
+
+#[cfg(test)]
+#[path = "semantics_tests.rs"]
+mod status_tests;
+
 /// Classify one visible terminal row without allocating and without mutating
 /// terminal bytes. Explicit application ANSI colors still win in grid_emit.
 pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
+    if text.len() > MAX_ROW_BYTES {
+        return None;
+    }
     let text = text.trim_matches('\0').trim();
     if text.is_empty() {
         return None;
+    }
+
+    // Read known table fields before scanning prose: resource names and image
+    // tags are not health signals. A recognized but unknown status stays neutral.
+    if let Some(status) = workloads::classify(text) {
+        return status;
     }
 
     if let Some(level) = structured_log_level(text) {
         return Some(level);
     }
 
-    let zero_failure_summary = [
-        "0 failed",
-        "failed: 0",
-        "0 errors",
-        "errors: 0",
-        "0 error",
-        "error: 0",
-    ]
-    .iter()
-    .any(|term| contains_ascii_case_insensitive(text, term));
+    if has_failure_count_or_word(text) {
+        return Some(SemanticSeverity::Error);
+    }
 
     const ERROR_TERMS: &[&str] = &[
         // Shell / process failures.
@@ -95,20 +105,17 @@ pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
         "build failed",
         "test failed",
         "tests failed",
-        " failed",
-        "failed ",
         " failure",
+        "unsuccessful",
+        "unsuccessfully",
+        "not successful",
+        "not completed",
     ];
-    if !zero_failure_summary
-        && ERROR_TERMS
-            .iter()
-            .any(|term| contains_ascii_case_insensitive(text, term))
+    if ERROR_TERMS
+        .iter()
+        .any(|term| contains_phrase(text, term.trim()))
     {
         return Some(SemanticSeverity::Error);
-    }
-
-    if let Some(severity) = docker_status(text) {
-        return Some(severity);
     }
 
     const WARNING_TERMS: &[&str] = &[
@@ -133,32 +140,21 @@ pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
         "retrying",
         "progressing",
         "rate limit",
-        "throttl",
+        "throttle",
+        "throttled",
+        "throttling",
         "unknown",
     ];
     if WARNING_TERMS
         .iter()
-        .any(|term| contains_ascii_case_insensitive(text, term))
+        .any(|term| contains_phrase(text, term.trim()))
     {
         return Some(SemanticSeverity::Warning);
     }
 
-    // Kubernetes-style pod output: Running is healthy only when READY is full.
-    if contains_ascii_case_insensitive(text, "running") {
-        if let Some(ready) = readiness_ratio(text) {
-            return Some(if ready {
-                SemanticSeverity::Success
-            } else {
-                SemanticSeverity::Warning
-            });
-        }
-    }
-
     const SUCCESS_TERMS: &[&str] = &[
-        " succeeded",
-        "succeeded ",
-        " completed",
-        "completed ",
+        "tests completed",
+        "test completed",
         " status: healthy",
         "status=healthy",
         " successfully",
@@ -176,12 +172,18 @@ pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
     ];
     if SUCCESS_TERMS
         .iter()
-        .any(|term| contains_ascii_case_insensitive(text, term))
+        .any(|term| contains_phrase(text, term.trim()))
     {
         return Some(SemanticSeverity::Success);
     }
 
-    if is_operational_table_header(text) || is_progress_message(text) {
+    // A wrapped status can lose its READY column. Completion alone still does
+    // not prove readiness; explicit successful command summaries above do.
+    if contains_phrase(text, "Completed")
+        || contains_phrase(text, "Succeeded")
+        || is_operational_table_header(text)
+        || is_progress_message(text)
+    {
         return Some(SemanticSeverity::Info);
     }
 
@@ -228,6 +230,16 @@ fn structured_log_level(text: &str) -> Option<SemanticSeverity> {
         {
             return Some(SemanticSeverity::Debug);
         }
+        // Only a leading level or a level following timestamp fields is a
+        // declaration. Ordinary prose containing "info" is not a log prefix.
+        if !token.bytes().any(|byte| byte.is_ascii_digit())
+            || !token.bytes().any(|byte| b"-:./+TZtz".contains(&byte))
+            || !token
+                .bytes()
+                .all(|byte| byte.is_ascii_digit() || b"-:./+TZtz".contains(&byte))
+        {
+            break;
+        }
     }
 
     for (needle, severity) in [
@@ -258,40 +270,11 @@ fn structured_log_level(text: &str) -> Option<SemanticSeverity> {
         ("\"level\":\"debug\"", SemanticSeverity::Debug),
         ("\"level\": \"debug\"", SemanticSeverity::Debug),
     ] {
-        if contains_ascii_case_insensitive(text, needle) {
+        if contains_phrase(text, needle) {
             return Some(severity);
         }
     }
     None
-}
-
-fn docker_status(text: &str) -> Option<SemanticSeverity> {
-    if contains_ascii_case_insensitive(text, "restarting") {
-        return Some(SemanticSeverity::Warning);
-    }
-    if contains_ascii_case_insensitive(text, "(unhealthy)") {
-        return Some(SemanticSeverity::Error);
-    }
-    if let Some(code) = exited_code(text) {
-        return Some(if code == 0 {
-            SemanticSeverity::Success
-        } else {
-            SemanticSeverity::Error
-        });
-    }
-    if contains_ascii_case_insensitive(text, " up ")
-        && contains_ascii_case_insensitive(text, "(healthy)")
-    {
-        return Some(SemanticSeverity::Success);
-    }
-    None
-}
-
-fn exited_code(text: &str) -> Option<i32> {
-    let start = find_ascii_case_insensitive(text, "exited (")? + "exited (".len();
-    let rest = text.get(start..)?;
-    let end = rest.find(')')?;
-    rest[..end].trim().parse().ok()
 }
 
 fn is_operational_table_header(text: &str) -> bool {
@@ -316,29 +299,59 @@ fn is_progress_message(text: &str) -> bool {
         "Creating ",
         "Planning ",
         "Plan: ",
+        "Terraform will perform ",
     ];
     PREFIXES
         .iter()
         .any(|prefix| starts_ascii_case_insensitive(text, prefix))
 }
 
-fn readiness_ratio(text: &str) -> Option<bool> {
-    for token in text.split_whitespace() {
-        let token = token.trim_matches(|c: char| !c.is_ascii_digit() && c != '/');
-        let Some((ready, total)) = token.split_once('/') else {
-            continue;
-        };
-        let ready: u32 = match ready.parse() {
-            Ok(value) => value,
-            Err(_) => continue,
-        };
-        let total: u32 = match total.parse() {
-            Ok(value) if value > 0 => value,
-            _ => continue,
-        };
-        return Some(ready == total);
+fn has_failure_count_or_word(text: &str) -> bool {
+    let mut tokens = text
+        .split(|c: char| {
+            c.is_whitespace() || matches!(c, ',' | ';' | ':' | '=' | '(' | ')')
+        })
+        .filter(|token| !token.is_empty())
+        .peekable();
+    let mut previous = "";
+    while let Some(token) = tokens.next() {
+        if ["failed", "error", "errors", "failures"]
+            .iter()
+            .any(|word| token.eq_ignore_ascii_case(word))
+        {
+            // In `10 failed, 0 errors`, the following zero belongs to errors.
+            // Prefer an immediately preceding count; overflowing counts cannot
+            // turn into zero through a failed integer conversion.
+            let numeric_zero = |value: &str| {
+                (!value.is_empty() && value.bytes().all(|byte| byte.is_ascii_digit()))
+                    .then(|| value.bytes().all(|byte| byte == b'0'))
+            };
+            let is_zero = numeric_zero(previous)
+                .or_else(|| tokens.peek().and_then(|next| numeric_zero(next)));
+            if is_zero != Some(true) {
+                return true;
+            }
+        }
+        previous = token;
     }
-    None
+    false
+}
+
+fn contains_phrase(text: &str, phrase: &str) -> bool {
+    let word = |byte: u8| {
+        !byte.is_ascii() || byte.is_ascii_alphanumeric() || b"_-/".contains(&byte)
+    };
+    let bytes = text.as_bytes();
+    bytes
+        .windows(phrase.len())
+        .enumerate()
+        .any(|(start, part)| {
+            // Reject interior bytes before comparing the phrase. Long ordinary
+            // words otherwise pay for every vocabulary comparison at every byte.
+            (start == 0 || !word(bytes[start - 1]))
+                && part.eq_ignore_ascii_case(phrase.as_bytes())
+                && (start + part.len() == bytes.len() || !word(bytes[start + part.len()]))
+        })
 }
 
 fn starts_ascii_case_insensitive(haystack: &str, needle: &str) -> bool {
@@ -508,8 +521,8 @@ mod tests {
 
     #[test]
     fn readiness_ratio_ignores_invalid_tokens() {
-        assert_eq!(readiness_ratio("x/y 3/3"), Some(true));
-        assert_eq!(readiness_ratio("0/0"), None);
-        assert_eq!(readiness_ratio("no ratio"), None);
+        assert_eq!(classify_row_text("x/y 3/3"), None);
+        assert_eq!(classify_row_text("0/0"), None);
+        assert_eq!(classify_row_text("no ratio"), None);
     }
 }

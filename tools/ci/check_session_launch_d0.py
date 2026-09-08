@@ -443,8 +443,25 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
         "runner.mark_published(lease, route_id)",
         "managed_session: Option<ManagedSessionGuard>",
         "reconcile_managed_child_exit", "ManagedProcessOutcome::Failed",
-        "PtyWorkerHandle", "worker.join_timeout(Duration::from_secs(10))",
+        "PtyWorkerLease", "PtyWorkerRegistry", "config.workers.reserve()",
+        "worker_slot.attach(machine.spawn())", "drop(self._io_thread.take())",
+        "Drop for Context<T>", "impl<T: EventListener> Context<T>",
     }, root).replace("\r\n", "\n")
+    context_drop = context.partition("Drop for Context<T>")[2].partition("impl<T: EventListener> Context<T>")[0]
+    if ".join(" in context_drop or ".join_timeout(" in context_drop:
+        raise SessionLaunchD0Error("Context destruction must retire its worker without a UI-thread join")
+    require_tokens("rio-vt/src/performer/workers.rs", {
+        "const MAX_WORKERS: usize = 256", "mpsc::sync_channel(MAX_WORKERS)",
+        "reaper.jobs.try_send", "reaper.completed.recv_timeout(remaining)",
+        "pub fn reserve", "pub fn finish_shutdown", "struct PtyWorkerLease",
+        "self.retired -= 1", "thread.join()",
+    }, root)
+    require_tokens("rio-vt/src/performer/workers/tests.rs", {
+        "retirement_and_shutdown_deadline_do_not_wait_for_native_tls_destructors",
+        "capacity_counts_reservations_and_closing_workers_then_recovers",
+        "repeated_cleanup_is_isolated_and_does_not_accumulate_workers",
+        "panicked_worker_is_joined_and_capacity_is_released",
+    }, root)
     require_tokens("teletypewriter/src/lib.rs", {
         "pub enum ManagedPtyShutdown", "fn shutdown_owned_process_tree",
         "pub fn is_pty_eof_error", "error.raw_os_error() == Some(libc::EIO)",
