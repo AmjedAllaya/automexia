@@ -23,6 +23,18 @@ version from the verified selector rather than an unsupported job-level `env`
 expression. Both the initializer bytes/order and exact documented cache identity
 are checked; malformed or missing MSRV manifests fail with redacted diagnostics.
 
+Compiler jobs first select Python 3.12 using the reviewed, immutable
+`actions/setup-python` commit `ece7cb06caefa5fff74198d8649806c4678c61a1`.
+Ubuntu 22.04's system Python does not provide `tomllib`; relying on it made the
+first native packaging rehearsal fail before compilation. The
+[standard-library parser requires Python 3.11+](https://docs.python.org/3/library/tomllib.html).
+The [official MIT-licensed setup action](https://github.com/actions/setup-python)
+reuses the host tool cache or installs the requested Python minor, preserving
+host architecture and receiving current patch releases. Dependency caching is
+not enabled. No custom TOML parser or runtime dependency is added. The action
+requires a Node 24-capable runner; existing controlled runners must meet that
+prerequisite. Bootstrap ordering, version and pin are mutation-tested.
+
 The [rustup precedence rules](https://rust-lang.github.io/rustup/overrides.html)
 place the repository toolchain file above the global default. Installing a
 different compiler and setting that default therefore did not establish the

@@ -224,7 +224,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
-    - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
+    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute the exact native and benchmark release workload
@@ -403,7 +403,7 @@ jobs:
     - name: Install native Linux build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
     - name: Install pinned release quality tools
-      uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
+      uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
     - name: Formatting
@@ -778,7 +778,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Install pinned cargo-packager
-      uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
+      uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-packager@0.11.8
     - name: Restore signed inputs into packaging workspace
