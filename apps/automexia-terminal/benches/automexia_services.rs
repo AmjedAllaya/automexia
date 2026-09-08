@@ -21,6 +21,7 @@ fn services(c: &mut Criterion) {
         shell_path: None,
         shell_integration: true,
         shell_pid: 0,
+        environment: Default::default(),
     };
 
     let contribution = ContextContribution::new(
@@ -101,6 +102,29 @@ fn services(c: &mut Criterion) {
 }
 
 fn semantic_statuses(c: &mut Criterion) {
+    let facts = SessionFacts {
+        session_id: 17,
+        cwd: None,
+        title: String::new(),
+        distro: Some("Fixture-Distro".into()),
+        os_version: None,
+        shell_name: Some("bash".into()),
+        shell_user: Some("alice".into()),
+        shell_path: Some("/bin/bash".into()),
+        shell_integration: true,
+        shell_pid: 1,
+        environment: Default::default(),
+    };
+    let initial = automexia_ui_model::immediate_session_segments(&facts);
+    assert_eq!(initial.len(), 2);
+    assert_eq!(initial[1].value, "alice");
+    c.bench_function("prompt_identity_before_discovery", |b| {
+        b.iter(|| {
+            black_box(automexia_ui_model::immediate_session_segments(black_box(
+                &facts,
+            )))
+        })
+    });
     let mut group = c.benchmark_group("semantic_statuses");
     group
         .sample_size(30)

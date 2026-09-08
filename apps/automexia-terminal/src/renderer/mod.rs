@@ -693,6 +693,7 @@ fn semantic_pane_render_state(
             shell_name: rc.shell_name.clone(),
             shell_user: rc.shell_user.clone(),
             shell_path: rc.shell_path.clone(),
+            environment: rc.shell_environment.clone(),
             shell_integration: rc.shell_integration,
             shell_pid: context.shell_pid,
         },
@@ -1245,6 +1246,12 @@ impl Renderer {
                         terminal.user_vars.get("automexia_shell_path"),
                     );
                     context.renderable_content.shell_integration = live_shell_integration;
+                    automexia_devops::sync_location_hints(
+                        &mut context.renderable_content.shell_environment,
+                        |name| terminal.user_vars.get(name).map(String::as_str),
+                        live_shell_integration,
+                        context.renderable_content.shell_name.as_deref(),
+                    );
                     context.renderable_content.seeded_session_metadata = false;
                 }
                 context.renderable_content.shell_prompt_active = terminal
@@ -2113,6 +2120,47 @@ mod prompt_visual_anchor_tests {
         assert!(renderer.draw_bold_text_with_light_colors);
         assert!(renderer.ignore_selection_fg_color);
         assert!(renderer.custom_mouse_cursor);
+    }
+
+    #[test]
+    fn fragmented_location_metadata_updates_vt_hints_without_visible_cells() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(96, 10),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        let mut processor = Processor::default();
+        let mut hints = std::collections::BTreeMap::new();
+        // Literal wire bytes use an independent base64 oracle. One-byte delivery
+        // covers splits inside names, padding and terminators, not just complete OSCs.
+        let wire = b"\x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9tZQ==\x07\
+                     \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=L2ZpeHR1cmUvY29uZmln\x07";
+        for byte in wire {
+            processor.advance(&mut terminal, std::slice::from_ref(byte));
+        }
+        automexia_devops::sync_location_hints(
+            &mut hints,
+            |name| terminal.user_vars.get(name).map(String::as_str),
+            true,
+            Some("bash"),
+        );
+        assert_eq!(hints["HOME"], "/fixture/home");
+        assert_eq!(hints["KUBECONFIG"], "/fixture/config");
+        let clear = b"\x1b]1337;SetUserVar=automexia_env_HOME=\x07\
+                      \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=\x07";
+        processor.advance(&mut terminal, clear);
+        automexia_devops::sync_location_hints(
+            &mut hints,
+            |name| terminal.user_vars.get(name).map(String::as_str),
+            true,
+            Some("bash"),
+        );
+        assert!(hints.values().all(String::is_empty));
+        assert_eq!(terminal.grid.cursor.pos.row.0, 0);
+        assert_eq!(terminal.grid.cursor.pos.col.0, 0);
     }
 
     #[test]

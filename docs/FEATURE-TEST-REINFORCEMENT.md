@@ -393,6 +393,33 @@ Reinforce bounded route-scoped prompt metadata, directory and status updates,
 Git state, long and hostile labels, stale generation rejection, and redaction.
 Context rendering must never change commands or trigger network work.
 
+Kubernetes prompt discovery must reproduce real local `kubectl config set-context`
+writes, same-directory replacement/clear, native first-source-wins semantics,
+reordered/quoted/inline YAML and JSON, default/missing namespace, invalid input,
+credential opacity and long-context namespace visibility. Guest filesystem reads
+must remain isolated from the input path, with deadline/cancellation/output limits,
+exact helper identity, child reaping and no Windows-host cluster substitution.
+Use `automexia-devops/tests/kubernetes_prompt.rs`, the native WSL helper rehearsal,
+and its correctness-checked benchmarks. `check_prompt_discovery.py` and its
+mutation tests guard source boundaries but are not runtime evidence. Exercise
+real Bash/Zsh/Fish/PowerShell hooks with same-directory changes, clearing, export
+attributes, Unicode/metacharacters, byte limits, opt-out and encoder-free replay.
+Use `tools/ci/test_shell_location_hints.py` for tests and validated replay timings.
+Measure startup separately from cached replay and immediate identity projection.
+Title-only storms must retain pending work and cached context; every real source
+change must still invalidate it. Initial progress must precede guest reads, retain
+the operation latch, and never overwrite an existing namespace during refresh.
+Check cancelled/stale progress, initial and final renderer consumption, and cached
+cross-pane reuse without treating an incomplete snapshot as a completed result.
+For Zsh, test the actual encoder's hash table in the calling fixture process;
+checking only the parent misses enumeration inside frame-capture subshells.
+Assert unrelated PATH commands are not preloaded and user hash options remain.
+Fragment path-pair commit frames through the VT; reject generic serialization,
+debug disclosure, network/device path authority and stale guest hints in CMD.
+Check the enlarged bundled glyph's ink/label bounds at multiple row heights and
+scales, and the namespace-only label with full accessible context. Native desktop pixels and screen-reader
+delivery remain distinct evidence requirements.
+
 Operational status colour assurance must distinguish lifecycle from readiness:
 completed pods/clean exits, full/partial/invalid readiness, init failures,
 condition polarity, paused/starting/unhealthy containers, unknown table states,

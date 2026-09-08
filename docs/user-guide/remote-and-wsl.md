@@ -17,6 +17,12 @@ sessions.
 Session-local integration may provide bounded prompt metadata. If it is missing
 or disabled, the WSL shell continues normally.
 
+Kubernetes prompt badges read the WSL home configuration or shell-specific
+KUBECONFIG through a bounded background helper. They show a larger Kubernetes
+icon and a clean namespace label, with full context in the accessible description,
+and do not use the Windows host's cluster as a fallback. See
+[prompt context behavior and limitations](../PROMPT-CONTEXT-ASSURANCE.md).
+
 ## Safety and troubleshooting
 
 Use authorized destinations and synthetic documentation examples. Paste never

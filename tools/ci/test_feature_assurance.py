@@ -31,7 +31,7 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreaterEqual(counts["features"], 12)
         self.assertGreaterEqual(counts["components"], 20)
         self.assertGreater(counts["evidence"], counts["features"] * 9)
-        self.assertEqual(counts["benchmarks"], 22)
+        self.assertEqual(counts["benchmarks"], 23)
         self.assertEqual(counts["fuzz_targets"], 18)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 
@@ -178,6 +178,19 @@ class FeatureAssuranceTests(unittest.TestCase):
                 evidence[evidence.index(benchmark)] = "sugarloaf/src/text.rs"
                 with self.assertRaisesRegex(ASSURANCE.AssuranceError, "benchmark targets missing"):
                     ASSURANCE.validate_document(document)
+
+    def test_prompt_parser_benchmark_requires_performance_evidence(self) -> None:
+        document = copy.deepcopy(self.document)
+        feature = next(item for item in document["features"]
+                       if item["id"] == "prompt-context-devops-semantics")
+        benchmark = "automexia-devops/benches/kubernetes_context.rs"
+        self.assertIn(benchmark, ASSURANCE.benchmark_targets(ASSURANCE.ROOT))
+        evidence = feature["quality"]["performance"]["evidence"]
+        # A documented parser is not measured performance evidence: keep the
+        # reference count unchanged while removing the actual benchmark owner.
+        evidence[evidence.index(benchmark)] = "automexia-devops/src/kubernetes.rs"
+        with self.assertRaisesRegex(ASSURANCE.AssuranceError, "benchmark targets missing"):
+            ASSURANCE.validate_document(document)
 
     def test_orphaned_fuzz_target_is_rejected(self) -> None:
         document = copy.deepcopy(self.document)

@@ -42,6 +42,12 @@ A focused test passing is not proof that the full change is complete. A
 cross-compile is not a native runtime test. Retrying a flaky test does not erase
 the first failure; investigate it and record the cause.
 
+For filtered test commands, verify the actual executed test names and a nonzero
+test count in the correct library, binary, or integration target. A successful
+zero-test exit is not validation. Where a test must produce a raster, report, or
+other artifact, also require that fresh artifact and inspect its relevant content;
+do not reuse an older artifact to justify the current run.
+
 ## Non-negotiable project boundaries
 
 - Preserve user work. Start with `git status`, never overwrite unrelated dirty

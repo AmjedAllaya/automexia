@@ -110,6 +110,14 @@ and preserves explicit application ANSI. No provider access, worker or persisted
 state participates in this row path. See
 [ADR 0052](adr/0052-truthful-operational-status-colours.md).
 
+Passive Kubernetes prompt projection uses the workspace-pinned serde-saphyr
+reader in the same DevOps extension. Explicit parsing limits retain only context
+and namespace; fixture and benchmark dependencies are development-only. Windows
+guest filesystem reads use an application-owned, cancellable helper before GUI
+startup, never provider execution in the renderer. See
+[ADR 0055](adr/0055-session-local-prompt-discovery.md) and
+[current scope and verification](PROMPT-CONTEXT-ASSURANCE.md).
+
 Grapheme boundaries and label compaction belong to the capability-free
 `automexia-extension-api::text` owner. Its public helpers distinguish trimmed
 labels from whitespace-preserving display text and borrowed prefix slices.

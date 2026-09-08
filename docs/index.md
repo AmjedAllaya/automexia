@@ -36,6 +36,7 @@ including open-source ideas, and commercial strategy.
 | Keyboard | [Keyboard](KEYBOARD.md), [compact reference](reference/keyboard.md) |
 | Command line | [CLI](CLI-REFERENCE.md), [compact reference](reference/cli.md) |
 | Shell integration | [Shell integration](SHELL-INTEGRATION.md) |
+| Kubernetes prompt context | [Behavior and assurance](PROMPT-CONTEXT-ASSURANCE.md) |
 | Image behavior | [Image previews](IMAGE-PREVIEWS.md) |
 | Platforms | [Platform support](PLATFORMS.md) |
 | Accessibility | [Accessibility](ACCESSIBILITY.md) |

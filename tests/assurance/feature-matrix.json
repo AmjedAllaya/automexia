@@ -173,12 +173,12 @@
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["automexia-ui-model/src/lib.rs", "automexia-devops/src/semantics.rs"]},
-        "correctness": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-devops/src/semantics.rs", "automexia-devops/src/semantics_tests.rs", "automexia-devops/src/semantics/workloads.rs", "apps/automexia-terminal/src/grid_emit_semantics_tests.rs"]},
-        "security": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "fuzz/fuzz_targets/semantic_classification.rs", "fuzz/fuzz_targets/label_sanitization.rs"]},
-        "performance": {"level": "nightly", "evidence": ["apps/automexia-terminal/benches/automexia_services.rs"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-devops/tests/kubernetes_prompt.rs", "tools/ci/test_shell_location_hints.py", "tools/ci/native_wsl_kubernetes_prompt.py", "automexia-devops/src/context.rs", "automexia-devops/src/semantics.rs", "automexia-devops/src/semantics_tests.rs", "automexia-devops/src/semantics/workloads.rs", "apps/automexia-terminal/src/grid_emit_semantics_tests.rs"]},
+        "security": {"level": "pr", "evidence": ["automexia-extension-api/src/lib.rs", "automexia-devops/src/locations.rs", "tools/ci/check_prompt_discovery.py", "automexia-devops/src/context.rs", "fuzz/fuzz_targets/semantic_classification.rs", "fuzz/fuzz_targets/label_sanitization.rs"]},
+        "performance": {"level": "nightly", "evidence": ["tools/ci/test_shell_location_hints.py", "apps/automexia-terminal/benches/automexia_services.rs", "automexia-devops/benches/kubernetes_context.rs", "docs/PROMPT-CONTEXT-ASSURANCE.md#verification"]},
         "resource_lifetime": {"level": "pr", "evidence": ["automexia-devops/src/context.rs"]},
         "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Provider discovery is read-only and retains bounded in-memory snapshots only."},
-        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-ui-model/src/lib.rs"]},
+        "resilience": {"level": "pr", "evidence": ["automexia-devops/src/context.rs", "automexia-ui-model/src/lib.rs", "apps/automexia-terminal/src/automexia/runtime.rs", "apps/automexia-terminal/src/renderer/devops_status.rs"]},
         "visual_quality": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/grid_emit_semantics_tests.rs", "docs/adr/0052-truthful-operational-status-colours.md"]}
       },
       "platforms": {

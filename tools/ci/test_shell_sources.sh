@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'printf "FAIL: shell-source gate at line %s\n" "$LINENO" >&2' ERR
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$root"
@@ -98,6 +99,7 @@ cmp -s \
 
 bash tools/ci/test_shell_integration.sh
 zsh tools/ci/test_zsh_integration.zsh
+python3 tools/ci/test_shell_location_hints.py
 if command -v fish >/dev/null 2>&1; then
   fish tools/ci/test_fish_integration.fish
 fi

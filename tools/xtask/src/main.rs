@@ -2649,7 +2649,17 @@ fn verify_text_benchmark_dependency(dependency: &serde_json::Value) -> TaskResul
     )
 }
 
+fn verify_devops_test_dependency(dependency: &serde_json::Value) -> TaskResult {
+    require(
+        !matches!(dependency["name"].as_str(), Some("criterion" | "tempfile"))
+            || dependency["kind"].as_str() == Some("dev"),
+        "DevOps fixture and benchmark dependencies must remain development-only",
+    )
+}
+
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_prompt_discovery.py")?;
+    run_python("tools/ci/test_prompt_discovery.py")?;
     run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
     run_python("tools/ci/test_github_free_assurance.py")?;
     run_python("tools/ci/check_feature_ownership.py")?;
@@ -2726,7 +2736,16 @@ fn verify_architecture() -> TaskResult {
         ),
         (
             "automexia-devops",
-            &["automexia-extension-api", "dirs", "proptest", "serde_json"],
+            &[
+                "automexia-extension-api",
+                "dirs",
+                "serde",
+                "serde_json",
+                "serde-saphyr",
+                "criterion",
+                "proptest",
+                "tempfile",
+            ],
         ),
         (
             "automexia-devops-ssh",
@@ -2881,6 +2900,9 @@ fn verify_architecture() -> TaskResult {
                 .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
             if name == "automexia-extension-api" {
                 verify_text_benchmark_dependency(dependency)?;
+            }
+            if name == "automexia-devops" {
+                verify_devops_test_dependency(dependency)?;
             }
             require(
                 allowed_dependencies.contains(&dependency_name),
@@ -5119,6 +5141,28 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn devops_fixture_dependencies_cannot_gain_runtime_or_build_authority() {
+        for name in ["criterion", "tempfile"] {
+            for kind in [
+                serde_json::Value::Null,
+                serde_json::json!("build"),
+                serde_json::json!("normal"),
+            ] {
+                let mut dependency = serde_json::json!({"name": name, "kind": kind, "rename": "fixture", "target": "cfg(unix)"});
+                assert!(verify_devops_test_dependency(&dependency).is_err());
+                dependency["kind"] = serde_json::json!("dev");
+                assert!(verify_devops_test_dependency(&dependency).is_ok());
+                dependency.as_object_mut().unwrap().remove("kind");
+                assert!(verify_devops_test_dependency(&dependency).is_err());
+            }
+        }
+        assert!(verify_devops_test_dependency(
+            &serde_json::json!({"name": "serde-saphyr", "kind": null})
+        )
+        .is_ok());
     }
 
     #[test]

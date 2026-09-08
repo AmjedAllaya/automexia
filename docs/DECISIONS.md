@@ -38,6 +38,7 @@ listed or summarized here.
 | [0049](adr/0049-grouped-command-discovery-and-pane-shortcuts.md) | Grouped command discovery (pane chords superseded by 0051) |
 | [0051](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md) | Mnemonic pane shortcuts, shortcut-family audit and effective discovery |
 | [0053](adr/0053-effective-rust-toolchain-identity.md) | Explicit compiler selection and verified MSRV |
+| [0055](adr/0055-session-local-prompt-discovery.md) | Session-local Kubernetes prompt discovery and bounded guest reads |
 
 ## When an ADR is required
 

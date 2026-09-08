@@ -45,8 +45,46 @@ __automexia_publish_static_metadata() {
   printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
   printf '\e]1337;SetUserVar=automexia_shell_name=YmFzaA==\a'
 }
-__automexia_publish_static_metadata
+__automexia_identity_frame=$(__automexia_publish_static_metadata)
+printf '%s' "$__automexia_identity_frame"
 unset -f __automexia_publish_static_metadata
+
+# Only these two local paths cross the prompt metadata boundary. Cache bounded
+# values and complete frames; unchanged prompts never launch an encoder. Replay
+# both frames after every command so a nested shell cannot leave its paths behind.
+__automexia_publish_location_hints() {
+  local LC_ALL=C hint_home=${HOME:-} hint_config='' attributes
+  if [[ -n ${KUBECONFIG:-} ]]; then
+    if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+      [[ ${KUBECONFIG@a} == *x* ]] && hint_config=$KUBECONFIG
+    else
+      # Bash 3.2 has no attribute expansion. This fallback runs only a builtin
+      # in a subshell, and only when an override exists; it never evaluates data.
+      attributes=$(declare -p KUBECONFIG 2>/dev/null)
+      [[ $attributes == 'declare -'*x*' KUBECONFIG='* ]] && hint_config=$KUBECONFIG
+    fi
+  fi
+  if [[ ${AUTOMEXIA_CONTEXT_PATH_HINTS:-1} == 0 ||
+        ${#hint_home} -gt 4096 || ${#hint_config} -gt 4096 ||
+        $hint_home == *[[:cntrl:]]* || $hint_config == *[[:cntrl:]]* ]]; then
+    hint_home='' hint_config=''
+  fi
+  if [[ ${__automexia_location_ready:-0} != 1 ||
+        $hint_home != "${__automexia_location_home:-}" ||
+        $hint_config != "${__automexia_location_config:-}" ]]; then
+    __automexia_location_home=$hint_home
+    __automexia_location_config=$hint_config
+    __automexia_home_frame=$(__automexia_set_user_var automexia_env_HOME "$hint_home")
+    __automexia_config_frame=$(__automexia_set_user_var automexia_env_KUBECONFIG "$hint_config")
+    if [[ ( -n $hint_home && -z $__automexia_home_frame ) ||
+          ( -n $hint_config && -z $__automexia_config_frame ) ]]; then
+      __automexia_home_frame='' __automexia_config_frame=''
+    fi
+    __automexia_location_ready=1
+  fi
+  printf '%s' "${__automexia_home_frame:-$'\e]1337;SetUserVar=automexia_env_HOME=\a'}"
+  printf '%s' "${__automexia_config_frame:-$'\e]1337;SetUserVar=automexia_env_KUBECONFIG=\a'}"
+}
 
 # Match the liquid-hacker reference experience without parsing or rewriting
 # terminal output. eza owns the listing and emits Nerd Font codepoints before
@@ -171,6 +209,10 @@ __automexia_pre_prompt() {
   # the real command status first; returning the captured status avoids turning
   # it into 0 just because Automexia emitted metadata.
   local status=$?
+  printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
+  printf '%s' "$__automexia_identity_frame"
+  __automexia_publish_location_hints
+  printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
   printf '\e[0m\e]133;D;%s\a' "$status"
   __automexia_osc7
   __automexia_title

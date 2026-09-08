@@ -3,6 +3,8 @@
 //! Providers inspect bounded local configuration and shell metadata. They have
 //! no network-client dependency and return versioned generic contributions.
 mod context;
+pub mod kubernetes;
+mod locations;
 mod model;
 mod semantics;
 
@@ -12,7 +14,10 @@ use automexia_extension_api::{
     SessionFacts, SessionId, StatusSegment,
 };
 
+#[cfg(not(target_arch = "wasm32"))]
+pub use context::attach_kubernetes_context;
 pub use context::sanitize_label;
+pub use locations::sync_location_hints;
 pub use model::{CloudContext, DevOpsSnapshot, KubernetesContext, WslContext};
 pub use semantics::classify_row_text;
 
@@ -119,19 +124,21 @@ pub fn contribution(
         )?;
     }
     if let Some(kubernetes) = &snapshot.kubernetes {
-        let value =
-            if kubernetes.namespace.is_empty() || kubernetes.namespace == "default" {
-                compact_label(&kubernetes.context, MAX_CONTEXT_CHARS)
-            } else {
-                compact_label(
-                    &format!("{}/{}", kubernetes.context, kubernetes.namespace),
-                    MAX_CONTEXT_CHARS,
-                )
-            };
+        // One badge, one readable value. Context remains in the accessible name
+        // instead of adding a separator and a nearly empty truncated suffix.
+        let namespace = if kubernetes.namespace.is_empty() {
+            "default"
+        } else {
+            &kubernetes.namespace
+        };
+        let value = compact_label(namespace, MAX_CONTEXT_CHARS);
         push(
             "kubernetes",
-            value.clone(),
-            format!("Kubernetes context {value}"),
+            value,
+            format!(
+                "Kubernetes context {}, namespace {namespace}",
+                kubernetes.context
+            ),
             SegmentRole::Kubernetes,
             IconKind::Kubernetes,
             30,
@@ -251,10 +258,11 @@ mod projection_tests {
             distro: None,
             os_version: None,
             shell_name: Some("PowerShell".into()),
-            shell_user: Some("amjed".into()),
+            shell_user: Some("alice".into()),
             shell_path: Some("pwsh.exe".into()),
             shell_integration: true,
             shell_pid: 10,
+            environment: Default::default(),
         }
     }
 
@@ -281,7 +289,7 @@ mod projection_tests {
             }],
             terraform: Some("staging".into()),
             git_branch: Some("main".into()),
-            user: Some("amjed".into()),
+            user: Some("alice".into()),
             environment: Some("staging".into()),
             production: false,
             ..DevOpsSnapshot::default()
@@ -348,8 +356,8 @@ mod projection_tests {
                 ),
                 (
                     "kubernetes",
-                    "dev-cluster/demo",
-                    "Kubernetes context dev-cluster/demo",
+                    "demo",
+                    "Kubernetes context dev-cluster, namespace demo",
                     SegmentRole::Kubernetes,
                     IconKind::Kubernetes,
                     30,
@@ -403,8 +411,8 @@ mod projection_tests {
                 ),
                 (
                     "user",
-                    "amjed",
-                    "User amjed",
+                    "alice",
+                    "User alice",
                     SegmentRole::User,
                     IconKind::User,
                     90,
