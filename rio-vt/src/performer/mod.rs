@@ -83,6 +83,9 @@ const READ_BUFFER_SIZE: usize = 0x10_0000;
 /// Max bytes to read from the PTY while the terminal is locked.
 #[cfg(feature = "pty")]
 const MAX_LOCKED_READ: usize = u16::MAX as usize;
+/// Closing a child must not let a surviving output producer drain forever.
+#[cfg(feature = "pty")]
+const MAX_FINAL_OUTPUT_BYTES: usize = 4 * READ_BUFFER_SIZE;
 
 #[cfg(feature = "pty")]
 struct PeekableReceiver<T> {
@@ -416,6 +419,17 @@ where
         buf: &mut [u8],
         drain_fully: bool,
     ) -> io::Result<()> {
+        self.pty_read_bounded(state, buf, drain_fully, usize::MAX)
+            .map(|_| ())
+    }
+
+    fn pty_read_bounded(
+        &mut self,
+        state: &mut State,
+        buf: &mut [u8],
+        drain_fully: bool,
+        byte_limit: usize,
+    ) -> io::Result<usize> {
         let mut unprocessed = 0;
         let mut processed = 0;
 
@@ -424,16 +438,20 @@ where
         let mut terminal = None;
 
         loop {
+            if processed == byte_limit {
+                break;
+            }
+            let read_limit = buf.len().min(byte_limit - processed);
             let drained;
             let mut eof = false;
 
             // Read from the PTY.
-            match self.pty.reader().read(&mut buf[unprocessed..]) {
+            match self.pty.reader().read(&mut buf[unprocessed..read_limit]) {
                 // This is received on Windows/macOS when no more data is readable from the PTY.
                 Ok(0) if unprocessed == 0 => break,
                 Ok(got) => {
                     eof = got == 0;
-                    drained = got < buf.len() - unprocessed;
+                    drained = got < read_limit - unprocessed;
                     unprocessed += got;
                 }
                 Err(err) => match err.kind() {
@@ -465,7 +483,7 @@ where
                 None => terminal.insert(match self.terminal.try_lock_unfair() {
                     // EOF cannot produce another readiness event for pending
                     // bytes. Wait on this worker, never on the input thread.
-                    None if unprocessed == buf.len() || eof => {
+                    None if unprocessed == read_limit || eof => {
                         self.terminal.lock_unfair()
                     }
                     None => continue,
@@ -501,7 +519,7 @@ where
             }
         }
 
-        Ok(())
+        Ok(processed)
     }
 
     /// Drain the channel.
@@ -567,6 +585,39 @@ where
 
     pub fn channel(&self) -> PtySender {
         self.sender.clone()
+    }
+
+    /// Consume only the adapter's authoritative child notification. An I/O
+    /// failure alone cannot establish a child status. Keep final output and
+    /// exit/close publication in one owner, including transport-error races.
+    fn finish_child_exit(&mut self, state: &mut State, buf: &mut [u8]) -> bool {
+        let Some(teletypewriter::ChildEvent::Exited(status)) =
+            self.pty.next_child_event()
+        else {
+            return false;
+        };
+        let mut remaining = MAX_FINAL_OUTPUT_BYTES;
+        while remaining > 0 && !self.sender.shutdown_requested() {
+            // Release the terminal lease between normal-sized batches. The
+            // byte budget also bounds a hostile surviving output producer.
+            match self.pty_read_bounded(state, buf, true, remaining) {
+                Ok(0) => break,
+                Ok(processed) => remaining -= processed,
+                Err(err) => {
+                    tracing::debug!("PTY drain after child exit failed: {err}");
+                    break;
+                }
+            }
+        }
+        if remaining == 0 {
+            warn!("PTY final-output drain reached its byte ceiling");
+        }
+        self.event_proxy
+            .send_event(RioEvent::ChildExited(self.route_id, status), self.window_id);
+        self.terminal.lock().exit();
+        self.event_proxy
+            .send_event(RioEvent::Render, self.window_id);
+        true
     }
 
     pub fn spawn(mut self) -> PtyWorkerHandle<()> {
@@ -672,12 +723,22 @@ where
                     self.drain_recv_channel(&mut state);
                     break;
                 }
+                // A confirmed exit wins over obsolete input/resize work in the
+                // same poll batch. Explicit host cancellation still wins above.
+                if events
+                    .iter()
+                    .any(|event| event.token() == self.pty.child_event_token())
+                    && self.finish_child_exit(&mut state, &mut buf)
+                {
+                    break;
+                }
                 #[cfg(windows)]
                 if self.receiver.peek().is_some() {
                     // Parse available old-size output before committing a new
                     // native/grid size; the SPSC adapter keeps this nonblocking.
                     if let Err(err) = self.pty_read(&mut state, &mut buf, true) {
                         error!("Error draining output before native resize: {err}");
+                        self.finish_child_exit(&mut state, &mut buf);
                         break;
                     }
                 }
@@ -697,6 +758,7 @@ where
                 if state.needs_write() && state.input_ready(Instant::now()) {
                     if let Err(err) = self.pty_write(&mut state) {
                         error!("Error writing queued input to PTY: {err}");
+                        self.finish_child_exit(&mut state, &mut buf);
                         break 'event_loop;
                     }
                 }
@@ -705,45 +767,8 @@ where
                     match event.token() {
                         // Channel messages were already drained above.
                         token if token == channel_token => (),
-                        token if token == self.pty.child_event_token() => {
-                            if let Some(teletypewriter::ChildEvent::Exited(status)) =
-                                self.pty.next_child_event()
-                            {
-                                // In the future allow configure exit
-                                // if self.hold {
-                                //     With hold enabled, make sure the PTY is drained.
-                                //     let _ = self.pty_read(&mut state, &mut buf);
-                                // } else {
-                                //     // Without hold, shutdown the terminal.
-                                //     self.terminal.lock().exit();
-                                // }
-
-                                // Drain whatever the child wrote before it
-                                // exited so short-lived commands don't lose
-                                // their final output. This is the last read
-                                // before the loop exits, so there is no next
-                                // poll to catch leftovers: drain fully.
-                                if let Err(err) =
-                                    self.pty_read(&mut state, &mut buf, true)
-                                {
-                                    tracing::debug!(
-                                        "PTY drain after child exit failed: {err}"
-                                    );
-                                }
-
-                                self.event_proxy.send_event(
-                                    RioEvent::ChildExited(self.route_id, status),
-                                    self.window_id,
-                                );
-
-                                self.terminal.lock().exit();
-
-                                self.event_proxy
-                                    .send_event(RioEvent::Render, self.window_id);
-
-                                break 'event_loop;
-                            }
-                        }
+                        // Child readiness was consumed before queued I/O.
+                        token if token == self.pty.child_event_token() => (),
 
                         token
                             if token == self.pty.read_token()
@@ -762,6 +787,7 @@ where
                                         "Error reading from PTY in event loop: {}",
                                         err
                                     );
+                                    self.finish_child_exit(&mut state, &mut buf);
                                     break 'event_loop;
                                 }
                             }
@@ -769,6 +795,7 @@ where
                             if event.readiness().is_writable() {
                                 if let Err(err) = self.pty_write(&mut state) {
                                     error!("Error writing to PTY in event loop: {}", err);
+                                    self.finish_child_exit(&mut state, &mut buf);
                                     break 'event_loop;
                                 }
                             }

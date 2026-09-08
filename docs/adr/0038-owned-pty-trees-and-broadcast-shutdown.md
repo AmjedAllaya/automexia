@@ -16,6 +16,18 @@ and could leave descendants outside a verifiable owner boundary.
 Core terminal and PTY adapters remain the single owners of this behavior.
 Optional extensions receive no process-lifecycle authority.
 
+Confirmed child-exit readiness precedes obsolete queued input and resize work;
+explicit host shutdown has priority. A single worker owner publishes final
+available output, the authoritative exit status, close and render in order.
+Transport errors reconcile an already arrived child event but never invent one.
+The final available tail is drained across ordinary read batches, releasing the
+terminal lease between batches. A separate exact 4 MiB ceiling and per-batch
+cancellation checks prevent a surviving producer from draining indefinitely.
+Reaching that ceiling emits a content-free warning. This is not a wait for
+arbitrary future output; ordinary live-read and resize limits remain unchanged.
+Independent boundary tests cover zero, read-batch edges, the byte ceiling and
+cancellation. Real native fixtures retain all 1,024 final rows and their marker.
+
 Every ordinary and exact Windows ConPTY process is created suspended, assigned
 to a session-specific Job Object configured with kill-on-close, and resumed
 only after assignment succeeds. Assignment or resume failure terminates the

@@ -11,6 +11,21 @@ use rio_vt::event::{VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 use teletypewriter::{ChildEvent, EventedPty, ProcessReadWrite, WinsizeBuilder};
 
+struct FixtureWorker {
+    handle: rio_vt::performer::PtyWorkerHandle<()>,
+    sender: rio_vt::performer::PtySender,
+}
+impl Drop for FixtureWorker {
+    fn drop(&mut self) {
+        let _ = self.sender.send(rio_vt::event::Msg::Shutdown);
+        let _ = self.handle.join_timeout(Duration::from_secs(10));
+    }
+}
+
+#[cfg(windows)]
+#[path = "support/observed_pty.rs"]
+mod observed_pty;
+
 #[cfg(windows)]
 const CONSOLE_ENTER: &[u8] = b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_";
 
@@ -209,9 +224,17 @@ fn native_worker_cmd_enter_after_resize_preserves_completed_rows() {
 }
 
 #[cfg(windows)]
+#[derive(Debug)]
 enum ResizeDelivery {
     Burst,
     AwaitWorkerCommit,
+}
+
+#[cfg(windows)]
+#[derive(Debug)]
+enum ExitInput {
+    Key,
+    QueuedKeys,
 }
 
 #[test]
@@ -232,7 +255,13 @@ fn native_worker_intermediate_resize_commits_preserve_output() {
 
 #[cfg(windows)]
 fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDelivery) {
-    run_worker_output_fixture(shell, arguments, delivery, &short_output());
+    run_worker_output_fixture(
+        shell,
+        arguments,
+        delivery,
+        &short_output(),
+        ExitInput::Key,
+    );
 }
 
 fn short_output() -> Vec<String> {
@@ -247,10 +276,11 @@ fn run_worker_output_fixture(
     arguments: Vec<String>,
     delivery: ResizeDelivery,
     expected: &[String],
+    exit_input: ExitInput,
 ) {
     use rio_vt::event::sync::FairMutex;
     use rio_vt::event::{EventListener, Msg, RioEvent, WindowSize};
-    use rio_vt::performer::{Machine, PtyWorkerHandle};
+    use rio_vt::performer::Machine;
     use std::sync::{mpsc, Arc};
 
     #[derive(Clone)]
@@ -276,19 +306,11 @@ fn run_worker_output_fixture(
             self.0.try_send(message).expect("bounded fixture events");
         }
     }
-    struct Worker {
-        handle: PtyWorkerHandle<()>,
-        sender: rio_vt::performer::PtySender,
-    }
-    impl Drop for Worker {
-        fn drop(&mut self) {
-            let _ = self.sender.send(Msg::Shutdown);
-            let _ = self.handle.join_timeout(Duration::from_secs(10));
-        }
-    }
     let line_input = arguments.last().is_some_and(|arg| arg == "line");
     let pty = teletypewriter::create_pty(Some(shell), arguments, &None, None, 100, 24)
         .unwrap_or_else(|_| panic!("worker fixture launch"));
+    let child_exit = observed_pty::ChildExitProbe::new(&pty);
+    let (pty, observation) = observed_pty::ObservedPty::new(pty);
     let (sender, receiver) = mpsc::sync_channel(32);
     let events = Events(sender);
     let terminal = Arc::new(FairMutex::new(Crosswords::new(
@@ -302,7 +324,7 @@ fn run_worker_output_fixture(
     let machine = Machine::new(terminal.clone(), pty, events, WindowId::from(0), 0)
         .unwrap_or_else(|_| panic!("native worker startup"));
     let sender = machine.channel();
-    let mut worker = Worker {
+    let mut worker = FixtureWorker {
         handle: machine.spawn(),
         sender,
     };
@@ -413,19 +435,49 @@ fn run_worker_output_fixture(
         );
     }
     let probe = fixture_release(shell, &terminal.lock());
+    let input = match exit_input {
+        ExitInput::Key => std::borrow::Cow::Borrowed(probe),
+        // The real shell exits after one key while more input exceeds the
+        // native adapter ring. No extra command or Enter is introduced.
+        ExitInput::QueuedKeys => {
+            std::borrow::Cow::Owned(probe.repeat(1024 * 1024 / probe.len() + 1))
+        }
+    };
+    let exit_started = Instant::now();
     worker
         .sender
-        .send(Msg::Input(std::borrow::Cow::Borrowed(probe)))
+        .send(Msg::Input(input))
         .expect("release verified fixture");
     assert_eq!(
         receiver
             .recv_timeout(Duration::from_secs(20))
-            .expect("native worker exit"),
+            .unwrap_or_else(|error| {
+                // Inspect only after failure: no extra native output or wait may
+                // repair the final-input/child-exit race under investigation.
+                let child_signaled = child_exit.exited();
+                let joined = worker.handle.join_timeout(Duration::ZERO);
+                let win32_input = terminal
+                    .try_lock_unfair()
+                    .map(|state| state.mode().contains(rio_vt::crosswords::Mode::WIN32_INPUT));
+                panic!(
+                    "native worker exit: {error:?}; delivery={delivery:?}; input={exit_input:?}; child_signaled={child_signaled:?}; joined={joined}; win32_input={win32_input:?}; io={observation:?}"
+                );
+            }),
         "EXIT"
+    );
+    let exit_notified = exit_started.elapsed();
+    assert_eq!(
+        child_exit.exited(),
+        Some(true),
+        "exact native child is signaled"
     );
     assert!(
         worker.handle.join_timeout(Duration::from_secs(10)),
         "worker joins after native child exit"
+    );
+    eprintln!(
+        "native exit timing: delivery={delivery:?}; input={exit_input:?}; notification_us={}; joined_us={}",
+        exit_notified.as_micros(), exit_started.elapsed().as_micros()
     );
 }
 
@@ -719,10 +771,126 @@ fn native_live_powershell_table_resize_roundtrip_preserves_every_row() {
     );
 }
 
+#[test]
+#[cfg(windows)]
+fn native_powershell_exit_with_pending_input_reports_child_exit() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.ps1");
+    let arguments = vec![
+        "-NoLogo".into(),
+        "-NoProfile".into(),
+        "-File".into(),
+        fixture.to_string_lossy().into_owned(),
+        "-WideTable".into(),
+    ];
+    run_worker_output_fixture(
+        "powershell.exe",
+        arguments,
+        ResizeDelivery::Burst,
+        &table_output(),
+        ExitInput::QueuedKeys,
+    );
+}
+
 fn table_output() -> Vec<String> {
     (1..=32).map(|index| format!(
         "ROW-{index:02}  -a---  2026-01-01 12:00:00  {index:04}  artifact-{index:02}-abcdefghijklmnopqrstuvwxyz0123456789.txt"
     )).collect()
+}
+
+#[test]
+fn native_worker_exit_retains_large_final_output() {
+    use rio_vt::event::sync::FairMutex;
+    use rio_vt::event::{EventListener, RioEvent};
+    use rio_vt::performer::Machine;
+    use std::sync::{mpsc, Arc};
+    #[derive(Clone)]
+    struct Exit(mpsc::SyncSender<Option<i32>>);
+    impl EventListener for Exit {
+        fn send_event(&self, event: RioEvent, _: WindowId) {
+            if let RioEvent::ChildExited(_, status) = event {
+                self.0.try_send(status).expect("single native exit");
+            }
+        }
+    }
+    let fixtures =
+        std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures");
+    #[cfg(windows)]
+    let (shell, arguments) = (
+        "powershell.exe",
+        vec![
+            "-NoLogo".into(),
+            "-NoProfile".into(),
+            "-File".into(),
+            fixtures
+                .join("final-output-tail.ps1")
+                .to_string_lossy()
+                .into_owned(),
+        ],
+    );
+    #[cfg(unix)]
+    let (shell, arguments) = (
+        "/bin/bash",
+        vec![
+            "--noprofile".into(),
+            "--norc".into(),
+            fixtures
+                .join("final-output-tail.sh")
+                .to_string_lossy()
+                .into_owned(),
+        ],
+    );
+    #[cfg(windows)]
+    let pty = teletypewriter::create_pty(Some(shell), arguments, &None, None, 100, 24)
+        .unwrap_or_else(|_| panic!("final-tail native launch"));
+    #[cfg(unix)]
+    let pty = teletypewriter::create_pty_with_spawn(
+        Some(shell),
+        arguments,
+        &None,
+        None,
+        100,
+        24,
+        0,
+        0,
+    )
+    .unwrap_or_else(|_| panic!("final-tail native launch"));
+    #[cfg(windows)]
+    let child = observed_pty::ChildExitProbe::new(&pty);
+    let (tx, rx) = mpsc::sync_channel(2);
+    let events = Exit(tx);
+    let terminal = Arc::new(FairMutex::new(Crosswords::new(
+        CrosswordsSize::new(100, 24),
+        CursorShape::Block,
+        events.clone(),
+        WindowId::from(0),
+        0,
+        2_000,
+    )));
+    let machine = Machine::new(terminal.clone(), pty, events, WindowId::from(0), 0)
+        .unwrap_or_else(|_| panic!("final-tail worker startup"));
+    let mut worker = FixtureWorker {
+        sender: machine.channel(),
+        handle: machine.spawn(),
+    };
+    assert_eq!(
+        rx.recv_timeout(Duration::from_secs(20))
+            .expect("native exit"),
+        Some(0)
+    );
+    assert!(worker.handle.join_timeout(Duration::from_secs(10)));
+    #[cfg(windows)]
+    assert_eq!(child.exited(), Some(true));
+    let rows = logical_rows(&terminal.lock());
+    let actual: Vec<_> = rows
+        .iter()
+        .filter(|row| row.starts_with("FINAL-ROW-"))
+        .collect();
+    assert_eq!(actual.len(), 1024, "no final output loss or duplication");
+    for (index, row) in actual.iter().enumerate() {
+        assert_eq!(**row, format!("FINAL-ROW-{index:04} {}", "0".repeat(60)));
+    }
+    assert!(rows.iter().any(|row| row == "FINAL-TAIL-END"));
 }
 
 fn run_table_fixture(
@@ -734,7 +902,13 @@ fn run_table_fixture(
     run_fixture_session(shell, arguments.clone(), policy, &expected);
     #[cfg(windows)]
     for delivery in [ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit] {
-        run_worker_output_fixture(shell, arguments.clone(), delivery, &expected);
+        run_worker_output_fixture(
+            shell,
+            arguments.clone(),
+            delivery,
+            &expected,
+            ExitInput::Key,
+        );
     }
 }
 
