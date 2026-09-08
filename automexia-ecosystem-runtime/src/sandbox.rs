@@ -1,9 +1,12 @@
 use std::{
     collections::BTreeSet,
     fmt,
-    sync::{Arc, Condvar, Mutex},
+    sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Condvar, Mutex,
+    },
     thread,
-    time::Duration,
+    time::{Duration, Instant},
 };
 
 use automexia_ecosystem::{
@@ -12,7 +15,7 @@ use automexia_ecosystem::{
 };
 use wasmtime::{
     component::{Component, HasSelf, Linker},
-    Config, Engine, Store, StoreLimits, StoreLimitsBuilder,
+    Config, Engine, Store, StoreLimits, StoreLimitsBuilder, UpdateDeadline,
 };
 
 wasmtime::component::bindgen!({
@@ -74,7 +77,6 @@ pub struct SandboxCancellation {
 #[derive(Clone, Copy, Debug, Default)]
 struct InterruptState {
     cancelled: bool,
-    completed: bool,
 }
 
 impl SandboxCancellation {
@@ -91,6 +93,66 @@ impl SandboxCancellation {
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .cancelled
+    }
+}
+
+/// Completion belongs to one invocation, not to a reusable cancellation token.
+/// The absolute deadline remains observable even if the watchdog runs before
+/// the worker arms its relative Wasmtime epoch deadline.
+struct CallControl {
+    cancellation: SandboxCancellation,
+    deadline: Instant,
+    completed: AtomicBool,
+}
+
+impl CallControl {
+    fn interrupt_error(&self) -> Option<SandboxError> {
+        if self.cancellation.is_cancelled() {
+            Some(SandboxError::new(
+                SandboxErrorCode::Cancelled,
+                "component call was cancelled",
+            ))
+        } else if Instant::now() >= self.deadline {
+            Some(SandboxError::new(
+                SandboxErrorCode::Deadline,
+                "component call exceeded its deadline",
+            ))
+        } else {
+            None
+        }
+    }
+
+    fn complete(&self) {
+        let (lock, wake) = &*self.cancellation.state;
+        let _guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.completed.store(true, Ordering::Release);
+        wake.notify_all();
+    }
+
+    fn watch(&self, engine: &Engine) {
+        let (lock, wake) = &*self.cancellation.state;
+        let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        let (guard, _) = wake
+            .wait_timeout_while(
+                guard,
+                self.deadline.saturating_duration_since(Instant::now()),
+                |state| !state.cancelled && !self.completed.load(Ordering::Acquire),
+            )
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let interrupt = !self.completed.load(Ordering::Acquire)
+            && (guard.cancelled || Instant::now() >= self.deadline);
+        drop(guard);
+        if interrupt {
+            engine.increment_epoch();
+        }
+    }
+}
+
+struct CompleteCallOnDrop(Arc<CallControl>);
+
+impl Drop for CompleteCallOnDrop {
+    fn drop(&mut self) {
+        self.0.complete();
     }
 }
 
@@ -213,66 +275,63 @@ impl ComponentSandbox {
                 "export or deadline exceeds the accepted contract",
             ));
         }
-        let engine = self.engine.clone();
-        let worker_engine = engine.clone();
+        let control = Arc::new(CallControl {
+            cancellation,
+            deadline: Instant::now() + deadline,
+            completed: AtomicBool::new(false),
+        });
+        if let Some(error) = control.interrupt_error() {
+            return Err(error);
+        }
+        let worker_engine = self.engine.clone();
         let export = export.to_owned();
-        let state = cancellation.state.clone();
-        let watcher_state = state.clone();
-        let watcher_engine = engine.clone();
+        let watcher_control = control.clone();
+        let watcher_engine = self.engine.clone();
         let watcher = thread::Builder::new()
             .name("automexia-ecosystem-epoch".into())
-            .spawn(move || {
-                let (lock, wake) = &*watcher_state;
-                let guard = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-                let (guard, timeout) = wake
-                    .wait_timeout_while(guard, deadline, |state| {
-                        !state.cancelled && !state.completed
-                    })
-                    .unwrap_or_else(|poisoned| poisoned.into_inner());
-                let cancelled = guard.cancelled;
-                let expired = timeout.timed_out() && !guard.completed;
-                drop(guard);
-                if cancelled || expired {
-                    watcher_engine.increment_epoch();
-                }
-                (cancelled, expired)
-            })
+            .spawn(move || watcher_control.watch(&watcher_engine))
             .map_err(|error| {
                 SandboxError::new(SandboxErrorCode::Worker, error.to_string())
             })?;
-        let worker = thread::Builder::new()
+        let worker_control = control.clone();
+        let worker = match thread::Builder::new()
             .name("automexia-ecosystem-component".into())
             .spawn(move || {
-                run_component(worker_engine, prepared.component, &export, fuel)
-            })
-            .map_err(|error| {
-                SandboxError::new(SandboxErrorCode::Worker, error.to_string())
-            })?;
-        let result = worker.join().map_err(|_| {
-            SandboxError::new(SandboxErrorCode::Worker, "component worker panicked")
-        })?;
-        {
-            let (lock, wake) = &*state;
-            let mut state = lock.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-            state.completed = true;
-            wake.notify_all();
-        }
-        let (cancelled, expired) = watcher.join().map_err(|_| {
+                let _completion = CompleteCallOnDrop(worker_control.clone());
+                let result = run_component(
+                    worker_engine,
+                    prepared.component,
+                    &export,
+                    fuel,
+                    worker_control.clone(),
+                );
+                match worker_control.interrupt_error() {
+                    Some(error) => Err(error),
+                    None => result,
+                }
+            }) {
+            Ok(worker) => worker,
+            Err(_) => {
+                control.complete();
+                let _ = watcher.join();
+                return Err(SandboxError::new(
+                    SandboxErrorCode::Worker,
+                    "component worker could not start",
+                ));
+            }
+        };
+        // Always join both owners, including a guest worker panic. The drop
+        // guard wakes a watcher even when the worker unwinds before returning.
+        let result = worker.join().unwrap_or_else(|_| {
+            Err(SandboxError::new(
+                SandboxErrorCode::Worker,
+                "component worker panicked",
+            ))
+        });
+        watcher.join().map_err(|_| {
             SandboxError::new(SandboxErrorCode::Worker, "epoch watcher panicked")
         })?;
-        if cancelled {
-            Err(SandboxError::new(
-                SandboxErrorCode::Cancelled,
-                "component call was cancelled and joined",
-            ))
-        } else if expired {
-            Err(SandboxError::new(
-                SandboxErrorCode::Deadline,
-                "component exceeded its wall-clock deadline and was joined",
-            ))
-        } else {
-            result
-        }
+        result
     }
 }
 
@@ -373,30 +432,14 @@ fn run_component(
     component: Component,
     export: &str,
     fuel: u64,
+    control: Arc<CallControl>,
 ) -> Result<(), SandboxError> {
-    let limits = StoreLimitsBuilder::new()
-        .memory_size(Limits::LINEAR_MEMORY_BYTES)
-        .table_elements(Limits::TABLE_ELEMENTS)
-        .instances(Limits::INSTANCES_PER_EXTENSION)
-        .memories(Limits::INSTANCES_PER_EXTENSION)
-        .tables(Limits::INSTANCES_PER_EXTENSION)
-        .trap_on_grow_failure(true)
-        .build();
-    let mut store = Store::new(
-        &engine,
-        HostState {
-            limits,
-            selected_input: None,
-            published_bytes: 0,
-            diagnostic_bytes: 0,
-            host_calls_authorized: false,
-        },
-    );
-    store.limiter(|state| &mut state.limits);
-    store.set_fuel(fuel).map_err(|error| {
-        SandboxError::new(SandboxErrorCode::FuelOrTrap, error.to_string())
-    })?;
-    store.set_epoch_deadline(1);
+    let mut store = component_store(&engine, fuel, control.clone())?;
+    // A one-shot epoch tick can precede store arming. Checking persistent
+    // invocation state here prevents entry after that tick was already lost.
+    if let Some(error) = control.interrupt_error() {
+        return Err(error);
+    }
     let mut linker = Linker::new(&engine);
     Extension::add_to_linker::<_, HasSelf<_>>(&mut linker, |state| state)
         .map_err(|error| SandboxError::new(SandboxErrorCode::Link, error.to_string()))?;
@@ -413,6 +456,46 @@ fn run_component(
     function.call(&mut store, ()).map_err(|error| {
         classify_runtime_error(&error.to_string(), SandboxErrorCode::FuelOrTrap)
     })
+}
+
+fn component_store(
+    engine: &Engine,
+    fuel: u64,
+    control: Arc<CallControl>,
+) -> Result<Store<HostState>, SandboxError> {
+    let limits = StoreLimitsBuilder::new()
+        .memory_size(Limits::LINEAR_MEMORY_BYTES)
+        .table_elements(Limits::TABLE_ELEMENTS)
+        .instances(Limits::INSTANCES_PER_EXTENSION)
+        .memories(Limits::INSTANCES_PER_EXTENSION)
+        .tables(Limits::INSTANCES_PER_EXTENSION)
+        .trap_on_grow_failure(true)
+        .build();
+    let mut store = Store::new(
+        engine,
+        HostState {
+            limits,
+            selected_input: None,
+            published_bytes: 0,
+            diagnostic_bytes: 0,
+            host_calls_authorized: false,
+        },
+    );
+    store.limiter(|state| &mut state.limits);
+    store.set_fuel(fuel).map_err(|error| {
+        SandboxError::new(SandboxErrorCode::FuelOrTrap, error.to_string())
+    })?;
+    store.set_epoch_deadline(1);
+    store.epoch_deadline_callback(move |_| {
+        // Engine epochs are shared. Another invocation's cancellation is a
+        // wakeup, not authority to terminate this store's unrelated guest.
+        Ok(if control.interrupt_error().is_some() {
+            UpdateDeadline::Interrupt
+        } else {
+            UpdateDeadline::Continue(1)
+        })
+    });
+    Ok(store)
 }
 
 fn classify_runtime_error(detail: &str, fallback: SandboxErrorCode) -> SandboxError {
@@ -751,6 +834,197 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(cancelled.code, SandboxErrorCode::Cancelled);
+    }
+
+    fn call_control(
+        cancellation: SandboxCancellation,
+        deadline: Instant,
+    ) -> Arc<CallControl> {
+        Arc::new(CallControl {
+            cancellation,
+            deadline,
+            completed: AtomicBool::new(false),
+        })
+    }
+
+    #[test]
+    fn interrupt_before_store_arming_never_enters_guest() {
+        let sandbox = ComponentSandbox::new().unwrap();
+        for cancelled in [false, true] {
+            let cancellation = SandboxCancellation::default();
+            if cancelled {
+                cancellation.cancel();
+            }
+            let control = call_control(
+                cancellation,
+                if cancelled {
+                    Instant::now() + Duration::from_secs(5)
+                } else {
+                    Instant::now()
+                },
+            );
+            let prepared = sandbox.prepare(&manifest(), looping_component()).unwrap();
+            // Reproduce the lost-tick ordering deterministically. A finite
+            // emergency fuel budget makes a removed pre-entry guard fail,
+            // rather than hanging the entire mutation run.
+            sandbox.engine.increment_epoch();
+            let error = run_component(
+                sandbox.engine.clone(),
+                prepared.component,
+                "run",
+                100_000,
+                control,
+            )
+            .unwrap_err();
+            assert_eq!(
+                error.code,
+                if cancelled {
+                    SandboxErrorCode::Cancelled
+                } else {
+                    SandboxErrorCode::Deadline
+                }
+            );
+        }
+    }
+
+    #[test]
+    fn shared_engine_ticks_interrupt_only_the_cancelled_store() {
+        let sandbox = ComponentSandbox::new().unwrap();
+        let module = wasmtime::Module::new(
+            &sandbox.engine,
+            "(module (func (export \"value\") (result i32) i32.const 42))",
+        )
+        .unwrap();
+        let cancellation = SandboxCancellation::default();
+        let cancelled = call_control(
+            cancellation.clone(),
+            Instant::now() + Duration::from_secs(5),
+        );
+        let healthy = call_control(
+            SandboxCancellation::default(),
+            Instant::now() + Duration::from_secs(5),
+        );
+        let mut cancelled_store =
+            component_store(&sandbox.engine, 100_000, cancelled).unwrap();
+        let mut healthy_store =
+            component_store(&sandbox.engine, 100_000, healthy).unwrap();
+        let cancelled_instance =
+            wasmtime::Instance::new(&mut cancelled_store, &module, &[]).unwrap();
+        let healthy_instance =
+            wasmtime::Instance::new(&mut healthy_store, &module, &[]).unwrap();
+        let cancelled_value = cancelled_instance
+            .get_typed_func::<(), i32>(&mut cancelled_store, "value")
+            .unwrap();
+        let healthy_value = healthy_instance
+            .get_typed_func::<(), i32>(&mut healthy_store, "value")
+            .unwrap();
+        cancellation.cancel();
+        sandbox.engine.increment_epoch();
+        assert!(cancelled_value.call(&mut cancelled_store, ()).is_err());
+        for _ in 0..16 {
+            assert_eq!(healthy_value.call(&mut healthy_store, ()).unwrap(), 42);
+            sandbox.engine.increment_epoch();
+        }
+    }
+
+    #[test]
+    fn completed_call_does_not_disarm_a_reused_cancellation_token() {
+        let sandbox = ComponentSandbox::new().unwrap();
+        let cancellation = SandboxCancellation::default();
+        let first = sandbox.prepare(&manifest(), finite_component()).unwrap();
+        sandbox
+            .execute_with_fuel(
+                first,
+                "run",
+                Duration::from_millis(Limits::EXPLICIT_DEADLINE_MS),
+                cancellation.clone(),
+                100_000,
+            )
+            .unwrap();
+        assert!(!cancellation.is_cancelled());
+        for _ in 0..16 {
+            let next = sandbox.prepare(&manifest(), looping_component()).unwrap();
+            assert_eq!(
+                sandbox
+                    .execute_with_fuel(
+                        next,
+                        "run",
+                        Duration::from_millis(1),
+                        cancellation.clone(),
+                        u64::MAX
+                    )
+                    .unwrap_err()
+                    .code,
+                SandboxErrorCode::Deadline
+            );
+            assert_eq!(
+                Arc::strong_count(&cancellation.state),
+                1,
+                "joined calls must release their token references"
+            );
+        }
+        cancellation.cancel();
+        let final_call = sandbox.prepare(&manifest(), finite_component()).unwrap();
+        assert_eq!(
+            sandbox
+                .execute_with_fuel(
+                    final_call,
+                    "run",
+                    Duration::from_millis(Limits::EXPLICIT_DEADLINE_MS),
+                    cancellation,
+                    100_000
+                )
+                .unwrap_err()
+                .code,
+            SandboxErrorCode::Cancelled
+        );
+    }
+
+    #[test]
+    fn worker_unwind_wakes_and_joins_its_watchdog() {
+        let sandbox = ComponentSandbox::new().unwrap();
+        let control = call_control(
+            SandboxCancellation::default(),
+            Instant::now() + Duration::from_secs(5),
+        );
+        let watcher_control = control.clone();
+        let watcher = thread::spawn(move || watcher_control.watch(&sandbox.engine));
+        let worker_control = control.clone();
+        let worker = thread::spawn(move || {
+            let _completion = CompleteCallOnDrop(worker_control);
+            panic!("controlled worker failure");
+        });
+        assert!(worker.join().is_err());
+        watcher.join().unwrap();
+        assert!(control.completed.load(Ordering::Acquire));
+        assert!(control.interrupt_error().is_none());
+    }
+
+    #[test]
+    fn epoch_deadline_covers_component_instantiation_start_functions() {
+        let sandbox = ComponentSandbox::new().unwrap();
+        // A malicious core start function runs during instantiation, before
+        // export lookup. Checking only the exported invocation is insufficient.
+        let bytes = br#"(component
+            (type $t (func))
+            (core module $m
+                (func $start (loop $again (br $again)))
+                (start $start)
+                (func (export "run")))
+            (core instance $i (instantiate $m))
+            (func $run (type $t) (canon lift (core func $i "run")))
+            (export "run" (func $run)))"#;
+        let prepared = sandbox.prepare(&manifest(), bytes).unwrap();
+        let error = sandbox
+            .execute_with_fuel(
+                prepared,
+                "run",
+                Duration::from_millis(1),
+                SandboxCancellation::default(),
+                u64::MAX,
+            )
+            .unwrap_err();
+        assert_eq!(error.code, SandboxErrorCode::Deadline);
     }
 
     #[test]

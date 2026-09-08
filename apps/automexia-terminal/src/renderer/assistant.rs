@@ -321,7 +321,7 @@ impl AssistantOverlay {
             let available_width = (card.width - inset * 2.0).max(1.0);
             let report = error.report.to_string();
             for (index, line) in report.lines().take(layout.visible_lines).enumerate() {
-                let line = elide_end(sugarloaf, line, available_width, body.font_size);
+                let line = elide_end(sugarloaf, line, available_width, &body);
                 sugarloaf.text_mut().draw(
                     body_x,
                     body_y + index as f32 * LINE_HEIGHT,

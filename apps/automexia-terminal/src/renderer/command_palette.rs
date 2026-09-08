@@ -4,8 +4,19 @@
 // LICENSE file in the root directory of this source tree.
 
 use crate::automexia::marketplace::MarketItem;
+pub use crate::bindings::shortcut::PaletteAction;
+use crate::bindings::shortcut::{legacy_binding_target, palette_binding_target};
 use crate::renderer::responsive::{elide_end, elide_start, Viewport};
 use crate::renderer::scrollbar;
+use crate::renderer::ui_theme::{
+    color_u8, BORDER as OUTLINE_COLOR, BRAND_AMBER, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN,
+    BRAND_LIME, BRAND_PURPLE, CARD as BG_COLOR, CARD_RADIUS, CONTROL_RADIUS,
+    KEYCAP_RADIUS, MODAL_SCRIM as BACKDROP_COLOR, MODAL_SHADOW as SHADOW_COLOR,
+    MUTED_TEXT as DIM_TEXT_COLOR, MUTED_TEXT as SHORTCUT_TEXT_COLOR,
+    OUTLINE as INPUT_OUTLINE_COLOR, SURFACE as INPUT_BG_COLOR,
+    SURFACE as SHORTCUT_BG_COLOR, SURFACE_RAISED as SELECTED_BG_COLOR,
+    TEXT as TEXT_COLOR,
+};
 use automexia_ui_model::quick_actions::{
     QuickActionListItem, QuickActionReviewView, QuickActionRisk,
 };
@@ -13,22 +24,18 @@ use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 use std::time::Instant;
 
-/// Convert `[f32; 4]` colour to `[u8; 4]` for the `Text` API (the
-/// vertex shader premultiplies, so pass non-premul RGBA).
-#[inline]
-fn color_u8(c: [f32; 4]) -> [u8; 4] {
-    [
-        (c[0].clamp(0.0, 1.0) * 255.0) as u8,
-        (c[1].clamp(0.0, 1.0) * 255.0) as u8,
-        (c[2].clamp(0.0, 1.0) * 255.0) as u8,
-        (c[3].clamp(0.0, 1.0) * 255.0) as u8,
-    ]
-}
+mod navigation;
+mod shortcut_editor;
+pub(crate) use shortcut_editor::ShortcutChange;
+use shortcut_editor::ShortcutEditor;
+#[cfg(test)]
+mod navigation_tests;
+use navigation::Category;
 
 // Headerless command palette: search is the visual anchor and every action
 // shares one crisp, DPI-independent icon grid.
 const PALETTE_WIDTH: f32 = 600.0;
-const PALETTE_CORNER_RADIUS: f32 = 16.0;
+const PALETTE_CORNER_RADIUS: f32 = CARD_RADIUS;
 const PALETTE_MARGIN_TOP: f32 = 76.0;
 const PALETTE_PADDING: f32 = 12.0;
 
@@ -41,7 +48,7 @@ const ESC_BADGE_WIDTH: f32 = 42.0;
 const RESULT_ITEM_HEIGHT: f32 = 44.0;
 const RESULT_FONT_SIZE: f32 = 14.5;
 const RESULT_ICON_SIZE: f32 = 22.0;
-const SHORTCUT_FONT_SIZE: f32 = 10.0;
+const SHORTCUT_FONT_SIZE: f32 = 11.0;
 const MAX_VISIBLE_RESULTS: usize = 10;
 const MAX_PALETTE_QUERY_BYTES: usize = 4 * 1024;
 const PALETTE_SCROLLBAR_IDLE_OPACITY: f32 = 0.55;
@@ -63,30 +70,13 @@ const RESULTS_MARGIN_TOP: f32 = 8.0;
 const CARET_WIDTH: f32 = 1.5;
 const CARET_BLINK_MS: u128 = 500;
 
-// Colors — dark minimalist
-const BACKDROP_COLOR: [f32; 4] = [0.0, 0.025, 0.055, 0.72];
-const SHADOW_COLOR: [f32; 4] = [0.0, 0.0, 0.0, 0.42];
-const OUTLINE_COLOR: [f32; 4] = [0.055, 0.36, 0.58, 0.88];
-const BG_COLOR: [f32; 4] = [0.008, 0.027, 0.050, 1.0];
-const INPUT_BG_COLOR: [f32; 4] = [0.012, 0.046, 0.080, 1.0];
-const INPUT_OUTLINE_COLOR: [f32; 4] = [0.075, 0.40, 0.61, 0.92];
-const SELECTED_BG_COLOR: [f32; 4] = [0.022, 0.125, 0.205, 0.88];
-const SELECTED_OUTLINE_COLOR: [f32; 4] = [0.063, 0.72, 0.96, 0.82];
-const TEXT_COLOR: [f32; 4] = [0.86, 0.93, 0.98, 1.0];
-const DIM_TEXT_COLOR: [f32; 4] = [0.38, 0.49, 0.59, 1.0];
-const SHORTCUT_TEXT_COLOR: [f32; 4] = [0.57, 0.69, 0.78, 1.0];
-const SHORTCUT_BG_COLOR: [f32; 4] = [0.020, 0.065, 0.105, 1.0];
-const SHORTCUT_OUTLINE_COLOR: [f32; 4] = [0.080, 0.24, 0.35, 0.94];
-const SEPARATOR_COLOR: [f32; 4] = [0.055, 0.19, 0.29, 0.84];
-const BRAND_CYAN: [f32; 4] = [0.063, 0.88, 1.0, 1.0];
-const BRAND_BLUE: [f32; 4] = [0.18, 0.58, 0.96, 1.0];
-const BRAND_PURPLE: [f32; 4] = [0.78, 0.42, 1.0, 1.0];
-const BRAND_LIME: [f32; 4] = [0.52, 0.94, 0.36, 1.0];
-const BRAND_AMBER: [f32; 4] = [1.0, 0.69, 0.18, 1.0];
-const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
+const SEPARATOR_COLOR: [f32; 4] = OUTLINE_COLOR;
 
-fn quick_action_metadata_max_width(input_width: f32) -> f32 {
-    (input_width * 0.42).clamp(72.0, 220.0)
+fn trailing_label_max_width(input_width: f32) -> f32 {
+    if !input_width.is_finite() {
+        return 0.0;
+    }
+    (input_width * 0.42).clamp(0.0, 220.0)
 }
 
 #[inline]
@@ -123,13 +113,19 @@ const SHORTCUT_CLOSE_SURFACE: &str = "Ctrl+Shift+W";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_RIGHT: &str = "Cmd+D";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SPLIT_RIGHT: &str = "Ctrl+Shift+R";
+const SHORTCUT_SPLIT_RIGHT: &str = "Alt+Shift+R";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SPLIT_DOWN: &str = "Cmd+Shift+D";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SPLIT_DOWN: &str = "Ctrl+Shift+D";
-const SHORTCUT_CLONE_RIGHT: &str = "Ctrl+R";
-const SHORTCUT_CLONE_DOWN: &str = "Ctrl+D";
+const SHORTCUT_SPLIT_DOWN: &str = "Alt+Shift+D";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLONE_RIGHT: &str = "Cmd+Alt+Shift+R";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLONE_RIGHT: &str = "Alt+R";
+#[cfg(target_os = "macos")]
+const SHORTCUT_CLONE_DOWN: &str = "Cmd+Alt+Shift+D";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_CLONE_DOWN: &str = "Alt+D";
 #[cfg(target_os = "macos")]
 const SHORTCUT_PREV_LOCAL_TAB: &str = "Cmd+Alt+[";
 #[cfg(not(target_os = "macos"))]
@@ -193,7 +189,7 @@ const SHORTCUT_SEARCH: &str = "Ctrl+F";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH_BACKWARD: &str = "Cmd+B";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_SEARCH_BACKWARD: &str = "Shift+Enter";
+const SHORTCUT_SEARCH_BACKWARD: &str = "Alt+Shift+B";
 #[cfg(target_os = "macos")]
 const SHORTCUT_SEARCH_GLOBAL: &str = "Cmd+Shift+F";
 #[cfg(not(target_os = "macos"))]
@@ -247,71 +243,18 @@ const SHORTCUT_PREVIEW_IMAGE: &str = "Cmd+Alt+I";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PREVIEW_IMAGE: &str = "Ctrl+Alt+I";
 #[cfg(target_os = "macos")]
-const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+K";
+const SHORTCUT_CLEAR_SCREEN: &str = "Cmd+Alt+K";
 #[cfg(not(target_os = "macos"))]
-const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Shift+K";
+const SHORTCUT_CLEAR_SCREEN: &str = "Ctrl+Alt+K";
 #[cfg(target_os = "macos")]
 const SHORTCUT_QUIT: &str = "Cmd+Q";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_QUIT: &str = "Ctrl+Shift+Q";
 
 /// Actions that can be triggered from the command palette.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaletteAction {
-    TabCreate,
-    LocalTabCreate,
-    TabClose,
-    TabCloseUnfocused,
-    SelectNextTab,
-    SelectPrevTab,
-    SelectNextLocalTab,
-    SelectPrevLocalTab,
-    SplitRight,
-    SplitDown,
-    CloneSplitRight,
-    CloneSplitDown,
-    SelectNextSplit,
-    SelectPrevSplit,
-    SelectPaneLeft,
-    SelectPaneRight,
-    SelectPaneUp,
-    SelectPaneDown,
-    ConfigEditor,
-    WindowCreateNew,
-    IncreaseFontSize,
-    DecreaseFontSize,
-    ResetFontSize,
-    ToggleViMode,
-    ToggleFullscreen,
-    ToggleAppearanceTheme,
-    Copy,
-    Paste,
-    ScrollToPreviousCommand,
-    ScrollToNextCommand,
-    SearchForward,
-    SearchBackward,
-    SearchGlobalForward,
-    SearchGlobalBackward,
-    PreviewSelectedImage,
-    ClearScreen,
-    CloseCurrentSplitOrTab,
-    OpenMarket,
-    /// Open the application-owned, read-only Connection Hub. This action
-    /// grants no filesystem, network, process, authentication, or PTY access.
-    OpenConnections,
-    /// Search typed Quick Actions. Selection enters a separate review step;
-    /// this action never writes to the PTY itself.
-    OpenActions,
-    /// Browse the family names of every registered font. Does NOT
-    /// execute a one-shot action — the palette stays open with the
-    /// font list as its contents. Handled by `router`, not
-    /// `Screen::execute_palette_action`.
-    ListFonts,
-    Quit,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CommandIcon {
+    Back,
     TabAdd,
     LocalTabAdd,
     TabClose,
@@ -514,66 +457,27 @@ struct Command {
     action: PaletteAction,
 }
 
-fn palette_binding_target(
+fn registry_binding_for_command(
+    registry: &automexia_keybindings::CompiledRegistry,
     action: PaletteAction,
-) -> Option<(&'static str, Option<&'static str>)> {
-    use PaletteAction::*;
-    match action {
-        TabCreate => Some(("new_tab", None)),
-        TabClose => Some(("close_tab", Some("this"))),
-        SelectNextTab => Some(("next_tab", None)),
-        SelectPrevTab => Some(("previous_tab", None)),
-        SplitRight => Some(("new_split", Some("right"))),
-        SplitDown => Some(("new_split", Some("down"))),
-        SelectNextSplit => Some(("goto_split", Some("next"))),
-        SelectPrevSplit => Some(("goto_split", Some("previous"))),
-        SelectPaneLeft => Some(("goto_split", Some("left"))),
-        SelectPaneRight => Some(("goto_split", Some("right"))),
-        SelectPaneUp => Some(("goto_split", Some("up"))),
-        SelectPaneDown => Some(("goto_split", Some("down"))),
-        ConfigEditor => Some(("open_config", None)),
-        WindowCreateNew => Some(("new_window", None)),
-        IncreaseFontSize => Some(("increase_font_size", Some("1"))),
-        DecreaseFontSize => Some(("decrease_font_size", Some("1"))),
-        ResetFontSize => Some(("reset_font_size", None)),
-        ToggleFullscreen => Some(("toggle_fullscreen", None)),
-        Copy => Some(("copy_to_clipboard", None)),
-        Paste => Some(("paste_from_clipboard", None)),
-        SearchForward => Some(("start_search", Some("pane"))),
-        SearchBackward => Some(("start_search", Some("pane"))),
-        SearchGlobalForward => Some(("start_search", Some("visible_panes"))),
-        SearchGlobalBackward => Some(("start_search", Some("visible_panes"))),
-        ClearScreen => Some(("clear_screen", None)),
-        ScrollToPreviousCommand => Some(("jump_to_prompt", Some("-1"))),
-        ScrollToNextCommand => Some(("jump_to_prompt", Some("1"))),
-        CloseCurrentSplitOrTab => Some(("close_surface", None)),
-        Quit => Some(("quit", None)),
-        LocalTabCreate
-        | TabCloseUnfocused
-        | SelectNextLocalTab
-        | SelectPrevLocalTab
-        | CloneSplitRight
-        | CloneSplitDown
-        | ToggleViMode
-        | ToggleAppearanceTheme
-        | PreviewSelectedImage
-        | OpenMarket
-        | OpenConnections
-        | OpenActions
-        | ListFonts => None,
-    }
-}
-
-fn binding_origin_label(origin: automexia_keybindings::BindingOrigin) -> &'static str {
-    use automexia_keybindings::BindingOrigin::*;
-    match origin {
-        BuiltIn => "Built-in",
-        Profile => "Profile",
-        WindowsAdaptation => "Windows",
-        Imported => "Imported",
-        LegacyUser => "Legacy",
-        User => "User",
-    }
+) -> Option<&automexia_keybindings::CompiledBinding> {
+    palette_binding_target(action).and_then(|(id, parameter)| {
+        registry.bindings_for_action(id).find(|binding| {
+            binding.table == "default"
+                && binding.sequence.len() == 1
+                && binding
+                    .predicate
+                    .matches(automexia_keybindings::ModeFlags::empty())
+                && binding.scope == automexia_keybindings::BindingScope::FocusedSurface
+                && binding.actions.len() == 1
+                && parameter.is_none_or(|expected| {
+                    binding.actions.iter().any(|action| {
+                        action.id.as_str() == id
+                            && action.parameter.as_deref() == Some(expected)
+                    })
+                })
+        })
+    })
 }
 
 const COMMANDS: &[Command] = &[
@@ -823,6 +727,7 @@ pub enum QuickActionReviewChoice {
 /// data the render pass needs — no `&'static Command` vs `&str`
 /// lifetime mixing.
 enum PaletteRow<'a> {
+    Navigation(Option<Category>),
     Command {
         title: &'a str,
         shortcut: &'a str,
@@ -859,6 +764,8 @@ enum PaletteRow<'a> {
 impl<'a> PaletteRow<'a> {
     fn title(&self) -> &'a str {
         match *self {
+            PaletteRow::Navigation(Some(category)) => category.title(),
+            PaletteRow::Navigation(None) => "Back to categories",
             PaletteRow::Command { title, .. } => title,
             PaletteRow::Font { family } => family,
             PaletteRow::Market { name, .. } => name,
@@ -873,6 +780,8 @@ impl<'a> PaletteRow<'a> {
 
     fn shortcut(&self) -> &'a str {
         match *self {
+            PaletteRow::Navigation(Some(_)) => "Enter ›",
+            PaletteRow::Navigation(None) => "Alt+Left",
             PaletteRow::Command { shortcut, .. } => shortcut,
             PaletteRow::Font { .. } => "",
             PaletteRow::Market {
@@ -893,6 +802,7 @@ impl<'a> PaletteRow<'a> {
 
     fn action(&self) -> Option<PaletteAction> {
         match *self {
+            PaletteRow::Navigation(_) => None,
             PaletteRow::Command { action, .. } => Some(action),
             PaletteRow::Font { .. }
             | PaletteRow::Market { .. }
@@ -907,6 +817,11 @@ impl<'a> PaletteRow<'a> {
 
     fn presentation(&self) -> RowPresentation {
         match *self {
+            PaletteRow::Navigation(Some(category)) => category.presentation(),
+            PaletteRow::Navigation(None) => RowPresentation {
+                icon: CommandIcon::Back,
+                accent: BRAND_CYAN,
+            },
             PaletteRow::Command { action, .. } => command_presentation(action),
             PaletteRow::Font { .. } => RowPresentation {
                 icon: CommandIcon::Font,
@@ -1158,6 +1073,13 @@ impl IconCanvas<'_, '_> {
     }
 }
 
+// The same three strokes serve the fixed header and the navigable Back row.
+const BACK_ARROW_STROKES: [[f32; 4]; 3] = [
+    [4.0, 11.0, 18.0, 11.0],
+    [4.0, 11.0, 10.0, 5.0],
+    [4.0, 11.0, 10.0, 17.0],
+];
+
 fn draw_command_icon(
     sugarloaf: &mut Sugarloaf,
     icon: CommandIcon,
@@ -1177,6 +1099,11 @@ fn draw_command_icon(
     };
 
     match icon {
+        CommandIcon::Back => {
+            for [x1, y1, x2, y2] in BACK_ARROW_STROKES {
+                canvas.line(x1, y1, x2, y2);
+            }
+        }
         CommandIcon::TabAdd => {
             canvas.tab_frame();
             canvas.plus(15.5, 12.5, 2.7);
@@ -1360,21 +1287,35 @@ fn draw_command_icon(
 
 /// Fuzzy match: checks if all query chars appear in order in the target.
 /// Returns a score (higher = better match), or None if no match.
+#[cfg(test)]
 fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
-    let query_lower: Vec<char> = query.to_lowercase().chars().collect();
-    let target_lower: Vec<char> = target.to_lowercase().chars().collect();
+    fuzzy_score_lowered(&query.to_lowercase(), target)
+}
 
+fn fuzzy_score_lowered(query_lower: &str, target: &str) -> Option<i32> {
     if query_lower.is_empty() {
         return Some(0);
     }
 
-    let mut qi = 0;
+    // Empty browsing allocates nothing. ASCII catalogs need no target copy;
+    // Unicode retains str::to_lowercase's contextual casing (e.g. final sigma).
+    let target_lower = if target.is_ascii() {
+        std::borrow::Cow::Borrowed(target)
+    } else {
+        std::borrow::Cow::Owned(target.to_lowercase())
+    };
+    let mut query = query_lower.chars().peekable();
     let mut score: i32 = 0;
     let mut prev_match = false;
     let mut first_match_pos = None;
+    let mut previous = None;
 
-    for (ti, &tc) in target_lower.iter().enumerate() {
-        if qi < query_lower.len() && tc == query_lower[qi] {
+    for (ti, tc) in target_lower
+        .chars()
+        .map(|c| c.to_ascii_lowercase())
+        .enumerate()
+    {
+        if query.peek() == Some(&tc) {
             if first_match_pos.is_none() {
                 first_match_pos = Some(ti);
             }
@@ -1383,17 +1324,18 @@ fn fuzzy_score(query: &str, target: &str) -> Option<i32> {
                 score += 5;
             }
             // Word boundary bonus (start of string or after space/punctuation)
-            if ti == 0 || !target_lower[ti - 1].is_alphanumeric() {
+            if previous.is_none_or(|c: char| !c.is_alphanumeric()) {
                 score += 10;
             }
             prev_match = true;
-            qi += 1;
+            query.next();
         } else {
             prev_match = false;
         }
+        previous = Some(tc);
     }
 
-    if qi < query_lower.len() {
+    if query.peek().is_some() {
         return None; // Not all query chars matched
     }
 
@@ -1412,12 +1354,17 @@ pub struct CommandPalette {
     pub selected_index: usize,
     scroll_offset: usize,
     pub has_adaptive_theme: bool,
-    /// Profile-aware labels generated from the immutable binding registry.
-    /// The classic constants remain the fallback only for the implicit
-    /// Automexia profile while its legacy adapter is active.
+    /// Effective labels built at construction/reload, never on the input path.
+    /// The immutable typed registry and legacy adapter remain the only owners.
     registry_shortcuts: Vec<(PaletteAction, String)>,
+    shortcut_editor: Option<ShortcutEditor>,
+    shortcut_change: Option<ShortcutChange>,
+    shortcut_click: Option<(PaletteAction, f32, f32)>,
+    edit_bindings: Vec<crate::bindings::KeyBinding>,
+    edit_registry: Option<crate::bindings::registry::RegistrySnapshot>,
     /// Which list the palette is showing (commands or fonts).
     mode: PaletteMode,
+    category: Option<Category>,
     /// Timestamp for caret blinking
     caret_blink_start: Instant,
     /// Timestamp of the last event that actually changed `scroll_offset`.
@@ -1440,7 +1387,13 @@ impl Default for CommandPalette {
             scroll_offset: 0,
             has_adaptive_theme: false,
             registry_shortcuts: Vec::new(),
+            shortcut_editor: None,
+            shortcut_change: None,
+            shortcut_click: None,
+            edit_bindings: Vec::new(),
+            edit_registry: None,
             mode: PaletteMode::Commands,
+            category: None,
             caret_blink_start: Instant::now(),
             last_scroll_time: None,
             wheel_accumulated_y: 0.0,
@@ -1470,37 +1423,9 @@ impl CommandPalette {
         };
         let strict_profile = profile != automexia_keybindings::ProfileId::Automexia;
         for command in COMMANDS {
-            let binding =
-                palette_binding_target(command.action).and_then(|(id, parameter)| {
-                    registry.bindings_for_action(id).find(|binding| {
-                        binding.table == "default"
-                            && binding.sequence.len() == 1
-                            && parameter.is_none_or(|expected| {
-                                binding.actions.iter().any(|action| {
-                                    action.id.as_str() == id
-                                        && action.parameter.as_deref() == Some(expected)
-                                })
-                            })
-                    })
-                });
+            let binding = registry_binding_for_command(registry, command.action);
             let label = if let Some(binding) = binding {
-                let support = binding
-                    .actions
-                    .first()
-                    .and_then(|action| {
-                        automexia_keybindings::resolve_action(action.id.as_str())
-                    })
-                    .map(|schema| schema.support);
-                format!(
-                    "{} · {}{}",
-                    binding.trigger_label(),
-                    binding_origin_label(binding.origin),
-                    if support == Some(automexia_keybindings::SupportLevel::Adapted) {
-                        " ↪"
-                    } else {
-                        ""
-                    }
-                )
+                binding.trigger_label()
             } else if strict_profile
                 || legacy_unbinds
                     .iter()
@@ -1515,16 +1440,108 @@ impl CommandPalette {
     }
 
     fn command_shortcut<'a>(&'a self, command: &'a Command) -> &'a str {
-        self.registry_shortcuts
+        let shortcut = self
+            .registry_shortcuts
             .iter()
             .find_map(|(action, shortcut)| {
                 (*action == command.action).then_some(shortcut.as_str())
             })
-            .unwrap_or(command.shortcut)
+            .unwrap_or(command.shortcut);
+        // These actions remain selectable in the palette. Enter describes that
+        // local activation, not a fabricated global chord or a restored unbind.
+        match shortcut {
+            "Unbound" | "Conditional binding" | "Custom binding" => "Enter",
+            shortcut => shortcut,
+        }
+    }
+
+    /// Follow `set_binding_registry` with all effective legacy mappings, so
+    /// disabled defaults and tombstones cannot leave guessed shortcut labels.
+    pub fn set_effective_bindings(
+        &mut self,
+        bindings: &[crate::bindings::KeyBinding],
+        snapshot: Option<&crate::bindings::registry::RegistrySnapshot>,
+    ) {
+        use crate::bindings::BindingMode;
+        use automexia_keybindings::{ModeFlags, SequenceResolution, SurfaceBindingState};
+        if self.shortcut_change.take().is_some() {
+            self.shortcut_save_failed(
+                "Bindings changed before Save was applied; record the shortcut again",
+            );
+        }
+        self.interrupt_shortcut_capture();
+        self.edit_bindings = bindings.to_vec();
+        self.edit_registry = snapshot.cloned();
+        for command in COMMANDS {
+            let action = command.action;
+            let legacy_action = legacy_binding_target(action);
+            // Typed profile/user labels already came from the same registry
+            // lookup. Legacy fallbacks must not replace that authority.
+            if snapshot.is_some_and(|snapshot| {
+                registry_binding_for_command(&snapshot.registry, action).is_some()
+            }) {
+                continue;
+            }
+            let mut label = "Unbound".to_string();
+            for binding in bindings.iter().filter(|binding| {
+                binding.action == legacy_action && binding.mode.is_empty()
+            }) {
+                if !binding.is_triggered_by(
+                    BindingMode::empty(),
+                    binding.mods,
+                    &binding.trigger,
+                ) {
+                    continue;
+                }
+                let Some(trigger) = crate::bindings::registry::legacy_trigger(binding)
+                else {
+                    label = "Custom binding".into();
+                    continue;
+                };
+                if let Some(snapshot) = snapshot {
+                    if snapshot.suppresses_legacy_trigger(&trigger, ModeFlags::empty()) {
+                        continue;
+                    }
+                    let mut state = SurfaceBindingState::default();
+                    if state.resolve(
+                        &snapshot.registry,
+                        &trigger,
+                        &[],
+                        ModeFlags::empty(),
+                    ) != SequenceResolution::NoMatch
+                    {
+                        // Whether a typed action performs can depend on live
+                        // selection/topology; do not advertise a shadowed chord.
+                        label = "Conditional binding".into();
+                        continue;
+                    }
+                }
+                label = trigger.to_string();
+                // Dedicated Copy/Paste keys are rare. Prefer an ordinary chord
+                // when available, but retain the hardware key as a fallback.
+                if matches!(
+                    trigger.key,
+                    automexia_keybindings::KeyAtom::Named(
+                        automexia_keybindings::NamedKey::Copy
+                            | automexia_keybindings::NamedKey::Paste
+                    )
+                ) {
+                    continue;
+                }
+                break;
+            }
+            self.registry_shortcuts
+                .retain(|(candidate, _)| *candidate != action);
+            self.registry_shortcuts.push((action, label));
+        }
+        self.refresh_shortcut_current();
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
+        self.shortcut_editor = None;
+        self.shortcut_change = None;
+        self.shortcut_click = None;
         if enabled {
             self.query.clear();
             self.selected_index = 0;
@@ -1539,6 +1556,7 @@ impl CommandPalette {
             // have changed) and surprising (user toggles palette and
             // finds themselves on the font list).
             self.mode = PaletteMode::Commands;
+            self.category = None;
         }
     }
 
@@ -1634,6 +1652,7 @@ impl CommandPalette {
     }
 
     pub fn set_query(&mut self, query: String) {
+        self.shortcut_click = None;
         if query.len() > MAX_PALETTE_QUERY_BYTES || query.chars().any(char::is_control) {
             return;
         }
@@ -1650,12 +1669,16 @@ impl CommandPalette {
     /// Reset fractional motion at native gesture boundaries. This never
     /// changes the list position and therefore never wakes the renderer.
     pub fn reset_scroll_gesture(&mut self) {
+        self.shortcut_click = None;
         self.wheel_accumulated_y = 0.0;
     }
 
     /// Apply a mouse-wheel delta measured in rows. Positive values move
     /// toward the top, matching winit and terminal scrollback direction.
     pub fn scroll_line_delta(&mut self, lines_y: f32) -> bool {
+        if self.is_editing_shortcut() {
+            return false;
+        }
         if !lines_y.is_finite() {
             return false;
         }
@@ -1669,6 +1692,10 @@ impl CommandPalette {
     /// accumulate deterministically; reversing direction starts fresh so the
     /// user never has to cancel stale momentum before movement is visible.
     pub fn scroll_pixel_delta(&mut self, pixels_y: f64) -> bool {
+        self.shortcut_click = None;
+        if self.is_editing_shortcut() {
+            return false;
+        }
         if !pixels_y.is_finite() || pixels_y == 0.0 {
             return false;
         }
@@ -1736,7 +1763,25 @@ impl CommandPalette {
         )
     }
 
+    /// Public catalog semantics only; never export a user's query or font,
+    /// extension, provider, or command-preview content through native evidence.
+    #[cfg(any(test, feature = "native-gui-test-hooks"))]
+    pub fn accessibility_summary(&self) -> Option<String> {
+        self.enabled.then(|| {
+            if let Some(editor) = &self.shortcut_editor {
+                return format!("Edit shortcut dialog; {}; current {}; {}; focus {}; Enter saves; Escape cancels; Tab moves",editor.title,editor.current,editor.error.as_deref().unwrap_or(editor.message),editor.focus);
+            }
+            let scope = if matches!(self.mode, PaletteMode::Commands) {
+                if !self.query.is_empty() { "All commands" }
+                else { self.category.map_or("Command categories", Category::title) }
+            } else { "Items" };
+            let count = self.filtered_rows().len();
+            format!("{scope}; {count} results; selected {}; query focused; Enter opens; Alt+Left back; Escape closes", if count == 0 { 0 } else { self.selected_index.min(count - 1) + 1 })
+        })
+    }
+
     pub fn move_selection_up(&mut self) {
+        self.shortcut_click = None;
         self.wheel_accumulated_y = 0.0;
         if self.selected_index > 0 {
             self.selected_index -= 1;
@@ -1748,6 +1793,7 @@ impl CommandPalette {
     }
 
     pub fn move_selection_down(&mut self) {
+        self.shortcut_click = None;
         self.wheel_accumulated_y = 0.0;
         let count = self.filtered_rows().len();
         if self.selected_index < count.saturating_sub(1) {
@@ -1760,9 +1806,194 @@ impl CommandPalette {
     }
 
     pub fn get_selected_action(&self) -> Option<PaletteAction> {
+        if self.is_editing_shortcut() {
+            return None;
+        }
         self.filtered_rows()
             .get(self.selected_index)
             .and_then(|(_, row)| row.action())
+    }
+
+    /// Navigate without producing an executable action. Both pointer and key
+    /// activation call this before inspecting the selected command.
+    pub fn activate_navigation(&mut self) -> bool {
+        if self.is_editing_shortcut() {
+            return true;
+        }
+        let target =
+            self.filtered_rows()
+                .get(self.selected_index)
+                .and_then(|(_, row)| {
+                    if let PaletteRow::Navigation(category) = row {
+                        Some(*category)
+                    } else {
+                        None
+                    }
+                });
+        match target {
+            Some(Some(category)) => {
+                self.category = Some(category);
+                self.set_query(String::new());
+                self.selected_index = 1; // First command; Back remains one Up away.
+                true
+            }
+            Some(None) => self.go_back(),
+            None => false,
+        }
+    }
+
+    pub fn go_back(&mut self) -> bool {
+        let child_action = match self.mode {
+            PaletteMode::Fonts(_) => Some(PaletteAction::ListFonts),
+            PaletteMode::Market(_) => Some(PaletteAction::OpenMarket),
+            _ => None,
+        };
+        if let Some(action) = child_action {
+            self.mode = PaletteMode::Commands;
+            self.category = Some(Category::for_action(action));
+            self.set_query(String::new());
+            self.selected_index = self
+                .filtered_rows()
+                .iter()
+                .position(|(_, row)| row.action() == Some(action))
+                .unwrap_or(0);
+            return true;
+        }
+        if !matches!(
+            self.mode,
+            PaletteMode::Commands | PaletteMode::Fonts(_) | PaletteMode::Market(_)
+        ) {
+            return false;
+        }
+        if self.category.is_none() && matches!(self.mode, PaletteMode::Commands) {
+            return false;
+        }
+        let parent = self.category.unwrap_or(Category::Tools);
+        self.mode = PaletteMode::Commands;
+        self.category = None;
+        self.set_query(String::new());
+        self.selected_index = Category::ALL
+            .iter()
+            .position(|category| *category == parent)
+            .unwrap_or(0);
+        true
+    }
+
+    fn can_go_back(&self) -> bool {
+        self.enabled
+            && match self.mode {
+                PaletteMode::Commands => self.category.is_some(),
+                PaletteMode::Fonts(_) | PaletteMode::Market(_) => true,
+                _ => false,
+            }
+    }
+
+    /// Fixed header geometry shared by drawing and pointer activation. The
+    /// compact variant retains the arrow when a narrow viewport cannot fit text.
+    fn back_button_rect(&self, dimensions: (f32, f32, f32)) -> Option<[f32; 4]> {
+        if !self.can_go_back() {
+            return None;
+        }
+        let (x, y, width, _, _) =
+            self.palette_rect_for_count(dimensions.0, dimensions.1, dimensions.2, 1);
+        Some([
+            x + PALETTE_PADDING + 8.0,
+            y + PALETTE_PADDING + 9.0,
+            if width >= 360.0 { 76.0 } else { 28.0 },
+            28.0,
+        ])
+    }
+
+    pub fn try_back_click(
+        &mut self,
+        x: f32,
+        y: f32,
+        dimensions: (f32, f32, f32),
+    ) -> bool {
+        let Some([left, top, width, height]) = self.back_button_rect(dimensions) else {
+            return false;
+        };
+        if x >= left && x < left + width && y >= top && y < top + height {
+            return self.go_back();
+        }
+        false
+    }
+
+    /// Modal navigation is pure UI state: it cannot access a session or PTY.
+    pub fn handle_navigation_key(
+        &mut self,
+        key: &rio_window::keyboard::Key,
+        modifiers: rio_window::keyboard::ModifiersState,
+        repeat: bool,
+    ) -> bool {
+        use rio_window::keyboard::{Key, ModifiersState, NamedKey};
+        if self.is_editing_shortcut() {
+            return self.edit_shortcut_key(key, modifiers, repeat);
+        }
+        if *key == Key::Named(NamedKey::F2) && modifiers.is_empty() {
+            if !repeat {
+                self.begin_shortcut_edit();
+            }
+            return true;
+        }
+        // A held Enter is consumed across category changes, never turned into
+        // activation of the newly selected first command.
+        if repeat && *key == Key::Named(NamedKey::Enter) {
+            return true;
+        }
+        match key {
+            Key::Named(NamedKey::Enter) if modifiers.is_empty() => {
+                self.activate_navigation()
+            }
+            Key::Named(NamedKey::ArrowRight) if modifiers.is_empty() => {
+                if matches!(
+                    self.filtered_rows().get(self.selected_index),
+                    Some((_, PaletteRow::Navigation(Some(_))))
+                ) {
+                    self.activate_navigation()
+                } else {
+                    false
+                }
+            }
+            Key::Named(NamedKey::ArrowLeft) if modifiers == ModifiersState::ALT => {
+                self.go_back()
+            }
+            Key::Named(NamedKey::Backspace)
+                if modifiers.is_empty() && self.query.is_empty() =>
+            {
+                self.go_back()
+            }
+            Key::Named(NamedKey::Tab) if modifiers == ModifiersState::SHIFT => {
+                self.move_selection_up();
+                true
+            }
+            Key::Named(
+                NamedKey::Home | NamedKey::End | NamedKey::PageUp | NamedKey::PageDown,
+            ) if modifiers.is_empty() => {
+                let total = self.filtered_rows().len();
+                self.selected_index = match key {
+                    Key::Named(NamedKey::Home) => 0,
+                    Key::Named(NamedKey::End) => total.saturating_sub(1),
+                    Key::Named(NamedKey::PageUp) => self
+                        .selected_index
+                        .saturating_sub(self.visible_results.max(1)),
+                    _ => self
+                        .selected_index
+                        .saturating_add(self.visible_results.max(1))
+                        .min(total.saturating_sub(1)),
+                };
+                self.wheel_accumulated_y = 0.0;
+                self.scroll_offset = self.scroll_offset.min(self.selected_index);
+                if self.selected_index >= self.scroll_offset + self.visible_results.max(1)
+                {
+                    self.scroll_offset =
+                        self.selected_index + 1 - self.visible_results.max(1);
+                }
+                self.last_scroll_time = Some(Instant::now());
+                true
+            }
+            _ => false,
+        }
     }
 
     /// Selected family name if (and only if) the palette is in fonts
@@ -1774,6 +2005,7 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Font { family } => Some((*family).to_owned()),
+                PaletteRow::Navigation(_) => None,
                 PaletteRow::Command { .. }
                 | PaletteRow::Market { .. }
                 | PaletteRow::QuickAction { .. }
@@ -1790,6 +2022,7 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Market { id, .. } => Some((*id).to_owned()),
+                PaletteRow::Navigation(_) => None,
                 PaletteRow::Command { .. }
                 | PaletteRow::Font { .. }
                 | PaletteRow::QuickAction { .. }
@@ -1824,19 +2057,37 @@ impl CommandPalette {
     /// the same fuzzy-score + sort pipeline so typing behaves
     /// identically in either view.
     fn filtered_rows(&self) -> Vec<(i32, PaletteRow<'_>)> {
+        let query = self.query.to_lowercase();
+        let score = |target: &str| fuzzy_score_lowered(&query, target);
         let mut results: Vec<(i32, PaletteRow<'_>)> = match &self.mode {
             PaletteMode::Commands => {
+                if self.query.is_empty() && self.category.is_none() {
+                    return Category::ALL
+                        .into_iter()
+                        .map(|category| (0, PaletteRow::Navigation(Some(category))))
+                        .collect();
+                }
                 let has_adaptive = self.has_adaptive_theme;
                 COMMANDS
                     .iter()
                     .filter(|cmd| {
+                        if self.query.is_empty()
+                            && self.category.is_some_and(|category| {
+                                Category::for_action(cmd.action) != category
+                            })
+                        {
+                            return false;
+                        }
                         if cmd.action == PaletteAction::ToggleAppearanceTheme {
                             return has_adaptive;
                         }
                         true
                     })
                     .filter_map(|cmd| {
-                        let score = fuzzy_score(&self.query, cmd.title)?;
+                        let score = score(cmd.title).or_else(|| {
+                            score(Category::for_action(cmd.action).title())
+                                .map(|score| score - 100)
+                        })?;
                         Some((
                             score,
                             PaletteRow::Command {
@@ -1851,7 +2102,7 @@ impl CommandPalette {
             PaletteMode::Fonts(fonts) => fonts
                 .iter()
                 .filter_map(|family| {
-                    let score = fuzzy_score(&self.query, family)?;
+                    let score = score(family)?;
                     Some((score, PaletteRow::Font { family }))
                 })
                 .collect(),
@@ -1864,7 +2115,7 @@ impl CommandPalette {
                         item.description.as_str(),
                     ]
                     .into_iter()
-                    .filter_map(|candidate| fuzzy_score(&self.query, candidate))
+                    .filter_map(score)
                     .max()?;
                     Some((
                         score,
@@ -1922,17 +2173,41 @@ impl CommandPalette {
             }
         };
 
-        results.sort_by_key(|r| std::cmp::Reverse(r.0));
+        if !query.is_empty() {
+            results.sort_by_key(|r| std::cmp::Reverse(r.0));
+        }
+        if self.category.is_some()
+            && self.query.is_empty()
+            && matches!(self.mode, PaletteMode::Commands)
+        {
+            results.insert(0, (i32::MAX, PaletteRow::Navigation(None)));
+        }
         results
     }
 
     /// Returns the palette geometry for drawing and hit-testing. Width and row
     /// count contract before either edge can leave the live viewport.
+    #[cfg(test)]
     fn palette_rect(
         &self,
         window_width: f32,
         window_height: f32,
         scale_factor: f32,
+    ) -> (f32, f32, f32, f32, usize) {
+        self.palette_rect_for_count(
+            window_width,
+            window_height,
+            scale_factor,
+            self.filtered_rows().len(),
+        )
+    }
+
+    fn palette_rect_for_count(
+        &self,
+        window_width: f32,
+        window_height: f32,
+        scale_factor: f32,
+        count: usize,
     ) -> (f32, f32, f32, f32, usize) {
         let viewport = Viewport::from_physical(window_width, window_height, scale_factor);
         let pw = viewport.fitted_surface(PALETTE_WIDTH, 8.0);
@@ -1943,7 +2218,8 @@ impl CommandPalette {
         let available_height = (viewport.height - py - 8.0).max(0.0);
         let visible_results = (((available_height - fixed_height) / RESULT_ITEM_HEIGHT)
             .floor() as usize)
-            .clamp(1, MAX_VISIBLE_RESULTS);
+            .clamp(1, MAX_VISIBLE_RESULTS)
+            .min(count.max(1));
         let h = PALETTE_PADDING
             + INPUT_HEIGHT
             + SEPARATOR_HEIGHT
@@ -1964,8 +2240,13 @@ impl CommandPalette {
         window_height: f32,
         scale_factor: f32,
     ) -> Result<Option<usize>, ()> {
-        let (px, py, pw, ph, visible_results) =
-            self.palette_rect(window_width, window_height, scale_factor);
+        let filtered_count = self.filtered_rows().len();
+        let (px, py, pw, ph, visible_results) = self.palette_rect_for_count(
+            window_width,
+            window_height,
+            scale_factor,
+            filtered_count,
+        );
 
         // Outside palette bounds
         if mouse_x < px || mouse_x > px + pw || mouse_y < py || mouse_y > py + ph {
@@ -1984,8 +2265,9 @@ impl CommandPalette {
         if row >= visible_results {
             return Ok(None);
         }
-        let filtered_count = self.filtered_rows().len();
-        let actual_index = self.scroll_offset + row;
+        let actual_index =
+            bounded_scroll_offset(filtered_count, visible_results, self.scroll_offset)
+                + row;
 
         if actual_index < filtered_count {
             Ok(Some(actual_index))
@@ -2003,6 +2285,9 @@ impl CommandPalette {
         window_height: f32,
         scale_factor: f32,
     ) -> bool {
+        if self.is_editing_shortcut() {
+            return false;
+        }
         if let Ok(Some(index)) =
             self.hit_test(mouse_x, mouse_y, window_width, window_height, scale_factor)
         {
@@ -2020,18 +2305,30 @@ impl CommandPalette {
             return;
         }
 
+        if self.is_editing_shortcut() {
+            self.render_shortcut_editor(sugarloaf, dimensions);
+            return;
+        }
+
         sugarloaf.begin_modal_layer();
 
         let (window_width, window_height, scale_factor) = dimensions;
 
-        let (palette_x, palette_y, palette_width, palette_height, visible_results) =
-            self.palette_rect(window_width, window_height, scale_factor);
-        self.visible_results = visible_results;
-        if self.selected_index < self.scroll_offset {
-            self.scroll_offset = self.selected_index;
+        let filtered = self.filtered_rows();
+        let (palette_x, palette_y, palette_width, palette_height, visible_results) = self
+            .palette_rect_for_count(
+                window_width,
+                window_height,
+                scale_factor,
+                filtered.len(),
+            );
+        let scroll_offset = if self.selected_index < self.scroll_offset {
+            self.selected_index
         } else if self.selected_index >= self.scroll_offset + visible_results {
-            self.scroll_offset = self.selected_index + 1 - visible_results;
-        }
+            self.selected_index + 1 - visible_results
+        } else {
+            self.scroll_offset
+        };
 
         sugarloaf.rect(
             None,
@@ -2044,8 +2341,7 @@ impl CommandPalette {
             ORDER,
         );
 
-        // Lift the command center above terminal content, then carve a crisp
-        // one-pixel Automexia outline around the blue-black glass surface.
+        // Quiet card edges separate the overlay; cyan belongs to input/selection.
         sugarloaf.rounded_rect(
             None,
             palette_x - 8.0,
@@ -2082,20 +2378,55 @@ impl CommandPalette {
             input_width,
             INPUT_HEIGHT - 4.0,
             1.0,
-            9.0,
+            CONTROL_RADIUS,
             INPUT_OUTLINE_COLOR,
             INPUT_BG_COLOR,
             DEPTH_ELEMENT,
             ORDER,
         );
-        draw_command_icon(
-            sugarloaf,
-            CommandIcon::Search,
-            input_x + 13.0,
-            input_y + 11.0,
-            BRAND_CYAN,
-            INPUT_BG_COLOR,
-        );
+        let input_icon_well =
+            if let Some([x, y, width, height]) = self.back_button_rect(dimensions) {
+                stroke_rounded_rect(
+                    sugarloaf,
+                    x,
+                    y,
+                    width,
+                    height,
+                    1.0,
+                    KEYCAP_RADIUS,
+                    OUTLINE_COLOR,
+                    SHORTCUT_BG_COLOR,
+                    DEPTH_ELEMENT + 0.02,
+                    ORDER,
+                );
+                draw_command_icon(
+                    sugarloaf,
+                    CommandIcon::Back,
+                    x + 4.0,
+                    y + 4.0,
+                    BRAND_CYAN,
+                    SHORTCUT_BG_COLOR,
+                );
+                if width > 28.0 {
+                    let opts = DrawOpts {
+                        font_size: SHORTCUT_FONT_SIZE,
+                        color: color_u8(TEXT_COLOR),
+                        ..DrawOpts::default()
+                    };
+                    sugarloaf.text_mut().draw(x + 30.0, y + 7.0, "Back", &opts);
+                }
+                width + 8.0
+            } else {
+                draw_command_icon(
+                    sugarloaf,
+                    CommandIcon::Search,
+                    input_x + 13.0,
+                    input_y + 11.0,
+                    BRAND_CYAN,
+                    INPUT_BG_COLOR,
+                );
+                INPUT_ICON_WELL
+            };
 
         let esc_x = input_x + input_width - ESC_BADGE_WIDTH - 10.0;
         stroke_rounded_rect(
@@ -2105,8 +2436,8 @@ impl CommandPalette {
             ESC_BADGE_WIDTH,
             25.0,
             1.0,
-            6.0,
-            SHORTCUT_OUTLINE_COLOR,
+            KEYCAP_RADIUS,
+            OUTLINE_COLOR,
             SHORTCUT_BG_COLOR,
             DEPTH_ELEMENT + 0.01,
             ORDER,
@@ -2121,7 +2452,9 @@ impl CommandPalette {
             .draw(esc_x + 9.0, input_y + 18.0, "ESC", &esc_opts);
 
         let placeholder = match self.mode {
-            PaletteMode::Commands => "Type a command...",
+            PaletteMode::Commands => self
+                .category
+                .map_or("Search all commands…", Category::title),
             PaletteMode::Fonts(_) => "Type a font name...",
             PaletteMode::Market(_) => "Search extensions...",
             PaletteMode::QuickActions { .. } => "Search Quick Actions...",
@@ -2130,32 +2463,32 @@ impl CommandPalette {
         };
         let input_text_width = (input_width
             - INPUT_PADDING_X * 2.0
-            - INPUT_ICON_WELL
+            - input_icon_well
             - ESC_BADGE_WIDTH
             - 18.0)
             .max(0.0);
-        let display_text = if self.query.is_empty() {
-            elide_end(sugarloaf, placeholder, input_text_width, INPUT_FONT_SIZE)
-        } else {
-            elide_start(
-                sugarloaf,
-                self.query.as_str(),
-                input_text_width,
-                INPUT_FONT_SIZE,
-            )
-        };
         let text_color = if self.query.is_empty() {
             DIM_TEXT_COLOR
         } else {
             TEXT_COLOR
         };
 
-        let text_x = input_x + INPUT_PADDING_X + INPUT_ICON_WELL;
+        let text_x = input_x + INPUT_PADDING_X + input_icon_well;
         let text_y = input_y + (INPUT_HEIGHT - INPUT_FONT_SIZE) / 2.0;
         let input_opts = DrawOpts {
             font_size: INPUT_FONT_SIZE,
             color: color_u8(text_color),
             ..DrawOpts::default()
+        };
+        let display_text = if self.query.is_empty() {
+            elide_end(sugarloaf, placeholder, input_text_width, &input_opts)
+        } else {
+            elide_start(
+                sugarloaf,
+                self.query.as_str(),
+                input_text_width,
+                &input_opts,
+            )
         };
         let input_rendered_width =
             sugarloaf
@@ -2201,9 +2534,8 @@ impl CommandPalette {
         );
 
         let results_y = sep_y + SEPARATOR_HEIGHT + RESULTS_MARGIN_TOP;
-        let filtered = self.filtered_rows();
         let effective_scroll_offset =
-            bounded_scroll_offset(filtered.len(), visible_results, self.scroll_offset);
+            bounded_scroll_offset(filtered.len(), visible_results, scroll_offset);
 
         for (display_i, (_, row)) in filtered
             .iter()
@@ -2217,17 +2549,15 @@ impl CommandPalette {
             let presentation = row.presentation();
 
             if is_selected {
-                stroke_rounded_rect(
-                    sugarloaf,
+                sugarloaf.rounded_rect(
+                    None,
                     input_x,
                     item_y,
                     input_width,
                     RESULT_ITEM_HEIGHT - 2.0,
-                    1.0,
-                    8.0,
-                    SELECTED_OUTLINE_COLOR,
                     SELECTED_BG_COLOR,
                     DEPTH_ELEMENT,
+                    CONTROL_RADIUS,
                     ORDER,
                 );
                 sugarloaf.rounded_rect(
@@ -2236,7 +2566,7 @@ impl CommandPalette {
                     item_y + 11.0,
                     2.0,
                     RESULT_ITEM_HEIGHT - 24.0,
-                    presentation.accent,
+                    BRAND_CYAN,
                     DEPTH_ELEMENT + 0.02,
                     1.0,
                     ORDER,
@@ -2271,24 +2601,25 @@ impl CommandPalette {
             let row_text_x = icon_x + RESULT_ICON_SIZE + 14.0;
             let row_text_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_FONT_SIZE) / 2.0 - 1.0;
             let shortcut = row.shortcut();
-            let shortcut_display: std::borrow::Cow<'_, str> =
-                if matches!(row, PaletteRow::QuickAction { .. }) {
-                    elide_end(
-                        sugarloaf,
-                        shortcut,
-                        quick_action_metadata_max_width(input_width),
-                        SHORTCUT_FONT_SIZE,
-                    )
+            let shortcut_opts = DrawOpts {
+                font_size: SHORTCUT_FONT_SIZE,
+                color: color_u8(if is_selected {
+                    TEXT_COLOR
                 } else {
-                    std::borrow::Cow::Borrowed(shortcut)
-                };
+                    SHORTCUT_TEXT_COLOR
+                }),
+                ..DrawOpts::default()
+            };
+            // Larger key labels must not crowd titles in narrow viewports.
+            // Full shortcuts remain in the action/accessible model.
+            let shortcut_display = elide_end(
+                sugarloaf,
+                shortcut,
+                trailing_label_max_width(input_width),
+                &shortcut_opts,
+            );
             let is_font_row = matches!(row, PaletteRow::Font { .. });
             let trailing_width = if !shortcut.is_empty() {
-                let shortcut_opts = DrawOpts {
-                    font_size: SHORTCUT_FONT_SIZE,
-                    color: color_u8(SHORTCUT_TEXT_COLOR),
-                    ..DrawOpts::default()
-                };
                 sugarloaf
                     .text_mut()
                     .measure(&shortcut_display, &shortcut_opts)
@@ -2302,39 +2633,30 @@ impl CommandPalette {
                 sugarloaf,
                 row.title(),
                 (input_x + input_width - row_text_x - trailing_width).max(0.0),
-                RESULT_FONT_SIZE,
+                &result_opts,
             );
             sugarloaf
                 .text_mut()
                 .draw(row_text_x, row_text_y, &row_title, &result_opts);
 
             if !shortcut.is_empty() {
-                let shortcut_opts = DrawOpts {
-                    font_size: SHORTCUT_FONT_SIZE,
-                    color: color_u8(if is_selected {
-                        TEXT_COLOR
-                    } else {
-                        SHORTCUT_TEXT_COLOR
-                    }),
-                    ..DrawOpts::default()
-                };
-                let shortcut_width = sugarloaf
-                    .text_mut()
-                    .measure(&shortcut_display, &shortcut_opts);
-                let keycap_width = shortcut_width + 18.0;
-                let shortcut_x = input_x + input_width - 10.0 - keycap_width;
-                let shortcut_y = item_y + 10.0;
-                stroke_rounded_rect(
-                    sugarloaf,
+                let [shortcut_x, shortcut_y, keycap_width, _] =
+                    shortcut_editor::shortcut_badge_rect(
+                        sugarloaf,
+                        shortcut,
+                        input_x,
+                        input_width,
+                        item_y,
+                    );
+                sugarloaf.rounded_rect(
+                    None,
                     shortcut_x,
                     shortcut_y,
                     keycap_width,
                     24.0,
-                    1.0,
-                    6.0,
-                    SHORTCUT_OUTLINE_COLOR,
                     SHORTCUT_BG_COLOR,
                     DEPTH_ELEMENT + 0.01,
+                    KEYCAP_RADIUS,
                     ORDER,
                 );
                 sugarloaf.text_mut().draw(
@@ -2393,6 +2715,7 @@ impl CommandPalette {
         // fade envelope. Overflow always keeps a subdued indicator visible;
         // wheel, trackpad, or keyboard scrolling brightens it immediately.
         let total = filtered.len();
+        self.visible_results = visible_results;
         if effective_scroll_offset != self.scroll_offset {
             self.wheel_accumulated_y = 0.0;
             self.scroll_offset = effective_scroll_offset;
@@ -2430,6 +2753,19 @@ impl CommandPalette {
                 ORDER,
             );
         }
+        if matches!(self.mode, PaletteMode::Commands) && palette_width >= 300.0 {
+            let opts = DrawOpts {
+                font_size: 9.0,
+                color: color_u8(DIM_TEXT_COLOR),
+                ..DrawOpts::default()
+            };
+            sugarloaf.text_mut().draw(
+                palette_x + PALETTE_PADDING,
+                palette_y + palette_height - 11.0,
+                "F2 edits shortcut · double-click a key badge",
+                &opts,
+            );
+        }
         sugarloaf.end_modal_layer();
     }
 }
@@ -2454,10 +2790,17 @@ mod tests {
 
     #[test]
     fn test_filtered_commands_empty_query() {
-        let palette = CommandPalette::new();
+        let mut palette = CommandPalette::new();
+        palette.category = Some(Category::Appearance);
         let filtered = palette.filtered_rows();
-        // ToggleAppearanceTheme is hidden when has_adaptive_theme is false
-        assert_eq!(filtered.len(), COMMANDS.len() - 1);
+        assert!(!filtered
+            .iter()
+            .any(|(_, row)| row.action() == Some(PaletteAction::ToggleAppearanceTheme)));
+        palette.has_adaptive_theme = true;
+        assert!(palette
+            .filtered_rows()
+            .iter()
+            .any(|(_, row)| row.action() == Some(PaletteAction::ToggleAppearanceTheme)));
     }
 
     #[test]
@@ -2570,6 +2913,29 @@ mod tests {
     }
 
     #[test]
+    fn opening_palette_browses_categories_without_executing_a_command() {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        let titles: Vec<_> = palette
+            .filtered_rows()
+            .iter()
+            .map(|(_, row)| row.title())
+            .collect();
+        assert_eq!(
+            titles,
+            [
+                "Tabs & Windows",
+                "Panes & Sessions",
+                "Search & History",
+                "Clipboard & Input",
+                "Appearance",
+                "Tools"
+            ]
+        );
+        assert_eq!(palette.get_selected_action(), None);
+    }
+
+    #[test]
     fn test_set_query_resets_selection_and_scroll() {
         let mut palette = CommandPalette::new();
         palette.selected_index = 5;
@@ -2619,7 +2985,8 @@ mod tests {
 
     #[test]
     fn test_get_selected_action() {
-        let palette = CommandPalette::new();
+        let mut palette = CommandPalette::new();
+        assert!(palette.activate_navigation());
         let action = palette.get_selected_action();
         assert!(action.is_some());
         // First command is the current-window tab action.
@@ -2676,8 +3043,8 @@ mod tests {
             .find(|command| command.action == PaletteAction::SplitDown)
             .expect("fresh split-down command should be present");
 
-        assert_eq!(clone_right.shortcut, "Ctrl+R");
-        assert_eq!(clone_down.shortcut, "Ctrl+D");
+        assert_eq!(clone_right.shortcut, SHORTCUT_CLONE_RIGHT);
+        assert_eq!(clone_down.shortcut, SHORTCUT_CLONE_DOWN);
         assert_ne!(clone_right.action, split_right.action);
         assert_ne!(clone_down.action, split_down.action);
         assert_ne!(
@@ -2756,24 +3123,21 @@ mod tests {
                 .unwrap();
             palette.command_shortcut(command).to_string()
         };
-        assert_eq!(shortcut(PaletteAction::TabCreate), "ctrl+shift+t · Profile");
-        assert_eq!(
-            shortcut(PaletteAction::SplitRight),
-            "ctrl+shift+o · Profile"
-        );
-        assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Unbound");
+        assert_eq!(shortcut(PaletteAction::TabCreate), "ctrl+shift+t");
+        assert_eq!(shortcut(PaletteAction::SplitRight), "ctrl+shift+o");
+        assert_eq!(shortcut(PaletteAction::LocalTabCreate), "Enter");
         assert_eq!(
             shortcut(PaletteAction::ScrollToPreviousCommand),
-            "ctrl+shift+page_up · Profile"
+            "ctrl+shift+page_up"
         );
         assert_eq!(
             shortcut(PaletteAction::ScrollToNextCommand),
-            "ctrl+shift+page_down · Profile"
+            "ctrl+shift+page_down"
         );
     }
 
     #[test]
-    fn automexia_typed_unbind_is_visible_as_unbound() {
+    fn automexia_typed_unbind_offers_palette_enter() {
         let registry = automexia_keybindings::compile(&[]).registry.unwrap();
         let mut palette = CommandPalette::new();
         palette.set_binding_registry(
@@ -2785,7 +3149,7 @@ mod tests {
             .iter()
             .find(|command| command.action == PaletteAction::TabCreate)
             .unwrap();
-        assert_eq!(palette.command_shortcut(command), "Unbound");
+        assert_eq!(palette.command_shortcut(command), "Enter");
     }
 
     #[test]
@@ -2803,6 +3167,42 @@ mod tests {
                 command.shortcut
             );
         }
+    }
+
+    #[test]
+    fn clone_labels_follow_user_bindings_typed_overrides_and_reset() {
+        use crate::bindings::{config_key_bindings, registry};
+        use rio_backend::config::bindings::KeyBinding;
+        let mut palette = CommandPalette::new();
+        let command = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::CloneSplitRight)
+            .unwrap();
+        let bindings = config_key_bindings(
+            vec![KeyBinding {
+                key: "r".into(),
+                action: "CloneSplitRight".into(),
+                with: "control".into(),
+                esc: String::new(),
+                mode: String::new(),
+            }],
+            vec![],
+        );
+        for (typed, expected) in [
+            (vec![], "ctrl+r"),
+            (vec!["ctrl+r=unbind"], "Enter"),
+            (vec!["ctrl+r=quit"], "Enter"),
+            (vec!["ctrl+r>ctrl+x=quit"], "Enter"),
+            (vec!["ctrl+d=unbind"], "ctrl+r"),
+        ] {
+            let mut config = rio_backend::config::Config::default();
+            config.bindings.keybinds = typed.into_iter().map(str::to_string).collect();
+            let snapshot = registry::build(&config).unwrap();
+            palette.set_effective_bindings(&bindings, snapshot.as_ref());
+            assert_eq!(palette.command_shortcut(command), expected);
+        }
+        palette.set_effective_bindings(&[], None);
+        assert_eq!(palette.command_shortcut(command), "Enter");
     }
 
     #[test]
@@ -2847,6 +3247,8 @@ mod tests {
     fn test_scroll_offset_on_move_down() {
         let mut palette = CommandPalette::new();
         palette.set_enabled(true);
+        palette.selected_index = 1;
+        assert!(palette.activate_navigation());
         for _ in 0..MAX_VISIBLE_RESULTS {
             palette.move_selection_down();
         }
@@ -3289,10 +3691,66 @@ mod tests {
     }
 
     #[test]
-    fn quick_action_metadata_budget_is_proportional_and_bounded() {
-        assert_eq!(quick_action_metadata_max_width(100.0), 72.0);
-        assert!((quick_action_metadata_max_width(300.0) - 126.0).abs() < 0.001);
-        assert_eq!(quick_action_metadata_max_width(1_000.0), 220.0);
+    fn trailing_label_budget_is_proportional_and_bounded() {
+        assert_eq!(trailing_label_max_width(100.0), 42.0);
+        assert!((trailing_label_max_width(300.0) - 126.0).abs() < 0.001);
+        assert_eq!(trailing_label_max_width(1_000.0), 220.0);
+        for invalid in [0.0, -1.0, f32::NAN, f32::INFINITY] {
+            assert_eq!(trailing_label_max_width(invalid), 0.0);
+        }
+    }
+
+    #[test]
+    fn readable_key_labels_keep_action_space_at_fractional_scales() {
+        use rio_backend::sugarloaf::{
+            font::{constants, FontData, FontLibrary, FontLibraryData},
+            text::Text,
+        };
+        use std::sync::Arc;
+        let mut data = FontLibraryData::default();
+        data.insert(
+            FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap(),
+        );
+        let fonts = FontLibrary {
+            inner: Arc::new(parking_lot::RwLock::new(data)),
+        };
+        let mut text = Text::new(&fonts);
+        text.init_cpu();
+        for scale in [1.0, 1.25, 1.5, 2.0, 3.0, 4.0] {
+            text.set_scale_factor(scale);
+            let options = DrawOpts {
+                font_size: SHORTCUT_FONT_SIZE,
+                ..Default::default()
+            };
+            for width in [200.0, 280.0, 576.0, 7680.0] {
+                for label in [
+                    "Enter",
+                    "Alt+Shift+R",
+                    "Ctrl+Shift+PageDown",
+                    "Read-only · Example context",
+                    "⌘⇧ → e\u{301}",
+                ] {
+                    let before = label.to_owned();
+                    let budget = trailing_label_max_width(width);
+                    let fitted = crate::renderer::text_fit::fit_end(
+                        label,
+                        budget,
+                        "…",
+                        |candidate, _| text.measure(candidate, &options),
+                    );
+                    let advance = text.measure(&fitted.display, &options);
+                    assert!(advance <= budget);
+                    assert!(
+                        advance + 30.0 + 50.0 < width,
+                        "retain room for the action label"
+                    );
+                    assert_eq!(
+                        label, before,
+                        "display fitting cannot change accessible shortcut text"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

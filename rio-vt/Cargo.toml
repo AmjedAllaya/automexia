@@ -84,6 +84,9 @@ criterion = { workspace = true }
 proptest = { workspace = true }
 serde_json = { workspace = true }
 
+[target.'cfg(windows)'.dev-dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_System_Threading"] }
+
 [[bench]]
 name = "vt_input"
 harness = false

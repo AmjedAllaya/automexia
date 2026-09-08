@@ -88,7 +88,31 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $script:AutomexiaShellPath = [Convert]::ToBase64String(
         [Text.Encoding]::UTF8.GetBytes($script:AutomexiaShellExecutable)
     )
+    function script:Publish-AutomexiaLocationHints {
+        $hintHome = [string]$HOME
+        $hintConfig = [string]$env:KUBECONFIG
+        if ($env:AUTOMEXIA_CONTEXT_PATH_HINTS -eq '0' -or
+            [Text.Encoding]::UTF8.GetByteCount($hintHome) -gt 4096 -or
+            [Text.Encoding]::UTF8.GetByteCount($hintConfig) -gt 4096 -or
+            $hintHome -match '\p{Cc}' -or $hintConfig -match '\p{Cc}') {
+            $hintHome = ''; $hintConfig = ''
+        }
+        # In-process encoding only when a bounded value changes. Re-emitting the
+        # pair on every prompt retires a nested shell's stale discovery location.
+        if (-not $script:AutomexiaLocationReady -or
+            $hintHome -cne $script:AutomexiaLocationHome -or
+            $hintConfig -cne $script:AutomexiaLocationConfig) {
+            $script:AutomexiaLocationHome = $hintHome
+            $script:AutomexiaLocationConfig = $hintConfig
+            $encodedHome = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($hintHome))
+            $encodedConfig = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($hintConfig))
+            $script:AutomexiaLocationFrames = "$script:AutomexiaEsc]1337;SetUserVar=automexia_env_HOME=$encodedHome$script:AutomexiaBel$script:AutomexiaEsc]1337;SetUserVar=automexia_env_KUBECONFIG=$encodedConfig$script:AutomexiaBel"
+            $script:AutomexiaLocationReady = $true
+        }
+        [Console]::Write($script:AutomexiaLocationFrames)
+    }
     function script:Publish-AutomexiaPowerShellIdentity {
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_pending=MQ==$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_user=$script:AutomexiaShellUser$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_path=$script:AutomexiaShellPath$script:AutomexiaBel")
@@ -97,6 +121,8 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         # internally consistent, so the renderer never observes a mixed shell.
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
+        Publish-AutomexiaLocationHints
+        [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_pending=MA==$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
     }
     Publish-AutomexiaPowerShellIdentity

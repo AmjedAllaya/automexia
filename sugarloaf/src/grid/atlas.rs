@@ -17,6 +17,8 @@
 /// resize animation) without re-rasterizing. Quantize to 1/4 of a
 /// physical pixel to keep the cache hit rate high:
 /// `size_bucket = (scaled_px * 4.0).round() as u16`.
+/// Immediate-mode Text owns separate atlases and uses its actual rounded
+/// whole-pixel raster size instead. Never mix these units within one atlas.
 #[derive(Clone, Copy, Debug, Eq, Hash, PartialEq)]
 pub struct GlyphKey {
     pub font_id: u32,

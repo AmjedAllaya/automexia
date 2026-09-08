@@ -51,6 +51,10 @@ pub struct Mouse {
     /// preview. The matching release is consumed as well, so a child
     /// application never receives a split mouse-event pair.
     pub image_preview_click_latched: bool,
+    /// Host-owned secondary presses must not leak a release after modifiers
+    /// or terminal mouse mode change. Right and middle can be held together.
+    pub(crate) clipboard_press_latches: [bool; 2],
+    palette_press_latched: bool,
 }
 
 impl Default for Mouse {
@@ -74,11 +78,68 @@ impl Default for Mouse {
             last_cell: None,
             hint_click_latched: None,
             image_preview_click_latched: false,
+            clipboard_press_latches: [false; 2],
+            palette_press_latched: false,
         }
     }
 }
 
 impl Mouse {
+    pub fn palette_consumes_button(
+        &mut self,
+        button: MouseButton,
+        state: ElementState,
+        open: bool,
+    ) -> bool {
+        if button == MouseButton::Left {
+            if state == ElementState::Pressed {
+                self.palette_press_latched = open;
+                return false;
+            }
+            if std::mem::take(&mut self.palette_press_latched) || open {
+                self.left_button_state = ElementState::Released;
+                self.hint_click_latched = None;
+                self.image_preview_click_latched = false;
+                return true;
+            }
+        } else if open {
+            self.cancel_clipboard_press(button);
+            // Preserve release ownership even if Esc closes the modal while
+            // this button remains down. The existing per-button release path
+            // consumes it without a terminal mouse report.
+            self.set_clipboard_press(button, state == ElementState::Pressed);
+            return true;
+        }
+        false
+    }
+
+    /// A modal can appear while a clipboard button is held. Retire both the
+    /// press latch and drag state even when its eventual release is consumed.
+    pub fn cancel_clipboard_press(&mut self, button: MouseButton) {
+        self.set_clipboard_press(button, false);
+        match button {
+            MouseButton::Right => self.right_button_state = ElementState::Released,
+            MouseButton::Middle => self.middle_button_state = ElementState::Released,
+            _ => {}
+        }
+    }
+
+    pub fn set_clipboard_press(&mut self, button: MouseButton, owned: bool) {
+        match button {
+            MouseButton::Right => self.clipboard_press_latches[0] = owned,
+            MouseButton::Middle => self.clipboard_press_latches[1] = owned,
+            _ => {}
+        }
+    }
+
+    pub fn take_clipboard_release(&mut self, button: MouseButton) -> bool {
+        match button {
+            MouseButton::Right => std::mem::take(&mut self.clipboard_press_latches[0]),
+            MouseButton::Middle => std::mem::take(&mut self.clipboard_press_latches[1]),
+            _ => false,
+        }
+    }
+
     pub fn new(multiplier: f64, divider: f64) -> Self {
         Self {
             multiplier,
@@ -187,6 +248,47 @@ pub mod test {
             x,
             y,
             ..Default::default()
+        }
+    }
+
+    #[test]
+    fn clipboard_release_ownership_is_per_button_and_consumed_once() {
+        let mut mouse = Mouse::default();
+        mouse.set_clipboard_press(MouseButton::Right, true);
+        mouse.set_clipboard_press(MouseButton::Middle, true);
+        assert!(!mouse.take_clipboard_release(MouseButton::Left));
+        assert!(mouse.take_clipboard_release(MouseButton::Right));
+        assert!(!mouse.take_clipboard_release(MouseButton::Right));
+        assert!(mouse.take_clipboard_release(MouseButton::Middle));
+        mouse.set_clipboard_press(MouseButton::Right, true);
+        mouse.set_clipboard_press(MouseButton::Right, false);
+        assert!(
+            !mouse.take_clipboard_release(MouseButton::Right),
+            "reported press retains its release"
+        );
+    }
+
+    #[test]
+    fn palette_mouse_release_stays_owned_after_modal_closes_without_sticky_drag() {
+        for button in [MouseButton::Left, MouseButton::Right, MouseButton::Middle] {
+            let mut mouse = Mouse::default();
+            assert_eq!(
+                mouse.palette_consumes_button(button, ElementState::Pressed, true),
+                button != MouseButton::Left
+            );
+            let consumed =
+                mouse.palette_consumes_button(button, ElementState::Released, false)
+                    || mouse.take_clipboard_release(button);
+            assert!(consumed);
+            assert!(!mouse.palette_consumes_button(
+                button,
+                ElementState::Released,
+                false
+            ));
+            assert!(!mouse.take_clipboard_release(button));
+            assert_eq!(mouse.left_button_state, ElementState::Released);
+            assert_eq!(mouse.right_button_state, ElementState::Released);
+            assert_eq!(mouse.middle_button_state, ElementState::Released);
         }
     }
 

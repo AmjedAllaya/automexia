@@ -560,19 +560,15 @@ impl Screen<'_> {
                 ActionOutcome::performed(true, terminal_damage)
             }
             "paste_from_clipboard" => {
-                let content = clipboard.get(ClipboardType::Clipboard);
-                if content.is_empty() {
-                    return unavailable(false, "clipboard_empty");
+                if !self.paste_from_clipboard(clipboard, ClipboardType::Clipboard) {
+                    return unavailable(false, "clipboard_empty_or_cancelled");
                 }
-                self.paste(&content, true);
                 ActionOutcome::performed(true, terminal_damage)
             }
             "paste_from_selection" => {
-                let content = clipboard.get(ClipboardType::Selection);
-                if content.is_empty() {
-                    return unavailable(false, "selection_clipboard_empty");
+                if !self.paste_from_clipboard(clipboard, ClipboardType::Selection) {
+                    return unavailable(false, "selection_clipboard_empty_or_cancelled");
                 }
-                self.paste(&content, true);
                 ActionOutcome::performed(true, terminal_damage)
             }
             "increase_font_size" => {

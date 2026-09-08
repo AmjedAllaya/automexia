@@ -17,6 +17,8 @@ import xml.etree.ElementTree as element_tree
 
 import yaml
 
+from markdown_anchors import markdown_anchors
+
 from check_command_productivity import (
     validate_repository as validate_command_productivity,
 )
@@ -68,6 +70,7 @@ from check_production_operations_po0 import (
 )
 from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
+from rust_toolchain import validate_policy as validate_rust_toolchain_policy
 from repository_protection import validate_repository as validate_repository_protection
 from release_trust import load_policy as validate_release_trust_policy
 from stable_release import (
@@ -202,22 +205,6 @@ def validate_brand_assets() -> None:
         )
 
 
-def markdown_anchors(path: Path) -> set[str]:
-    anchors: set[str] = set()
-    occurrences: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
-            continue
-        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
-        duplicate = occurrences.get(slug, 0)
-        occurrences[slug] = duplicate + 1
-        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
-    return anchors
-
-
 def validate_markdown_links() -> int:
     markdown_files = files_with_suffixes(".md")
     anchor_cache: dict[Path, set[str]] = {}
@@ -243,7 +230,9 @@ def validate_markdown_links() -> int:
                     f"{relative(source)} has a missing local link: {raw_target}"
                 )
             if separator and anchor and target.suffix.lower() == ".md":
-                anchors = anchor_cache.setdefault(target, markdown_anchors(target))
+                if target not in anchor_cache:
+                    anchor_cache[target] = markdown_anchors(target)
+                anchors = anchor_cache[target]
                 if unquote(anchor).lower() not in anchors:
                     raise ValueError(
                         f"{relative(source)} has a missing Markdown anchor: {raw_target}"
@@ -327,6 +316,7 @@ def validate() -> None:
 
     validate_repository_workflows()
     counts["platform workflow matrix"] = 1
+    counts["verified compiler workflow jobs"] = validate_rust_toolchain_policy()
 
     protection_counts = validate_repository_protection()
     counts["repository protection rulesets"] = protection_counts["rulesets"]

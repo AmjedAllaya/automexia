@@ -16,6 +16,8 @@ import re
 import sys
 from typing import Any
 
+from markdown_anchors import markdown_anchors as _markdown_anchors
+
 
 ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONTRACT = ROOT / "tests/assurance/feature-test-reinforcement-v1.json"
@@ -86,20 +88,57 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "contributor-automation-quality-policy": {
+        "needed_tests": ("parent-exit retained-pipe", "exact descendant identities", "joined readers"),
+    },
+    "prompt-context-devops-semantics": {
+        "needed_tests": ("Lifecycle versus readiness", "condition polarity", "mixed failure counts", "parser-to-grid status colours", "kind-prefixed pods", "zero-count log prefixes"),
+        "verification_reinforcements": ("literal status-colour oracles", "explicit ANSI", "disabled extension"),
+        "checker_reinforcements": ("lifecycle/readiness semantics",),
+    },
+    "ecosystem-d7-cp6-proposal": {
+        "needed_tests": ("pre-arming interrupts", "shared-engine ticks", "reused cancellation tokens", "worker-unwind cleanup"),
+        "verification_reinforcements": ("invocation-local completion", "joined watchdogs"),
+    },
+    "packaging-release-provenance": {
+        "needed_tests": ("recomputed-checksum SBOM privacy", "Minimal publication rejects full inventories",
+                         "rehashed private paths and identifiers", "non-private retention",
+                         "real ephemeral-key Minisign tamper coverage"),
+        "verification_reinforcements": ("complete graph, license and file-hash preservation",),
+    },
+    "stabilization-release-assurance-s1-s2": {
+        "needed_tests": ("content-bound dirty fingerprints", "logical artifact announcements", "pre-descent cache pruning", "unreadable source"),
+        "verification_reinforcements": ("before/after source identity drift",),
+    },
     "terminal-protocols-grid-history": {
         "needed_tests": (
+            "Live child resize acknowledgments",
+            "Real ConsoleHost editor",
+            "native protocol cursor",
+            "worker-owned coalesced resize transactions",
+            "ConPTY history/live seams",
+            "Long padded table rows",
+            "No-resize probe invariance",
+            "viewport identity journal",
+            "parser-created selection journal",
+            "hard-line journal",
             "boundary-only CMD D",
             "pre-epoch",
             "timezone or DST transitions",
             "resize followed by previous/next command navigation",
         ),
         "verification_reinforcements": (
+            "native repaint content before child exit",
+            "first visible cell and snapshot styles",
+            "unselected control grid",
+            "text, hard-break, whitespace and style faults",
             "source prompt, following-prompt boundary",
             "no shell-provided timestamp text",
             "duplicate IDs",
             "successful frame presentation",
         ),
         "checker_reinforcements": (
+            "never substitute a post-exit captured stream",
             "local timezone conversion",
             "no-PTY side-effect coverage",
             "resize-navigation assurance",
@@ -108,11 +147,29 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "pty-scheduler-process-lifecycle": {
         "needed_tests": (
+            "Buffered native probes verify every consumed key value and ordinal",
+            "Confirmed window dismissal",
+            "Saturated native output",
+            "fake-clock input-settle deadlines",
+            "buffered-input ordering",
+            "broken-pipe error-then-drop",
+            "Caller-handle recovery",
+            "Final-output lock contention",
+            "Confirmed child-exit precedence",
+            "Nonblocking pane retirement",
+            "thread-local destruction gates",
+            "capacity recovery",
+            "parked split/local-tab exit journal",
             "Ordinary and exact Windows ConPTY",
             "broadcast-first teardown",
             "parked",
         ),
         "verification_reinforcements": (
+            "500 ms desktop ceiling",
+            "actual join acknowledgements",
+            "no UI-thread joins",
+            "surviving channels remain empty and connected",
+            "restore refresh precedes visibility",
             "exact temporary-fixture process identities before close",
             "ConPTY reparenting",
             "multi-session wall-clock ceiling",
@@ -120,6 +177,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "no sequential deadline multiplication",
         ),
         "checker_reinforcements": (
+            "dismissal-before-wait ordering",
             "ordinary Job ownership",
             "broadcast-before-join ordering",
             "exact pre-close process identity",
@@ -128,6 +186,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "renderer-fonts-responsive-ui": {
         "needed_tests": (
+            "Short inset command markers",
+            "quantized contrast on all surfaces",
+            "parser-created table row bands",
             "threshold-minus-one",
             "40 logical-pixel interaction targets",
             "zero PTY input",
@@ -148,6 +209,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
         ),
         "verification_reinforcements": (
             "42-pixel header",
+            "decorative and focus roles",
+            "exact row-gap pixel coverage",
+            "exact marker pixel coverage",
             "full-shelf RGBA",
             "ownership before pane selection",
             "1,024-row event bound",
@@ -165,6 +229,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
         ),
         "checker_reinforcements": (
             "184-pixel default tab cap",
+            "all-surface contrast requirements",
+            "row-band benchmark and unchanged copy bytes",
+            "marker geometry benchmarks and native inset checks",
             "modal event ownership",
             "no-fabrication behavior",
             "one-badge-per-row ownership",
@@ -180,6 +247,25 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "windows-tabs-sessions-input": {
         "needed_tests": (
+            "Shortcut editor double-click and F2",
+            "stale queued edits",
+            "separate-process restart",
+            "Persistent header Back",
+            "independent legacy scoring",
+            "exhaustive category coverage",
+            "held Enter",
+            "shifted punctuation",
+            "Alt+R/D clone",
+            "all effective shortcut labels",
+            "Complete classic palette defaults",
+            "source-free shortcut chips",
+            "palette-only Enter fallback",
+            "Escape cancellation",
+            "left-arrow Back",
+            "strict-profile isolation",
+            "shell-owned Ctrl+R and Ctrl+D",
+            "single-message captured-target paste",
+            "typed fallback and reset",
             "resizes immediately before Ctrl+Shift+Up/Down",
             "intersecting badge rectangles",
             "intersecting prompt-context rectangles",
@@ -187,6 +273,10 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "ConPTY reparenting",
         ),
         "verification_reinforcements": (
+            "no clone action",
+            "shared palette activation owner",
+            "sibling silence and unchanged selection on rejection",
+            "explicit user mappings",
             "all command-result paint rectangles",
             "visible snapshot publication",
             "six-second controlled Windows",
@@ -202,12 +292,22 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
 }
 
 NATIVE_CONTRACT_SOURCES = {
+    "qa": "tools/ci/qa.py",
+    "qa_process": "tools/ci/qa_process.py",
+    "compiler_probe": "tools/ci/rust_toolchain.py",
+    "pty_worker": "rio-vt/src/performer/mod.rs",
+    "pty_exit_tests": "rio-vt/src/performer/tests/resize_worker.rs",
+    "shortcut_preferences": "apps/automexia-terminal/src/automexia/preferences.rs",
+    "shortcut_editor": "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs",
+    "xtask": "tools/xtask/src/main.rs",
+    "palette": "apps/automexia-terminal/src/renderer/command_palette.rs",
     "screen": "apps/automexia-terminal/src/screen/mod.rs",
     "application": "apps/automexia-terminal/src/application.rs",
     "context": "apps/automexia-terminal/src/context/mod.rs",
     "router": "apps/automexia-terminal/src/router/mod.rs",
     "windows_pty": "teletypewriter/src/windows/mod.rs",
     "windows_conpty": "teletypewriter/src/windows/conpty.rs",
+    "windows_pipes": "teletypewriter/src/windows/pipes.rs",
     "sugarloaf_cpu": "sugarloaf/src/renderer/cpu.rs",
     "native_driver": "tests/integration/resize-stress-windows.ps1",
 }
@@ -266,22 +366,6 @@ def _repository_path(root: Path, reference: str, owner: str) -> Path:
     return path
 
 
-def _markdown_anchors(path: Path) -> set[str]:
-    anchors: set[str] = set()
-    occurrences: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
-            continue
-        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
-        duplicate = occurrences.get(slug, 0)
-        occurrences[slug] = duplicate + 1
-        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
-    return anchors
-
-
 def _load_json(path: Path, owner: str) -> Any:
     def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
         result: dict[str, Any] = {}
@@ -324,10 +408,126 @@ def _require_order(text: str, fragments: tuple[str, ...], owner: str) -> None:
         cursor = position + len(fragment)
 
 
+def _validate_shortcut_editor_sources(sources: dict[str, str]) -> None:
+    # These checks guard cross-owner ordering; Rust behavioral tests remain the
+    # oracle for dispatch, persistence and state, not source token presence.
+    clean = {key: re.sub(r"//[^\n]*", "", value) for key, value in sources.items()}
+    screen = clean["screen"]
+    for start, end, downstream in [
+        ("pub(crate) fn paste_from_clipboard(", "fn finish_paste(", "clipboard.get(source)"),
+        ("pub fn paste(", "pub(crate) fn render_welcome(", "let search_active ="),
+    ]:
+        body = _source_slice(screen, start, end, "shortcut paste isolation")
+        _require_order(body, ("command_palette.is_enabled()", "return", downstream), "shortcut paste isolation")
+    apply = _source_slice(clean["application"], "fn apply_shortcut_edit(", "fn finish_shortcut_writes(", "shortcut transaction")
+    _require_order(apply, ("registry::build(&config)", "self.user_preferences = candidate", ".update_bindings("), "shortcut transaction")
+    if "update_config(" in apply or ".resize(" in apply:
+        raise ReinforcementError("shortcut publication must not resize or reload fonts")
+    writer = clean["shortcut_preferences"]
+    flush = _source_slice(writer, "pub fn flush(", "pub fn shutdown(", "shortcut durable failure")
+    _require_fragments(flush, ("!state.write_failed",), "shortcut durable failure")
+    worker = _source_slice(writer, "fn writer_loop(", "#[cfg(test)]", "shortcut write receipt")
+    _require_order(worker, ("state.completed = Some((revision, result))", "drop(state)", "notify();"), "shortcut write receipt")
+    _require_fragments(clean["shortcut_editor"], ("revision >= expected", "editor.saving = Some(0)", "if repeat", "reset_requested"), "shortcut state")
+    labels = _source_slice(clean["palette"], "pub fn set_effective_bindings(", "pub fn set_enabled(", "shortcut reload")
+    _require_order(labels, ("self.shortcut_change.take()", "self.interrupt_shortcut_capture()", "self.refresh_shortcut_current()"), "shortcut reload")
+
+
+def _validate_child_exit_sources(sources: dict[str, str]) -> None:
+    worker = re.sub(r"//[^\n]*", "", sources["pty_worker"])
+    finish = _source_slice(worker, "fn finish_child_exit(", "pub fn spawn(", "child exit publication")
+    _require_order(finish, ("self.pty.next_child_event()", "return false;", "self.pty_read_bounded(",
+                            "RioEvent::ChildExited", "self.terminal.lock().exit()",
+                            "RioEvent::Render"), "child exit publication")
+    _require_fragments(finish, ("remaining > 0 && !self.sender.shutdown_requested()",
+                                "Ok(0) => break", "remaining -= processed"), "bounded final drain")
+    _require_fragments(worker, ("MAX_FINAL_OUTPUT_BYTES: usize = 4 * READ_BUFFER_SIZE",
+                                "buf.len().min(byte_limit - processed)",
+                                "&mut buf[unprocessed..read_limit]"), "final drain byte ceiling")
+    if worker.count("RioEvent::ChildExited") != 1:
+        raise ReinforcementError("child exit requires one publication owner")
+    spawn = worker.split("pub fn spawn(", 1)[1]
+    dispatch = _source_slice(spawn, "if self.sender.shutdown_requested() {",
+                             "for event in events.iter()", "child exit precedence")
+    _require_order(dispatch, ("self.sender.shutdown_requested()", "self.drain_recv_channel(&mut state)",
+                              "&& self.finish_child_exit(&mut state, &mut buf)",
+                              "self.receiver.peek()", "self.pty_write(&mut state)"), "child exit precedence")
+    if worker.count("self.finish_child_exit(&mut state, &mut buf);") != 4:
+        raise ReinforcementError("every fatal I/O path must reconcile an already arrived child exit")
+    _require_fragments(sources["pty_exit_tests"], (
+        "confirmed_child_exit_precedes_queued_input_failure",
+        "confirmed_child_exit_survives_final_read_failure",
+        "child_exit_arriving_during_failed_write_is_published_once",
+        "transport_failure_never_invents_a_confirmed_child_exit",
+        "explicit_host_shutdown_precedes_child_exit_and_queued_input",
+        "confirmed_child_exit_retains_tail_after_full_read_batch",
+        "final_drain_has_exact_byte_ceiling_and_cancellation_boundary",
+    ), "child exit regression owners")
+    _require_fragments(re.sub(r"\s+", "", sources["pty_exit_tests"]),
+                       ("assert_eq!(publications,expected,",), "exact exit sequence")
+
+
+def _validate_qa_process_sources(sources: dict[str, str]) -> None:
+    helper = sources['qa_process']
+    _require_order(helper, ('job.assign(process)', "process.stdin.write(b'G')"), 'QA native admission')
+    _require_order(helper, ('job.terminate()', 'process.wait(timeout=', 'reader.join(timeout=', 'stream.close()', '_launch_lock.release()'), 'QA native cleanup')
+    _require_fragments(helper, ('CLEANUP_SECONDS = 5.0', 'CONTROL_BYTES = 32', 'CHUNK_BYTES = 8192', 'MAX_ARGUMENTS = 512', 'MAX_COMMAND_BYTES = 65536', '0x2000', 'os.killpg(process.pid, signal.SIGKILL)', '_quarantine = (process, job, readers)', 'sys.stdin.buffer.read(1)', 'state[\'code\'] = code'), 'QA bounded ownership')
+    if sources['qa'].count('qa_process.run(') != 3:
+        raise ReinforcementError('QA steps, version and source status must use one lifecycle owner')
+    if sources['compiler_probe'].count('qa_process.run(') != 1:
+        raise ReinforcementError('compiler identity must use the same bounded lifecycle owner')
+
+
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
         raise ReinforcementError(f"native assurance sources are missing {sorted(missing)}")
+
+    _validate_shortcut_editor_sources(sources)
+    _validate_child_exit_sources(sources)
+    _validate_qa_process_sources(sources)
+
+    stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
+                           "if !native_gui {", "default resize stress dispatch")
+    body = stress.split("{", 1)[1]
+    body = re.sub(r"//[^\n]*", "", body).strip()
+    if body != 'run_resize_regressions(|args| run("cargo", args))?;':
+        raise ReinforcementError("default resize stress must run and propagate the native ladder")
+    ladder = _source_slice(sources["xtask"], "fn run_resize_regressions(",
+                           "fn test_resize_stress(", "resize regression ladder")
+    for suite in ('"resize_stress"', '"resize_repaint"', '"live_resize"', '"pane_editor_resize"'):
+        if ladder.count(suite) != 1:
+            raise ReinforcementError("resize regression ladder lost or duplicated a required suite")
+    if '"--ignored"' in ladder or '"--skip"' in ladder:
+        raise ReinforcementError("resize regression ladder filters required native coverage")
+
+    dispatch = _source_slice(
+        sources["screen"], "pub fn process_key_bindings(", "match &action {",
+        "shortcut dispatch work",
+    )
+    _require_order(
+        dispatch,
+        ("let logical_key =", "for i in 0..self.bindings.len()",
+         "if binding.is_triggered_by", "let action = binding.action.clone();"),
+        "shortcut dispatch work",
+    )
+    if dispatch.count("let action = binding.action.clone();") != 1:
+        raise ReinforcementError("shortcut dispatch clones unmatched actions")
+
+    palette = sources["palette"]
+    labels = _source_slice(palette, "pub fn set_effective_bindings(", "pub fn set_enabled(", "effective shortcut labels")
+    _require_fragments(labels, ("for command in COMMANDS", "legacy_binding_target(action)",
+                               "suppresses_legacy_trigger", "SequenceResolution::NoMatch"),
+                       "effective shortcut labels")
+    _require_fragments(palette, (
+        "icon: CommandIcon::Back,",
+        "for [x1, y1, x2, y2] in BACK_ARROW_STROKES",
+        "canvas.line(x1, y1, x2, y2);",
+    ), "Back arrow")
+    header = _source_slice(palette, "let input_icon_well =", "let text_x =", "Back header")
+    _require_fragments(header, ("CommandIcon::Back,",), "Back header")
+    if sources["screen"].count(".set_effective_bindings(") != 2:
+        raise ReinforcementError("palette labels require construction and reload owners")
 
     frame = _source_slice(
         sources["screen"],
@@ -368,7 +568,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     )
     _require_order(
         close_window,
-        ("manager.request_pty_shutdown()", "remove_window", "drop(route)"),
+        ("route.window.winit_window.set_visible(false)", "manager.request_pty_shutdown()", "remove_window", "drop(route)"),
         "window shutdown",
     )
     application_exit = _source_slice(
@@ -379,7 +579,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     )
     _require_order(
         application_exit,
-        ("self.router.request_pty_shutdown()", "event_loop.exit()"),
+        ("self.router.hide_windows_for_exit()", "self.router.request_pty_shutdown()", "event_loop.exit()"),
         "application shutdown request",
     )
     final_exit = _source_slice(
@@ -391,8 +591,11 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _require_order(
         final_exit,
         (
+            "self.router.hide_windows_for_exit()",
             "self.router.request_pty_shutdown()",
             "self.router.routes.clear()",
+            "self.preference_writer.shutdown",
+            "finish_shutdown(Duration::from_secs(10))",
             "std::process::exit(0)",
         ),
         "final application shutdown",
@@ -409,12 +612,34 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         ("self.shutdown_requested.swap(true", "send(Msg::Shutdown)"),
         "context shutdown idempotence",
     )
+    undo_restore = _source_slice(
+        sources["context"], "pub fn undo_topology(", "fn undo_topology_model", "parked restore publication"
+    )
+    _require_order(
+        undo_restore,
+        ("self.undo_topology_model()", "self.current_grid_mut().update_dimensions(sugarloaf)", "self.keep_only_active_context_visible(sugarloaf)"),
+        "parked restore publication",
+    )
     route_quit = _source_slice(
         sources["router"], "pub fn quit(&mut self)", "pub fn open_config", "route quit"
     )
     _require_fragments(route_quit, ("context_manager.quit()",), "route quit")
     if "process::exit" in route_quit:
         raise ReinforcementError("route quit bypasses application-owned shutdown")
+    if "shutdown_connection_hub()" in route_quit:
+        raise ReinforcementError("route quit blocks on shared services before application exit")
+    hiding = _source_slice(sources["router"], "pub fn hide_windows_for_exit", "pub fn shutdown_services", "window dismissal")
+    _require_order(hiding, ("for route in self.routes.values() {", "route.window.winit_window.set_visible(false)"), "window dismissal")
+    pipes = sources["windows_pipes"]
+    discard = _source_slice(pipes, "pub(super) fn discard_remaining", "pub fn new", "retired native output")
+    _require_order(discard, ("self.inner.wait_tag.lock()", "self.inner.discard.store(true", "self.inner.sig_buffer_not_full.notify_one()"), "retired native output")
+    _require_fragments(pipes, ("&& !inner.discard.load(Ordering::SeqCst)", "if inner.discard.load(Ordering::SeqCst)", "saturated_output_drains_after_the_terminal_consumer_retires", "native_pipe_exit_preserves_final_buffered_output_before_eof"), "native drain tests and wakeup")
+    pipe_read = _source_slice(pipes, "impl io::Read for EventedAnonRead", "impl Evented for EventedAnonRead", "native output EOF")
+    _require_order(pipe_read, ("self.inner.wait_tag.lock()", "if self.consumer.is_empty()", "self.error_receiver.try_recv()", "self.consumer.read_to_slice(buf)"), "native output EOF")
+    pty_drop = _source_slice(sources["windows_pty"], "impl Drop for Pty", "// Creates conpty", "native drop drain")
+    _require_fragments(pty_drop, ("self.conout.discard_remaining()",), "native drop drain")
+    pty_shutdown = _source_slice(sources["windows_pty"], "fn shutdown_owned_process_tree", "fn wait_for_job_empty", "native shutdown drain")
+    _require_order(pty_shutdown, ("self.conout.discard_remaining()", "self.conin.write_all", "Duration::from_secs(2)", "terminate_managed_job()", "Duration::from_secs(3)"), "native shutdown drain")
 
     ordinary_pty = _source_slice(
         sources["windows_pty"],
@@ -513,11 +738,15 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
         (
             "Get-AutomexiaOwnedProcessIds $process.Id $configRoot",
             "$process.CloseMainWindow()",
+            "$shutdownTimer.ElapsedMilliseconds -lt 500",
+            "if ([AutomexiaResizeDriver]::IsWindowVisible($window))",
+            "$process.WaitForExit(15000)",
             "$remainingOwnedProcesses",
             "$MaximumOwnedShutdownMilliseconds",
         ),
         "native process shutdown",
     )
+    _require_fragments(driver, ("$windowCloseTimer.ElapsedMilliseconds -lt 500", "if ([AutomexiaResizeDriver]::IsWindowVisible($newWindow))", "dismissal_ceiling_milliseconds = 500"), "separate native window dismissal")
 
 
 def _load_native_contract_sources(root: Path) -> dict[str, str]:
@@ -698,6 +927,11 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
         owner_count += len(owners)
 
     _validate_native_contract_sources(_load_native_contract_sources(root))
+    from check_semantic_surfaces import validate_repository as validate_surfaces
+    try:
+        validate_surfaces(root)
+    except ValueError as error:
+        raise ReinforcementError(str(error)) from error
 
     return {
         "features": len(features),

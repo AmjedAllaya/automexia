@@ -102,7 +102,9 @@ impl RuntimeState {
 
     fn capsule_revision(&mut self, session: &SessionFacts) -> u64 {
         match self.capsules.get_mut(&session.session_id) {
-            Some(capsule) if capsule.session == *session => capsule.revision,
+            Some(capsule) if same_devops_context(&capsule.session, session) => {
+                capsule.revision
+            }
             Some(capsule) => {
                 capsule.revision = capsule.revision.wrapping_add(1).max(1);
                 capsule.session = session.clone();
@@ -183,6 +185,7 @@ impl RuntimeState {
         }
         self.devops_snapshots.find_map_rev(|_, entry| {
             (entry.session.session_id != session.session_id
+                && entry.freshness == Freshness::Current
                 && entry.completed_at.elapsed() <= DEVOPS_REUSE_MAX_AGE
                 && equivalent_shell_context(&entry.session, session))
             .then(|| (entry.snapshot.clone(), entry.observed_at_ms))
@@ -190,16 +193,23 @@ impl RuntimeState {
     }
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 fn equivalent_shell_context(left: &SessionFacts, right: &SessionFacts) -> bool {
-    left.shell_integration
+    left.shell_integration == right.shell_integration
         && left.cwd == right.cwd
-        && left.title == right.title
         && left.distro == right.distro
         && left.os_version == right.os_version
         && left.shell_name == right.shell_name
         && left.shell_user == right.shell_user
         && left.shell_path == right.shell_path
+        && left.environment == right.environment
+}
+
+/// Discovery uses explicit shell facts, never the mutable OSC window title.
+/// Route and native process identity still invalidate in-flight publication.
+pub fn same_devops_context(left: &SessionFacts, right: &SessionFacts) -> bool {
+    left.session_id == right.session_id
+        && left.shell_pid == right.shell_pid
+        && equivalent_shell_context(left, right)
 }
 
 fn runtime() -> &'static RwLock<RuntimeState> {
@@ -230,12 +240,12 @@ fn source_revision(session: &SessionFacts) -> u64 {
     let mut hasher = DefaultHasher::new();
     session.session_id.hash(&mut hasher);
     session.cwd.hash(&mut hasher);
-    session.title.hash(&mut hasher);
     session.distro.hash(&mut hasher);
     session.os_version.hash(&mut hasher);
     session.shell_name.hash(&mut hasher);
     session.shell_user.hash(&mut hasher);
     session.shell_path.hash(&mut hasher);
+    session.environment.hash(&mut hasher);
     session.shell_integration.hash(&mut hasher);
     session.shell_pid.hash(&mut hasher);
     hasher.finish()
@@ -378,7 +388,21 @@ fn process_refresh(mut request: RefreshRequest) {
         if let Some(snapshot) = super::visual_test_hooks::visual_test_snapshot() {
             return snapshot;
         }
-        devops::detect(&request.session)
+        let snapshot = devops::detect(&request.session);
+        #[cfg(target_os = "windows")]
+        let snapshot = {
+            let mut snapshot = snapshot;
+            if automexia_devops::kubernetes::is_wsl_session(&request.session) {
+                publish_devops_progress(&request, &snapshot);
+                let context = super::prompt_discovery::refresh(
+                    &request.session,
+                    &request.cancellation,
+                );
+                devops::attach_kubernetes_context(&mut snapshot, context);
+            }
+            snapshot
+        };
+        snapshot
     }));
     match result {
         Ok(snapshot) => {
@@ -437,6 +461,50 @@ fn publish_devops_snapshot(request: RefreshRequest, snapshot: DevOpsSnapshot) {
     DEVOPS_GENERATION.advance();
     if let Some(completion) = request.completion {
         completion.wake();
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn publish_devops_progress(request: &RefreshRequest, snapshot: &DevOpsSnapshot) {
+    let mut runtime = write_runtime();
+    if !runtime.installed.contains(devops::ID) || request.cancellation.is_cancelled() {
+        return;
+    }
+    if runtime.put_devops_progress(request, snapshot) {
+        // The existing 100 ms pending-context timer observes this progress.
+        // Keep the one-shot route wake for completion, not intermediate state.
+        DEVOPS_GENERATION.advance();
+    }
+}
+
+impl RuntimeState {
+    #[cfg(any(target_os = "windows", test))]
+    fn put_devops_progress(
+        &mut self,
+        request: &RefreshRequest,
+        snapshot: &DevOpsSnapshot,
+    ) -> bool {
+        let session_id = request.session.session_id;
+        if request.cancellation.is_cancelled()
+            || !self.accepts(session_id, request.operation_id, request.capsule_revision)
+            || self.devops_snapshot(session_id).is_some()
+        {
+            // Refreshing an existing result must never clear its namespace.
+            return false;
+        }
+        self.put_devops_snapshot(
+            cache_key(
+                &request.session,
+                request.capsule_revision,
+                request.source_revision,
+            ),
+            DEVOPS_COMPLETION_COUNTER.advance(),
+            request.session.clone(),
+            snapshot.clone(),
+            Freshness::Refreshing,
+            unix_time_ms(),
+        );
+        true
     }
 }
 
@@ -596,6 +664,7 @@ mod tests {
             shell_path: None,
             shell_integration: true,
             shell_pid: 0,
+            environment: Default::default(),
         }
     }
 
@@ -645,17 +714,36 @@ mod tests {
     fn cache_keeps_only_the_latest_capsule_for_a_changed_session() {
         let mut state = state();
         put(&mut state, session(7, "powershell"), 1, snapshot("host"));
-        put(
-            &mut state,
-            session(7, "user@host:/mnt/d/work"),
-            2,
-            snapshot("wsl"),
-        );
+        let mut changed = session(7, "user@host:/mnt/d/work");
+        changed.cwd = Some("/fixture/work".into());
+        put(&mut state, changed, 2, snapshot("wsl"));
         let (key, entry) = state.devops_snapshot(7).unwrap();
         assert_eq!(entry.revision, 2);
         assert_eq!(entry.session.title, "user@host:/mnt/d/work");
         assert_eq!(entry.snapshot.environment.as_deref(), Some("wsl"));
         assert_eq!(key.capsule_revision, 2);
+    }
+
+    #[test]
+    fn prompt_title_storm_preserves_pending_discovery_and_cache() {
+        let mut state = state();
+        let mut facts = session(51, "starting");
+        put(&mut state, facts.clone(), 1, snapshot("sandbox"));
+        let capsule = state.capsule_revision(&facts);
+        let source = source_revision(&facts);
+        let operation = OperationId::new(9);
+        let cancellation = CancellationToken::default();
+        state.register_operation(51, operation, cancellation.clone());
+        // OSC titles can change between shell metadata frames without changing
+        // a discovery input. They must not starve the one background worker.
+        for index in 0..256 {
+            facts.title = format!("command-{index}");
+            assert_eq!(state.capsule_revision(&facts), capsule);
+            assert_eq!(source_revision(&facts), source);
+            assert!(!cancellation.is_cancelled());
+            assert!(state.accepts(51, operation, capsule));
+            assert!(state.devops_snapshot(51).is_some());
+        }
     }
 
     #[test]
@@ -691,13 +779,127 @@ mod tests {
         let cancellation = CancellationToken::default();
         state.register_operation(50, operation, cancellation.clone());
 
-        let changed = session(50, "amjed@host:/work");
+        let mut changed = session(50, "alice@host:/work");
+        changed.cwd = Some("/fixture/work".into());
         let new_capsule = state.capsule_revision(&changed);
         assert_ne!(old_capsule, new_capsule);
         assert!(cancellation.is_cancelled());
         assert!(!state.accepts(50, operation, old_capsule));
         assert!(!state.accepts(50, operation, new_capsule));
         assert!(state.devops_snapshot(50).is_none());
+    }
+
+    #[test]
+    fn every_discovery_input_still_invalidates_pending_work() {
+        let original = session(61, "fixture");
+        for field in 0..10 {
+            let mut state = state();
+            let capsule = state.capsule_revision(&original);
+            let operation = OperationId::new(1);
+            let cancellation = CancellationToken::default();
+            state.register_operation(61, operation, cancellation.clone());
+            let mut changed = original.clone();
+            match field {
+                0 => changed.cwd = Some("/fixture/changed".into()),
+                1 => changed.distro = Some("Fixture-Distro".into()),
+                2 => changed.os_version = Some("1".into()),
+                3 => changed.shell_name = Some("bash".into()),
+                4 => changed.shell_user = Some("alice".into()),
+                5 => changed.shell_path = Some("/bin/bash".into()),
+                6 => changed.shell_integration = false,
+                7 => changed.shell_pid = 12,
+                8 => {
+                    changed
+                        .environment
+                        .insert("HOME".into(), "/fixture/home".into());
+                }
+                _ => {
+                    changed
+                        .environment
+                        .insert("KUBECONFIG".into(), "/fixture/config".into());
+                }
+            }
+            assert!(!same_devops_context(&original, &changed));
+            assert_ne!(source_revision(&original), source_revision(&changed));
+            assert_ne!(state.capsule_revision(&changed), capsule);
+            assert!(cancellation.is_cancelled());
+            assert!(!state.accepts(61, operation, capsule));
+        }
+    }
+
+    #[test]
+    fn initial_progress_keeps_operation_pending_and_never_replaces_a_cached_namespace() {
+        let mut state = state();
+        let facts = session(62, "fixture");
+        let capsule_revision = state.capsule_revision(&facts);
+        let cancellation = CancellationToken::default();
+        let request = RefreshRequest {
+            operation_id: OperationId::new(2),
+            source_revision: source_revision(&facts),
+            session: facts.clone(),
+            capsule_revision,
+            cancellation: cancellation.clone(),
+            completion: None,
+        };
+        state.register_operation(62, request.operation_id, cancellation.clone());
+        let initial = DevOpsSnapshot {
+            git_branch: Some("fixture-branch".into()),
+            ..Default::default()
+        };
+        assert!(state.put_devops_progress(&request, &initial));
+        let (_, entry) = state.devops_snapshot(62).unwrap();
+        assert_eq!(entry.freshness, Freshness::Refreshing);
+        assert_eq!(entry.snapshot.git_branch.as_deref(), Some("fixture-branch"));
+        assert!(state.accepts(62, request.operation_id, capsule_revision));
+        let mut completed = initial.clone();
+        completed.kubernetes = Some(automexia_devops::KubernetesContext {
+            context: "fixture".into(),
+            namespace: "sandbox".into(),
+        });
+        put(&mut state, facts, 100, completed);
+        assert!(!state.put_devops_progress(&request, &initial));
+        assert_eq!(
+            state
+                .devops_snapshot(62)
+                .unwrap()
+                .1
+                .snapshot
+                .kubernetes
+                .unwrap()
+                .namespace,
+            "sandbox"
+        );
+    }
+
+    #[test]
+    fn obsolete_or_cancelled_progress_cannot_publish() {
+        for cancel in [false, true] {
+            let mut state = state();
+            let facts = session(63, "fixture");
+            let capsule_revision = state.capsule_revision(&facts);
+            let request = RefreshRequest {
+                operation_id: OperationId::new(3),
+                source_revision: source_revision(&facts),
+                session: facts,
+                capsule_revision,
+                cancellation: CancellationToken::default(),
+                completion: None,
+            };
+            state.register_operation(
+                63,
+                if cancel {
+                    request.operation_id
+                } else {
+                    OperationId::new(4)
+                },
+                request.cancellation.clone(),
+            );
+            if cancel {
+                request.cancellation.cancel();
+            }
+            assert!(!state.put_devops_progress(&request, &snapshot("must-not-appear")));
+            assert!(state.devops_snapshot(63).is_none());
+        }
     }
 
     #[test]
@@ -722,9 +924,28 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
+    fn incomplete_or_failed_snapshots_are_not_reused_by_another_pane() {
+        for freshness in [
+            Freshness::Refreshing,
+            Freshness::Error,
+            Freshness::Unavailable,
+        ] {
+            let mut state = state();
+            let source = session(305, "fixture");
+            put(&mut state, source.clone(), 1, snapshot("sandbox"));
+            let key = state.devops_snapshot(305).unwrap().0;
+            state.devops_snapshots.get_mut(&key).unwrap().freshness = freshness;
+            let mut other = source;
+            other.session_id = 306;
+            assert!(state.reusable_devops_snapshot(&other).is_none());
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
     fn equivalent_new_session_reuses_a_fresh_snapshot() {
         let mut state = state();
-        let mut source = session(301, "amjed@host:/mnt/d/work");
+        let mut source = session(301, "alice@host:/mnt/d/work");
         source.cwd = Some("D:\\work".into());
         source.distro = Some("Ubuntu".to_string());
         source.shell_name = Some("bash".to_string());

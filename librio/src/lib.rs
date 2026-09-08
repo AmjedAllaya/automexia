@@ -26,7 +26,7 @@ use rio_vt::event::Msg;
 use rio_vt::event::WindowSize;
 use rio_vt::event::{EventListener, RioEvent, WindowId};
 #[cfg(feature = "pty")]
-use rio_vt::performer::Machine;
+use rio_vt::performer::{Machine, PtySender};
 use rio_vt::selection::{Selection, SelectionType};
 use std::borrow::Cow;
 use std::error::Error;
@@ -156,7 +156,7 @@ pub(crate) struct Listener {
     surface_id: SurfaceId,
     delegate: Arc<dyn SurfaceDelegate>,
     #[cfg(feature = "pty")]
-    pty_writer: Arc<Mutex<Option<corcovado::channel::Sender<Msg>>>>,
+    pty_writer: Arc<Mutex<Option<PtySender>>>,
 }
 
 impl Listener {
@@ -431,7 +431,7 @@ pub struct Surface {
     #[cfg(not(feature = "pty"))]
     delegate: Arc<dyn SurfaceDelegate>,
     #[cfg(feature = "pty")]
-    channel: corcovado::channel::Sender<Msg>,
+    channel: PtySender,
     #[cfg(all(feature = "pty", not(target_os = "windows")))]
     shell_pid: u32,
     #[cfg(all(feature = "pty", not(target_os = "windows")))]

@@ -84,8 +84,11 @@ On Windows/Linux, try these default interactions:
 
 - `Ctrl+T`: new window-level tab.
 - `Ctrl+Shift+T`: new independent tab inside the selected pane.
-- `Ctrl+Shift+R` / `Ctrl+Shift+D`: fresh right/lower split.
-- `Ctrl+R` / `Ctrl+D`: clone the active session into a right/lower split.
+- `Alt+Shift+R` / `Alt+Shift+D`: fresh right/lower split.
+- `Alt+R` / `Alt+D`: clone active session right/down.
+- Command palette: **Clone Active Session Right / Down** creates an independent
+  session with the active launch context. Current source leaves Ctrl+R/Ctrl+D
+  to the shell; the published 0.4.0 package predates this correction.
 - `Alt+Arrow`: select a neighboring pane.
 - `Shift+Arrow`: start terminal selection at the insertion cursor and extend
   it; add `Ctrl` on horizontal motion to jump by Unicode word boundary. Press

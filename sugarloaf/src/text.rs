@@ -5,6 +5,14 @@
 
 use crate::font::FontLibrary;
 use rustc_hash::FxHashMap;
+use std::sync::Arc;
+
+mod shape_cache;
+use shape_cache::{ShapeCache, ShapeKey};
+
+#[cfg(test)]
+#[path = "text_tests.rs"]
+mod tests;
 
 // `pos` is **pixel-space top-left** of the glyph's text bounding box.
 // `bearings.x` shifts it right to the glyph bitmap's left edge;
@@ -66,12 +74,11 @@ struct ShapedGlyph {
     cluster: u32,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Debug)]
 #[allow(unused)]
 struct ShapedRun {
     font_id: u32,
     size_u16: u16,
-    size_bucket: u16,
     synthetic_bold: bool,
     synthetic_italic: bool,
     /// `wght` axis value to apply when rasterizing this run's glyphs
@@ -81,18 +88,6 @@ struct ShapedRun {
     wght_variation: Option<f32>,
     ascent_px: i16,
     glyphs: Vec<ShapedGlyph>,
-}
-
-#[inline]
-fn shape_hash(font_id: u32, size_bucket: u16, style_flags: u8, text: &str) -> u64 {
-    use core::hash::Hasher;
-    use rustc_hash::FxHasher;
-    let mut h = FxHasher::default();
-    h.write_u32(font_id);
-    h.write_u16(size_bucket);
-    h.write_u8(style_flags);
-    h.write(text.as_bytes());
-    h.finish()
 }
 
 #[cfg(target_os = "macos")]
@@ -163,7 +158,7 @@ pub struct Text {
     #[cfg(not(target_os = "macos"))]
     wght_variation_cache: FxHashMap<u32, Option<f32>>,
     ascent_cache: FxHashMap<(u32, u16), i16>,
-    shape_cache: FxHashMap<u64, ShapedRun>,
+    shape_cache: ShapeCache,
 
     #[cfg(target_os = "macos")]
     handle_cache: FxHashMap<u32, crate::font::macos::FontHandle>,
@@ -197,7 +192,7 @@ impl Text {
             #[cfg(not(target_os = "macos"))]
             wght_variation_cache: FxHashMap::default(),
             ascent_cache: FxHashMap::default(),
-            shape_cache: FxHashMap::default(),
+            shape_cache: ShapeCache::default(),
             #[cfg(target_os = "macos")]
             handle_cache: FxHashMap::default(),
             #[cfg(target_os = "macos")]
@@ -213,6 +208,49 @@ impl Text {
             #[cfg(target_os = "linux")]
             vulkan: None,
             cpu: None,
+        }
+    }
+
+    /// Replace an already prepared font library and invalidate every value
+    /// derived from its slot identities. Queued labels are discarded; callers
+    /// must record a new frame. Backend resources and display scale are retained.
+    pub fn update_font(&mut self, font_library: &FontLibrary) {
+        self.clear();
+        self.font_library = font_library.clone();
+        self.font_resolve.clear();
+        self.synthesis_cache.clear();
+        self.ascent_cache.clear();
+        self.shape_cache = ShapeCache::default();
+        #[cfg(target_os = "macos")]
+        self.handle_cache.clear();
+        #[cfg(not(target_os = "macos"))]
+        {
+            self.wght_variation_cache.clear();
+            self.font_data_cache.clear();
+            self.shape_ctx = swash::shape::ShapeContext::new();
+            self.scale_ctx = swash::scale::ScaleContext::new();
+        }
+
+        // Clear identities, not backend objects: recreating textures or buffers
+        // here would discard allocations and interfere with their submission owner.
+        if let Some(state) = &mut self.cpu {
+            state.atlas_grayscale.clear();
+            state.atlas_color.clear();
+        }
+        #[cfg(target_os = "macos")]
+        if let Some(state) = &mut self.metal {
+            state.atlas_grayscale.clear();
+            state.atlas_color.clear();
+        }
+        #[cfg(all(feature = "wgpu", not(target_os = "macos")))]
+        if let Some(state) = &mut self.wgpu {
+            state.atlas_grayscale.clear();
+            state.atlas_color.clear();
+        }
+        #[cfg(target_os = "linux")]
+        if let Some(state) = &mut self.vulkan {
+            state.atlas_grayscale.clear();
+            state.atlas_color.clear();
         }
     }
 
@@ -312,11 +350,10 @@ impl Text {
             .unwrap_or(0.0)
     }
 
-    fn shape_for(&mut self, text: &str, opts: &DrawOpts) -> Option<ShapedRun> {
+    fn shape_for(&mut self, text: &str, opts: &DrawOpts) -> Option<Arc<ShapedRun>> {
         use crate::{Attributes, SpanStyle, Stretch, Style as FontStyle, Weight};
 
         let scaled = opts.font_size * self.scale_factor;
-        let size_bucket = (scaled * 4.0).round().clamp(0.0, u16::MAX as f32) as u16;
         let size_u16 = scaled.round().clamp(1.0, u16::MAX as f32) as u16;
         let style_flags =
             (if opts.bold { 1u8 } else { 0 }) | (if opts.italic { 2u8 } else { 0 });
@@ -347,9 +384,13 @@ impl Text {
         };
         let font_id = opts.font_id.map(|id| id as u32).unwrap_or(font_id);
 
-        let hash = shape_hash(font_id, size_bucket, style_flags, text);
-        if let Some(entry) = self.shape_cache.get(&hash) {
-            return Some(entry.clone());
+        let key = ShapeKey {
+            font_id,
+            size: size_u16,
+            style_flags,
+        };
+        if let Some(entry) = self.shape_cache.get(key, text) {
+            return Some(entry);
         }
 
         let (synthetic_bold, synthetic_italic) = match self.synthesis_cache.entry(font_id)
@@ -372,13 +413,15 @@ impl Text {
                     h
                 }
             };
-            let ascent_px = *self
-                .ascent_cache
-                .entry((font_id, size_bucket))
-                .or_insert_with(|| {
-                    let m = crate::font::macos::font_metrics(&handle, size_u16 as f32);
-                    m.ascent.round().clamp(i16::MIN as f32, i16::MAX as f32) as i16
-                });
+            let ascent_px =
+                *self
+                    .ascent_cache
+                    .entry((font_id, size_u16))
+                    .or_insert_with(|| {
+                        let m =
+                            crate::font::macos::font_metrics(&handle, size_u16 as f32);
+                        m.ascent.round().clamp(i16::MIN as f32, i16::MAX as f32) as i16
+                    });
             let ct_glyphs =
                 crate::font::macos::shape_text(&handle, text, size_u16 as f32);
             let glyphs: Vec<ShapedGlyph> = ct_glyphs
@@ -439,13 +482,14 @@ impl Text {
             // not `&[Setting<f32>]`. Variations barely affect vertical
             // metrics in practice, so pass `&[]` here — same pattern
             // every other `metrics()` call in the crate uses.
-            let ascent_px = *self
-                .ascent_cache
-                .entry((font_id, size_bucket))
-                .or_insert_with(|| {
-                    let m = font_ref.metrics(&[]).scale(size_u16 as f32);
-                    m.ascent.round().clamp(i16::MIN as f32, i16::MAX as f32) as i16
-                });
+            let ascent_px =
+                *self
+                    .ascent_cache
+                    .entry((font_id, size_u16))
+                    .or_insert_with(|| {
+                        let m = font_ref.metrics(&[]).scale(size_u16 as f32);
+                        m.ascent.round().clamp(i16::MIN as f32, i16::MAX as f32) as i16
+                    });
 
             // Shape with swash. Flatten clusters to a Vec<ShapedGlyph>
             // with UTF-8 byte offset as `cluster`.
@@ -472,18 +516,17 @@ impl Text {
             (glyphs, ascent_px, wght)
         };
 
-        let run = ShapedRun {
+        let run = Arc::new(ShapedRun {
             font_id,
             size_u16,
-            size_bucket,
             synthetic_bold,
             synthetic_italic,
             #[cfg(not(target_os = "macos"))]
             wght_variation,
             ascent_px,
             glyphs,
-        };
-        self.shape_cache.insert(hash, run.clone());
+        });
+        self.shape_cache.insert(key, text, Arc::clone(&run));
         Some(run)
     }
 
@@ -543,7 +586,9 @@ impl Text {
         let key = crate::grid::GlyphKey {
             font_id: run.font_id,
             glyph_id: glyph_id as u32,
-            size_bucket: run.size_bucket,
+            // Text owns its own atlases and rasterizes at whole-pixel sizes.
+            // A quarter-pixel request bucket can alias two different rasters.
+            size_bucket: run.size_u16,
         };
 
         // CPU path takes precedence whenever it's initialized

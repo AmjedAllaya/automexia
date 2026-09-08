@@ -13,6 +13,90 @@ local inventory. [Features](FEATURES.md) identifies each current user path and
 its release limitations. Native accessibility, hardware, packaging, and
 long-duration evidence remain external where they have not been collected.
 
+### Navigation, appearance and lifecycle status
+
+**Implemented in source (platform evidence remains bounded):** ConPTY table
+reflow distinguishes hard-line padding from explicit Unix whitespace. Native
+long-table and fragmented-repaint regressions cover duplicate/misaligned rows
+after shrink/restore. Default resize stress now includes live-shell and native
+editor integration tests; core benchmarks check table restoration and history
+bounds. Desktop pixels and unexecuted native platforms remain separate gates.
+
+**Verified native process cases (desktop evidence remains open):** the former
+CMD acknowledgment inserted a newline and could shift the native repaint
+viewport. A no-resize control reproduced that fixture defect; non-echoing probes
+now preserve rows and cursor, with separate Enter-during-resize coverage. All
+eight Windows live-resize cases passed fifty no-retry repetitions after this
+correction and the table-padding fix. Original failure evidence is retained;
+these process results do not establish native Linux/macOS desktop evidence.
+
+**Resource and final-output follow-up:** the later full suite exposed
+a worker-cleanup timeout after successful table checks. Independent native tests
+then reproduced caller-pipe and failed-startup handle leaks; the Windows adapter
+now owns and releases those handles. A separate worker contention regression
+reproduced final-byte loss at EOF and now checks exact parsing after lock release.
+These findings are not erased by the earlier passing campaign or a passing retry.
+
+**Partially done (native desktop evidence open):** confirmed window-close and
+Quit dismiss surfaces before cleanup waits. Saturated ConPTY output drains after
+consumer retirement, and final buffered bytes precede EOF. Native Windows
+pipe/process regressions are separate from compositor and other-platform
+evidence. See [shutdown assurance](TESTING.md#window-dismissal-and-saturated-native-shutdown).
+
+**Partially done (native visual evidence open):** shared application chrome uses
+quieter decorative borders, consistent blue-black surfaces, cyan focus cues and
+readable label hierarchy. Palette key labels are bounded at fractional scales;
+contrast is checked after byte quantization on every shared surface. Controlled
+colour/font evidence does not certify native GPU frames or screen readers.
+See [visual language](LIQUID-HACKER-UX.md#shared-chrome-hierarchy).
+
+**Partially done (native evidence open):** current source opens the palette on
+six categories, retains global search and provides Back/paging/mouse navigation.
+Alt+R/D clones right/down; adding Shift creates a fresh pane on Windows/Linux/BSD.
+Ctrl+R/D and explicit bindings are preserved; shell Alt editing is deliberately
+replaced only in normal mode. Back uses a left arrow, and all palette labels
+follow effective bindings without source badges. All classic catalog actions have
+direct defaults; removed/profile-absent keys show palette-local Enter. Escape
+remains cancellation; Windows/Linux Quit is Ctrl+Shift+Q. Source tests and literal
+CPU glyph pixels do not certify native desktop pixels, keyboard
+layouts or screen readers. See [controls](KEYBOARD.md#command-palette) and
+[shortcut audit](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md).
+
+**Partially done (native desktop evidence open):** pane/local-tab cleanup now
+uses a bounded application-owned join service, and Back remains in the palette
+header while scrolling. Search avoids repeated filtering and preserves existing
+scores. Real ConPTY and deterministic lifecycle tests are distinct from native
+frame latency and assistive-technology validation. See
+[lifecycle decision](adr/0050-nonblocking-session-retirement.md).
+
+### Configuration and appearance status
+
+**Partially done (native visual evidence open):** command boundaries now use
+short inset accents, not pane-spanning rules. Timestamp/status labels, output
+bands and structural pane dividers are preserved. Parser, geometry, exact
+controlled pixel and benchmark evidence is separate from native desktop review.
+See [command-marker assurance](COMMAND-RESULT-ASSURANCE.md#command-markers-versus-pane-dividers).
+
+**Partially done (native visual evidence open):** operational status colours
+distinguish workload completion from readiness, recognize condition polarity and
+container lifecycle/health, and preserve explicit tool colours. Table fields,
+mixed failure summaries and hostile input have focused regression coverage.
+See [status colours](user-guide/commands-and-shell.md#operational-status-colours).
+
+Current source provides declarative terminal configuration for fonts, themes,
+cursor, window appearance, navigation and keybindings. The application-owned
+runtime-preference overlay separately stores font size and forced light/dark
+appearance; it does not store every terminal preference or rewrite `config.toml`.
+These are implementation boundaries, not a claim of complete native verification
+for every theme, scale, keyboard profile or platform.
+
+Use the [customization guide](user-guide/customization.md) for supported user
+workflows, [configuration reference](CONFIGURATION.md) for exact keys and
+[ADR 0036](adr/0036-application-owned-runtime-user-preferences.md) for persistence
+ownership. Configuration recovery, keyboard/focus, responsive rendering and
+platform-specific appearance evidence remain subject to the existing
+[testing](TESTING.md) and [release principles](#release-principles).
+
 ### Public Linux distribution status
 
 Repository support exists for x64 and Arm64 Linux package formats, manifests,
@@ -30,6 +114,13 @@ The exact current status and remaining external gates are documented in
 [Public Linux Early Access distribution](PUBLIC-RELEASE-DISTRIBUTION.md).
 
 ### Build and CI performance status
+
+**Fully done (QA diagnostic contract):** generated log and command-label
+redaction handles case-folded and nested-escaped workspace/home prefixes.
+Fictional-path and real failed-subprocess regressions preserve exact logical
+labels, unrelated diagnostic text and the original failed exit. This does not
+clear an unexplained earlier test failure or replace hosted/native evidence.
+See [QA diagnostic privacy](TESTING.md#qa-diagnostic-privacy).
 
 | Status | Feature | Remaining requirement |
 |---|---|---|

@@ -6,9 +6,11 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("check_repository_aligned_docs.py")
@@ -242,6 +244,53 @@ class RepositoryAlignedDocumentationTests(unittest.TestCase):
             self.assertEqual(counts["files"], 2)
             self.assertEqual(counts["historical"], 0)
             self.assertEqual(counts["duplicates"], 0)
+
+    def test_private_boundary_prunes_ignored_roots_before_scanning(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            excluded = {".automexia-private", ".automexia-tools", ".git", "target", "artifacts"}
+            for name in excluded:
+                cached = root / name / "nested" / "cached.md"
+                cached.parent.mkdir(parents=True)
+                cached.write_bytes(b"\xff")
+            scandir = os.scandir
+            visits = []
+
+            def observe(path):
+                relative = Path(path).relative_to(root)
+                self.assertFalse(excluded.intersection(relative.parts), "private/tool/build trees must not be traversed")
+                visits.append(relative.as_posix())
+                return scandir(path)
+
+            with mock.patch("os.scandir", side_effect=observe):
+                self.assertEqual(CHECKER.validate(root)["files"], 2)
+            self.assertCountEqual(visits, [".", "docs"])
+
+    def test_private_boundary_fails_on_unreadable_public_directory(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            scandir = os.scandir
+
+            def deny_public(path):
+                if Path(path) == root / "docs":
+                    raise PermissionError("fixture documentation denied")
+                return scandir(path)
+
+            with mock.patch("os.scandir", side_effect=deny_public):
+                with self.assertRaisesRegex(CHECKER.DocumentationPackError, "cannot read a public documentation directory"):
+                    CHECKER.validate(root)
+
+    def test_private_boundary_still_checks_nested_public_target_names(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            public = root / "docs" / "target" / "public.md"
+            public.parent.mkdir()
+            public.write_text("# Future features\n", encoding="utf-8")
+            with self.assertRaisesRegex(CHECKER.DocumentationPackError, "future planning"):
+                CHECKER.validate(root)
 
     def test_private_boundary_rejects_legacy_public_pack(self) -> None:
         with TemporaryDirectory() as directory:

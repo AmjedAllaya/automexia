@@ -13,7 +13,7 @@ use rio_vt::crosswords::style::Style;
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
 use rio_vt::event::{TerminalDamage, VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
-use rio_vt::selection::{Anchor, SelectionMotion};
+use rio_vt::selection::{Anchor, Selection, SelectionMotion, SelectionType};
 
 const COLS: usize = 120;
 const ROWS: usize = 40;
@@ -452,7 +452,222 @@ fn bench(c: &mut Criterion) {
             std::hint::black_box(&visible_rows);
         })
     });
+
+    // Measure reflow, retained selection serialization, scrolling and the
+    // renderer-facing snapshot together. Setup is outside the timed path;
+    // the history cap exceeds both layouts so eviction cannot hide work.
+    let selected_text = "retained output with spaces and Unicode 界e\u{301}";
+    for (label, selected, scrolled) in [
+        ("unselected", false, false),
+        ("selected", true, false),
+        ("scrolled", false, true),
+    ] {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(180, 40),
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            60_000,
+        );
+        let mut processor = Processor::default();
+        let line = format!("{}\r\n", "bounded history ".repeat(9));
+        for _ in 0..10_000 {
+            processor.advance(&mut terminal, line.as_bytes());
+        }
+        let start = terminal.grid.cursor.pos;
+        processor.advance(&mut terminal, selected_text.as_bytes());
+        if selected {
+            let mut selection = Selection::new(SelectionType::Simple, start, Side::Left);
+            let end = Pos::new(
+                terminal.grid.cursor.pos.row,
+                terminal.grid.cursor.pos.col - 1,
+            );
+            selection.update(end, Side::Right);
+            terminal.selection = Some(selection);
+        }
+        let mut narrow = true;
+        if scrolled {
+            terminal.scroll_display(Scroll::Delta(5_000));
+        }
+        let mut visible_rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        c.bench_function(
+            &format!("selection_resize_copy_snapshot_10k_{label}"),
+            |b| {
+                b.iter(|| {
+                    terminal
+                        .resize(CrosswordsSize::new(if narrow { 40 } else { 180 }, 40));
+                    narrow = !narrow;
+                    if !scrolled {
+                        terminal.scroll_display(Scroll::Top);
+                        terminal.scroll_display(Scroll::Bottom);
+                    }
+                    assert_eq!(
+                        terminal.selection_to_string().as_deref(),
+                        selected.then_some(selected_text)
+                    );
+                    terminal.snapshot_visible(
+                        &TerminalDamage::Full,
+                        terminal.columns(),
+                        &mut visible_rows,
+                        &mut styles,
+                        &mut extras,
+                    );
+                    std::hint::black_box(&visible_rows);
+                });
+            },
+        );
+    }
 }
 
-criterion_group!(benches, bench);
+fn grid_resize(c: &mut Criterion) {
+    // Reuse one bounded terminal across cycles so growing history or retaining
+    // seam padding cannot hide behind fresh setup on every measured iteration.
+    for policy in [
+        rio_vt::crosswords::ResizePolicy::Reflow,
+        rio_vt::crosswords::ResizePolicy::Conpty,
+    ] {
+        let mut terminal = term();
+        terminal.set_resize_policy(policy);
+        let mut parser = Processor::default();
+        parser.advance(&mut terminal, &plain(16_384));
+        let mut rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        let mut narrow = false;
+        c.bench_function(&format!("grid_resize_snapshot_{policy:?}"), |b| {
+            b.iter(|| {
+                narrow = !narrow;
+                let (cols, lines) = if narrow { (16, 10) } else { (146, 28) };
+                terminal.resize(CrosswordsSize::new(cols, lines));
+                terminal.snapshot_visible(
+                    &TerminalDamage::Full,
+                    cols,
+                    &mut rows,
+                    &mut styles,
+                    &mut extras,
+                );
+                std::hint::black_box(&rows);
+            })
+        });
+    }
+}
+
+fn table_resize_roundtrip(c: &mut Criterion) {
+    use rio_vt::crosswords::grid::Dimensions;
+    use std::time::{Duration, Instant};
+
+    for policy in [
+        rio_vt::crosswords::ResizePolicy::Reflow,
+        rio_vt::crosswords::ResizePolicy::Conpty,
+    ] {
+        let mut terminal = term();
+        terminal.resize(CrosswordsSize::new(100, 24));
+        terminal.set_resize_policy(policy);
+        let lines: Vec<_> = (1..=32).map(|index| format!(
+            "ROW-{index:02}  -a---  2026-01-01 12:00:00  {index:04}  artifact-{index:02}-abcdefghijklmnopqrstuvwxyz0123456789.txt"
+        )).collect();
+        let expected = format!("{}\n\nlambda", lines.join("\n"));
+        let stream = format!(
+            "{}\r\n\r\nlambda",
+            lines
+                .iter()
+                .map(|line| format!("{line:<100}"))
+                .collect::<Vec<_>>()
+                .join("\r\n")
+        );
+        let mut parser = Processor::default();
+        parser.advance(&mut terminal, stream.as_bytes());
+        let mut rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        c.bench_function(&format!("grid_table_roundtrip_checked_{policy:?}"), |b| {
+            // Time the grid/snapshot work only. The independent input-text and
+            // resource oracles run on every iteration, outside the timed region.
+            b.iter_custom(|iterations| {
+                let mut elapsed = Duration::ZERO;
+                for _ in 0..iterations {
+                    let start = Instant::now();
+                    for (cols, height) in [(16, 10), (100, 24)] {
+                        terminal.resize(CrosswordsSize::new(cols, height));
+                        terminal.snapshot_visible(
+                            &TerminalDamage::Full,
+                            cols,
+                            &mut rows,
+                            &mut styles,
+                            &mut extras,
+                        );
+                        std::hint::black_box(&rows);
+                    }
+                    elapsed += start.elapsed();
+                    assert_eq!(rows.len(), 24);
+                    assert!(rows.iter().all(|row| row.inner.len() == 100));
+                    assert!(terminal.grid.history_size() < 600);
+                    let mut selection = Selection::new(
+                        SelectionType::Simple,
+                        Pos::new(terminal.grid.topmost_line(), Column(0)),
+                        Side::Left,
+                    );
+                    selection.update(
+                        Pos::new(terminal.grid.bottommost_line(), Column(99)),
+                        Side::Right,
+                    );
+                    terminal.selection = Some(selection);
+                    assert_eq!(
+                        terminal.selection_to_string().unwrap().trim_matches('\n'),
+                        expected
+                    );
+                    terminal.selection = None;
+                }
+                elapsed
+            });
+        });
+    }
+}
+
+fn pane_close_repaint(c: &mut Criterion) {
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(146, 28),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        2_000,
+    );
+    terminal.set_resize_policy(rio_vt::crosswords::ResizePolicy::Conpty);
+    let mut parser = Processor::default();
+    parser.advance(&mut terminal, b"\x1b]133;A;aid=1\x07\r\n\x1b]133;P;k=c;aid=1\x07/example\r\n\x1b]133;P;k=c;aid=1\x07lambda \x1b]133;B\x07");
+    let mut rows = Vec::new();
+    let mut styles = Vec::new();
+    let mut extras = rustc_hash::FxHashMap::default();
+    c.bench_function("pane_close_prompt_repaint_snapshot", |b| {
+        b.iter(|| {
+            terminal.resize(CrosswordsSize::new(146, 12));
+            terminal.resize(CrosswordsSize::new(146, 28));
+            // Fragment the native erase exactly where prompt recovery previously
+            // moved the cursor. Reuse one terminal to expose retained-state growth.
+            parser.advance(&mut terminal, b"\x1b[2J");
+            parser.advance(&mut terminal, b"\x1b[H\x1b[K\r\n/example\x1b[K\r\nlambda ");
+            terminal.snapshot_visible(
+                &TerminalDamage::Full,
+                146,
+                &mut rows,
+                &mut styles,
+                &mut extras,
+            );
+            assert_eq!(terminal.grid.cursor.pos, Pos::new(Line(2), Column(7)));
+            std::hint::black_box(&rows);
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    bench,
+    grid_resize,
+    table_resize_roundtrip,
+    pane_close_repaint
+);
 criterion_main!(benches);

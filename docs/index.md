@@ -26,7 +26,7 @@ including open-source ideas, and commercial strategy.
 | Remote tools and WSL | [Remote and WSL](user-guide/remote-and-wsl.md) |
 | System OpenSSH and explicit inventory | [OpenSSH and remote shells](user-guide/connection-hub-and-ssh.md) |
 | Appearance and behavior | [Customization](user-guide/customization.md) |
-| Shortcuts | [Shortcuts](user-guide/shortcuts.md) |
+| Shortcuts | [Shortcuts](user-guide/shortcuts.md), [shortcut-family audit](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md) |
 
 ## Reference
 
@@ -36,6 +36,7 @@ including open-source ideas, and commercial strategy.
 | Keyboard | [Keyboard](KEYBOARD.md), [compact reference](reference/keyboard.md) |
 | Command line | [CLI](CLI-REFERENCE.md), [compact reference](reference/cli.md) |
 | Shell integration | [Shell integration](SHELL-INTEGRATION.md) |
+| Kubernetes prompt context | [Behavior and assurance](PROMPT-CONTEXT-ASSURANCE.md) |
 | Image behavior | [Image previews](IMAGE-PREVIEWS.md) |
 | Platforms | [Platform support](PLATFORMS.md) |
 | Accessibility | [Accessibility](ACCESSIBILITY.md) |

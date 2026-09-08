@@ -47,6 +47,26 @@ mod tests {
     use super::Presentation;
 
     #[test]
+    fn every_generated_variation_has_an_exact_lookup_and_rejects_suffixes() {
+        let table = &crate::emoji_variation::VARIATION_MAP;
+        // Enumerating the source entries is independent of the hash lookup:
+        // the PHF 0.14 update compiled but silently lost known Unicode keys.
+        assert_eq!(table.entries.len(), 708);
+        for (key, expected) in table.entries {
+            assert_eq!(table.get(key), Some(expected), "variation {key:?}");
+            assert_eq!(
+                Presentation::for_grapheme(key),
+                (expected.0, Some(expected.1))
+            );
+            #[cfg(feature = "std")]
+            assert_eq!(table.get(&format!("{key}x")), None);
+        }
+        for absent in ["", "plain", "\u{fe0e}", "\u{fe0f}", "a\u{fe0f}"] {
+            assert_eq!(table.get(absent), None);
+        }
+    }
+
+    #[test]
     fn generated_variation_map_matches_its_phf_runtime() {
         assert_eq!(
             Presentation::for_grapheme("\u{1F39F}\u{FE0F}"),

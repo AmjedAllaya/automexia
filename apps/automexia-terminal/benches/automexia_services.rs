@@ -21,6 +21,7 @@ fn services(c: &mut Criterion) {
         shell_path: None,
         shell_integration: true,
         shell_pid: 0,
+        environment: Default::default(),
     };
 
     let contribution = ContextContribution::new(
@@ -90,6 +91,7 @@ fn services(c: &mut Criterion) {
             preference_writer.submit(black_box(UserPreferences {
                 font_size: Some(18.0),
                 appearance_theme: None,
+                ..UserPreferences::default()
             }));
         })
     });
@@ -99,5 +101,120 @@ fn services(c: &mut Criterion) {
     runtime::shutdown_background_services();
 }
 
-criterion_group!(benches, services);
+fn semantic_statuses(c: &mut Criterion) {
+    let facts = SessionFacts {
+        session_id: 17,
+        cwd: None,
+        title: String::new(),
+        distro: Some("Fixture-Distro".into()),
+        os_version: None,
+        shell_name: Some("bash".into()),
+        shell_user: Some("alice".into()),
+        shell_path: Some("/bin/bash".into()),
+        shell_integration: true,
+        shell_pid: 1,
+        environment: Default::default(),
+    };
+    let initial = automexia_ui_model::immediate_session_segments(&facts);
+    assert_eq!(initial.len(), 2);
+    assert_eq!(initial[1].value, "alice");
+    c.bench_function("prompt_identity_before_discovery", |b| {
+        b.iter(|| {
+            black_box(automexia_ui_model::immediate_session_segments(black_box(
+                &facts,
+            )))
+        })
+    });
+    let mut group = c.benchmark_group("semantic_statuses");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    for (name, row) in [
+        ("completed", "batch 0/1 Completed 0 4h".to_owned()),
+        ("ready", "example api 2/2 Running 0 4h".to_owned()),
+        ("failed", "api 0/1 CrashLoopBackOff 2 1m".to_owned()),
+        ("container", "web Up 2 minutes (healthy)".to_owned()),
+        (
+            "ordinary",
+            "ordinary terminal text without operational state".to_owned(),
+        ),
+        ("wide", "x".repeat(8192)),
+        ("over_limit", "x".repeat(32769)),
+    ] {
+        group.bench_function(name, |b| {
+            b.iter(|| black_box(runtime::classify_row_text(black_box(&row))))
+        });
+    }
+    group.finish();
+}
+
+fn semantic_surface_admission(c: &mut Criterion) {
+    use automexia_extension_api::{
+        surface::*, BoundedText, Capability, CapabilityDecision, CapabilityRequest,
+        Decision, OperationId, ResourceScope,
+    };
+    use automexia_terminal::automexia::semantic_surfaces::{
+        AdmissionError, SemanticSurfaceSlot,
+    };
+    let binding = SurfaceBinding {
+        extension: ExtensionId::new("example.inventory").unwrap(),
+        session: SessionId::new(4),
+        capsule_revision: 2,
+        operation: OperationId::new(3),
+    };
+    let request = CapabilityRequest::new(
+        binding.operation,
+        binding.extension.clone(),
+        binding.session,
+        binding.capsule_revision,
+        Capability::UiOverlay,
+        ResourceScope::Session,
+        BoundedText::new("Show reviewed inventory").unwrap(),
+    )
+    .unwrap();
+    let grant =
+        CapabilityDecision::for_request(&request, Decision::AllowSession, 100, 200)
+            .unwrap();
+    let mut slot = SemanticSurfaceSlot::new(
+        binding.clone(),
+        SemanticSurfaceId::new(1).unwrap(),
+        7,
+        Some(&grant),
+        100,
+    )
+    .unwrap();
+    let oversized = vec![b' '; 8 * 1024 * 1024 + 1];
+    assert_eq!(
+        slot.accept_frame(&oversized, 100),
+        Err(AdmissionError::FrameTooLarge)
+    );
+    c.bench_function("semantic_surface_host/reject_oversized_frame", |b| {
+        b.iter(|| {
+            assert_eq!(
+                slot.accept_frame(black_box(&oversized), 100),
+                Err(AdmissionError::FrameTooLarge)
+            );
+        })
+    });
+    c.bench_function("semantic_surface_host/reject_absent_grant", |b| {
+        b.iter(|| {
+            assert!(SemanticSurfaceSlot::new(
+                black_box(binding.clone()),
+                SemanticSurfaceId::new(1).unwrap(),
+                7,
+                None,
+                100
+            )
+            .is_err());
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    services,
+    semantic_statuses,
+    semantic_surface_admission
+);
 criterion_main!(benches);

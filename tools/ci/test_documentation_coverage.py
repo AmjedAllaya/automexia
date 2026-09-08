@@ -20,6 +20,23 @@ SPEC.loader.exec_module(COVERAGE)
 
 
 class DocumentationCoverageTests(unittest.TestCase):
+    def test_skipped_runtime_fields_are_not_advertised_as_input_settings(self) -> None:
+        source = '''
+#[serde(skip)]
+pub ui_shortcuts: Vec<String>,
+#[serde(default, skip_deserializing)]
+pub cache: String,
+#[serde(skip_serializing)]
+pub writable: String,
+#[serde(rename = "skip")]
+pub renamed: String,
+#[serde(skip_serializing_if = "Vec::is_empty")]
+pub entries: Vec<String>,
+'''
+        self.assertEqual(COVERAGE.serde_keys(source), {"writable", "skip", "entries"})
+        # Removing the attribute must restore documentation responsibility.
+        self.assertIn("ui_shortcuts", COVERAGE.serde_keys(source.replace("#[serde(skip)]", "")))
+
     def test_canonical_documentation_covers_source_registries(self) -> None:
         counts = COVERAGE.validate()
         self.assertGreaterEqual(counts["pages"], 13)

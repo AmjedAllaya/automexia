@@ -351,8 +351,11 @@ artifacts, a versioned Cargo registry/Git source cache keyed by `Cargo.lock`, an
 a clean boundary between all-target Clippy and all-feature tests. It also uses
 the reviewed, full-SHA-pinned Mozilla sccache setup Action at sccache v0.16.0.
 That content-addressed compiler cache is restricted to non-shipping quality
-jobs; its explicit `automexia-rust-1.98-v1` generation is the rollback and
-invalidation boundary. Do not add `target` to either cache or reorder/remove the
+jobs; its `automexia-rust-1.96.1-v2` generation is derived from
+`RUSTUP_TOOLCHAIN` and is the rollback and invalidation boundary. The free-plan
+checker compares all four stable workflow selectors with `rust-toolchain.toml`;
+update them together during an explicitly reviewed compiler upgrade. Do not
+change runner-global defaults. Do not add `target` to either cache or reorder/remove the
 cleanup: the policy mutation suite rejects those changes because the first real
 rehearsal exhausted the linker after retaining the lint graph.
 

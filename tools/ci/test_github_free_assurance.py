@@ -28,6 +28,22 @@ SPEC.loader.exec_module(ASSURANCE)
 
 
 class GitHubFreeAssuranceTests(unittest.TestCase):
+    def test_fuzz_registration_keeps_reviewed_seeds_and_unique_bounded_campaigns(self) -> None:
+        with tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+            with mock.patch.object(ASSURANCE, "ROOT", Path(temporary)), mock.patch.object(ASSURANCE, "require_linux_deep_profile"), mock.patch.object(ASSURANCE, "run") as run:
+                # Load policy before redirecting only the generated-output root;
+                # the repository's reviewed history exemptions remain authoritative.
+                ASSURANCE.run_step(self.policy, "fuzz")
+            commands = [call.args[0] for call in run.call_args_list]
+            targets = [command[4] for command in commands]
+            self.assertEqual(len(targets), len(set(targets)))
+            surface = next(command for command in commands if command[4] == "semantic_surfaces")
+            self.assertEqual(surface[5:7], ["fuzz/corpus/semantic_surfaces", "fuzz/seeds/semantic_surfaces"])
+            self.assertIn("-max_total_time=120", surface)
+            self.assertIn("-rss_limit_mb=768", surface)
+            self.assertIn("-timeout=15", surface)
+            self.assertTrue((Path(temporary) / "fuzz/corpus/semantic_surfaces").is_dir())
+
     def setUp(self) -> None:
         self.policy = ASSURANCE.load_policy()
 

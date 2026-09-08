@@ -211,6 +211,16 @@ fn linux_pty_eio_is_classified_as_end_of_stream() {
 }
 
 #[cfg(windows)]
+#[test]
+fn windows_drained_pipe_is_classified_as_end_of_stream() {
+    assert!(is_pty_eof_error(&std::io::ErrorKind::BrokenPipe.into()));
+    assert!(!is_pty_eof_error(
+        &std::io::ErrorKind::PermissionDenied.into()
+    ));
+    assert!(!is_pty_eof_error(&std::io::ErrorKind::WouldBlock.into()));
+}
+
+#[cfg(windows)]
 fn read_until(
     pty: &mut Pty,
     deadline: Instant,
@@ -222,6 +232,10 @@ fn read_until(
         match pty.reader().read(&mut buffer) {
             Ok(0) => {}
             Ok(read) => {
+                assert!(
+                    output.len() + read <= 1024 * 1024,
+                    "interactive PTY output limit exceeded"
+                );
                 output.extend_from_slice(&buffer[..read]);
                 let visible = String::from_utf8_lossy(&output);
                 if predicate(&visible) {
@@ -239,9 +253,21 @@ fn read_until(
 #[cfg(windows)]
 #[test]
 fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
+    let fixture_root = tempfile::tempdir().expect("isolated history fixture");
+    let history = fixture_root.path().join("history.txt");
+    let script = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/isolated-history.ps1");
     let mut pty = teletypewriter::create_pty(
         Some("powershell.exe"),
-        vec!["-NoLogo".into(), "-NoProfile".into(), "-NoExit".into()],
+        vec![
+            "-NoLogo".into(),
+            "-NoProfile".into(),
+            "-NoExit".into(),
+            "-File".into(),
+            script.to_string_lossy().into_owned(),
+            "-HistoryPath".into(),
+            history.to_string_lossy().into_owned(),
+        ],
         &None,
         None,
         100,
@@ -252,34 +278,37 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
     let startup = read_until(
         &mut pty,
         Instant::now() + Duration::from_secs(10),
-        |output| output.contains("PS ") && output.contains('>'),
+        |output| output.contains("AMX_PTY_PROMPT>"),
     );
     assert!(
-        startup.contains("PS ") && startup.contains('>'),
-        "PowerShell prompt did not start: {startup:?}"
+        startup.contains("AMX_PTY_PROMPT>"),
+        "isolated PowerShell prompt did not start"
     );
 
-    let token = "AMX_CONPTY_HISTORY_73491";
-    let command = format!("Write-Output '{token}'\r");
+    let marker = "AMX_CONPTY_HISTORY_73491";
+    let command = format!("Write-Output '{marker}'\r");
     pty.writer().write_all(command.as_bytes()).unwrap();
     let seeded = read_until(
         &mut pty,
         Instant::now() + Duration::from_secs(10),
-        |output| output.match_indices(token).count() >= 2 && output.contains("PS "),
+        |output| {
+            output.match_indices(marker).count() >= 2
+                && output.contains("AMX_PTY_PROMPT>")
+        },
     );
     assert!(
-        seeded.match_indices(token).count() >= 2,
-        "PowerShell history seed did not complete: {seeded:?}",
+        seeded.match_indices(marker).count() >= 2,
+        "PowerShell history seed did not complete",
     );
     let up_started = Instant::now();
     pty.writer().write_all(b"\x1b[38;72;0;1;256;1_").unwrap();
     let recalled = read_until(&mut pty, up_started + Duration::from_secs(2), |output| {
-        output.contains(token)
+        output.contains(marker)
     });
     let up_elapsed = up_started.elapsed();
     println!("direct ConPTY PowerShell Up Arrow recall: {up_elapsed:?}");
     assert!(
-        recalled.contains(token),
+        recalled.contains(marker),
         "Up Arrow input stalled before reaching PSReadLine"
     );
     assert!(
@@ -291,7 +320,7 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
     let _ = read_until(
         &mut pty,
         Instant::now() + Duration::from_secs(2),
-        |output| output.contains("PS ") && output.contains('>'),
+        |output| output.contains("AMX_PTY_PROMPT>"),
     );
 
     let search_started = Instant::now();
@@ -307,11 +336,41 @@ fn conpty_powershell_history_input_is_delivered_without_idle_stall() {
     println!("direct ConPTY PowerShell Ctrl+R search: {search_elapsed:?}");
     assert!(
         searched.contains("AMX_CONPTY_HISTORY") && searched.contains("_73491"),
-        "Ctrl+R input stalled before reaching PSReadLine: {searched:?}"
+        "Ctrl+R input stalled before reaching PSReadLine"
     );
     assert!(
         search_elapsed < Duration::from_millis(1_500),
         "direct ConPTY Ctrl+R search took {search_elapsed:?}"
+    );
+
+    pty.writer().write_all(b"\x03").unwrap();
+    let cancelled = read_until(
+        &mut pty,
+        Instant::now() + Duration::from_secs(2),
+        |output| output.contains("AMX_PTY_PROMPT>"),
+    );
+    assert!(
+        cancelled.contains("AMX_PTY_PROMPT>"),
+        "history cancellation did not restore the prompt"
+    );
+    pty.writer().write_all(b"\x1b[68;32;4;1;8;1_").unwrap();
+    let deadline = Instant::now() + Duration::from_secs(5);
+    let mut exited = false;
+    while Instant::now() < deadline {
+        if matches!(pty.next_child_event(), Some(ChildEvent::Exited(_))) {
+            exited = true;
+            break;
+        }
+        thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        exited,
+        "Ctrl+D at an empty Emacs prompt did not exit the shell"
+    );
+    drop(pty);
+    assert!(
+        !history.exists(),
+        "native history fixture persisted terminal input"
     );
 }
 

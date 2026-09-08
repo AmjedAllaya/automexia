@@ -9,6 +9,8 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
+automexia-extension-api = { path = "../automexia-extension-api", optional = true }
+serde_json = { version = "1.0.145", optional = true }
 automexia-image = { path = "../automexia-image", optional = true }
 automexia-keybindings = { path = "../automexia-keybindings", optional = true }
 automexia-terminal = { path = "../apps/automexia-terminal", default-features = false, optional = true }
@@ -30,6 +32,7 @@ tempfile = { version = "3.23.0", optional = true }
 [features]
 default = ["all-targets"]
 all-targets = [
+    "semantic-surfaces",
     "multicloud-provider-inputs",
     "dep:automexia-image",
     "dep:automexia-keybindings",
@@ -57,6 +60,7 @@ multicloud-provider-inputs = [
     "dep:automexia-devops-kubernetes",
     "dep:automexia-devops-teleport",
 ]
+semantic-surfaces = ["dep:automexia-extension-api", "dep:serde_json"]
 
 [workspace]
 members = ["."]
@@ -186,3 +190,11 @@ path = "fuzz_targets/ecosystem_bundle.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "semantic_surfaces"
+path = "fuzz_targets/semantic_surfaces.rs"
+test = false
+doc = false
+bench = false
+required-features = ["semantic-surfaces"]

@@ -30,6 +30,18 @@ persist shell history.
 
 ### Prompt ownership
 
+The terminal owns stable context/path rows; the native shell editor owns its
+editable command and cursor. Context decoration does not insert command text.
+
+For passive Kubernetes context, Bash, Zsh, Fish and PowerShell publish local HOME
+and exported KUBECONFIG paths with byte limits, cached encoding, explicit clearing
+and paired commit markers. These values are not credentials or process authority.
+Set `AUTOMEXIA_CONTEXT_PATH_HINTS=0` to clear them on the next prompt; remove that
+setting to restore publication. CMD retains application-inherited discovery
+because its native PROMPT cannot encode changing environment values. See
+[prompt context assurance](PROMPT-CONTEXT-ASSURANCE.md) for supported behavior,
+privacy, native tests, benchmarks and external verification requirements.
+
 ### Native command completion
 
 PowerShell/PSReadLine, CMD, Bash/Readline, Zsh/ZLE, and Fish keep native command

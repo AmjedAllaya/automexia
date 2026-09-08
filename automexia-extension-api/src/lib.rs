@@ -4,9 +4,13 @@
 //! construction and rejects unknown fields or unsupported schema versions.
 //! Secret material is represented only by opaque references.
 
+pub mod surface;
 mod text;
 
-pub use text::{compact_label, compact_middle};
+pub use text::{
+    compact_label, compact_label_preserving_whitespace, compact_middle,
+    split_grapheme_prefix,
+};
 
 use std::fmt;
 use std::path::PathBuf;
@@ -341,7 +345,7 @@ impl Capability {
 }
 
 /// Generic, renderer-independent facts about one live terminal session.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct SessionFacts {
     pub session_id: usize,
@@ -353,8 +357,25 @@ pub struct SessionFacts {
     pub shell_name: Option<String>,
     pub shell_user: Option<String>,
     pub shell_path: Option<String>,
+    /// Bounded, allowlisted shell-published location hints, never credentials.
+    /// These are untrusted presentation inputs, not process/network authority.
+    /// Generic serialization deliberately omits these local-only values. The
+    /// application-owned discovery transport must opt in explicitly.
+    #[serde(default, skip_serializing)]
+    pub environment: std::collections::BTreeMap<String, String>,
     pub shell_integration: bool,
     pub shell_pid: u32,
+}
+
+impl fmt::Debug for SessionFacts {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("SessionFacts")
+            .field("session_id", &self.session_id)
+            .field("shell_integration", &self.shell_integration)
+            .field("location_hint_count", &self.environment.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -1166,13 +1187,39 @@ mod tests {
             cwd: Some(BoundedText::new("/srv/项目/équipe").unwrap()),
             shell: Some(BoundedText::new("zsh").unwrap()),
             distribution: Some(BoundedText::new("Ubuntu").unwrap()),
-            user: Some(BoundedText::new("amjed").unwrap()),
+            user: Some(BoundedText::new("alice").unwrap()),
             providers: Vec::new(),
         };
         let session = Session::new(SessionId::new(7), capsule).unwrap();
         let encoded = serde_json::to_string(&session).unwrap();
         let decoded: Session = serde_json::from_str(&encoded).unwrap();
         assert_eq!(decoded, session);
+    }
+
+    #[test]
+    fn local_location_hints_are_not_default_serialization_or_debug_output() {
+        let session = SessionFacts {
+            session_id: 7,
+            cwd: None,
+            title: String::new(),
+            distro: None,
+            os_version: None,
+            shell_name: Some("bash".into()),
+            shell_user: None,
+            shell_path: None,
+            shell_integration: true,
+            shell_pid: 1,
+            environment: [(
+                "KUBECONFIG".into(),
+                "fixture-private-location-canary".into(),
+            )]
+            .into(),
+        };
+        let encoded = serde_json::to_string(&session).unwrap();
+        assert!(!encoded.contains("fixture-private-location-canary"));
+        assert!(!format!("{session:?}").contains("fixture-private-location-canary"));
+        let decoded: SessionFacts = serde_json::from_str(&encoded).unwrap();
+        assert!(decoded.environment.is_empty());
     }
 
     #[test]

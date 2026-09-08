@@ -901,6 +901,36 @@
       "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Named(Tab), location: Standard }"
     },
     {
+      "action": "Quit",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"q\"), location: Standard }"
+    },
+    {
+      "action": "ClearScreen",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"k\"), location: Standard }"
+    },
+    {
+      "action": "SearchBackward",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"b\"), location: Standard }"
+    },
+    {
       "action": "ConfigEditor",
       "effective": true,
       "mode": "BindingMode(0x0)",
@@ -1494,61 +1524,41 @@
       "action": "CloneSplitRight",
       "effective": true,
       "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI | SEARCH)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"r\"), location: Standard }"
+      "trigger": "ModifiersState(ALT)+Keycode { key: Character(\"r\"), location: Standard }"
     },
     {
       "action": "CloneSplitDown",
       "effective": true,
       "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI | SEARCH)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"d\"), location: Standard }"
-    },
-    {
-      "action": "Esc(\"\\u{12}\")",
-      "effective": true,
-      "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI | SEARCH)",
-      "origin": "built_in_or_legacy_user",
-      "platform": "Windows",
-      "profile": "automexia",
-      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"r\"), location: Standard }"
-    },
-    {
-      "action": "Esc(\"\\u{4}\")",
-      "effective": true,
-      "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI | SEARCH)",
-      "origin": "built_in_or_legacy_user",
-      "platform": "Windows",
-      "profile": "automexia",
-      "trigger": "ModifiersState(CONTROL | ALT)+Keycode { key: Character(\"d\"), location: Standard }"
+      "trigger": "ModifiersState(ALT)+Keycode { key: Character(\"d\"), location: Standard }"
     },
     {
       "action": "SplitRight",
       "effective": true,
       "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI | SEARCH)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"r\"), location: Standard }"
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"r\"), location: Standard }"
     },
     {
       "action": "SplitDown",
       "effective": true,
       "mode": "BindingMode(0x0)",
-      "not_mode": "BindingMode(VI | SEARCH)",
+      "not_mode": "BindingMode(ALT_SCREEN | VI | SEARCH)",
       "origin": "built_in_or_legacy_user",
       "platform": "Windows",
       "profile": "automexia",
-      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Character(\"d\"), location: Standard }"
+      "trigger": "ModifiersState(SHIFT | ALT)+Keycode { key: Character(\"d\"), location: Standard }"
     },
     {
       "action": "SelectNextSplit",

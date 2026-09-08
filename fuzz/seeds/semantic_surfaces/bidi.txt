@@ -1,0 +1,1 @@
+{"schema":{"id":"inventory","columns":[{"id":"name","title":"Name","min_width":1,"preferred_width":16,"max_width":null,"priority":0,"alignment":"left","overflow":"ellipsis","responsive":"always","data_kind":"text"}],"row_identity":"stable-handle"},"rows":[{"id":1,"resource":null,"cells":[{"text":"x\u202ey"}]}]}

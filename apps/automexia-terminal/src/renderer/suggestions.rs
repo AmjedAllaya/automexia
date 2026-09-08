@@ -7,7 +7,6 @@ use automexia_ui_model::suggestions::{Rect, SuggestionSurface, SuggestionSurface
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
-use unicode_segmentation::UnicodeSegmentation;
 
 use super::ui_theme::{
     color_u8, UiTheme, BRAND_AMBER, BRAND_CORAL, BRAND_CYAN, BRAND_LIME, BRAND_PURPLE,
@@ -308,8 +307,13 @@ fn draw_text(
         color: color_u8(color),
         ..DrawOpts::default()
     };
-    let display = elide_end(sugarloaf, text, maximum_width, &options);
-    sugarloaf.text_mut().draw(x, y, &display, &options);
+    super::suggestion_text::draw_text(
+        sugarloaf.text_mut(),
+        (x, y),
+        text,
+        maximum_width,
+        &options,
+    );
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -329,33 +333,21 @@ fn draw_matched_text(
         color: color_u8(color),
         ..DrawOpts::default()
     };
-    let display = elide_end(sugarloaf, text, maximum_width, &measurement);
-    let mut current_x = x;
-    for (matched, run) in matched_grapheme_runs(&display, matched_graphemes) {
-        let options = DrawOpts {
-            font_size,
-            color: color_u8(if matched { matched_color } else { color }),
-            ..DrawOpts::default()
-        };
-        sugarloaf.text_mut().draw(current_x, y, &run, &options);
-        current_x += sugarloaf.text_mut().measure(&run, &options);
-    }
+    let highlighted = DrawOpts {
+        color: color_u8(matched_color),
+        ..measurement
+    };
+    super::suggestion_text::draw_matched_text(
+        sugarloaf.text_mut(),
+        (x, y),
+        text,
+        matched_graphemes,
+        maximum_width,
+        &measurement,
+        &highlighted,
+    );
 }
 
-fn matched_grapheme_runs(text: &str, matched: &[usize]) -> Vec<(bool, String)> {
-    let mut runs = Vec::<(bool, String)>::new();
-    for (index, grapheme) in text.graphemes(true).enumerate() {
-        let is_matched = matched.binary_search(&index).is_ok();
-        if let Some((last_matched, value)) = runs.last_mut() {
-            if *last_matched == is_matched {
-                value.push_str(grapheme);
-                continue;
-            }
-        }
-        runs.push((is_matched, grapheme.to_string()));
-    }
-    runs
-}
 fn draw_text_right(
     sugarloaf: &mut Sugarloaf,
     right: f32,
@@ -394,28 +386,6 @@ fn draw_text_center(
         text,
         &options,
     );
-}
-
-fn elide_end(
-    sugarloaf: &mut Sugarloaf,
-    text: &str,
-    maximum_width: f32,
-    options: &DrawOpts,
-) -> String {
-    if maximum_width <= 0.0 {
-        return String::new();
-    }
-    if sugarloaf.text_mut().measure(text, options) <= maximum_width {
-        return text.to_string();
-    }
-    let graphemes = text.graphemes(true).collect::<Vec<_>>();
-    for count in (0..graphemes.len()).rev() {
-        let candidate = format!("{}...", graphemes[..count].concat());
-        if sugarloaf.text_mut().measure(&candidate, options) <= maximum_width {
-            return candidate;
-        }
-    }
-    String::new()
 }
 
 #[cfg(test)]
@@ -462,17 +432,5 @@ mod tests {
             assert_ne!(kind_icon(kind), "?");
         }
         assert_eq!(kind_icon("unknown"), "?");
-    }
-
-    #[test]
-    fn matched_runs_preserve_combining_and_joined_graphemes() {
-        assert_eq!(
-            matched_grapheme_runs("e\u{301}cho 👨\u{200d}💻", &[0, 5]),
-            vec![
-                (true, "e\u{301}".into()),
-                (false, "cho ".into()),
-                (true, "👨\u{200d}💻".into()),
-            ]
-        );
     }
 }

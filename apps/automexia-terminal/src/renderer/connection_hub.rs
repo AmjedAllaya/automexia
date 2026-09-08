@@ -1,5 +1,6 @@
 //! Sugarloaf adapter for the renderer-neutral read-only Connection Hub.
 
+use automexia_extension_api::split_grapheme_prefix;
 use automexia_ui_model::connection_hub::{
     hub_catalog_controls_visible, HubCatalogGrouping, HubCatalogSource, HubContentState,
     HubFocus, HubLayout, HubRoute, TunnelReviewView,
@@ -12,9 +13,9 @@ use crate::automexia::connections::{
 };
 use crate::renderer::responsive::Viewport;
 use crate::renderer::ui_theme::{
-    color_u8, BRAND_AMBER as WARNING, BRAND_CORAL, BRAND_CYAN as CYAN,
-    BRAND_LIME as SUCCESS, BRAND_PURPLE as VIOLET, CARD, MODAL_SCRIM as SCRIM, OUTLINE,
-    SURFACE, SURFACE_RAISED,
+    color_u8, BORDER, BRAND_AMBER as WARNING, BRAND_CORAL, BRAND_CYAN as CYAN,
+    BRAND_LIME as SUCCESS, BRAND_PURPLE as VIOLET, CARD, CARD_RADIUS,
+    MODAL_SCRIM as SCRIM, MUTED_TEXT, SURFACE, SURFACE_RAISED, TEXT,
 };
 
 const ORDER: u8 = 20;
@@ -411,7 +412,7 @@ impl ConnectionHub {
             0.0,
             ORDER,
         );
-        rounded(sugarloaf, layout.card, OUTLINE, 14.0);
+        rounded(sugarloaf, layout.card, BORDER, CARD_RADIUS);
         rounded(
             sugarloaf,
             inset(layout.card, 1.0),
@@ -423,10 +424,10 @@ impl ConnectionHub {
             13.0,
         );
 
-        let title = text(18.0, [238, 249, 255, 255], true);
-        let body = text(13.0, [183, 211, 226, 255], false);
-        let small = text(11.0, [139, 177, 198, 255], false);
-        let label = text(12.0, [241, 250, 255, 255], true);
+        let title = text(18.0, color_u8(TEXT), true);
+        let body = text(13.0, color_u8(TEXT), false);
+        let small = text(11.0, color_u8(MUTED_TEXT), false);
+        let label = text(12.0, color_u8(TEXT), false);
         let operation_status = operation_status(presentation);
         let left = layout.card.x + if layout.compact { 14.0 } else { 22.0 };
 
@@ -3283,21 +3284,26 @@ fn button(
     );
 }
 
-fn wrap_without_truncation(value: &str, max_chars: usize) -> Vec<String> {
-    let maximum = max_chars.max(1);
-    let characters = value.chars().collect::<Vec<_>>();
-    if characters.is_empty() {
+fn wrap_without_truncation(value: &str, max_graphemes: usize) -> Vec<String> {
+    let maximum = max_graphemes.max(1);
+    if value.is_empty() {
         return vec![String::new()];
     }
-    characters
-        .chunks(maximum)
-        .map(|chunk| chunk.iter().collect())
-        .collect()
+    let mut remaining = value;
+    let mut lines = Vec::new();
+    while !remaining.is_empty() {
+        let (prefix, rest) = split_grapheme_prefix(remaining, maximum);
+        lines.push(prefix.to_owned());
+        remaining = rest;
+    }
+    lines
 }
-fn truncated(value: &str, max_chars: usize) -> String {
-    let mut chars = value.chars();
-    let mut result = chars.by_ref().take(max_chars).collect::<String>();
-    if chars.next().is_some() {
+fn truncated(value: &str, max_graphemes: usize) -> String {
+    // Hub labels historically add the marker outside their retained-text
+    // budget. Keep that policy separate from API label compaction.
+    let (prefix, rest) = split_grapheme_prefix(value, max_graphemes);
+    let mut result = prefix.to_owned();
+    if !rest.is_empty() {
         result.push('…');
     }
     result
@@ -3870,6 +3876,55 @@ mod tests {
             (BRAND_CORAL, SURFACE),
         ] {
             assert!(contrast_ratio(foreground, background) >= MIN_TEXT_CONTRAST);
+        }
+    }
+
+    #[test]
+    fn hub_text_keeps_legacy_whitespace_and_extra_ellipsis_contract() {
+        for (value, limit, expected) in [
+            ("", 0, ""),
+            ("abc", 0, "…"),
+            ("abc", 1, "a…"),
+            ("abc", 3, "abc"),
+            ("  a  ", 3, "  a…"),
+            ("  a  ", usize::MAX, "  a  "),
+        ] {
+            assert_eq!(truncated(value, limit), expected);
+        }
+        assert_eq!(wrap_without_truncation("", 0), vec![""]);
+        assert_eq!(wrap_without_truncation("abc", 0), vec!["a", "b", "c"]);
+        assert_eq!(wrap_without_truncation(" ab ", 2), vec![" a", "b "]);
+        assert_eq!(wrap_without_truncation(" ab ", usize::MAX), vec![" ab "]);
+    }
+
+    #[test]
+    fn hub_text_compaction_keeps_entire_unicode_clusters() {
+        // Literal clusters are the oracle, independent of the segmentation
+        // helper and its implementation of the grapheme boundary rule.
+        let clusters = ["a\u{301}", "👩🏽‍💻", "文", "🇫🇷", "z"];
+        let value = clusters.concat();
+        for limit in 0..=clusters.len() + 1 {
+            let expected = if limit < clusters.len() {
+                format!("{}…", clusters[..limit].concat())
+            } else {
+                value.clone()
+            };
+            assert_eq!(truncated(&value, limit), expected);
+        }
+    }
+
+    #[test]
+    fn hub_text_wrapping_keeps_entire_clusters_and_exact_source_bytes() {
+        let clusters = ["a\u{301}", "👩🏽‍💻", "文", "🇫🇷", "z"];
+        let value = clusters.concat();
+        for limit in 0..=clusters.len() + 1 {
+            let expected_lines = clusters
+                .chunks(limit.max(1))
+                .map(|chunk| chunk.concat())
+                .collect::<Vec<_>>();
+            let lines = wrap_without_truncation(&value, limit);
+            assert_eq!(lines, expected_lines);
+            assert_eq!(lines.concat(), value);
         }
     }
 

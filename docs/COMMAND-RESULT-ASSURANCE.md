@@ -122,6 +122,49 @@ next prompt.
 
 ## Automated contract
 
+### Command markers versus pane dividers
+
+The current marker is a short inset accent, capped at 48 logical pixels and one
+quarter of pane width, with an inset capped at 12 pixels. Structural dividers and
+their resize targets are unchanged. `command_results/rows.rs` owns this draw-only
+geometry; the anchor adapter, timestamp and pulse remain in `command_results.rs`.
+This uses shape and location as well as colour, consistent with
+[W3C guidance on use of colour](https://www.w3.org/WAI/WCAG22/Understanding/use-of-color.html).
+It does not claim a complete WCAG or native-accessibility assessment.
+
+The parser-path regression first failed on the old 836-pixel rule in an
+840-pixel pane. Adjacent success/failure/silent commands now retain their own
+short markers. Tests compare literal geometry, exact controlled pixel coverage
+at 100/125/200/300/400 percent scale, invalid/extreme geometry, scrollback and
+resize/navigation. Silent commands keep status feedback without an output fill.
+The fictional parser-derived specimen uses the bundled font; its software
+geometry raster is not an actual desktop or GPU capture. The native Windows
+driver checks short, inset geometry and retains its original gutter, opacity,
+identity, text and cleanup checks. Current native frames and screen-reader
+review remain external; older full-width native captures do not validate this
+new appearance.
+
+```text
+cargo test -p automexia-terminal --bin automexia --locked renderer::command_results
+cargo bench -p automexia-renderer-benchmarks --bench text_fit --locked -- command_boundary_marker --noplot
+```
+
+The benchmark compares the actual allocation-free geometry with the prior
+calculation at narrow, ordinary and 8K widths. It does not measure frame latency.
+One local Windows x64 release-profile run (30 samples per case) measured the
+new marker at 4.51–5.06 ns versus 1.66–1.72 ns for the old calculation across
+40/720/8192-pixel widths. The roughly 3 ns increase buys finite/overflow and
+inset validation; there are no added draw calls, allocations or background work.
+These same-run helper measurements are not a native responsiveness guarantee.
+
+Manual review on each claimed native renderer: execute a short output, a failing
+command and a silent command, then split right/down. The short command accents
+must not look like continuous pane dividers or respond to divider dragging.
+Resize narrow/wide and navigate previous/next command; timestamps stay with their
+result, no marker reaches another pane, and copying retains exact command output.
+Repeat with light/dark/custom colours and reduced motion, and retain exact
+reviewed frames separately from automated geometry evidence.
+
 The native command matrix covers:
 
 | Case | Required result |

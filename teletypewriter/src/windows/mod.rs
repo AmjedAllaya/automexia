@@ -35,6 +35,14 @@ pub struct Pty {
     managed_owned_tree: bool,
 }
 
+impl Drop for Pty {
+    fn drop(&mut self) {
+        // Backend drops first and may wait for conout. A live reader alone is
+        // insufficient when its bounded ring is full and VT has stopped.
+        self.conout.discard_remaining();
+    }
+}
+
 // Creates conpty instead of pty
 // Windows Pseudo Console (ConPTY)
 //
@@ -307,8 +315,7 @@ impl ProcessReadWrite for Pty {
         winsize_builder: WinsizeBuilder,
     ) -> Result<(), std::io::Error> {
         let winsize: Winsize = winsize_builder.build();
-        self.backend.on_resize(winsize);
-        Ok(())
+        self.backend.on_resize(winsize)
     }
 }
 
@@ -329,6 +336,7 @@ impl EventedPty for Pty {
         if !self.managed_owned_tree {
             return Ok(ManagedPtyShutdown::NotManaged);
         }
+        self.conout.discard_remaining();
         let _ = self.conin.write_all(&[0x03]);
         if wait_for_job_empty(&self.backend, Duration::from_secs(2))? {
             return Ok(ManagedPtyShutdown::Graceful);
@@ -426,6 +434,75 @@ mod exact_spawn_tests {
     use corcovado::{event::Events, Poll, PollOpt, Ready, Token};
 
     use super::*;
+
+    #[test]
+    fn native_conpty_saturated_shutdown_and_drop_release_exact_processes() {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+        use windows_sys::Win32::Foundation::WAIT_OBJECT_0;
+        use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
+
+        let script = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("tests/fixtures/shutdown-output.ps1");
+        for explicit_shutdown in [false, true, false, true] {
+            let mut pty = create_pty(
+                Some("powershell.exe"),
+                vec![
+                    "-NoLogo".into(),
+                    "-NoProfile".into(),
+                    "-NonInteractive".into(),
+                    "-File".into(),
+                    script.to_string_lossy().into_owned(),
+                ],
+                &None,
+                None,
+                80,
+                24,
+            )
+            .expect("native output fixture starts");
+            // Preserve the kernel identity before teardown, not a later PID
+            // lookup. Querying saturation observes the actual native pipe.
+            // SAFETY: the live watcher supplies the just-created child identity;
+            // request synchronization only, with no borrowed handle ownership.
+            let process = unsafe {
+                OpenProcess(0x0010_0000, 0, pty.child_watcher.pid().unwrap().get())
+            };
+            assert!(!process.is_null(), "fixture synchronization handle");
+            // SAFETY: OpenProcess transferred one owned non-null handle.
+            let process = unsafe { OwnedHandle::from_raw_handle(process) };
+            let deadline = Instant::now() + Duration::from_secs(10);
+            while !pty.conout.is_saturated() && Instant::now() < deadline {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+            let saturated = pty.conout.is_saturated();
+            let started = Instant::now();
+            if explicit_shutdown {
+                assert_ne!(
+                    pty.shutdown_owned_process_tree().unwrap(),
+                    ManagedPtyShutdown::NotManaged
+                );
+                assert!(pty.backend.managed_job_is_empty().unwrap());
+                // Repeated requests must not add another grace wait.
+                assert_eq!(
+                    pty.shutdown_owned_process_tree().unwrap(),
+                    ManagedPtyShutdown::Graceful
+                );
+            }
+            drop(pty);
+            let remaining = Duration::from_secs(10).saturating_sub(started.elapsed());
+            assert_eq!(
+                unsafe {
+                    WaitForSingleObject(
+                        process.as_raw_handle(),
+                        remaining.as_millis() as u32,
+                    )
+                },
+                WAIT_OBJECT_0
+            );
+            assert!(saturated, "real ConPTY output filled its consumer ring");
+            assert!(started.elapsed() < Duration::from_secs(10));
+            eprintln!("native saturated ConPTY close (explicit={explicit_shutdown}): {} microseconds; exact process exited", started.elapsed().as_micros());
+        }
+    }
 
     #[test]
     fn exact_spawn_uses_explicit_program_and_does_not_inherit_path() {

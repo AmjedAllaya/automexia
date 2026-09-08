@@ -524,6 +524,10 @@ fn setup_logs_by_filter_level(
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     #[cfg(windows)]
+    if let Some(code) = automexia::prompt_discovery::dispatch_helper() {
+        std::process::exit(code);
+    }
+    #[cfg(windows)]
     panic::attach_handler();
 
     // When linked with the windows subsystem windows won't automatically attach

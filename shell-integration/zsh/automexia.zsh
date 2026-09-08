@@ -19,7 +19,10 @@ autoload -Uz add-zsh-hook
 __automexia_set_user_var() {
   local name=$1 value=$2 encoded
   [[ -n $value ]] || return 0
-  if (( $+commands[base64] )) && (( $+commands[tr] )); then
+  # The commands array can enumerate every PATH directory, including WSL's
+  # mounted Windows directories, on each cold frame-encoding subshell. Resolve
+  # only the required executables; never change the user's hashing options.
+  if builtin whence -p base64 >/dev/null 2>&1 && builtin whence -p tr >/dev/null 2>&1; then
     # Portable across GNU/BSD base64 (including macOS).
     encoded=$(printf '%s' "$value" | base64 2>/dev/null | tr -d '\r\n') || return 0
     [[ -n $encoded ]] && printf '\e]1337;SetUserVar=%s=%s\a' "$name" "$encoded"
@@ -27,7 +30,7 @@ __automexia_set_user_var() {
 }
 
 __automexia_publish_static_metadata() {
-  local os_version=''
+  local os_version='' shell_path
   if [[ -r /etc/os-release ]]; then
     source /etc/os-release
     os_version=${VERSION_ID:-}
@@ -35,19 +38,58 @@ __automexia_publish_static_metadata() {
   __automexia_set_user_var automexia_distro "${WSL_DISTRO_NAME:-}"
   __automexia_set_user_var automexia_os_version "$os_version"
   __automexia_set_user_var automexia_shell_user "${USER:-}"
-  __automexia_set_user_var automexia_shell_path "${commands[zsh]:-${SHELL:-}}"
+  shell_path=$(builtin whence -p zsh 2>/dev/null)
+  __automexia_set_user_var automexia_shell_path "${shell_path:-${SHELL:-}}"
   printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
   printf '\e]1337;SetUserVar=automexia_shell_name=enNo\a'
 }
-__automexia_publish_static_metadata
+typeset -g __automexia_identity_frame=$(__automexia_publish_static_metadata)
+printf '%s' "$__automexia_identity_frame"
 unfunction __automexia_publish_static_metadata 2>/dev/null || true
+
+# Zsh-native attribute inspection avoids exporting an unexported shell variable
+# as though kubectl could see it. Keep this adapter separate from Bash's older
+# attribute fallback; both replay cached frames without prompt-time encoders.
+__automexia_publish_location_hints() {
+  emulate -L zsh
+  local LC_ALL=C hint_home=${HOME:-} hint_config=''
+  [[ ${(t)KUBECONFIG} == *export* ]] && hint_config=${KUBECONFIG:-}
+  if [[ ${AUTOMEXIA_CONTEXT_PATH_HINTS:-1} == 0 ||
+        ${#hint_home} -gt 4096 || ${#hint_config} -gt 4096 ||
+        $hint_home == *[[:cntrl:]]* || $hint_config == *[[:cntrl:]]* ]]; then
+    hint_home='' hint_config=''
+  fi
+  if [[ ${__automexia_location_ready:-0} != 1 ||
+        $hint_home != "${__automexia_location_home:-}" ||
+        $hint_config != "${__automexia_location_config:-}" ]]; then
+    typeset -g __automexia_location_home=$hint_home
+    typeset -g __automexia_location_config=$hint_config
+    typeset -g __automexia_home_frame=$(__automexia_set_user_var automexia_env_HOME "$hint_home")
+    typeset -g __automexia_config_frame=$(__automexia_set_user_var automexia_env_KUBECONFIG "$hint_config")
+    if [[ ( -n $hint_home && -z $__automexia_home_frame ) ||
+          ( -n $hint_config && -z $__automexia_config_frame ) ]]; then
+      __automexia_home_frame='' __automexia_config_frame=''
+    fi
+    typeset -g __automexia_location_ready=1
+  fi
+  if [[ -n $__automexia_home_frame ]]; then
+    printf '%s' "$__automexia_home_frame"
+  else
+    printf '\e]1337;SetUserVar=automexia_env_HOME=\a'
+  fi
+  if [[ -n $__automexia_config_frame ]]; then
+    printf '%s' "$__automexia_config_frame"
+  else
+    printf '\e]1337;SetUserVar=automexia_env_KUBECONFIG=\a'
+  fi
+}
 
 # Let eza emit the file-type glyphs seen in the liquid-hacker mockup. Keeping
 # this at the shell layer preserves the terminal's PTY contract: Automexia does
 # not guess which pieces of arbitrary command output happen to be filenames.
 # Long listings gain a labeled, color-separated table only on the interactive
 # path. `command ls` bypasses it, and AUTOMEXIA_PLAIN_LS=1 keeps stock commands.
-if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
+if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && builtin whence -p eza >/dev/null 2>&1; then
   # Each metadata column has a stable visual role: cyan read bits, gold write
   # bits, green execute bits, violet ownership, blue groups, orange sizes and
   # muted teal dates. DrvFs executable filenames remain neutral because WSL
@@ -66,7 +108,7 @@ if [[ ${AUTOMEXIA_PLAIN_LS:-0} != 1 ]] && (( $+commands[eza] )); then
     __automexia_eza_filter_path="$__automexia_integration_dir/automexia-eza-filter.pl"
 
   __automexia_run_eza() {
-    if [[ -t 1 && -r $__automexia_eza_filter_path ]] && (( $+commands[perl] )); then
+    if [[ -t 1 && -r $__automexia_eza_filter_path ]] && builtin whence -p perl >/dev/null 2>&1; then
       # eza writes presentation bytes into the badge filter only for a real
       # terminal. Piped and redirected listings keep eza's plain semantics.
       command eza --icons=always --color=always --width="${COLUMNS:-80}" "$@" |
@@ -150,6 +192,10 @@ __automexia_precmd() {
   # `status` is a read-only special parameter in Zsh; use a private name so
   # the hook works under both interactive Zsh and the non-interactive tests.
   local exit_status=$?
+  printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
+  printf '%s' "$__automexia_identity_frame"
+  __automexia_publish_location_hints
+  printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
   printf '\e[0m\e]133;D;%s\a' "$exit_status"
   printf '\e]7;file://%s%s\a' "${HOST:-localhost}" "${PWD// /%20}"
   printf '\e]2;%s@%s: %s\a' "${USER:-user}" "${HOST:-host}" "$PWD"
@@ -205,11 +251,11 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
   typeset -g __automexia_alias_collisions=
 
   __automexia_alias_hash_stream() {
-    if (( $+commands[sha256sum] )); then
+    if builtin whence -p sha256sum >/dev/null 2>&1; then
       command sha256sum | command awk '{print $1}'
-    elif (( $+commands[shasum] )); then
+    elif builtin whence -p shasum >/dev/null 2>&1; then
       command shasum -a 256 | command awk '{print $1}'
-    elif (( $+commands[openssl] )); then
+    elif builtin whence -p openssl >/dev/null 2>&1; then
       command openssl dgst -sha256 | command awk '{print $NF}'
     else
       return 127
@@ -218,11 +264,11 @@ if [[ -z ${__automexia_alias_loader_initialized+x} ]]; then
 
   __automexia_alias_hash_file() {
     local file=$1
-    if (( $+commands[sha256sum] )); then
+    if builtin whence -p sha256sum >/dev/null 2>&1; then
       command sha256sum -- "$file" | command awk '{print $1}'
-    elif (( $+commands[shasum] )); then
+    elif builtin whence -p shasum >/dev/null 2>&1; then
       command shasum -a 256 -- "$file" | command awk '{print $1}'
-    elif (( $+commands[openssl] )); then
+    elif builtin whence -p openssl >/dev/null 2>&1; then
       command openssl dgst -sha256 "$file" | command awk '{print $NF}'
     else
       return 127

@@ -4,7 +4,8 @@ pub struct WslContext {
     pub user: String,
 }
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct KubernetesContext {
     pub context: String,
     pub namespace: String,

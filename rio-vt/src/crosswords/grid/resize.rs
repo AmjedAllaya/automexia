@@ -4,8 +4,8 @@
 
 use crate::crosswords::grid::row::SemanticPrompt;
 use crate::crosswords::grid::{Dimensions, Grid, ReflowRemap};
-use crate::crosswords::pos::{Boundary, Column, Line};
-use crate::crosswords::square::{Square, Wide};
+use crate::crosswords::pos::{Boundary, Column, Line, Pos};
+use crate::crosswords::square::{CellFlags, LineLength, Square, Wide};
 use crate::crosswords::Row;
 use std::cmp::{max, min, Ordering};
 use std::mem;
@@ -13,27 +13,173 @@ use std::mem;
 impl Grid<Square> {
     /// Resize the grid's width and/or height.
     pub fn resize(&mut self, reflow: bool, lines: usize, columns: usize) {
+        self.resize_with_points(reflow, lines, columns, &mut [None; 2]);
+    }
+
+    /// Track at most two selection cells through the same moves as the grid.
+    /// Removed cells become `None`; never clamp them onto unrelated content.
+    pub(crate) fn resize_with_points(
+        &mut self,
+        reflow: bool,
+        lines: usize,
+        columns: usize,
+        points: &mut [Option<Pos>; 2],
+    ) {
+        self.resize_with_policy(reflow, lines, columns, points, false);
+    }
+
+    pub(crate) fn resize_with_policy(
+        &mut self,
+        reflow: bool,
+        lines: usize,
+        columns: usize,
+        points: &mut [Option<Pos>; 2],
+        preserve_history: bool,
+    ) {
         // Use empty template cell for resetting cells due to resize.
         let template = mem::take(&mut self.cursor.template);
+
+        // A numeric distance from the live bottom is not a content anchor:
+        // reflow may add/remove rows anywhere below the first visible cell.
+        // Track that cell in the same transaction as the selection endpoints.
+        let viewport = (reflow && self.display_offset > 0)
+            .then(|| Pos::new(Line(-(self.display_offset as i32)), Column(0)));
+        let native_top =
+            (reflow && preserve_history).then_some(Pos::new(Line(0), Column(0)));
+        let mut tracked = [points[0], points[1], viewport, native_top];
 
         // Only the column passes below produce a row remap; a stale
         // one from an earlier resize must not leak through.
         self.reflow_remap = None;
 
+        let row_delta = if lines > self.lines {
+            if preserve_history {
+                0
+            } else {
+                min(lines - self.lines, self.history_size()) as i32
+            }
+        } else {
+            -((self.cursor.pos.row.0 as usize + 1).saturating_sub(lines) as i32)
+        };
+        for point in &mut tracked {
+            *point = point.filter(|p| self.contains_resize_point(*p));
+            if let Some(point) = point {
+                point.row += row_delta;
+            }
+        }
+
         match self.lines.cmp(&lines) {
-            Ordering::Less => self.grow_lines(lines),
+            Ordering::Less => self.grow_lines(lines, preserve_history),
             Ordering::Greater => self.shrink_lines(lines),
             Ordering::Equal => (),
         }
 
+        for point in &mut tracked {
+            *point = point.filter(|p| self.contains_resize_point(*p));
+        }
+
+        // A wrapped line may straddle ConPTY's history-free viewport. Reflow
+        // each side independently: its native repaint knows only the suffix.
+        // Keep the seam semantic, with explicitly non-content padding, rather
+        // than merging the retained prefix into a row the repaint overwrites.
+        let native_seam = preserve_history
+            && reflow
+            && self.history_size() > 0
+            && self[Line(-1)][self.last_column()].wrapline();
+        if preserve_history && reflow {
+            tracked[3] = Some(Pos::new(Line(0), Column(0)));
+        }
+        if native_seam {
+            let last = self.last_column();
+            self[Line(-1)][last].set_wrapline(false);
+        }
+
         match self.columns.cmp(&columns) {
-            Ordering::Less => self.grow_columns(reflow, columns),
-            Ordering::Greater => self.shrink_columns(reflow, columns),
+            Ordering::Less => {
+                self.grow_columns(reflow, columns, &mut tracked, preserve_history)
+            }
+            Ordering::Greater => {
+                self.shrink_columns(reflow, columns, &mut tracked, preserve_history)
+            }
             Ordering::Equal => (),
+        }
+
+        // ConPTY cannot retrieve rows already sent to scrollback. Reflow may
+        // merge history above the old live top, but must not pull those rows
+        // into the mutable viewport that the native host will repaint.
+        if let Some(top) = tracked[3] {
+            if top.row.0 < 0 {
+                // Narrowing can wrap visible text into history even though
+                // unused rows remain below the cursor. ConPTY consumes that
+                // bottom padding first. Return only rows descended from the
+                // previous native viewport, never older retained history.
+                let blank_tail = (self.cursor.pos.row.0 as usize + 1..self.lines)
+                    .rev()
+                    .take_while(|line| self[Line(*line as i32)].is_clear())
+                    .count();
+                let pull =
+                    min((-top.row.0) as usize, min(blank_tail, self.history_size()));
+                if pull > 0 {
+                    let mut rows = self.raw.take_all();
+                    rows.drain(..pull);
+                    self.raw.replace_inner(rows);
+                    self.cursor.pos.row += pull;
+                    self.saved_cursor.pos.row =
+                        min(self.saved_cursor.pos.row + pull, self.bottommost_line());
+                    for point in tracked.iter_mut().flatten() {
+                        point.row += pull;
+                    }
+                }
+            }
+            let shift = top.row.0.max(0) as usize;
+            if shift > 0 {
+                self.scroll_up(&(Line(0)..Line(self.lines as i32)), shift);
+                self.cursor.pos.row = max(self.cursor.pos.row - shift, Line(0));
+                self.saved_cursor.pos.row =
+                    max(self.saved_cursor.pos.row - shift, Line(0));
+                for point in tracked.iter_mut().flatten() {
+                    point.row -= shift;
+                }
+            }
+        }
+
+        if native_seam {
+            if let Some(top) = tracked[3] {
+                let previous = top.row - 1i32;
+                if previous >= self.topmost_line() {
+                    let row = &mut self[previous];
+                    let end = row.line_length().0;
+                    for cell in &mut row.inner[end..] {
+                        cell.insert_cell_flag(CellFlags::REFLOW_PADDING);
+                    }
+                    row[Column(columns - 1)].set_wrapline(true);
+                }
+            }
+        }
+
+        for point in &mut tracked {
+            *point = point.filter(|p| self.contains_resize_point(*p));
+        }
+
+        points.copy_from_slice(&tracked[..2]);
+        if let Some(anchor) = tracked[2] {
+            // A taller viewport may absorb the anchor into the live screen.
+            // Removed padding/evicted cells retain the bounded offset fallback;
+            // they must not be relabeled as the original retained content.
+            self.display_offset = min(
+                anchor.row.0.saturating_neg().max(0) as usize,
+                self.history_size(),
+            );
         }
 
         // Restore template cell.
         self.cursor.template = template;
+    }
+
+    fn contains_resize_point(&self, point: Pos) -> bool {
+        point.row >= self.topmost_line()
+            && point.row <= self.bottommost_line()
+            && point.col < self.columns
     }
 
     /// Add lines to the visible area.
@@ -41,7 +187,7 @@ impl Grid<Square> {
     /// Rio keeps the cursor at the bottom of the terminal as long as there
     /// is scrollback available. Once scrollback is exhausted, new lines are
     /// simply added to the bottom of the screen.
-    fn grow_lines(&mut self, target: usize) {
+    fn grow_lines(&mut self, target: usize, preserve_history: bool) {
         let lines_added = target - self.lines;
 
         // Need to resize before updating buffer.
@@ -49,7 +195,11 @@ impl Grid<Square> {
         self.lines = target;
 
         let history_size = self.history_size();
-        let from_history = min(history_size, lines_added);
+        let from_history = if preserve_history {
+            0
+        } else {
+            min(history_size, lines_added)
+        };
 
         // Move existing lines up for every line that couldn't be pulled from history.
         if from_history != lines_added {
@@ -97,7 +247,13 @@ impl Grid<Square> {
     }
 
     /// Grow number of columns in each row, reflowing if necessary.
-    fn grow_columns(&mut self, reflow: bool, columns: usize) {
+    fn grow_columns(
+        &mut self,
+        reflow: bool,
+        columns: usize,
+        points: &mut [Option<Pos>; 4],
+        native: bool,
+    ) {
         // Check if a row needs to be wrapped.
         let should_reflow = |row: &Row<Square>| -> bool {
             let len = Column(row.len());
@@ -125,6 +281,7 @@ impl Grid<Square> {
         self.columns = columns;
 
         let mut reversed: Vec<Row<Square>> = Vec::with_capacity(self.raw.len());
+        let mut point_remap = PointReflow::new(*points, self.history_size());
         let mut cursor_line_delta = 0;
 
         // Remove the linewrap special case, by moving the cursor outside of the grid.
@@ -144,10 +301,18 @@ impl Grid<Square> {
         });
 
         for (i, mut row) in rows.drain(..).enumerate().rev() {
+            trim_reflow_padding(&mut row);
+            if native && reflow {
+                let cursor = (i == self.lines - self.cursor.pos.row.0 as usize - 1)
+                    .then_some(self.cursor.pos.col.0);
+                trim_native_row_padding(&mut row, cursor);
+            }
+            point_remap.begin_row(old_len - 1 - i, 0);
             // The intentionally blank Prompt row is application-owned layout,
             // not disposable terminal whitespace. It forms a hard semantic
             // boundary before the editable PromptContinuation row.
             if is_prompt_spacer(&row) {
+                point_remap.finish_row(reversed.len(), row.len());
                 reversed.push(row);
                 if let Some(r) = remap.as_mut() {
                     r.new_pos[old_len - 1 - i] = (reversed.len() - 1) as i64;
@@ -163,6 +328,7 @@ impl Grid<Square> {
             let last_row = match reversed.last_mut() {
                 Some(last_row) if should_reflow(last_row) => last_row,
                 _ => {
+                    point_remap.finish_row(reversed.len(), row.len());
                     reversed.push(row);
                     if let Some(r) = remap.as_mut() {
                         r.new_pos[old_len - 1 - i] = (reversed.len() - 1) as i64;
@@ -227,6 +393,7 @@ impl Grid<Square> {
             if last_len >= 1
                 && matches!(last_row[Column(last_len - 1)].wide(), Wide::LeadingSpacer)
             {
+                point_remap.discard_output(merge_target, last_len - 1);
                 last_row.shrink(last_len - 1);
                 last_len -= 1;
             }
@@ -238,12 +405,14 @@ impl Grid<Square> {
             // Move the wrapped cells from the front of `row` onto the end of
             // `last_row`, in place (no per-row temporary allocation).
             let mut first_cell_moved = true;
+            let moved;
             if matches!(row[Column(len - 1)].wide(), Wide::Wide) {
                 num_wrapped -= 1;
 
                 // With a single free column, only the spacer is
                 // appended and the wide char stays on this row.
                 first_cell_moved = len > 1;
+                moved = len - 1;
 
                 last_row.append_front_of(&mut row, len - 1);
 
@@ -252,8 +421,10 @@ impl Grid<Square> {
                 last_row.inner.push(spacer);
                 last_row.occ += 1;
             } else {
+                moved = len;
                 last_row.append_front_of(&mut row, len);
             }
+            point_remap.emit(merge_target, last_len, moved);
 
             // The old row's first cell just landed at the end of the
             // merge target, unless the wide-char spacer case kept it
@@ -287,6 +458,7 @@ impl Grid<Square> {
                     && row.is_clear()
                     && row.semantic_prompt != SemanticPrompt::Prompt
                 {
+                    point_remap.discard_pending();
                     continue;
                 }
 
@@ -303,6 +475,7 @@ impl Grid<Square> {
                 }
 
                 // Don't push line into the new buffer.
+                point_remap.discard_pending();
                 continue;
             }
 
@@ -311,6 +484,7 @@ impl Grid<Square> {
                 cell.set_wrapline(true);
             }
 
+            point_remap.finish_row(reversed.len(), row.len());
             reversed.push(row);
             if !first_cell_moved {
                 if let Some(r) = remap.as_mut() {
@@ -346,6 +520,7 @@ impl Grid<Square> {
             }
         }
 
+        *points = point_remap.finish(reversed.len(), self.lines, 0);
         self.raw.replace_inner(reversed);
 
         // Clamp display offset in case lines above it got merged.
@@ -355,7 +530,13 @@ impl Grid<Square> {
     }
 
     /// Shrink number of columns in each row, reflowing if necessary.
-    fn shrink_columns(&mut self, reflow: bool, columns: usize) {
+    fn shrink_columns(
+        &mut self,
+        reflow: bool,
+        columns: usize,
+        points: &mut [Option<Pos>; 4],
+        native: bool,
+    ) {
         // Fast path: if no row has occupied content beyond `columns` there is
         // nothing to wrap down, so shrinking is a per-row truncation of
         // trailing blank cells. Wrapped rows are full width, so `occ <=
@@ -401,6 +582,7 @@ impl Grid<Square> {
         }
 
         let mut new_raw = Vec::with_capacity(self.raw.len());
+        let mut point_remap = PointReflow::new(*points, self.history_size());
         let mut buffered: Option<(Vec<Square>, SemanticPrompt, Option<u64>)> = None;
 
         let mut rows = self.raw.take_all();
@@ -421,6 +603,16 @@ impl Grid<Square> {
         let mut trackers: Vec<(usize, i64)> = Vec::new();
 
         for (i, mut row) in rows.drain(..).enumerate().rev() {
+            trim_reflow_padding(&mut row);
+            if native && reflow {
+                let cursor = (i == self.lines - self.cursor.pos.row.0 as usize - 1)
+                    .then_some(self.cursor.pos.col.0);
+                trim_native_row_padding(&mut row, cursor);
+            }
+            point_remap.begin_row(
+                old_len - 1 - i,
+                buffered.as_ref().map_or(0, |(cells, _, _)| cells.len()),
+            );
             let continuation_mark = match row.semantic_prompt {
                 SemanticPrompt::None => SemanticPrompt::None,
                 SemanticPrompt::Prompt | SemanticPrompt::PromptContinuation => {
@@ -466,6 +658,8 @@ impl Grid<Square> {
                             Vec::new()
                         } else {
                             // Since it fits, just push the existing line without any reflow.
+                            row.grow(columns);
+                            point_remap.finish_row(new_raw.len(), row.len());
                             new_raw.push(row);
                             if let Some(r) = remap.as_mut() {
                                 for (p, _) in trackers.drain(..) {
@@ -476,6 +670,7 @@ impl Grid<Square> {
                         }
                     }
                 };
+                point_remap.retain_pending(columns + wrapped.len());
 
                 // Insert spacer if a wide char would be wrapped into the last column.
                 let mut displaced = 0i64;
@@ -493,12 +688,19 @@ impl Grid<Square> {
                         // Spacer that followed it so it cannot claim a row
                         // of its own.
                         row[Column(columns - 1)] = Square::default();
+                        point_remap.remove(columns - 1, 1, false);
+                        let old_wrapped_len = wrapped.len();
                         while matches!(
                             wrapped.first().map(|cell| cell.wide()),
                             Some(Wide::Spacer)
                         ) {
                             wrapped.remove(0);
                         }
+                        point_remap.remove(
+                            columns,
+                            old_wrapped_len - wrapped.len(),
+                            true,
+                        );
                     } else {
                         let mut spacer = Square::default();
                         spacer.set_wide(Wide::LeadingSpacer);
@@ -515,6 +717,7 @@ impl Grid<Square> {
                 if len > 0 && matches!(wrapped[len - 1].wide(), Wide::LeadingSpacer) {
                     if len == 1 {
                         row[Column(columns - 1)].set_wrapline(true);
+                        point_remap.finish_row(new_raw.len(), columns);
                         new_raw.push(row);
                         if let Some(r) = remap.as_mut() {
                             for (p, _) in trackers.drain(..) {
@@ -525,10 +728,16 @@ impl Grid<Square> {
                     } else {
                         // Remove the leading spacer from the end of the wrapped row.
                         wrapped[len - 2].set_wrapline(true);
+                        point_remap.remove(
+                            columns - displaced as usize + len - 1,
+                            1,
+                            true,
+                        );
                         wrapped.truncate(len - 1);
                     }
                 }
 
+                point_remap.emit(new_raw.len(), 0, columns - displaced as usize);
                 new_raw.push(row);
                 if let Some(r) = remap.as_mut() {
                     // This push consumed `columns` cells of the
@@ -608,10 +817,12 @@ impl Grid<Square> {
         // Reflow can overflow the scrollback cap; the oldest lines
         // fall off the ring and must advance the absolute row base.
         let cap = self.max_scroll_limit + self.lines;
+        let removed = reversed.len().saturating_sub(cap);
         if reversed.len() > cap {
             self.total_lines_scrolled += (reversed.len() - cap) as u64;
         }
         reversed.truncate(cap);
+        *points = point_remap.finish(reversed.len(), self.lines, removed);
         self.raw.replace_inner(reversed);
 
         // Clamp display offset in case some lines went off.
@@ -636,10 +847,144 @@ impl Grid<Square> {
     }
 }
 
+/// Frame-local, allocation-free adjunct to the existing row remap. Offsets
+/// follow the cell stream only while a row is split or merged; no text search,
+/// persistent cell identity, or duplicate grid is involved.
+struct PointReflow {
+    source: [Option<(usize, usize)>; 4],
+    pending: [Option<usize>; 4],
+    output: [Option<(usize, usize)>; 4],
+}
+
+impl PointReflow {
+    fn new(points: [Option<Pos>; 4], history: usize) -> Self {
+        Self {
+            source: points.map(|point| {
+                point.map(|point| {
+                    ((point.row.0 as i64 + history as i64) as usize, point.col.0)
+                })
+            }),
+            pending: [None; 4],
+            output: [None; 4],
+        }
+    }
+
+    fn begin_row(&mut self, old_row: usize, prefix: usize) {
+        for (index, source) in self.source.iter().enumerate() {
+            if let Some((row, col)) = source {
+                if *row == old_row {
+                    self.pending[index] = Some(prefix + col);
+                }
+            }
+        }
+    }
+
+    fn emit(&mut self, row: usize, column: usize, count: usize) {
+        for (index, pending) in self.pending.iter_mut().enumerate() {
+            if let Some(offset) = pending.take() {
+                if offset < count {
+                    self.output[index] = Some((row, column + offset));
+                } else {
+                    *pending = Some(offset - count);
+                }
+            }
+        }
+    }
+
+    fn finish_row(&mut self, row: usize, width: usize) {
+        self.emit(row, 0, width);
+        self.discard_pending();
+    }
+
+    fn discard_pending(&mut self) {
+        self.pending = [None; 4];
+    }
+
+    fn retain_pending(&mut self, len: usize) {
+        for point in &mut self.pending {
+            *point = point.filter(|offset| *offset < len);
+        }
+    }
+
+    fn discard_output(&mut self, row: usize, col: usize) {
+        for point in &mut self.output {
+            *point = point.filter(|position| *position != (row, col));
+        }
+    }
+
+    fn remove(&mut self, start: usize, count: usize, shift: bool) {
+        for pending in &mut self.pending {
+            if let Some(offset) = pending.take() {
+                if offset < start {
+                    *pending = Some(offset);
+                } else if offset >= start + count {
+                    *pending = Some(offset - if shift { count } else { 0 });
+                }
+            }
+        }
+    }
+
+    fn finish(self, retained: usize, visible: usize, evicted: usize) -> [Option<Pos>; 4] {
+        self.output.map(|point| {
+            let (row, column) = point?;
+            let row = row.checked_sub(evicted)?;
+            (row < retained).then(|| {
+                Pos::new(
+                    Line(row as i32 - (retained - visible) as i32),
+                    Column(column),
+                )
+            })
+        })
+    }
+}
+
 fn is_prompt_spacer(row: &Row<Square>) -> bool {
     row.semantic_prompt == SemanticPrompt::Prompt
         && row
             .inner
             .iter()
             .all(|square| square.is_bg_only() || matches!(square.c(), '\0' | ' '))
+}
+
+// ConPTY serializes hard-line fill as spaces, but its reflow measures through
+// the last non-space glyph (or the cursor). Treating that fill as Unix explicit
+// whitespace creates extra rows and makes the native repaint overwrite history.
+// Forced wraps retain their full width; text, indentation and extras stay intact.
+fn trim_native_row_padding(row: &mut Row<Square>, cursor: Option<usize>) {
+    if row.last().is_some_and(|cell| cell.wrapline()) {
+        return;
+    }
+    let end = row
+        .inner
+        .iter()
+        .rposition(|cell| {
+            !matches!(cell.c(), '\0' | ' ')
+                || cell.has_extras()
+                || !matches!(cell.wide(), Wide::Narrow)
+        })
+        .map_or(0, |index| index + 1);
+    let end = end.max(cursor.map_or(0, |column| column + 1)).max(1);
+    row.inner.truncate(end);
+    row.occ = row.occ.min(row.len());
+}
+
+fn trim_reflow_padding(row: &mut Row<Square>) {
+    if !row
+        .last()
+        .is_some_and(|cell| cell.contains_cell_flag(CellFlags::REFLOW_PADDING))
+    {
+        return;
+    }
+    let wrapped = row.last().is_some_and(|cell| cell.wrapline());
+    let end = row
+        .inner
+        .iter()
+        .position(|cell| cell.contains_cell_flag(CellFlags::REFLOW_PADDING))
+        .unwrap_or(row.len());
+    row.inner.truncate(end.max(1));
+    row.occ = row.occ.min(row.len());
+    if let Some(last) = row.last_mut() {
+        last.remove_cell_flag(CellFlags::REFLOW_PADDING);
+        last.set_wrapline(wrapped);
+    }
 }

@@ -16,6 +16,17 @@ fn preference_child_write() {
         Ok("set") => UserPreferences {
             font_size: Some(23.0),
             appearance_theme: Some(AppearanceTheme::Light),
+            shortcuts: vec![rio_backend::config::bindings::UiShortcut {
+                action: "CloneSplitRight".into(),
+                trigger: automexia_keybindings::Trigger::new(
+                    automexia_keybindings::KeyAtom::Named(
+                        automexia_keybindings::NamedKey::parse("f9").unwrap(),
+                    ),
+                    automexia_keybindings::Modifiers::CONTROL
+                        .union(automexia_keybindings::Modifiers::SHIFT),
+                )
+                .unwrap(),
+            }],
         },
         Ok("reset") => UserPreferences::default(),
         _ => panic!("child mode must be set or reset"),
@@ -48,6 +59,12 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     let effective = restarted.preferences.apply_to(&base);
     assert_eq!(effective.fonts.size, 23.0);
     assert_eq!(effective.force_theme, Some(AppearanceTheme::Light));
+    assert_eq!(effective.bindings.ui_shortcuts.len(), 1);
+    assert_eq!(effective.bindings.ui_shortcuts[0].action, "CloneSplitRight");
+    assert_eq!(
+        effective.bindings.ui_shortcuts[0].trigger.to_string(),
+        "ctrl+shift+f9"
+    );
     assert_eq!(std::fs::read(&config_path).unwrap(), config_bytes);
 
     run_child(root.path(), "reset");
@@ -55,5 +72,6 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     let effective = reset.preferences.apply_to(&base);
     assert_eq!(effective.fonts.size, 15.0);
     assert_eq!(effective.force_theme, base.force_theme);
+    assert!(effective.bindings.ui_shortcuts.is_empty());
     assert_eq!(std::fs::read(&config_path).unwrap(), config_bytes);
 }

@@ -15,7 +15,7 @@ use regex_automata::{Anchored, Input, MatchKind};
 use tracing::{debug, warn};
 
 use crate::crosswords::grid::{BidirectionalIterator, Dimensions, GridIterator, Indexed};
-use crate::crosswords::square::{Square, Wide};
+use crate::crosswords::square::{CellFlags, Square, Wide};
 use crate::crosswords::Crosswords;
 use crate::crosswords::{Boundary, Column, Direction, Pos, Side};
 
@@ -299,10 +299,51 @@ impl<T: event::EventListener> Crosswords<T> {
     /// To automatically log regex complexity errors, use [`Self::regex_search`] instead.
     fn regex_search_internal(
         &self,
-        start: Pos,
-        end: Pos,
+        mut start: Pos,
+        mut end: Pos,
         regex: &mut LazyDfa,
     ) -> Result<Option<Pos>, Box<dyn Error>> {
+        // A caller may retain coordinates from before a resize. Reject stale
+        // inclusive endpoints before constructing an iterator that dereferences
+        // them; do not clamp a query onto unrelated retained content.
+        if [start, end].iter().any(|point| {
+            point.row < self.grid.topmost_line()
+                || point.row > self.grid.bottommost_line()
+                || point.col.0 >= self.grid.columns()
+        }) {
+            return Ok(None);
+        }
+        // Native seam padding is not searchable text. Normalize the bounded
+        // interval before skipping padding so a skip cannot jump over its end
+        // and consume a later row (or loop around the ring indefinitely).
+        let mut edge = self.grid.iter_from(end);
+        while edge.square().contains_cell_flag(CellFlags::REFLOW_PADDING) {
+            if edge.pos() == start {
+                return Ok(None);
+            }
+            let next = match regex.direction {
+                Direction::Right => edge.prev(),
+                Direction::Left => edge.next(),
+            };
+            if next.is_none() {
+                return Ok(None);
+            }
+        }
+        end = edge.pos();
+        let mut edge = self.grid.iter_from(start);
+        while edge.square().contains_cell_flag(CellFlags::REFLOW_PADDING) {
+            if edge.pos() == end {
+                return Ok(None);
+            }
+            let next = match regex.direction {
+                Direction::Right => edge.next(),
+                Direction::Left => edge.prev(),
+            };
+            if next.is_none() {
+                return Ok(None);
+            }
+        }
+        start = edge.pos();
         let topmost_line = self.grid.topmost_line();
         let screen_lines = self.grid.screen_lines() as i32;
         let last_column = self.grid.last_column();
@@ -475,6 +516,18 @@ impl<T: event::EventListener> Crosswords<T> {
         square: &mut &'a Square,
         direction: Direction,
     ) {
+        // A ConPTY scrollback seam can occupy less than the current width.
+        // Its padding is not whitespace in the logical command/output stream.
+        while square.contains_cell_flag(CellFlags::REFLOW_PADDING) {
+            let next = match direction {
+                Direction::Right => iter.next(),
+                Direction::Left => iter.prev(),
+            };
+            let Some(Indexed { square: cell, .. }) = next else {
+                break;
+            };
+            *square = cell;
+        }
         match direction {
             // In the alternate screen buffer there might not be a wide char spacer after a wide
             // char, so we only advance the iterator when the wide char is not in the last column.
@@ -1323,8 +1376,31 @@ mod tests {
 
         let mut regex = RegexSearch::new("[0-9A-Za-z]{9999}").unwrap();
         let start = Pos::new(Line(0), Column(0));
-        let end = Pos::new(Line(0), Column(9999));
+        // Inclusive endpoints must name an actual cell; an invalid endpoint
+        // would test bounds rejection instead of the DFA's runtime budget.
+        let end = Pos::new(Line(0), Column(9998));
+        assert!(term
+            .regex_search_internal(start, end, &mut regex.right_fdfa)
+            .is_err());
         assert_eq!(term.regex_search_right(&mut regex, start, end), None);
+    }
+
+    #[test]
+    fn search_rejects_stale_or_out_of_bounds_endpoints() {
+        let term = mock_term("kept");
+        let valid = Pos::new(Line(0), Column(0));
+        for invalid in [
+            Pos::new(Line(0), Column(4)),
+            Pos::new(Line(0), Column(usize::MAX)),
+            Pos::new(Line(-1), Column(0)),
+            Pos::new(Line(1), Column(0)),
+        ] {
+            let mut regex = RegexSearch::new("kept").unwrap();
+            for (start, end) in [(valid, invalid), (invalid, valid)] {
+                assert_eq!(term.regex_search_right(&mut regex, start, end), None);
+                assert_eq!(term.regex_search_left(&mut regex, start, end), None);
+            }
+        }
     }
 
     #[test]

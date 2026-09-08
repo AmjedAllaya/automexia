@@ -1,6 +1,8 @@
+mod closing_routes;
 pub mod external_tool_runner;
 pub mod launch;
 pub mod launch_broker;
+pub(crate) mod paste;
 pub mod renderable;
 pub mod title;
 
@@ -15,13 +17,13 @@ use crate::event::{Msg, RioEvent};
 use crate::ime::Ime;
 pub use crate::layout::{ContextDimension, ContextGrid, ContextGridItem};
 use crate::messenger::Messenger;
-use crate::performer::{Machine, PtyWorkerHandle};
+use crate::performer::{Machine, PtyWorkerLease, PtyWorkerRegistry};
+use closing_routes::ClosingRoutes;
 use launch::{LiveSessionMetadata, SessionLaunchDescriptor};
 use renderable::Cursor;
 use renderable::RenderableContent;
 use rio_backend::config::layout::Margin;
 use rio_backend::config::Shell;
-use rustc_hash::FxHashSet;
 use smallvec::{smallvec, SmallVec};
 
 use rio_backend::crosswords::{Crosswords, MIN_COLUMNS, MIN_LINES};
@@ -176,7 +178,7 @@ pub struct Context<T: EventListener> {
     pub title: ContextTitle,
     pub ime: Ime,
     managed_session: Option<ManagedSessionGuard>,
-    _io_thread: Option<PtyWorkerHandle<()>>,
+    _io_thread: Option<PtyWorkerLease>,
     shutdown_requested: AtomicBool,
 }
 
@@ -196,14 +198,9 @@ impl<T: rio_backend::event::EventListener> Drop for Context<T> {
             teletypewriter::kill_pid(self.shell_pid as i32);
         }
 
-        if let Some(mut worker) = self._io_thread.take() {
-            if !worker.join_timeout(Duration::from_secs(10)) {
-                tracing::warn!(
-                    route_id = self.route_id,
-                    "PTY worker did not join within the bounded shutdown budget"
-                );
-            }
-        }
+        // The application retains join ownership after this pane disappears.
+        // Dropping the lease schedules bounded, nonblocking completion polling.
+        drop(self._io_thread.take());
     }
 }
 
@@ -269,6 +266,7 @@ impl<T: EventListener> Context<T> {
 
 #[derive(Clone, Default)]
 pub struct ContextManagerConfig {
+    pub workers: PtyWorkerRegistry,
     /// Build contexts without spawning a PTY (see
     /// `create_dead_context`). Unit tests fork one real `$SHELL` per
     /// context otherwise, which is slow and flaky under the parallel
@@ -331,7 +329,7 @@ pub struct ContextManager<T: EventListener> {
     last_title_update: Option<Instant>,
     /// PTYs intentionally removed by UI actions. Their asynchronous shutdown
     /// events are acknowledgements, not requests to close another tab.
-    closing_routes: FxHashSet<usize>,
+    closing_routes: ClosingRoutes,
     /// Closed top-level tabs whose independent PTYs remain parked for a
     /// bounded undo window. They are isolated per OS-window manager.
     parked_topologies: VecDeque<ParkedTopLevel<T>>,
@@ -463,6 +461,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .environment_capsule(reservation.session_id, reservation.capsule_revision)
             .map_err(|_| ManagedPublishError::InvalidScope)?;
 
+        let worker_slot = config
+            .workers
+            .reserve()
+            .map_err(|_| ManagedPublishError::CapacityExceeded)?;
+
         let cols: u16 = dimension.columns.try_into().unwrap_or(MIN_COLUMNS as u16);
         let rows: u16 = dimension.lines.try_into().unwrap_or(MIN_LINES as u16);
         #[cfg(not(target_os = "windows"))]
@@ -527,7 +530,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         )
         .map_err(|_| ManagedPublishError::PtyUnavailable)?;
         let messenger = Messenger::new(machine.channel());
-        let io_thread = Some(machine.spawn());
+        let io_thread = Some(worker_slot.attach(machine.spawn()));
 
         Ok(Context {
             route_id: reservation.route_id,
@@ -703,6 +706,13 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             return Ok(context);
         }
 
+        // Capacity is reserved before native process creation, including errors
+        // and rapid close/open storms. Never launch an unowned overflow worker.
+        let worker_slot = config
+            .spawn_performer
+            .then(|| config.workers.reserve())
+            .transpose()?;
+
         let cols: u16 = dimension.columns.try_into().unwrap_or(MIN_COLUMNS as u16);
         let rows: u16 = dimension.lines.try_into().unwrap_or(MIN_LINES as u16);
         #[cfg(not(target_os = "windows"))]
@@ -803,11 +813,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             route_id,
         )?;
         let channel = machine.channel();
-        let io_thread = if config.spawn_performer {
-            Some(machine.spawn())
-        } else {
-            None
-        };
+        let io_thread = worker_slot.map(|slot| slot.attach(machine.spawn()));
 
         let messenger = Messenger::new(channel);
 
@@ -907,7 +913,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             window_id,
             config: ctx_config,
             last_title_update: None,
-            closing_routes: FxHashSet::default(),
+            closing_routes: ClosingRoutes::default(),
             parked_topologies: VecDeque::new(),
             restored_topologies: VecDeque::new(),
         })
@@ -949,7 +955,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             window_id,
             config,
             last_title_update: None,
-            closing_routes: FxHashSet::default(),
+            closing_routes: ClosingRoutes::default(),
             parked_topologies: VecDeque::new(),
             restored_topologies: VecDeque::new(),
         })
@@ -969,6 +975,29 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .complete(managed_process_outcome(raw_status))
             .and_then(|completion| completion.notification)
     }
+    fn close_parked_route(&mut self, route_id: usize) -> bool {
+        let Some(index) = self
+            .parked_topologies
+            .iter()
+            .position(|parked| parked.grid.route_ids().contains(&route_id))
+        else {
+            return false;
+        };
+        if self.parked_topologies[index].grid.route_ids().len() == 1 {
+            self.parked_topologies.remove(index);
+        } else if !self.parked_topologies[index]
+            .grid
+            .remove_parked_route(route_id)
+        {
+            // Preserve siblings even if topology reconciliation fails. A
+            // failed removal must never become authority to destroy the grid.
+            tracing::error!("could not reconcile an exited parked session");
+        }
+        self.restored_topologies
+            .retain(|entry| entry.route_id != route_id);
+        true
+    }
+
     #[inline]
     pub fn should_close_context_manager(
         &mut self,
@@ -982,14 +1011,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             return false;
         }
 
-        if let Some(index) = self
-            .parked_topologies
-            .iter()
-            .position(|parked| parked.grid.route_ids().contains(&route_id))
-        {
-            self.parked_topologies.remove(index);
-            self.restored_topologies
-                .retain(|entry| entry.route_id != route_id);
+        if self.close_parked_route(route_id) {
             return false;
         }
 
@@ -1267,6 +1289,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn request_shortcut_edit(&self) {
+        self.event_proxy
+            .send_event(RioEvent::ApplyShortcutEdit, self.window_id);
+    }
+
     pub fn update_font_size(&mut self, request: rio_backend::event::FontSizeRequest) {
         self.event_proxy
             .send_event(RioEvent::UpdateFontSize(request), self.window_id);
@@ -1706,16 +1733,29 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         if !self.undo_topology_model() {
             return false;
         }
+        // Refresh font metrics and PTY sizes before exposing the restored grid.
+        // A caller's margin-only refresh may correctly be a no-op.
+        self.current_grid_mut().update_dimensions(sugarloaf);
         self.keep_only_active_context_visible(sugarloaf);
         true
     }
 
     fn undo_topology_model(&mut self) -> bool {
         self.prune_topology_history();
-        let Some(parked) = self.parked_topologies.pop_back() else {
+        let Some(mut parked) = self.parked_topologies.pop_back() else {
             return false;
         };
         if self.contexts.len() >= self.capacity {
+            self.parked_topologies.push_back(parked);
+            return false;
+        }
+        let live = self.current_grid();
+        if !parked.grid.prepare_restore(
+            live.width,
+            live.height,
+            live.current().dimension.dimension.scale,
+            live.scaled_margin,
+        ) {
             self.parked_topologies.push_back(parked);
             return false;
         }
@@ -2266,6 +2306,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         );
 
         let context_manager_config = ContextManagerConfig {
+            workers: self.config.workers.clone(),
             #[cfg(test)]
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
@@ -2501,6 +2542,82 @@ pub mod test {
     use crate::event::VoidListener;
     use std::sync::Mutex;
 
+    #[cfg(windows)]
+    #[test]
+    fn native_context_close_does_not_wait_for_conpty_grace() {
+        assert_native_context_close("cmd.exe", &["/D", "/Q"]);
+        assert_native_context_close(
+            "powershell.exe",
+            &["-NoLogo", "-NoProfile", "-NoExit"],
+        );
+    }
+
+    #[cfg(windows)]
+    fn assert_native_context_close(program: &str, args: &[&str]) {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+        use windows_sys::Win32::Foundation::{WAIT_OBJECT_0, WAIT_TIMEOUT};
+        use windows_sys::Win32::System::Threading::{OpenProcess, WaitForSingleObject};
+        // A real idle cmd owns a ConPTY Job Object. Its graceful close can take
+        // seconds; removing the UI context must not inherit that waiting budget.
+        let config = ContextManagerConfig {
+            shell: Shell {
+                program: Some(program.into()),
+                args: args.iter().map(|arg| (*arg).to_owned()).collect(),
+            },
+            spawn_performer: true,
+            ..ContextManagerConfig::default()
+        };
+        let context = ContextManager::create_context(
+            (&Cursor::default(), false),
+            VoidListener {},
+            WindowId::from(30),
+            0,
+            ContextDimension::default(),
+            &config,
+        )
+        .expect("native fixture starts");
+        // Hold the actual kernel identity before closing, not a PID lookup
+        // afterward that could observe reuse or miss a surviving process.
+        // SAFETY: SYNCHRONIZE grants waiting only; PID comes from our live PTY.
+        let process = unsafe { OpenProcess(0x0010_0000, 0, context.shell_pid) };
+        assert!(
+            !process.is_null(),
+            "fixture process handle opens for synchronization"
+        );
+        // SAFETY: successful OpenProcess transfers one owned, non-null handle.
+        let process = unsafe { OwnedHandle::from_raw_handle(process) };
+        assert_eq!(
+            unsafe { WaitForSingleObject(process.as_raw_handle(), 0) },
+            WAIT_TIMEOUT
+        );
+        let started = Instant::now();
+        drop(context);
+        let elapsed = started.elapsed();
+        // Joining remains mandatory, just outside the UI removal operation.
+        let pending = config.workers.finish_shutdown(Duration::from_secs(10));
+        assert_eq!(pending, 0, "native worker and ConPTY cleanup complete");
+        let remaining = Duration::from_secs(10).saturating_sub(started.elapsed());
+        // Job-empty and process-signaled are distinct OS observations. Await
+        // the latter within the SAME deadline, rather than assuming it follows
+        // the worker acknowledgement synchronously. This is not an extra sleep.
+        assert_eq!(
+            unsafe {
+                WaitForSingleObject(process.as_raw_handle(), remaining.as_millis() as u32)
+            },
+            WAIT_OBJECT_0,
+            "the exact native shell must exit, not just its worker bookkeeping"
+        );
+        eprintln!(
+            "native context close ({program}): {} microseconds; exact child exited",
+            elapsed.as_micros()
+        );
+        assert!(
+            elapsed < Duration::from_millis(250),
+            "context close blocked for {} ms",
+            elapsed.as_millis()
+        );
+    }
+
     #[test]
     fn initial_route_tracks_the_authoritative_active_context() {
         let manager =
@@ -2593,6 +2710,257 @@ pub mod test {
         assert!(!manager.can_undo_topology());
         assert!(!manager.can_redo_topology());
         assert_eq!(manager.clear_parked_topologies(), 0);
+    }
+
+    #[test]
+    fn parked_exit_removes_only_its_local_tab_and_preserves_undo() {
+        for exiting_index in 0..3 {
+            let window_id = WindowId::from(76);
+            let mut manager =
+                ContextManager::start_with_capacity(4, VoidListener {}, window_id)
+                    .unwrap();
+            manager.add_context(true, 0);
+            for _ in 0..2 {
+                let context = create_mock_context(
+                    VoidListener {},
+                    window_id,
+                    0,
+                    ContextDimension::default(),
+                );
+                manager
+                    .current_grid_mut()
+                    .contexts_mut()
+                    .values_mut()
+                    .next()
+                    .unwrap()
+                    .push_tab_core(context);
+            }
+            let routes = manager.current_grid().route_ids();
+            let exiting = routes[exiting_index];
+            let survivors = routes
+                .iter()
+                .copied()
+                .filter(|id| *id != exiting)
+                .collect::<Vec<_>>();
+            let mut receivers = Vec::new();
+            for item in manager.current_grid_mut().contexts_mut().values_mut() {
+                for context in item.contexts_mut() {
+                    let (sender, receiver) = corcovado::channel::channel();
+                    context.messenger = Messenger::new(sender);
+                    receivers.push((context.route_id, receiver));
+                }
+            }
+            assert!(manager.park_current_topology_model());
+            let foreground = manager.current_route();
+            assert!(manager.close_parked_route(exiting));
+            // Observe actual Context drops through their real message channels,
+            // not merely the surviving topology's self-reported route count.
+            for (route_id, receiver) in &receivers {
+                if *route_id == exiting {
+                    assert!(matches!(receiver.try_recv(), Ok(Msg::Shutdown)));
+                } else {
+                    assert!(
+                        matches!(
+                            receiver.try_recv(),
+                            Err(std::sync::mpsc::TryRecvError::Empty)
+                        ),
+                        "a healthy parked session was terminated"
+                    );
+                }
+            }
+            assert_eq!(manager.current_route(), foreground);
+            assert_eq!(manager.len(), 1);
+            assert_eq!(manager.parked_topologies.len(), 1);
+            assert_eq!(manager.parked_topologies[0].grid.route_ids(), survivors);
+            assert!(!manager.close_parked_route(exiting));
+            assert!(manager.undo_topology_model());
+            assert_eq!(manager.current_grid().route_ids(), survivors);
+            assert!(manager.redo_topology_model());
+            for survivor in survivors {
+                assert!(manager.close_parked_route(survivor));
+            }
+            assert!(!manager.can_undo_topology());
+            assert_eq!(manager.current_route(), foreground);
+        }
+    }
+
+    #[test]
+    fn parked_exit_split_journal_preserves_siblings_and_restores_live_geometry() {
+        for order in [
+            [0, 1, 2],
+            [0, 2, 1],
+            [1, 0, 2],
+            [1, 2, 0],
+            [2, 0, 1],
+            [2, 1, 0],
+        ] {
+            let window_id = WindowId::from(77);
+            let mut manager =
+                ContextManager::start_with_capacity(4, VoidListener {}, window_id)
+                    .unwrap();
+            let untouched = ContextManager::start_with_capacity(
+                4,
+                VoidListener {},
+                WindowId::from(78),
+            )
+            .unwrap();
+            let untouched_routes = untouched.route_ids();
+            for cycle in 0..16 {
+                manager.add_context(true, 0);
+                let first = manager.current_route();
+                let local = create_mock_context(
+                    VoidListener {},
+                    window_id,
+                    0,
+                    ContextDimension::default(),
+                );
+                let second = local.route_id;
+                manager
+                    .current_grid_mut()
+                    .contexts_mut()
+                    .values_mut()
+                    .next()
+                    .unwrap()
+                    .push_tab_core(local);
+                let split = create_mock_context(
+                    VoidListener {},
+                    window_id,
+                    0,
+                    ContextDimension::default(),
+                );
+                let third = split.route_id;
+                assert!(manager.current_grid_mut().split_right_core(split));
+                manager.current_grid_mut().width = 800.0;
+                manager.current_grid_mut().height = 600.0;
+                let routes = [first, second, third];
+                let mut receivers = Vec::new();
+                let mut terminals = Vec::new();
+                for item in manager.current_grid_mut().contexts_mut().values_mut() {
+                    for context in item.contexts_mut() {
+                        let (sender, receiver) = corcovado::channel::channel();
+                        context.messenger = Messenger::new(sender);
+                        receivers.push((context.route_id, receiver));
+                        terminals
+                            .push((context.route_id, Arc::downgrade(&context.terminal)));
+                    }
+                }
+                assert!(manager.park_current_topology_model());
+                let foreground = manager.current_route();
+                // The visible window changed while this topology was parked.
+                // Unchanged top padding must not suppress its restore layout.
+                let width = if cycle % 2 == 0 { 1440.0 } else { 640.0 };
+                let height = if cycle % 2 == 0 { 900.0 } else { 480.0 };
+                let scale = if cycle % 2 == 0 { 2.0 } else { 1.0 };
+                let active = manager.current_grid_mut();
+                active.width = width;
+                active.height = height;
+                active.current_mut().dimension.update_scale(scale);
+                assert!(!manager.close_parked_route(usize::MAX));
+                assert!(!manager.close_parked_route(untouched.current_route()));
+                let mut survivors = routes.to_vec();
+                for position in order {
+                    let exiting = routes[position];
+                    let previous_selection =
+                        manager.parked_topologies[0].grid.current().route_id;
+                    assert!(manager.close_parked_route(exiting));
+                    survivors.retain(|route| *route != exiting);
+                    assert!(!manager.close_parked_route(exiting));
+                    assert_eq!(manager.current_route(), foreground);
+                    for (route, receiver) in &receivers {
+                        if *route == exiting {
+                            assert!(matches!(receiver.try_recv(), Ok(Msg::Shutdown)));
+                        } else if survivors.contains(route) {
+                            assert!(
+                                matches!(
+                                    receiver.try_recv(),
+                                    Err(std::sync::mpsc::TryRecvError::Empty)
+                                ),
+                                "healthy parked PTY received a message or was dropped"
+                            );
+                        }
+                    }
+                    for (route, terminal) in &terminals {
+                        assert_eq!(
+                            terminal.upgrade().is_some(),
+                            survivors.contains(route)
+                        );
+                    }
+                    if !survivors.is_empty() {
+                        let selected =
+                            manager.parked_topologies[0].grid.current().route_id;
+                        if survivors.contains(&previous_selection) {
+                            assert_eq!(selected, previous_selection);
+                        }
+                        assert!(manager.undo_topology_model());
+                        assert_eq!(manager.current_route(), selected);
+                        let restored = manager.current_grid();
+                        assert_eq!((restored.width, restored.height), (width, height));
+                        let mut actual_routes = restored.route_ids();
+                        actual_routes.sort_unstable();
+                        let mut expected_routes = survivors.clone();
+                        expected_routes.sort_unstable();
+                        assert_eq!(actual_routes, expected_routes);
+                        for item in restored.contexts().values() {
+                            let [x, y, w, h] = item.layout_rect;
+                            assert!(w > 0.0 && h > 0.0);
+                            assert!(
+                                x >= 0.0 && y >= 0.0 && x + w <= width && y + h <= height
+                            );
+                            for context in item.contexts() {
+                                assert_eq!(context.dimension.dimension.scale, scale);
+                            }
+                        }
+                        if restored.panel_count() == 1 {
+                            let rect =
+                                restored.contexts().values().next().unwrap().layout_rect;
+                            assert_eq!(
+                                rect[2],
+                                width
+                                    - restored.scaled_margin.left
+                                    - restored.scaled_margin.right
+                                    - (manager.config.panel.margin.left
+                                        + manager.config.panel.margin.right)
+                                        * scale
+                            );
+                        }
+                        assert!(manager.redo_topology_model());
+                    }
+                }
+                assert_eq!(manager.len(), 1);
+                assert!(manager.parked_topologies.is_empty());
+                assert!(manager.restored_topologies.is_empty());
+                assert_eq!(untouched.route_ids(), untouched_routes);
+            }
+        }
+    }
+
+    #[test]
+    fn parked_restore_rejects_invalid_geometry_without_consuming_undo() {
+        for (width, height, scale) in [
+            (f32::NAN, 600.0, 1.0),
+            (800.0, -1.0, 1.0),
+            (800.0, 600.0, 0.0),
+            (800.0, 600.0, f32::INFINITY),
+        ] {
+            let mut manager = ContextManager::start_with_capacity(
+                3,
+                VoidListener {},
+                WindowId::from(79),
+            )
+            .unwrap();
+            manager.add_context(true, 0);
+            let parked = manager.current_route();
+            assert!(manager.park_current_topology_model());
+            let foreground = manager.current_route();
+            let active = manager.current_grid_mut();
+            active.width = width;
+            active.height = height;
+            active.current_mut().dimension.update_scale(scale);
+            assert!(!manager.undo_topology_model());
+            assert_eq!(manager.current_route(), foreground);
+            assert_eq!(manager.parked_topologies[0].grid.current().route_id, parked);
+            assert!(!manager.can_redo_topology());
+        }
     }
 
     #[test]

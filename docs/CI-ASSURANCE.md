@@ -52,6 +52,15 @@ dedicated jobs.
 
 ## Build performance and artifact isolation
 
+`rust-toolchain.toml` is the stable compiler authority. The CI, Linux Early
+Access, stable-release and manual-deep workflows select that exact version with
+`RUSTUP_TOOLCHAIN`, which also controls Cargo's Rustup proxy. Installation steps
+report `rustc --version` without changing the runner's global default. Reviewed
+explicit nightly commands remain separate. The free-plan checker rejects
+selection drift, duplicate or nested selectors, floating/invalid pins and a
+legacy `rust-toolchain` file that would compete with the canonical file.
+This follows [Rustup's override precedence](https://rust-lang.github.io/rustup/overrides.html).
+
 `cargo ready` and `cargo xtask ci` run repository policy, metadata, formatting,
 warning-denied all-target/all-feature Clippy, workspace tests, dependency
 policy, shell checks, and smoke validation. They no longer run a standalone
@@ -62,10 +71,37 @@ use. The local gate still uses a fresh bounded target and removes it on exit.
 Ordinary and Linux-release quality jobs install sccache v0.16.0 through the
 reviewed Mozilla Action pinned at commit
 `fc920bf0ec8de6ee65d409111f7ec508035751ba`. The Action verifies its release
-download; Automexia additionally pins the `automexia-rust-1.98-v1` cache
-generation and reports cache statistics. Cache misses, eviction, and service
+download; Automexia derives the `automexia-rust-1.96.1-v2` cache
+generation from `RUSTUP_TOOLCHAIN` and reports cache statistics. Cache misses, eviction, and service
 limits degrade only performance. `cargo clean` remains between Clippy and
 Nextest to bound the runner filesystem.
+
+The setup step appends the cache generation to `GITHUB_ENV` before sccache
+starts. A job-level `env` expression cannot reference the `env` context;
+[GitHub's environment-file mechanism](https://docs.github.com/en/actions/reference/workflows-and-actions/workflow-commands#setting-an-environment-variable)
+shares the computed value with subsequent steps. Actionlint validates the actual
+workflow syntax; native Linux Bash tests execute both initializer lines and
+verify exact output while preserving preexisting environment-file content.
+
+The current [compiler identity contract](adr/0053-effective-rust-toolchain-identity.md)
+also verifies the repository pin and independently checks the declared MSRV.
+The historical timings below belong to their recorded commits; they are not
+verification or performance measurements of a later compiler-policy change.
+
+Compiler-policy jobs select Python 3.12 before using the standard-library TOML
+parser, including native Ubuntu 22.04 package jobs. Action trust and workflow
+mutation tests reject missing, skipped, reordered or unreviewed setup.
+
+The full-history secret audit retains six reviewed historical false-positive
+fingerprints in `.gitleaksignore`: ordinary instruction prose, literal test
+data, and inherited upstream configuration explicitly marked as a public search
+key. Each exception binds one commit, file, rule and line. No entire file, rule,
+commit or secret value is exempted. Repository policy rejects changed, duplicate
+or additional fingerprints; real scanner tests require new generic-key and
+token findings in every affected path. Historical exceptions are retained only
+while those immutable history findings remain; new findings need independent
+review and must not inherit these exemptions. Raw matching values are not
+included in documentation or reports.
 
 Release package jobs use the shared, lockfile-bound Cargo source cache but never
 the compiler cache or `target`. They remain native cold builds of the exact
@@ -226,6 +262,18 @@ local result validates the current worktree but does not replace the workflow's
 pinned `cargo-llvm-cov 0.6.18` run on the exact hosted release commit.
 
 ## Local verification
+
+QA step, tool-version, source-status and compiler-probe processes share the contained lifecycle
+owner described in [ADR 0057](adr/0057-contained-contributor-qa-processes.md).
+An exited parent cannot leave a descendant holding the runner's output reader.
+Commands receive closed stdin; completion retains their actual exit and final
+output, then retires the process group and readers. Cleanup has a separate
+five-second ceiling. An incomplete native cleanup fails and blocks further
+launches in that interpreter instead of claiming success. Run
+`python tools/ci/test_qa.py` and `python tools/ci/test_qa_process.py` for focused
+coverage; full Python discovery includes both. Windows job tests and Linux pidfd
+tests are native evidence only for the host that executed them. macOS and hosted
+CI are separate gates, not implied by local success.
 
 Run fast CI-policy evidence first:
 

@@ -21,6 +21,7 @@ struct EventedAnonReadInner {
     registration: Registration,
     readiness: SetReadiness,
     done: AtomicBool,
+    discard: AtomicBool,
     sig_buffer_not_full: Condvar,
     wait_tag: Mutex<WaitTag>,
 }
@@ -58,6 +59,19 @@ macro_rules! try_or_send {
 }
 
 impl EventedAnonRead {
+    #[cfg(test)]
+    pub(super) fn is_saturated(&self) -> bool {
+        self.consumer.is_full()
+    }
+
+    /// Irreversible consumer retirement. Keep draining the native pipe while
+    /// ConPTY closes, even when the ring has no remaining VT consumer.
+    pub(super) fn discard_remaining(&self) {
+        let _wait_tag = self.inner.wait_tag.lock();
+        self.inner.discard.store(true, Ordering::SeqCst);
+        self.inner.sig_buffer_not_full.notify_one();
+    }
+
     pub fn new(mut pipe: AnonRead) -> Self {
         let (registration, readiness) = Registration::new2();
 
@@ -74,6 +88,7 @@ impl EventedAnonRead {
             registration,
             readiness,
             done,
+            discard: AtomicBool::new(false),
             sig_buffer_not_full,
             wait_tag,
         });
@@ -92,6 +107,9 @@ impl EventedAnonRead {
 
                     // Read into temp buffer
                     let nbytes = try_or_send!(pipe.read(&mut tmp_buf[..]), error_sender);
+                    if nbytes == 0 {
+                        return;
+                    }
 
                     // Write from the temp buffer into the producer
                     let mut written = 0usize;
@@ -101,11 +119,17 @@ impl EventedAnonRead {
                         // buffer and notify between `is_full` and `wait`,
                         // leaving ConPTY output asleep until unrelated I/O.
                         let mut wait_tag = inner.wait_tag.lock();
-                        while producer.is_full() && !inner.done.load(Ordering::SeqCst) {
+                        while producer.is_full()
+                            && !inner.done.load(Ordering::SeqCst)
+                            && !inner.discard.load(Ordering::SeqCst)
+                        {
                             inner.sig_buffer_not_full.wait(&mut wait_tag);
                         }
                         if inner.done.load(Ordering::SeqCst) {
                             return;
+                        }
+                        if inner.discard.load(Ordering::SeqCst) {
+                            break;
                         }
 
                         written += producer.write_from_slice(&tmp_buf[written..nbytes]);
@@ -132,25 +156,32 @@ impl EventedAnonRead {
 
 impl io::Read for EventedAnonRead {
     fn read(&mut self, buf: &mut [u8]) -> io::Result<usize> {
+        if buf.is_empty() {
+            return Ok(0);
+        }
         if self.thread.is_none() {
             return Err(io::Error::new(io::ErrorKind::BrokenPipe, ""));
         }
 
-        match self.error_receiver.try_recv() {
-            Ok(err) => {
-                // Other thread will be closing
-                self.thread.take().unwrap().join().unwrap();
-                return Err(io::Error::new(io::ErrorKind::BrokenPipe, err));
+        // Synchronize final output and EOF: never report closure ahead of
+        // bytes that the producer already committed to the bounded ring.
+        let _wait_tag = self.inner.wait_tag.lock();
+        if self.consumer.is_empty() {
+            match self.error_receiver.try_recv() {
+                Ok(err) => {
+                    // Other thread will be closing
+                    self.thread.take().unwrap().join().unwrap();
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, err));
+                }
+                Err(TryRecvError::Disconnected) => {
+                    return Err(io::Error::new(io::ErrorKind::BrokenPipe, ""))
+                }
+                Err(TryRecvError::Empty) => {}
             }
-            Err(TryRecvError::Disconnected) => {
-                return Err(io::Error::new(io::ErrorKind::BrokenPipe, ""))
-            }
-            Err(TryRecvError::Empty) => {}
         }
 
         // Pair the buffer mutation and notification with the producer's
         // predicate check so a wakeup cannot be lost.
-        let _wait_tag = self.inner.wait_tag.lock();
         let nbytes = self.consumer.read_to_slice(buf);
 
         if self.consumer.is_empty() {
@@ -205,7 +236,10 @@ impl Drop for EventedAnonRead {
             self.inner.sig_buffer_not_full.notify_one();
         }
 
-        let thread = self.thread.take().unwrap();
+        // The read-error path may already have joined this worker.
+        let Some(thread) = self.thread.take() else {
+            return;
+        };
 
         // Stop reader thread waiting for pipe contents
         unsafe {
@@ -406,20 +440,142 @@ impl Drop for EventedAnonWrite {
             self.inner.sig_buffer_not_empty.notify_one();
         }
 
-        self.thread
-            .take()
-            .unwrap()
-            .join()
-            .expect("Could not close EventedAnonWrite worker");
+        // The write-error path may already have joined this worker.
+        if let Some(thread) = self.thread.take() {
+            thread
+                .join()
+                .expect("Could not close EventedAnonWrite worker");
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::EventedAnonWrite;
+    use super::{EventedAnonRead, EventedAnonWrite};
     use std::io::{Read, Write};
     use std::sync::mpsc;
-    use std::time::Duration;
+    use std::time::{Duration, Instant};
+
+    #[test]
+    fn saturated_output_drains_after_the_terminal_consumer_retires() {
+        let (pipe_reader, mut pipe_writer) = miow::pipe::anonymous(0).unwrap();
+        let mut reader = EventedAnonRead::new(pipe_reader);
+        let (sent, received) = mpsc::channel();
+        let writer = std::thread::spawn(move || {
+            let result = pipe_writer.write_all(&[b'x'; 1024 * 1024]);
+            sent.send(result.is_ok()).unwrap();
+        });
+        // Reproduce a full native output ring, not a mocked worker completion.
+        // ConPTY may produce more bytes while its owner is being closed.
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !reader.consumer.is_full() && Instant::now() < deadline {
+            std::thread::yield_now();
+        }
+        let saturated = reader.consumer.is_full();
+        let started = Instant::now();
+        reader.discard_remaining();
+        reader.discard_remaining();
+        let completed = received.recv_timeout(Duration::from_millis(500));
+        let elapsed = started.elapsed();
+        // Keep the pre-fix failure self-cleaning: restore consumption before
+        // asserting. Otherwise the reproduction itself would leak a writer.
+        if completed.is_err() {
+            let deadline = Instant::now() + Duration::from_secs(5);
+            let mut buffer = [0; 8192];
+            while !writer.is_finished() && Instant::now() < deadline {
+                let _ = reader.read(&mut buffer);
+                std::thread::yield_now();
+            }
+        }
+        drop(reader);
+        writer.join().unwrap();
+        eprintln!(
+            "saturated native close drain: {} microseconds",
+            elapsed.as_micros()
+        );
+        assert!(saturated, "fixture reached the real ring capacity");
+        assert_eq!(
+            completed,
+            Ok(true),
+            "retired consumer blocked native output drain"
+        );
+    }
+
+    fn wait_for_pipe_worker(worker: &std::thread::JoinHandle<()>) {
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !worker.is_finished() {
+            assert!(Instant::now() < deadline, "closed pipe worker exit");
+            std::thread::sleep(Duration::from_millis(1));
+        }
+    }
+
+    #[test]
+    fn closed_read_pipe_error_then_drop_joins_only_once() {
+        let (pipe_reader, pipe_writer) = miow::pipe::anonymous(0).unwrap();
+        let mut reader = EventedAnonRead::new(pipe_reader);
+        drop(pipe_writer);
+        wait_for_pipe_worker(reader.thread.as_ref().unwrap());
+        // Error delivery already joins the native thread. Destruction must not
+        // take a second join handle or panic while a PTY worker is unwinding.
+        assert_eq!(
+            reader.read(&mut [0_u8; 1]).unwrap_err().kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+        assert!(reader.thread.is_none());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(reader)))
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn native_pipe_exit_preserves_final_buffered_output_before_eof() {
+        for read_size in [1, 7, 14, 64] {
+            assert_final_output_before_eof(read_size);
+        }
+    }
+
+    fn assert_final_output_before_eof(read_size: usize) {
+        let (pipe_reader, mut pipe_writer) = miow::pipe::anonymous(0).unwrap();
+        let mut reader = EventedAnonRead::new(pipe_reader);
+        let expected = b"final output\r\n";
+        pipe_writer.write_all(expected).unwrap();
+        drop(pipe_writer);
+        // Make final bytes and EOF both ready before the VT consumer reads.
+        wait_for_pipe_worker(reader.thread.as_ref().unwrap());
+        let mut buffer = vec![0; read_size];
+        assert_eq!(reader.read(&mut []).unwrap(), 0);
+        let mut received = Vec::new();
+        while received.len() < expected.len() {
+            let count = reader.read(&mut buffer).unwrap();
+            assert!(count > 0, "buffered final output makes progress");
+            received.extend_from_slice(&buffer[..count]);
+            assert_eq!(reader.read(&mut []).unwrap(), 0);
+        }
+        assert_eq!(received, expected);
+        assert_eq!(
+            reader.read(&mut buffer).unwrap_err().kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+    }
+
+    #[test]
+    fn closed_write_pipe_error_then_drop_joins_only_once() {
+        let (pipe_reader, pipe_writer) = miow::pipe::anonymous(0).unwrap();
+        let mut writer = EventedAnonWrite::new(pipe_writer);
+        drop(pipe_reader);
+        writer.write_all(b"closed").unwrap();
+        wait_for_pipe_worker(writer.thread.as_ref().unwrap());
+        assert_eq!(
+            writer.write(b"again").unwrap_err().kind(),
+            std::io::ErrorKind::BrokenPipe
+        );
+        assert!(writer.thread.is_none());
+        assert!(
+            std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(writer)))
+                .is_ok()
+        );
+    }
 
     #[test]
     fn idle_input_writer_wakes_for_every_small_message() {

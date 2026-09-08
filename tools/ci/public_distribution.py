@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import ipaddress
 import json
 import math
 import os
@@ -14,7 +15,9 @@ import shutil
 import stat
 import sys
 from typing import NoReturn
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
+
+import release_trust
 
 
 PUBLIC_REPOSITORY = "AmjedAllaya/automexia-releases"
@@ -24,13 +27,23 @@ MAX_RELEASE_EVENT_BYTES = 1024 * 1024
 ROOT = Path(__file__).resolve().parents[2]
 PUBLIC_WORKFLOW = ROOT / ".github/workflows/linux-early-access.yml"
 NFPM_CONFIG = ROOT / "packaging/linux/nfpm.yaml"
-MANIFEST_NAME = "public-distribution-manifest-v1.json"
+MANIFEST_NAME = "public-distribution-manifest-v2.json"
+DOCUMENT_POLICY = ROOT / "docs/public-release/reviewed-documents.json"
+DOCUMENT_SOURCES = {
+    "INSTALL.md": "docs/public-release/INSTALL.md",
+    "RELEASE-NOTES.md": "docs/public-release/RELEASE-NOTES.md",
+    "THIRD_PARTY_NOTICES.md": "docs/public-release/THIRD_PARTY_NOTICES.md",
+    "UNINSTALL.md": "docs/public-release/UNINSTALL.md",
+}
 MAX_ARTIFACTS = 24
 MAX_ARTIFACT_BYTES = 512 * 1024 * 1024
 MAX_TOTAL_BYTES = 2 * 1024 * 1024 * 1024
 MAX_MANIFEST_BYTES = 1024 * 1024
 MAX_RELEASE_JSON_BYTES = 4 * 1024 * 1024
 MAX_EVIDENCE_BYTES = 128 * 1024 * 1024
+MAX_SBOM_BYTES = 16 * 1024 * 1024
+MAX_SBOM_NODES = 250000
+MAX_SBOM_DEPTH = 48
 COMMIT_RE = re.compile(r"^[0-9a-f]{40}$")
 VERSION_RE = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 REPOSITORY_RE = re.compile(
@@ -61,8 +74,6 @@ EVIDENCE_NAMES = frozenset(
         "SHA256SUMS.minisig",
         MANIFEST_NAME,
         "automexia-release-key.pub",
-        "automexia-terminal.cdx.json",
-        "automexia-terminal.spdx.json",
         "INSTALL.md",
         "RELEASE-NOTES.md",
         "THIRD_PARTY_NOTICES.md",
@@ -254,11 +265,51 @@ def _evidence_contract() -> dict[str, object]:
         "checksum": "SHA256SUMS",
         "checksum_signature": "SHA256SUMS.minisig",
         "public_key": "automexia-release-key.pub",
-        "sboms": [
-            "automexia-terminal.cdx.json",
-            "automexia-terminal.spdx.json",
-        ],
+        "documents": _reviewed_documents(),
     }
+
+
+def _reviewed_documents() -> dict[str, str]:
+    policy = _load_json(DOCUMENT_POLICY, 16384)
+    if set(policy) != {"schema", "documents"} or type(policy["schema"]) is not int or policy["schema"] != 1:
+        fail("reviewed public document policy is invalid")
+    documents = policy["documents"]
+    if not isinstance(documents, dict) or set(documents) != set(DOCUMENT_SOURCES):
+        fail("reviewed public document inventory is invalid")
+    for digest in documents.values():
+        if not isinstance(digest, str) or SHA256_RE.fullmatch(digest) is None:
+            fail("reviewed public document digest is invalid")
+    return documents
+
+
+def validate_public_documents(directory: Path) -> None:
+    # A valid signature authenticates bytes; it cannot decide whether prose is public.
+    # Only documents whose exact canonical bytes were deliberately reviewed may ship.
+    for name, expected in _reviewed_documents().items():
+        digest, _ = _digest(directory / name, MAX_MANIFEST_BYTES)
+        if digest != expected:
+            fail("public document differs from the reviewed publication policy")
+        try:
+            _sbom_structure((directory / name).read_text(encoding="utf-8"), privacy=True)
+        except (DistributionError, UnicodeError):
+            raise DistributionError("reviewed public document contains unsafe metadata") from None
+
+
+def _validate_verification_metadata(directory: Path, manifest: dict) -> None:
+    try:
+        key = (directory / "automexia-release-key.pub").read_text(encoding="utf-8")
+        signature = (directory / "SHA256SUMS.minisig").read_text(encoding="utf-8")
+    except (OSError, UnicodeError):
+        raise DistributionError("public verification metadata is unreadable") from None
+    if re.fullmatch(r"untrusted comment: Automexia release verification key\nRW[A-Za-z0-9+/=]{40,100}\n", key) is None:
+        fail("public key metadata is outside the approved template")
+    trusted = re.escape(f"trusted comment: Automexia Linux Early Access v{manifest['version']} source {manifest['source_commit']}")
+    if re.fullmatch(
+        r"untrusted comment: signature from minisign secret key(?: [0-9A-Fa-f]{16})?\n"
+        r"[A-Za-z0-9+/=]{80,128}\n" + trusted + r"\n[A-Za-z0-9+/=]{80,128}\n",
+        signature,
+    ) is None:
+        fail("public signature metadata is outside the approved template")
 
 
 def _validate_repository(repository: str) -> None:
@@ -350,24 +401,30 @@ def _scan_packages(
             + ", ".join(duplicate)
         )
     if unexpected:
-        fail("unexpected or forbidden public distribution artifacts: " + ", ".join(sorted(unexpected)))
+        fail("unexpected or forbidden public distribution artifacts")
     return records
 
 
-def _atomic_write(path: Path, text: str) -> None:
+def _atomic_write(path: Path, text: str, maximum: int = MAX_MANIFEST_BYTES) -> None:
+    if len(text.encode("utf-8")) > maximum:
+        fail("public distribution output exceeds its byte limit")
     if path.exists() or path.is_symlink():
-        _regular_unlinked(path, "public distribution manifest", MAX_MANIFEST_BYTES)
+        _regular_unlinked(path, "public distribution manifest", maximum)
     temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
     if temporary.exists() or temporary.is_symlink():
         fail("public distribution temporary manifest already exists")
+    created = False
     try:
-        temporary.write_text(text, encoding="utf-8", newline="\n")
+        with temporary.open("x", encoding="utf-8", newline="\n") as output:
+            created = True
+            output.write(text)
         os.replace(temporary, path)
     finally:
-        try:
-            temporary.unlink()
-        except FileNotFoundError:
-            pass
+        if created:
+            try:
+                temporary.unlink()
+            except FileNotFoundError:
+                pass
 
 
 def build_public_distribution(
@@ -451,7 +508,7 @@ def build_public_distribution(
         )
         artifacts.append(row)
     manifest: dict[str, object] = {
-        "schema": 1,
+        "schema": 2,
         "product": "automexia-terminal",
         "channel": "linux-early-access",
         "provider": "github-releases",
@@ -489,7 +546,8 @@ def _validate_manifest(manifest: dict[str, object]) -> None:
     version = manifest.get("version")
     repository = manifest.get("repository")
     if (
-        manifest.get("schema") != 1
+        type(manifest.get("schema")) is not int
+        or manifest.get("schema") != 2
         or manifest.get("product") != "automexia-terminal"
         or manifest.get("channel") != "linux-early-access"
         or manifest.get("provider") != "github-releases"
@@ -507,6 +565,31 @@ def _validate_manifest(manifest: dict[str, object]) -> None:
         fail("public distribution manifest evidence contract is invalid")
     if not isinstance(manifest.get("artifacts"), list) or len(manifest["artifacts"]) != 6:
         fail("public distribution manifest artifact inventory is incomplete")
+    if not isinstance(manifest.get("source_commit"), str) or COMMIT_RE.fullmatch(manifest["source_commit"]) is None:
+        fail("public distribution source identity is invalid")
+    contract = _artifact_contract(version)
+    seen: set[str] = set()
+    for row in manifest["artifacts"]:
+        if not isinstance(row, dict) or set(row) != {
+            "architecture", "file", "format", "id", "platform", "download_url",
+            "friendly_public_path", "sha256", "size", "versioned_public_path",
+        }:
+            fail("public distribution artifact fields are invalid")
+        identifier = row["id"]
+        if not isinstance(identifier, str) or identifier not in contract or identifier in seen:
+            fail("public distribution artifact identity is invalid or duplicated")
+        seen.add(identifier)
+        expected = dict(contract[identifier])
+        expected.update(
+            download_url=f"https://github.com/{repository}/releases/download/v{version}/{expected['file']}",
+            friendly_public_path=f"/download/{identifier}",
+            versioned_public_path=f"/download/v{version}/{identifier}",
+        )
+        if any(row[key] != value for key, value in expected.items()):
+            fail("public distribution artifact metadata is outside the reviewed contract")
+        if (not isinstance(row["sha256"], str) or SHA256_RE.fullmatch(row["sha256"]) is None
+                or type(row["size"]) is not int or not 0 < row["size"] <= MAX_ARTIFACT_BYTES):
+            fail("public distribution artifact digest or size is invalid")
 
 
 def required_release_asset_names(manifest: dict[str, object]) -> frozenset[str]:
@@ -641,6 +724,193 @@ def _parse_checksum_manifest(data: bytes, expected: frozenset[str]) -> dict[str,
     return records
 
 
+def _sbom_structure(value: object, *, privacy: bool) -> None:
+    pending = [(value, 0)]
+    visited = 0
+    while pending:
+        item, depth = pending.pop()
+        visited += 1
+        if depth > MAX_SBOM_DEPTH or visited > MAX_SBOM_NODES:
+            fail("public SBOM structure exceeds its limits")
+        if isinstance(item, dict):
+            children = [*item.keys(), *item.values()]
+        elif isinstance(item, list):
+            children = item
+        else:
+            children = ()
+        if visited + len(pending) + len(children) > MAX_SBOM_NODES:
+            fail("public SBOM structure exceeds its limits")
+        pending.extend((child, depth + 1) for child in children)
+        if isinstance(item, float) and not math.isfinite(item):
+            fail("public SBOM contains non-finite data")
+        if not isinstance(item, str):
+            continue
+        if len(item.encode("utf-8")) > 256 * 1024:
+            fail("public SBOM string exceeds its limit")
+        if not privacy:
+            continue
+        # Inspect keys as well as values, including percent-encoded file URLs.
+        # Unknown sensitive fields fail closed; never rewrite license prose.
+        decoded = item
+        for _ in range(4):
+            expanded = unquote(decoded)
+            if expanded == decoded:
+                break
+            decoded = expanded
+        else:
+            fail("public SBOM contains excessive URL encoding")
+        if re.search(
+            r"(?:file://|(?<![A-Za-z0-9])[A-Za-z]:[\\/]|\\\\|"
+            r"(?:^|[\s'\"(=:])/(?!/)|(?:^|\s)~/|"
+            r"[\x00-\x08\x0b\x0c\x0e-\x1f\x7f\u202a-\u202e\u2066-\u2069])",
+            decoded, re.IGNORECASE,
+        ):
+            fail("public SBOM contains local-path or unsafe metadata")
+        for url in re.findall(r"https?://[^\s<>\"]+", decoded):
+            try:
+                parsed = urlsplit(url)
+                if parsed.username is not None or parsed.password is not None:
+                    fail("public SBOM contains credential-bearing metadata")
+                hostname = parsed.hostname or ""
+                try:
+                    address = ipaddress.ip_address(hostname)
+                except ValueError:
+                    address = None
+                if ((address is not None and not address.is_global) or not hostname
+                        or hostname.casefold().endswith((".localhost", ".local", ".internal"))
+                        or (address is None and "." not in hostname)):
+                    fail("public SBOM contains private-host metadata")
+            except ValueError:
+                fail("public SBOM contains malformed URL metadata")
+
+
+def _load_sbom(path: Path) -> dict[str, object]:
+    try:
+        payload = _load_json(path, MAX_SBOM_BYTES)
+        _sbom_structure(payload, privacy=False)
+        return payload
+    except (ValueError, OSError, RecursionError):
+        raise DistributionError("public SBOM is unavailable, malformed or over limit") from None
+
+
+def _sbom_input_names(version: str) -> frozenset[str]:
+    return frozenset({"Cargo.lock", *("packages/" + str(row["file"]) for row in _artifact_contract(version).values())})
+
+
+def validate_public_sboms(spdx: dict, cdx: dict, version: str) -> None:
+    for payload in (spdx, cdx):
+        _sbom_structure(payload, privacy=True)
+    try:
+        release_trust.validate_sboms(spdx, cdx, version, release_trust.load_policy())
+        allowed = _sbom_input_names(version)
+        if spdx.get("spdxVersion") != "SPDX-2.3" or cdx.get("specVersion") not in {"1.6", "1.7"}:
+            fail("public SBOM format requires explicit compatibility review")
+        files = spdx.get("files", [])
+        if not isinstance(files, list) or not 1 <= len(files) <= len(allowed):
+            fail("public SBOM file inventory is invalid")
+        spdx_files: dict[str, str] = {}
+        spdx_ids = {"SPDXRef-DOCUMENT"}
+        for entry in [*spdx["packages"], *files]:
+            identity = entry.get("SPDXID")
+            if not isinstance(identity, str) or not identity.startswith("SPDXRef-") or identity in spdx_ids:
+                fail("public SBOM has a duplicate or missing SPDX identity")
+            spdx_ids.add(identity)
+        for file in files:
+            if not isinstance(file, dict) or file.get("fileName") not in allowed:
+                fail("public SBOM file location is outside the approved scan inputs")
+            hashes = [h["checksumValue"] for h in file.get("checksums", []) if h.get("algorithm") == "SHA256"]
+            if len(hashes) != 1 or not isinstance(hashes[0], str) or SHA256_RE.fullmatch(hashes[0]) is None:
+                fail("public SBOM requires one SHA256 per input file")
+            if file["fileName"] in spdx_files:
+                fail("public SBOM repeats a file location")
+            spdx_files[file["fileName"]] = hashes[0]
+        cdx_files: dict[str, str] = {}
+        cdx_ids: set[str] = set()
+        for component in cdx["components"]:
+            identity = component.get("bom-ref")
+            if not isinstance(identity, str) or not identity or identity in cdx_ids:
+                fail("public SBOM has a duplicate or missing CycloneDX identity")
+            cdx_ids.add(identity)
+            if component.get("type") != "file":
+                continue
+            if component.get("name") not in allowed or component["name"] in cdx_files:
+                fail("public SBOM file location is invalid or repeated")
+            hashes = [h["content"] for h in component["hashes"] if h["alg"] == "SHA-256"]
+            if len(hashes) != 1:
+                fail("public SBOM requires one SHA256 per input file")
+            cdx_files[component["name"]] = hashes[0].lower()
+        if spdx_files != cdx_files or "Cargo.lock" not in spdx_files:
+            fail("public SBOM formats disagree on scan-input file identities")
+        for relation in spdx.get("relationships", []):
+            if relation.get("spdxElementId") not in spdx_ids or relation.get("relatedSpdxElement") not in spdx_ids:
+                fail("public SBOM has a dangling SPDX relationship")
+        for relation in cdx.get("dependencies", []):
+            if (relation.get("ref") not in cdx_ids or not isinstance(relation.get("dependsOn"), list)
+                    or any(ref not in cdx_ids for ref in relation["dependsOn"])):
+                fail("public SBOM has a dangling CycloneDX dependency")
+    except (release_trust.ReleaseTrustError, TypeError, KeyError, AttributeError):
+        raise DistributionError("public SBOM package or file evidence is invalid") from None
+
+
+def prepare_public_sboms(source: Path, output: Path, scan_root: Path, version: str) -> None:
+    """Project only known location fields; keep the scanner's evidence intact."""
+    if (VERSION_RE.fullmatch(version) is None or source.is_symlink() or not source.is_dir()
+            or output.is_symlink() or not output.is_dir() or scan_root.is_symlink()
+            or not scan_root.is_dir() or source.resolve() == output.resolve()):
+        fail("public SBOM preparation needs separate real input and output directories")
+    names = ("automexia-terminal.spdx.json", "automexia-terminal.cdx.json")
+    spdx, cdx = (_load_sbom(source / name) for name in names)
+    prefix = scan_root.resolve().as_posix().rstrip("/") + "/"
+    allowed = _sbom_input_names(version)
+
+    def relative_location(value: object, *, virtual: bool = False) -> str:
+        if not isinstance(value, str):
+            fail("public SBOM location must be text")
+        normalized = value.replace("\\", "/")
+        comparable = normalized.casefold() if os.name == "nt" else normalized
+        expected = prefix.casefold() if os.name == "nt" else prefix
+        if comparable.startswith(expected):
+            normalized = normalized[len(prefix):]
+        elif normalized.startswith("./"):
+            normalized = normalized[2:]
+        elif virtual and normalized.startswith("/") and normalized[1:] in allowed:
+            # Syft package locations are rooted in the virtual scan filesystem,
+            # unlike its file components, which carry the host's absolute path.
+            normalized = normalized[1:]
+        if normalized not in allowed:
+            fail("public SBOM location is outside the approved scan inputs")
+        return normalized
+
+    try:
+        for file in spdx.get("files", []):
+            file["fileName"] = relative_location(file.get("fileName"))
+        for package in spdx.get("packages", []):
+            source_info = package.get("sourceInfo")
+            if isinstance(source_info, str):
+                match = re.fullmatch(
+                    r"(acquired package info from (?:rust cargo manifest|DPKG DB|RPM DB): )(.+)",
+                    source_info,
+                )
+                if match is not None:
+                    package["sourceInfo"] = match[1] + relative_location(match[2], virtual=True)
+        for component in cdx.get("components", []):
+            if component.get("type") == "file":
+                component["name"] = relative_location(component.get("name"))
+            for prop in component.get("properties", []):
+                if re.fullmatch(r"syft:location:[0-9]+:path", prop.get("name", "")):
+                    prop["value"] = relative_location(prop.get("value"), virtual=True)
+        validate_public_sboms(spdx, cdx, version)
+    except (TypeError, AttributeError, KeyError):
+        raise DistributionError("public SBOM structure is invalid") from None
+    # Both documents pass before either write. Replacement is atomic per file;
+    # a write failure aborts the workflow before checksum creation or upload.
+    encoded = [json.dumps(payload, indent=2, sort_keys=True) + "\n" for payload in (spdx, cdx)]
+    if any(len(text.encode("utf-8")) > MAX_SBOM_BYTES for text in encoded):
+        fail("public SBOM output exceeds its byte limit")
+    for name, text in zip(names, encoded):
+        _atomic_write(output / name, text, MAX_SBOM_BYTES)
+
+
 def _verify_bundle_with_identities(
     directory: Path,
 ) -> tuple[dict[str, object], dict[str, tuple[str, int]]]:
@@ -657,7 +927,9 @@ def _verify_bundle_with_identities(
     for path in entries:
         if path.name in actual:
             fail("public distribution bundle contains duplicate names")
-        maximum = MAX_ARTIFACT_BYTES if path.name not in EVIDENCE_NAMES else MAX_EVIDENCE_BYTES
+        maximum = MAX_ARTIFACT_BYTES if path.name not in EVIDENCE_NAMES else MAX_MANIFEST_BYTES
+        if path.name in {"automexia-release-key.pub", "SHA256SUMS.minisig"}:
+            maximum = 4096
         digest, size = _digest(path, maximum)
         actual.add(path.name)
         identities[path.name] = (digest, size)
@@ -679,9 +951,8 @@ def _verify_bundle_with_identities(
     key_lines = (directory / "automexia-release-key.pub").read_text(encoding="utf-8").splitlines()
     if len([line for line in key_lines if re.fullmatch(r"RW[A-Za-z0-9+/=]+", line)]) != 1:
         fail("public distribution key file has no unique minisign public key")
-    for name in ("automexia-terminal.cdx.json", "automexia-terminal.spdx.json"):
-        if not isinstance(_load_json(directory / name, MAX_EVIDENCE_BYTES), dict):
-            fail("public distribution SBOM is invalid")
+    validate_public_documents(directory)
+    _validate_verification_metadata(directory, manifest)
     return manifest, identities
 
 
@@ -943,6 +1214,56 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
     rehearsal = job_body("rehearsal")
     assemble = job_body("assemble")
     publish = job_body("publish")
+    # Keep scanner output private until preparation passes, before any signing
+    # secret is exposed. Action defaults must not upload raw metadata elsewhere.
+    for format_name, suffix in (("spdx-json", "spdx"), ("cyclonedx-json", "cdx")):
+        expected = (
+            f"          format: {format_name}\n"
+            "          syft-version: v1.51.1\n"
+            f"          output-file: sbom-private/automexia-terminal.{suffix}.json\n"
+            "          upload-artifact: false\n"
+            "          upload-release-assets: false\n"
+            "          dependency-snapshot: false\n"
+        )
+        if assemble.count(expected) != 1:
+            fail("public SBOM scanner output must stay private with uploads disabled")
+    preparation = ('python3 tools/ci/public_distribution.py prepare-sboms --source sbom-private '
+                   '--output sbom-reviewed --scan-root sbom-input --version "$RELEASE_VERSION"')
+    preparation_block = (
+        '      - name: Validate private build inventories\n'
+        '        shell: bash\n'
+        '        env:\n'
+        '          RELEASE_VERSION: ${{ needs.authorize.outputs.version }}\n'
+        '        run: |\n'
+        '          set -euo pipefail\n'
+        f'          {preparation}\n'
+        '          python3 tools/ci/public_distribution.py verify-documents --directory release-bundle\n'
+    )
+    if (assemble.count(preparation_block) != 1 or assemble.count(preparation) != 1
+            or not 0 <= assemble.find("format: cyclonedx-json") < assemble.find(preparation)
+            < assemble.find("- name: Create and verify the detached checksum signature")):
+        fail("public SBOM privacy verification must precede signing and upload")
+    if ("      - name: Remove private scanner scratch\n        if: always()\n" not in assemble
+            or assemble.count("rm -rf -- sbom-private sbom-input sbom-reviewed") != 1):
+        fail("private SBOM scanner scratch must have unconditional bounded cleanup")
+    private_retention = (
+        '      - name: Retain inventories only in the private source repository\n'
+        '        if: github.event.repository.private == true\n'
+        '        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a\n'
+        '        with:\n'
+        '          name: private-build-inventories\n'
+        '          path: sbom-reviewed\n'
+        '          if-no-files-found: error\n'
+        '          retention-days: 7\n'
+        '          compression-level: 0\n'
+    )
+    if assemble.count(private_retention) != 1:
+        fail("build inventory retention must be bounded and private")
+    if ('          cp docs/public-release/THIRD_PARTY_NOTICES.md release-bundle/THIRD_PARTY_NOTICES.md' not in assemble
+            or '          test "${#assets[@]}" -eq 14' not in publish):
+        fail("minimal publication documents and asset count must match the reviewed contract")
+    if '          rm -rf -- sbom-private sbom-input sbom-reviewed\n          compression-level:' in assemble:
+        fail("artifact compression options must not execute as cleanup commands")
     dispatch = re.search(
         r"(?ms)if \[\[ \"\$EVENT_NAME\" == 'workflow_dispatch' \]\]; then"
         r"(?P<rehearsal>.*?)^\s*else\s*$"
@@ -980,11 +1301,17 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "single test thread": "NEXTEST_TEST_THREADS: '1'",
         "compiler wrapper": "RUSTC_WRAPPER: sccache",
         "GitHub cache backend": "SCCACHE_GHA_ENABLED: 'true'",
-        "versioned compiler cache": "SCCACHE_GHA_VERSION: automexia-rust-1.98-v1",
+        "versioned compiler cache": r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"''',
     }
     for label, token in resource_contract.items():
         if quality.count(token) != 1:
             fail(f"release quality job must enforce {label}")
+    initializer = resource_contract["versioned compiler cache"]
+    cache_lines = [line for line in quality.splitlines() if "SCCACHE_GHA_VERSION" in line]
+    if cache_lines != ["          " + initializer] or not (
+        0 <= quality.find(initializer) < quality.find("- name: Install checksum-verified compiler cache")
+    ):
+        fail("release quality compiler cache must initialize its environment before startup")
     package_resource_contract = {
         "single build job": "CARGO_BUILD_JOBS: '1'",
         "disabled release debug info": "CARGO_PROFILE_RELEASE_DEBUG: '0'",
@@ -1142,10 +1469,10 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         'release_id="$(gh release view "$tag" --repo "$PUBLIC_REPOSITORY" --json databaseId --jq \'.databaseId\')"',
         '[[ "$release_id" =~ ^[1-9][0-9]{0,19}$ ]]',
         'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-draft.json"',
-        'python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-draft.json" --release-id "$release_id" --created-url "$created_release_url" --bundle release-bundle --stage draft',
+        'python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v2.json --release-json "$RUNNER_TEMP/release-draft.json" --release-id "$release_id" --created-url "$created_release_url" --bundle release-bundle --stage draft',
         'gh api -H "$api_header" --method PATCH "repos/$PUBLIC_REPOSITORY/releases/$release_id" -F draft=false -F prerelease=true -f make_latest=false >/dev/null',
         'gh api -H "$api_header" "repos/$PUBLIC_REPOSITORY/releases/$release_id" > "$RUNNER_TEMP/release-published.json"',
-        'python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v1.json --release-json "$RUNNER_TEMP/release-published.json" --release-id "$release_id" --bundle release-bundle --stage published',
+        'python3 tools/ci/public_distribution.py verify-release --manifest release-bundle/public-distribution-manifest-v2.json --release-json "$RUNNER_TEMP/release-published.json" --release-id "$release_id" --bundle release-bundle --stage published',
     )
     if (normalized_publish.count("\n" + "\n".join(draft_publication) + "\n") != 1
             or any(publish.count(command) != 1 for command in draft_publication)
@@ -1171,7 +1498,7 @@ def _reject_duplicate_keys(pairs: list[tuple[str, object]]) -> dict[str, object]
     result: dict[str, object] = {}
     for key, value in pairs:
         if key in result:
-            fail(f"public distribution JSON contains duplicate key {key!r}")
+            fail("public distribution JSON contains duplicate keys")
         result[key] = value
     return result
 
@@ -1181,11 +1508,20 @@ def _load_json(path: Path, maximum: int) -> dict[str, object]:
     if metadata.st_size > maximum:
         fail("public distribution JSON exceeds its byte limit")
     try:
-        loaded = json.loads(
-            path.read_text(encoding="utf-8"), object_pairs_hook=_reject_duplicate_keys
-        )
-    except (UnicodeDecodeError, json.JSONDecodeError) as error:
-        raise DistributionError("public distribution JSON is invalid") from error
+        with path.open("rb") as source:
+            opened = os.fstat(source.fileno())
+            if (opened.st_dev, opened.st_ino, opened.st_nlink) != (metadata.st_dev, metadata.st_ino, 1):
+                fail("public distribution JSON changed before reading")
+            data = source.read(maximum + 1)
+        final = path.lstat()
+        if (len(data) != metadata.st_size or len(data) > maximum
+                or (metadata.st_dev, metadata.st_ino, metadata.st_size, metadata.st_mtime_ns, metadata.st_ctime_ns)
+                != (final.st_dev, final.st_ino, final.st_size, final.st_mtime_ns, final.st_ctime_ns)):
+            fail("public distribution JSON changed while reading")
+        loaded = json.loads(data.decode("utf-8"), object_pairs_hook=_reject_duplicate_keys,
+                            parse_constant=lambda _: fail("public distribution JSON contains non-finite data"))
+    except (UnicodeDecodeError, json.JSONDecodeError, RecursionError):
+        raise DistributionError("public distribution JSON is invalid") from None
     if not isinstance(loaded, dict):
         fail("public distribution JSON root must be an object")
     return loaded
@@ -1220,6 +1556,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
     governance.add_argument("--main-protection-json", type=Path, required=True)
     governance.add_argument("--ruleset-bypass-json", type=Path, required=True)
     commands.add_parser("ruleset-bypass-query")
+    documents = commands.add_parser("verify-documents")
+    documents.add_argument("--directory", type=Path, required=True)
+    sboms = commands.add_parser("prepare-sboms")
+    sboms.add_argument("--source", type=Path, required=True)
+    sboms.add_argument("--output", type=Path, required=True)
+    sboms.add_argument("--scan-root", type=Path, required=True)
+    sboms.add_argument("--version", required=True)
     bundle = commands.add_parser("verify-bundle")
     bundle.add_argument("--directory", type=Path, required=True)
     activation = commands.add_parser("activation-handoff")
@@ -1261,6 +1604,12 @@ def main(argv: list[str] | None = None) -> int:
                 release_id=args.release_id, created_url=args.created_url,
             )
             print(f"Verified GitHub Early Access {args.stage} release evidence")
+        elif args.command == "verify-documents":
+            validate_public_documents(args.directory)
+            print("Verified reviewed public documents")
+        elif args.command == "prepare-sboms":
+            prepare_public_sboms(args.source, args.output, args.scan_root, args.version)
+            print("Validated private build inventories")
         elif args.command == "verify-bundle":
             manifest = verify_bundle(args.directory)
             print(f"Verified exact public bundle for v{manifest['version']}")
@@ -1283,8 +1632,12 @@ def main(argv: list[str] | None = None) -> int:
             print(f"Prepared website activation handoff for {handoff['releaseTag']}")
         else:
             validate_workflow()
+            validate_public_documents(ROOT / "docs/public-release")
             print("Public Linux release workflow policy passed")
-    except (DistributionError, OSError, UnicodeError) as error:
+    except (OSError, UnicodeError):
+        print("public distribution gate failed: input or output is unavailable", file=sys.stderr)
+        return 1
+    except DistributionError as error:
         print(f"public distribution gate failed: {error}", file=sys.stderr)
         return 1
     return 0

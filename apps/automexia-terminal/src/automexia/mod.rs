@@ -18,11 +18,18 @@ pub mod migration;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod preferences;
 pub(crate) mod private_fs;
+#[cfg(target_os = "windows")]
+#[doc(hidden)]
+pub mod prompt_discovery;
 pub mod quick_actions;
 pub mod runtime;
+#[doc(hidden)]
+pub mod semantic_surfaces;
 #[cfg(target_os = "windows")]
 pub mod shell;
 pub mod shell_integration;
+#[doc(hidden)]
+pub mod shortcut_preferences;
 mod state;
 pub mod suggestions;
 pub mod theme;

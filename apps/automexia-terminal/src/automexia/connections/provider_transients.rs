@@ -102,6 +102,7 @@ struct ProviderTransientRecord {
     binding: ProviderTransientBinding,
     path: PathBuf,
     handle: ProviderTransientHandle,
+    retired: bool,
 }
 
 pub struct ProviderTransientManager {
@@ -200,6 +201,7 @@ impl ProviderTransientManager {
             binding,
             path,
             handle: handle.clone(),
+            retired: false,
         });
         Ok(handle)
     }
@@ -216,7 +218,7 @@ impl ProviderTransientManager {
         let record = self
             .records
             .iter()
-            .find(|record| record.handle.id == handle.id)
+            .find(|record| record.handle.id == handle.id && !record.retired)
             .ok_or_else(|| {
                 ProviderTransientError::new(ProviderTransientErrorCode::SourceChanged)
             })?;
@@ -271,7 +273,7 @@ impl ProviderTransientManager {
         let record = self
             .records
             .iter()
-            .find(|record| record.handle.id == handle.id)
+            .find(|record| record.handle.id == handle.id && !record.retired)
             .ok_or_else(|| {
                 ProviderTransientError::new(ProviderTransientErrorCode::SourceChanged)
             })?;
@@ -301,16 +303,21 @@ impl ProviderTransientManager {
             capsule_revision,
             generation,
         )?;
-        let record = self.records.remove(index).expect("located record exists");
-        remove_owned_file(&self.root, &record.path).map_err(|_| storage_error())?;
+        // Revoke access immediately, but retain deletion ownership until the
+        // native filesystem accepts cleanup. A retry must not revive a handle.
+        self.records[index].retired = true;
+        remove_owned_file(&self.root, &self.records[index].path)
+            .map_err(|_| storage_error())?;
+        self.records.remove(index);
         Ok(true)
     }
 
     pub fn cleanup_expired(&mut self, now_ms: u64) -> usize {
         let mut removed = 0;
         let mut retained = VecDeque::with_capacity(self.records.len());
-        while let Some(record) = self.records.pop_front() {
-            if now_ms >= record.binding.expires_at_ms {
+        while let Some(mut record) = self.records.pop_front() {
+            if record.retired || now_ms >= record.binding.expires_at_ms {
+                record.retired = true;
                 if remove_owned_file(&self.root, &record.path).is_ok() {
                     removed += 1;
                 } else {
@@ -347,8 +354,9 @@ impl ProviderTransientManager {
     ) -> usize {
         let mut removed = 0;
         let mut retained = VecDeque::with_capacity(self.records.len());
-        while let Some(record) = self.records.pop_front() {
+        while let Some(mut record) = self.records.pop_front() {
             if predicate(&record) {
+                record.retired = true;
                 if remove_owned_file(&self.root, &record.path).is_ok() {
                     removed += 1;
                 } else {
@@ -686,26 +694,170 @@ current-context: context-one
         }
     }
     #[test]
-    fn capacity_disable_and_repeated_shutdown_are_bounded() {
-        for cycle in 0..64_u64 {
+    #[cfg(windows)]
+    fn failed_revoke_retains_file_ownership_until_cleanup_can_retry() {
+        use std::os::windows::fs::OpenOptionsExt;
+        for _ in 0..4 {
             let (_temporary, mut manager) = manager();
+            let handle = manager
+                .publish(binding(1, 10_000), KUBECONFIG, 100)
+                .unwrap();
+            let path = manager
+                .exact_path(&handle, "capsule-one", 7, 3, 1)
+                .unwrap()
+                .to_owned();
+            // A real native sharing violation must not release the bookkeeping
+            // slot while private material still exists on disk.
+            let locked = fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&path)
+                .unwrap();
+            assert_eq!(
+                manager
+                    .revoke(handle.id(), "capsule-one", 7, 3, 1)
+                    .unwrap_err()
+                    .code(),
+                ProviderTransientErrorCode::PrivateStorageUnavailable
+            );
+            assert_eq!(
+                manager.records.len(),
+                1,
+                "failed deletion retains cleanup ownership"
+            );
+            assert!(path.exists());
+            assert_eq!(manager.shutdown(), 0);
+            assert_eq!(manager.records.len(), 1);
+            drop(locked);
+            assert!(manager.revoke(handle.id(), "capsule-one", 7, 3, 1).unwrap());
+            assert!(!path.exists());
+            assert!(manager.records.is_empty());
+            manager.shutdown();
+            assert!(!manager.root.exists());
+        }
+    }
+
+    #[test]
+    #[cfg(windows)]
+    fn failed_cleanup_revokes_access_before_retry_for_every_retirement_path() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let mut observations = Vec::new();
+        for operation in ["revoke", "disable", "session", "expiry", "shutdown"] {
+            let (_temporary, mut manager) = manager();
+            let handle = manager
+                .publish(binding(1, 10_000), KUBECONFIG, 100)
+                .unwrap();
+            let path = manager
+                .exact_path(&handle, "capsule-one", 7, 3, 1)
+                .unwrap()
+                .to_owned();
+            let locked = fs::OpenOptions::new()
+                .read(true)
+                .share_mode(0)
+                .open(&path)
+                .unwrap();
+            assert_eq!(
+                manager
+                    .revoke(handle.id(), "sibling", 7, 3, 1)
+                    .unwrap_err()
+                    .code(),
+                ProviderTransientErrorCode::CrossSession
+            );
+            assert_eq!(
+                manager
+                    .revoke(handle.id(), "capsule-one", 7, 3, 2)
+                    .unwrap_err()
+                    .code(),
+                ProviderTransientErrorCode::StaleGeneration
+            );
+            assert!(
+                manager.exact_path(&handle, "capsule-one", 7, 3, 1).is_ok(),
+                "invalid callers cannot retire another owner"
+            );
+            match operation {
+                "revoke" => {
+                    assert!(manager.revoke(handle.id(), "capsule-one", 7, 3, 1).is_err())
+                }
+                "disable" => assert_eq!(manager.disable_provider(ProviderKind::Aws), 0),
+                "session" => assert_eq!(manager.revoke_session("capsule-one", 7), 0),
+                "expiry" => assert_eq!(manager.cleanup_expired(10_000), 0),
+                "shutdown" => assert_eq!(manager.shutdown(), 0),
+                _ => unreachable!(),
+            }
+            let denied_path =
+                manager.exact_path(&handle, "capsule-one", 7, 3, 1).is_err();
+            drop(locked);
+            assert!(
+                path.is_file(),
+                "access revocation and physical deletion are independent"
+            );
+            // Restoring filesystem access or observing an earlier clock must
+            // never reactivate the handle retained solely for cleanup.
+            let denied_source = manager
+                .revalidate(&handle, "capsule-one", 7, 3, 1, 100)
+                .is_err_and(|error| {
+                    error.code() == ProviderTransientErrorCode::SourceChanged
+                });
+            let cleaned = manager.cleanup_expired(100);
+            observations.push((operation, denied_path, denied_source, cleaned));
+            manager.shutdown();
+            assert!(!path.exists());
+            assert!(!manager.root.exists());
+        }
+        for (operation, denied_path, denied_source, cleaned) in observations {
+            assert!(
+                denied_path && denied_source,
+                "{operation} retained an active handle after cleanup failure"
+            );
+            assert_eq!(
+                cleaned, 1,
+                "{operation} pending cleanup must retry before its original expiry"
+            );
+        }
+    }
+
+    #[test]
+    fn capacity_disable_and_repeated_shutdown_are_bounded() {
+        // A native run stalled in this lifecycle with no operation evidence.
+        // Captured numeric checkpoints identify the next blocked filesystem
+        // phase without exposing transient contents, paths or host identities.
+        for cycle in 0..64_u64 {
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=open");
+            let (_temporary, mut manager) = manager();
+            let owned_root = manager.root.clone();
             for index in 0..MAX_PROVIDER_TRANSIENTS {
                 let mut item = binding(index as u64 + 1, 10_000);
                 item.capsule_id = format!("capsule-{cycle}-{index}");
                 item.session_id = index as u64 + 1;
+                eprintln!("provider-transient lifecycle cycle={cycle} phase=publish item={index}");
                 manager.publish(item, KUBECONFIG, 100).unwrap();
             }
+            assert_eq!(
+                fs::read_dir(&owned_root).unwrap().count(),
+                MAX_PROVIDER_TRANSIENTS,
+                "every live transient must have exactly one owned file"
+            );
             let mut extra = binding(99, 10_000);
             extra.capsule_id = "capacity-extra".into();
             assert_eq!(
                 manager.publish(extra, KUBECONFIG, 100).unwrap_err().code(),
                 ProviderTransientErrorCode::CapacityExceeded
             );
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=disable");
             assert_eq!(
                 manager.disable_provider(ProviderKind::Aws),
                 MAX_PROVIDER_TRANSIENTS
             );
+            assert_eq!(fs::read_dir(&owned_root).unwrap().count(), 0);
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=shutdown");
             assert_eq!(manager.shutdown(), 0);
+            assert!(!owned_root.exists(), "shutdown must remove its owned root");
+            assert_eq!(manager.shutdown(), 0);
+            assert!(
+                !owned_root.exists(),
+                "repeated shutdown must not recreate state"
+            );
+            eprintln!("provider-transient lifecycle cycle={cycle} phase=complete");
         }
     }
 

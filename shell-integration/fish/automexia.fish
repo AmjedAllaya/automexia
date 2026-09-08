@@ -14,7 +14,72 @@ set -gx TERM_PROGRAM Automexia
 set -gx COLORTERM truecolor
 set -g __automexia_fish_prompt_generation 0
 
+function __automexia_hint_encode --argument-names value
+    test -n "$value"; or return 0
+    test (string length -- "$value") -le 4096; or return 1
+    string match -rq '[\x00-\x1f\x7f-\x9f]' -- "$value"; and return 1
+    command -q base64; and command -q tr; or return 1
+    set -l encoded (printf '%s' "$value" | command base64 2>/dev/null | command tr -d '\r\n')
+    contains -- 1 $pipestatus; and return 1
+    # Fish counts Unicode scalars. Base64 length plus padding independently
+    # bounds the original UTF-8 payload to 4096 bytes on older Fish versions.
+    set -l size (string length -- "$encoded")
+    test $size -gt 0; and test $size -le 5464; or return 1
+    if test $size -eq 5464; and not string match -q '*==' -- "$encoded"
+        return 1
+    end
+    printf '%s' "$encoded"
+end
+
+function __automexia_publish_location_hints
+    set -l hint_home "$HOME"
+    set -l hint_config ''
+    if set -q -x KUBECONFIG
+        if not set -q KUBECONFIG[2]
+            set hint_config "$KUBECONFIG"
+        else if set -q --path KUBECONFIG
+            set hint_config (string join ':' -- $KUBECONFIG | string collect --allow-empty)
+        else
+            set hint_config (string join ' ' -- $KUBECONFIG | string collect --allow-empty)
+        end
+    end
+    if test "$AUTOMEXIA_CONTEXT_PATH_HINTS" = 0; or \
+            test (string length -- "$hint_home") -gt 4096; or \
+            test (string length -- "$hint_config") -gt 4096
+        set hint_home ''; set hint_config ''
+    end
+    if not set -q __automexia_location_ready; or \
+            test "$hint_home" != "$__automexia_location_home"; or \
+            test "$hint_config" != "$__automexia_location_config"
+        set -g __automexia_location_home "$hint_home"
+        set -g __automexia_location_config "$hint_config"
+        set -g __automexia_home_encoded (__automexia_hint_encode "$hint_home")
+        set -l home_result $status
+        set -g __automexia_config_encoded (__automexia_hint_encode "$hint_config")
+        set -l config_result $status
+        if test $home_result -ne 0; or test $config_result -ne 0
+            set -g __automexia_home_encoded ''; set -g __automexia_config_encoded ''
+        end
+        set -g __automexia_location_ready 1
+    end
+    printf '\e]1337;SetUserVar=automexia_env_HOME=%s\a' "$__automexia_home_encoded"
+    printf '\e]1337;SetUserVar=automexia_env_KUBECONFIG=%s\a' "$__automexia_config_encoded"
+end
+
+# Fish owns these existing identity fields too. Cache their encoding once, then
+# restore the parent identity after nested Bash/Zsh/WSL sessions on every prompt.
+set -g __automexia_fish_distro (__automexia_hint_encode "$WSL_DISTRO_NAME")
+set -g __automexia_fish_user (__automexia_hint_encode "$USER")
+set -g __automexia_fish_shell (__automexia_hint_encode (status fish-path))
+
 function __automexia_fish_prompt --on-event fish_prompt
+    printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
+    printf '\e]1337;SetUserVar=automexia_distro=%s\a' "$__automexia_fish_distro"
+    printf '\e]1337;SetUserVar=automexia_shell_user=%s\a' "$__automexia_fish_user"
+    printf '\e]1337;SetUserVar=automexia_shell_path=%s\a' "$__automexia_fish_shell"
+    printf '\e]1337;SetUserVar=automexia_os_version=\a'
+    __automexia_publish_location_hints
+    printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
     set -g __automexia_fish_prompt_generation \
         (math --scale 0 "$__automexia_fish_prompt_generation + 1")
     printf '\e]133;A;aid=%s\a' "$__automexia_fish_prompt_generation"

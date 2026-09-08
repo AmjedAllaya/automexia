@@ -162,6 +162,18 @@ reproduces cross-window teardown, capture the exact shortcut/control, shell,
 and `automexia --version`, then run the native window/resize gate and report a
 platform regression.
 
+## The terminal stays visible after closing
+
+Current source dismisses confirmed closing windows before native shell and
+background-service waits. It also drains saturated Windows output during PTY
+teardown and retains final buffered output before pipe EOF. Restart a build
+containing these changes; the earlier 0.4.0 package does not contain them.
+
+Distinguish a window that remains visible from a process that is briefly
+finishing cleanup. If either remains stuck, report which close control was used,
+the number of windows/panes, whether a command was producing output, OS/build,
+shell and application version. Do not include private command contents or paths.
+
 ## Report a reproducible issue
 
 Include:

@@ -27,6 +27,10 @@ repository = "https://github.com/raphamorim/sugarloaf"
 [lib]
 crate-type = ["rlib"]
 
+[[bench]]
+name = "ui_text"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -58,7 +62,8 @@ parking_lot = { workspace = true }
 dashmap = { workspace = true }
 approx = "0.5.1"
 smallvec = { workspace = true }
-skrifa = "0.44.0"
+# Match Swash's font parser generation instead of shipping two parser stacks.
+skrifa = "=0.44.0"
 halfbrown = "0.4.0"
 half = "2.6.0"
 num-traits = "0.2.19"

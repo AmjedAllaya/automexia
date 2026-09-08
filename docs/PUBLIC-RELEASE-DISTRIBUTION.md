@@ -1,7 +1,8 @@
 # Public Linux Early Access distribution
 
-Status: **v0.4.0 is published as signed, immutable Linux Early Access on GitHub;
-website activation is not completed**.
+Status: Linux Early Access `v0.4.0` is published in the public binary repository.
+New candidates remain gated by native package, signing and publication evidence.
+Website activation is a separate gate; publication alone does not enable routes.
 
 [Download v0.4.0](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0).
 The release contains x64 and Arm64 DEB, RPM and portable archives. It is an
@@ -58,8 +59,9 @@ names from that single source so a future revision change cannot silently split
 the native package and website contracts.
 
 The public release also requires `SHA256SUMS`, `SHA256SUMS.minisig`, the public
-minisign key, SPDX and CycloneDX SBOMs, release notes, install/remove guidance,
-third-party notices, and `public-distribution-manifest-v1.json`. Extra packages,
+minisign key, release notes, install/remove guidance, third-party notices, and
+`public-distribution-manifest-v2.json`: fourteen assets in total. Full SPDX and
+CycloneDX inventories are private evidence, not public assets. Extra packages,
 AppImages, Windows/macOS files, executables, symbols, keys, links, or unowned
 files fail the gate.
 
@@ -94,8 +96,9 @@ route returns a real 404 without a `Location` header.
    `Cargo.lock`, and cleans lint artifacts before the all-feature test build.
 4. Native Ubuntu x64 and Arm64 runners build and test DEB/RPM/tar install and
    removal lifecycles.
-5. The workflow creates the exact manifest, public documents, and two SBOMs;
-   signs `SHA256SUMS`; and revalidates the complete bundle.
+5. The workflow creates the exact manifest and public documents. It generates
+   two private SBOMs, validates and retains them privately, signs `SHA256SUMS`,
+   and revalidates the complete bundle.
 6. Only then does it mint a one-hour GitHub App token scoped to
    `automexia-releases` with contents-write and administration-read permissions.
 7. It requires the archive to be public and passive, immutable releases enabled,
@@ -115,6 +118,84 @@ route returns a real 404 without a `Location` header.
    commit and manifest digest into the activation seal, runs its independent live
    download/signature verifier, reviews a deployment preview, then changes the
    channel to available.
+
+## SBOM privacy boundary in current source
+
+The assembler pins Syft `v1.51.1`, the generator used by the first prerelease.
+Raw SPDX/CycloneDX output stays in job-owned `sbom-private` scratch. Artifact,
+release-asset and dependency-snapshot uploads are explicitly disabled on both
+scanner steps. `prepare-sboms` writes only to private `sbom-reviewed` evidence,
+retained for seven days only when the source repository is private. It completes
+before the signing step, and all three job-owned scan directories receive scratch
+cleanup runs even after a failure. This source correction does not rewrite the
+existing immutable `v0.4.0` assets and has not yet run in a new hosted release.
+
+Preparation preserves package versions, purls, licenses, file checksums,
+identifiers and graph relationships. Only known Syft file/location fields and
+its recognized source-info templates are normalized to `Cargo.lock` or one of
+the six exact `packages/<filename>` inputs. An absolute file location must
+belong to the explicitly supplied scan root; virtual Syft locations are accepted
+only in their documented fields. Unknown locations are rejected, not guessed.
+
+Both formats must identify the product/version and required dependency graph,
+agree on hashed scan-input files, and contain no duplicate identities or dangling
+relationships. Versionless file/root entries cannot inflate the package minimum.
+Privacy checks cover all keys and string values, including encoded file URLs,
+credential-bearing URLs, local paths and unsafe control/bidi text. They are
+bounded by 16 MiB per document, 250,000 structural nodes, depth 48 and 256 KiB per
+string. Rejection logs do not echo metadata. Both documents validate before any
+private evidence write; replacement is atomic per file. A write failure blocks signing.
+
+These semantic/privacy checks are not a complete third-party schema validator
+or proof that arbitrary prose contains no confidential data. Review the actual
+package/SBOM delta, run the secret scanner, and inspect final signed bytes before
+publication. Native package and hosted signing evidence remain mandatory.
+
+### Minimal public metadata and document review
+
+Schema 2 admits only fixed product/channel/repository identity, version, tag,
+reviewed source commit, version-pinned URLs, six exact Linux package records,
+sizes, SHA-256 digests, verification filenames and four document digests. Unknown
+fields are rejected at every object level. It contains no dependency graph,
+build paths, scanner internals, private crate inventory or arbitrary properties.
+
+`docs/public-release/reviewed-documents.json` pins the exact LF/UTF-8 bytes of
+installation, removal, release notes and public third-party notices. An edit
+requires reviewing the actual public text and intentionally updating that digest;
+do not automatically refresh this policy in CI. Verification rejects edits even
+when the bundle checksums have been recomputed. Private paths, encoded file URLs,
+credential-bearing/private-host URLs and unsafe controls also fail after a
+mistaken digest refresh. Key/signature comments use bounded canonical templates.
+
+Before assembling a candidate, run:
+
+```text
+python tools/ci/public_distribution.py verify-documents --directory docs/public-release
+```
+
+The workflow checks the
+staged copies before exposing the signing key, rechecks the complete fourteen
+asset bundle before obtaining write authority, and checks every uploaded asset.
+No scanner or review-policy file is eligible for public upload. Both full
+inventories remain available privately for security and license review.
+
+The first immutable `v0.4.0` release remains schema 1 with its original sixteen
+assets. These source changes do not remove already-public metadata. The website
+keeps that activated contract intact and accepts schema 2 independently; schema
+1 is not accepted for another version. Select `public-distribution-manifest-v2.json`
+when activating a new candidate and rerun independent live verification. Do not
+rewrite the first release or treat a local test as a deployment receipt.
+
+Required licenses are not confidential build inventories. The public notice
+contains inherited MIT and font license texts; existing package licenses are
+unchanged. Audit redistribution obligations against the actual shipped package,
+including the MPL-covered component's corresponding-source availability. This
+change does not supply an unverified source offer or waive that release gate.
+
+See [ADR 0046](adr/0046-minimal-public-release-metadata.md) for ownership,
+alternatives, failure behavior and migration evidence.
+The location distinction follows [Syft's CycloneDX encoder](https://github.com/anchore/syft/blob/v1.51.1/syft/format/common/cyclonedxhelpers/to_format_model.go);
+creation/provenance fields follow the [SPDX 2.3 specification](https://spdx.github.io/spdx-spec/v2.3/document-creation-information/).
 
 ## Credential-free rehearsal
 

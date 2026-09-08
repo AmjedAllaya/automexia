@@ -344,6 +344,12 @@ def validate_sboms(
         name = package.get("name")
         package_version = package.get("versionInfo")
         package_id = package.get("SPDXID")
+        if (package.get("primaryPackagePurpose") == "FILE"
+                and isinstance(package_id, str) and package_id.startswith("SPDXRef-DocumentRoot-")
+                and isinstance(name, str) and name and package.get("filesAnalyzed") is False):
+            # The directory being scanned is not a versioned dependency and
+            # cannot contribute to the minimum shared package inventory.
+            continue
         if (
             not isinstance(name, str)
             or not name
@@ -376,7 +382,7 @@ def validate_sboms(
         or cyclonedx.get("bomFormat") != "CycloneDX"
         or not isinstance(cyclonedx.get("specVersion"), str)
         or not str(cyclonedx.get("serialNumber", "")).startswith("urn:uuid:")
-        or not isinstance(cyclonedx.get("version"), int)
+        or type(cyclonedx.get("version")) is not int
         or cyclonedx["version"] < 1
         or not isinstance(cyclonedx.get("metadata"), dict)
     ):
@@ -395,6 +401,21 @@ def validate_sboms(
         name = component.get("name")
         component_version = component.get("version")
         component_type = component.get("type")
+        if component_type == "file":
+            # Syft files have content hashes and references, not package versions.
+            # They do not count toward the required cross-format package graph.
+            hashes = component.get("hashes")
+            hash_lengths = {"SHA-1": 40, "SHA-256": 64, "SHA-512": 128}
+            if (not isinstance(name, str) or not name
+                    or not isinstance(component.get("bom-ref"), str) or not component["bom-ref"]
+                    or not isinstance(hashes, list) or not hashes
+                    or any(not isinstance(item, dict) or item.get("alg") not in hash_lengths
+                           or not isinstance(item.get("content"), str)
+                           or re.fullmatch(r"[0-9a-fA-F]{" + str(hash_lengths[item["alg"]]) + r"}", item["content"]) is None
+                           for item in hashes)
+                    or not any(item["alg"] in {"SHA-256", "SHA-512"} for item in hashes)):
+                raise ReleaseTrustError("CycloneDX file identity or checksum is incomplete")
+            continue
         if (
             not isinstance(name, str)
             or not name
