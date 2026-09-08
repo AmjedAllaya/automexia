@@ -96,6 +96,13 @@ The exact current status and remaining external gates are documented in
 
 ### Build and CI performance status
 
+**Fully done (QA diagnostic contract):** generated log and command-label
+redaction handles case-folded and nested-escaped workspace/home prefixes.
+Fictional-path and real failed-subprocess regressions preserve exact logical
+labels, unrelated diagnostic text and the original failed exit. This does not
+clear an unexplained earlier test failure or replace hosted/native evidence.
+See [QA diagnostic privacy](TESTING.md#qa-diagnostic-privacy).
+
 | Status | Feature | Remaining requirement |
 |---|---|---|
 | **Fully done (source and policy)** | Readiness avoids the duplicate pre-Clippy Cargo check; quality jobs use a reviewed, versioned compiler cache; Cargo source caches share a lockfile-bound identity; native x64/Arm64 package jobs run beside quality while remaining cold; nFPM uses checksum-pinned native archives; downstream jobs join all required evidence; semantic mutation tests guard every boundary | Preserve the cold package boundary and rerun all mutations for every workflow or toolchain change. |

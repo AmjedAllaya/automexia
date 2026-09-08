@@ -1,5 +1,16 @@
 # Testing
 
+## QA diagnostic privacy
+
+Run `python3 -m unittest discover -s tools/ci -p test_qa.py` after changing the
+QA runner. Fictional-path regressions cover workspace/home precedence, case
+changes, slash variants, escaped tracebacks and literal regex characters. A real
+failing subprocess verifies that captured logs and command labels are redacted
+while the original nonzero exit and failed verdict remain intact. Existing
+output ceilings, timeout cleanup and source-identity checks remain mandatory.
+Re-scan generated evidence before sharing it; a later passing run does not
+clear an unexplained earlier failure.
+
 ## Operational status colour regression
 
 Run the focused classifier and actual grid-renderer tests:

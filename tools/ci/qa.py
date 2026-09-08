@@ -97,15 +97,19 @@ def make_redactor():
     replacements.extend(
         (value.replace("\\", "/"), label) for value, label in original_replacements
     )
-    replacements.extend(
-        (value.replace("\\", "\\\\"), label)
-        for value, label in original_replacements
-        if "\\" in value
-    )
+    # Assertion diagnostics may lowercase or escape complete tracebacks.
+    # Match literal roots regardless of case, with the most specific root first.
+    # A run of backslashes also covers nested repr/JSON command diagnostics.
+    prefix_patterns = [
+        (re.compile(re.escape(source).replace(r"\\", r"\\+"), re.IGNORECASE), label)
+        for source, label in sorted(
+            dict(replacements).items(), key=lambda item: len(item[0]), reverse=True
+        )
+    ]
 
     def redact(value: str) -> str:
-        for source, label in replacements:
-            value = value.replace(source, label)
+        for pattern, label in prefix_patterns:
+            value = pattern.sub(label, value)
         for pattern in TOKEN_PATTERNS:
             value = pattern.sub(
                 lambda match: (match.group(1) if match.lastindex else "") + "<REDACTED>",

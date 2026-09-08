@@ -476,6 +476,13 @@ authorization rather than failing an unrelated branch grammar later.
 
 ### contributor-automation-quality-policy
 
+QA diagnostic privacy tests exercise case-folded and escaped local prefixes
+through the real failed-subprocess capture path. Use fictional roots and exact
+logical-label expectations, preserve the original nonzero exit and failed
+verdict, and cover nested home/workspace precedence, literal regex characters
+and unchanged unrelated text. Keep output ceilings and source-identity checks;
+scan generated evidence without deleting or reclassifying earlier failures.
+
 `.github/scripts/check_free_plan_contract.py` and
 `tools/ci/test_free_plan_contract.py` own compiler assurance. Compare every stable workflow's effective Rustup
 selector with the bounded canonical pin, not just find an install command.

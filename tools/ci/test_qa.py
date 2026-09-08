@@ -225,6 +225,46 @@ class QaRunnerTests(unittest.TestCase):
             self.assertIn("TimeoutExpired", str(result["error"]))
             self.assertFalse(sentinel.exists())
 
+    def test_local_prefix_redaction_handles_case_and_escaped_spellings(self) -> None:
+        # Failed assertion messages can lowercase an escaped traceback. Keep
+        # workspace labels more specific than the enclosing home prefix.
+        with (
+            mock.patch.object(QA, "ROOT", pathlib.PureWindowsPath(r"Q:\Fixture\Work[1]")),
+            mock.patch.object(QA.pathlib.Path, "home", return_value=pathlib.PureWindowsPath(r"Q:\Fixture")),
+        ):
+            redact = QA.make_redactor()
+        for prefix, label in ((r"Q:\Fixture\Work[1]", "<WORKSPACE>"), (r"Q:\Fixture", "<HOME>")):
+            for separator in ("\\", "/", "\\\\", "\\" * 4, "\\" * 8):
+                spelled = prefix.replace("\\", separator)
+                suffix = separator + "tools" + separator + "Case.py"
+                for transform in (str, str.lower, str.upper, str.swapcase):
+                    with self.subTest(label=label, separator=separator, case=transform.__name__):
+                        self.assertEqual(redact(transform(spelled) + suffix), label + suffix)
+        self.assertEqual(redact(r"Q:\Fixture\Work1\file"), r"<HOME>\Work1\file")
+        self.assertEqual(redact(r"Q:\Unrelated\Case.py"), r"Q:\Unrelated\Case.py")
+
+    def test_failed_subprocess_log_redacts_case_folded_tracebacks_without_hiding_failure(self) -> None:
+        with (
+            mock.patch.object(QA, "ROOT", pathlib.PureWindowsPath(r"Q:\Fixture\Work[1]")),
+            mock.patch.object(QA.pathlib.Path, "home", return_value=pathlib.PureWindowsPath(r"Q:\Fixture")),
+        ):
+            fixture_redact = QA.make_redactor()
+        original_redact = QA.REDACT
+        message = r"AssertionError: q:\\fixture\\work[1]\\tools\\check.py"
+        code = f"import sys; print({message!r}); sys.exit(7)"
+        with tempfile.TemporaryDirectory() as temporary, mock.patch.object(
+            QA, "REDACT", lambda value: original_redact(fixture_redact(value))
+        ):
+            run_dir = pathlib.Path(temporary)
+            result = self.run_step_quiet(
+                run_dir, 1, "failed-redaction-contract", [sys.executable, "-c", code], timeout_seconds=30
+            )
+            payload = (run_dir / str(result["log"])).read_text(encoding="utf-8")
+        self.assertEqual(result["status"], "fail")
+        self.assertEqual(result["return_code"], 7)
+        self.assertEqual(payload, r"AssertionError: <WORKSPACE>\\tools\\check.py" + "\n")
+        self.assertNotIn("q:", str(result["command"]))
+
     def test_logs_are_redacted_and_exactly_bounded(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
             run_dir = pathlib.Path(temporary)
