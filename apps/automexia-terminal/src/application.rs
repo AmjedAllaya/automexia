@@ -228,9 +228,17 @@ impl Application<'_> {
         let base_config = config;
         let preference_load = runtime_preferences::load();
         let user_preferences = preference_load.preferences;
-        let config = user_preferences.apply_to(&base_config);
+        let mut config = user_preferences.apply_to(&base_config);
+        let incompatible_shortcuts =
+            crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
 
         let mut router = Router::new(config.fonts.to_owned(), clipboard);
+        if incompatible_shortcuts {
+            router.propagate_error_to_next_route(preference_warning(
+                runtime_preferences::PreferenceErrorCode::InvalidData,
+                false,
+            ));
+        }
         if let Some(error) = config_error {
             router.propagate_error_to_next_route(error.into());
         }
@@ -259,7 +267,17 @@ impl Application<'_> {
             base_config,
             config,
             user_preferences,
-            preference_writer: runtime_preferences::writer(),
+            preference_writer: {
+                let mut writer = runtime_preferences::writer();
+                let proxy = event_proxy.clone();
+                writer.set_wake(std::sync::Arc::new(move || {
+                    proxy.send_event(
+                        RioEventType::Rio(RioEvent::PreferencesWritten),
+                        rio_backend::event::WindowId::from(0),
+                    );
+                }));
+                writer
+            },
             event_proxy,
             router,
             scheduler,
@@ -276,6 +294,7 @@ impl Application<'_> {
         has_font_updates: bool,
     ) {
         let mut config = self.user_preferences.apply_to(&self.base_config);
+        crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
         let theme = config
             .force_theme
             .map(|theme| theme.to_window_theme())
@@ -297,12 +316,96 @@ impl Application<'_> {
         self.preference_writer.submit(self.user_preferences.clone());
     }
 
+    fn apply_shortcut_edit(&mut self, window_id: rio_backend::event::WindowId) {
+        let Some(change) = self.router.routes.get_mut(&window_id).and_then(|route| {
+            route
+                .window
+                .screen
+                .renderer
+                .command_palette
+                .take_shortcut_change()
+        }) else {
+            return;
+        };
+        let mut candidate = self.user_preferences.clone();
+        let id = crate::bindings::shortcut::action_id(change.action);
+        candidate.shortcuts.retain(|record| record.action != id);
+        if let Some(trigger) = change.trigger {
+            candidate
+                .shortcuts
+                .push(rio_backend::config::bindings::UiShortcut {
+                    action: id,
+                    trigger,
+                });
+        }
+        let config = candidate.apply_to(&self.base_config);
+        let snapshot = match crate::bindings::registry::build(&config) {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                if let Some(route) = self.router.routes.get_mut(&window_id) {
+                    route.window.screen.renderer.command_palette.shortcut_save_failed("Shortcut conflicts with current configuration; choose another combination");
+                    route.request_redraw();
+                }
+                return;
+            }
+        };
+        self.user_preferences = candidate;
+        // Preserve the prepared theme/font configuration. This transaction changes
+        // only bindings, not window geometry, session state or OS registrations.
+        self.config.bindings = config.bindings;
+        for route in self.router.routes.values_mut() {
+            route
+                .window
+                .screen
+                .update_bindings(&self.config, snapshot.clone());
+            route.request_redraw();
+        }
+        let revision = self.preference_writer.submit(self.user_preferences.clone());
+        if let Some(route) = self.router.routes.get_mut(&window_id) {
+            let palette = &mut route.window.screen.renderer.command_palette;
+            if revision == 0 {
+                palette.shortcut_save_failed(
+                    "Active this session only; settings could not be queued",
+                );
+            } else {
+                palette.shortcut_save_started(revision);
+            }
+        }
+    }
+
+    fn finish_shortcut_writes(&mut self) {
+        if let Some((revision, result)) = self.preference_writer.completion() {
+            for route in self.router.routes.values_mut() {
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .command_palette
+                    .shortcut_write_finished(revision, result.is_ok())
+                {
+                    route.request_redraw();
+                }
+            }
+        }
+    }
+
     fn report_preference_write_failure(&mut self) {
         let Some(error) = self.preference_writer.take_error() else {
             return;
         };
         let report = preference_warning(error, false);
         for route in self.router.routes.values_mut() {
+            // The editor already shows the exact save outcome. Do not stack
+            // another modal over its retry and reset controls.
+            if route
+                .window
+                .screen
+                .renderer
+                .command_palette
+                .is_editing_shortcut()
+            {
+                continue;
+            }
             route.report_error(&report);
             route.request_redraw();
         }
@@ -1391,6 +1494,13 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
             }
+            RioEventType::Rio(RioEvent::ApplyShortcutEdit) => {
+                self.apply_shortcut_edit(window_id)
+            }
+            RioEventType::Rio(RioEvent::PreferencesWritten) => {
+                self.finish_shortcut_writes();
+                self.report_preference_write_failure();
+            }
             RioEventType::Rio(RioEvent::ToggleAppearanceTheme) => {
                 use rio_backend::config::theme::AppearanceTheme;
                 let current = self
@@ -1569,6 +1679,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
+                if route.window.screen.mouse.palette_consumes_button(
+                    button,
+                    state,
+                    route.window.screen.renderer.command_palette.is_enabled(),
+                ) {
+                    if button == MouseButton::Left {
+                        let id = route.window.screen.ctx().current_route();
+                        self.scheduler
+                            .unschedule(TimerId::new(Topic::SelectionScrolling, id));
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
                 if route.window.screen.renderer.confirm_quit.is_active() {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let scale = route.window.screen.sugarloaf.scale_factor();
@@ -1609,7 +1733,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
-                if route.window.screen.connection_hub_is_active() {
+                if route.window.screen.connection_hub_is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let scale = route.window.screen.sugarloaf.scale_factor();
                         let size = route.window.screen.sugarloaf.window_size();
@@ -1694,7 +1820,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     .island
                     .as_ref()
                     .is_some_and(|island| island.is_color_picker_open());
-                if picker_open {
+                if picker_open
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let _ = route.window.screen.handle_tab_appearance_picker_click();
                         route.request_redraw();
@@ -1824,8 +1952,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         let chrome_press = route.window.screen.take_chrome_press();
 
                         if let MouseButton::Left = button {
-                            // Search owns its complete surface before split
-                            // borders, terminal content, or window chrome.
+                            // The palette is the top modal; search remains above
+                            // split borders, terminal content and window chrome.
+                            if route
+                                .window
+                                .screen
+                                .handle_palette_click(&mut self.router.clipboard)
+                            {
+                                route.request_redraw();
+                                return;
+                            }
+
                             if route
                                 .window
                                 .screen
@@ -1863,15 +2000,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                         });
                                     return;
                                 }
-                            }
-
-                            if route
-                                .window
-                                .screen
-                                .handle_palette_click(&mut self.router.clipboard)
-                            {
-                                route.request_redraw();
-                                return;
                             }
 
                             let handled_by_island =
@@ -2776,6 +2904,46 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::Ime(ime) => {
+                if route.window.screen.renderer.command_palette.is_enabled() {
+                    if route
+                        .window
+                        .screen
+                        .renderer
+                        .command_palette
+                        .is_editing_shortcut()
+                    {
+                        route
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .interrupt_shortcut_capture();
+                    } else if let Ime::Commit(text) = ime {
+                        let mut query =
+                            route.window.screen.renderer.command_palette.query.clone();
+                        if text.len() <= 4096 {
+                            query.push_str(&text);
+                        }
+                        if route
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .is_action_search()
+                        {
+                            route.window.screen.set_action_query(query);
+                        } else {
+                            route
+                                .window
+                                .screen
+                                .renderer
+                                .command_palette
+                                .set_query(query);
+                        }
+                    }
+                    route.request_redraw();
+                    return;
+                }
                 if route.window.screen.renderer.assistant.is_active()
                     || route
                         .window
@@ -2863,6 +3031,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::Focused(focused) => {
+                if !focused {
+                    route
+                        .window
+                        .screen
+                        .renderer
+                        .command_palette
+                        .interrupt_shortcut_capture();
+                }
                 if self.config.hide_cursor_when_typing {
                     route.window.winit_window.set_cursor_visible(true);
                 }
@@ -2927,6 +3103,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::DroppedFile(path) => {
+                if route.window.screen.renderer.command_palette.is_enabled() {
+                    return;
+                }
                 if route.window.screen.renderer.assistant.is_active()
                     || route
                         .window
@@ -3265,6 +3444,7 @@ mod custom_chrome_tests {
             let mut preferences = UserPreferences {
                 font_size: Some(18.0),
                 appearance_theme: None,
+                ..UserPreferences::default()
             };
             assert_eq!(
                 apply_font_size_request(&mut preferences, FontSizeRequest::Set(invalid)),

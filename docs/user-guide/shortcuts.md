@@ -13,6 +13,63 @@ This page is the practical shortcut guide: the keys users reach for every day, h
 
 Open the command palette with `Ctrl+Shift+P` on Windows/Linux/BSD or `Cmd+Shift+P` on macOS. If you forget a key chord, use the palette rather than guessing.
 
+## Customize a shortcut in the palette
+
+In current source builds, open the command palette, find a command, and either
+**double-click its key badge** or select the command and press **F2**. A single
+click on the badge selects the row without running the command. Categories and
+provider-generated items are not editable shortcuts; open a category first.
+
+1. Press the desired key combination. The editor shows it for review; recording
+   never runs the command. Use Ctrl, Alt or Command with a letter, number or
+   navigation key, or a function key (F1–F20, with modifiers if desired).
+2. Resolve any conflict shown in the editor. Existing commands, typed sequence
+   prefixes, explicit unbinds and custom text bindings are protected. Choose a
+   different combination instead of silently taking another command's key.
+3. Press **Enter** or click **Save**. The shortcut changes in all current windows
+   without restarting sessions. Wait for **Saved** before relying on it after
+   restart. **Done** returns to the same palette query and selected command.
+4. **Esc** or **Cancel** discards an unsubmitted recording. Once Save has been
+   submitted, **Back/Esc** leaves the editor without undoing the submitted change.
+   **Reset** removes this command's UI override and restores its underlying
+   config/profile binding; it does not necessarily restore the factory default.
+
+Use Tab/Shift+Tab to move through recording, Save, Reset and Cancel. Key repeat
+cannot save or activate a command. Focus loss or a binding reload pauses recording;
+press the combination again. IME composition, dropped files, paste and mouse-wheel
+events do not become terminal input while the palette owns focus. A binding change
+in another window invalidates a queued edit before it can overwrite that change.
+
+The editor reserves Enter, Esc and Tab for its controls, leaves bare text entry
+alone, and rejects Ctrl+C/D/R/Z to protect shell interrupt, EOF, history and suspend.
+It edits one normal-terminal chord per catalog command, not global OS shortcuts,
+multi-step sequences, action chains, modal key tables or terminal application keys.
+Advanced or conditional typed bindings must be edited in `config.toml`.
+
+Saved shortcuts live in the existing private UI preference overlay; `config.toml`
+is never rewritten. UI overrides take priority in normal mode only. Search, Vi
+mode and alternate-screen applications retain their existing mappings. If an
+external config edit makes a stored override incompatible, live reload keeps the
+last good configuration. On restart, incompatible UI bindings are temporarily
+ignored with a settings warning, leaving the stored data recoverable. Resolve the
+config conflict or remove the conflicting `shortcuts` entries from the UI
+preferences file while Automexia is closed. Other preference fields need not change.
+
+A failed write is reported as **active this session only**, with Enter to retry.
+Check writable configuration storage and available disk space. Reset failures
+retry the reset, not an earlier recorded combination. The existing writer is
+bounded and atomic; separate application processes can still save last-writer-wins
+snapshots, so avoid editing preferences concurrently in independent processes.
+
+Automexia cannot guarantee a combination is unused by every OS, desktop, driver
+overlay, keyboard layout or shell. Keys intercepted outside the app never reach
+the recorder. Alt and Ctrl+Alt combinations show relevant warnings. Test the
+selected key with your desktop and keyboard layout before relying on it.
+
+This editor is not part of the already-published 0.4.0 package. Native desktop
+pixels, input-method behavior and screen-reader delivery require the validation
+described in [Testing](../TESTING.md#shortcut-editor-assurance).
+
 ## Feature launchers
 
 | Feature | Windows / Linux / BSD | macOS |

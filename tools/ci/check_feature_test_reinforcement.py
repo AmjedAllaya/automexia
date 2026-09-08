@@ -242,6 +242,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "windows-tabs-sessions-input": {
         "needed_tests": (
+            "Shortcut editor double-click and F2",
+            "stale queued edits",
+            "separate-process restart",
             "Persistent header Back",
             "independent legacy scoring",
             "exhaustive category coverage",
@@ -284,6 +287,8 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
 }
 
 NATIVE_CONTRACT_SOURCES = {
+    "shortcut_preferences": "apps/automexia-terminal/src/automexia/preferences.rs",
+    "shortcut_editor": "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs",
     "xtask": "tools/xtask/src/main.rs",
     "palette": "apps/automexia-terminal/src/renderer/command_palette.rs",
     "screen": "apps/automexia-terminal/src/screen/mod.rs",
@@ -393,10 +398,37 @@ def _require_order(text: str, fragments: tuple[str, ...], owner: str) -> None:
         cursor = position + len(fragment)
 
 
+def _validate_shortcut_editor_sources(sources: dict[str, str]) -> None:
+    # These checks guard cross-owner ordering; Rust behavioral tests remain the
+    # oracle for dispatch, persistence and state, not source token presence.
+    clean = {key: re.sub(r"//[^\n]*", "", value) for key, value in sources.items()}
+    screen = clean["screen"]
+    for start, end, downstream in [
+        ("pub(crate) fn paste_from_clipboard(", "fn finish_paste(", "clipboard.get(source)"),
+        ("pub fn paste(", "pub(crate) fn render_welcome(", "let search_active ="),
+    ]:
+        body = _source_slice(screen, start, end, "shortcut paste isolation")
+        _require_order(body, ("command_palette.is_enabled()", "return", downstream), "shortcut paste isolation")
+    apply = _source_slice(clean["application"], "fn apply_shortcut_edit(", "fn finish_shortcut_writes(", "shortcut transaction")
+    _require_order(apply, ("registry::build(&config)", "self.user_preferences = candidate", ".update_bindings("), "shortcut transaction")
+    if "update_config(" in apply or ".resize(" in apply:
+        raise ReinforcementError("shortcut publication must not resize or reload fonts")
+    writer = clean["shortcut_preferences"]
+    flush = _source_slice(writer, "pub fn flush(", "pub fn shutdown(", "shortcut durable failure")
+    _require_fragments(flush, ("!state.write_failed",), "shortcut durable failure")
+    worker = _source_slice(writer, "fn writer_loop(", "#[cfg(test)]", "shortcut write receipt")
+    _require_order(worker, ("state.completed = Some((revision, result))", "drop(state)", "notify();"), "shortcut write receipt")
+    _require_fragments(clean["shortcut_editor"], ("revision >= expected", "editor.saving = Some(0)", "if repeat", "reset_requested"), "shortcut state")
+    labels = _source_slice(clean["palette"], "pub fn set_effective_bindings(", "pub fn set_enabled(", "shortcut reload")
+    _require_order(labels, ("self.shortcut_change.take()", "self.interrupt_shortcut_capture()", "self.refresh_shortcut_current()"), "shortcut reload")
+
+
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
         raise ReinforcementError(f"native assurance sources are missing {sorted(missing)}")
+
+    _validate_shortcut_editor_sources(sources)
 
     stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
                            "if !native_gui {", "default resize stress dispatch")

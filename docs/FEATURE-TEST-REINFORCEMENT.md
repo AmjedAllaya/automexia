@@ -25,6 +25,12 @@ For every public behavior:
 
 ### identity-config-migration
 
+Shortcut editor assurance includes double-click/F2 capture, mode and profile
+conflicts, stale queued edits, no terminal input from IME/paste/drop, Reset retry,
+revision-tagged durable failure, and separate-process restart. Binding publication
+must not resize panes or reload fonts. Native pointer, pixels, keyboard layouts
+and screen-reader delivery remain external; see [the test protocol](TESTING.md#shortcut-editor-assurance).
+
 Reinforce first-run identity, non-overwrite, strict bounded parsing,
 transactional reload, private permissions, atomic replacement,
 last-known-good recovery, migration preview/apply/rollback, and side-by-side
@@ -179,6 +185,12 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Shortcut editor assurance includes double-click/F2 capture, mode and profile
+conflicts, stale queued edits, no terminal input from IME/paste/drop, Reset retry,
+revision-tagged durable failure, and separate-process restart. Binding publication
+must not resize panes or reload fonts. Native pointer, pixels, keyboard layouts
+and screen-reader delivery remain external; see [the test protocol](TESTING.md#shortcut-editor-assurance).
+
 Font upgrades must retain one compatible Skrifa/read-fonts generation across
 Swash, Sugarloaf and the glyph protocol. Run the unchanged all-feature dependency
 policy plus real glyph, fallback, fitting and raster tests; compiling two parser
@@ -294,6 +306,12 @@ live editor input at a fixed unsent sentinel so cursor-line drift cannot
 masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
+
+Shortcut editor assurance includes double-click/F2 capture, mode and profile
+conflicts, stale queued edits, no terminal input from IME/paste/drop, Reset retry,
+revision-tagged durable failure, and separate-process restart. Binding publication
+must not resize panes or reload fonts. Native pointer, pixels, keyboard layouts
+and screen-reader delivery remain external; see [the test protocol](TESTING.md#shortcut-editor-assurance).
 
 Keep header Back available independently of result scrolling and active search.
 Keep event normalization outside the shortcut candidate loop and action cloning

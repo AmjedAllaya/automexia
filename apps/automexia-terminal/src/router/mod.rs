@@ -178,7 +178,9 @@ impl Route<'_> {
 
         // Handle island color picker / rename input
         if let Some(ref mut island) = self.window.screen.renderer.island {
-            if island.is_color_picker_open() {
+            if island.is_color_picker_open()
+                && !self.window.screen.renderer.command_palette.is_enabled()
+            {
                 let consumed = island.handle_rename_input(
                     key_event,
                     &mut self.window.screen.context_manager,
@@ -199,11 +201,17 @@ impl Route<'_> {
                     .renderer
                     .command_palette
                     .handle_navigation_key(
-                        &key_event.logical_key,
+                        &{
+                            use rio_window::platform::modifier_supplement::KeyEventExtModifierSupplement;
+                            if self.window.screen.renderer.command_palette.is_editing_shortcut() { key_event.key_without_modifiers() } else { key_event.logical_key.clone() }
+                        },
                         self.window.screen.modifiers.state(),
                         key_event.repeat,
                     )
                 {
+                    if self.window.screen.renderer.command_palette.has_shortcut_change() {
+                        self.window.screen.context_manager.request_shortcut_edit();
+                    }
                     self.request_overlay_redraw();
                     return true;
                 }

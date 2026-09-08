@@ -106,6 +106,43 @@ pub fn platform_family() -> PlatformFamily {
 }
 
 pub fn build(config: &Config) -> Result<Option<RegistrySnapshot>, RegistryBuildError> {
+    super::shortcut::validate_records(&config.bindings.ui_shortcuts)
+        .map_err(|_| RegistryBuildError::InvalidUserBinding)?;
+    if !config.bindings.ui_shortcuts.is_empty() {
+        let mut base = config.clone();
+        base.bindings.ui_shortcuts.clear();
+        let baseline = build(&base)?;
+        let bindings = super::default_key_bindings(&base);
+        for record in &config.bindings.ui_shortcuts {
+            let action = super::shortcut::action_from_id(&record.action)
+                .ok_or(RegistryBuildError::InvalidUserBinding)?;
+            let candidate = super::shortcut::binding(action, &record.trigger)
+                .map_err(|_| RegistryBuildError::InvalidUserBinding)?;
+            // Default function-key escape bytes may be replaced, but an explicit
+            // user SendText/ReceiveChar/None is an intentional owner, not a default.
+            if base
+                .bindings
+                .keys
+                .iter()
+                .filter_map(|key| super::convert(key.clone()).ok())
+                .any(|key| {
+                    key.action != candidate.action && key.triggers_match(&candidate)
+                })
+            {
+                return Err(RegistryBuildError::InvalidUserBinding);
+            }
+            if super::shortcut::conflict(
+                action,
+                &record.trigger,
+                &bindings,
+                baseline.as_ref(),
+            )
+            .is_some()
+            {
+                return Err(RegistryBuildError::InvalidUserBinding);
+            }
+        }
+    }
     let requested = config.keyboard.binding_profile;
     if requested == ProfileId::Automexia && config.bindings.keybinds.is_empty() {
         return Ok(None);
@@ -142,6 +179,7 @@ pub fn build(config: &Config) -> Result<Option<RegistrySnapshot>, RegistryBuildE
         }
     }
     specs.extend(user);
+    specs = super::shortcut::apply_typed(&config.bindings.ui_shortcuts, specs);
 
     let mut report = compile_with_options(
         &specs,

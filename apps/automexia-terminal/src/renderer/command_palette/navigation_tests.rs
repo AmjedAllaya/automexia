@@ -830,3 +830,17 @@ fn benchmark_palette_browse_search_and_back() {
     });
     criterion.final_summary();
 }
+#[test]
+fn f2_enters_shortcut_editing_without_executing_the_selected_command() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    palette.set_query("Clone Active Session Right".into());
+    assert!(palette.get_selected_action().is_some());
+    assert!(palette.handle_navigation_key(
+        &rio_window::keyboard::Key::Named(rio_window::keyboard::NamedKey::F2),
+        rio_window::keyboard::ModifiersState::empty(),
+        false,
+    ));
+    assert!(palette.is_enabled());
+    assert_eq!(palette.query, "Clone Active Session Right");
+}

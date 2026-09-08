@@ -9,6 +9,12 @@ explicit opt-in profiles; they never replace the active default implicitly.
 their mode is active. A terminal application can own a key when the table says
 the action is mode-sensitive.
 
+Current source includes a contextual shortcut editor: select a command in the
+palette and press F2, or double-click its badge. Enter saves, Esc returns without
+saving an unsubmitted draft, Tab/Shift+Tab moves focus, and Reset restores the
+underlying configuration. See the [editor guide](../user-guide/shortcuts.md#customize-a-shortcut-in-the-palette)
+for scope, conflicts and persistence. The default tables below remain unchanged.
+
 ## Windows and Linux/BSD defaults
 
 ### Windows, tabs, and panes

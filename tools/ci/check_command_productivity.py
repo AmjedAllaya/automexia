@@ -218,6 +218,9 @@ D7_ACTION_PACK_SOURCE_FILES = {
     "apps/automexia-terminal/src/automexia/ecosystem.rs",
 }
 PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
+# ADR 0054 shares existing catalog identity with preference validation. This is
+# not Quick Action activation wiring; enforce its capability-free boundary.
+SHORTCUT_IDENTITY_FILE = "apps/automexia-terminal/src/automexia/shortcut_preferences.rs"
 CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
@@ -878,6 +881,19 @@ def workspace_runtime_files(root: Path) -> list[Path]:
     return sorted(files)
 
 
+def validate_shortcut_identity_source(root: Path, runtime_files: list[Path]) -> set[str]:
+    present = {path.relative_to(root).as_posix() for path in runtime_files}
+    if SHORTCUT_IDENTITY_FILE not in present:
+        return set()
+    content = re.sub(r"//[^\n]*", "", read_lower(root / SHORTCUT_IDENTITY_FILE))
+    marker = next((value for value in sorted(CP2_PURE_FORBIDDEN_MARKERS) if value in content), None)
+    if marker is not None:
+        raise CommandProductivityError(f"shortcut identity crosses its capability-free boundary: {marker!r}")
+    if "pub enum paletteaction" not in content or "pub fn validate_records" not in content:
+        raise CommandProductivityError("shortcut identity lost its reviewed enum/validation owner")
+    return {SHORTCUT_IDENTITY_FILE}
+
+
 def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[str]:
     present = {
         path.relative_to(root).as_posix()
@@ -1037,6 +1053,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     persistence_files = validate_persistence_sources(root, runtime_files)
     allowed_runtime_files = (
         pure_action_files
+        | validate_shortcut_identity_source(root, runtime_files)
         | persistence_files
         | CP2_PERSISTENCE_WIRING_FILES
         | CP2_ACTIVATION_WIRING_FILES

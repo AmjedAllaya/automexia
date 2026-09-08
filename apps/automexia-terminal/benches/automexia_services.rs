@@ -90,6 +90,7 @@ fn services(c: &mut Criterion) {
             preference_writer.submit(black_box(UserPreferences {
                 font_size: Some(18.0),
                 appearance_theme: None,
+                ..UserPreferences::default()
             }));
         })
     });

@@ -45,6 +45,23 @@ def apply_mutation(document: dict, case: dict) -> None:
 
 
 class CommandProductivityPolicyTests(unittest.TestCase):
+    def test_shared_shortcut_identity_is_not_a_new_runtime_activation_path(self) -> None:
+        reviewed = (ROOT / POLICY.SHORTCUT_IDENTITY_FILE).read_text(encoding="utf-8")
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / POLICY.SHORTCUT_IDENTITY_FILE
+            source.parent.mkdir(parents=True)
+            source.write_text(reviewed, encoding="utf-8")
+            self.assertEqual(POLICY.validate_shortcut_identity_source(root, [source]), {POLICY.SHORTCUT_IDENTITY_FILE})
+            for capability in ["use std::fs;", "use std::process::Command;", "use std::net;", "unsafe { invoke(); }", "teletypewriter::Pty;"]:
+                with self.subTest(capability=capability):
+                    source.write_text(reviewed + "\n" + capability, encoding="utf-8")
+                    with self.assertRaisesRegex(POLICY.CommandProductivityError, "capability-free boundary"):
+                        POLICY.validate_shortcut_identity_source(root, [source])
+            source.write_text(reviewed.replace("pub enum PaletteAction", "enum OtherIdentity"), encoding="utf-8")
+            with self.assertRaisesRegex(POLICY.CommandProductivityError, "reviewed enum/validation owner"):
+                POLICY.validate_shortcut_identity_source(root, [source])
+
     def setUp(self) -> None:
         self.contract = load_fixture("cp0-contract-v1.json")
         self.threats = load_fixture("cp0-threats-v1.json")

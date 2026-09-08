@@ -176,6 +176,9 @@ pub enum RioEvent {
     Paste,
     Copy(String),
     UpdateFontSize(FontSizeRequest),
+    /// Notification only: the application retains the bounded edit request.
+    ApplyShortcutEdit,
+    PreferencesWritten,
     Scroll(Scroll),
     ToggleFullScreen,
     ToggleAppearanceTheme,
@@ -380,6 +383,8 @@ impl Debug for RioEvent {
             }
             RioEvent::SelectionScrollTick => write!(f, "SelectionScrollTick"),
             RioEvent::UpdateTitles => write!(f, "UpdateTitles"),
+            RioEvent::ApplyShortcutEdit => write!(f, "ApplyShortcutEdit"),
+            RioEvent::PreferencesWritten => write!(f, "PreferencesWritten"),
             RioEvent::Noop => write!(f, "Noop"),
             RioEvent::Copy(_) => write!(f, "Copy"),
             RioEvent::Paste => write!(f, "Paste"),

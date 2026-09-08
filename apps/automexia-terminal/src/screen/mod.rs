@@ -1642,6 +1642,44 @@ impl Screen<'_> {
         &mut self.touchpurpose
     }
 
+    /// Binding-only publication must not resize panes, reload fonts or touch PTYs
+    /// except for the existing cancellation of pre-registry sequence bytes.
+    pub(crate) fn update_bindings(
+        &mut self,
+        config: &rio_backend::config::Config,
+        binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+    ) {
+        // Prefix state belongs to the registry generation. Flush retained
+        // bytes to each original PTY before the immutable snapshot swap.
+        let mut states = std::mem::take(&mut self.binding_states);
+        for (route_id, state) in &mut states {
+            let bytes =
+                state.cancel(automexia_keybindings::CancellationReason::RegistryReplaced);
+            if !bytes.is_empty() {
+                if let Some(context) = self.context_manager.get_by_route_id(*route_id) {
+                    context.messenger.send_write(bytes);
+                }
+            }
+        }
+        self.binding_registry = binding_registry;
+        self.last_compatibility_bindings.clear();
+        self.bindings = crate::bindings::default_key_bindings(config);
+        let legacy_unbinds = self
+            .binding_registry
+            .as_ref()
+            .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
+        self.renderer.command_palette.set_binding_registry(
+            self.binding_registry
+                .as_ref()
+                .map(|snapshot| snapshot.registry.as_ref()),
+            config.keyboard.binding_profile,
+            &legacy_unbinds,
+        );
+        self.renderer
+            .command_palette
+            .set_effective_bindings(&self.bindings, self.binding_registry.as_ref());
+    }
+
     /// update_config is triggered in any configuration file update
     #[inline]
     pub fn update_config(
@@ -1681,36 +1719,7 @@ impl Screen<'_> {
             .update_filters(config.renderer.filters.as_slice());
 
         if should_update_bindings {
-            // Prefix state belongs to the registry generation. Flush retained
-            // bytes to each original PTY before the immutable snapshot swap.
-            let mut states = std::mem::take(&mut self.binding_states);
-            for (route_id, state) in &mut states {
-                let bytes = state
-                    .cancel(automexia_keybindings::CancellationReason::RegistryReplaced);
-                if !bytes.is_empty() {
-                    if let Some(context) = self.context_manager.get_by_route_id(*route_id)
-                    {
-                        context.messenger.send_write(bytes);
-                    }
-                }
-            }
-            self.binding_registry = binding_registry;
-            self.last_compatibility_bindings.clear();
-            self.bindings = crate::bindings::default_key_bindings(config);
-            let legacy_unbinds = self
-                .binding_registry
-                .as_ref()
-                .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
-            self.renderer.command_palette.set_binding_registry(
-                self.binding_registry
-                    .as_ref()
-                    .map(|snapshot| snapshot.registry.as_ref()),
-                config.keyboard.binding_profile,
-                &legacy_unbinds,
-            );
-            self.renderer
-                .command_palette
-                .set_effective_bindings(&self.bindings, self.binding_registry.as_ref());
+            self.update_bindings(config, binding_registry);
         }
 
         // Apply configuration in-place. Replacing the renderer here used to
@@ -4079,6 +4088,28 @@ impl Screen<'_> {
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
+        let dimensions = (window_width, window_size.height, scale_factor);
+        if self
+            .renderer
+            .command_palette
+            .shortcut_editor_click(mouse_x, mouse_y, dimensions)
+        {
+            if self.renderer.command_palette.has_shortcut_change() {
+                self.context_manager.request_shortcut_edit();
+            }
+            self.mark_dirty();
+            return true;
+        }
+        if self.renderer.command_palette.shortcut_badge_click(
+            &mut self.sugarloaf,
+            mouse_x,
+            mouse_y,
+            dimensions,
+            matches!(self.mouse.click_state, ClickState::DoubleClick),
+        ) {
+            self.mark_dirty();
+            return true;
+        }
         if self.renderer.command_palette.try_back_click(
             mouse_x,
             mouse_y,
@@ -5868,6 +5899,9 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
         source: ClipboardType,
     ) -> bool {
+        if self.renderer.command_palette.is_enabled() {
+            return false;
+        }
         // Capture identity before asking the OS provider. No caller may derive
         // the destination from focus after a delayed clipboard read.
         let target = self.context_manager.current().paste_target();
@@ -5901,6 +5935,9 @@ impl Screen<'_> {
 
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
+        if self.renderer.command_palette.is_enabled() {
+            return;
+        }
         let search_active = self.search_active();
         if search_active {
             for c in text.chars().take(MAX_SEARCH_QUERY_BYTES) {

@@ -804,11 +804,9 @@ mod pane_tab_tests {
         }
         assert_eq!(grid.current().route_id, 22);
 
-        let mut mouse = Mouse {
-            x: 50.0,
-            y: 50.0,
-            ..Default::default()
-        };
+        let mut mouse = Mouse::default();
+        mouse.x = 50.0;
+        mouse.y = 50.0;
         assert!(grid.select_current_based_on_pointer(&mouse));
         assert_eq!(grid.current().route_id, 11);
         assert!(!grid.select_current_based_on_pointer(&mouse));

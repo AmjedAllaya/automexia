@@ -106,6 +106,14 @@ def serde_keys(body: str) -> set[str]:
             continue
         name = field.group(1)
         attributes = " ".join(pending_attributes)
+        serde_options = re.findall(r"#\[serde\((.*?)\)\]", attributes)
+        # A skipped input field is runtime state, not a config.toml setting.
+        # skip_serializing alone still permits configuration input.
+        if any(re.search(r"(?:^|,)\s*(?:skip|skip_deserializing)\s*(?:,|$)",
+                         re.sub(r'"(?:\\.|[^"\\])*"', '""', options))
+               for options in serde_options):
+            pending_attributes.clear()
+            continue
         rename = re.search(r'\brename\s*=\s*"([^"]+)"', attributes)
         keys.add(rename.group(1) if rename else name)
         pending_attributes.clear()

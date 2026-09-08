@@ -117,17 +117,17 @@
       "title": "OS windows, global and pane-local tabs, session cloning, shortcuts, command jumps, mouse, and clipboard",
       "components": ["apps/automexia-terminal", "automexia-keybindings", "rio-vt", "rio-window", "rio-notifier"],
       "documentation": {
-        "guide": ["docs/GETTING-STARTED.md#4-try-panes-tabs-and-selection", "docs/user-guide/shortcuts.md#search-and-scrollback"],
+        "guide": ["docs/GETTING-STARTED.md#4-try-panes-tabs-and-selection", "docs/user-guide/shortcuts.md#search-and-scrollback", "docs/user-guide/shortcuts.md#customize-a-shortcut-in-the-palette"],
         "reference": ["docs/KEYBOARD.md#windows-and-linuxbsd-defaults", "docs/GHOSTTY-COMPATIBILITY-ROADMAP.md#final-acceptance-gate"],
-        "explanation": ["docs/adr/0006-prompt-context-and-workspace-actions.md", "docs/adr/0007-pane-local-session-tabs.md", "docs/adr/0026-versioned-ghostty-keybinding-profiles.md"]
+        "explanation": ["docs/adr/0006-prompt-context-and-workspace-actions.md", "docs/adr/0007-pane-local-session-tabs.md", "docs/adr/0026-versioned-ghostty-keybinding-profiles.md", "docs/adr/0054-palette-shortcut-editor.md"]
       },
       "quality": {
-        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/bindings/mod.rs"]},
-        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette/navigation_tests.rs", "apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "rio-vt/src/crosswords/mod.rs", "automexia-keybindings/src/lib.rs", "automexia-keybindings/tests/properties.rs", "tests/integration/resize-stress-windows.ps1", "apps/automexia-terminal/src/application.rs", "tools/ci/test_feature_test_reinforcement.py"]},
+        "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"]},
+        "correctness": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette/navigation_tests.rs", "apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/screen/mod.rs", "apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "rio-vt/src/crosswords/mod.rs", "automexia-keybindings/src/lib.rs", "automexia-keybindings/tests/properties.rs", "tests/integration/resize-stress-windows.ps1", "apps/automexia-terminal/src/application.rs", "tools/ci/test_feature_test_reinforcement.py", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"]},
         "security": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/launch.rs", "apps/automexia-terminal/src/mouse/mod.rs", "automexia-keybindings/src/parser.rs", "automexia-keybindings/tests/properties.rs"]},
-        "performance": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", "rio-vt/benches/vt_input.rs", "tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1"]},
+        "performance": {"level": "controlled", "evidence": ["automexia-keybindings/benches/registry.rs", "rio-vt/benches/vt_input.rs", "tests/integration/session-clone-wsl-windows.ps1", "tests/integration/resize-stress-windows.ps1", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"]},
         "resource_lifetime": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1", "tests/integration/appverifier-windows.ps1"]},
-        "storage_hygiene": {"level": "not_applicable", "evidence": [], "rationale": "Window, tab, input, and clipboard routing do not own persistent storage."},
+        "storage_hygiene": {"level": "pr", "evidence": ["apps/automexia-terminal/src/automexia/preferences.rs", "apps/automexia-terminal/tests/user_preferences_restart.rs"]},
         "resilience": {"level": "pr", "evidence": ["apps/automexia-terminal/src/context/mod.rs", "apps/automexia-terminal/src/router/mod.rs", "automexia-keybindings/src/sequence.rs"]},
         "visual_quality": {"level": "controlled", "evidence": ["tests/integration/resize-stress-windows.ps1"]}
       },

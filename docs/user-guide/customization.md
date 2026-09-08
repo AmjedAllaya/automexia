@@ -12,11 +12,16 @@ Automexia is designed to work with **zero configuration**. The most maintainable
 | Font size or light/dark appearance changed in the running UI | Saved automatically for the next launch |
 | Different preferences by platform | Platform-specific config override tables |
 | Temporary diagnostic logging | `--enable-log-file` or log environment override |
-| Frequent UI action on another key | `[bindings]` custom binding |
+| Frequent UI action on another key | Double-click its palette badge or select it and press F2; use `[bindings]` for advanced mappings |
 | Occasional UI action | Command palette instead of adding a binding |
 | Different project launcher | Desktop/script launcher with CLI options rather than global config |
 
 This separation prevents the global config from becoming a collection of one-off project assumptions.
+
+See [Customize a shortcut](shortcuts.md#customize-a-shortcut-in-the-palette) for
+recording, conflict checks, Save/Reset, persistence and recovery. UI shortcuts use
+the same private preference store as font size and appearance, without rewriting
+your declarative configuration. Advanced bindings remain configuration-owned.
 
 ## Understand what controls the appearance
 

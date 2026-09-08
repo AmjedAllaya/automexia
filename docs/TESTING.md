@@ -1,5 +1,70 @@
 # Testing
 
+## Shortcut editor assurance
+
+Current source adds palette badge double-click and contextual F2 editing. Owners
+are `bindings/shortcut.rs`, `renderer/command_palette/shortcut_editor.rs`, the
+application binding-only transaction and `automexia/preferences.rs`.
+
+Run the following before a shortcut-editor change is considered ready for review:
+
+```text
+cargo test -p automexia-terminal --lib --bin automexia --locked
+cargo test -p automexia-terminal --test user_preferences_restart --locked
+cargo test -p automexia-terminal --bin automexia --locked benchmark_shortcut_record_validate_and_cancel -- --ignored --nocapture
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+cargo ready
+```
+
+The state tests exercise the live palette key/gesture owner, actual Windows,
+Linux/BSD and macOS default tables, typed profiles, explicit unbind/text conflicts,
+reserved and hostile keys, Enter repeat, reset/retry, stale queued edits and
+tiny-to-8K geometry. Independent original-table comparisons cover every classic
+mode-bit combination and all combinations of typed Search/Vi/alternate screen;
+changing normal-mode Paste or split keys must neither remove nor duplicate their
+existing actions in those modes. The writer test holds the real private-store lock to force a
+failed write, verifies unchanged primary data, consumes the error and requires
+flush to remain failed before a successful retry. A separate test process saves
+the shortcut and confirms restart/reset without modifying `config.toml`.
+Source-order mutation tests supplement, not replace, these behavioral oracles.
+The benchmark includes correctness assertions and reports model latency only.
+
+Native acceptance checklist (not established by a model or cross-platform table):
+
+1. Use a disposable config root with no personal startup scripts. Build the exact
+   candidate binary. Record its revision and renderer; do not change real settings.
+2. Open the palette, enter Panes & Sessions, and double-click the clone-right key
+   badge. First click must only select; second opens Edit shortcut, never a pane.
+   Repeat with F2. Both must preserve the query, category and selection on Back.
+3. Record a free combination, such as Ctrl+Shift+F9 if your environment leaves it
+   free. Verify the displayed modifiers, Save, then wait for Saved. Close the
+   palette and use the chord: exactly one cloned pane appears. The old default is
+   no longer an alias in normal mode. Reset and verify the original mapping.
+4. Retry with a conflict (for example the active palette launcher), plain text,
+   Ctrl+R, modifier-only keys, dead keys, IME, paste, right/middle click and a file
+   drop. No command runs or receives bytes while editing; the draft is not saved.
+5. Hold Enter across recording/review, press Esc before saving, and return after
+   Save. Test Reset before any draft and after a failed write, including clicking
+   Reset from each keyboard focus and retrying via Enter or the primary button.
+   No old candidate may replace a requested reset. Verify current/new-window and
+   process-restart behavior; keep a sibling terminal input sentinel unchanged.
+6. Change bindings in another window or reload the config while recording or
+   with a queued save. The stale draft/receipt must not overwrite the new state.
+   For an incompatible startup overlay, expect a warning and base bindings,
+   not a failed terminal launch or silent deletion of the stored preferences.
+7. Resize before clicking, scroll between clicks, switch focus and return. Check
+   tiny, narrow and maximized windows at 100–400% scale on CPU and WGPU. Compare
+   frozen full-frame pixels with zero tolerance and inspect both images; model
+   rectangles and literal CPU badge glyph tests are not full-dialog evidence.
+8. With Narrator/NVDA, VoiceOver and Orca on their native platforms, check the
+   dialog name, current/candidate value, conflict/save announcements, focus order,
+   return focus and 200%/400% scale. A test-only semantic summary is not proof of
+   OS accessibility delivery. Record each unavailable combination as external.
+
+Keep native desktop, assistive-technology and keyboard-layout results separate
+from library tests. No native editor acceptance is implied by these commands.
+
 Shortcut coverage includes all classic catalog actions against actual platform
 tables, exact mode/override guards, source-free labels, palette-only Enter, and
 literal CPU glyph pixels at 100–400%. The palette model benchmark is separate

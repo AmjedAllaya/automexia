@@ -343,6 +343,14 @@ hand-edited configuration. Writes use private permissions, temporary files,
 flush, atomic replacement where supported, and bounded recovery. The VT parser,
 renderer, PTY layer, and extensions do not own preference storage.
 
+The same overlay owns bounded, single-chord catalog shortcut edits. Palette
+recording is capability-free; the application validates the complete candidate
+against classic and typed owners before a binding-only publication. One existing
+writer persists the overlay and publishes revision-tagged completion before waking
+the event loop. Reset removes an override rather than modifying the base config.
+See [ADR 0054](adr/0054-palette-shortcut-editor.md) for conflict, recovery and
+modal-input boundaries. This adds no worker, dependency or OS hotkey registration.
+
 Migration from compatible predecessor configuration is explicit,
 non-destructive, reversible, and never overwrites the source.
 

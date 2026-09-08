@@ -82,6 +82,7 @@ impl From<crate::automexia::private_fs::PrivateFsError> for PreferenceError {
 pub struct UserPreferences {
     pub font_size: Option<f32>,
     pub appearance_theme: Option<AppearanceTheme>,
+    pub shortcuts: Vec<rio_backend::config::bindings::UiShortcut>,
 }
 
 impl UserPreferences {
@@ -93,10 +94,13 @@ impl UserPreferences {
         if let Some(theme) = self.appearance_theme {
             effective.force_theme = Some(theme);
         }
+        effective.bindings.ui_shortcuts = self.shortcuts.clone();
         effective
     }
 
     fn validate(&self) -> Result<(), PreferenceError> {
+        crate::automexia::shortcut_preferences::validate_records(&self.shortcuts)
+            .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
         if self.font_size.is_some_and(|value| {
             !value.is_finite() || !(MIN_FONT_POINTS..=MAX_FONT_POINTS).contains(&value)
         }) {
@@ -111,6 +115,8 @@ impl UserPreferences {
 struct StoredPreferences {
     #[serde(rename = "schema-version")]
     schema_version: u16,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    shortcuts: Vec<rio_backend::config::bindings::UiShortcut>,
     #[serde(default, rename = "font-size", skip_serializing_if = "Option::is_none")]
     font_size: Option<f32>,
     #[serde(
@@ -131,6 +137,7 @@ impl TryFrom<StoredPreferences> for UserPreferences {
         let preferences = Self {
             font_size: stored.font_size,
             appearance_theme: stored.appearance_theme,
+            shortcuts: stored.shortcuts,
         };
         preferences.validate()?;
         Ok(preferences)
@@ -141,6 +148,7 @@ impl From<&UserPreferences> for StoredPreferences {
     fn from(preferences: &UserPreferences) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
+            shortcuts: preferences.shortcuts.clone(),
             font_size: preferences.font_size,
             appearance_theme: preferences.appearance_theme,
         }
@@ -336,12 +344,15 @@ pub fn write_to_root(
 
 #[derive(Debug, Default)]
 struct WriterState {
-    pending: Option<UserPreferences>,
+    pending: Option<(u64, UserPreferences)>,
+    submitted: u64,
+    completed: Option<(u64, Result<(), PreferenceErrorCode>)>,
     writing: bool,
     stopping: bool,
     stopped: bool,
     maximum_pending_depth: usize,
     last_error: Option<PreferenceErrorCode>,
+    write_failed: bool,
 }
 
 type SharedWriterState = Arc<(Mutex<WriterState>, Condvar)>;
@@ -350,6 +361,7 @@ pub struct PreferenceWriter {
     root: PathBuf,
     shared: SharedWriterState,
     worker: Option<JoinHandle<()>>,
+    wake: Option<Arc<dyn Fn() + Send + Sync>>,
 }
 
 impl PreferenceWriter {
@@ -358,6 +370,7 @@ impl PreferenceWriter {
             root,
             shared: Arc::new((Mutex::new(WriterState::default()), Condvar::new())),
             worker: None,
+            wake: None,
         }
     }
 
@@ -367,39 +380,57 @@ impl PreferenceWriter {
         }
         let root = self.root.clone();
         let shared = Arc::clone(&self.shared);
+        let notify = self.wake.clone();
         match std::thread::Builder::new()
             .name("automexia-preferences".into())
-            .spawn(move || writer_loop(root, shared))
+            .spawn(move || writer_loop(root, shared, notify))
         {
             Ok(worker) => self.worker = Some(worker),
             Err(_) => {
                 let (lock, wake) = &*self.shared;
                 let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
                 state.last_error = Some(PreferenceErrorCode::Io);
+                state.write_failed = true;
                 state.stopped = true;
                 wake.notify_all();
             }
         }
     }
 
-    pub fn submit(&mut self, preferences: UserPreferences) {
+    pub fn set_wake(&mut self, wake: Arc<dyn Fn() + Send + Sync>) {
+        self.wake = Some(wake);
+    }
+
+    pub fn completion(&self) -> Option<(u64, Result<(), PreferenceErrorCode>)> {
+        self.shared
+            .0
+            .lock()
+            .unwrap_or_else(|error| error.into_inner())
+            .completed
+    }
+
+    pub fn submit(&mut self, preferences: UserPreferences) -> u64 {
         if preferences.validate().is_err() {
             let (lock, _) = &*self.shared;
-            lock.lock()
-                .unwrap_or_else(|error| error.into_inner())
-                .last_error = Some(PreferenceErrorCode::InvalidData);
-            return;
+            let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
+            state.last_error = Some(PreferenceErrorCode::InvalidData);
+            state.write_failed = true;
+            return 0;
         }
         self.ensure_worker();
         let (lock, wake) = &*self.shared;
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         if state.stopping || state.stopped {
             state.last_error = Some(PreferenceErrorCode::Io);
-            return;
+            state.write_failed = true;
+            return 0;
         }
-        state.pending = Some(preferences);
+        state.submitted = state.submitted.saturating_add(1);
+        let revision = state.submitted;
+        state.pending = Some((revision, preferences));
         state.maximum_pending_depth = state.maximum_pending_depth.max(1);
         wake.notify_one();
+        revision
     }
 
     pub fn take_error(&self) -> Option<PreferenceErrorCode> {
@@ -435,7 +466,7 @@ impl PreferenceWriter {
                 return false;
             }
         }
-        state.last_error.is_none()
+        !state.write_failed
     }
 
     pub fn shutdown(&mut self, timeout: Duration) -> bool {
@@ -461,7 +492,7 @@ impl PreferenceWriter {
                 return false;
             }
         }
-        let clean = state.last_error.is_none();
+        let clean = !state.write_failed;
         drop(state);
         if let Some(worker) = self.worker.take() {
             if worker.join().is_err() {
@@ -478,9 +509,13 @@ impl Drop for PreferenceWriter {
     }
 }
 
-fn writer_loop(root: PathBuf, shared: SharedWriterState) {
+fn writer_loop(
+    root: PathBuf,
+    shared: SharedWriterState,
+    notify: Option<Arc<dyn Fn() + Send + Sync>>,
+) {
     loop {
-        let preferences = {
+        let (revision, preferences) = {
             let (lock, wake) = &*shared;
             let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
             while state.pending.is_none() && !state.stopping {
@@ -499,8 +534,15 @@ fn writer_loop(root: PathBuf, shared: SharedWriterState) {
         let (lock, wake) = &*shared;
         let mut state = lock.lock().unwrap_or_else(|error| error.into_inner());
         state.writing = false;
-        state.last_error = result.err().map(PreferenceError::code);
+        let result = result.map_err(PreferenceError::code);
+        state.last_error = result.err();
+        state.write_failed = result.is_err();
+        state.completed = Some((revision, result));
         wake.notify_all();
+        drop(state);
+        if let Some(notify) = &notify {
+            notify();
+        }
     }
 }
 
@@ -525,6 +567,7 @@ mod tests {
         let expected = UserPreferences {
             font_size: Some(21.5),
             appearance_theme: Some(rio_backend::config::theme::AppearanceTheme::Light),
+            ..UserPreferences::default()
         };
 
         write_to_root(root.path(), &expected).unwrap();
@@ -541,10 +584,12 @@ mod tests {
         let first = UserPreferences {
             font_size: Some(17.0),
             appearance_theme: None,
+            ..UserPreferences::default()
         };
         let second = UserPreferences {
             font_size: Some(19.0),
             appearance_theme: Some(rio_backend::config::theme::AppearanceTheme::Dark),
+            ..UserPreferences::default()
         };
         write_to_root(root.path(), &first).unwrap();
         write_to_root(root.path(), &second).unwrap();
@@ -596,6 +641,7 @@ mod tests {
         let preferences = UserPreferences {
             font_size: Some(20.0),
             appearance_theme: Some(rio_backend::config::theme::AppearanceTheme::Light),
+            ..UserPreferences::default()
         };
 
         let effective = preferences.apply_to(&base);
@@ -617,6 +663,7 @@ mod tests {
             writer.submit(UserPreferences {
                 font_size: Some(size as f32),
                 appearance_theme: None,
+                ..UserPreferences::default()
             });
         }
 
@@ -628,12 +675,58 @@ mod tests {
     }
 
     #[test]
+    fn writer_notification_follows_publication_and_consuming_error_cannot_fake_durability(
+    ) {
+        let root = tempfile::tempdir().unwrap();
+        write_to_root(root.path(), &UserPreferences::default()).unwrap();
+        let held =
+            crate::automexia::private_fs::open_private_lock(&lock_path(root.path()))
+                .unwrap();
+        held.try_lock().unwrap();
+        let mut writer = PreferenceWriter::new(root.path().into());
+        let shared = writer.shared.clone();
+        let (sender, receiver) = std::sync::mpsc::channel();
+        writer.set_wake(Arc::new(move || {
+            let completed = shared.0.lock().unwrap().completed;
+            sender.send(completed).unwrap();
+        }));
+        let candidate = UserPreferences {
+            font_size: Some(22.0),
+            ..UserPreferences::default()
+        };
+        let failed = writer.submit(candidate.clone());
+        let outcome = receiver
+            .recv_timeout(Duration::from_secs(5))
+            .unwrap()
+            .unwrap();
+        assert_eq!(outcome.0, failed);
+        assert!(outcome.1.is_err());
+        assert!(writer.take_error().is_some());
+        assert!(!writer.flush(Duration::from_secs(5)));
+        assert_eq!(
+            load_from_root(root.path()).preferences,
+            UserPreferences::default()
+        );
+        drop(held);
+        let saved = writer.submit(candidate.clone());
+        assert!(saved > failed);
+        assert_eq!(
+            receiver.recv_timeout(Duration::from_secs(5)).unwrap(),
+            Some((saved, Ok(())))
+        );
+        assert!(writer.flush(Duration::from_secs(5)));
+        assert_eq!(load_from_root(root.path()).preferences, candidate);
+        assert!(writer.shutdown(Duration::from_secs(5)));
+    }
+
+    #[test]
     fn reset_snapshot_survives_restart_without_overriding_config() {
         let root = tempfile::tempdir().unwrap();
         let mut writer = PreferenceWriter::new(root.path().to_path_buf());
         writer.submit(UserPreferences {
             font_size: Some(24.0),
             appearance_theme: Some(rio_backend::config::theme::AppearanceTheme::Dark),
+            ..UserPreferences::default()
         });
         writer.submit(UserPreferences::default());
         assert!(writer.shutdown(std::time::Duration::from_secs(5)));
@@ -651,6 +744,7 @@ mod tests {
         let original = UserPreferences {
             font_size: Some(16.0),
             appearance_theme: None,
+            ..UserPreferences::default()
         };
         write_to_root(root.path(), &original).unwrap();
         let lock =
@@ -663,6 +757,7 @@ mod tests {
             &UserPreferences {
                 font_size: Some(22.0),
                 appearance_theme: None,
+                ..UserPreferences::default()
             },
         )
         .unwrap_err();
@@ -679,6 +774,7 @@ mod tests {
             &UserPreferences {
                 font_size: Some(18.0),
                 appearance_theme: None,
+                ..UserPreferences::default()
             },
         )
         .unwrap();

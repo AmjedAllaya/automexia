@@ -1289,6 +1289,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn request_shortcut_edit(&self) {
+        self.event_proxy
+            .send_event(RioEvent::ApplyShortcutEdit, self.window_id);
+    }
+
     pub fn update_font_size(&mut self, request: rio_backend::event::FontSizeRequest) {
         self.event_proxy
             .send_event(RioEvent::UpdateFontSize(request), self.window_id);

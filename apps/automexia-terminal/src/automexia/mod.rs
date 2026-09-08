@@ -23,6 +23,8 @@ pub mod runtime;
 #[cfg(target_os = "windows")]
 pub mod shell;
 pub mod shell_integration;
+#[doc(hidden)]
+pub mod shortcut_preferences;
 mod state;
 pub mod suggestions;
 pub mod theme;

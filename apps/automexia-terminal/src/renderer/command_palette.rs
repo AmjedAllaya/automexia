@@ -4,6 +4,8 @@
 // LICENSE file in the root directory of this source tree.
 
 use crate::automexia::marketplace::MarketItem;
+pub use crate::bindings::shortcut::PaletteAction;
+use crate::bindings::shortcut::{legacy_binding_target, palette_binding_target};
 use crate::renderer::responsive::{elide_end, elide_start, Viewport};
 use crate::renderer::scrollbar;
 use crate::renderer::ui_theme::{
@@ -23,6 +25,9 @@ use rio_backend::sugarloaf::Sugarloaf;
 use std::time::Instant;
 
 mod navigation;
+mod shortcut_editor;
+pub(crate) use shortcut_editor::ShortcutChange;
+use shortcut_editor::ShortcutEditor;
 #[cfg(test)]
 mod navigation_tests;
 use navigation::Category;
@@ -247,60 +252,6 @@ const SHORTCUT_QUIT: &str = "Cmd+Q";
 const SHORTCUT_QUIT: &str = "Ctrl+Shift+Q";
 
 /// Actions that can be triggered from the command palette.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PaletteAction {
-    TabCreate,
-    LocalTabCreate,
-    TabClose,
-    TabCloseUnfocused,
-    SelectNextTab,
-    SelectPrevTab,
-    SelectNextLocalTab,
-    SelectPrevLocalTab,
-    SplitRight,
-    SplitDown,
-    CloneSplitRight,
-    CloneSplitDown,
-    SelectNextSplit,
-    SelectPrevSplit,
-    SelectPaneLeft,
-    SelectPaneRight,
-    SelectPaneUp,
-    SelectPaneDown,
-    ConfigEditor,
-    WindowCreateNew,
-    IncreaseFontSize,
-    DecreaseFontSize,
-    ResetFontSize,
-    ToggleViMode,
-    ToggleFullscreen,
-    ToggleAppearanceTheme,
-    Copy,
-    Paste,
-    ScrollToPreviousCommand,
-    ScrollToNextCommand,
-    SearchForward,
-    SearchBackward,
-    SearchGlobalForward,
-    SearchGlobalBackward,
-    PreviewSelectedImage,
-    ClearScreen,
-    CloseCurrentSplitOrTab,
-    OpenMarket,
-    /// Open the application-owned, read-only Connection Hub. This action
-    /// grants no filesystem, network, process, authentication, or PTY access.
-    OpenConnections,
-    /// Search typed Quick Actions. Selection enters a separate review step;
-    /// this action never writes to the PTY itself.
-    OpenActions,
-    /// Browse the family names of every registered font. Does NOT
-    /// execute a one-shot action — the palette stays open with the
-    /// font list as its contents. Handled by `router`, not
-    /// `Screen::execute_palette_action`.
-    ListFonts,
-    Quit,
-}
-
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CommandIcon {
     Back,
@@ -504,107 +455,6 @@ struct Command {
     title: &'static str,
     shortcut: &'static str,
     action: PaletteAction,
-}
-
-fn palette_binding_target(
-    action: PaletteAction,
-) -> Option<(&'static str, Option<&'static str>)> {
-    use PaletteAction::*;
-    match action {
-        TabCreate => Some(("new_tab", None)),
-        TabClose => Some(("close_tab", Some("this"))),
-        SelectNextTab => Some(("next_tab", None)),
-        SelectPrevTab => Some(("previous_tab", None)),
-        SplitRight => Some(("new_split", Some("right"))),
-        SplitDown => Some(("new_split", Some("down"))),
-        SelectNextSplit => Some(("goto_split", Some("next"))),
-        SelectPrevSplit => Some(("goto_split", Some("previous"))),
-        SelectPaneLeft => Some(("goto_split", Some("left"))),
-        SelectPaneRight => Some(("goto_split", Some("right"))),
-        SelectPaneUp => Some(("goto_split", Some("up"))),
-        SelectPaneDown => Some(("goto_split", Some("down"))),
-        ConfigEditor => Some(("open_config", None)),
-        WindowCreateNew => Some(("new_window", None)),
-        IncreaseFontSize => Some(("increase_font_size", Some("1"))),
-        DecreaseFontSize => Some(("decrease_font_size", Some("1"))),
-        ResetFontSize => Some(("reset_font_size", None)),
-        ToggleFullscreen => Some(("toggle_fullscreen", None)),
-        Copy => Some(("copy_to_clipboard", None)),
-        Paste => Some(("paste_from_clipboard", None)),
-        // The typed dispatcher starts forward in one pane; its schema accepts
-        // no direction/scope parameter. Do not invent a broader/backward alias.
-        SearchForward => Some(("start_search", None)),
-        SearchBackward | SearchGlobalForward | SearchGlobalBackward => None,
-        ClearScreen => Some(("clear_screen", None)),
-        ScrollToPreviousCommand => Some(("jump_to_prompt", Some("-1"))),
-        ScrollToNextCommand => Some(("jump_to_prompt", Some("1"))),
-        CloseCurrentSplitOrTab => Some(("close_surface", None)),
-        Quit => Some(("quit", None)),
-        LocalTabCreate
-        | TabCloseUnfocused
-        | SelectNextLocalTab
-        | SelectPrevLocalTab
-        | CloneSplitRight
-        | CloneSplitDown
-        | ToggleViMode
-        | ToggleAppearanceTheme
-        | PreviewSelectedImage
-        | OpenMarket
-        | OpenConnections
-        | OpenActions
-        | ListFonts => None,
-    }
-}
-
-// Match the action actually executed by the palette, not a similarly named
-// operation (ClearHistory, for example, does not clear the visible screen).
-fn legacy_binding_target(action: PaletteAction) -> crate::bindings::Action {
-    use crate::bindings::Action;
-    use PaletteAction::*;
-    match action {
-        TabCreate => Action::TabCreateNew,
-        LocalTabCreate => Action::LocalTabCreateNew,
-        TabClose => Action::TabCloseCurrent,
-        TabCloseUnfocused => Action::TabCloseUnfocused,
-        SelectNextTab => Action::SelectNextTab,
-        SelectPrevTab => Action::SelectPrevTab,
-        SelectNextLocalTab => Action::SelectNextLocalTab,
-        SelectPrevLocalTab => Action::SelectPrevLocalTab,
-        SplitRight => Action::SplitRight,
-        SplitDown => Action::SplitDown,
-        CloneSplitRight => Action::CloneSplitRight,
-        CloneSplitDown => Action::CloneSplitDown,
-        SelectNextSplit => Action::SelectNextSplit,
-        SelectPrevSplit => Action::SelectPrevSplit,
-        SelectPaneLeft => Action::SelectPaneLeft,
-        SelectPaneRight => Action::SelectPaneRight,
-        SelectPaneUp => Action::SelectPaneUp,
-        SelectPaneDown => Action::SelectPaneDown,
-        CloseCurrentSplitOrTab => Action::CloseCurrentSplitOrTab,
-        ConfigEditor => Action::ConfigEditor,
-        WindowCreateNew => Action::WindowCreateNew,
-        IncreaseFontSize => Action::IncreaseFontSize,
-        DecreaseFontSize => Action::DecreaseFontSize,
-        ResetFontSize => Action::ResetFontSize,
-        ToggleViMode => Action::ToggleViMode,
-        ToggleFullscreen => Action::ToggleFullscreen,
-        ToggleAppearanceTheme => Action::ToggleAppearanceTheme,
-        Copy => Action::Copy,
-        Paste => Action::Paste,
-        ScrollToPreviousCommand => Action::ScrollToPrevPrompt,
-        ScrollToNextCommand => Action::ScrollToNextPrompt,
-        SearchForward => Action::SearchForward,
-        SearchBackward => Action::SearchBackward,
-        SearchGlobalForward => Action::SearchGlobalForward,
-        SearchGlobalBackward => Action::SearchGlobalBackward,
-        PreviewSelectedImage => Action::PreviewSelectedImage,
-        ClearScreen => Action::ClearScreen,
-        OpenMarket => Action::OpenExtensionMarketplace,
-        OpenConnections => Action::OpenConnectionHub,
-        OpenActions => Action::OpenActionCenter,
-        ListFonts => Action::OpenFontBrowser,
-        Quit => Action::Quit,
-    }
 }
 
 fn registry_binding_for_command(
@@ -1507,6 +1357,11 @@ pub struct CommandPalette {
     /// Effective labels built at construction/reload, never on the input path.
     /// The immutable typed registry and legacy adapter remain the only owners.
     registry_shortcuts: Vec<(PaletteAction, String)>,
+    shortcut_editor: Option<ShortcutEditor>,
+    shortcut_change: Option<ShortcutChange>,
+    shortcut_click: Option<(PaletteAction, f32, f32)>,
+    edit_bindings: Vec<crate::bindings::KeyBinding>,
+    edit_registry: Option<crate::bindings::registry::RegistrySnapshot>,
     /// Which list the palette is showing (commands or fonts).
     mode: PaletteMode,
     category: Option<Category>,
@@ -1532,6 +1387,11 @@ impl Default for CommandPalette {
             scroll_offset: 0,
             has_adaptive_theme: false,
             registry_shortcuts: Vec::new(),
+            shortcut_editor: None,
+            shortcut_change: None,
+            shortcut_click: None,
+            edit_bindings: Vec::new(),
+            edit_registry: None,
             mode: PaletteMode::Commands,
             category: None,
             caret_blink_start: Instant::now(),
@@ -1604,6 +1464,14 @@ impl CommandPalette {
     ) {
         use crate::bindings::BindingMode;
         use automexia_keybindings::{ModeFlags, SequenceResolution, SurfaceBindingState};
+        if self.shortcut_change.take().is_some() {
+            self.shortcut_save_failed(
+                "Bindings changed before Save was applied; record the shortcut again",
+            );
+        }
+        self.interrupt_shortcut_capture();
+        self.edit_bindings = bindings.to_vec();
+        self.edit_registry = snapshot.cloned();
         for command in COMMANDS {
             let action = command.action;
             let legacy_action = legacy_binding_target(action);
@@ -1666,10 +1534,14 @@ impl CommandPalette {
                 .retain(|(candidate, _)| *candidate != action);
             self.registry_shortcuts.push((action, label));
         }
+        self.refresh_shortcut_current();
     }
 
     pub fn set_enabled(&mut self, enabled: bool) {
         self.enabled = enabled;
+        self.shortcut_editor = None;
+        self.shortcut_change = None;
+        self.shortcut_click = None;
         if enabled {
             self.query.clear();
             self.selected_index = 0;
@@ -1780,6 +1652,7 @@ impl CommandPalette {
     }
 
     pub fn set_query(&mut self, query: String) {
+        self.shortcut_click = None;
         if query.len() > MAX_PALETTE_QUERY_BYTES || query.chars().any(char::is_control) {
             return;
         }
@@ -1796,12 +1669,16 @@ impl CommandPalette {
     /// Reset fractional motion at native gesture boundaries. This never
     /// changes the list position and therefore never wakes the renderer.
     pub fn reset_scroll_gesture(&mut self) {
+        self.shortcut_click = None;
         self.wheel_accumulated_y = 0.0;
     }
 
     /// Apply a mouse-wheel delta measured in rows. Positive values move
     /// toward the top, matching winit and terminal scrollback direction.
     pub fn scroll_line_delta(&mut self, lines_y: f32) -> bool {
+        if self.is_editing_shortcut() {
+            return false;
+        }
         if !lines_y.is_finite() {
             return false;
         }
@@ -1815,6 +1692,10 @@ impl CommandPalette {
     /// accumulate deterministically; reversing direction starts fresh so the
     /// user never has to cancel stale momentum before movement is visible.
     pub fn scroll_pixel_delta(&mut self, pixels_y: f64) -> bool {
+        self.shortcut_click = None;
+        if self.is_editing_shortcut() {
+            return false;
+        }
         if !pixels_y.is_finite() || pixels_y == 0.0 {
             return false;
         }
@@ -1887,6 +1768,9 @@ impl CommandPalette {
     #[cfg(any(test, feature = "native-gui-test-hooks"))]
     pub fn accessibility_summary(&self) -> Option<String> {
         self.enabled.then(|| {
+            if let Some(editor) = &self.shortcut_editor {
+                return format!("Edit shortcut dialog; {}; current {}; {}; focus {}; Enter saves; Escape cancels; Tab moves",editor.title,editor.current,editor.error.as_deref().unwrap_or(editor.message),editor.focus);
+            }
             let scope = if matches!(self.mode, PaletteMode::Commands) {
                 if !self.query.is_empty() { "All commands" }
                 else { self.category.map_or("Command categories", Category::title) }
@@ -1897,6 +1781,7 @@ impl CommandPalette {
     }
 
     pub fn move_selection_up(&mut self) {
+        self.shortcut_click = None;
         self.wheel_accumulated_y = 0.0;
         if self.selected_index > 0 {
             self.selected_index -= 1;
@@ -1908,6 +1793,7 @@ impl CommandPalette {
     }
 
     pub fn move_selection_down(&mut self) {
+        self.shortcut_click = None;
         self.wheel_accumulated_y = 0.0;
         let count = self.filtered_rows().len();
         if self.selected_index < count.saturating_sub(1) {
@@ -1920,6 +1806,9 @@ impl CommandPalette {
     }
 
     pub fn get_selected_action(&self) -> Option<PaletteAction> {
+        if self.is_editing_shortcut() {
+            return None;
+        }
         self.filtered_rows()
             .get(self.selected_index)
             .and_then(|(_, row)| row.action())
@@ -1928,6 +1817,9 @@ impl CommandPalette {
     /// Navigate without producing an executable action. Both pointer and key
     /// activation call this before inspecting the selected command.
     pub fn activate_navigation(&mut self) -> bool {
+        if self.is_editing_shortcut() {
+            return true;
+        }
         let target =
             self.filtered_rows()
                 .get(self.selected_index)
@@ -2035,6 +1927,15 @@ impl CommandPalette {
         repeat: bool,
     ) -> bool {
         use rio_window::keyboard::{Key, ModifiersState, NamedKey};
+        if self.is_editing_shortcut() {
+            return self.edit_shortcut_key(key, modifiers, repeat);
+        }
+        if *key == Key::Named(NamedKey::F2) && modifiers.is_empty() {
+            if !repeat {
+                self.begin_shortcut_edit();
+            }
+            return true;
+        }
         // A held Enter is consumed across category changes, never turned into
         // activation of the newly selected first command.
         if repeat && *key == Key::Named(NamedKey::Enter) {
@@ -2384,6 +2285,9 @@ impl CommandPalette {
         window_height: f32,
         scale_factor: f32,
     ) -> bool {
+        if self.is_editing_shortcut() {
+            return false;
+        }
         if let Ok(Some(index)) =
             self.hit_test(mouse_x, mouse_y, window_width, window_height, scale_factor)
         {
@@ -2398,6 +2302,11 @@ impl CommandPalette {
     pub fn render(&mut self, sugarloaf: &mut Sugarloaf, dimensions: (f32, f32, f32)) {
         if !self.enabled {
             // Immediate mode: not drawing == not visible.
+            return;
+        }
+
+        if self.is_editing_shortcut() {
+            self.render_shortcut_editor(sugarloaf, dimensions);
             return;
         }
 
@@ -2731,12 +2640,14 @@ impl CommandPalette {
                 .draw(row_text_x, row_text_y, &row_title, &result_opts);
 
             if !shortcut.is_empty() {
-                let shortcut_width = sugarloaf
-                    .text_mut()
-                    .measure(&shortcut_display, &shortcut_opts);
-                let keycap_width = shortcut_width + 18.0;
-                let shortcut_x = input_x + input_width - 10.0 - keycap_width;
-                let shortcut_y = item_y + 10.0;
+                let [shortcut_x, shortcut_y, keycap_width, _] =
+                    shortcut_editor::shortcut_badge_rect(
+                        sugarloaf,
+                        shortcut,
+                        input_x,
+                        input_width,
+                        item_y,
+                    );
                 sugarloaf.rounded_rect(
                     None,
                     shortcut_x,
@@ -2840,6 +2751,19 @@ impl CommandPalette {
                 false,
                 DEPTH_ELEMENT + 0.05,
                 ORDER,
+            );
+        }
+        if matches!(self.mode, PaletteMode::Commands) && palette_width >= 300.0 {
+            let opts = DrawOpts {
+                font_size: 9.0,
+                color: color_u8(DIM_TEXT_COLOR),
+                ..DrawOpts::default()
+            };
+            sugarloaf.text_mut().draw(
+                palette_x + PALETTE_PADDING,
+                palette_y + palette_height - 11.0,
+                "F2 edits shortcut · double-click a key badge",
+                &opts,
             );
         }
         sugarloaf.end_modal_layer();

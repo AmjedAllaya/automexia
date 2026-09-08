@@ -4,6 +4,7 @@
 
 pub mod kitty_keyboard;
 pub mod registry;
+pub(crate) mod shortcut;
 
 use crate::crosswords::vi_mode::ViMotion;
 use crate::crosswords::Mode;
@@ -755,7 +756,10 @@ fn key_bindings_with_platform(
     platform: impl FnOnce(bool, bool, ConfigKeyboard) -> Vec<KeyBinding>,
 ) -> Vec<KeyBinding> {
     if config.keyboard.binding_profile != automexia_keybindings::ProfileId::Automexia {
-        return config_key_bindings(config.bindings.keys.to_owned(), Vec::new());
+        return shortcut::apply_classic(
+            &config.bindings.ui_shortcuts,
+            config_key_bindings(config.bindings.keys.to_owned(), Vec::new()),
+        );
     }
     let mut bindings = bindings!(
         KeyBinding;
@@ -885,7 +889,10 @@ fn key_bindings_with_platform(
     // Add hint bindings
     bindings.extend(create_hint_bindings(&config.hints.rules));
 
-    config_key_bindings(config.bindings.keys.to_owned(), bindings)
+    shortcut::apply_classic(
+        &config.bindings.ui_shortcuts,
+        config_key_bindings(config.bindings.keys.to_owned(), bindings),
+    )
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]

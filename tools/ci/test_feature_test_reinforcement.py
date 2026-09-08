@@ -20,6 +20,31 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_shortcut_cross_owner_guards_cannot_be_deleted_or_reordered(self) -> None:
+        for owner, old, new in [
+            ("screen", "if self.renderer.command_palette.is_enabled() {", "if false {"),
+            ("application", ".update_bindings(&self.config, snapshot.clone())", ".update_config(&self.config, snapshot.clone())"),
+            ("shortcut_preferences", "!state.write_failed", "state.last_error.is_none()"),
+            ("shortcut_preferences", "state.completed = Some((revision, result));", "// state.completed = Some((revision, result));"),
+            ("shortcut_editor", "revision >= expected", "revision <= expected"),
+            ("palette", "self.shortcut_change.take().is_some()", "self.shortcut_change.is_some()"),
+        ]:
+            with self.subTest(owner=owner, mutation=old):
+                sources = self.native_sources.copy()
+                self.assertIn(old, sources[owner])
+                sources[owner] = sources[owner].replace(old, new)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_shortcut_editor_sources(sources)
+
+    def test_shortcut_editor_scenarios_cannot_be_removed(self) -> None:
+        for phrase in ["Shortcut editor double-click and F2", "stale queued edits", "separate-process restart"]:
+            with self.subTest(phrase=phrase):
+                document = copy.deepcopy(self.document)
+                feature = next(row for row in document["features"] if row["id"] == "windows-tabs-sessions-input")
+                feature["needed_tests"] = [text.replace(phrase, "removed evidence") for text in feature["needed_tests"]]
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    self.validate(document)
+
     def test_resize_stress_cannot_hide_native_suites_behind_the_gui_flag(self) -> None:
         for old, new in [
             ('run_resize_regressions(|args| run("cargo", args))?;', ''),
