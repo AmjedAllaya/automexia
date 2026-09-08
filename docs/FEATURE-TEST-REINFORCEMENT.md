@@ -154,6 +154,11 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Font upgrades must retain one compatible Skrifa/read-fonts generation across
+Swash, Sugarloaf and the glyph protocol. Run the unchanged all-feature dependency
+policy plus real glyph, fallback, fitting and raster tests; compiling two parser
+generations successfully does not satisfy the reviewed dependency contract.
+
 Command-versus-pane distinction requires short inset command markers, literal
 48-pixel/quarter-pane caps, invalid and tiny geometry, exact marker pixel coverage
 and preserved structural hit targets. Traverse adjacent parsed output and silent
@@ -376,6 +381,10 @@ pixel fitting, screen-reader correctness or an allocator/RSS measurement.
 Reinforce input, dimension, pixel, frame, cache, and lifetime limits; malformed
 protocol images; local regular-file identity; links; replacement; permission
 errors; cancellation; stale results; clipping; scrolling; eviction; and cleanup.
+Compression upgrades must preserve the reviewed PNG/Flate2 miniz_oxide family.
+Run the unchanged dependency policy and hostile decompression tests, and resolve
+both root and fuzz metadata with locked full dependency graphs. Metadata with
+`--no-deps` is not proof that the complete fuzz lockfile resolves correctly.
 
 ### shell-integration-listings
 

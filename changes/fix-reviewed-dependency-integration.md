@@ -12,3 +12,7 @@
 - Preserve the reviewed WIT/WAT parser generation with Wasmtime. The existing
   ecosystem gate rejected the grouped parser jump; it remains enforced rather
   than relaxing an accepted sandbox/tooling contract during branch cleanup.
+- Keep one reviewed compression and font-parser generation: Flate2 1.1.9 shares
+  miniz_oxide 0.8 with PNG, and Skrifa 0.44 shares its parser with Swash. Full QA
+  rejected the duplicate generations introduced by the proposed upgrades; the
+  dependency policy remains unchanged and both lockfiles retain one owner.

@@ -152,7 +152,8 @@ insta = { version = "1.48.0", features = ["json", "redactions"] }
 loom = "0.7.2"
 proptest = "1.11.0"
 dashmap = "6.2.1"
-flate2 = "1.1.9"
+# Keep PNG's miniz_oxide 0.8 family; 1.1.10 adds a second compression engine.
+flate2 = "=1.1.9"
 configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }

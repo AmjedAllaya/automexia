@@ -13,7 +13,8 @@ description = "Terminal graphics value types (sixel/kitty/iTerm2 image data, gly
 image_rs = { workspace = true, optional = true }
 tracing = { workspace = true }
 rustc-hash = { workspace = true }
-skrifa = { version = "0.46.2", optional = true }
+# Match the renderer/Swash parser generation without widening glyph authority.
+skrifa = { version = "=0.44.0", optional = true }
 parking_lot = { workspace = true, optional = true }
 wgpu = { workspace = true, optional = true }
 
