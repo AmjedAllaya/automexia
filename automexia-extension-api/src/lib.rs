@@ -4,6 +4,7 @@
 //! construction and rejects unknown fields or unsupported schema versions.
 //! Secret material is represented only by opaque references.
 
+pub mod surface;
 mod text;
 
 pub use text::{

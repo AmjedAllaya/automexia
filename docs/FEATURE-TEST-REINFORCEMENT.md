@@ -124,6 +124,21 @@ parser and grid: hold the terminal lock until final bytes and EOF arrive, then
 compare literal text. Include zero reads, would-block, native EOF and fatal errors.
 Native pipe tail tests alone do not prove the worker retained its pending bytes.
 
+Confirmed child-exit precedence must traverse the actual worker and poll owner.
+Queue input and child readiness together; fail writes or the final read, then
+require exact final bytes and one exit-before-close-before-render sequence.
+Cover exit arriving during a failed write, absent status and explicit host
+cancellation. Repeat the real live PowerShell resize and queued-input exit cases
+with the workspace feature set and no retries. Distinguish native process exit,
+notification latency and actual worker join; diagnostic probes must forward
+real I/O and expose only counts, error kinds and signaled state, never content.
+Retain an intermittent failure even if later repetitions pass; they cannot prove
+its original trigger. Final-tail coverage must span multiple ordinary read
+batches, compare exact 4 MiB budget edges and cancellation, and retain every
+one of 1,024 real native output rows plus the final marker. A short final marker
+alone cannot prove the entire stream survived. Native desktop appearance and
+other platforms remain separate evidence gates.
+
 Pane-close regressions must distinguish immediate UI retirement from eventual
 native process termination. Gate real worker-body and native thread-local
 destruction independently: a finished hint is not an actual join acknowledgement.
@@ -455,6 +470,16 @@ trimmed and whitespace-preserving labels, borrowed prefix storage, zero/one,
 exact and over-limit values, combining marks, emoji, Indic text and long inputs.
 Its same-host benchmark compares short and long compaction without implying
 pixel fitting, screen-reader correctness or an allocator/RSS measurement.
+
+Semantic surface contracts additionally require literal wire oracles, duplicate
+member/identity rejection, exact typed units, per-sequence and aggregate budgets,
+permission binding, stale/replayed revisions, expiry, once grants, revocation,
+last-good retention, bounded redacted diagnostics and repeated snapshot cleanup.
+Memory-accounting fixtures must report counter errors without unwinding inside
+allocator callbacks and disable measurement before failed-path fixture cleanup.
+Benchmark typed validation separately from decoding. Keep reviewed fuzz seeds and
+decode/validation benchmarks for 0/1/100/2,000/20,000 rows. An admission-only model
+is not an activated browser, renderer, multi-surface registry or native AT proof.
 
 ### image-protocols-local-preview
 

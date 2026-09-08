@@ -149,5 +149,72 @@ fn semantic_statuses(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, services, semantic_statuses);
+fn semantic_surface_admission(c: &mut Criterion) {
+    use automexia_extension_api::{
+        surface::*, BoundedText, Capability, CapabilityDecision, CapabilityRequest,
+        Decision, OperationId, ResourceScope,
+    };
+    use automexia_terminal::automexia::semantic_surfaces::{
+        AdmissionError, SemanticSurfaceSlot,
+    };
+    let binding = SurfaceBinding {
+        extension: ExtensionId::new("example.inventory").unwrap(),
+        session: SessionId::new(4),
+        capsule_revision: 2,
+        operation: OperationId::new(3),
+    };
+    let request = CapabilityRequest::new(
+        binding.operation,
+        binding.extension.clone(),
+        binding.session,
+        binding.capsule_revision,
+        Capability::UiOverlay,
+        ResourceScope::Session,
+        BoundedText::new("Show reviewed inventory").unwrap(),
+    )
+    .unwrap();
+    let grant =
+        CapabilityDecision::for_request(&request, Decision::AllowSession, 100, 200)
+            .unwrap();
+    let mut slot = SemanticSurfaceSlot::new(
+        binding.clone(),
+        SemanticSurfaceId::new(1).unwrap(),
+        7,
+        Some(&grant),
+        100,
+    )
+    .unwrap();
+    let oversized = vec![b' '; 8 * 1024 * 1024 + 1];
+    assert_eq!(
+        slot.accept_frame(&oversized, 100),
+        Err(AdmissionError::FrameTooLarge)
+    );
+    c.bench_function("semantic_surface_host/reject_oversized_frame", |b| {
+        b.iter(|| {
+            assert_eq!(
+                slot.accept_frame(black_box(&oversized), 100),
+                Err(AdmissionError::FrameTooLarge)
+            );
+        })
+    });
+    c.bench_function("semantic_surface_host/reject_absent_grant", |b| {
+        b.iter(|| {
+            assert!(SemanticSurfaceSlot::new(
+                black_box(binding.clone()),
+                SemanticSurfaceId::new(1).unwrap(),
+                7,
+                None,
+                100
+            )
+            .is_err());
+        })
+    });
+}
+
+criterion_group!(
+    benches,
+    services,
+    semantic_statuses,
+    semantic_surface_admission
+);
 criterion_main!(benches);

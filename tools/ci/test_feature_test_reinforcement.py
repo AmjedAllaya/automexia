@@ -20,6 +20,25 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_confirmed_child_exit_owner_and_order_cannot_drift(self) -> None:
+        REINFORCEMENT._validate_child_exit_sources(self.native_sources)
+        for old, new in [
+            ("&& self.finish_child_exit(&mut state, &mut buf)", "&& false"),
+            ("self.pty.next_child_event()", "None"),
+            ("self.finish_child_exit(&mut state, &mut buf);", "// omitted"),
+            ("RioEvent::ChildExited(self.route_id, status)", "RioEvent::Render"),
+            ("self.terminal.lock().exit();", "// omitted"),
+            ("remaining > 0 && !self.sender.shutdown_requested()", "true"),
+            ("4 * READ_BUFFER_SIZE", "8 * READ_BUFFER_SIZE"),
+            ("buf.len().min(byte_limit - processed)", "buf.len()"),
+        ]:
+            with self.subTest(mutation=old):
+                sources = self.native_sources.copy()
+                self.assertIn(old, sources["pty_worker"])
+                sources["pty_worker"] = sources["pty_worker"].replace(old, new, 1)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_child_exit_sources(sources)
+
     def test_buffered_native_probe_receipt_cannot_be_removed(self) -> None:
         document = copy.deepcopy(self.document)
         feature = next(row for row in document['features'] if row['id'] == 'pty-scheduler-process-lifecycle')

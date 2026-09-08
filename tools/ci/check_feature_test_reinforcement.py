@@ -152,6 +152,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "broken-pipe error-then-drop",
             "Caller-handle recovery",
             "Final-output lock contention",
+            "Confirmed child-exit precedence",
             "Nonblocking pane retirement",
             "thread-local destruction gates",
             "capacity recovery",
@@ -288,6 +289,8 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
 }
 
 NATIVE_CONTRACT_SOURCES = {
+    "pty_worker": "rio-vt/src/performer/mod.rs",
+    "pty_exit_tests": "rio-vt/src/performer/tests/resize_worker.rs",
     "shortcut_preferences": "apps/automexia-terminal/src/automexia/preferences.rs",
     "shortcut_editor": "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs",
     "xtask": "tools/xtask/src/main.rs",
@@ -424,12 +427,47 @@ def _validate_shortcut_editor_sources(sources: dict[str, str]) -> None:
     _require_order(labels, ("self.shortcut_change.take()", "self.interrupt_shortcut_capture()", "self.refresh_shortcut_current()"), "shortcut reload")
 
 
+def _validate_child_exit_sources(sources: dict[str, str]) -> None:
+    worker = re.sub(r"//[^\n]*", "", sources["pty_worker"])
+    finish = _source_slice(worker, "fn finish_child_exit(", "pub fn spawn(", "child exit publication")
+    _require_order(finish, ("self.pty.next_child_event()", "return false;", "self.pty_read_bounded(",
+                            "RioEvent::ChildExited", "self.terminal.lock().exit()",
+                            "RioEvent::Render"), "child exit publication")
+    _require_fragments(finish, ("remaining > 0 && !self.sender.shutdown_requested()",
+                                "Ok(0) => break", "remaining -= processed"), "bounded final drain")
+    _require_fragments(worker, ("MAX_FINAL_OUTPUT_BYTES: usize = 4 * READ_BUFFER_SIZE",
+                                "buf.len().min(byte_limit - processed)",
+                                "&mut buf[unprocessed..read_limit]"), "final drain byte ceiling")
+    if worker.count("RioEvent::ChildExited") != 1:
+        raise ReinforcementError("child exit requires one publication owner")
+    spawn = worker.split("pub fn spawn(", 1)[1]
+    dispatch = _source_slice(spawn, "if self.sender.shutdown_requested() {",
+                             "for event in events.iter()", "child exit precedence")
+    _require_order(dispatch, ("self.sender.shutdown_requested()", "self.drain_recv_channel(&mut state)",
+                              "&& self.finish_child_exit(&mut state, &mut buf)",
+                              "self.receiver.peek()", "self.pty_write(&mut state)"), "child exit precedence")
+    if worker.count("self.finish_child_exit(&mut state, &mut buf);") != 4:
+        raise ReinforcementError("every fatal I/O path must reconcile an already arrived child exit")
+    _require_fragments(sources["pty_exit_tests"], (
+        "confirmed_child_exit_precedes_queued_input_failure",
+        "confirmed_child_exit_survives_final_read_failure",
+        "child_exit_arriving_during_failed_write_is_published_once",
+        "transport_failure_never_invents_a_confirmed_child_exit",
+        "explicit_host_shutdown_precedes_child_exit_and_queued_input",
+        "confirmed_child_exit_retains_tail_after_full_read_batch",
+        "final_drain_has_exact_byte_ceiling_and_cancellation_boundary",
+    ), "child exit regression owners")
+    _require_fragments(re.sub(r"\s+", "", sources["pty_exit_tests"]),
+                       ("assert_eq!(publications,expected,",), "exact exit sequence")
+
+
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
         raise ReinforcementError(f"native assurance sources are missing {sorted(missing)}")
 
     _validate_shortcut_editor_sources(sources)
+    _validate_child_exit_sources(sources)
 
     stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
                            "if !native_gui {", "default resize stress dispatch")
@@ -871,6 +909,11 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
         owner_count += len(owners)
 
     _validate_native_contract_sources(_load_native_contract_sources(root))
+    from check_semantic_surfaces import validate_repository as validate_surfaces
+    try:
+        validate_surfaces(root)
+    except ValueError as error:
+        raise ReinforcementError(str(error)) from error
 
     return {
         "features": len(features),

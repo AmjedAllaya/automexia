@@ -23,6 +23,8 @@ pub(crate) mod private_fs;
 pub mod prompt_discovery;
 pub mod quick_actions;
 pub mod runtime;
+#[doc(hidden)]
+pub mod semantic_surfaces;
 #[cfg(target_os = "windows")]
 pub mod shell;
 pub mod shell_integration;

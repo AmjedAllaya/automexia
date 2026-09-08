@@ -20,3 +20,7 @@ serde_json = { workspace = true }
 [[bench]]
 name = "text_compaction"
 harness = false
+
+[[bench]]
+name = "semantic_surfaces"
+harness = false

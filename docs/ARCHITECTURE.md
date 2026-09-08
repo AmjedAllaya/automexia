@@ -58,6 +58,15 @@ terminal state, ordered input queue, resize generation, and exit outcome. Panes
 and tabs reference sessions through stable route identities. Closing a view
 cannot silently attach another view to the same PTY or transfer ownership.
 
+The PTY worker handles confirmed child-exit readiness before obsolete queued
+input or resize work, after explicit host cancellation. One owner drains final
+available output and publishes child exit, terminal close and render in that
+order. Fatal transport errors reconcile an already arrived child notification;
+an I/O error alone never fabricates a child status. Native adapters retain
+process-tree and join ownership. Final available output can span multiple read
+batches, with a separate 4 MiB ceiling, cancellation between batches and a
+content-free limit warning; ordinary live-read and resize budgets are unchanged.
+
 A normal update follows this sequence:
 
 ```text
@@ -89,6 +98,12 @@ Current capability-free shared contracts are owned by
 `automexia-connectivity` and `automexia-command-productivity` where required
 by existing source consumers. These package names are maintenance facts, not
 public product announcements.
+
+`automexia-extension-api::surface` owns bounded, versioned semantic table data.
+The application-owned surface slot validates trusted grant binding, frame size,
+generation, revision and expiry while retaining at most one snapshot. This
+[contract](SEMANTIC-SURFACE-CONTRACT.md) has no automatic UI or provider transport
+activation; terminal embedding surfaces keep their separate identity and owner.
 
 Core terminal crates own behavior required by every installation: VT state,
 PTY/process lifetime, input routing, panes and tabs, configuration, snapshots,
