@@ -15,11 +15,27 @@ long-duration evidence remain external where they have not been collected.
 
 ### Navigation, appearance and lifecycle status
 
-**Partially done (native CMD regression open):** rapid worker-driven resizing
-has an intermittent prompt-adjacency failure in native Windows validation.
-Strict assertions remain enabled, with intermediate-commit and concurrent-session
-coverage plus failure-only diagnostics. Passing repetitions do not resolve the
-original failure or establish native Linux/macOS or desktop evidence.
+**Implemented in source (platform evidence remains bounded):** ConPTY table
+reflow distinguishes hard-line padding from explicit Unix whitespace. Native
+long-table and fragmented-repaint regressions cover duplicate/misaligned rows
+after shrink/restore. Default resize stress now includes live-shell and native
+editor integration tests; core benchmarks check table restoration and history
+bounds. Desktop pixels and unexecuted native platforms remain separate gates.
+
+**Verified native process cases (desktop evidence remains open):** the former
+CMD acknowledgment inserted a newline and could shift the native repaint
+viewport. A no-resize control reproduced that fixture defect; non-echoing probes
+now preserve rows and cursor, with separate Enter-during-resize coverage. All
+eight Windows live-resize cases passed fifty no-retry repetitions after this
+correction and the table-padding fix. Original failure evidence is retained;
+these process results do not establish native Linux/macOS desktop evidence.
+
+**Resource and final-output follow-up:** the later full suite exposed
+a worker-cleanup timeout after successful table checks. Independent native tests
+then reproduced caller-pipe and failed-startup handle leaks; the Windows adapter
+now owns and releases those handles. A separate worker contention regression
+reproduced final-byte loss at EOF and now checks exact parsing after lock release.
+These findings are not erased by the earlier passing campaign or a passing retry.
 
 **Partially done (native desktop evidence open):** confirmed window-close and
 Quit dismiss surfaces before cleanup waits. Saturated ConPTY output drains after

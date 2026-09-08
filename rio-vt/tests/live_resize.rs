@@ -11,12 +11,15 @@ use rio_vt::event::{VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 use teletypewriter::{ChildEvent, EventedPty, ProcessReadWrite, WinsizeBuilder};
 
+#[cfg(windows)]
+const CONSOLE_ENTER: &[u8] = b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_";
+
 fn receive_until(
     pty: &mut impl ProcessReadWrite,
     terminal: &mut Crosswords<VoidListener>,
     parser: &mut Processor,
     marker: &[u8],
-) {
+) -> Vec<u8> {
     let deadline = Instant::now() + Duration::from_secs(20);
     let mut received = Vec::new();
     let mut buffer = [0; 4096];
@@ -27,7 +30,7 @@ fn receive_until(
                 received.extend_from_slice(&buffer[..n]);
                 parser.advance(terminal, &buffer[..n]);
                 if received.windows(marker.len()).any(|bytes| bytes == marker) {
-                    return;
+                    return received;
                 }
             }
             Err(error) if error.kind() == ErrorKind::WouldBlock => {}
@@ -66,6 +69,71 @@ fn logical_rows<U: rio_vt::event::EventListener>(
 
 #[test]
 #[cfg(windows)]
+fn native_cmd_fixture_acknowledgments_do_not_move_cursor_or_output() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.cmd");
+    let mut pty = teletypewriter::create_pty(
+        Some("cmd.exe"),
+        vec![
+            "/d".into(),
+            "/k".into(),
+            fixture.to_string_lossy().into_owned(),
+        ],
+        &None,
+        None,
+        100,
+        24,
+    )
+    .unwrap_or_else(|_| panic!("native probe fixture launch"));
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(100, 24),
+        CursorShape::Block,
+        VoidListener,
+        WindowId::from(0),
+        0,
+        2_000,
+    );
+    terminal.set_resize_policy(rio_vt::crosswords::ResizePolicy::Conpty);
+    let mut parser = Processor::default();
+    receive_until(&mut pty, &mut terminal, &mut parser, b"RESIZE-READY\x07");
+    let cursor = terminal.grid.cursor.pos;
+    let rows = logical_rows(&terminal);
+    for step in 0..12 {
+        pty.writer()
+            .write_all(fixture_probe("cmd.exe", &terminal))
+            .expect("native probe");
+        receive_until(
+            &mut pty,
+            &mut terminal,
+            &mut parser,
+            format!("RESIZE-ACK-{step}\x07").as_bytes(),
+        );
+        assert_eq!(
+            terminal.grid.cursor.pos, cursor,
+            "the acknowledgment must not inject a newline"
+        );
+        assert_eq!(
+            logical_rows(&terminal),
+            rows,
+            "the probe must not repaint or move output"
+        );
+    }
+    pty.writer()
+        .write_all(fixture_release("cmd.exe", &terminal))
+        .expect("release probe fixture");
+    let deadline = Instant::now() + Duration::from_secs(10);
+    loop {
+        if let Some(ChildEvent::Exited(status)) = pty.next_child_event() {
+            assert_eq!(status, Some(0));
+            break;
+        }
+        assert!(Instant::now() < deadline, "probe fixture exit deadline");
+        std::thread::sleep(Duration::from_millis(2));
+    }
+}
+
+#[test]
+#[cfg(windows)]
 fn native_worker_resize_burst_preserves_output() {
     let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("tests/fixtures/live-resize-output.cmd");
@@ -78,6 +146,26 @@ fn native_worker_resize_burst_preserves_output() {
                 fixture.to_string_lossy().into_owned(),
             ],
             ResizeDelivery::Burst,
+        );
+    }
+}
+
+#[test]
+#[cfg(windows)]
+fn native_worker_cmd_enter_after_resize_preserves_completed_rows() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.cmd");
+    for delivery in [ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit] {
+        run_worker_fixture(
+            "cmd.exe",
+            vec![
+                "/d".into(),
+                "/k".into(),
+                fixture.to_string_lossy().into_owned(),
+                "short".into(),
+                "line".into(),
+            ],
+            delivery,
         );
     }
 }
@@ -106,6 +194,22 @@ fn native_worker_intermediate_resize_commits_preserve_output() {
 
 #[cfg(windows)]
 fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDelivery) {
+    run_worker_output_fixture(shell, arguments, delivery, &short_output());
+}
+
+fn short_output() -> Vec<String> {
+    (1..=8)
+        .map(|index| format!("ROW-{index:02}  retained output"))
+        .collect()
+}
+
+#[cfg(windows)]
+fn run_worker_output_fixture(
+    shell: &str,
+    arguments: Vec<String>,
+    delivery: ResizeDelivery,
+    expected: &[String],
+) {
     use rio_vt::event::sync::FairMutex;
     use rio_vt::event::{EventListener, Msg, RioEvent, WindowSize};
     use rio_vt::performer::{Machine, PtyWorkerHandle};
@@ -144,6 +248,7 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDeliv
             let _ = self.handle.join_timeout(Duration::from_secs(10));
         }
     }
+    let line_input = arguments.last().is_some_and(|arg| arg == "line");
     let pty = teletypewriter::create_pty(Some(shell), arguments, &None, None, 100, 24)
         .unwrap_or_else(|_| panic!("worker fixture launch"));
     let (sender, receiver) = mpsc::sync_channel(32);
@@ -207,7 +312,11 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDeliv
                 std::thread::yield_now();
             }
         }
-        let probe = fixture_probe(shell, &terminal.lock());
+        let probe = if line_input {
+            CONSOLE_ENTER
+        } else {
+            fixture_probe(shell, &terminal.lock())
+        };
         worker
             .sender
             .send(Msg::Input(std::borrow::Cow::Borrowed(probe)))
@@ -219,19 +328,20 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDeliv
             format!("RESIZE-ACK-{step}")
         );
         let actual = logical_rows(&terminal.lock());
+        assert_eq!(
+            actual.iter().filter(|row| row.starts_with("ROW-")).count(),
+            expected.len(),
+            "no duplicated table rows"
+        );
         let first = actual
             .iter()
-            .position(|row| row == "ROW-01  retained output")
+            .position(|row| row == &expected[0])
             .expect("worker retained first row");
-        for index in 0..8 {
-            assert_eq!(
-                actual[first + index],
-                format!("ROW-{:02}  retained output", index + 1),
-                "worker resize {step}"
-            );
+        for (index, expected_row) in expected.iter().enumerate() {
+            assert_eq!(actual[first + index], *expected_row, "worker resize {step}");
         }
         assert_eq!(
-            &actual[first + 8..first + 11],
+            &actual[first + expected.len()..first + expected.len() + 3],
             &["", "/example", "lambda"],
             "worker prompt at resize {step} ({cols}x{rows}); later state {:?}",
             {
@@ -241,20 +351,21 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDeliv
                 let deadline = started + Duration::from_millis(250);
                 loop {
                     let rows = logical_rows(&terminal.lock());
-                    let settled = rows
-                        .iter()
-                        .position(|row| row == "ROW-01  retained output")
-                        .is_some_and(|first| {
-                            (0..8).all(|index| {
-                                rows.get(first + index)
-                                    == Some(&format!(
-                                        "ROW-{:02}  retained output",
-                                        index + 1
-                                    ))
-                            }) && rows
-                                .get(first + 8..first + 11)
-                                .is_some_and(|tail| tail == ["", "/example", "lambda"])
-                        });
+                    let settled =
+                        rows.iter().position(|row| row == &expected[0]).is_some_and(
+                            |first| {
+                                expected.iter().enumerate().all(|(index, row)| {
+                                    rows.get(first + index) == Some(row)
+                                }) && rows
+                                    .get(
+                                        first + expected.len()
+                                            ..first + expected.len() + 3,
+                                    )
+                                    .is_some_and(|tail| {
+                                        tail == ["", "/example", "lambda"]
+                                    })
+                            },
+                        );
                     if settled || Instant::now() >= deadline {
                         break (settled, started.elapsed().as_millis());
                     }
@@ -263,7 +374,7 @@ fn run_worker_fixture(shell: &str, arguments: Vec<String>, delivery: ResizeDeliv
             }
         );
     }
-    let probe = fixture_probe(shell, &terminal.lock());
+    let probe = fixture_release(shell, &terminal.lock());
     worker
         .sender
         .send(Msg::Input(std::borrow::Cow::Borrowed(probe)))
@@ -355,17 +466,24 @@ fn native_live_wsl_resize_preserves_output_and_prompt_adjacency() {
         path.starts_with('/') && path.len() <= 4096 && !path.contains(['\r', '\n', '\0']),
         "valid WSL fixture path"
     );
+    let mut arguments = vec![
+        "--distribution".into(),
+        distribution,
+        "--exec".into(),
+        "bash".into(),
+        "--noprofile".into(),
+        "--norc".into(),
+        path.trim().to_owned(),
+    ];
     run_fixture(
         "wsl.exe",
-        vec![
-            "--distribution".into(),
-            distribution,
-            "--exec".into(),
-            "bash".into(),
-            "--noprofile".into(),
-            "--norc".into(),
-            path.trim().to_owned(),
-        ],
+        arguments.clone(),
+        rio_vt::crosswords::ResizePolicy::Conpty,
+    );
+    arguments.push("wide".into());
+    run_table_fixture(
+        "wsl.exe",
+        arguments,
         rio_vt::crosswords::ResizePolicy::Conpty,
     );
 }
@@ -380,16 +498,14 @@ fn run_fixture(
     // would bypass the worker's authoritative resize/coalescing transaction.
     #[cfg(windows)]
     run_worker_fixture(shell, arguments.clone(), ResizeDelivery::Burst);
-    run_fixture_session(shell, arguments, policy);
+    run_fixture_session(shell, arguments, policy, &short_output());
 }
 
 fn fixture_probe<U: rio_vt::event::EventListener>(
-    shell: &str,
+    _shell: &str,
     terminal: &Crosswords<U>,
 ) -> &'static [u8] {
-    if shell.eq_ignore_ascii_case("cmd.exe") {
-        b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_"
-    } else if terminal
+    if terminal
         .mode()
         .contains(rio_vt::crosswords::Mode::WIN32_INPUT)
     {
@@ -399,10 +515,24 @@ fn fixture_probe<U: rio_vt::event::EventListener>(
     }
 }
 
+fn fixture_release<U: rio_vt::event::EventListener>(
+    shell: &str,
+    terminal: &Crosswords<U>,
+) -> &'static [u8] {
+    // CMD's final line read consumes buffered input without PAUSE's typeahead
+    // race. Its newline occurs only after every viewport assertion has run.
+    #[cfg(windows)]
+    if shell.eq_ignore_ascii_case("cmd.exe") {
+        return CONSOLE_ENTER;
+    }
+    fixture_probe(shell, terminal)
+}
+
 fn run_fixture_session(
     shell: &str,
     arguments: Vec<String>,
     policy: rio_vt::crosswords::ResizePolicy,
+    expected: &[String],
 ) {
     #[cfg(windows)]
     let mut pty =
@@ -450,33 +580,72 @@ fn run_fixture_session(
         pty.writer()
             .write_all(probe)
             .expect("readiness probe write");
-        receive_until(
+        let received = receive_until(
             &mut pty,
             &mut terminal,
             &mut parser,
             format!("RESIZE-ACK-{step}\x07").as_bytes(),
         );
         let actual = logical_rows(&terminal);
+        if !actual.windows(expected.len()).any(|rows| rows == expected)
+            || actual.iter().filter(|row| row.starts_with("ROW-")).count()
+                != expected.len()
+        {
+            let mut late = Vec::new();
+            let deadline = Instant::now() + Duration::from_millis(250);
+            let mut bytes = [0; 4096];
+            while Instant::now() < deadline {
+                match pty.reader().read(&mut bytes) {
+                    Ok(n) => {
+                        assert!(late.len() + n <= 256 * 1024);
+                        late.extend_from_slice(&bytes[..n]);
+                        parser.advance(&mut terminal, &bytes[..n]);
+                    }
+                    Err(error) if error.kind() == ErrorKind::WouldBlock => (),
+                    Err(_) => break,
+                }
+                std::thread::sleep(Duration::from_millis(2));
+            }
+            eprintln!(
+                "FAILED FRAME {step}: {:?}",
+                String::from_utf8_lossy(&received)
+            );
+            eprintln!("LATE FRAME: {:?}", String::from_utf8_lossy(&late));
+            eprintln!("LATE ROWS: {:?}", logical_rows(&terminal));
+        }
+        assert_eq!(
+            actual.iter().filter(|row| row.starts_with("ROW-")).count(),
+            expected.len(),
+            "no duplicated table rows"
+        );
         let first = actual
             .iter()
-            .position(|row| row == "ROW-01  retained output")
+            .position(|row| row == &expected[0])
             .expect("first output retained");
-        for index in 0..8 {
+        for (index, expected_row) in expected.iter().enumerate() {
             assert_eq!(
                 actual[first + index],
-                format!("ROW-{:02}  retained output", index + 1),
+                *expected_row,
                 "output order and spacing at resize {step}"
             );
         }
-        assert_eq!(actual[first + 8], "", "single intentional prompt spacer");
         assert_eq!(
-            actual[first + 9],
+            actual[first + expected.len()],
+            "",
+            "single intentional prompt spacer"
+        );
+        assert_eq!(
+            actual[first + expected.len() + 1],
             "/example",
             "no resize-generated gap at {step}"
         );
-        assert_eq!(actual[first + 10], "lambda", "live input remains adjacent");
+        assert_eq!(
+            actual[first + expected.len() + 2],
+            "lambda",
+            "live input remains adjacent"
+        );
     }
-    let release = fixture_probe(shell, &terminal);
+    let release = fixture_release(shell, &terminal);
     pty.writer()
         .write_all(release)
         .expect("release verified fixture");
@@ -489,4 +658,94 @@ fn run_fixture_session(
         std::thread::sleep(Duration::from_millis(2));
     }
     panic!("native resize fixture exit deadline");
+}
+
+#[test]
+#[cfg(windows)]
+fn native_live_powershell_table_resize_roundtrip_preserves_every_row() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.ps1");
+    let arguments = vec![
+        "-NoLogo".into(),
+        "-NoProfile".into(),
+        "-File".into(),
+        fixture.to_string_lossy().into_owned(),
+        "-WideTable".into(),
+    ];
+    // More rows than the initial viewport and lines wider than the narrow pane
+    // reproduce the user's table/history seam, rather than only short output.
+    run_table_fixture(
+        "powershell.exe",
+        arguments,
+        rio_vt::crosswords::ResizePolicy::Conpty,
+    );
+}
+
+fn table_output() -> Vec<String> {
+    (1..=32).map(|index| format!(
+        "ROW-{index:02}  -a---  2026-01-01 12:00:00  {index:04}  artifact-{index:02}-abcdefghijklmnopqrstuvwxyz0123456789.txt"
+    )).collect()
+}
+
+fn run_table_fixture(
+    shell: &str,
+    arguments: Vec<String>,
+    policy: rio_vt::crosswords::ResizePolicy,
+) {
+    let expected = table_output();
+    run_fixture_session(shell, arguments.clone(), policy, &expected);
+    #[cfg(windows)]
+    for delivery in [ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit] {
+        run_worker_output_fixture(shell, arguments.clone(), delivery, &expected);
+    }
+}
+
+#[test]
+#[cfg(windows)]
+fn native_live_cmd_table_resize_roundtrip_preserves_every_row() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.cmd");
+    run_table_fixture(
+        "cmd.exe",
+        vec![
+            "/d".into(),
+            "/k".into(),
+            fixture.to_string_lossy().into_owned(),
+            "wide".into(),
+        ],
+        rio_vt::crosswords::ResizePolicy::Conpty,
+    );
+}
+
+#[test]
+#[cfg(unix)]
+fn native_live_bash_table_resize_roundtrip_preserves_every_row() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.sh");
+    run_table_fixture(
+        "/bin/bash",
+        vec![
+            "--noprofile".into(),
+            "--norc".into(),
+            fixture.to_string_lossy().into_owned(),
+            "wide".into(),
+        ],
+        rio_vt::crosswords::ResizePolicy::Reflow,
+    );
+}
+
+#[test]
+#[cfg(target_os = "macos")]
+fn native_live_zsh_table_resize_roundtrip_preserves_every_row() {
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/live-resize-output.zsh");
+    run_table_fixture(
+        "/bin/zsh",
+        vec![
+            "-f".into(),
+            fixture.to_string_lossy().into_owned(),
+            "wide".into(),
+        ],
+        rio_vt::crosswords::ResizePolicy::Reflow,
+    );
 }

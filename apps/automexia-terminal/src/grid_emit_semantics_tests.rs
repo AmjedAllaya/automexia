@@ -60,6 +60,148 @@ fn fixture_renderer(enabled: bool) -> Renderer {
 }
 
 #[test]
+fn resized_native_table_matches_independent_viewport_pixels() {
+    use rio_backend::crosswords::ResizePolicy;
+    let lines: Vec<_> = (1..=32).map(|index| format!(
+        "ROW-{index:02}  -a---  2026-01-01 12:00:00  {index:04}  artifact-{index:02}-abcdefghijklmnopqrstuvwxyz0123456789.txt"
+    )).collect();
+    let create = |cols, rows| {
+        Crosswords::new(
+            CrosswordsSize::new(cols, rows),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            2_000,
+        )
+    };
+    let mut actual = create(100, 24);
+    actual.set_resize_policy(ResizePolicy::Conpty);
+    let mut parser = Processor::default();
+    let source = format!(
+        "{}\r\n\r\n/example\r\nlambda ",
+        lines
+            .iter()
+            .map(|line| format!("{line:<100}"))
+            .collect::<Vec<_>>()
+            .join("\r\n")
+    );
+    for bytes in source.as_bytes().chunks(3) {
+        parser.advance(&mut actual, bytes);
+    }
+    actual.resize(CrosswordsSize::new(16, 10));
+    let repaint = format!("\x1b[H0123456789.txt  \r\n{}  \r\n\x1b[K\r\n/example        \r\nlambda\x1b[K\x1b[1C", lines[31]);
+    for bytes in repaint.as_bytes().chunks(3) {
+        parser.advance(&mut actual, bytes);
+    }
+
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let renderer = fixture_renderer(false);
+    let pixels = |terminal: &mut Crosswords<VoidListener>, scale: f32| {
+        let cols = terminal.columns();
+        let height = terminal.screen_lines();
+        let (rows, styles, extras) = snapshot(terminal);
+        let mut grid =
+            GridRenderer::Cpu(CpuGridRenderer::new(cols as u32, height as u32));
+        let mut rasterizer = GridGlyphRasterizer::new();
+        let mut glyphs = Vec::new();
+        for (y, row) in rows.iter().enumerate() {
+            build_row_fg(
+                row,
+                cols,
+                y as u16,
+                &styles,
+                &extras,
+                &renderer,
+                &TermColors::default(),
+                &mut rasterizer,
+                &mut grid,
+                16.0 * scale,
+                10.0 * scale,
+                24.0 * scale,
+                None,
+                &[],
+                &fonts,
+                0,
+                None,
+                &mut glyphs,
+            );
+            grid.write_row(y as u32, &[], &glyphs);
+        }
+        let width = (cols as f32 * 10.0 * scale) as u32;
+        let height = (height as f32 * 24.0 * scale) as u32;
+        let uniforms = GridUniforms {
+            projection: [0.0; 16],
+            grid_padding: [0.0; 4],
+            cursor_color: [0.0; 4],
+            cursor_bg_color: [0.0; 4],
+            cell_size: [10.0 * scale, 24.0 * scale],
+            grid_size: [cols as u32, rows.len() as u32],
+            cursor_pos: [u32::MAX; 2],
+            _pad_cursor: [0; 2],
+            min_contrast: 0.0,
+            flags: 0,
+            padding_extend: 0,
+            input_colorspace: 0,
+        };
+        let mut output = vec![0x00081218; (width * height) as usize];
+        grid.render_text_cpu(&mut output, width, height, &uniforms);
+        (output, width, height)
+    };
+    for (cols, rows, history) in [(16, 10, false), (100, 24, false), (100, 24, true)] {
+        actual.resize(CrosswordsSize::new(cols, rows));
+        if history {
+            actual.scroll_display(rio_backend::crosswords::grid::Scroll::Top);
+        }
+        // Expected native viewport is literal observed text in a fresh grid,
+        // never a second call to the reflow algorithm under test. Font shaping
+        // is shared; this oracle checks restored layout and glyph delivery.
+        let mut expected = create(cols, rows);
+        let reference_text = if history {
+            lines[..rows].join("\r\n")
+        } else {
+            format!("0123456789.txt\r\n{}\r\n\r\n/example\r\nlambda ", lines[31])
+        };
+        Processor::default().advance(&mut expected, reference_text.as_bytes());
+        for scale in [1.0, 1.25, 2.0] {
+            let (rendered, width, height) = pixels(&mut actual, scale);
+            let (reference, _, _) = pixels(&mut expected, scale);
+            let changed = rendered
+                .iter()
+                .zip(&reference)
+                .filter(|(a, b)| a != b)
+                .count();
+            assert_eq!(
+                changed, 0,
+                "exact table pixels at {cols} columns, scale {scale}, history {history}"
+            );
+            assert!(
+                rendered.iter().any(|pixel| *pixel != 0x00081218),
+                "nonempty glyph oracle"
+            );
+            if history && scale == 1.0 {
+                if let Some(path) = std::env::var_os("AUTOMEXIA_RESIZE_PREVIEW") {
+                    image_rs::RgbImage::from_fn(width, height, |x, y| {
+                        let pixel = rendered[(y * width + x) as usize];
+                        image_rs::Rgb([
+                            (pixel >> 16) as u8,
+                            (pixel >> 8) as u8,
+                            pixel as u8,
+                        ])
+                    })
+                    .save(path)
+                    .expect("fictional resize preview");
+                }
+            }
+        }
+    }
+}
+
+#[test]
 fn parsed_statuses_reach_grid_glyphs_and_exact_cpu_pixels() {
     let cases = [
         ("NAME READY STATUS", [0, 255, 255, 255]),

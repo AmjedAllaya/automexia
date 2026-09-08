@@ -1,6 +1,6 @@
 use crate::Winsize;
 use std::io::{Error, Result};
-use std::os::windows::io::{AsRawHandle, FromRawHandle, IntoRawHandle, OwnedHandle};
+use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
 use std::{mem, ptr};
 use tracing::*;
 
@@ -21,9 +21,9 @@ use windows_sys::Win32::System::LibraryLoader::{GetProcAddress, LoadLibraryW};
 use windows_sys::{s, w};
 
 use windows_sys::Win32::System::Threading::{
-    CreateProcessW, InitializeProcThreadAttributeList, ResumeThread, TerminateProcess,
-    UpdateProcThreadAttribute, CREATE_SUSPENDED, CREATE_UNICODE_ENVIRONMENT,
-    EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
+    CreateProcessW, DeleteProcThreadAttributeList, InitializeProcThreadAttributeList,
+    ResumeThread, TerminateProcess, UpdateProcThreadAttribute, CREATE_SUSPENDED,
+    CREATE_UNICODE_ENVIRONMENT, EXTENDED_STARTUPINFO_PRESENT, PROCESS_INFORMATION,
     PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, STARTF_USESTDHANDLES, STARTUPINFOEXW,
     STARTUPINFOW,
 };
@@ -184,15 +184,72 @@ pub fn new(
     let result = unsafe {
         (api.create)(
             winsize.into(),
-            conin_pty_handle.into_raw_handle() as HANDLE,
-            conout_pty_handle.into_raw_handle() as HANDLE,
+            conin_pty_handle.as_raw_handle() as HANDLE,
+            conout_pty_handle.as_raw_handle() as HANDLE,
             0,
             &mut pty_handle as *mut _,
         )
     };
 
-    assert_eq!(result, S_OK);
+    if result != S_OK {
+        return Err(Error::other(format!(
+            "ConPTY creation failed (HRESULT {result:#010x})"
+        )));
+    }
 
+    // Keep native output drained throughout attachment, including error cleanup.
+    let conin = EventedAnonWrite::new(conin);
+    let conout = EventedAnonRead::new(conout);
+    let mut conpty = Conpty {
+        handle: pty_handle,
+        api,
+        managed_job: None,
+    };
+    let child = attach_child(
+        &mut conpty,
+        application_name,
+        command_line,
+        working_directory,
+        env,
+        inherit_environment,
+        managed_tree,
+    );
+    // ConPTY borrows these endpoints and owns separate copies. Release ours
+    // after attachment (including failure), so pipe closure remains detectable.
+    drop((conin_pty_handle, conout_pty_handle));
+    match child {
+        Ok(child_watcher) => {
+            let managed = conpty.managed_job.is_some();
+            Ok(Pty::new(conpty, conout, conin, child_watcher, managed))
+        }
+        Err(error) => {
+            // No VT consumer owns this failed startup. Reuse the normal drain
+            // mechanism before the backend closes, then join the pipe workers.
+            conout.discard_remaining();
+            drop(conpty);
+            Err(error)
+        }
+    }
+}
+
+struct StartupAttributes(*mut std::ffi::c_void);
+
+impl Drop for StartupAttributes {
+    fn drop(&mut self) {
+        // The initialized list's backing allocation outlives this guard.
+        unsafe { DeleteProcThreadAttributeList(self.0.cast()) }
+    }
+}
+
+fn attach_child(
+    conpty: &mut Conpty,
+    application_name: Option<&str>,
+    command_line: Option<&str>,
+    working_directory: &Option<String>,
+    env: Option<Vec<(String, String)>>,
+    inherit_environment: bool,
+    managed_tree: bool,
+) -> Result<ChildExitWatcher> {
     let mut success;
 
     // Prepare child process startup info.
@@ -250,13 +307,15 @@ pub fn new(
         }
     }
 
+    let _attributes = StartupAttributes(startup_info_ex.lpAttributeList.cast());
+
     // Set thread attribute list's Pseudo Console to the specified ConPTY.
     unsafe {
         success = UpdateProcThreadAttribute(
             startup_info_ex.lpAttributeList,
             0,
             PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE as usize,
-            pty_handle as *mut std::ffi::c_void,
+            conpty.handle as *mut std::ffi::c_void,
             mem::size_of::<HPCON>(),
             ptr::null_mut(),
             ptr::null_mut(),
@@ -277,7 +336,7 @@ pub fn new(
         None if !inherit_environment => Some(environment_block(Vec::new(), false)),
         None => None,
     };
-    let managed_job = managed_tree.then(create_managed_job).transpose()?;
+    conpty.managed_job = managed_tree.then(create_managed_job).transpose()?;
 
     let mut proc_info: PROCESS_INFORMATION = unsafe { mem::zeroed() };
     unsafe {
@@ -314,7 +373,7 @@ pub fn new(
         }
     }
 
-    if let Some(job) = managed_job.as_ref() {
+    if let Some(job) = conpty.managed_job.as_ref() {
         let assigned =
             unsafe { AssignProcessToJobObject(job.as_raw_handle(), proc_info.hProcess) };
         if assigned == 0 {
@@ -340,9 +399,6 @@ pub fn new(
         CloseHandle(proc_info.hThread);
     }
 
-    let conin = EventedAnonWrite::new(conin);
-    let conout = EventedAnonRead::new(conout);
-
     let child_watcher = match ChildExitWatcher::new(proc_info.hProcess) {
         Ok(watcher) => watcher,
         Err(error) => {
@@ -353,14 +409,7 @@ pub fn new(
             return Err(error);
         }
     };
-    let conpty = Conpty {
-        handle: pty_handle as HPCON,
-        api,
-        managed_job,
-    };
-    let managed = conpty.managed_job.is_some();
-
-    Ok(Pty::new(conpty, conout, conin, child_watcher, managed))
+    Ok(child_watcher)
 }
 
 impl Conpty {

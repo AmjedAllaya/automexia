@@ -7,8 +7,29 @@ use teletypewriter::{
 };
 
 #[derive(Default)]
+struct BoundaryReader {
+    final_bytes: Option<Vec<u8>>,
+    before_eof: Option<mpsc::SyncSender<()>>,
+    eof: Option<io::Error>,
+}
+
+impl Read for BoundaryReader {
+    fn read(&mut self, output: &mut [u8]) -> io::Result<usize> {
+        if let Some(bytes) = self.final_bytes.take() {
+            assert!(bytes.len() <= output.len());
+            output[..bytes.len()].copy_from_slice(&bytes);
+            return Ok(bytes.len());
+        }
+        if let Some(before_eof) = self.before_eof.take() {
+            before_eof.send(()).unwrap();
+        }
+        self.eof.take().map_or(Ok(0), Err)
+    }
+}
+
+#[derive(Default)]
 struct BoundaryPty {
-    reader: io::Empty,
+    reader: BoundaryReader,
     output: Vec<u8>,
     writable_bytes: usize,
     sizes: Vec<(u16, u16)>,
@@ -32,7 +53,7 @@ impl Write for BoundaryPty {
 }
 
 impl ProcessReadWrite for BoundaryPty {
-    type Reader = io::Empty;
+    type Reader = BoundaryReader;
     type Writer = Self;
     fn reader(&mut self) -> &mut Self::Reader {
         &mut self.reader
@@ -105,6 +126,59 @@ fn machine() -> Machine<BoundaryPty, VoidListener> {
         0,
     )
     .unwrap()
+}
+
+#[test]
+fn final_output_survives_eof_while_resize_owns_the_terminal_lock() {
+    let mut endings = vec![None, Some(ErrorKind::WouldBlock.into())];
+    if cfg!(windows) {
+        endings.push(Some(ErrorKind::BrokenPipe.into()));
+    }
+    #[cfg(target_os = "linux")]
+    endings.push(Some(io::Error::from_raw_os_error(libc::EIO)));
+    for eof in endings {
+        let label = format!("{eof:?}");
+        let mut machine = machine();
+        let terminal = machine.terminal.clone();
+        let (before_eof, eof_reached) = mpsc::sync_channel(0);
+        machine.pty.reader = BoundaryReader {
+            final_bytes: Some(b"FINAL-OUTPUT".to_vec()),
+            before_eof: Some(before_eof),
+            eof,
+        };
+        // Hold the same core lock as a resize or frame extraction. The reader
+        // must reach EOF with bytes pending, not parse before contention exists.
+        let resize_lock = terminal.lock();
+        let worker = std::thread::spawn(move || {
+            machine.pty_read(&mut State::default(), &mut [0; 128], true)
+        });
+        eof_reached
+            .recv_timeout(std::time::Duration::from_secs(5))
+            .unwrap();
+        drop(resize_lock);
+        worker
+            .join()
+            .unwrap()
+            .expect("EOF after final bytes is not an I/O failure");
+        let terminal = terminal.lock();
+        let text: String = terminal.grid[crate::crosswords::pos::Line(0)]
+            .inner
+            .iter()
+            .take(12)
+            .map(|cell| cell.c())
+            .collect();
+        assert_eq!(text, "FINAL-OUTPUT", "pending bytes survive {label}");
+    }
+}
+
+#[test]
+fn unrelated_reader_failure_is_not_hidden_as_eof() {
+    let mut machine = machine();
+    machine.pty.reader.eof = Some(ErrorKind::PermissionDenied.into());
+    let error = machine
+        .pty_read(&mut State::default(), &mut [0; 128], true)
+        .expect_err("non-EOF failures remain observable");
+    assert_eq!(error.kind(), ErrorKind::PermissionDenied);
 }
 
 #[test]

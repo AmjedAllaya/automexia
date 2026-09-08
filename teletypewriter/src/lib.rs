@@ -16,8 +16,8 @@ use std::path::{Path, PathBuf};
 /// Returns whether a PTY read error is the native end-of-stream signal for the
 /// current platform.
 ///
-/// Linux can report `EIO` from the master when no slave remains open. Other
-/// supported adapters do not classify a native error through this helper.
+/// Linux can report `EIO` from the master when no slave remains open. Windows'
+/// evented read adapter reports `BrokenPipe` after draining its committed bytes.
 /// Callers must still verify their expected output and child-exit event before
 /// accepting a session as complete.
 #[inline]
@@ -27,7 +27,12 @@ pub fn is_pty_eof_error(error: &io::Error) -> bool {
         error.raw_os_error() == Some(libc::EIO)
     }
 
-    #[cfg(not(target_os = "linux"))]
+    #[cfg(windows)]
+    {
+        error.kind() == io::ErrorKind::BrokenPipe
+    }
+
+    #[cfg(not(any(target_os = "linux", windows)))]
     {
         let _ = error;
         false

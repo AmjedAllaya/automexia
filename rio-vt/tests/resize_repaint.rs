@@ -102,6 +102,124 @@ fn assert_result_ownership(terminal: &Crosswords<Observer>) {
 }
 
 #[test]
+fn native_padded_table_repaint_matches_the_retained_viewport() {
+    let output: Vec<_> = (1..=32).map(|index| format!(
+        "ROW-{index:02}  -a---  2026-01-01 12:00:00  {index:04}  artifact-{index:02}-abcdefghijklmnopqrstuvwxyz0123456789.txt"
+    )).collect();
+    let padded: Vec<_> = output.iter().map(|row| format!("{row:<100}")).collect();
+    // Captured from the live fictional PowerShell fixture: ConPTY retains the
+    // last fragment of row 31 at native row zero, not the start of row 32.
+    let repaint = format!("\x1b[8;10;16t\x1b[?25l\x1b[H0123456789.txt  \r\n{}  \r\n\x1b[K\r\n/example        \r\nlambda\x1b[K\x1b[1C\x1b]0;RESIZE-ACK-0\x07\x1b[?25h", output[31]);
+    for split in 0..=repaint.len() {
+        let (mut terminal, _) = terminal(ResizePolicy::Conpty, 100, 24);
+        let mut parser = Processor::default();
+        parser.advance(&mut terminal, &fixture(&padded));
+        terminal.resize(CrosswordsSize::new(16, 10));
+        parser.advance(&mut terminal, &repaint.as_bytes()[..split]);
+        parser.advance(&mut terminal, &repaint.as_bytes()[split..]);
+        assert_eq!(
+            copy_all(&mut terminal),
+            expected(&output),
+            "fragment {split}"
+        );
+        terminal.resize(CrosswordsSize::new(100, 24));
+        assert_eq!(copy_all(&mut terminal), expected(&output));
+    }
+}
+
+#[test]
+fn table_roundtrips_preserve_text_blanks_styles_and_unicode_at_history_boundaries() {
+    for policy in [ResizePolicy::Reflow, ResizePolicy::Conpty] {
+        for count in [1, 8, 23, 24, 25, 32] {
+            let output: Vec<_> = (0..count)
+                .map(|index| {
+                    if index % 7 == 3 {
+                        String::new()
+                    } else {
+                        format!("ROW-{index:02}  界e\u{301}  {}", "abcdefghij".repeat(7))
+                    }
+                })
+                .collect();
+            let painted: Vec<_> = output
+                .iter()
+                .map(|row| format!("\x1b[32m{row}\x1b[0m    "))
+                .collect();
+            let (mut terminal, events) = terminal(policy, 100, 24);
+            let mut parser = Processor::default();
+            parser.advance(&mut terminal, &fixture(&painted));
+            for (cols, rows) in [(16, 10), (146, 28), (60, 8), (100, 24)]
+                .into_iter()
+                .cycle()
+                .take(24)
+            {
+                terminal.resize(CrosswordsSize::new(cols, rows));
+                assert_eq!(
+                    copy_all(&mut terminal),
+                    expected(&output),
+                    "{policy:?}, {count}, {cols}x{rows}"
+                );
+                assert!(
+                    terminal.grid.history_size() < 600,
+                    "repeated resize cannot accumulate rows"
+                );
+                // Literal input colours remain attached to every table prefix,
+                // independently of output-result tint and the active prompt.
+                for line in
+                    terminal.grid.topmost_line().0..=terminal.grid.bottommost_line().0
+                {
+                    let row = &terminal.grid[Line(line)];
+                    for cell in &row.inner {
+                        if cell.c() == 'R' {
+                            assert_eq!(
+                                terminal.grid.style_of(cell).fg,
+                                rio_vt::config::colors::AnsiColor::Named(
+                                    rio_vt::config::colors::NamedColor::Green
+                                )
+                            );
+                        }
+                    }
+                }
+                assert_eq!(
+                    events.0.load(Ordering::Relaxed),
+                    0,
+                    "reflow never sends shell input"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn native_padding_trimming_keeps_cursor_distance_and_unix_explicit_spaces() {
+    for policy in [ResizePolicy::Reflow, ResizePolicy::Conpty] {
+        let (mut terminal, _) = terminal(policy, 100, 24);
+        let mut parser = Processor::default();
+        parser.advance(
+            &mut terminal,
+            format!("word{}\r\nX\x1b[90G", " ".repeat(92)).as_bytes(),
+        );
+        terminal.resize(CrosswordsSize::new(16, 24));
+        terminal.resize(CrosswordsSize::new(100, 24));
+        assert_eq!(
+            terminal.grid.cursor.pos.col,
+            Column(89),
+            "{policy:?} cursor padding"
+        );
+        if policy == ResizePolicy::Reflow {
+            let row = (terminal.grid.topmost_line().0
+                ..=terminal.grid.bottommost_line().0)
+                .map(|line| &terminal.grid[Line(line)])
+                .find(|row| row[Column(0)].c() == 'w')
+                .unwrap();
+            assert!(
+                row.inner[4..96].iter().all(|cell| cell.c() == ' '),
+                "Unix explicit spaces are not native fill"
+            );
+        }
+    }
+}
+
+#[test]
 fn native_prompt_metadata_never_moves_the_protocol_cursor_during_repaint() {
     for repaint in [
         "\x1b[2J\x1b[H\x1b[K\r\n/example\x1b[K\r\nlambda ".to_owned(),

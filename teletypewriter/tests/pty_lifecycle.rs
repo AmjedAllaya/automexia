@@ -211,6 +211,16 @@ fn linux_pty_eio_is_classified_as_end_of_stream() {
 }
 
 #[cfg(windows)]
+#[test]
+fn windows_drained_pipe_is_classified_as_end_of_stream() {
+    assert!(is_pty_eof_error(&std::io::ErrorKind::BrokenPipe.into()));
+    assert!(!is_pty_eof_error(
+        &std::io::ErrorKind::PermissionDenied.into()
+    ));
+    assert!(!is_pty_eof_error(&std::io::ErrorKind::WouldBlock.into()));
+}
+
+#[cfg(windows)]
 fn read_until(
     pty: &mut Pty,
     deadline: Instant,

@@ -95,8 +95,12 @@ impl Grid<Square> {
         }
 
         match self.columns.cmp(&columns) {
-            Ordering::Less => self.grow_columns(reflow, columns, &mut tracked),
-            Ordering::Greater => self.shrink_columns(reflow, columns, &mut tracked),
+            Ordering::Less => {
+                self.grow_columns(reflow, columns, &mut tracked, preserve_history)
+            }
+            Ordering::Greater => {
+                self.shrink_columns(reflow, columns, &mut tracked, preserve_history)
+            }
             Ordering::Equal => (),
         }
 
@@ -248,6 +252,7 @@ impl Grid<Square> {
         reflow: bool,
         columns: usize,
         points: &mut [Option<Pos>; 4],
+        native: bool,
     ) {
         // Check if a row needs to be wrapped.
         let should_reflow = |row: &Row<Square>| -> bool {
@@ -297,6 +302,11 @@ impl Grid<Square> {
 
         for (i, mut row) in rows.drain(..).enumerate().rev() {
             trim_reflow_padding(&mut row);
+            if native && reflow {
+                let cursor = (i == self.lines - self.cursor.pos.row.0 as usize - 1)
+                    .then_some(self.cursor.pos.col.0);
+                trim_native_row_padding(&mut row, cursor);
+            }
             point_remap.begin_row(old_len - 1 - i, 0);
             // The intentionally blank Prompt row is application-owned layout,
             // not disposable terminal whitespace. It forms a hard semantic
@@ -525,6 +535,7 @@ impl Grid<Square> {
         reflow: bool,
         columns: usize,
         points: &mut [Option<Pos>; 4],
+        native: bool,
     ) {
         // Fast path: if no row has occupied content beyond `columns` there is
         // nothing to wrap down, so shrinking is a per-row truncation of
@@ -593,6 +604,11 @@ impl Grid<Square> {
 
         for (i, mut row) in rows.drain(..).enumerate().rev() {
             trim_reflow_padding(&mut row);
+            if native && reflow {
+                let cursor = (i == self.lines - self.cursor.pos.row.0 as usize - 1)
+                    .then_some(self.cursor.pos.col.0);
+                trim_native_row_padding(&mut row, cursor);
+            }
             point_remap.begin_row(
                 old_len - 1 - i,
                 buffered.as_ref().map_or(0, |(cells, _, _)| cells.len()),
@@ -928,6 +944,28 @@ fn is_prompt_spacer(row: &Row<Square>) -> bool {
             .inner
             .iter()
             .all(|square| square.is_bg_only() || matches!(square.c(), '\0' | ' '))
+}
+
+// ConPTY serializes hard-line fill as spaces, but its reflow measures through
+// the last non-space glyph (or the cursor). Treating that fill as Unix explicit
+// whitespace creates extra rows and makes the native repaint overwrite history.
+// Forced wraps retain their full width; text, indentation and extras stay intact.
+fn trim_native_row_padding(row: &mut Row<Square>, cursor: Option<usize>) {
+    if row.last().is_some_and(|cell| cell.wrapline()) {
+        return;
+    }
+    let end = row
+        .inner
+        .iter()
+        .rposition(|cell| {
+            !matches!(cell.c(), '\0' | ' ')
+                || cell.has_extras()
+                || !matches!(cell.wide(), Wide::Narrow)
+        })
+        .map_or(0, |index| index + 1);
+    let end = end.max(cursor.map_or(0, |column| column + 1)).max(1);
+    row.inner.truncate(end);
+    row.occ = row.occ.min(row.len());
 }
 
 fn trim_reflow_padding(row: &mut Row<Square>) {

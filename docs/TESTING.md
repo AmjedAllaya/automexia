@@ -74,6 +74,13 @@ than replaces, runtime drawing and input/compositor tests.
 
 ## Live resize preservation
 
+`cargo xtask test resize-stress` runs the library stress tests **and** the
+`resize_repaint`, `live_resize` and `pane_editor_resize` integration binaries.
+Previously its default library-only name filter omitted the native cases;
+full workspace QA ran them separately. Exact dispatch tests and mutation checks
+now reject missing native suites and swallowed failures. `--native-gui` adds
+desktop validation; it does not enable otherwise missing process tests.
+
 `cargo test -p rio-vt --test pane_editor_resize --locked` exercises the actual
 Windows PowerShell ConsoleHost and PSReadLine input loop through the application
 worker. Four independently scheduled cases each repeat ten times: empty view,
@@ -115,7 +122,25 @@ screen/history clears. It covers both Unix reflow and ConPTY viewport policies.
 alternating narrow/wide and short/tall sizes. Windows runs PowerShell and CMD;
 Unix runs Bash, and macOS additionally runs Zsh. The fixtures use fixed fictional
 content, bounded acknowledgments/output and successful child-exit checks.
-CMD's empty Enter probe is intentionally distinct from raw-key shell probes.
+Both eight-short-row and 32-long-table-row fixtures run. The latter crosses the
+history boundary and checks every row after shrink/restore, rejecting duplicates.
+The captured table repaint is separately replayed at every byte split; padded
+hard lines, forced wraps, Unicode, colours, blanks, cursor distance and Unix
+explicit spaces have independent expected-content assertions.
+The `resized_native_table_matches_independent_viewport_pixels` application test
+traverses fragmented bytes, core reflow, native repaint, visible snapshots and
+the CPU glyph renderer at 100%, 125% and 200% scale. Its expected viewport is
+literal fixture text in a fresh, never-resized grid. It checks the narrow live
+viewport, the restored live viewport and restored scrollback, allowing zero
+changed pixels. Set `AUTOMEXIA_RESIZE_PREVIEW` to a private PNG path to inspect
+the fictional restored view. Shared font shaping is not an independent font
+oracle, and CPU pixels do not certify a native GPU desktop.
+CMD uses a non-echoing key probe. Its no-resize regression verifies that all
+twelve acknowledgments preserve both exact rows and cursor position. The old
+empty Enter probe moved the native cursor and could scroll during repaint;
+it was not a valid side-effect-free acknowledgment. A separate worker fixture
+still exercises Enter during resize. Final CMD release uses a line read after
+all viewport assertions, avoiding PAUSE's buffered-key exit race.
 Windows-backed fixtures additionally traverse the application's real PTY worker:
 three-size bursts, alternating scheduling yields, input ordering barriers, exact
 retained rows, and final child release only after the last output assertion.
@@ -128,8 +153,11 @@ Stale or out-of-grid search endpoints must return no match without dereferencing
 invalid cells. Retain a separate valid-input test that actually reaches the
 regex runtime complexity limit; bounds rejection is not evidence for that limit.
 
-The current Windows PowerShell, CMD and WSL process fixtures and Linux Bash
-Unix-PTY fixture have been executed. Linux ran under WSL, not a physical desktop.
+The Windows PowerShell, CMD and WSL ConPTY fixtures have been executed, including
+the long-table cases. All eight non-opt-in Windows cases passed fifty no-retry
+repetitions. Earlier Linux Bash Unix-PTY evidence covers the short fixture under
+WSL, not a physical desktop; the expanded Unix long-table and macOS cases still
+require execution on their target platforms.
 The `live_resize` fixtures do not exercise PSReadLine; `pane_editor_resize`
 separately exercises the native editor as described above. Neither establishes
 desktop drag gestures, GPU frames, screen readers or a native macOS host.
@@ -148,12 +176,18 @@ evidence. WSL validates the Windows ConPTY route, not a native Linux desktop.
 Run the Unix tests from a native filesystem checkout on Linux/macOS. Tests must
 not silently substitute Windows results for an unavailable native platform.
 
-`cargo bench -p rio-vt --bench vt_input --locked -- native_resize_snapshot`
+`cargo bench -p rio-vt --bench vt_input --locked -- grid_resize_snapshot`
 measures repeated reflow plus visible snapshots for both policies with one
 bounded retained terminal. Keep profile, host, history depth and input fixed
 for comparisons; a development-profile smoke measurement is not a release
 latency or performance-improvement claim. Native GUI resize/pane/tab gestures,
 exact controlled pixels and accessibility checks remain separate gates.
+
+`cargo bench -p rio-vt --bench vt_input --locked -- grid_table_roundtrip_checked`
+checks exact copied table text, snapshot dimensions and bounded history on every
+iteration of a retained terminal. Those independent checks are outside the timed
+grid/snapshot region. It is a correctness-guarded core benchmark, not native PTY
+or compositor latency. Never report a crash-free timing loop as output fidelity.
 
 `cargo bench -p rio-vt --bench vt_input --locked -- pane_close_prompt_repaint_snapshot`
 measures a complete height shrink/grow, fragmented prompt repaint and visible
@@ -427,6 +461,22 @@ Run `cargo bench -p teletypewriter --bench pty_io --locked` for native startup,
 1 MiB output and clean-exit measurements with 30 samples per group. Compare on
 the same host; these are process/pipe measurements, not native window-dismissal
 latency.
+
+`cargo nextest run -p teletypewriter --test conpty_handle_lifetime --locked`
+runs a Windows-only, isolated-process resource regression. It launches the real
+PowerShell fixture, resizes, waits for successful exit and fully joins teardown.
+A bounded three-cycle stable handle count establishes native readiness; each
+of twelve subsequent cycles must recover the exact baseline. Four missing-child
+launches must also recover every handle. The test belongs to the serialized
+native PTY group. This detects leaks on both successful and failed attachment,
+not just slow visible window dismissal.
+
+`cargo test -p rio-vt --lib --locked performer::tests::resize_worker`
+includes a deterministic final-output race: hold the real terminal lock, deliver
+literal final bytes, reach EOF, then release the lock. It checks exact parsed
+text for zero reads, would-block and the compiled platform's native EOF, and
+preserves unrelated error propagation. This is worker/lock evidence, separate
+from native editor final-output/exit and live-resize tests.
 
 The controlled `tests/integration/resize-stress-windows.ps1` harness separately
 requires secondary and final windows to stop being visible within 500 ms while

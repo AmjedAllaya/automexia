@@ -114,6 +114,8 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "native protocol cursor",
             "worker-owned coalesced resize transactions",
             "ConPTY history/live seams",
+            "Long padded table rows",
+            "No-resize probe invariance",
             "viewport identity journal",
             "parser-created selection journal",
             "hard-line journal",
@@ -147,6 +149,8 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "fake-clock input-settle deadlines",
             "buffered-input ordering",
             "broken-pipe error-then-drop",
+            "Caller-handle recovery",
+            "Final-output lock contention",
             "Nonblocking pane retirement",
             "thread-local destruction gates",
             "capacity recovery",
@@ -276,6 +280,7 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
 }
 
 NATIVE_CONTRACT_SOURCES = {
+    "xtask": "tools/xtask/src/main.rs",
     "palette": "apps/automexia-terminal/src/renderer/command_palette.rs",
     "screen": "apps/automexia-terminal/src/screen/mod.rs",
     "application": "apps/automexia-terminal/src/application.rs",
@@ -388,6 +393,20 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
         raise ReinforcementError(f"native assurance sources are missing {sorted(missing)}")
+
+    stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
+                           "if !native_gui {", "default resize stress dispatch")
+    body = stress.split("{", 1)[1]
+    body = re.sub(r"//[^\n]*", "", body).strip()
+    if body != 'run_resize_regressions(|args| run("cargo", args))?;':
+        raise ReinforcementError("default resize stress must run and propagate the native ladder")
+    ladder = _source_slice(sources["xtask"], "fn run_resize_regressions(",
+                           "fn test_resize_stress(", "resize regression ladder")
+    for suite in ('"resize_stress"', '"resize_repaint"', '"live_resize"', '"pane_editor_resize"'):
+        if ladder.count(suite) != 1:
+            raise ReinforcementError("resize regression ladder lost or duplicated a required suite")
+    if '"--ignored"' in ladder or '"--skip"' in ladder:
+        raise ReinforcementError("resize regression ladder filters required native coverage")
 
     dispatch = _source_slice(
         sources["screen"], "pub fn process_key_bindings(", "match &action {",

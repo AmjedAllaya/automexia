@@ -34,7 +34,7 @@ test-threads = "num-cpus"
 max-threads = 1
 
 [[profile.default.overrides]]
-filter = 'binary(pty_lifecycle) | binary(test) | binary(live_resize) | binary(pane_editor_resize) | test(native_conpty_saturated_shutdown)'
+filter = 'binary(pty_lifecycle) | binary(conpty_handle_lifetime) | binary(test) | binary(live_resize) | binary(pane_editor_resize) | test(native_conpty_saturated_shutdown)'
 test-group = "native-pty"
 threads-required = 2
 slow-timeout = { period = "90s", terminate-after = 2, grace-period = "15s" }

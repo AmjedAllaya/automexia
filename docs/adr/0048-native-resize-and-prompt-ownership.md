@@ -45,6 +45,36 @@ Pending cell metrics have constant storage. Renderer snapshots may briefly retai
 the last committed grid during a resize, then refresh on the worker's damage event;
 no requested dimensions authorize shell output to resize the application window.
 
+### Native hard-line fill during table resize
+
+The long-table live fixture reproduced an extra wrapped row before the first
+native repaint. ConPTY can serialize a hard line with trailing spaces to the old
+viewport width. Its reflow measures through the last non-space glyph, whereas
+Unix explicit spaces remain content. Reflowing native fill as content displaced
+the live/history boundary; the subsequent repaint duplicated filename fragments.
+
+Only the ConPTY column-reflow passes trim hard-line trailing fill. Forced wraps
+keep their full width, leading/interior spaces and Unicode extras are retained,
+and the cursor reserves its existing distance through blank cells. The existing
+grid remains the owner; no output cache, shell-name detection, extra worker or
+resize delay is added. Unix and alternate-screen no-reflow contracts are unchanged.
+Native fill attributes are not allowed to create additional logical output rows.
+
+This follows the distinction in Microsoft's
+[row measurement](https://github.com/microsoft/terminal/blob/main/src/buffer/out/Row.cpp)
+and [text-buffer reflow](https://github.com/microsoft/terminal/blob/main/src/buffer/out/textBuffer.cpp).
+The independent replay uses the observed fictional native repaint, fragmented at
+every byte boundary. Live fixtures retain 32 long table rows, exact ordering,
+duplicate rejection and prompt adjacency through raw adapter, worker burst and
+intermediate-commit paths. The old eight-short-row fixture alone was insufficient.
+
+A no-resize control also proves that a silent fixture probe preserves rows and
+cursor position. CMD's former SET /P plus Enter probe inserted a native newline;
+it could shift the viewport while resizing. Non-echoing keys now acknowledge
+unchanged output, while a separate worker test retains real Enter coverage.
+Final child release uses a separate line read only after viewport assertions,
+so cleanup cannot repair the state being verified or lose PAUSE typeahead.
+
 ### Editing after a sibling closes
 
 ConPTY prompt restoration preserves the protocol cursor and pending-wrap state.
@@ -84,6 +114,25 @@ Primary evidence: [PSReadLine render optimization](https://github.com/PowerShell
 and [interactive input lifecycle](https://github.com/PowerShell/PSReadLine/blob/v2.4.5/PSReadLine/ReadLine.cs).
 
 ## Alternatives and evidence
+
+### Native lifetime and final output
+
+The expanded full suite exposed a teardown timeout after successful table
+assertions. Its exact blocked native stack was unavailable; independent native
+handle tests did reproduce leaked caller pipe endpoints and failed-attachment
+pseudoconsole handles. The existing Windows adapter now retains RAII ownership,
+releases caller pipe copies after child attachment, deletes initialized startup
+attributes, and drains output before closing a failed startup. No new worker or
+capability owner is introduced. Native output remains drained during close, as
+required by Microsoft's [pseudoconsole lifecycle](https://learn.microsoft.com/en-us/windows/console/creating-a-pseudoconsole-session).
+
+An independent terminal-lock contention test also reproduced pending output
+loss on native pipe closure. The existing terminal worker now parses buffered
+bytes before accepting EOF, waiting for the terminal lock on that worker only.
+Windows BrokenPipe and Linux EIO use the existing platform classifier; unrelated
+I/O errors still propagate. EOF does not establish child success: independent
+exit and joined-cleanup assertions remain mandatory. Native handle recovery,
+worker contention, live repaint and desktop pixels are separate evidence.
 
 Disabling highlights would conceal symptoms, not recover output. Caching and
 replaying shell text creates a competing authority and breaks legitimate clears.

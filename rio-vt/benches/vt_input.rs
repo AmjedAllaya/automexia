@@ -522,7 +522,7 @@ fn bench(c: &mut Criterion) {
     }
 }
 
-fn native_resize(c: &mut Criterion) {
+fn grid_resize(c: &mut Criterion) {
     // Reuse one bounded terminal across cycles so growing history or retaining
     // seam padding cannot hide behind fresh setup on every measured iteration.
     for policy in [
@@ -537,7 +537,7 @@ fn native_resize(c: &mut Criterion) {
         let mut styles = Vec::new();
         let mut extras = rustc_hash::FxHashMap::default();
         let mut narrow = false;
-        c.bench_function(&format!("native_resize_snapshot_{policy:?}"), |b| {
+        c.bench_function(&format!("grid_resize_snapshot_{policy:?}"), |b| {
             b.iter(|| {
                 narrow = !narrow;
                 let (cols, lines) = if narrow { (16, 10) } else { (146, 28) };
@@ -551,6 +551,78 @@ fn native_resize(c: &mut Criterion) {
                 );
                 std::hint::black_box(&rows);
             })
+        });
+    }
+}
+
+fn table_resize_roundtrip(c: &mut Criterion) {
+    use rio_vt::crosswords::grid::Dimensions;
+    use std::time::{Duration, Instant};
+
+    for policy in [
+        rio_vt::crosswords::ResizePolicy::Reflow,
+        rio_vt::crosswords::ResizePolicy::Conpty,
+    ] {
+        let mut terminal = term();
+        terminal.resize(CrosswordsSize::new(100, 24));
+        terminal.set_resize_policy(policy);
+        let lines: Vec<_> = (1..=32).map(|index| format!(
+            "ROW-{index:02}  -a---  2026-01-01 12:00:00  {index:04}  artifact-{index:02}-abcdefghijklmnopqrstuvwxyz0123456789.txt"
+        )).collect();
+        let expected = format!("{}\n\nlambda", lines.join("\n"));
+        let stream = format!(
+            "{}\r\n\r\nlambda",
+            lines
+                .iter()
+                .map(|line| format!("{line:<100}"))
+                .collect::<Vec<_>>()
+                .join("\r\n")
+        );
+        let mut parser = Processor::default();
+        parser.advance(&mut terminal, stream.as_bytes());
+        let mut rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        c.bench_function(&format!("grid_table_roundtrip_checked_{policy:?}"), |b| {
+            // Time the grid/snapshot work only. The independent input-text and
+            // resource oracles run on every iteration, outside the timed region.
+            b.iter_custom(|iterations| {
+                let mut elapsed = Duration::ZERO;
+                for _ in 0..iterations {
+                    let start = Instant::now();
+                    for (cols, height) in [(16, 10), (100, 24)] {
+                        terminal.resize(CrosswordsSize::new(cols, height));
+                        terminal.snapshot_visible(
+                            &TerminalDamage::Full,
+                            cols,
+                            &mut rows,
+                            &mut styles,
+                            &mut extras,
+                        );
+                        std::hint::black_box(&rows);
+                    }
+                    elapsed += start.elapsed();
+                    assert_eq!(rows.len(), 24);
+                    assert!(rows.iter().all(|row| row.inner.len() == 100));
+                    assert!(terminal.grid.history_size() < 600);
+                    let mut selection = Selection::new(
+                        SelectionType::Simple,
+                        Pos::new(terminal.grid.topmost_line(), Column(0)),
+                        Side::Left,
+                    );
+                    selection.update(
+                        Pos::new(terminal.grid.bottommost_line(), Column(99)),
+                        Side::Right,
+                    );
+                    terminal.selection = Some(selection);
+                    assert_eq!(
+                        terminal.selection_to_string().unwrap().trim_matches('\n'),
+                        expected
+                    );
+                    terminal.selection = None;
+                }
+                elapsed
+            });
         });
     }
 }
@@ -591,5 +663,11 @@ fn pane_close_repaint(c: &mut Criterion) {
     });
 }
 
-criterion_group!(benches, bench, native_resize, pane_close_repaint);
+criterion_group!(
+    benches,
+    bench,
+    grid_resize,
+    table_resize_roundtrip,
+    pane_close_repaint
+);
 criterion_main!(benches);

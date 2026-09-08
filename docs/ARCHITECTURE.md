@@ -30,7 +30,10 @@ for terminal cells, process lifetime, routes, focus, or persisted settings.
 The native PTY adapter selects the core grid's resize policy before output is
 served. ConPTY (including WSL on Windows) retains its history-free mutable
 viewport origin; Unix PTYs retain their native reflow behavior. Wrapped history
-seams use non-content padding rather than a duplicate output cache. Prompt
+seams use non-content padding rather than a duplicate output cache. Column
+reflow also distinguishes ConPTY hard-line fill from Unix explicit whitespace:
+native trailing padding cannot create extra logical output rows. Forced wraps,
+cursor distance and text extras remain owned by the grid. Prompt
 editing does not authorize claiming historical repaint rows. See
 [ADR 0048](adr/0048-native-resize-and-prompt-ownership.md).
 For managed ConPTY sessions, the PTY worker commits native and grid dimensions
@@ -316,6 +319,11 @@ service waits; explicit Quit retains one application shutdown owner. Native PTY
 cleanup remains joined after dismissal. ConPTY's reader switches to bounded
 discard-only draining once its consumer retires, so a full ring cannot block
 native close. A live consumer receives its final buffered bytes before EOF.
+Caller pipe copies are released after native child attachment; failed attachment
+retains backend ownership and drain-before-close cleanup. Initialized process
+attributes have one scoped owner. The VT worker parses its pending bytes before
+native EOF even when a resize/frame holds the terminal lock; only that worker
+waits, and child-exit verification remains independent of stream closure.
 
 Current Windows/Linux/BSD pane defaults use Alt+R/D for clone and add Shift for
 fresh; these deliberately replace shell Alt editing only in normal mode.

@@ -2015,20 +2015,39 @@ fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
     run_command(fuzz, "nightly image-decoder fuzz campaign")
 }
 
+fn run_resize_regressions(
+    mut run_suite: impl FnMut(&[&str]) -> TaskResult,
+) -> TaskResult {
+    run_suite(&[
+        "test",
+        "-p",
+        "rio-vt",
+        "--lib",
+        "--locked",
+        "resize_stress",
+        "--",
+        "--nocapture",
+    ])?;
+    // Integration tests are separate binaries: the library name filter cannot
+    // exercise a live shell or the captured repaint that originally escaped it.
+    run_suite(&[
+        "test",
+        "-p",
+        "rio-vt",
+        "--locked",
+        "--test",
+        "resize_repaint",
+        "--test",
+        "live_resize",
+        "--test",
+        "pane_editor_resize",
+        "--",
+        "--nocapture",
+    ])
+}
+
 fn test_resize_stress(native_gui: bool) -> TaskResult {
-    run(
-        "cargo",
-        &[
-            "test",
-            "-p",
-            "rio-vt",
-            "--lib",
-            "--locked",
-            "resize_stress",
-            "--",
-            "--nocapture",
-        ],
-    )?;
+    run_resize_regressions(|args| run("cargo", args))?;
 
     if !native_gui {
         return Ok(());
@@ -4930,6 +4949,60 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn resize_stress_runs_native_regressions_without_the_gui_flag() {
+        let mut calls = Vec::new();
+        run_resize_regressions(|args| {
+            calls.push(args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>());
+            Ok(())
+        })
+        .unwrap();
+        // Literal argument vectors reject filters, ignored-native substitutions,
+        // reordered suites and accidental library-only coverage.
+        assert_eq!(
+            calls,
+            [
+                vec![
+                    "test",
+                    "-p",
+                    "rio-vt",
+                    "--lib",
+                    "--locked",
+                    "resize_stress",
+                    "--",
+                    "--nocapture"
+                ],
+                vec![
+                    "test",
+                    "-p",
+                    "rio-vt",
+                    "--locked",
+                    "--test",
+                    "resize_repaint",
+                    "--test",
+                    "live_resize",
+                    "--test",
+                    "pane_editor_resize",
+                    "--",
+                    "--nocapture"
+                ],
+            ]
+        );
+        for fail_at in 1..=2 {
+            let mut called = 0;
+            let result = run_resize_regressions(|_| {
+                called += 1;
+                if called == fail_at {
+                    Err("fixture failure".into())
+                } else {
+                    Ok(())
+                }
+            });
+            assert_eq!(result, Err("fixture failure".into()));
+            assert_eq!(called, fail_at, "a failed stage stops the ladder");
+        }
     }
 
     #[test]

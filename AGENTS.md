@@ -523,9 +523,21 @@ visible viewport, layout, draw data, and pixels. Test hooks may freeze clocks,
 motion, accounts, and public fixture data, but may not inject the internal state
 whose production creation is under test.
 
+Resize regressions must first verify the fixture's acknowledgment contract
+without resizing: a supposedly silent probe must preserve exact rows and cursor
+position. Keep real editor input separate from non-echoing acknowledgments, and
+separate final child release from viewport assertions; neither a newline nor a
+cleanup handshake may silently repair or scroll the screen under test.
 Resize regressions must keep the real shell and native PTY alive while changing
 both dimensions. Wait for bounded native acknowledgments after every resize;
-assert exact output, prompt adjacency and successful child exit. Resizing a
+include long padded table rows exceeding viewport height, not only short sentinel
+lines. Assert exact row contents, order and uniqueness after shrinking and
+restoring, and distinguish native hard-line fill from Unix explicit spaces and
+forced wraps. Stress entrypoints must execute their integration/native binaries,
+not just library name filters; mutation-test dispatch and failure propagation.
+Correctness-checked benchmarks must reject corrupt text and growing history, and
+label grid/snapshot timing separately from native PTY and compositor latency.
+Assert exact output, prompt adjacency and successful child exit. Resizing a
 captured stream only after the child exits is complementary, not native redraw
 evidence. Fragment full-line and trailing-line erases around repaint text;
 verify historical rows never acquire the active prompt's identity. Cover the
@@ -703,6 +715,14 @@ Saturate real output pipes before retiring their consumer, verify continued
 shutdown draining without unbounded buffers, and preserve pending bytes before
 EOF for live consumers. Never shorten cleanup budgets or detach joins merely to
 meet a visible-dismissal threshold.
+
+Measure native caller-handle recovery after fully joined create/resize/exit/drop
+cycles, including failed child attachment. If native infrastructure initializes
+lazily, use bounded readiness with a stable independent count before measuring;
+do not subtract unexplained growth or accept a per-cycle leak. Test final bytes
+followed by native EOF while the actual terminal lock is held by a resize/frame.
+Zero reads, would-block, platform EOF and fatal I/O errors are distinct controls.
+Pipe-level tail tests alone do not prove the terminal worker parsed those bytes.
 
 Persistence tests must cover canonical round trip, every supported predecessor,
 corruption, truncation, duplicate keys, read-only/disk-full/interrupted writes,

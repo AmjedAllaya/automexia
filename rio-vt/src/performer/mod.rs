@@ -425,12 +425,14 @@ where
 
         loop {
             let drained;
+            let mut eof = false;
 
             // Read from the PTY.
             match self.pty.reader().read(&mut buf[unprocessed..]) {
                 // This is received on Windows/macOS when no more data is readable from the PTY.
                 Ok(0) if unprocessed == 0 => break,
                 Ok(got) => {
+                    eof = got == 0;
                     drained = got < buf.len() - unprocessed;
                     unprocessed += got;
                 }
@@ -444,7 +446,15 @@ where
                         // being drained; only `WouldBlock` does.
                         drained = err.kind() == ErrorKind::WouldBlock;
                     }
-                    _ if teletypewriter::is_pty_eof_error(&err) => break,
+                    _ if teletypewriter::is_pty_eof_error(&err) => {
+                        if unprocessed == 0 {
+                            break;
+                        }
+                        // A resize/frame may have held the terminal lock while
+                        // the final bytes arrived. Parse them before closing.
+                        eof = true;
+                        drained = true;
+                    }
                     _ => return Err(err),
                 },
             }
@@ -453,8 +463,9 @@ where
             let terminal = match &mut terminal {
                 Some(terminal) => terminal,
                 None => terminal.insert(match self.terminal.try_lock_unfair() {
-                    // Force block if we are at the buffer size limit.
-                    None if unprocessed >= READ_BUFFER_SIZE => {
+                    // EOF cannot produce another readiness event for pending
+                    // bytes. Wait on this worker, never on the input thread.
+                    None if unprocessed == buf.len() || eof => {
                         self.terminal.lock_unfair()
                     }
                     None => continue,
@@ -470,7 +481,7 @@ where
 
             // Assure we're not blocking the terminal too long unnecessarily,
             // and stop as soon as the PTY looks drained.
-            if processed >= MAX_LOCKED_READ || (drained && !drain_fully) {
+            if eof || processed >= MAX_LOCKED_READ || (drained && !drain_fully) {
                 break;
             }
         }

@@ -20,6 +20,27 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_resize_stress_cannot_hide_native_suites_behind_the_gui_flag(self) -> None:
+        for old, new in [
+            ('run_resize_regressions(|args| run("cargo", args))?;', ''),
+            ('run_resize_regressions(|args| run("cargo", args))?;',
+             '// run_resize_regressions(|args| run("cargo", args))?;'),
+            ('run_resize_regressions(|args| run("cargo", args))?;',
+             'if false { run_resize_regressions(|args| run("cargo", args))?; }'),
+            ('run_resize_regressions(|args| run("cargo", args))?;',
+             'run_resize_regressions(|args| run("cargo", args)).ok();'),
+            ('"live_resize",', ''),
+            ('"resize_repaint",', '"resize_repaint", "resize_repaint",'),
+            ('"pane_editor_resize",', '"--ignored", "pane_editor_resize",'),
+        ]:
+            with self.subTest(mutation=old):
+                sources = self.native_sources.copy()
+                prefix, suffix = sources["xtask"].split("fn run_resize_regressions(", 1)
+                self.assertIn(old, suffix)
+                sources["xtask"] = prefix + "fn run_resize_regressions(" + suffix.replace(old, new, 1)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_native_contract_sources(sources)
+
     def test_status_colour_evidence_cannot_be_replaced_by_command_success(self) -> None:
         for phrase in ["Lifecycle versus readiness", "condition polarity", "mixed failure counts", "parser-to-grid status colours", "kind-prefixed pods", "zero-count log prefixes", "literal status-colour oracles", "explicit ANSI", "disabled extension", "lifecycle/readiness semantics"]:
             with self.subTest(phrase=phrase):
@@ -32,8 +53,8 @@ class FeatureTestReinforcementTests(unittest.TestCase):
 
     def test_native_editor_cursor_and_deadline_scenarios_cannot_disappear(self) -> None:
         for owner, phrases in {
-            "terminal-protocols-grid-history": ["Real ConsoleHost editor", "native protocol cursor"],
-            "pty-scheduler-process-lifecycle": ["fake-clock input-settle deadlines", "buffered-input ordering", "broken-pipe error-then-drop"],
+            "terminal-protocols-grid-history": ["Real ConsoleHost editor", "native protocol cursor", "Long padded table rows", "No-resize probe invariance"],
+            "pty-scheduler-process-lifecycle": ["fake-clock input-settle deadlines", "buffered-input ordering", "broken-pipe error-then-drop", "Caller-handle recovery", "Final-output lock contention"],
         }.items():
             for phrase in phrases:
                 with self.subTest(owner=owner, phrase=phrase):

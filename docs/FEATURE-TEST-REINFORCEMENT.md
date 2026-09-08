@@ -104,6 +104,14 @@ Native broken-pipe error-then-drop tests must preserve single join ownership for
 both directions. Repeat editor lifecycles in a shared test process as well as
 isolated native cases; retain and diagnose the first abort before claiming a pass.
 
+Caller-handle recovery must use an isolated native process-count oracle after
+fully joined create/resize/exit/drop cycles, plus failed child attachment. Require
+bounded stable infrastructure readiness and exact recovery on every measured
+cycle. Final-output lock contention must traverse the actual worker's reader,
+parser and grid: hold the terminal lock until final bytes and EOF arrive, then
+compare literal text. Include zero reads, would-block, native EOF and fatal errors.
+Native pipe tail tests alone do not prove the worker retained its pending bytes.
+
 Pane-close regressions must distinguish immediate UI retirement from eventual
 native process termination. Gate real worker-body and native thread-local
 destruction independently: a finished hint is not an actual join acknowledgement.
@@ -128,8 +136,18 @@ selection, search, snapshot and native-seam regressions are owned by
 transitions and require bounded acknowledgments plus successful exit. Cover
 fragmented full/trailing EL without historical-output prompt ownership, native
 history/live seams, unused bottom rows, Unicode and intentional blank lines.
-The `native_resize_snapshot_*` benchmark retains one bounded terminal across
-cycles. Native desktop/GPU, accessibility and unexecuted Linux/macOS environments
+Long-table native fixtures cover 32 padded rows crossing the viewport/history
+seam, both worker scheduling modes, duplicate rejection and exact order. Verify
+silent probe cursor/row invariance without resizing; keep Enter-during-resize
+and final successful child release separate from that probe contract. Replay
+the real fictional repaint at every byte split; retain Unicode, colours, blanks,
+cursor distance and Unix explicit-space controls. The default resize-stress
+command must run library, replay, live-shell and native-editor binaries. Exact
+dispatch/failure tests and checker mutations prevent GUI-only native coverage.
+The `grid_resize_snapshot_*` benchmark retains one bounded terminal across
+cycles; `grid_table_roundtrip_checked_*` verifies exact copied input and bounded
+history on every iteration outside its grid/snapshot timing. Neither is a native
+PTY latency benchmark. Native desktop/GPU, accessibility and unexecuted Linux/macOS environments
 remain external evidence, not inferred passes.
 
 Reinforce exact executable/argument launch, ordered input, resize/output storms,
