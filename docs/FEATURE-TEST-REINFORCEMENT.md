@@ -829,6 +829,14 @@ Reinforce bounded context/cluster/namespace metadata, exec-auth opacity,
 certificate/path redaction, stale source handling, per-pane isolation, and no
 global kubeconfig mutation or implicit cluster operation.
 
+Credential-redaction fixtures must contain every sentinel asserted absent from
+public output. Test inline token, key, certificate, username and password
+independently so one field cannot mask another field's presence classification.
+Check exact public user projections, merged snapshots, debug output and rejected
+document diagnostics. Parser benchmarks independently validate their results
+before timing empty, comment-heavy, dense credential, oversized and malformed
+workloads; byte scanning alone is not resource-scaling evidence.
+
 ### provider-teleport-m12-source
 
 Reinforce bounded public profile/proxy metadata, external Teleport identity and

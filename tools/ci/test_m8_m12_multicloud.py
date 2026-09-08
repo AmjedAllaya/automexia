@@ -30,7 +30,7 @@ class M8M12ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_passes(self) -> None:
         self.assertEqual(
             policy.validate_repository(),
-            {"sources": 9, "tests": 27, "limits": 17, "providers": 6, "benchmarks": 5},
+            {"sources": 9, "tests": 30, "limits": 17, "providers": 6, "benchmarks": 5},
         )
 
     def test_status_provider_limit_authority_and_external_gate_drift_fail_closed(self) -> None:
@@ -109,6 +109,13 @@ class M8M12ContractTests(unittest.TestCase):
             ("provider.rs", "aws_public_config_128_profiles_and_sso_sessions"),
             ("provider_transients.rs", "fn long_local_paths_publish_revalidate_and_revoke_real_provider_transients("),
             ("private_fs.rs", "fn native_acl_path_conversion_rejects_relative_remote_and_dot_segments("),
+            ("contracts.rs", "fn credential_redaction_canaries_are_present_in_the_actual_fixture("),
+            ("contracts.rs", "fn every_inline_credential_is_opaque_in_public_and_merged_projections("),
+            ("contracts.rs", "fn rejected_credential_documents_return_only_stable_redacted_errors("),
+            ("kubeconfig.rs", "parse empty kubeconfig"),
+            ("kubeconfig.rs", "parse 256 credential users"),
+            ("kubeconfig.rs", "reject oversized kubeconfig"),
+            ("kubeconfig.rs", "reject malformed kubeconfig"),
         )
         for file_name, token in removals:
             with self.subTest(file_name=file_name, token=token):

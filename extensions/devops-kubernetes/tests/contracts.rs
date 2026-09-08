@@ -15,6 +15,10 @@ use automexia_devops_kubernetes::{
 };
 use automexia_extension_api::Capability;
 
+const FIXTURE_TOKEN: &str = "never-retain-this-token";
+const FIXTURE_KEY: &str = "never-retain-this-key";
+const FIXTURE_ENVIRONMENT: &str = "never-retain-this-value";
+
 fn config(context: &str, cluster: &str, user: &str, namespace: &str) -> Vec<u8> {
     format!(
         r#"apiVersion: v1
@@ -34,15 +38,15 @@ contexts:
 users:
   - name: {user}
     user:
-      token: <fixture-token>
-      client-key-data: <fixture-key-data>
+      token: {FIXTURE_TOKEN}
+      client-key-data: {FIXTURE_KEY}
       exec:
         apiVersion: client.authentication.k8s.io/v1
         command: kubelogin
         args: [get-token, --environment, AzurePublicCloud]
         env:
           - name: AZURE_CONFIG_DIR
-            value: never-retain-this-value
+            value: {FIXTURE_ENVIRONMENT}
         interactiveMode: Never
 "#
     )
@@ -104,6 +108,112 @@ fn manifest_is_independent_disabled_and_least_privilege() {
             Capability::Network,
         ]
     );
+}
+
+#[test]
+fn credential_redaction_canaries_are_present_in_the_actual_fixture() {
+    // A negative assertion against an absent value used to pass even if the
+    // fixture's real token or key escaped. Keep this precondition independent.
+    let input = config("fixture", "cluster", "user", "namespace");
+    for canary in [FIXTURE_TOKEN, FIXTURE_KEY, FIXTURE_ENVIRONMENT] {
+        assert!(
+            input
+                .windows(canary.len())
+                .any(|bytes| bytes == canary.as_bytes()),
+            "redaction fixture must contain every asserted canary"
+        );
+    }
+}
+
+#[test]
+fn every_inline_credential_is_opaque_in_public_and_merged_projections() {
+    for field in [
+        "token",
+        "client-key-data",
+        "client-certificate-data",
+        "username",
+        "password",
+    ] {
+        // Test each field alone: a token cannot mask a broken key-presence flag.
+        let canary = format!("automexia-fixture-private-{field}");
+        let input = serde_json::to_vec(&serde_json::json!({
+            "apiVersion": "v1",
+            "kind": "Config",
+            "users": [{"name": "fixture-user", "user": {field: canary}}],
+        }))
+        .unwrap();
+        assert!(input
+            .windows(canary.len())
+            .any(|bytes| bytes == canary.as_bytes()));
+        let source = parse_private_transient_source(
+            OpaqueReference::new("private.credentials"),
+            OpaqueReference::new("grant.credentials"),
+            ProviderKind::Kubernetes,
+            &input,
+            100,
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(source.users()).unwrap(),
+            serde_json::json!([{
+                "name": "fixture-user",
+                "exec": null,
+                "contains_sensitive_material": true,
+            }]),
+            "public user projection changed for {field}"
+        );
+        let merged = merge_sources(vec![source.clone()]).unwrap();
+        for public in [
+            serde_json::to_string(&source).unwrap(),
+            format!("{source:?}"),
+            serde_json::to_string(&merged).unwrap(),
+            format!("{merged:?}"),
+        ] {
+            assert!(!public.contains(&canary), "private field escaped: {field}");
+        }
+    }
+
+    let empty = parse_private_transient_source(
+        OpaqueReference::new("private.empty-user"),
+        OpaqueReference::new("grant.empty-user"),
+        ProviderKind::Kubernetes,
+        b"apiVersion: v1\nkind: Config\nusers:\n- name: fixture-user\n  user: {}\n",
+        100,
+    )
+    .unwrap();
+    assert!(!empty.users()[0].contains_sensitive_material());
+}
+
+#[test]
+fn rejected_credential_documents_return_only_stable_redacted_errors() {
+    let canary = "automexia-fixture-private-diagnostic";
+    for (input, expected) in [
+        (
+            format!("apiVersion: v1\nkind: Config\nusers: [{canary}\n"),
+            KubeAdapterErrorCode::InvalidDocument,
+        ),
+        (
+            format!("apiVersion: v1\nkind: Config\nusers:\n- name: fixture-user\n  user:\n    client-key: {canary}\n"),
+            KubeAdapterErrorCode::UntrustedCredentialPath,
+        ),
+        (
+            format!("apiVersion: v1\nkind: Config\nusers:\n- name: fixture-user\n  user:\n    auth-provider:\n      config:\n        access-token: {canary}\n"),
+            KubeAdapterErrorCode::UnsupportedCredentialPlugin,
+        ),
+    ] {
+        assert!(input.contains(canary));
+        let error = parse_private_transient_source(
+            OpaqueReference::new("private.invalid-credentials"),
+            OpaqueReference::new("grant.invalid-credentials"),
+            ProviderKind::Kubernetes,
+            input.as_bytes(),
+            100,
+        )
+        .unwrap_err();
+        assert_eq!(error.code(), expected);
+        assert!(!format!("{error}").contains(canary));
+        assert!(!format!("{error:?}").contains(canary));
+    }
 }
 
 #[test]
@@ -190,11 +300,7 @@ fn public_parser_is_bounded_redacted_and_exec_denied_by_default() {
     assert_eq!(exec.environment_names(), &["AZURE_CONFIG_DIR"]);
     assert_eq!(exec.policy(), ExecPluginPolicy::DenyAll);
     let serialized = serde_json::to_string(&source).unwrap();
-    for forbidden in [
-        "never-retain-this-token",
-        "never-retain-this-key",
-        "never-retain-this-value",
-    ] {
+    for forbidden in [FIXTURE_TOKEN, FIXTURE_KEY, FIXTURE_ENVIRONMENT] {
         assert!(!serialized.contains(forbidden));
     }
 
@@ -406,9 +512,10 @@ fn exact_exec_review_is_capsule_bound_and_stays_nonactivated() {
     assert!(review.cancel_process_tree());
     assert!(!review.execution_enabled());
     let serialized = serde_json::to_string(&review).unwrap();
-    assert!(!serialized.contains("never-retain-this-token"));
-    assert!(!serialized.contains("never-retain-this-key"));
-    assert!(!serialized.contains("never-retain-this-value"));
+    for forbidden in [FIXTURE_TOKEN, FIXTURE_KEY, FIXTURE_ENVIRONMENT] {
+        assert!(!serialized.contains(forbidden));
+        assert!(!format!("{review:?}").contains(forbidden));
+    }
 
     let wrong_session = ExactExecPluginGrant::new(
         "kubelogin",

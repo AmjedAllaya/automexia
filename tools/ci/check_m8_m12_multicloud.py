@@ -178,6 +178,9 @@ REQUIRED_TESTS = {
         "exact_source_review_rejects_relative_oversize_and_changed_input",
         "public_parser_is_bounded_redacted_and_exec_denied_by_default",
         "json_cloud_sources_are_isolated_and_secret_exec_flags_fail_closed",
+        "credential_redaction_canaries_are_present_in_the_actual_fixture",
+        "every_inline_credential_is_opaque_in_public_and_merged_projections",
+        "rejected_credential_documents_return_only_stable_redacted_errors",
     },
     "extensions/devops-openshift/tests/contracts.rs": {
         "web_login_is_visible_isolated_and_nonactivated",
@@ -371,6 +374,12 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
     require_tokens("fuzz/Cargo.toml", REQUIRED_FUZZ_MANIFEST_TOKENS, root)
     for relative, token in REQUIRED_BENCHMARK_TOKENS.items():
         require_tokens(relative, {token, "criterion_group!"}, root)
+    require_tokens(
+        "extensions/devops-kubernetes/benches/kubeconfig.rs",
+        {"parse empty kubeconfig", "parse 256 credential users",
+         "reject oversized kubeconfig", "reject malformed kubeconfig"},
+        root,
+    )
     validate_s1(contract["s1_policy"], root)
     for relative in contract["documents"]:
         source = bounded_text(root / relative)
