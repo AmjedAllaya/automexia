@@ -71,7 +71,7 @@ use. The local gate still uses a fresh bounded target and removes it on exit.
 Ordinary and Linux-release quality jobs install sccache v0.16.0 through the
 reviewed Mozilla Action pinned at commit
 `fc920bf0ec8de6ee65d409111f7ec508035751ba`. The Action verifies its release
-download; Automexia derives the `automexia-rust-<selected-version>-v1` cache
+download; Automexia derives the `automexia-rust-1.96.1-v2` cache
 generation from `RUSTUP_TOOLCHAIN` and reports cache statistics. Cache misses, eviction, and service
 limits degrade only performance. `cargo clean` remains between Clippy and
 Nextest to bound the runner filesystem.
@@ -82,6 +82,26 @@ starts. A job-level `env` expression cannot reference the `env` context;
 shares the computed value with subsequent steps. Actionlint validates the actual
 workflow syntax; native Linux Bash tests execute both initializer lines and
 verify exact output while preserving preexisting environment-file content.
+
+The current [compiler identity contract](adr/0053-effective-rust-toolchain-identity.md)
+also verifies the repository pin and independently checks the declared MSRV.
+The historical timings below belong to their recorded commits; they are not
+verification or performance measurements of a later compiler-policy change.
+
+Compiler-policy jobs select Python 3.12 before using the standard-library TOML
+parser, including native Ubuntu 22.04 package jobs. Action trust and workflow
+mutation tests reject missing, skipped, reordered or unreviewed setup.
+
+The full-history secret audit retains six reviewed historical false-positive
+fingerprints in `.gitleaksignore`: ordinary instruction prose, literal test
+data, and inherited upstream configuration explicitly marked as a public search
+key. Each exception binds one commit, file, rule and line. No entire file, rule,
+commit or secret value is exempted. Repository policy rejects changed, duplicate
+or additional fingerprints; real scanner tests require new generic-key and
+token findings in every affected path. Historical exceptions are retained only
+while those immutable history findings remain; new findings need independent
+review and must not inherit these exemptions. Raw matching values are not
+included in documentation or reports.
 
 Release package jobs use the shared, lockfile-bound Cargo source cache but never
 the compiler cache or `target`. They remain native cold builds of the exact

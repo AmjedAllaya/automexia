@@ -101,13 +101,17 @@ jobs:
         with:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Install pinned Rust and native dependencies
         shell: bash
         run: |
           set -euo pipefail
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
-          rustc --version
-          printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
+          python tools/ci/rust_toolchain.py verify --kind development
+          printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
       - name: Cache Cargo registry and Git sources
@@ -188,13 +192,17 @@ jobs:
           key: cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}
           restore-keys: |
             cargo-sources-v1-${{ runner.os }}-
+      - name: Select Python for compiler-policy bootstrap
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        with:
+          python-version: '3.12'
       - name: Require native architecture and install packaging dependencies
         shell: bash
         run: |
           set -euo pipefail
           test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-          rustc --version
+          python tools/ci/rust_toolchain.py verify --kind development
           rustup target add "${{ matrix.target }}"
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends appstream cpio desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libwayland-dev libx11-xcb-dev libxkbcommon-dev lintian ncurses-bin rpm scdoc

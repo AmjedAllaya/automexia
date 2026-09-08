@@ -54,6 +54,11 @@ fragment only when the corresponding repository label is applied.
 
 ## One-command workflows
 
+The development/release compiler is pinned in `rust-toolchain.toml`; the
+workspace `rust-version` is the separately tested minimum. Hosted workflows
+explicitly select and verify the compiler rather than changing rustup's global
+default. See [compiler identity](docs/adr/0053-effective-rust-toolchain-identity.md).
+
 ```text
 cargo dev       # complete local gate, then launch Automexia
 cargo automexia # fast incremental build and launch

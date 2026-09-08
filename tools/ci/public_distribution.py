@@ -1301,7 +1301,7 @@ def validate_workflow(path: Path = PUBLIC_WORKFLOW) -> None:
         "single test thread": "NEXTEST_TEST_THREADS: '1'",
         "compiler wrapper": "RUSTC_WRAPPER: sccache",
         "GitHub cache backend": "SCCACHE_GHA_ENABLED: 'true'",
-        "versioned compiler cache": r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"''',
+        "versioned compiler cache": r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"''',
     }
     for label, token in resource_contract.items():
         if quality.count(token) != 1:

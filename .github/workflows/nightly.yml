@@ -20,6 +20,17 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Exercise history, clones, real window, ConPTY, and renderer snapshots
       shell: pwsh
       run: cargo xtask test session-clone --native-windows
@@ -69,6 +80,17 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Clone the configured WSL distro without a PowerShell fallback
       shell: pwsh
       run: cargo xtask test session-clone --native-wsl
@@ -99,10 +121,22 @@ jobs:
         - ghostty_keybindings
         - ghostty_migration
         - multicloud_provider_inputs
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-08-25
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind nightly
     - name: Install the nightly-2026-08-25 compiler required by libFuzzer
       run: rustup toolchain install nightly-2026-08-25 --profile minimal
     - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
@@ -118,11 +152,22 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     env:
+      RUSTUP_TOOLCHAIN: nightly-2026-08-25
       MIRIFLAGS: -Zmiri-disable-isolation
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind nightly
     - run: rustup toolchain install nightly-2026-08-25 --profile minimal --component miri
     - name: Bounded pure VT memory-safety suite
       run: 'cargo +nightly-2026-08-25 miri test -p rio-vt --lib --no-default-features --locked simd_utf8::tests
@@ -150,10 +195,22 @@ jobs:
         sanitizer:
         - address
         - thread
+    env:
+      RUSTUP_TOOLCHAIN: nightly-2026-08-25
     steps:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind nightly
     - run: rustup toolchain install nightly-2026-08-25 --profile minimal --component rust-src
     - env:
         RUSTFLAGS: -Zsanitizer=${{ matrix.sanitizer }}
@@ -174,6 +231,16 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
     - name: Install benchmark build dependencies
       run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
     - run: cargo bench -p automexia-terminal -p rio-vt -p corcovado -p teletypewriter -p automexia-connectivity -p automexia-command-productivity -p automexia-devops-ssh -p automexia-keybindings --no-run --locked
@@ -193,6 +260,16 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
     - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
@@ -230,6 +307,17 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
@@ -275,6 +363,17 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - run: rustup target add ${{ matrix.target }}
     - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       if: matrix.target == 'x86_64-pc-windows-msvc'
@@ -320,6 +419,16 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
     - run: sudo apt-get update && sudo apt-get install -y appstream binutils desktop-file-utils glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev ncurses-bin rpm scdoc
     - name: Require the intended native architecture
       run: test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
@@ -378,6 +487,16 @@ jobs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
       with:
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
     - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
     - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:

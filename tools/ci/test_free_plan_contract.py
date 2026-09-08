@@ -16,14 +16,25 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 CHECKER = ROOT / ".github" / "scripts" / "check_free_plan_contract.py"
 TEST_TEMP_PARENT = Path(ROOT.anchor) if os.name == "nt" else None
-CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
+CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_compiler_selection_matches_repository_pin(self) -> None:
+        import yaml
+
+        pin = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
+        for name in ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml"):
+            with self.subTest(workflow=name):
+                workflow = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))
+                # A global default cannot override the checkout's toolchain file.
+                self.assertEqual(workflow["env"].get("RUSTUP_TOOLCHAIN"), pin)
+
     @staticmethod
     def populate_contract_root(root: Path) -> None:
         shutil.copytree(ROOT / ".github", root / ".github")
         shutil.copy2(ROOT / "rust-toolchain.toml", root / "rust-toolchain.toml")
+        shutil.copy2(ROOT / "Cargo.toml", root / "Cargo.toml")
         for package in ("sugarloaf", "rio-backend"):
             (root / package).mkdir()
             shutil.copy2(
@@ -203,14 +214,38 @@ class FreePlanContractTests(unittest.TestCase):
             self.assertIn("shadowed by legacy rust-toolchain", completed.stderr)
         for workflow_name in ("ci.yml", "linux-early-access.yml", "release.yml"):
             completed = self.run_checker_with_replacement(
-                "rustc --version", 'rustup default "$RUSTUP_TOOLCHAIN"', workflow_name
+                "python tools/ci/rust_toolchain.py verify --kind development",
+                'rustup default "$RUSTUP_TOOLCHAIN"', workflow_name
             )
             self.assertNotEqual(completed.returncode, 0)
             self.assertIn("without changing runner defaults", completed.stderr)
 
+    def test_msrv_authority_is_bounded_exact_and_redacted(self) -> None:
+        source = (ROOT / "Cargo.toml").read_bytes()
+        limit = 256 * 1024
+        at_limit = source + b"\n#" + b"p" * (limit - len(source) - 2)
+        for content, valid in ((None, False), (b"\xff", False), (b"[workspace", False),
+                               (b"workspace = []", False), (at_limit, True),
+                               (at_limit + b"p", False)):
+            with self.subTest(valid=valid, size=None if content is None else len(content)), tempfile.TemporaryDirectory(dir=TEST_TEMP_PARENT) as temporary:
+                root = Path(temporary)
+                self.populate_contract_root(root)
+                path = root / "Cargo.toml"
+                if content is None:
+                    path.unlink()
+                else:
+                    path.write_bytes(content)
+                result = subprocess.run([sys.executable, str(CHECKER)], cwd=root,
+                                        capture_output=True, text=True, timeout=30)
+                self.assertEqual(result.returncode == 0, valid, result.stderr)
+                if not valid:
+                    self.assertIn("MSRV authority", result.stderr)
+                    self.assertNotIn(str(root), result.stderr)
+                    self.assertNotIn("Traceback", result.stderr)
+
     def test_linux_release_cache_cannot_ignore_the_selected_compiler(self) -> None:
         completed = self.run_checker_with_replacement(
-            "SCCACHE_GHA_VERSION=automexia-rust-%s-v1",
+            "SCCACHE_GHA_VERSION=automexia-rust-%s-v2",
             "SCCACHE_GHA_VERSION: automexia-rust-stale-v1",
             "linux-early-access.yml",
         )
@@ -231,7 +266,7 @@ class FreePlanContractTests(unittest.TestCase):
                 "# " + CACHE_INITIALIZER,
                 CACHE_INITIALIZER.replace('"$RUSTUP_TOOLCHAIN"', '"stable"'),
                 CACHE_INITIALIZER.replace(">>", ">"),
-                'SCCACHE_GHA_VERSION: automexia-rust-${{ env.RUSTUP_TOOLCHAIN }}-v1',
+                'SCCACHE_GHA_VERSION: automexia-rust-${{ env.RUSTUP_TOOLCHAIN }}-v2',
             ):
                 with self.subTest(workflow=workflow_name, replacement=replacement):
                     completed = self.run_checker_with_replacement(
@@ -254,8 +289,8 @@ class FreePlanContractTests(unittest.TestCase):
             lines = [line.strip() for line in source.splitlines() if "SCCACHE_GHA_VERSION" in line]
             self.assertEqual(len(lines), 1)
             for pin, expected in (
-                ("1.96.1", "OTHER=kept\nSCCACHE_GHA_VERSION=automexia-rust-1.96.1-v1\n"),
-                ("2.0.0", "OTHER=kept\nSCCACHE_GHA_VERSION=automexia-rust-2.0.0-v1\n"),
+                ("1.96.1", "OTHER=kept\nSCCACHE_GHA_VERSION=automexia-rust-1.96.1-v2\n"),
+                ("2.0.0", "OTHER=kept\nSCCACHE_GHA_VERSION=automexia-rust-2.0.0-v2\n"),
             ):
                 with self.subTest(workflow=workflow_name, pin=pin), tempfile.TemporaryDirectory() as temporary:
                     root = Path(temporary)
@@ -495,7 +530,7 @@ class FreePlanContractTests(unittest.TestCase):
             "mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba",
             "version: v0.16.0",
             "SCCACHE_GHA_ENABLED: 'true'",
-            "SCCACHE_GHA_VERSION=automexia-rust-%s-v1",
+            "SCCACHE_GHA_VERSION=automexia-rust-%s-v2",
             "RUSTC_WRAPPER: sccache",
             "sccache --show-stats",
             "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}",
@@ -513,7 +548,7 @@ class FreePlanContractTests(unittest.TestCase):
             ("version: v0.16.0", "version: v0.15.0"),
             ("SCCACHE_GHA_ENABLED: 'true'", "SCCACHE_GHA_ENABLED: 'false'"),
             (
-                "SCCACHE_GHA_VERSION=automexia-rust-%s-v1",
+                "SCCACHE_GHA_VERSION=automexia-rust-%s-v2",
                 "SCCACHE_GHA_VERSION: unversioned",
             ),
             ("RUSTC_WRAPPER: sccache", "RUSTC_WRAPPER: rustc"),

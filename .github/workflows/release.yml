@@ -140,6 +140,17 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Exercise prompt history, independent clones, ConPTY, and resize storms
       shell: pwsh
       run: cargo xtask test session-clone --native-windows
@@ -162,6 +173,17 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Preserve distro, user, shell, directory, and independent PTY state
       shell: pwsh
       run: cargo xtask test session-clone --native-wsl
@@ -191,6 +213,17 @@ jobs:
       with:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
@@ -296,12 +329,16 @@ jobs:
         ref: ${{ needs.authorize.outputs.commit }}
         fetch-depth: 0
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-        rustc --version
+        python tools/ci/rust_toolchain.py verify --kind development
     - name: Verify merged source, Cargo version, protected paths, and release uniqueness
       shell: bash
       env:
@@ -353,12 +390,16 @@ jobs:
       with:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
-        rustc --version
+        python tools/ci/rust_toolchain.py verify --kind development
     - name: Install native Linux build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
     - name: Install pinned release quality tools
@@ -430,12 +471,16 @@ jobs:
         test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
 
         '
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-        rustc --version
+        python tools/ci/rust_toolchain.py verify --kind development
     - run: rustup target add ${{ matrix.target }}
     - name: Build native release artifact
       shell: bash
@@ -510,13 +555,17 @@ jobs:
       run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
     - name: Install native build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev binutils
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
         rustup target add "${{ matrix.target }}" --toolchain "$RUSTUP_TOOLCHAIN"
-        rustc --version
+        python tools/ci/rust_toolchain.py verify --kind development
     - name: Verify two independent cold source builds
       shell: bash
       run: |
@@ -717,13 +766,17 @@ jobs:
       with:
         name: signed-inputs-${{ matrix.artifact }}
         path: signed-inputs
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust and packager toolchain
       shell: pwsh
       run: |
         rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
         if ($LASTEXITCODE -ne 0) { throw 'rustup toolchain install failed' }
-        rustc --version
-        if ($LASTEXITCODE -ne 0) { throw 'compiler version inspection failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Install pinned cargo-packager
       uses: taiki-e/install-action@e67fa11c4b9316fa714ddf0abed07a0c3143b95b
       with:
@@ -1082,12 +1135,16 @@ jobs:
       with:
         name: ${{ matrix.artifact }}
         path: staged
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
     - name: Install pinned Rust toolchain
       shell: bash
       run: |
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
-        rustc --version
+        python tools/ci/rust_toolchain.py verify --kind development
     - name: Require the intended native architecture
       shell: bash
       run: 'set -euo pipefail

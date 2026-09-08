@@ -267,6 +267,19 @@ machine-local paths, hostnames, account identifiers, and private product plans.
 
 ## Complete local gate
 
+Compiler policy and its mutations run through repository validation and the
+Python suite. Focused commands are `python tools/ci/rust_toolchain.py check-policy`
+and `python tools/ci/test_rust_toolchain.py`. To verify a local compiler receipt,
+set process-local `RUSTUP_TOOLCHAIN` to the repository pin, then run
+`python tools/ci/rust_toolchain.py verify --kind development`. The `msrv` kind
+instead verifies the workspace minimum. CI additionally runs the explicit
+locked all-target/all-feature MSRV check. Neither check changes the global
+rustup default. Keep exact-commit hosted results separate from local passes.
+Compiler workflow probes require the explicit Python 3.12 bootstrap, not the
+runner's default Python. `python tools/ci/test_free_security_tools.py --tool gitleaks`
+also validates exact historical exemptions and detection of fresh findings in
+those same repository paths.
+
 For changes that affect Rust code or build behavior, start with:
 
 ```text

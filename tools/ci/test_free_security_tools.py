@@ -105,6 +105,20 @@ def execute(
 
 
 class FreeSecurityToolTests(unittest.TestCase):
+    def test_historical_exemptions_have_an_exact_reviewed_contract(self) -> None:
+        ASSURANCE.validate_history_exemptions()
+
+    def test_history_review_rejects_missing_duplicate_expanded_or_changed_entries(self) -> None:
+        source = (ROOT / '.gitleaksignore').read_text(encoding='utf-8')
+        entry = sorted(ASSURANCE.HISTORICAL_FINDINGS)[0]
+        for candidate in ('', source.replace(entry, ''), source + '\n' + entry,
+                          source + '\n' + 'a' * 40 + ':other.txt:generic-api-key:1',
+                          source.replace(entry, entry.replace(':196', ':197')) if ':196' in entry
+                          else source.replace(entry, 'b' * 40 + entry[40:]),
+                          source + '\n#' + 'x' * 4096):
+            with self.assertRaises(ASSURANCE.AssuranceError):
+                ASSURANCE.validate_history_exemption_text(candidate)
+
     def test_temporary_git_canary_drops_the_callers_repository_context(self) -> None:
         ambient = {
             name: f"caller-{index}"
@@ -171,8 +185,16 @@ class FreeSecurityToolTests(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
             canary = "gh" + "p_" + ("A1b2C3d4E5f6G7h8I9" + "j0K1l2M3n4O5p6Q7r8")
-            (repository / "canary.txt").write_text(f"token={canary}\n", encoding="utf-8")
-            for command_line in (["git", "add", "canary.txt"], ["git", "commit", "--quiet", "-m", "scanner canary"]):
+            generic_canary = 'A1b2C3d4E5f6' + 'G7h8I9j0K1l2M3n4O5p6Q7r8'
+            owners = ('AGENTS.md', 'extensions/devops-kubernetes/tests/contracts.rs',
+                      'docs/docusaurus.config.js')
+            # Exact old fingerprints must not suppress new findings in the same paths.
+            shutil.copy2(ROOT / '.gitleaksignore', repository / '.gitleaksignore')
+            for owner in owners:
+                path = repository / owner
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(f"token={canary}\napi_key={generic_canary}\n", encoding="utf-8")
+            for command_line in (["git", "add", "--", *owners], ["git", "commit", "--quiet", "-m", "scanner canary"]):
                 completed = execute(
                     command_line,
                     cwd=repository,
@@ -180,12 +202,19 @@ class FreeSecurityToolTests(unittest.TestCase):
                 )
                 self.assertEqual(completed.returncode, 0, completed.stderr)
             detected = execute(
-                [*command, "git", "--redact", "--no-banner", "--config", str(ROOT / ".gitleaks.toml"), "--log-opts=--all"],
+                [*command, "git", "--redact", "--no-banner", "--config", str(ROOT / ".gitleaks.toml"), "--log-opts=--all",
+                 '--report-format=json', '--report-path=findings.json'],
                 cwd=repository,
                 environment=repository_environment,
             )
             self.assertEqual(detected.returncode, 1)
             self.assertNotIn(canary, detected.stdout + detected.stderr)
+            report = (repository / 'findings.json').read_text(encoding='utf-8')
+            self.assertNotIn(canary, report)
+            self.assertNotIn(generic_canary, report)
+            self.assertEqual({item['File'] for item in json.loads(report)}, set(owners))
+            self.assertEqual({item['File'] for item in json.loads(report)
+                              if item['RuleID'] == 'generic-api-key'}, set(owners))
         current_head = execute(["git", "rev-parse", "HEAD"], cwd=ROOT)
         current_status = execute(["git", "status", "--porcelain=v1", "-uno"], cwd=ROOT)
         current_config = execute(
@@ -225,6 +254,8 @@ def main() -> int:
     if arguments.tool in {"all", "semgrep"}:
         suite.addTest(FreeSecurityToolTests("test_semgrep_detects_the_shell_evaluator_canary_and_ignores_safe_argv"))
     if arguments.tool in {"all", "gitleaks"}:
+        suite.addTest(FreeSecurityToolTests("test_historical_exemptions_have_an_exact_reviewed_contract"))
+        suite.addTest(FreeSecurityToolTests("test_history_review_rejects_missing_duplicate_expanded_or_changed_entries"))
         suite.addTest(FreeSecurityToolTests("test_temporary_git_canary_drops_the_callers_repository_context"))
         suite.addTest(FreeSecurityToolTests("test_gitleaks_detects_a_committed_canary_without_leaking_it"))
         suite.addTest(FreeSecurityToolTests("test_gitleaks_excludes_private_local_directory_before_content_scanning"))

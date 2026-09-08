@@ -14,6 +14,7 @@ errors: list[str] = []
 # Rustup's environment selector takes precedence over checkout and runner
 # defaults. Validate the selected compiler, not merely an installation command.
 compiler_pin = None
+minimum = None
 try:
     pin_path = Path('rust-toolchain.toml')
     if pin_path.is_symlink() or not pin_path.is_file():
@@ -34,16 +35,38 @@ except (OSError, ValueError):
 if Path('rust-toolchain').exists() or Path('rust-toolchain').is_symlink():
     errors.append('compiler authority must not be shadowed by legacy rust-toolchain')
 
+try:
+    manifest_path = Path('Cargo.toml')
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError
+    with manifest_path.open('rb') as manifest_file:
+        manifest_bytes = manifest_file.read(256 * 1024 + 1)
+    if len(manifest_bytes) > 256 * 1024:
+        raise ValueError
+    minimum = tomllib.loads(manifest_bytes.decode('utf-8'))['workspace']['package']['rust-version']
+    if not isinstance(minimum, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', minimum):
+        raise ValueError
+except (OSError, ValueError, KeyError, TypeError):
+    minimum = None
+    errors.append('MSRV authority must be a regular bounded Cargo.toml with an exact version')
+
 compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml')
 for workflow_name in compiler_workflows:
     workflow_text = (wf / workflow_name).read_text(encoding='utf-8')
     selectors = re.findall(r'(?m)^[ \t]*RUSTUP_TOOLCHAIN:[^\n]*$', workflow_text)
-    if compiler_pin is None or selectors != [f"  RUSTUP_TOOLCHAIN: '{compiler_pin}'"]:
+    expected_selectors = [f"  RUSTUP_TOOLCHAIN: '{compiler_pin}'"]
+    # The explicit MSRV and dated nightly lanes have separately verified pins.
+    # The semantic toolchain checker also verifies their exact step placement.
+    if workflow_name == 'ci.yml':
+        expected_selectors.append(f"          RUSTUP_TOOLCHAIN: '{minimum}'")
+    elif workflow_name == 'nightly.yml':
+        expected_selectors.extend(['      RUSTUP_TOOLCHAIN: nightly-2026-08-25'] * 3)
+    if compiler_pin is None or selectors != expected_selectors:
         errors.append(f'{workflow_name} compiler selection must match the repository pin exactly once at workflow scope')
     if 'AUTOMEXIA_RUST_TOOLCHAIN' in workflow_text or 'rustup default' in workflow_text:
         errors.append(f'{workflow_name} compiler selection must use RUSTUP_TOOLCHAIN without changing runner defaults')
 
-compiler_cache_initializer = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v1\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
+compiler_cache_initializer = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
 for workflow_name in ('ci.yml', 'linux-early-access.yml'):
     cache_text = (wf / workflow_name).read_text(encoding='utf-8')
     quality = re.search(r'(?ms)^  quality:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)', cache_text)

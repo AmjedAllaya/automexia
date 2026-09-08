@@ -54,6 +54,12 @@ class ActionPinTests(unittest.TestCase):
         failures = self.validate(f"steps:\n  - uses: {unreviewed}\n")
         self.assertTrue(any("reviewed commit" in failure for failure in failures), failures)
 
+    def test_python_bootstrap_accepts_only_the_reviewed_commit(self) -> None:
+        action = 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1'
+        self.assertEqual(self.validate(f'steps:\n  - uses: {action}\n'), [])
+        for reference in ('actions/setup-python@v6', 'actions/setup-python@' + '1' * 40):
+            self.assertTrue(self.validate(f'steps:\n  - uses: {reference}\n'))
+
     def test_mutable_docker_and_unreviewed_actions_fail(self) -> None:
         cases = (
             ("actions/checkout@v4", "not pinned"),

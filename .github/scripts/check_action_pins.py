@@ -19,6 +19,7 @@ FULL_SHA = re.compile(r"^(?P<action>[^@]+)@(?P<sha>[0-9a-f]{40})$")
 ALLOWED_ACTIONS = {
     "actions/cache",
     "actions/checkout",
+    "actions/setup-python",
     "actions/download-artifact",
     "actions/upload-artifact",
     "actions/create-github-app-token",
@@ -29,6 +30,9 @@ ALLOWED_ACTIONS = {
     "taiki-e/install-action",
 }
 REVIEWED_ACTION_PINS = {
+    "actions/setup-python": {
+        "ece7cb06caefa5fff74198d8649806c4678c61a1",
+    },
     "mozilla-actions/sccache-action": {
         "fc920bf0ec8de6ee65d409111f7ec508035751ba",
     },

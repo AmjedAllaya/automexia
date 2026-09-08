@@ -37,6 +37,7 @@ listed or summarized here.
 | [0040](adr/0040-owner-authorized-linux-releases.md) | Owner-authorized Linux Early Access releases |
 | [0049](adr/0049-grouped-command-discovery-and-pane-shortcuts.md) | Grouped command discovery (pane chords superseded by 0051) |
 | [0051](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md) | Mnemonic pane shortcuts, shortcut-family audit and effective discovery |
+| [0053](adr/0053-effective-rust-toolchain-identity.md) | Explicit compiler selection and verified MSRV |
 
 ## When an ADR is required
 

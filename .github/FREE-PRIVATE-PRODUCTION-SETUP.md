@@ -351,7 +351,7 @@ artifacts, a versioned Cargo registry/Git source cache keyed by `Cargo.lock`, an
 a clean boundary between all-target Clippy and all-feature tests. It also uses
 the reviewed, full-SHA-pinned Mozilla sccache setup Action at sccache v0.16.0.
 That content-addressed compiler cache is restricted to non-shipping quality
-jobs; its `automexia-rust-<selected-version>-v1` generation is derived from
+jobs; its `automexia-rust-1.96.1-v2` generation is derived from
 `RUSTUP_TOOLCHAIN` and is the rollback and invalidation boundary. The free-plan
 checker compares all four stable workflow selectors with `rust-toolchain.toml`;
 update them together during an explicitly reviewed compiler upgrade. Do not

@@ -72,6 +72,36 @@ class AssuranceError(ValueError):
     """The local assurance contract is missing or unsafe."""
 
 
+HISTORICAL_FINDINGS = frozenset({
+    '74c6f527408151b455545b218cbe828ed089556e:AGENTS.md:generic-api-key:334',
+    '893faf83e0d315fe64584117f7c8fdbbc39d5479:AGENTS.md:generic-api-key:334',
+    '5e17ff095cf7066a2b5caad21e0defeadefb8c33:extensions/devops-kubernetes/tests/contracts.rs:generic-api-key:38',
+    '265c1ddf76fe6c8c205b48f5bf75542a89ceed1f:extensions/devops-kubernetes/tests/contracts.rs:generic-api-key:38',
+    '0a819fe695e0ad041a547ef9271d4739987a2081:docs/docusaurus.config.js:generic-api-key:196',
+    '93ebb9b5376e7cea91583e05d35acfedba2bf0e8:docs/docusaurus.config.js:generic-api-key:196',
+})
+
+
+def validate_history_exemption_text(source: str) -> None:
+    entries = [line.strip() for line in source.splitlines()
+               if line.strip() and not line.lstrip().startswith('#')]
+    if (len(source.encode('utf-8')) > 4096 or len(entries) != len(HISTORICAL_FINDINGS)
+            or set(entries) != HISTORICAL_FINDINGS):
+        raise AssuranceError('historical secret-review fingerprints differ from the exact reviewed set')
+
+
+def validate_history_exemptions() -> None:
+    path = ROOT / '.gitleaksignore'
+    try:
+        if dev_cache._is_reparse_or_link(path) or not path.is_file() or path.stat().st_nlink != 1:
+            raise AssuranceError('historical secret review must be a regular unlinked file')
+        with path.open('rb') as stream:
+            raw = stream.read(4097)
+        validate_history_exemption_text(raw.decode('utf-8'))
+    except (OSError, UnicodeError) as error:
+        raise AssuranceError('historical secret review is unavailable') from error
+
+
 def reject_duplicate_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
     result: dict[str, Any] = {}
     for key, value in pairs:
@@ -92,6 +122,7 @@ def read_bounded(path: Path, maximum: int = MAX_POLICY_BYTES) -> str:
 
 
 def load_policy(path: Path = POLICY_PATH) -> dict[str, Any]:
+    validate_history_exemptions()
     try:
         policy = json.loads(read_bounded(path), object_pairs_hook=reject_duplicate_keys)
     except json.JSONDecodeError as error:

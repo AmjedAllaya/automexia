@@ -4,6 +4,10 @@ Status: implemented; exact hosted cold/warm evidence recorded
 
 Last reviewed: 2026-09-02
 
+Compiler/cache identity now follows [ADR 0053](adr/0053-effective-rust-toolchain-identity.md).
+The historical timing evidence below remains scoped to its recorded commits;
+it does not validate the later explicit compiler/MSRV verification increment.
+
 ## Outcome and acceptance criteria
 
 This plan reduces contributor compilation time and GitHub Actions critical-path
@@ -65,7 +69,7 @@ The implementation and exact-commit evidence now satisfy acceptance criteria
   without the redundant standalone Cargo check; focused `cargo xtask check`
   retains it;
 - ordinary and release quality jobs use the exact reviewed sccache Action,
-  v0.16.0, and `automexia-rust-<selected-version>-v1` generation derived from
+  v0.16.0, and `automexia-rust-1.96.1-v2` generation derived from
   the repository-pinned `RUSTUP_TOOLCHAIN`, then report statistics;
 - package jobs reject compiler-cache inputs and restore only the shared,
   versioned, lockfile-bound Cargo source cache;
