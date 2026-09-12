@@ -88,6 +88,16 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "command-productivity-cp22-quick-actions": {
+        "needed_tests": ("Independent scalar score oracle", "contextual Unicode lowercase"),
+        "verification_reinforcements": ("maximum-input scoring allocation ceiling", "allocating canary and unwind reset"),
+        "checker_reinforcements": ("scalar-score and allocation evidence",),
+    },
+    "identity-config-migration": {
+        "needed_tests": ("Unicode colour digit panic", "exact RGB/RGBA"),
+        "verification_reinforcements": ("first-use zero-allocation palette", "same-host palette setup"),
+        "checker_reinforcements": ("colour grammar and allocation evidence",),
+    },
     "contributor-automation-quality-policy": {
         "needed_tests": ("parent-exit retained-pipe", "exact descendant identities", "joined readers"),
     },
@@ -119,6 +129,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "ConPTY history/live seams",
             "Long padded table rows",
             "No-resize probe invariance",
+            "Real WSL multi-column listings",
+            "exact-margin cursor cell",
+            "blank soft-wrap fragments",
             "viewport identity journal",
             "parser-created selection journal",
             "hard-line journal",
@@ -291,7 +304,42 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
 }
 
+WRAPPING_FEATURES = (
+    "terminal-protocols-grid-history", "renderer-fonts-responsive-ui",
+    "prompt-context-devops-semantics", "windows-tabs-sessions-input",
+    "image-protocols-local-preview",
+)
+for _feature in WRAPPING_FEATURES:
+    _details = REQUIRED_FEATURE_SCENARIO_DETAILS.setdefault(_feature, {})
+    for _field, _phrase in (
+        ("needed_tests", "Shared command-information wrapping"),
+        ("verification_reinforcements", "actual glyph pixels, complete label bytes"),
+        ("checker_reinforcements", "Reject loss of shared wrapping dispatch"),
+    ):
+        _details[_field] = (*_details.get(_field, ()), _phrase)
+
 NATIVE_CONTRACT_SOURCES = {
+    "local_tools": "apps/automexia-terminal/src/automexia/local_tools.rs",
+    "local_tool_tests": "apps/automexia-terminal/src/automexia/local_tools/boundary_tests.rs",
+    "local_session": "apps/automexia-terminal/src/automexia/local_tools/session.rs",
+    "cli_process": "apps/automexia-terminal/src/automexia/cli_process.rs",
+    "cli_cancellation": "apps/automexia-terminal/src/automexia/cli_process/cancellation.rs",
+    "guest_bridge": "shell-integration/amx-tool-bridge.py",
+    "guest_native": "tools/ci/check_amx_guest_native.py",
+    "google": "apps/automexia-terminal/src/automexia/google.rs",
+    "browser_search": "apps/automexia-terminal/src/automexia/browser_search.rs",
+    "google_native": "tools/ci/check_google_command_native.py",
+    "desktop_open": "apps/automexia-terminal/src/automexia/desktop_open.rs",
+    "session_cli": "apps/automexia-terminal/src/automexia/shell_integration.rs",
+    "cli_main": "apps/automexia-terminal/src/main.rs",
+    "hyperlinks": "apps/automexia-terminal/src/hints.rs",
+    "hyperlink_scan": "apps/automexia-terminal/src/hints/scan.rs",
+    "hyperlink_preview": "apps/automexia-terminal/src/hints/preview.rs",
+    "hyperlink_tests": "apps/automexia-terminal/src/hints_tests.rs",
+    "table_model": "automexia-ui-model/src/tables.rs",
+    "table_capture": "apps/automexia-terminal/src/automexia/table_output.rs",
+    "table_view": "apps/automexia-terminal/src/table_view.rs",
+    "table_pixels": "apps/automexia-terminal/src/table_view_tests.rs",
     "qa": "tools/ci/qa.py",
     "qa_process": "tools/ci/qa_process.py",
     "compiler_probe": "tools/ci/rust_toolchain.py",
@@ -310,6 +358,13 @@ NATIVE_CONTRACT_SOURCES = {
     "windows_pipes": "teletypewriter/src/windows/pipes.rs",
     "sugarloaf_cpu": "sugarloaf/src/renderer/cpu.rs",
     "native_driver": "tests/integration/resize-stress-windows.ps1",
+    "resize_listing_tests": "rio-vt/tests/live_resize.rs",
+    "resize_listing_fixture": "rio-vt/tests/fixtures/live-resize-output.sh",
+    "resize_bench": "rio-vt/benches/vt_input.rs",
+    "command_wrap_model": "apps/automexia-terminal/src/automexia/ui/command_info.rs",
+    "command_wrap_renderer": "apps/automexia-terminal/src/renderer/command_info.rs",
+    "renderer": "apps/automexia-terminal/src/renderer/mod.rs",
+    "application_bench": "apps/automexia-terminal/benches/automexia_services.rs",
 }
 
 
@@ -478,6 +533,156 @@ def _validate_qa_process_sources(sources: dict[str, str]) -> None:
         raise ReinforcementError('compiler identity must use the same bounded lifecycle owner')
 
 
+def _validate_resize_listing_sources(sources: dict[str, str]) -> None:
+    # Dispatch/fixture guards complement real executions; these are not an
+    # independent oracle for terminal geometry or native rendering.
+    listing = _source_slice(sources["resize_listing_tests"],
+                            "fn native_live_wsl_eza_listing_restores_columns()",
+                            "fn listing_name(", "real WSL listing regression")
+    _require_fragments(listing, (
+        "tempfile::Builder::new()", "std::fs::File::create_new(",
+        "for height in [8, 2]", "run_fixture_sizes(",
+        "ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit",
+        "run_worker_output_sizes(", ".close()",
+    ), "real WSL listing regression")
+    tests = sources["resize_listing_tests"]
+    _require_fragments(tests, (
+        '"worker probe cannot repair output"',
+        'text.matches(&format!("entry-{index:02}-")).count(),\n                1,',
+    ), "listing baseline and uniqueness oracles")
+    _require_fragments(sources["resize_listing_fixture"], (
+        "eza --icons=always --color=always --width=100 --grid --sort=name --",
+        "RESIZE-BASELINE", "steps=48",
+    ), "real WSL listing producer")
+    benchmark = _source_slice(sources["resize_bench"], "fn native_seam_roundtrip(",
+                              "fn pane_close_repaint(", "checked seam benchmark")
+    _require_fragments(benchmark, (
+        "terminal.grid.history_size() < 64", "terminal.selection_to_string()",
+        "expected", "terminal.snapshot_visible(",
+    ), "checked seam benchmark")
+    extreme = _source_slice(tests,
+        "fn native_live_wsl_eza_extreme_resize_restores_columns()",
+        "fn run_native_eza_listing(", "extreme native listing campaign")
+    _require_fragments(extreme, (
+        "(1, 1)", "(1, 2)", "(2, 1)", "(512, 96)",
+        "for seed in 1..=8u64", "0..48", '"listing-wide"',
+    ), "extreme native listing campaign")
+    _require_fragments(listing, ("std::fs::create_dir(path)",
+        '"abcdefgh".repeat(index % 5 + 1)'), "mixed long listing entries")
+    extreme_bench = _source_slice(sources["resize_bench"],
+        "fn extreme_resize_roundtrip(", "fn pane_close_repaint(",
+        "checked extreme benchmark")
+    _require_fragments(extreme_bench, (
+        "terminal.grid.history_size() < 100", "terminal.selection_to_string()",
+        "terminal.snapshot_visible(", "(2, 24)", "(16, 3)",
+    ), "checked extreme benchmark")
+
+
+def _validate_command_wrapping_sources(sources: dict[str, str]) -> None:
+    # Supplemental wiring guards: runtime tests, not these strings, establish
+    # complete labels, native-cell preservation and independently checked pixels.
+    for owner, fragments in {
+        "renderer": ("mod command_info;", "command_info::layout(", "command_info::project_images("),
+        "screen": ("p.command_rows.source_row(y)", ".native_row(position.row.0.max(0) as usize)"),
+        "command_wrap_model": (
+            "remaining.grapheme_indices(true)", "word_boundary.or(accepted)?",
+            "fn queued_wheel_events_preserve_every_wrapped_line()",
+            "fn projection_never_duplicates_native_cells_for_any_visible_offset()",
+            "assert!(previous.is_none_or(|previous| source > previous));",
+        ),
+        "command_wrap_renderer": (
+            "fn narrow_prompt_band_cannot_give_all_its_width_to_the_timestamp()",
+            "fn short_pane_keeps_all_context_reachable_without_native_history()",
+            "fn wrapped_real_font_ink_stays_inside_narrow_panes_at_fractional_scales()",
+            "projected_grid_pixels(&content, width, height)",
+            "text.render_cpu_base(&mut pixels, width, height);",
+            "text.render_cpu_modal(&mut pixels, width, height);",
+            "assert_eq!(restored, completion.text);",
+            '"metadata reaches the actual grid frame"',
+            "pixels.iter().zip(original).filter(|(a, b)| a != b).count(),\n                        0,",
+        ),
+        "application_bench": (
+            "fn command_information(c: &mut Criterion)", "    command_information\n);",
+            "assert_eq!(fragment.bytes.start, ends[fragment.item]);",
+            "assert_eq!(ends, values.map(str::len));",
+            "assert!(fragment.x + fragment.width <= width + 0.001);",
+            "assert_eq!(projection.origin(1), band.rows);",
+        ),
+    }.items():
+        _require_fragments(sources[owner], fragments, "shared command wrapping " + owner)
+
+
+def _validate_table_sources(sources: dict[str, str]) -> None:
+    # Wiring guards complement parser/input/pixel tests, never replace them.
+    for owner, fragments in {
+        "table_model": ("MAX_TABLE_BYTES: usize = 256 * 1024", "MAX_TABLE_ROWS: usize = 256", "row.graphemes(true)", "source: Vec<String>"),
+        "table_capture": (".bounds_to_display_string_bounded(", "Mode::ALT_SCREEN | Mode::MOUSE_MODE", "fn core_table_capture_uses_real_tab_stops_and_retains_cursor_history_and_copy()"),
+        "table_view": ("self.close();", "WindowEvent::Ime(_)", "WindowEvent::DroppedFile(_)", "self.viewport.horizontal_thumb(", "table.visible_range(", "Effect::Consumed"),
+        "table_pixels": ("fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()", "assert_eq!(pixels, after.pixels(760, 260));", "line.0.y += 1.0;", "assert_eq!(row_lines, [77.0, 99.0, 121.0, 143.0]);"),
+        "application": (".handle_table_window_event(&event, &mut self.router.clipboard)",),
+        "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_table_key_release(key)", "self.table_view.draw("),
+        "application_bench": ("    core_table_view,", "assert_eq!(table.source(), &source);", "assert_eq!(table.column_starts(), &[0, 11, 27]);"),
+    }.items():
+        _require_fragments(sources[owner], fragments, "focused core table " + owner)
+
+
+def _validate_hyperlink_sources(sources: dict[str, str]) -> None:
+    # Structural guards supplement actual parser, intent and raster assertions.
+    for owner, fragments in {
+        "hyperlinks": ("MAX_HINT_MATCHES: usize = 256", "MAX_HINT_BYTES: usize = 4096", "if !pressed || repeat", "KeyIntent::Activate", "pub(crate) fn safe_open_target", "self.snapshot = None;"),
+        "hyperlink_scan": ("MAX_CELLS: usize = 256 * 1024", "MAX_LINE: usize = 16 * 1024", "self.dimensions !=", "grid.extras_table.get(*id) != Some(value)", "limits.set_retry_limit_in_match(10_000)", "previous_link == &link", "positions.extend(std::iter::repeat_n((position, end), c.len_utf8()))", "usize::from(cell.is_wide())", "end: positions[start + matched.len() - 1].1"),
+        "hyperlink_preview": ("Copy only · blocked destination", "state.focus_in_lower_half()", "text_fit::fit_end", "fitted.display.into_owned()"),
+        "hyperlink_tests": ("fn keyboard_links_real_platform_bindings_and_modal_intents()", "fn keyboard_links_one_osc_anchor_survives_wrapping_and_combining_extras()", "fn keyboard_links_cover_both_cells_of_final_wide_grapheme()", "fn keyboard_links_label_navigation_resets_destination_pan()", "assert_eq!(original, preview_pixels(&state, 760, 180))", "damaged[68 * 760] ^= 1", "fn keyboard_links_benchmark_checked_capture_navigation()", "assert_eq!(state.matches().len(), 100)"),
+        "application": (".handle_hint_window_event(&event, &mut self.router.clipboard)",),
+        "screen": ("self.remember_hint_key(key)", "if !self.validate_hint_snapshot()", "self.hint_route == Some(current.route_id)", "crate::hints::key_intent(", "if !crate::hints::safe_open_target(&hint_match.text)", "WindowEvent::Ime(_) | WindowEvent::Touch(_) | WindowEvent::DroppedFile(_)"),
+    }.items():
+        _require_fragments(sources[owner], fragments, "keyboard hyperlink " + owner)
+    _require_fragments(sources["hyperlinks"], ("if label.len() > columns", "occupied.contains(&(target.start.row.0, col))"), "whole nonoverlapping hyperlink labels")
+    _require_fragments(sources["hyperlink_preview"], ("state.focused_label()",), "hyperlink label preview fallback")
+    _require_fragments(sources["screen"], (".label_cells()",), "shared hyperlink label placement")
+    _require_fragments(sources["hyperlink_tests"], ("fn keyboard_links_right_edge_labels_are_whole_and_do_not_overlap()", "assert_eq!(state.label_cells().len(), 300)"), "bounded label tests and benchmark")
+    body = _source_slice(sources["screen"], "fn process_hint_key(", "pub(crate) fn handle_hint_window_event", "hyperlink key owner")
+    if body.index("self.validate_hint_snapshot()") > body.index("self.execute_hint_action("):
+        raise ReinforcementError("hyperlink activation precedes stale-state validation")
+    for forbidden in ('args {:?}', 'could not open {target}'):
+        if forbidden in sources["screen"]:
+            raise ReinforcementError("hyperlink launcher discloses untrusted target data")
+
+
+def _validate_google_sources(sources: dict[str, str]) -> None:
+    for owner, fragments in {
+        "browser_search": ("super::google::validated_query(arguments)?", ".append_pair(provider.query_key, &query)", 'append_pair("as_sitesearch", site)', "if command.search.print_url", "fn amx_browser_search_every_route_enforces_limits_before_dispatch()", "fn amx_browser_search_benchmark_checked_routing()"),
+        "google": ("MAX_QUERY_BYTES: usize = 4096", "MAX_QUERY_ARGUMENTS: usize = 256", "argument.chars().any(char::is_control)", 'url::Url::parse("https://www.google.com/search")', 'append_pair("q", &query)', "if command.print_url", "fn google_command_dispatch_preview_failure_and_debug_are_private()", "fn google_command_benchmark_checked_encoding()"),
+        "google_native": ("timeout_seconds=25", "65536", '"function", "alias", "external", "disabled", "missing"', "set(Path(temporary).rglob", "actual == expected", "def test_real_search_and_docs_routes_are_offline_and_bounded(self):"),
+        "desktop_open": ("target.contains('\\0')", "ShellExecuteW(", ".arg(target)", ".stdin(Stdio::null())", "with_com_apartment(|| open_windows(target))", "impl Drop for ApartmentGuard", "if result >= 0", "fn google_command_native_apartment_balances_success_failure_and_existing_mode()"),
+        "session_cli": ("env::current_exe()", '"AUTOMEXIA_CLI/up"', "cmd_alias_safe"),
+        "xtask": ("smoke_google_command()?;", '"tools/ci/check_google_command_native.py"', 'run_command(command, "native Google command smoke (offline preview)")'),
+        "cli_main": ("CliCommand::Google(command)", "automexia::google::execute(command)", "automexia::browser_search::execute(command, false)", "automexia::browser_search::execute(command, true)"),
+        "screen": ("crate::automexia::desktop_open::open(target)",),
+    }.items():
+        _require_fragments(sources[owner], fragments, "Google command " + owner)
+    ready = _source_slice(sources["xtask"], "fn ready()", "fn dev(", "Google native readiness")
+    if ready.index("build_debug_app()?") > ready.index("smoke_google_command()?"):
+        raise ReinforcementError("Google native smoke must use the current built executable")
+
+
+LOCAL_TOOL_CONTRACTS = {
+    "local_tools": ('"--no-config"', '"--fixed-strings"', '"--no-auto-update"', "cancellation.cancelled()", "MAX_RESULTS: usize = 1000", "MAX_FILES: usize = 32768", "relative_name(path)?", "incomplete structured search output"),
+    "local_tool_tests": ("fn amx_local_structured_matches_cannot_inject_controls_or_fake_result_rows()", "fn amx_local_benchmark_checked_parsing()"),
+    "local_session": ('"python3", "-I", "-c"', "guest invocation exceeds the native command-line limit"),
+    "cli_process": ("CreationFlags(Default::default())", "libc::WNOWAIT", "WaitForSingleObject", "drop(lease)", "limits.stdout > 4 * 1024 * 1024", "fn amx_process_native_console_cancel_retires_the_owned_tool()"),
+    "cli_cancellation": ("ACTIVE.swap(true", "SetConsoleCtrlHandler", "signal_hook::flag::register", "impl Drop for Cancellation"),
+    "guest_bridge": ("object_pairs_hook=unique_fields", "start_new_session=True", "os.WNOWAIT", "selector.select(0)", "signal.signal(signal.SIGTERM, interrupted)", "os.killpg(child.pid, signal.SIGKILL)"),
+    "guest_native": ("def test_lease_eof_termination_and_deadline_retire_exact_guest_child(self):", "os.pidfd_open", "def test_project_python_modules_cannot_execute_during_guest_launch(self):", "def test_real_ripgrep_respects_ignore_privacy_binary_and_symlink_rules(self):"),
+    "google_native": ('"searches", "local"', 'expected = b"./Dockerfile"'),
+}
+
+
+def _validate_local_tool_sources(sources: dict[str, str]) -> None:
+    for owner, fragments in LOCAL_TOOL_CONTRACTS.items():
+        _require_fragments(sources[owner], fragments, "local tool " + owner)
+
+
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
@@ -486,6 +691,12 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _validate_shortcut_editor_sources(sources)
     _validate_child_exit_sources(sources)
     _validate_qa_process_sources(sources)
+    _validate_resize_listing_sources(sources)
+    _validate_command_wrapping_sources(sources)
+    _validate_table_sources(sources)
+    _validate_hyperlink_sources(sources)
+    _validate_google_sources(sources)
+    _validate_local_tool_sources(sources)
 
     stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
                            "if !native_gui {", "default resize stress dispatch")

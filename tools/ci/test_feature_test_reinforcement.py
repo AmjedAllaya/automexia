@@ -20,6 +20,172 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_local_tool_limits_native_cancellation_and_guest_import_isolation_cannot_disappear(self):
+        REINFORCEMENT._validate_local_tool_sources(self.native_sources)
+        for owner, fragments in REINFORCEMENT.LOCAL_TOOL_CONTRACTS.items():
+            for fragment in fragments:
+                with self.subTest(owner=owner, contract=fragment):
+                    sources = self.native_sources.copy()
+                    self.assertIn(fragment, sources[owner])
+                    sources[owner] = sources[owner].replace(fragment, "removed contract")
+                    with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                        REINFORCEMENT._validate_local_tool_sources(sources)
+
+    def test_google_encoding_privacy_limits_and_real_dispatch_cannot_disappear(self) -> None:
+        REINFORCEMENT._validate_google_sources(self.native_sources)
+        for owner, fragment in (
+            ("google", "MAX_QUERY_BYTES: usize = 4096"),
+            ("google", "argument.chars().any(char::is_control)"),
+            ("google", 'append_pair("q", &query)'),
+            ("google", "if command.print_url"),
+            ("browser_search", "super::google::validated_query(arguments)?"),
+            ("browser_search", 'append_pair("as_sitesearch", site)'),
+            ("browser_search", "if command.search.print_url"),
+            ("browser_search", "fn amx_browser_search_benchmark_checked_routing()"),
+            ("google_native", "def test_real_search_and_docs_routes_are_offline_and_bounded(self):"),
+            ("cli_main", "automexia::browser_search::execute(command, true)"),
+            ("google_native", "timeout_seconds=25"),
+            ("google_native", "actual == expected"),
+            ("session_cli", '"AUTOMEXIA_CLI/up"'),
+            ("desktop_open", "with_com_apartment(|| open_windows(target))"),
+            ("desktop_open", "impl Drop for ApartmentGuard"),
+            ("desktop_open", "if result >= 0"),
+            ("xtask", "smoke_google_command()?;"),
+            ("screen", "crate::automexia::desktop_open::open(target)"),
+        ):
+            with self.subTest(owner=owner, contract=fragment):
+                sources = self.native_sources.copy()
+                self.assertIn(fragment, sources[owner])
+                sources[owner] = sources[owner].replace(fragment, "removed contract")
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_google_sources(sources)
+
+    def test_hyperlink_capture_intent_pixels_and_privacy_guards_cannot_disappear(self) -> None:
+        REINFORCEMENT._validate_hyperlink_sources(self.native_sources)
+        for owner, fragment in (
+            ("hyperlinks", "MAX_HINT_MATCHES: usize = 256"),
+            ("hyperlinks", "if !pressed || repeat"),
+            ("hyperlinks", "if label.len() > columns"),
+            ("hyperlinks", "occupied.contains(&(target.start.row.0, col))"),
+            ("hyperlink_preview", "state.focused_label()"),
+            ("screen", ".label_cells()"),
+            ("hyperlink_tests", "fn keyboard_links_right_edge_labels_are_whole_and_do_not_overlap()"),
+            ("hyperlink_tests", "assert_eq!(state.label_cells().len(), 300)"),
+            ("hyperlink_scan", "self.dimensions !="),
+            ("hyperlink_scan", "grid.extras_table.get(*id) != Some(value)"),
+            ("hyperlink_scan", "limits.set_retry_limit_in_match(10_000)"),
+            ("hyperlink_scan", "previous_link == &link"),
+            ("hyperlink_scan", "usize::from(cell.is_wide())"),
+            ("hyperlink_scan", "end: positions[start + matched.len() - 1].1"),
+            ("hyperlink_tests", "fn keyboard_links_cover_both_cells_of_final_wide_grapheme()"),
+            ("hyperlink_tests", "fn keyboard_links_label_navigation_resets_destination_pan()"),
+            ("hyperlink_preview", "text_fit::fit_end"),
+            ("hyperlink_tests", "assert_eq!(original, preview_pixels(&state, 760, 180))"),
+            ("hyperlink_tests", "damaged[68 * 760] ^= 1"),
+            ("hyperlink_tests", "assert_eq!(state.matches().len(), 100)"),
+            ("screen", "if !self.validate_hint_snapshot()"),
+            ("screen", "self.remember_hint_key(key)"),
+            ("application", ".handle_hint_window_event(&event, &mut self.router.clipboard)"),
+        ):
+            with self.subTest(owner=owner, contract=fragment):
+                sources = self.native_sources.copy()
+                self.assertIn(fragment, sources[owner])
+                sources[owner] = sources[owner].replace(fragment, "removed contract")
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_hyperlink_sources(sources)
+        for disclosure in ('args {:?}', 'could not open {target}'):
+            sources = self.native_sources.copy()
+            sources["screen"] += disclosure
+            with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                REINFORCEMENT._validate_hyperlink_sources(sources)
+
+    def test_core_table_capture_input_pixels_and_benchmarks_cannot_disappear(self) -> None:
+        REINFORCEMENT._validate_table_sources(self.native_sources)
+        for owner, fragment in (
+            ("table_model", "MAX_TABLE_BYTES: usize = 256 * 1024"),
+            ("table_capture", ".bounds_to_display_string_bounded("),
+            ("table_view", "WindowEvent::Ime(_)"),
+            ("table_view", "self.viewport.horizontal_thumb("),
+            ("table_pixels", "assert_eq!(pixels, after.pixels(760, 260));"),
+            ("table_pixels", "line.0.y += 1.0;"),
+            ("screen", "self.consume_table_key_release(key)"),
+            ("application_bench", "    core_table_view,"),
+        ):
+            with self.subTest(owner=owner, contract=fragment):
+                sources = self.native_sources.copy()
+                self.assertIn(fragment, sources[owner])
+                sources[owner] = sources[owner].replace(fragment, "removed contract")
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_table_sources(sources)
+
+    def test_command_wrapping_scenarios_remain_cross_owner(self) -> None:
+        for feature_id in REINFORCEMENT.WRAPPING_FEATURES:
+            for field, phrase in (
+                ("needed_tests", "Shared command-information wrapping"),
+                ("verification_reinforcements", "actual glyph pixels, complete label bytes"),
+                ("checker_reinforcements", "Reject loss of shared wrapping dispatch"),
+            ):
+                with self.subTest(feature=feature_id, field=field):
+                    document = copy.deepcopy(self.document)
+                    feature = next(row for row in document["features"] if row["id"] == feature_id)
+                    feature[field] = [value.replace(phrase, "removed evidence") for value in feature[field]]
+                    with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                        self.validate(document)
+
+    def test_command_wrapping_dispatch_pixels_and_benchmarks_cannot_disappear(self) -> None:
+        REINFORCEMENT._validate_command_wrapping_sources(self.native_sources)
+        for owner, old, new in (
+            ("renderer", "command_info::layout(", "skip_command_layout("),
+            ("renderer", "command_info::project_images(", "skip_image_projection("),
+            ("screen", "p.command_rows.source_row(y)", "Some(y)"),
+            ("screen", ".native_row(position.row.0.max(0) as usize)", ".visual_row(position.row.0.max(0) as usize)"),
+            ("command_wrap_model", "remaining.grapheme_indices(true)", "remaining.char_indices()"),
+            ("command_wrap_model", "assert!(previous.is_none_or(|previous| source > previous));", "assert!(true);"),
+            ("command_wrap_renderer", "projected_grid_pixels(&content, width, height)", "vec![0; 32]"),
+            ("command_wrap_renderer", "text.render_cpu_modal(&mut pixels, width, height);", "text.instance_count();"),
+            ("command_wrap_renderer", "assert_eq!(restored, completion.text);", "assert!(!restored.is_empty());"),
+            ("command_wrap_renderer", "pixels.iter().zip(original).filter(|(a, b)| a != b).count(),\n                        0,", "pixels.len(), pixels.len(),"),
+            ("application_bench", "    command_information\n);", ");"),
+            ("application_bench", "assert_eq!(ends, values.map(str::len));", "assert!(true);"),
+            ("application_bench", "assert_eq!(projection.origin(1), band.rows);", "assert!(true);"),
+        ):
+            with self.subTest(owner=owner, mutation=old):
+                sources = self.native_sources.copy()
+                self.assertIn(old, sources[owner])
+                sources[owner] = sources[owner].replace(old, new)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_command_wrapping_sources(sources)
+
+    def test_colour_setup_scenarios_cannot_be_removed(self) -> None:
+        for field, phrase in (
+            ("needed_tests", "Unicode colour digit panic"),
+            ("needed_tests", "exact RGB/RGBA"),
+            ("verification_reinforcements", "first-use zero-allocation palette"),
+            ("verification_reinforcements", "same-host palette setup"),
+            ("checker_reinforcements", "colour grammar and allocation evidence"),
+        ):
+            with self.subTest(phrase=phrase):
+                document = copy.deepcopy(self.document)
+                feature = document["features"][0]
+                feature[field] = [text.replace(phrase, "removed evidence") for text in feature[field]]
+                with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                    self.validate(document)
+
+    def test_search_scoring_and_allocation_scenarios_cannot_be_removed(self) -> None:
+        for field, phrase in (
+            ('needed_tests', 'Independent scalar score oracle'),
+            ('needed_tests', 'contextual Unicode lowercase'),
+            ('verification_reinforcements', 'maximum-input scoring allocation ceiling'),
+            ('verification_reinforcements', 'allocating canary and unwind reset'),
+            ('checker_reinforcements', 'scalar-score and allocation evidence'),
+        ):
+            with self.subTest(phrase=phrase):
+                document = copy.deepcopy(self.document)
+                feature = next(row for row in document['features'] if row['id'] == 'command-productivity-cp22-quick-actions')
+                feature[field] = [text.replace(phrase, 'removed evidence') for text in feature[field]]
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    self.validate(document)
+
     def test_qa_admission_cleanup_and_consumers_cannot_drift(self) -> None:
         REINFORCEMENT._validate_qa_process_sources(self.native_sources)
         for owner, old, new in (
@@ -124,7 +290,7 @@ class FeatureTestReinforcementTests(unittest.TestCase):
 
     def test_native_editor_cursor_and_deadline_scenarios_cannot_disappear(self) -> None:
         for owner, phrases in {
-            "terminal-protocols-grid-history": ["Real ConsoleHost editor", "native protocol cursor", "Long padded table rows", "No-resize probe invariance"],
+            "terminal-protocols-grid-history": ["Real ConsoleHost editor", "native protocol cursor", "Long padded table rows", "No-resize probe invariance", "Real WSL multi-column listings", "exact-margin cursor cell", "blank soft-wrap fragments"],
             "pty-scheduler-process-lifecycle": ["fake-clock input-settle deadlines", "buffered-input ordering", "broken-pipe error-then-drop", "Caller-handle recovery", "Final-output lock contention"],
         }.items():
             for phrase in phrases:
@@ -134,6 +300,31 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                     feature["needed_tests"] = [text.replace(phrase, "removed assurance") for text in feature["needed_tests"]]
                     with self.assertRaises(REINFORCEMENT.ReinforcementError):
                         self.validate(document)
+
+    def test_listing_fixture_oracles_cleanup_and_benchmark_cannot_disappear(self) -> None:
+        REINFORCEMENT._validate_resize_listing_sources(self.native_sources)
+        for owner, old, new in (
+            ("resize_listing_tests", "for height in [8, 2]", "for height in [8]"),
+            ("resize_listing_tests", "run_worker_output_sizes(", "skip_worker_output_sizes("),
+            ("resize_listing_tests", ".close()", ".keep()"),
+            ("resize_listing_tests", "worker probe cannot repair output", "removed baseline"),
+            ("resize_listing_tests", 'text.matches(&format!("entry-{index:02}-")).count(),\n                1,', 'text.matches(&format!("entry-{index:02}-")).count(),\n                2,'),
+            ("resize_listing_tests", "for seed in 1..=8u64", "for seed in 1..=0u64"),
+            ("resize_listing_tests", "(512, 96)", "(100, 24)"),
+            ("resize_listing_tests", "(1, 1)", "(2, 2)"),
+            ("resize_listing_tests", "std::fs::create_dir(path)", "skip_directory(path)"),
+            ("resize_listing_fixture", "eza --icons=always", "printf --icons=always"),
+            ("resize_listing_fixture", "steps=48", "steps=1"),
+            ("resize_bench", "terminal.grid.history_size() < 64", "true"),
+            ("resize_bench", "terminal.grid.history_size() < 100", "true"),
+            ("resize_bench", "terminal.selection_to_string()", "fake_copy()"),
+        ):
+            with self.subTest(owner=owner, mutation=old):
+                sources = self.native_sources.copy()
+                self.assertIn(old, sources[owner])
+                sources[owner] = sources[owner].replace(old, new)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_resize_listing_sources(sources)
 
     def test_back_arrow_and_all_shortcut_label_consumers_are_enforced(self) -> None:
         # These source seams complement runtime table/override/geometry tests;

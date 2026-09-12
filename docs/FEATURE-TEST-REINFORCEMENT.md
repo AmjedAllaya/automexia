@@ -25,6 +25,17 @@ For every public behavior:
 
 ### identity-config-migration
 
+Colour setup assurance exercises the public helpers, literal defaults and serde
+palette path. Independent channel and ASCII-grammar oracles cover RGB/RGBA,
+all channel values, malformed Unicode, controls, markers and oversized input.
+The six-scalar/eight-byte Unicode digit fixture must return an error, never panic.
+First-use and repeated default/helper construction must allocate zero heap
+buffers; a test-only System allocator counter excludes parallel test activity.
+Correctness-checked palette benchmarks retain same-host before/after evidence;
+development-profile setup timing is not native window startup or GPU latency.
+Keep [the test commands](TESTING.md#bounded-colour-setup) and
+[ADR 0058](adr/0058-bounded-colour-setup.md) with this owner.
+
 Shortcut editor assurance includes double-click/F2 capture, mode and profile
 conflicts, stale queued edits, no terminal input from IME/paste/drop, Reset retry,
 revision-tagged durable failure, and separate-process restart. Binding publication
@@ -38,6 +49,24 @@ coexistence. Assert that real profile paths and environment values never enter
 fixtures or reports.
 
 ### terminal-protocols-grid-history
+
+Keyboard hyperlink review must retain exact OSC 8 targets over history, soft
+wraps, CJK and combining cells, with one label per contiguous anchor. Enforce
+capture/regex bounds and byte-to-cell mapping. Replaced cells or extras must
+invalidate activation; use parser-created snapshots rather than injected matches.
+
+Command-information wrapping adds display rows only. The shared projection tests
+must preserve exact native cells, ordering, cursor, history and copy semantics;
+the live WSL resize ladder remains required alongside the CPU raster oracle.
+
+Real WSL multi-column listings must preserve literal and erased column gaps
+through consecutive mixed-axis changes, including one-cell panes, long mixed
+file/directory names and large restoration. Require eight fixed seeds as well
+as targeted wider/shorter, native blank-fill and historical short-fragment cases
+across history/live seams. Exercise an exact-margin native cursor cell, blank
+soft-wrap fragments, pre-resize selections and repeated tiny-pane roundtrips.
+Compare copied text independently of pixels: a correct grid can still serialize
+an all-blank soft fragment as an incorrect hard break.
 
 Native resize coverage must exercise both coalesced bursts and independently
 published intermediate worker sizes, observing the real grid without injecting
@@ -96,6 +125,14 @@ compare stable IDs, timestamps, boundaries, visible rows, and unchanged PTY
 bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
+
+
+Multi-column WSL listing coverage must execute both raw native and real worker
+resize delivery, with explicit installed-tool prerequisites and no silent
+substitution. Check no-resize probe invariance, varied filenames, erased gaps,
+history seams, exact cursor margins, two-row panes, every original column and
+filename count, final exit and temporary-directory cleanup. Keep the native
+desktop and other host/architecture gates explicit.
 
 Queue native probes before the input consumer blocks, then compare every
 consumed key value and ordinal in a bounded cumulative acknowledgment. Keep
@@ -167,7 +204,11 @@ Long-table native fixtures cover 32 padded rows crossing the viewport/history
 seam, both worker scheduling modes, duplicate rejection and exact order. Verify
 silent probe cursor/row invariance without resizing; keep Enter-during-resize
 and final successful child release separate from that probe contract. Replay
-the real fictional repaint at every byte split; retain Unicode, colours, blanks,
+one/two-cell transitions and consecutive wider/shorter changes, not only paired
+shrink/restore. Former padded seams that move deeper into history must keep
+their continuation; native spaces below the cursor must not archive live text.
+Compare exact live/history pixels and correctness-checked extreme replay timing.
+Replay the real fictional repaint at every byte split; retain Unicode, colours, blanks,
 cursor distance and Unix explicit-space controls. The default resize-stress
 command must run library, replay, live-shell and native-editor binaries. Exact
 dispatch/failure tests and checker mutations prevent GUI-only native coverage.
@@ -206,6 +247,24 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Keyboard hyperlink preview uses real parser targets and the production font
+fitter. Compare exact restored pixels, mutate one channel, and cover tiny through
+8K geometry plus 100–400% scale. Full destinations stay separate from shortened
+labels; native desktop and screen-reader delivery remain external evidence.
+
+Shared command-information wrapping must preserve every supplied context label
+and full completion label through narrow/wide restoration. Assert parser-created
+blank-row ownership, independent display origins, actual grid/text pixels,
+queued scrolling, short windows without native history, fractional-scale ink,
+and non-intersection with prompt/output. Identity layout must avoid prefix
+allocation. Keep native compositor and assistive-technology validation external
+until executed; see [the protocol](TESTING.md#wrapped-command-information).
+
+The table resize raster includes an independent literal seam-gap viewport at
+three scales. Require matching dimensions and zero mismatches, and inspect fresh
+rasters. CPU raster evidence does not certify a native desktop compositor,
+minimize/restore gesture or GPU driver.
+
 Shortcut editor assurance includes double-click/F2 capture, mode and profile
 conflicts, stale queued edits, no terminal input from IME/paste/drop, Reset retry,
 revision-tagged durable failure, and separate-process restart. Binding publication
@@ -243,6 +302,17 @@ private renderer harness. Keep terminal bytes/cell positions unchanged; do not
 infer table schemas or insert blank rows. A fictional controlled preview and
 geometry raster do not replace native CPU/GPU frames, theme/scale review or
 assistive-technology delivery. Missing native evidence stays external.
+
+Focused core table output is separate from these inline row bands. Reinforce
+its parser-created real tab stops, retained selection/cursor/copy, conservative
+recognition, byte/row/cell/column ceilings, Unicode clipping, modal input and
+key-release ownership, fractional scrolling, extreme viewport geometry and
+route cleanup. Compare literal columns and row edges, parser-to-pixel exact
+round trips and a one-pixel separator mutation; benchmark bounded capture and
+resize/scroll with unchanged source assertions. Checker mutations must reject
+loss of activation, local input containment, visual evidence or benchmark guards.
+Native GPU, desktop focus, physical trackpad, theme/scale and screen-reader
+delivery remain external until actual artifacts establish those properties.
 
 Keep literal responsive whitespace, marker-budget, unchanged-storage and
 Unicode cuts independent of the renderer-local helper. Reproduce the old scalar
@@ -328,6 +398,18 @@ masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
 
+Exercise the actual classic hyperlink binding on every platform table and the
+shared key-intent owner: Tab/Back, labels, Enter, copy, Escape, repeats and
+releases. Gate route/viewport changes before effects, consume IME and pointer
+events, preserve terminal selection, and retain consumed releases after close.
+The explicit correctness-checked hyperlink benchmark measures bounded capture
+and navigation only; native OS handler/clipboard latency needs native evidence.
+
+Wrapped headers share one inverse coordinate map with pointer selection, paging,
+scrollbars and IME. Accepted paste follows only its captured pane; rejected paste
+and sibling panes retain their view. Short panes must reach every context line
+without inventing native scrollback. Native desktop interaction remains external.
+
 Shortcut editor assurance includes double-click/F2 capture, mode and profile
 conflicts, stale queued edits, no terminal input from IME/paste/drop, Reset retry,
 revision-tagged durable failure, and separate-process restart. Binding publication
@@ -403,6 +485,11 @@ clipboard behavior, IME safety, and absence of unintended PTY input. Treat
 unsupported Ghostty behavior as an explicit compatibility limit.
 
 ### prompt-context-devops-semantics
+
+Joint context/completion packing measures real fonts and preserves supplied label
+bytes across wrapping, including timestamps and combining graphemes. Context and
+completion rectangles must not intersect; disabling context restores the same
+native grid without changing command-result ownership.
 
 Reinforce bounded route-scoped prompt metadata, directory and status updates,
 Git state, long and hostile labels, stale generation rejection, and redaction.
@@ -483,6 +570,10 @@ is not an activated browser, renderer, multi-surface registry or native AT proof
 
 ### image-protocols-local-preview
 
+Inline image quads use the same command-row projection and crop texture slices
+around inserted rows. Regressions check exact coordinates and UV preservation;
+offscreen file-list candidates must not participate in visible preview navigation.
+
 Reinforce input, dimension, pixel, frame, cache, and lifetime limits; malformed
 protocol images; local regular-file identity; links; replacement; permission
 errors; cancellation; stale results; clipping; scrolling; eviction; and cleanup.
@@ -492,6 +583,41 @@ both root and fuzz metadata with locked full dependency graphs. Metadata with
 `--no-deps` is not proof that the complete fuzz lockfile resolves correctly.
 
 ### shell-integration-listings
+
+Google command reinforcement: exact fixed-origin query encoding, argument/byte
+boundaries, control rejection, content-free failure/debug, preview with no
+browser/config side effects and correctness-checked encoding timing. Native
+post-build smoke must source the shipped adapters twice and test existing
+functions/aliases/executables, disable and missing executable. WSL path flags
+remain one-way and collision-free. Mutation-test removal of limits, preview,
+exact output and readiness dispatch. Shell history and external browser data
+are separate from Automexia persistence; no live queries belong in fixtures.
+Keep unexecuted native desktops and interactive CMD activation external.
+
+The same controls apply to every `amx search` provider and `amx docs` tool.
+Assert exact fixed-origin query parameters, GitHub repository scope, independent
+official-site filtering, unknown-provider rejection without fallback and shared
+validator use. Real post-build shell fixtures must execute every search route;
+mutating away their dispatch, preview isolation or native oracle must fail.
+Benchmark checked search and documentation URL pairs without opening a browser.
+
+Local-tool reinforcement: exact rg/tldr argv, default ignores plus negative
+privacy rules, bounded JSON/NUL parsing, terminal-control/bidi escaping, no
+automatic install/update and no browser fallback. Require actual child/process
+handle evidence for cancellation, timeout, stream saturation, descendant cleanup
+and guest-lease EOF. The WSL import-path canary must prove project Python modules
+cannot execute; a default safe host environment is not a sufficient oracle.
+The native shell smoke runs a real search from an isolated project directory.
+The separate `check_amx_guest_native.py` entrypoint exercises Linux supervision;
+it cannot be replaced by a Windows-only mock. Keep a real tealdeer cache and
+unexecuted native Unix adapters external until tested. Parser timing is distinct
+from process/filesystem latency. Mutate each boundary and its test dispatch.
+
+Use live eza output over isolated fictional variable-length filenames to cover
+multi-column resize behavior, not only equal-width synthetic rows. Preserve icons
+and colors, verify every filename occurs once and restore exact initial cell
+spacing. The parent owns fixture cleanup; never inspect a contributor directory
+or rerun a command to conceal broken terminal reflow.
 
 Reinforce supported-shell startup, prompt boundaries, object-preserving
 pipelines, quoting, Unicode, missing-resource fallback, explicit disable/remove,
@@ -716,6 +842,14 @@ disable, removal, restart, and exact residue checks.
 Reinforce list, search, review, insert-without-Enter, copy, placeholder binding,
 risk confirmation, import/export, keyboard access, redaction, and route/generation
 isolation without granting launch authority.
+
+Search allocation changes must preserve exact scalar scores and string-level
+Unicode lowercase (including final sigma), word boundaries, repeated and missing
+subsequences, maximum candidates/queries and deterministic result limits. Keep
+the independent indexed oracle, fixed-seed public search properties, allocating
+canary/unwind reset and repeated maximum-input allocation ceiling in
+`quick_action_activation.rs`. Correctness-checked search benchmarks must retain
+action identities and scores; native latency evidence remains separate.
 
 ### command-productivity-cp4-provider-actions
 
