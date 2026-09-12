@@ -310,6 +310,7 @@ impl From<String> for Action {
             "openextensionmarketplace" => Some(Action::OpenExtensionMarketplace),
             "openfontbrowser" => Some(Action::OpenFontBrowser),
             "previewselectedimage" => Some(Action::PreviewSelectedImage),
+            "viewtableoutput" => Some(Action::ViewTableOutput),
             "none" => Some(Action::None),
             _ => None,
         };
@@ -619,6 +620,7 @@ pub enum Action {
 
     /// Preview the selected or pointer-targeted local raster image.
     PreviewSelectedImage,
+    ViewTableOutput,
 
     /// Toggle the command palette overlay.
     OpenCommandPalette,
@@ -764,6 +766,7 @@ fn key_bindings_with_platform(
     let mut bindings = bindings!(
         KeyBinding;
         Key::Named(Copy);  Action::Copy;
+        Key::Named(F7), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::ViewTableOutput;
         Key::Named(Copy),  +BindingMode::VI; Action::ClearSelection;
         Key::Named(Paste), ~BindingMode::VI; Action::Paste;
         Key::Named(ArrowLeft),  ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::Left;

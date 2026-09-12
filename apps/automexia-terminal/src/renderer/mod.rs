@@ -1,4 +1,5 @@
 pub mod assistant;
+mod command_info;
 pub mod command_palette;
 pub mod command_results;
 pub mod compatibility_inspector;
@@ -248,6 +249,10 @@ fn sync_optional_metadata(target: &mut Option<String>, source: Option<&String>) 
 /// Keeping this snapshot per route prevents the active pane from lending its
 /// Git/cloud/user state to another visible split.
 struct SemanticPaneRenderState {
+    origin_y: f32,
+    bottom_y: f32,
+    cell_height: f32,
+    completion_labels: Vec<crate::automexia::ui::command_info::CompletionLabel>,
     session: crate::automexia::api::SessionFacts,
     prompt_active: bool,
     historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
@@ -543,10 +548,30 @@ fn semantic_pane_render_state(
     scale_factor: f32,
     is_active: bool,
 ) -> SemanticPaneRenderState {
-    let rc = &context.renderable_content;
+    semantic_snapshot(
+        &context.renderable_content,
+        (
+            context.dimension.cell.cell_width as f32,
+            context.dimension.cell.cell_height as f32,
+        ),
+        margin,
+        scale_factor,
+        is_active,
+        (context.route_id, context.shell_pid),
+    )
+}
+
+fn semantic_snapshot(
+    rc: &RenderableContent,
+    cell: (f32, f32),
+    margin: rio_backend::config::layout::Margin,
+    scale_factor: f32,
+    is_active: bool,
+    identity: (usize, u32),
+) -> SemanticPaneRenderState {
     let scale = scale_factor.max(f32::EPSILON);
-    let cell_height = context.dimension.cell.cell_height as f32 / scale;
-    let cell_width = context.dimension.cell.cell_width as f32 / scale;
+    let cell_height = cell.1 / scale;
+    let cell_width = cell.0 / scale;
     let origin_x = margin.left / scale;
     let origin_y = margin.top / scale;
     let grid_width = rc.columns.max(1) as f32 * cell_width;
@@ -685,7 +710,7 @@ fn semantic_pane_render_state(
 
     SemanticPaneRenderState {
         session: crate::automexia::api::SessionFacts {
-            session_id: context.route_id,
+            session_id: identity.0,
             cwd: rc.current_directory.clone(),
             title: rc.terminal_title.clone(),
             distro: rc.shell_distro.clone(),
@@ -695,9 +720,13 @@ fn semantic_pane_render_state(
             shell_path: rc.shell_path.clone(),
             environment: rc.shell_environment.clone(),
             shell_integration: rc.shell_integration,
-            shell_pid: context.shell_pid,
+            shell_pid: identity.1,
         },
         prompt_active: rc.shell_prompt_active,
+        origin_y,
+        bottom_y: origin_y + rc.screen_lines as f32 * cell_height,
+        cell_height,
+        completion_labels: Vec::new(),
         historical_anchors,
         live_anchor,
         command_results,
@@ -1121,11 +1150,6 @@ impl Renderer {
         }
 
         for (_key, grid_context) in grid.contexts_mut().iter_mut() {
-            let panel_rect = crate::layout::pane_terminal_rect(
-                grid_context.layout_rect,
-                grid_context.context().dimension.dimension.scale,
-                grid_context.tab_count(),
-            );
             let context = grid_context.context_mut();
 
             let mut has_ime = false;
@@ -1165,6 +1189,46 @@ impl Renderer {
 
             {
                 let mut terminal = context.terminal.lock();
+
+                let rc = &mut context.renderable_content;
+                let previous_first = rc.lines_evicted.saturating_add(
+                    rc.history_size.saturating_sub(rc.display_offset) as u64,
+                );
+                let current_first = terminal.lines_evicted().saturating_add(
+                    terminal
+                        .history_size()
+                        .saturating_sub(terminal.display_offset())
+                        as u64,
+                );
+                if terminal.columns() != rc.columns
+                    || terminal.screen_lines() != rc.screen_lines
+                    || (!rc.command_rows.pending_scroll()
+                        && terminal.display_offset() != rc.display_offset
+                        && current_first != previous_first)
+                {
+                    rc.command_rows.follow();
+                } else if let Some((anchor, inset)) =
+                    rc.command_rows.retained_anchor(previous_first)
+                {
+                    let live = terminal
+                        .lines_evicted()
+                        .saturating_add(terminal.history_size() as u64);
+                    let offset = live
+                        .saturating_sub(anchor)
+                        .min(terminal.history_size() as u64)
+                        as usize;
+                    if offset != terminal.display_offset() {
+                        let delta = offset as i32 - terminal.display_offset() as i32;
+                        terminal.scroll_display(
+                            rio_backend::crosswords::grid::Scroll::Delta(delta),
+                        );
+                    }
+                    let first = live.saturating_sub(offset as u64);
+                    rc.command_rows.retain_view(
+                        anchor.saturating_sub(first) as usize,
+                        if anchor < first { 0 } else { inset },
+                    );
+                }
 
                 // Clear in-flight flag so PTY thread can notify again
                 terminal.damage_event_in_flight = false;
@@ -1298,14 +1362,271 @@ impl Renderer {
                 drop(terminal);
             }
 
-            // Recalculate image overlay positions every frame when placements
-            // exist. Positions depend on display_offset and history_size which
-            // change on scroll and text output (like approach).
+            context.renderable_content.has_blinking_enabled =
+                context.renderable_content.blinking_cursor;
+
+            if context.renderable_content.blinking_cursor {
+                let has_selection = context.renderable_content.selection_range.is_some();
+                if !has_selection {
+                    let mut should_blink = self.is_window_focused;
+                    if let Some(last_typing_time) = context.renderable_content.last_typing
+                    {
+                        if last_typing_time.elapsed() < std::time::Duration::from_secs(1)
+                        {
+                            should_blink = false;
+                        }
+                    }
+
+                    if should_blink {
+                        let now = std::time::Instant::now();
+                        let should_toggle = if let Some(last_blink) =
+                            context.renderable_content.last_blink_toggle
+                        {
+                            now.duration_since(last_blink).as_millis()
+                                >= self.config_blinking_interval as u128
+                        } else {
+                            // First time: start with cursor visible and set initial timing
+                            context.renderable_content.is_blinking_cursor_visible = true;
+                            context.renderable_content.last_blink_toggle = Some(now);
+                            false // Don't toggle on first frame
+                        };
+
+                        if should_toggle {
+                            context.renderable_content.is_blinking_cursor_visible =
+                                !context.renderable_content.is_blinking_cursor_visible;
+                            context.renderable_content.last_blink_toggle = Some(now);
+                        }
+                    } else {
+                        // When not blinking (e.g., during typing), ensure cursor is visible
+                        context.renderable_content.is_blinking_cursor_visible = true;
+                        // Reset blink timing when not blinking so it starts fresh when blinking resumes
+                        context.renderable_content.last_blink_toggle = None;
+                    }
+                } else {
+                    // When there's a selection, keep cursor visible and reset blink timing
+                    context.renderable_content.is_blinking_cursor_visible = true;
+                    context.renderable_content.last_blink_toggle = None;
+                }
+            }
+        }
+
+        let window_size = sugarloaf.window_size();
+        let scale_factor = sugarloaf.scale_factor();
+
+        // Dim overlay for unfocused splits. Drawn after the split content is
+        // built so it composites on top. The tint comes from
+        // `unfocused_split_fill` (falling back to the terminal background)
+        // and its strength is `1.0 - unfocused_split_opacity`. Skipped
+        // entirely when the feature is disabled.
+        if self.unfocused_split_opacity < 1.0 {
+            let tint = self
+                .unfocused_split_fill
+                .unwrap_or(self.dynamic_background.0);
+            let dim_color = [
+                tint[0],
+                tint[1],
+                tint[2],
+                1.0 - self.unfocused_split_opacity,
+            ];
+            // Within-grid comparison: taffy keys are only meaningful
+            // inside a single tab's tree.
+            let active_key = grid.current;
+            for (key, grid_context) in grid.contexts_mut().iter() {
+                if &active_key == key {
+                    continue;
+                }
+                // Match the grid renderer's actual paint region —
+                // `.round()`ed integer-pixel origin +
+                // `cols * round(cell_w)` × `rows * round(cell_h)`
+                // content size (same math as `GridUniforms.grid_padding`
+                // / `cell_size` in `screen/mod.rs:~3717`). Using raw
+                // `layout_rect` leaves a sub-pixel un-dimmed fringe at
+                // the right/bottom edges of inactive splits because
+                // taffy allocates fractional sizes while the grid
+                // snaps to whole cells.
+                let dim = grid_context.val.dimension;
+                let cell_w = dim.cell.cell_width as f32;
+                let cell_h = dim.cell.cell_height as f32;
+                let cols = dim.columns.max(1) as f32;
+                let rows = dim.lines.max(1) as f32;
+                let terminal_rect = crate::layout::pane_terminal_rect(
+                    grid_context.layout_rect,
+                    scale_factor,
+                    grid_context.tab_count(),
+                );
+                let panel_left = (terminal_rect[0] + grid_scaled_margin.left).round();
+                let panel_top = (terminal_rect[1] + grid_scaled_margin.top).round();
+                let x = panel_left / scale_factor;
+                let y = panel_top / scale_factor;
+                let w = (cols * cell_w) / scale_factor;
+                let h = (rows * cell_h) / scale_factor;
+                sugarloaf.rect(None, x, y, w, h, dim_color, 0.0, 3);
+            }
+        }
+
+        if let Some(island) = &mut self.island {
+            let island_bg = self
+                .last_window_bg
+                .map(|c| [c.r as f32, c.g as f32, c.b as f32, c.a as f32])
+                .unwrap_or(self.named_colors.background.0);
+            island.render(
+                sugarloaf,
+                (window_size.width, window_size.height, scale_factor),
+                context_manager,
+                island_bg,
+                self.is_window_focused,
+            );
+        }
+
+        // Semantic prompt/result geometry is derived for every visible pane.
+        // Core result paint remains available with every extension disabled;
+        // only optional prompt context enters the DevOps activation branch.
+        let (mut active_pane, mut inactive_panes) = {
+            let grid = context_manager.current_grid();
+            let (active_context, active_margin) =
+                grid.current_context_with_computed_dimension();
+            let active_pane = semantic_pane_render_state(
+                active_context,
+                active_margin,
+                scale_factor,
+                true,
+            );
+            let active_route = active_pane.session.session_id;
+            let base_margin = grid.get_scaled_margin();
+            let inactive_panes = grid
+                .contexts()
+                .values()
+                .filter(|item| item.context().route_id != active_route)
+                .map(|item| {
+                    let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
+                        item.layout_rect,
+                        scale_factor,
+                        item.tab_count(),
+                    );
+                    let margin = rio_backend::config::layout::Margin {
+                        left: base_margin.left + panel_x,
+                        top: base_margin.top + panel_y,
+                        right: base_margin.right,
+                        bottom: base_margin.bottom,
+                    };
+                    semantic_pane_render_state(
+                        item.context(),
+                        margin,
+                        scale_factor,
+                        false,
+                    )
+                })
+                .collect::<Vec<_>>();
+            (active_pane, inactive_panes)
+        };
+
+        let active_route = active_pane.session.session_id;
+        let visible_inactive_routes = inactive_panes
+            .iter()
+            .map(|pane| pane.session.session_id)
+            .collect::<Vec<_>>();
+        self.devops_statuses
+            .retain(|route, _| visible_inactive_routes.contains(route));
+        self.command_result_states
+            .retain(|route, _| visible_inactive_routes.contains(route));
+
+        if self.devops_enabled {
+            let refresh_pending = self
+                .devops_status
+                .refresh_session_context(&active_pane.session, || {
+                    context_manager.devops_refresh_completion(active_route)
+                });
+            let new_prompt = self.devops_status.prepare_prompt_rows(
+                &active_pane.session,
+                active_pane.prompt_active,
+                &active_pane.historical_anchors,
+                active_pane.live_anchor,
+            );
+            if new_prompt {
+                self.devops_status
+                    .request_prompt_refresh(&active_pane.session, || {
+                        context_manager.devops_refresh_completion(active_route)
+                    });
+            }
+
+            let mut inactive_refresh_pending = false;
+            for pane in &inactive_panes {
+                debug_assert!(!pane.is_active);
+                let route = pane.session.session_id;
+                let status = self.devops_statuses.entry(route).or_default();
+                inactive_refresh_pending |= status
+                    .refresh_visible_session(&pane.session, || {
+                        context_manager.devops_refresh_completion(route)
+                    });
+                let new_prompt = status.prepare_prompt_rows(
+                    &pane.session,
+                    pane.prompt_active,
+                    &pane.historical_anchors,
+                    pane.live_anchor,
+                );
+                if new_prompt {
+                    status.request_prompt_refresh(&pane.session, || {
+                        context_manager.devops_refresh_completion(route)
+                    });
+                }
+            }
+
+            context_manager.schedule_render_on_route(
+                devops_status::next_context_wake_millis(
+                    refresh_pending || inactive_refresh_pending,
+                ),
+            );
+        }
+
+        for item in context_manager
+            .current_grid_mut()
+            .contexts_mut()
+            .values_mut()
+        {
+            let panel_rect = crate::layout::pane_terminal_rect(
+                item.layout_rect,
+                scale_factor,
+                item.tab_count(),
+            );
+            let context = item.context_mut();
+            let pane = if context.route_id == active_route {
+                &mut active_pane
+            } else {
+                let Some(pane) = inactive_panes
+                    .iter_mut()
+                    .find(|pane| pane.session.session_id == context.route_id)
+                else {
+                    continue;
+                };
+                pane
+            };
+            let status = if !self.devops_enabled {
+                None
+            } else if context.route_id == active_route {
+                Some(&self.devops_status)
+            } else {
+                self.devops_statuses.get(&context.route_id)
+            };
+            if command_info::layout(
+                pane,
+                status,
+                &mut context.renderable_content,
+                sugarloaf,
+                self.named_colors,
+            ) {
+                context.renderable_content.frame_damage = TerminalDamage::Full;
+                any_panel_dirty = true;
+            }
+            // Image positions follow the newly published row projection.
+            // Rebuild on content/geometry damage, retaining idle quads.
             let rc = &context.renderable_content;
             let has_overlays = !rc.kitty_placements.is_empty();
             let has_virtual = !rc.kitty_virtual_placements.is_empty();
             let has_atlas = !rc.atlas_placements.is_empty();
-            if has_overlays || has_virtual || has_atlas {
+            if (has_overlays || has_virtual || has_atlas)
+                && (!matches!(rc.frame_damage, TerminalDamage::Noop)
+                    || rc.kitty_graphics_dirty)
+            {
                 let layout = context.dimension;
                 // Canonical integer cell stride — line_height already
                 // baked into `cell.cell_height`. Same value the GPU
@@ -1426,254 +1747,12 @@ impl Renderer {
                         (clip_x0, clip_y0, clip_x1, clip_y1),
                     );
                 }
+                command_info::project_images(overlays, rc, origin_y, cell_height);
             } else if rc.kitty_graphics_dirty {
                 // All placements (kitty and atlas) were removed, so drop
                 // this panel's overlay vec.
                 sugarloaf.clear_image_overlays_for(context.rich_text_id);
             }
-
-            context.renderable_content.has_blinking_enabled =
-                context.renderable_content.blinking_cursor;
-
-            if context.renderable_content.blinking_cursor {
-                let has_selection = context.renderable_content.selection_range.is_some();
-                if !has_selection {
-                    let mut should_blink = self.is_window_focused;
-                    if let Some(last_typing_time) = context.renderable_content.last_typing
-                    {
-                        if last_typing_time.elapsed() < std::time::Duration::from_secs(1)
-                        {
-                            should_blink = false;
-                        }
-                    }
-
-                    if should_blink {
-                        let now = std::time::Instant::now();
-                        let should_toggle = if let Some(last_blink) =
-                            context.renderable_content.last_blink_toggle
-                        {
-                            now.duration_since(last_blink).as_millis()
-                                >= self.config_blinking_interval as u128
-                        } else {
-                            // First time: start with cursor visible and set initial timing
-                            context.renderable_content.is_blinking_cursor_visible = true;
-                            context.renderable_content.last_blink_toggle = Some(now);
-                            false // Don't toggle on first frame
-                        };
-
-                        if should_toggle {
-                            context.renderable_content.is_blinking_cursor_visible =
-                                !context.renderable_content.is_blinking_cursor_visible;
-                            context.renderable_content.last_blink_toggle = Some(now);
-                        }
-                    } else {
-                        // When not blinking (e.g., during typing), ensure cursor is visible
-                        context.renderable_content.is_blinking_cursor_visible = true;
-                        // Reset blink timing when not blinking so it starts fresh when blinking resumes
-                        context.renderable_content.last_blink_toggle = None;
-                    }
-                } else {
-                    // When there's a selection, keep cursor visible and reset blink timing
-                    context.renderable_content.is_blinking_cursor_visible = true;
-                    context.renderable_content.last_blink_toggle = None;
-                }
-            }
-        }
-
-        if self.scrollbar.is_enabled() {
-            self.scrollbar.clear_panel_states();
-            for grid_context in grid.contexts_mut().values() {
-                let panel_rect = crate::layout::pane_terminal_rect(
-                    grid_context.layout_rect,
-                    grid_context.context().dimension.dimension.scale,
-                    grid_context.tab_count(),
-                );
-                let ctx = grid_context.context();
-                // The pane footer owns the remaining bottom strip. Keep the
-                // terminal scrollbar on the PTY grid instead of letting its
-                // track cross into footer controls.
-                let rc = &ctx.renderable_content;
-                self.scrollbar
-                    .push_panel_state(scrollbar::PanelScrollState {
-                        rich_text_id: ctx.rich_text_id,
-                        panel_rect,
-                        display_offset: rc.display_offset,
-                        history_size: rc.history_size,
-                        screen_lines: rc.screen_lines,
-                    });
-            }
-        }
-
-        let window_size = sugarloaf.window_size();
-        let scale_factor = sugarloaf.scale_factor();
-
-        // Dim overlay for unfocused splits. Drawn after the split content is
-        // built so it composites on top. The tint comes from
-        // `unfocused_split_fill` (falling back to the terminal background)
-        // and its strength is `1.0 - unfocused_split_opacity`. Skipped
-        // entirely when the feature is disabled.
-        if self.unfocused_split_opacity < 1.0 {
-            let tint = self
-                .unfocused_split_fill
-                .unwrap_or(self.dynamic_background.0);
-            let dim_color = [
-                tint[0],
-                tint[1],
-                tint[2],
-                1.0 - self.unfocused_split_opacity,
-            ];
-            // Within-grid comparison: taffy keys are only meaningful
-            // inside a single tab's tree.
-            let active_key = grid.current;
-            for (key, grid_context) in grid.contexts_mut().iter() {
-                if &active_key == key {
-                    continue;
-                }
-                // Match the grid renderer's actual paint region —
-                // `.round()`ed integer-pixel origin +
-                // `cols * round(cell_w)` × `rows * round(cell_h)`
-                // content size (same math as `GridUniforms.grid_padding`
-                // / `cell_size` in `screen/mod.rs:~3717`). Using raw
-                // `layout_rect` leaves a sub-pixel un-dimmed fringe at
-                // the right/bottom edges of inactive splits because
-                // taffy allocates fractional sizes while the grid
-                // snaps to whole cells.
-                let dim = grid_context.val.dimension;
-                let cell_w = dim.cell.cell_width as f32;
-                let cell_h = dim.cell.cell_height as f32;
-                let cols = dim.columns.max(1) as f32;
-                let rows = dim.lines.max(1) as f32;
-                let terminal_rect = crate::layout::pane_terminal_rect(
-                    grid_context.layout_rect,
-                    scale_factor,
-                    grid_context.tab_count(),
-                );
-                let panel_left = (terminal_rect[0] + grid_scaled_margin.left).round();
-                let panel_top = (terminal_rect[1] + grid_scaled_margin.top).round();
-                let x = panel_left / scale_factor;
-                let y = panel_top / scale_factor;
-                let w = (cols * cell_w) / scale_factor;
-                let h = (rows * cell_h) / scale_factor;
-                sugarloaf.rect(None, x, y, w, h, dim_color, 0.0, 3);
-            }
-        }
-
-        if let Some(island) = &mut self.island {
-            let island_bg = self
-                .last_window_bg
-                .map(|c| [c.r as f32, c.g as f32, c.b as f32, c.a as f32])
-                .unwrap_or(self.named_colors.background.0);
-            island.render(
-                sugarloaf,
-                (window_size.width, window_size.height, scale_factor),
-                context_manager,
-                island_bg,
-                self.is_window_focused,
-            );
-        }
-
-        // Semantic prompt/result geometry is derived for every visible pane.
-        // Core result paint remains available with every extension disabled;
-        // only optional prompt context enters the DevOps activation branch.
-        let (active_pane, inactive_panes) = {
-            let grid = context_manager.current_grid();
-            let (active_context, active_margin) =
-                grid.current_context_with_computed_dimension();
-            let active_pane = semantic_pane_render_state(
-                active_context,
-                active_margin,
-                scale_factor,
-                true,
-            );
-            let active_route = active_pane.session.session_id;
-            let base_margin = grid.get_scaled_margin();
-            let inactive_panes = grid
-                .contexts()
-                .values()
-                .filter(|item| item.context().route_id != active_route)
-                .map(|item| {
-                    let [panel_x, panel_y, _, _] = crate::layout::pane_terminal_rect(
-                        item.layout_rect,
-                        scale_factor,
-                        item.tab_count(),
-                    );
-                    let margin = rio_backend::config::layout::Margin {
-                        left: base_margin.left + panel_x,
-                        top: base_margin.top + panel_y,
-                        right: base_margin.right,
-                        bottom: base_margin.bottom,
-                    };
-                    semantic_pane_render_state(
-                        item.context(),
-                        margin,
-                        scale_factor,
-                        false,
-                    )
-                })
-                .collect::<Vec<_>>();
-            (active_pane, inactive_panes)
-        };
-
-        let active_route = active_pane.session.session_id;
-        let visible_inactive_routes = inactive_panes
-            .iter()
-            .map(|pane| pane.session.session_id)
-            .collect::<Vec<_>>();
-        self.devops_statuses
-            .retain(|route, _| visible_inactive_routes.contains(route));
-        self.command_result_states
-            .retain(|route, _| visible_inactive_routes.contains(route));
-
-        if self.devops_enabled {
-            let refresh_pending = self
-                .devops_status
-                .refresh_session_context(&active_pane.session, || {
-                    context_manager.devops_refresh_completion(active_route)
-                });
-            let new_prompt = self.devops_status.render_prompt_rows(
-                sugarloaf,
-                self.named_colors,
-                &active_pane.session,
-                active_pane.prompt_active,
-                &active_pane.historical_anchors,
-                active_pane.live_anchor,
-            );
-            if new_prompt {
-                self.devops_status
-                    .request_prompt_refresh(&active_pane.session, || {
-                        context_manager.devops_refresh_completion(active_route)
-                    });
-            }
-
-            let mut inactive_refresh_pending = false;
-            for pane in &inactive_panes {
-                debug_assert!(!pane.is_active);
-                let route = pane.session.session_id;
-                let status = self.devops_statuses.entry(route).or_default();
-                inactive_refresh_pending |= status
-                    .refresh_visible_session(&pane.session, || {
-                        context_manager.devops_refresh_completion(route)
-                    });
-                let new_prompt = status.render_prompt_rows(
-                    sugarloaf,
-                    self.named_colors,
-                    &pane.session,
-                    pane.prompt_active,
-                    &pane.historical_anchors,
-                    pane.live_anchor,
-                );
-                if new_prompt {
-                    status.request_prompt_refresh(&pane.session, || {
-                        context_manager.devops_refresh_completion(route)
-                    });
-                }
-            }
-
-            context_manager.schedule_render_on_route(
-                devops_status::next_context_wake_millis(
-                    refresh_pending || inactive_refresh_pending,
-                ),
-            );
         }
 
         if self.command_result_route != Some(active_route) {
@@ -1693,6 +1772,10 @@ impl Renderer {
             &active_pane.command_results,
             result_animation_enabled(active_pane.allow_result_animation),
             prefer_untagged_results,
+            (
+                &active_pane.completion_labels,
+                [active_pane.origin_y, active_pane.bottom_y],
+            ),
         );
 
         for pane in inactive_panes {
@@ -1711,7 +1794,37 @@ impl Renderer {
                     &pane.command_results,
                     result_animation_enabled(pane.allow_result_animation),
                     prefer_untagged_results,
+                    (&pane.completion_labels, [pane.origin_y, pane.bottom_y]),
                 );
+        }
+        if self.scrollbar.is_enabled() {
+            self.scrollbar.clear_panel_states();
+            for grid_context in context_manager.current_grid().contexts().values() {
+                let panel_rect = crate::layout::pane_terminal_rect(
+                    grid_context.layout_rect,
+                    grid_context.context().dimension.dimension.scale,
+                    grid_context.tab_count(),
+                );
+                let ctx = grid_context.context();
+                // The pane footer owns the remaining bottom strip. Keep the
+                // terminal scrollbar on the PTY grid instead of letting its
+                // track cross into footer controls.
+                let rc = &ctx.renderable_content;
+                self.scrollbar
+                    .push_panel_state(scrollbar::PanelScrollState {
+                        rich_text_id: ctx.rich_text_id,
+                        panel_rect,
+                        display_offset: rc
+                            .command_rows
+                            .scrollbar(rc.display_offset, rc.history_size)
+                            .0,
+                        history_size: rc
+                            .command_rows
+                            .scrollbar(rc.display_offset, rc.history_size)
+                            .1,
+                        screen_lines: rc.screen_lines,
+                    });
+            }
         }
         // Every visible pane receives its own operational footer. Rendering
         // it after terminal/prompt overlays but before modal overlays keeps it

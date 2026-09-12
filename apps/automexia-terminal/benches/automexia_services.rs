@@ -213,8 +213,164 @@ fn semantic_surface_admission(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    palette_setup,
     services,
     semantic_statuses,
-    semantic_surface_admission
+    semantic_surface_admission,
+    core_table_view,
+    command_information
 );
 criterion_main!(benches);
+
+fn core_table_view(c: &mut Criterion) {
+    use automexia_terminal::automexia::table_output::cell_width;
+    use automexia_ui_model::tables::{Table, TableViewport};
+    let source: Vec<_> = (0..256)
+        .map(|row| format!("row{row:03}     value-{row:03}       detail-{row:03}"))
+        .collect();
+    let mut group = c.benchmark_group("core_table_view");
+    group
+        .sample_size(20)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    group.bench_function("bounded_capture_checked", |b| {
+        b.iter(|| {
+            let table = Table::detect(black_box(source.clone()), cell_width).unwrap();
+            assert_eq!(table.source(), &source);
+            assert_eq!(table.column_starts(), &[0, 11, 27]);
+            black_box(table);
+        })
+    });
+    let table = Table::detect(source.clone(), cell_width).unwrap();
+    group.bench_function("resize_scroll_checked", |b| {
+        b.iter(|| {
+            let mut viewport = TableViewport::default();
+            for width in [1, 8, 80, 1024] {
+                viewport.fit(table.width(), 256, width, 24);
+                viewport.scroll(isize::MAX, isize::MAX);
+                for row in viewport.row()..256 {
+                    if let Some(range) =
+                        table.visible_range(row, viewport.column(), width, cell_width)
+                    {
+                        assert!(
+                            cell_width(&table.source()[row][range.bytes])
+                                + range.leading_cells
+                                <= width
+                        );
+                    }
+                }
+            }
+            assert_eq!(table.source(), &source);
+            black_box(viewport);
+        })
+    });
+    group.finish();
+}
+
+fn command_information(c: &mut Criterion) {
+    use automexia_terminal::automexia::ui::command_info::{pack, Label, RowProjection};
+    use rio_backend::sugarloaf::font::{
+        constants, FontData, FontLibrary, FontLibraryData,
+    };
+    use rio_backend::sugarloaf::text::{DrawOpts, Text};
+    use std::sync::Arc;
+
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let mut text = Text::new(&fonts);
+    let values = [
+        "Ubuntu",
+        "topic/example",
+        "example-space",
+        "alice",
+        "ok 21ms 2026-01-01 12:00:00",
+    ];
+    let labels: Vec<_> = values
+        .iter()
+        .enumerate()
+        .map(|(index, value)| Label {
+            text: value,
+            leading: if index == 4 { 0.0 } else { 18.0 },
+            padding: 4.0,
+            align_end: index == 4,
+        })
+        .collect();
+    let options = DrawOpts {
+        font_size: 14.0,
+        ..DrawOpts::default()
+    };
+    let mut projection = RowProjection::default();
+    let mut group = c.benchmark_group("command_information");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    for width in [120.0, 240.0, 800.0] {
+        group.bench_with_input(
+            criterion::BenchmarkId::new("measured_wrap_checked", width),
+            &width,
+            |b, &width| {
+                b.iter(|| {
+                    let band = pack(&labels, black_box(width), 4.0, |_, value| {
+                        text.measure(value, &options)
+                    })
+                    .unwrap();
+                    let mut ends = [0; 5];
+                    for fragment in &band.fragments {
+                        assert_eq!(fragment.bytes.start, ends[fragment.item]);
+                        ends[fragment.item] = fragment.bytes.end;
+                        assert!(fragment.x + fragment.width <= width + 0.001);
+                    }
+                    assert_eq!(ends, values.map(str::len));
+                    projection.rebuild(24, &[(0, band.rows)]);
+                    assert_eq!(projection.origin(1), band.rows);
+                    black_box(band)
+                })
+            },
+        );
+    }
+    let mut plain = RowProjection::default();
+    plain.rebuild(48, &[]);
+    group.bench_function("identity_projection_checked", |b| {
+        b.iter(|| {
+            assert!(!plain.rebuild(black_box(48), &[]));
+            assert_eq!(plain.source_row(47), Some(47));
+            black_box(&plain);
+        })
+    });
+    group.finish();
+}
+
+fn palette_setup(c: &mut Criterion) {
+    use rio_backend::config::colors::Colors;
+    assert!(
+        !std::env::var("AUTOMEXIA_UNIFIED_COLORS")
+            .ok()
+            .is_some_and(|value| matches!(value.trim(), "0" | "false" | "off" | "no")),
+        "The effective palette benchmark requires the unified palette enabled"
+    );
+    let mut group = c.benchmark_group("color_setup");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    group.bench_function("effective_app_palette", |b| {
+        b.iter(|| {
+            let colors =
+                automexia_terminal::automexia::theme::effective_colors(Colors::default());
+            assert_eq!(
+                colors.foreground,
+                [216.0 / 255.0, 222.0 / 255.0, 233.0 / 255.0, 1.0]
+            );
+            assert_eq!(
+                colors.background.0,
+                [2.0 / 255.0, 11.0 / 255.0, 22.0 / 255.0, 1.0]
+            );
+            black_box(colors)
+        })
+    });
+    group.finish();
+}

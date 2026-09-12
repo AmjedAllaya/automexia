@@ -43,6 +43,7 @@ pub(crate) fn palette_binding_target(
         | ToggleViMode
         | ToggleAppearanceTheme
         | PreviewSelectedImage
+        | ViewTableOutput
         | OpenMarket
         | OpenConnections
         | OpenActions
@@ -92,6 +93,7 @@ pub(crate) fn legacy_binding_target(action: PaletteAction) -> crate::bindings::A
         SearchGlobalForward => Action::SearchGlobalForward,
         SearchGlobalBackward => Action::SearchGlobalBackward,
         PreviewSelectedImage => Action::PreviewSelectedImage,
+        ViewTableOutput => Action::ViewTableOutput,
         ClearScreen => Action::ClearScreen,
         OpenMarket => Action::OpenExtensionMarketplace,
         OpenConnections => Action::OpenConnectionHub,

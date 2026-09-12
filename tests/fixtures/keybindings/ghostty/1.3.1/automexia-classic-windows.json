@@ -11,6 +11,16 @@
       "trigger": "ModifiersState(0x0)+Keycode { key: Named(Copy), location: Standard }"
     },
     {
+      "action": "ViewTableOutput",
+      "effective": true,
+      "mode": "BindingMode(0x0)",
+      "not_mode": "BindingMode(VI | SEARCH)",
+      "origin": "built_in_or_legacy_user",
+      "platform": "Windows",
+      "profile": "automexia",
+      "trigger": "ModifiersState(SHIFT | CONTROL)+Keycode { key: Named(F7), location: Standard }"
+    },
+    {
       "action": "ClearSelection",
       "effective": true,
       "mode": "BindingMode(VI)",

@@ -88,6 +88,7 @@ pub struct RenderableContent {
     /// virtual-placement overlay path. Single source of truth — only
     /// one terminal lock + one materialize pass per frame per panel.
     pub visible_rows: Vec<Row<Square>>,
+    pub command_rows: crate::automexia::ui::command_info::RowProjection,
     pub style_table: Vec<rio_backend::crosswords::style::Style>,
     /// Per-frame snapshot of extras (zero-width chars, hyperlinks,
     /// sixel/iterm graphics) actually referenced by visible cells —
@@ -158,6 +159,28 @@ pub struct SessionMetadataSeed {
 }
 
 impl RenderableContent {
+    pub fn scroll_lines<T: rio_backend::event::EventListener>(
+        &mut self,
+        terminal: &mut rio_backend::crosswords::Crosswords<T>,
+        lines: i32,
+    ) {
+        let native = if terminal.mode().intersects(
+            rio_backend::crosswords::Mode::VI | rio_backend::crosswords::Mode::ALT_SCREEN,
+        ) {
+            self.command_rows.follow();
+            lines
+        } else {
+            self.command_rows.scroll(
+                lines,
+                terminal.display_offset(),
+                terminal.history_size(),
+            )
+        };
+        terminal.scroll_display(rio_backend::crosswords::grid::Scroll::Delta(native));
+        self.pending_update
+            .set_terminal_damage(TerminalDamage::Full);
+    }
+
     pub fn new(cursor: Cursor) -> Self {
         RenderableContent {
             cursor,
@@ -174,6 +197,7 @@ impl RenderableContent {
             background: None,
             frame_damage: TerminalDamage::Full,
             visible_rows: Vec::new(),
+            command_rows: Default::default(),
             style_table: Vec::new(),
             extras: rustc_hash::FxHashMap::default(),
             term_colors: TermColors::default(),

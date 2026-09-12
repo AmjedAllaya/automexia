@@ -1,9 +1,71 @@
 use rio_backend::config::hints::Hint;
-use rio_backend::crosswords::grid::Dimensions;
 use rio_backend::crosswords::pos::{Column, Line, Pos};
 use rio_backend::event::EventListener;
 use std::path::{Path, PathBuf};
 use std::rc::Rc;
+use unicode_segmentation::UnicodeSegmentation;
+
+#[cfg(test)]
+#[path = "hints_tests.rs"]
+mod keyboard_tests;
+
+pub(crate) mod preview;
+mod scan;
+pub(crate) const MAX_HINT_MATCHES: usize = 256;
+pub(crate) const MAX_HINT_BYTES: usize = 4096;
+
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum KeyIntent {
+    Consume,
+    Close,
+    Next(bool),
+    Pan(bool),
+    Activate,
+    Copy,
+    Backspace,
+    Label(char),
+}
+
+pub(crate) fn key_intent(
+    key: &rio_window::keyboard::Key,
+    mods: rio_window::keyboard::ModifiersState,
+    pressed: bool,
+    repeat: bool,
+) -> KeyIntent {
+    use rio_window::keyboard::{Key, ModifiersState, NamedKey};
+    if !pressed || repeat {
+        return KeyIntent::Consume;
+    }
+    match key.as_ref() {
+        Key::Named(NamedKey::Escape) => KeyIntent::Close,
+        Key::Named(NamedKey::Tab) => KeyIntent::Next(!mods.shift_key()),
+        Key::Named(NamedKey::ArrowDown) => KeyIntent::Next(true),
+        Key::Named(NamedKey::ArrowUp) => KeyIntent::Next(false),
+        Key::Named(NamedKey::ArrowRight) => KeyIntent::Pan(true),
+        Key::Named(NamedKey::ArrowLeft) => KeyIntent::Pan(false),
+        Key::Named(NamedKey::Enter) if mods.is_empty() => KeyIntent::Activate,
+        Key::Character(c)
+            if c.eq_ignore_ascii_case("c")
+                && ((mods.control_key() && mods.shift_key()) || mods.super_key()) =>
+        {
+            KeyIntent::Copy
+        }
+        Key::Character(c) if c.eq_ignore_ascii_case("c") && mods.control_key() => {
+            KeyIntent::Close
+        }
+        Key::Named(NamedKey::Backspace) => KeyIntent::Backspace,
+        Key::Character(text)
+            if !mods.intersects(
+                ModifiersState::CONTROL | ModifiersState::ALT | ModifiersState::SUPER,
+            ) =>
+        {
+            text.chars()
+                .next()
+                .map_or(KeyIntent::Consume, KeyIntent::Label)
+        }
+        _ => KeyIntent::Consume,
+    }
+}
 
 /// State for hint selection mode
 pub struct HintState {
@@ -21,10 +83,13 @@ pub struct HintState {
 
     /// Alphabet for generating labels
     alphabet: String,
+    focused: usize,
+    snapshot: Option<scan::Snapshot>,
+    pub(crate) preview_offset: usize,
 }
 
 /// A match found by a hint
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct HintMatch {
     /// The text that was matched
     pub text: String,
@@ -37,6 +102,16 @@ pub struct HintMatch {
 
     /// The hint configuration that created this match
     pub hint: Rc<Hint>,
+}
+
+impl std::fmt::Debug for HintMatch {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("HintMatch")
+            .field("bytes", &self.text.len())
+            .field("start", &self.start)
+            .field("end", &self.end)
+            .finish_non_exhaustive()
+    }
 }
 
 impl HintMatch {
@@ -57,6 +132,9 @@ impl HintState {
             labels: Vec::new(),
             keys: Vec::new(),
             alphabet,
+            focused: 0,
+            snapshot: None,
+            preview_offset: 0,
         }
     }
 
@@ -67,9 +145,13 @@ impl HintState {
 
     /// Start hint mode with the given hint configuration
     pub fn start(&mut self, hint: Rc<Hint>) {
+        self.preview_offset = 0;
         self.active_hint = Some(hint);
         self.keys.clear();
-        // matches and labels will be updated by update_matches
+        self.matches.clear();
+        self.labels.clear();
+        self.focused = 0;
+        self.snapshot = None;
     }
 
     /// Stop hint mode
@@ -78,6 +160,7 @@ impl HintState {
         self.matches.clear();
         self.labels.clear();
         self.keys.clear();
+        self.snapshot = None;
     }
 
     /// Update visible matches for the current hint
@@ -94,44 +177,30 @@ impl HintState {
             }
         };
 
-        // Find regex matches if regex is specified
-        if let Some(regex_pattern) = &hint.regex {
-            if let Ok(regex) = onig::Regex::new(regex_pattern) {
-                self.find_regex_matches(term, &regex, hint.clone());
-            }
+        self.snapshot = scan::Snapshot::capture(term);
+        if self.snapshot.is_some() {
+            self.matches = scan::collect(term, hint);
         }
-
-        // Find OSC 8 hyperlinks if enabled
-        if hint.hyperlinks {
-            self.find_hyperlink_matches(term, hint.clone());
-        }
-
-        // Cancel hint mode if no matches found
-        if self.matches.is_empty() {
-            self.stop();
-            return;
-        }
-
-        // Sort and dedup matches
-        self.matches.sort_by_key(|m| (m.start.row, m.start.col));
-        self.matches.dedup_by_key(|m| m.start);
-
-        // Generate labels for matches
+        self.focused = 0;
+        self.keys.clear();
+        self.preview_offset = 0;
         self.generate_labels();
     }
 
     /// Handle keyboard input during hint selection
     pub fn keyboard_input<T: EventListener>(
         &mut self,
-        term: &rio_backend::crosswords::Crosswords<T>,
+        _term: &rio_backend::crosswords::Crosswords<T>,
         c: char,
     ) -> Option<HintMatch> {
         match c {
             // Use backspace to remove the last character pressed
             '\x08' | '\x1f' => {
                 self.keys.pop();
-                // Only update matches after backspace to regenerate visible labels
-                self.update_matches(term);
+                self.preview_offset = 0;
+                if let Some((index, _)) = self.visible_labels().first() {
+                    self.focused = *index;
+                }
                 return None;
             }
             // Cancel hint highlighting on ESC/Ctrl+c
@@ -142,7 +211,7 @@ impl HintState {
             _ => (),
         }
 
-        let hint = self.active_hint.as_ref()?;
+        self.active_hint.as_ref()?;
 
         // Get visible labels (labels filtered by keys pressed so far)
         let visible_labels = self.visible_labels();
@@ -151,23 +220,18 @@ impl HintState {
         let mut matching_labels = visible_labels.iter().rev();
         let (index, remaining_label) = matching_labels
             .find(|(_, remaining)| !remaining.is_empty() && remaining[0] == c)?;
+        self.preview_offset = 0;
 
         // Check if this completes the label (only one character remaining)
         if remaining_label.len() == 1 {
-            let hint_match = self.matches.get(*index)?.clone();
-            let hint_config = hint.clone();
-
-            // Exit hint mode unless it requires explicit dismissal
-            if hint_config.persist {
-                self.keys.clear();
-            } else {
-                self.stop();
-            }
-
-            Some(hint_match)
+            self.focused = *index;
+            self.keys.clear();
+            self.preview_offset = 0;
+            None
         } else {
             // Store character to preserve the selection
             self.keys.push(c);
+            self.focused = *index;
             None
         }
     }
@@ -175,6 +239,97 @@ impl HintState {
     /// Get current matches
     pub fn matches(&self) -> &[HintMatch] {
         &self.matches
+    }
+
+    pub(crate) fn label_cells(&self) -> Vec<(Pos, char, bool)> {
+        let mut cells = Vec::new();
+        let columns = self.snapshot.as_ref().map_or(0, scan::Snapshot::columns);
+        let mut occupied = std::collections::BTreeSet::new();
+        for (index, label) in self.visible_labels() {
+            let Some(target) = self.matches.get(index) else {
+                continue;
+            };
+            // A clipped or overlapping token can identify the wrong link. Keep
+            // labels whole; Tab and the preview retain access in tiny/dense views.
+            if label.len() > columns {
+                continue;
+            }
+            let first = target.start.col.0.min(columns - label.len());
+            if (first..first + label.len())
+                .any(|col| occupied.contains(&(target.start.row.0, col)))
+            {
+                continue;
+            }
+            for (offset, character) in label.into_iter().enumerate() {
+                let col = first + offset;
+                occupied.insert((target.start.row.0, col));
+                cells.push((
+                    Pos::new(target.start.row, Column(col)),
+                    character,
+                    offset == 0,
+                ));
+            }
+        }
+        cells
+    }
+
+    pub(crate) fn focused_label(&self) -> String {
+        self.labels
+            .get(self.focused)
+            .map_or_else(String::new, |label| label.iter().collect())
+    }
+
+    pub(crate) fn focused(&self) -> Option<&HintMatch> {
+        self.matches.get(self.focused)
+    }
+
+    pub(crate) fn focused_index(&self) -> usize {
+        self.focused
+    }
+
+    pub(crate) fn cycle(&mut self, forward: bool) {
+        self.keys.clear();
+        self.preview_offset = 0;
+        let count = self.matches.len();
+        if count != 0 {
+            self.focused = (self.focused + if forward { 1 } else { count - 1 }) % count;
+        }
+    }
+
+    pub(crate) fn pan(&mut self, forward: bool) {
+        let count = self.focused().map_or(0, |m| m.text.graphemes(true).count());
+        self.preview_offset = if forward {
+            self.preview_offset
+                .saturating_add(16)
+                .min(count.saturating_sub(1))
+        } else {
+            self.preview_offset.saturating_sub(16)
+        };
+    }
+
+    pub(crate) fn activate(&mut self) -> Option<HintMatch> {
+        let selected = self.focused()?.clone();
+        if !selected.hint.persist {
+            self.stop();
+        } else {
+            self.keys.clear();
+        }
+        Some(selected)
+    }
+
+    pub(crate) fn is_current<T: EventListener>(
+        &self,
+        term: &rio_backend::crosswords::Crosswords<T>,
+    ) -> bool {
+        self.snapshot
+            .as_ref()
+            .is_some_and(|snapshot| snapshot.matches(term))
+    }
+
+    pub(crate) fn focus_in_lower_half(&self) -> bool {
+        self.focused()
+            .zip(self.snapshot.as_ref())
+            .is_some_and(|(selected, snapshot)| snapshot.lower_half(selected.start.row))
     }
 
     /// Get keys pressed so far
@@ -209,188 +364,72 @@ impl HintState {
         }
     }
 
-    // Private helper methods
-
-    fn find_regex_matches<T: EventListener>(
-        &mut self,
-        term: &rio_backend::crosswords::Crosswords<T>,
-        regex: &onig::Regex,
-        hint: Rc<Hint>,
-    ) {
-        // Get the visible area of the terminal
-        let grid = &term.grid;
-        let display_offset = grid.display_offset();
-        let visible_lines = grid.screen_lines();
-
-        // Scan each visible line for matches
-        for line_idx in 0..visible_lines {
-            let line = Line(line_idx as i32 - display_offset as i32);
-            if line < Line(0) || line.0 >= grid.total_lines() as i32 {
-                continue;
-            }
-
-            // Extract text from the line
-            let line_text = self.extract_line_text(term, line);
-
-            // Find all matches in this line. Onig yields (byte_start, byte_end);
-            for (start, end) in regex.find_iter(&line_text) {
-                let start_col = Column(line_text[..start].chars().count());
-                let mut match_text = line_text[start..end].to_string();
-
-                // Apply post-processing if enabled
-                if hint.post_processing {
-                    match_text = post_process_hyperlink_uri(&match_text);
-                }
-
-                let end_col =
-                    Column(start_col.0 + match_text.chars().count().saturating_sub(1));
-
-                let hint_match = HintMatch {
-                    text: match_text,
-                    start: Pos::new(line, start_col),
-                    end: Pos::new(line, end_col),
-                    hint: hint.clone(),
-                };
-
-                self.matches.push(hint_match);
-            }
-        }
-    }
-
-    fn find_hyperlink_matches<T: EventListener>(
-        &mut self,
-        term: &rio_backend::crosswords::Crosswords<T>,
-        hint: Rc<Hint>,
-    ) {
-        // Walk the visible region looking for OSC 8 hyperlink spans.
-        //
-        // After the cell repack, hyperlinks live in the per-grid
-        // `extras_table`. Each cell carries an `extras_id: u16`; cells
-        // in the same hyperlink span share that id. We compare ids
-        // (cheap u16 compare) to find the start and end of each span,
-        // then look up the URI once via `Crosswords::cell_hyperlink`.
-        let grid = &term.grid;
-        let display_offset = grid.display_offset();
-        let visible_lines = grid.screen_lines();
-
-        for line_idx in 0..visible_lines {
-            let line = Line(line_idx as i32 - display_offset as i32);
-            if line < Line(0) || line.0 >= grid.total_lines() as i32 {
-                continue;
-            }
-
-            let mut col = 0usize;
-            let cols = grid.columns();
-            while col < cols {
-                let id = match term.cell_hyperlink_id(line, Column(col)) {
-                    Some(id) => id,
-                    None => {
-                        col += 1;
-                        continue;
-                    }
-                };
-
-                // Found the start of a hyperlink span. Walk forward
-                // until the extras_id changes.
-                let start_col = col;
-                let mut end_col = col;
-                while end_col < cols
-                    && term.cell_hyperlink_id(line, Column(end_col)) == Some(id)
-                {
-                    end_col += 1;
-                }
-
-                // Look up the URI once for the whole span.
-                if let Some(hyperlink) = term.cell_hyperlink(line, Column(start_col)) {
-                    let mut uri = hyperlink.uri().to_string();
-                    if hint.post_processing {
-                        uri = post_process_hyperlink_uri(&uri);
-                    }
-                    self.matches.push(HintMatch {
-                        text: uri,
-                        start: Pos::new(line, Column(start_col)),
-                        end: Pos::new(line, Column(end_col - 1)),
-                        hint: hint.clone(),
-                    });
-                }
-
-                col = end_col;
-            }
-        }
-    }
-
-    fn extract_line_text<T: EventListener>(
-        &self,
-        term: &rio_backend::crosswords::Crosswords<T>,
-        line: Line,
-    ) -> String {
-        let grid = &term.grid;
-        let mut text = String::new();
-
-        for col in 0..grid.columns() {
-            let cell = &grid[line][Column(col)];
-            text.push(cell.c());
-        }
-
-        text.trim_end().to_string()
-    }
-
     fn generate_labels(&mut self) {
         self.labels.clear();
-        let mut generator = LabelGenerator::new(&self.alphabet);
-
-        for _ in 0..self.matches.len() {
-            self.labels.push(generator.next());
+        let mut alphabet: Vec<char> = self
+            .alphabet
+            .chars()
+            .filter(|c| c.is_ascii_graphic())
+            .take(64)
+            .collect();
+        let mut seen = std::collections::BTreeSet::new();
+        alphabet.retain(|c| seen.insert(*c));
+        if alphabet.len() < 2 {
+            alphabet = "jfkdlsahgurieowpq".chars().collect();
+        }
+        let mut digits = 1;
+        let mut capacity = alphabet.len();
+        while capacity < self.matches.len() {
+            digits += 1;
+            capacity *= alphabet.len();
+        }
+        for mut index in 0..self.matches.len() {
+            let mut label = vec![alphabet[0]; digits];
+            for c in label.iter_mut().rev() {
+                *c = alphabet[index % alphabet.len()];
+                index /= alphabet.len();
+            }
+            self.labels.push(label);
         }
     }
 }
 
-/// Generates hint labels using the specified alphabet
-struct LabelGenerator {
-    alphabet: Vec<char>,
-    indices: Vec<usize>,
-}
-
-impl LabelGenerator {
-    fn new(alphabet: &str) -> Self {
-        Self {
-            alphabet: alphabet.chars().collect(),
-            indices: vec![0],
-        }
+/// Validate the default opener boundary without I/O or shell interpretation.
+pub(crate) fn safe_open_target(text: &str) -> bool {
+    if !safe_hint_text(text) || text.starts_with('-') {
+        return false;
     }
-
-    fn next(&mut self) -> Vec<char> {
-        let label = self.current_label();
-        self.increment();
-        label
-    }
-
-    fn current_label(&self) -> Vec<char> {
-        self.indices
-            .iter()
-            .rev()
-            .map(|&i| self.alphabet[i])
-            .collect()
-    }
-
-    fn increment(&mut self) {
-        let mut carry = true;
-        let mut pos = 0;
-
-        while carry && pos < self.indices.len() {
-            self.indices[pos] += 1;
-            if self.indices[pos] >= self.alphabet.len() {
-                self.indices[pos] = 0;
-                pos += 1;
-            } else {
-                carry = false;
+    match url::Url::parse(text) {
+        Ok(url) => {
+            if !url.username().is_empty() || url.password().is_some() {
+                return false;
+            }
+            match url.scheme() {
+                "http" | "https" | "ftp" | "git" | "gemini" | "gopher" => {
+                    url.host_str().is_some()
+                }
+                "mailto" | "tel" | "magnet" | "ipfs" | "ipns" | "news" | "ssh" => {
+                    !url.path().is_empty() || url.host_str().is_some()
+                }
+                "file" => url.host_str().is_none_or(|host| host == "localhost"),
+                // Drive-qualified paths remain paths, not arbitrary URI handlers.
+                _ => {
+                    cfg!(windows)
+                        && text.as_bytes().get(1) == Some(&b':')
+                        && text
+                            .as_bytes()
+                            .get(2)
+                            .is_some_and(|c| *c == b'\\' || *c == b'/')
+                }
             }
         }
-
-        if carry {
-            self.indices.push(0);
-        }
+        Err(_) => !text.contains(':') && !text.starts_with("\\\\"),
     }
+}
+
+fn safe_hint_text(text: &str) -> bool {
+    !text.is_empty() && text.len() <= MAX_HINT_BYTES && !text.chars().any(|c|
+        c.is_control() || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}'))
 }
 
 /// URI scheme prefixes that should never be resolved as file paths.
@@ -483,7 +522,7 @@ pub fn resolve_path_for_opening(text: &str, cwd: Option<&Path>) -> Option<PathBu
 }
 
 /// Apply post-processing to hyperlink URIs (same as in screen/mod.rs)
-fn post_process_hyperlink_uri(uri: &str) -> String {
+pub(crate) fn post_process_hyperlink_uri(uri: &str) -> String {
     let chars: Vec<char> = uri.chars().collect();
     if chars.is_empty() {
         return String::new();
@@ -565,18 +604,6 @@ mod tests {
         assert!(!latched.same_visible_match(&hint_match("https://automexia.dev", 4, 26)));
     }
     use rio_backend::config::hints::{HintAction, HintInternalAction};
-
-    #[test]
-    fn test_label_generator() {
-        let mut gen = LabelGenerator::new("abc");
-        assert_eq!(gen.next(), vec!['a']);
-        assert_eq!(gen.next(), vec!['b']);
-        assert_eq!(gen.next(), vec!['c']);
-        assert_eq!(gen.next(), vec!['a', 'a']);
-        assert_eq!(gen.next(), vec!['a', 'b']);
-        assert_eq!(gen.next(), vec!['a', 'c']);
-        assert_eq!(gen.next(), vec!['b', 'a']);
-    }
 
     #[test]
     fn test_hint_state_lifecycle() {

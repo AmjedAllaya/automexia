@@ -89,6 +89,11 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
         terminal.scroll_display(Scroll::Bottom);
         terminal.selection.take();
         drop(terminal);
+        context.renderable_content.command_rows.follow();
+        context
+            .renderable_content
+            .pending_update
+            .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
         context.set_selection(None);
         Ok(true)
     }
@@ -100,6 +105,14 @@ mod tests {
     use crate::event::VoidListener;
     use crate::messenger::Messenger;
     use rio_backend::event::WindowId;
+
+    fn scrolled_header(content: &mut crate::context::renderable::RenderableContent) {
+        content.command_rows.rebuild(3, &[(0, 5)]);
+        assert_eq!(content.command_rows.scroll(-2, 0, 0), 0);
+        content.command_rows.rebuild(3, &[(0, 5)]);
+        content.command_rows.settle(None, 3);
+        assert_eq!(content.command_rows.top(), 2);
+    }
 
     #[test]
     fn paste_encoding_bounds_and_raw_input_are_independent_of_shell_identity() {
@@ -195,6 +208,8 @@ mod tests {
         let (sender, receiver) = corcovado::channel::channel();
         manager.current_mut().messenger = Messenger::new(sender);
         drop(receiver);
+        scrolled_header(&mut manager.current_mut().renderable_content);
+        let projection = manager.current().renderable_content.command_rows.clone();
         manager.current().terminal.lock().selection = Some(Selection::new(
             SelectionType::Simple,
             Pos::new(Line(0), Column(0)),
@@ -206,6 +221,10 @@ mod tests {
             Err(PasteError::Closed)
         );
         assert!(manager.current().terminal.lock().selection.is_some());
+        assert_eq!(
+            manager.current().renderable_content.command_rows,
+            projection
+        );
     }
 
     #[test]
@@ -218,7 +237,10 @@ mod tests {
         let mut parser = rio_backend::performer::handler::Processor::default();
         parser.advance(&mut *manager.current().terminal.lock(), b"\x1b[?2004h");
         let target = manager.current().paste_target();
+        let target_route = target.route_id;
+        scrolled_header(&mut manager.current_mut().renderable_content);
         manager.add_context(true, 0);
+        scrolled_header(&mut manager.current_mut().renderable_content);
         let (sibling_sender, sibling_receiver) = corcovado::channel::channel();
         manager.current_mut().messenger = Messenger::new(sibling_sender);
 
@@ -234,5 +256,15 @@ mod tests {
         assert_eq!(&*bytes, b"\x1b[200~one\r\ntwo[201~\x1b[201~");
         assert!(receiver.try_recv().is_err());
         assert!(sibling_receiver.try_recv().is_err());
+        assert_eq!(manager.current().renderable_content.command_rows.top(), 2);
+        assert_eq!(
+            manager
+                .get_by_route_id(target_route)
+                .unwrap()
+                .renderable_content
+                .command_rows
+                .top(),
+            0
+        );
     }
 }

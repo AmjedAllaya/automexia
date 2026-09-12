@@ -25,6 +25,7 @@ mod renderer;
 mod router;
 mod scheduler;
 mod screen;
+mod table_view;
 mod watcher;
 
 use clap::Parser;

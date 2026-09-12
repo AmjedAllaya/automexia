@@ -1,5 +1,9 @@
 # Ghostty keyboard compatibility status
 
+Classic keyboard hyperlink review now has destination inspection and explicit
+Enter activation. Pinned Ghostty tables are unchanged; no additional parity
+claim follows from this classic-only interaction. See [keyboard links](user-guide/hyperlinks.md).
+
 Automexia keeps its own keyboard defaults. An explicit compatibility profile may
 map supported Ghostty 1.3 keyboard behavior without changing terminal, PTY,
 window, tab, pane, or shell ownership.

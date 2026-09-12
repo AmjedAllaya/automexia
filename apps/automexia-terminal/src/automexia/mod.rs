@@ -38,6 +38,7 @@ pub mod shell_integration;
 pub mod shortcut_preferences;
 mod state;
 pub mod suggestions;
+pub mod table_output;
 pub mod theme;
 pub mod ui;
 #[cfg(feature = "visual-test-hooks")]

@@ -16,9 +16,7 @@ use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, Sessio
 use automexia_ui_model::{self, IconOptics, Segment};
 
 use crate::automexia::runtime;
-use crate::automexia::ui::{
-    PromptAnchor, COMMAND_RESULT_PROMPT_RESERVE, MAX_PROMPT_CONTEXT_HISTORY,
-};
+use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
 
 #[cfg(feature = "native-gui-test-hooks")]
 pub(crate) type NativePromptContextPaint = (Option<u64>, u64, [f32; 4]);
@@ -33,18 +31,18 @@ const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-struct PromptTagMetrics {
-    font_size: f32,
-    icon_size: f32,
-    icon_slot: f32,
-    height: f32,
-    padding_x: f32,
-    icon_gap: f32,
-    tag_gap: f32,
-    radius: f32,
+pub(super) struct PromptTagMetrics {
+    pub font_size: f32,
+    pub icon_size: f32,
+    pub icon_slot: f32,
+    pub height: f32,
+    pub padding_x: f32,
+    pub icon_gap: f32,
+    pub tag_gap: f32,
+    pub radius: f32,
 }
 
-fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
+pub(super) fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
     let row_height = row_height.max(1.0);
     let font_size = (row_height * PROMPT_TAG_FONT_ROW_RATIO)
         .clamp(PROMPT_TAG_MIN_FONT_SIZE, PROMPT_TAG_MAX_FONT_SIZE)
@@ -67,11 +65,6 @@ fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
         tag_gap,
         radius,
     }
-}
-
-#[inline]
-fn prompt_context_right_edge(anchor: &PromptAnchor) -> f32 {
-    anchor.x + (anchor.width - COMMAND_RESULT_PROMPT_RESERVE).max(0.0)
 }
 
 struct PromptSnapshot {
@@ -165,10 +158,8 @@ impl DevOpsStatus {
     /// and a short editable continuation. Context is therefore durable grid
     /// metadata rather than prompt text: typing cannot erase it, scrollback
     /// retains it, and resize/reflow resolves its current geometry each frame.
-    pub fn render_prompt_rows(
+    pub(super) fn prepare_prompt_rows(
         &mut self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
         session: &SessionFacts,
         prompt_active: bool,
         historical_anchors: &[PromptAnchor],
@@ -213,49 +204,6 @@ impl DevOpsStatus {
                             segments_revision,
                         });
                     }
-                }
-            }
-        }
-
-        // A newly visible historical row can predate this renderer instance
-        // (for example after restoring a route or deep scrollback). Never
-        // leave its context strip empty: use the current local snapshot until
-        // a prompt-specific snapshot exists.
-        for anchor in historical_anchors {
-            if live_anchor.is_some_and(|live| {
-                same_prompt_identity(
-                    live.generation,
-                    live.key,
-                    anchor.generation,
-                    anchor.key,
-                )
-            }) {
-                continue;
-            }
-            let segments = self
-                .cached_segments(session.session_id, anchor)
-                .unwrap_or(&self.live_segments);
-            self.draw_prompt_segments(sugarloaf, colors, anchor, segments);
-        }
-
-        if prompt_active {
-            if let (Some(anchor), Some(active)) =
-                (live_anchor, self.active_prompt.as_ref())
-            {
-                if active.session_id == session.session_id
-                    && same_prompt_identity(
-                        active.generation,
-                        active.key,
-                        anchor.generation,
-                        anchor.key,
-                    )
-                {
-                    self.draw_prompt_segments(
-                        sugarloaf,
-                        colors,
-                        &anchor,
-                        &active.segments,
-                    );
                 }
             }
         }
@@ -374,78 +322,6 @@ impl DevOpsStatus {
         false
     }
 
-    fn draw_prompt_segments(
-        &self,
-        sugarloaf: &mut Sugarloaf,
-        colors: Colors,
-        anchor: &PromptAnchor,
-        segments: &[Segment],
-    ) {
-        let metrics = prompt_tag_metrics(anchor.height);
-        let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
-            anchor.height,
-            metrics.height,
-            !segments.is_empty(),
-        ) else {
-            return;
-        };
-        let tag_y = anchor.y + top_inset;
-        let text_y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
-        let icon_y = tag_y + (metrics.height - metrics.icon_size) * 0.5;
-        let mut cursor_x = anchor.x + PROMPT_TAG_LEFT_INSET;
-        let right_edge = prompt_context_right_edge(anchor);
-
-        for segment in segments {
-            let color = segment_color(colors, segment.role);
-            let text_opts = DrawOpts {
-                font_size: metrics.font_size,
-                color: color_to_u8(color),
-                ..DrawOpts::default()
-            };
-            let text_width = sugarloaf.text_mut().measure(&segment.value, &text_opts);
-            let segment_width = metrics.padding_x * 2.0
-                + metrics.icon_slot
-                + metrics.icon_gap
-                + text_width;
-            if cursor_x + segment_width > right_edge {
-                break;
-            }
-
-            sugarloaf.rounded_rect(
-                None,
-                cursor_x,
-                tag_y,
-                segment_width,
-                metrics.height,
-                segment_tag_background(segment.role),
-                0.0,
-                metrics.radius,
-                ORDER - 1,
-            );
-            #[cfg(feature = "native-gui-test-hooks")]
-            self.native_prompt_paints.borrow_mut().push((
-                anchor.generation,
-                anchor.key,
-                [cursor_x, tag_y, segment_width, metrics.height],
-            ));
-            let content_x = cursor_x + metrics.padding_x;
-            draw_icon_in_slot(
-                sugarloaf,
-                segment.icon,
-                content_x,
-                icon_y,
-                metrics.icon_slot,
-                metrics.icon_size,
-                color,
-            );
-            let label_x = content_x + metrics.icon_slot + metrics.icon_gap;
-            sugarloaf
-                .text_mut()
-                .draw(label_x, text_y, &segment.value, &text_opts);
-            cursor_x += segment_width + metrics.tag_gap;
-        }
-    }
-
     fn cached_segments(
         &self,
         session_id: usize,
@@ -464,6 +340,94 @@ impl DevOpsStatus {
                     )
             })
             .map(|entry| entry.segments.as_slice())
+    }
+
+    pub(super) fn segments_for_prompt(
+        &self,
+        session_id: usize,
+        anchor: &PromptAnchor,
+    ) -> &[Segment] {
+        if let Some(active) = self.active_prompt.as_ref().filter(|active| {
+            active.session_id == session_id
+                && same_prompt_identity(
+                    active.generation,
+                    active.key,
+                    anchor.generation,
+                    anchor.key,
+                )
+        }) {
+            return &active.segments;
+        }
+        self.cached_segments(session_id, anchor)
+            .unwrap_or(&self.live_segments)
+    }
+
+    pub(super) fn draw_prompt_fragment(
+        &self,
+        sugarloaf: &mut Sugarloaf,
+        colors: Colors,
+        anchor: &PromptAnchor,
+        session_id: usize,
+        fragment: &crate::automexia::ui::command_info::Fragment,
+    ) {
+        let Some(segment) = self
+            .segments_for_prompt(session_id, anchor)
+            .get(fragment.item)
+        else {
+            return;
+        };
+        let Some(text) = segment.value.get(fragment.bytes.clone()) else {
+            return;
+        };
+        let metrics = prompt_tag_metrics(anchor.height);
+        let top_inset = automexia_ui_model::prompt_context_top_inset(
+            anchor.height,
+            metrics.height,
+            true,
+        )
+        .unwrap_or(0.0);
+        let x = anchor.x + PROMPT_TAG_LEFT_INSET + fragment.x;
+        let y = anchor.y + fragment.row as f32 * anchor.height + top_inset;
+        let color = segment_color(colors, segment.role);
+        sugarloaf.rounded_rect(
+            None,
+            x,
+            y,
+            fragment.width,
+            metrics.height,
+            segment_tag_background(segment.role),
+            0.0,
+            metrics.radius,
+            ORDER - 1,
+        );
+        #[cfg(feature = "native-gui-test-hooks")]
+        self.native_prompt_paints.borrow_mut().push((
+            anchor.generation,
+            anchor.key,
+            [x, y, fragment.width, metrics.height],
+        ));
+        if fragment.leading > 0.0 {
+            let slot = fragment.leading * metrics.icon_slot
+                / (metrics.icon_slot + metrics.icon_gap);
+            let icon = metrics.icon_size.min(slot);
+            draw_icon_in_slot(
+                sugarloaf,
+                segment.icon,
+                x + fragment.padding,
+                y + (metrics.height - icon) * 0.5,
+                slot,
+                icon,
+                color,
+            );
+        }
+        super::command_info::draw_fragment_text(
+            sugarloaf.text_mut(),
+            text,
+            fragment,
+            [anchor.x, anchor.y],
+            [anchor.height, metrics.font_size, metrics.height],
+            color_to_u8(color),
+        );
     }
 
     fn remember_prompt(&mut self, prompt: ActivePrompt) {
@@ -914,26 +878,8 @@ mod tests {
                 .unwrap()
                 > (24.0 - comfortable.height) * 0.5
         );
-        let wide = PromptAnchor {
-            generation: Some(1),
-            key: 1,
-            x: 4.0,
-            y: 20.0,
-            width: 720.0,
-            height: 24.0,
-        };
-        assert_eq!(
-            prompt_context_right_edge(&wide),
-            wide.x + wide.width - COMMAND_RESULT_PROMPT_RESERVE
-        );
-        assert_eq!(
-            prompt_context_right_edge(&PromptAnchor {
-                width: COMMAND_RESULT_PROMPT_RESERVE - 1.0,
-                ..wide
-            }),
-            wide.x
-        );
     }
+
     #[test]
     fn renderer_icon_adapter_uses_shared_glyphs_and_optics() {
         let docker = icon_optics(IconKind::Docker);

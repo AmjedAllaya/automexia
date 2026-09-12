@@ -35,12 +35,19 @@ The terminal must support:
 | Scrollbar | Optional pointer target with terminal/document scrolling still available by keyboard |
 | Terminal grid | Text, cursor, selection, input, scroll, and screen-reader document semantics |
 | Local image preview | Filename/dimensions/size text, keyboard dismissal, and no image-only required meaning |
+| Keyboard hyperlink review | Visible link focus, exact destination preview, next/previous, explicit activation, copy, and dismissal without shell input |
 
 ## Focus and input ownership
 
 Only the focused public surface receives keyboard, pointer, or IME input.
 Opening an overlay prevents its keys from reaching the PTY. Dismissal restores
 the previous valid target or a documented safe fallback.
+
+The [keyboard hyperlink review](user-guide/hyperlinks.md) uses text labels and
+underlining as well as color. Output or viewport changes cancel its captured
+targets. Native accessibility-tree projection and screen-reader announcements
+for this review remain unverified; keyboard and controlled raster tests alone
+do not certify native assistive-technology support.
 
 Focus never moves merely because background output, search, metadata, or an
 optional worker updates.

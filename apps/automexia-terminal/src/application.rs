@@ -1624,6 +1624,21 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             None => return,
         };
 
+        if route
+            .window
+            .screen
+            .handle_table_window_event(&event, &mut self.router.clipboard)
+            || route
+                .window
+                .screen
+                .handle_hint_window_event(&event, &mut self.router.clipboard)
+        {
+            // A covered pane's resize/selection cursor must not leak into the view.
+            route.window.winit_window.set_cursor(CursorIcon::Default);
+            route.request_overlay_redraw();
+            return;
+        }
+
         match event {
             WindowEvent::CloseRequested => {
                 // macOS: Cmd+Q quit confirmation is handled by

@@ -59,7 +59,6 @@ use rio_window::event::Modifiers;
 use rio_window::event::MouseButton;
 #[cfg(target_os = "macos")]
 use rio_window::keyboard::ModifiersKeyState;
-#[cfg(windows)]
 use rio_window::keyboard::PhysicalKey;
 use rio_window::keyboard::{Key, KeyLocation, ModifiersState, NamedKey};
 use rio_window::platform::modifier_supplement::KeyEventExtModifierSupplement;
@@ -902,7 +901,10 @@ pub struct Screen<'screen> {
     search_scope: SearchScope,
     search_results: SearchResultSummary,
     pub hint_state: HintState,
+    hint_route: Option<usize>,
     image_preview: crate::image_preview::ImagePreview,
+    pub(crate) table_view: crate::table_view::TableView,
+    table_key_releases: Vec<PhysicalKey>,
     action_surface: action_surface::Controller,
     suggestions: crate::automexia::suggestions::SuggestionUiController,
     connection_hub: crate::automexia::connections::ConnectionHubController,
@@ -1169,7 +1171,10 @@ impl Screen<'_> {
             search_scope: SearchScope::Pane { route_id: 0 },
             search_results: SearchResultSummary::EmptyQuery,
             hint_state: HintState::new(config.hints.alphabet.clone()),
+            hint_route: None,
             image_preview: crate::image_preview::ImagePreview::default(),
+            table_view: crate::table_view::TableView::default(),
+            table_key_releases: Vec::new(),
             action_surface,
             suggestions: crate::automexia::suggestions::SuggestionUiController::new(
                 suggestions,
@@ -1425,6 +1430,13 @@ impl Screen<'_> {
         let mut candidates = Vec::new();
 
         for visible_row in 0..visible_lines {
+            let visual_row = current
+                .renderable_content
+                .command_rows
+                .visual_row(visible_row);
+            if !(0..visible_lines as isize).contains(&visual_row) {
+                continue;
+            }
             let line = Line(visible_row as i32 - display_offset as i32);
             let text = (0..columns)
                 .map(|column| {
@@ -1448,7 +1460,7 @@ impl Screen<'_> {
                     candidate,
                     crate::image_preview::PreviewAnchor {
                         x: margin.left + (token.start as f32 + 0.5) * cell_width,
-                        y: margin.top + (visible_row as f32 + 0.5) * cell_height,
+                        y: margin.top + (visual_row as f32 + 0.5) * cell_height,
                     },
                 ));
             }
@@ -1624,9 +1636,9 @@ impl Screen<'_> {
         let current_grid = self.context_manager.current_grid();
         let (context, margin) = current_grid.current_context_with_computed_dimension();
         let context_dimension = context.dimension;
-        calculate_mouse_position(
+        let mut position = calculate_mouse_position(
             &self.mouse,
-            display_offset,
+            0,
             (context_dimension.columns, context_dimension.lines),
             margin.left,
             margin.top,
@@ -1634,7 +1646,15 @@ impl Screen<'_> {
                 context_dimension.cell.cell_width,
                 context_dimension.cell.cell_height,
             ),
-        )
+        );
+        position.row = Line(
+            context
+                .renderable_content
+                .command_rows
+                .native_row(position.row.0.max(0) as usize) as i32
+                - display_offset as i32,
+        );
+        position
     }
 
     #[inline]
@@ -1933,6 +1953,11 @@ impl Screen<'_> {
 
     #[inline]
     pub fn scroll_bottom_when_cursor_not_visible(&mut self) {
+        self.ctx_mut()
+            .current_mut()
+            .renderable_content
+            .command_rows
+            .follow();
         let mut terminal = self.ctx_mut().current_mut().terminal.lock();
         if terminal.display_offset() != 0 {
             terminal.scroll_display(Scroll::Bottom);
@@ -1961,6 +1986,7 @@ impl Screen<'_> {
         let rich_text_id = current.rich_text_id;
         let moved = current.terminal.lock().scroll_to_prompt(forward);
         if moved {
+            current.renderable_content.command_rows.follow();
             self.renderer.scrollbar.notify_scroll(rich_text_id);
             self.mark_dirty();
         }
@@ -1981,6 +2007,21 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
+        if self.consume_table_key_release(key) {
+            return;
+        }
+        if self.process_hint_key(key, clipboard) {
+            return;
+        }
+        if self.table_view.is_open() {
+            let effect = self.table_view.key(
+                &key.logical_key,
+                self.modifiers.state(),
+                key.state == ElementState::Pressed,
+            );
+            self.finish_table_key(key, effect, clipboard);
+            return;
+        }
         if self.process_compatibility_inspector_key(key) {
             return;
         }
@@ -2064,53 +2105,6 @@ impl Screen<'_> {
 
             self.ctx_mut().current_mut().messenger.send_write(bytes);
 
-            return;
-        }
-
-        // All key bindings are disabled while a hint is being selected (like Alacritty)
-        if self.hint_state.is_active() {
-            // Handle special keys first
-            match key.logical_key {
-                rio_window::keyboard::Key::Named(
-                    rio_window::keyboard::NamedKey::Escape,
-                ) => {
-                    self.hint_state.stop();
-                    self.update_hint_state();
-                    self.mark_dirty();
-                    return;
-                }
-                rio_window::keyboard::Key::Named(
-                    rio_window::keyboard::NamedKey::Backspace,
-                ) => {
-                    let terminal = self.context_manager.current().terminal.lock();
-                    self.hint_state.keyboard_input(&*terminal, '\x08');
-                    drop(terminal);
-                    self.update_hint_state();
-                    self.mark_dirty();
-                    return;
-                }
-                _ => {}
-            }
-
-            // Handle text input
-            let text = key.text_with_all_modifiers().unwrap_or_default();
-            for character in text.chars() {
-                let terminal = self.context_manager.current().terminal.lock();
-                if let Some(hint_match) =
-                    self.hint_state.keyboard_input(&*terminal, character)
-                {
-                    drop(terminal);
-                    self.execute_hint_action(&hint_match, clipboard);
-                    // Stop hint mode and update state with proper damage tracking
-                    self.hint_state.stop();
-                    self.update_hint_state();
-                    self.mark_dirty();
-                    return;
-                }
-                drop(terminal);
-            }
-            self.update_hint_state();
-            self.mark_dirty();
             return;
         }
 
@@ -2387,7 +2381,10 @@ impl Screen<'_> {
                         self.extend_selection(*motion);
                     }
                     Act::Hint(hint_config) => {
-                        self.start_hint_mode(hint_config.clone());
+                        if !key.repeat {
+                            self.start_hint_mode(hint_config.clone());
+                            self.remember_hint_key(key);
+                        }
                     }
                     Act::SearchForward => {
                         self.start_search(Direction::Right);
@@ -2657,7 +2654,9 @@ impl Screen<'_> {
                         let scroll_lines = terminal.grid.screen_lines() as i32;
                         terminal.vi_mode_cursor =
                             terminal.vi_mode_cursor.scroll(&terminal, scroll_lines);
-                        terminal.scroll_display(Scroll::PageUp);
+                        current
+                            .renderable_content
+                            .scroll_lines(&mut terminal, scroll_lines);
                         drop(terminal);
                         self.renderer.scrollbar.notify_scroll(rtid);
                         self.mark_dirty();
@@ -2672,7 +2671,9 @@ impl Screen<'_> {
                         terminal.vi_mode_cursor =
                             terminal.vi_mode_cursor.scroll(&terminal, scroll_lines);
 
-                        terminal.scroll_display(Scroll::PageDown);
+                        current
+                            .renderable_content
+                            .scroll_lines(&mut terminal, scroll_lines);
                         drop(terminal);
                         self.renderer.scrollbar.notify_scroll(rtid);
                         self.mark_dirty();
@@ -2687,7 +2688,9 @@ impl Screen<'_> {
                         terminal.vi_mode_cursor =
                             terminal.vi_mode_cursor.scroll(&terminal, scroll_lines);
 
-                        terminal.scroll_display(Scroll::Delta(scroll_lines));
+                        current
+                            .renderable_content
+                            .scroll_lines(&mut terminal, scroll_lines);
                         drop(terminal);
                         self.renderer.scrollbar.notify_scroll(rtid);
                         self.mark_dirty();
@@ -2702,7 +2705,9 @@ impl Screen<'_> {
                         terminal.vi_mode_cursor =
                             terminal.vi_mode_cursor.scroll(&terminal, scroll_lines);
 
-                        terminal.scroll_display(Scroll::Delta(scroll_lines));
+                        current
+                            .renderable_content
+                            .scroll_lines(&mut terminal, scroll_lines);
                         drop(terminal);
                         self.renderer.scrollbar.notify_scroll(rtid);
                         self.mark_dirty();
@@ -2711,7 +2716,9 @@ impl Screen<'_> {
                         let current = self.context_manager.current_mut();
                         let rtid = current.rich_text_id;
                         let mut terminal = current.terminal.lock();
-                        terminal.scroll_display(Scroll::Top);
+                        current
+                            .renderable_content
+                            .scroll_lines(&mut terminal, i32::MAX);
 
                         let topmost_line = terminal.grid.topmost_line();
                         terminal.vi_mode_cursor.pos.row = topmost_line;
@@ -2724,6 +2731,7 @@ impl Screen<'_> {
                         let current = self.context_manager.current_mut();
                         let rtid = current.rich_text_id;
                         let mut terminal = current.terminal.lock();
+                        current.renderable_content.command_rows.follow();
                         terminal.scroll_display(Scroll::Bottom);
 
                         // Move vi mode cursor.
@@ -2740,7 +2748,9 @@ impl Screen<'_> {
                         let current = self.context_manager.current_mut();
                         let rtid = current.rich_text_id;
                         let mut terminal = current.terminal.lock();
-                        terminal.scroll_display(Scroll::Delta(*delta));
+                        current
+                            .renderable_content
+                            .scroll_lines(&mut terminal, *delta);
                         drop(terminal);
                         self.renderer.scrollbar.notify_scroll(rtid);
                         self.mark_dirty();
@@ -2779,6 +2789,7 @@ impl Screen<'_> {
                         }
                     }
                     Act::OpenConnectionHub => self.open_connection_hub(),
+                    Act::ViewTableOutput => self.open_table_view(),
                     Act::OpenActionCenter => self.open_action_center(),
                     Act::OpenExtensionMarketplace => self.open_extension_marketplace(),
                     Act::OpenFontBrowser => self.open_font_browser(),
@@ -3726,7 +3737,10 @@ impl Screen<'_> {
                 if let Some(hyperlink_match) =
                     self.find_hyperlink_at_point(terminal, point)
                 {
-                    return Some(hyperlink_match);
+                    return Some(crate::hints::HintMatch {
+                        hint: hint_config.clone(),
+                        ..hyperlink_match
+                    });
                 }
             }
 
@@ -3757,7 +3771,10 @@ impl Screen<'_> {
         let grid = &terminal.grid;
 
         // Check if the point is within grid bounds
-        if point.row >= grid.total_lines() as i32 || point.col.0 >= grid.columns() {
+        if point.row < grid.topmost_line()
+            || point.row > grid.bottommost_line()
+            || point.col.0 >= grid.columns()
+        {
             return None;
         }
 
@@ -3804,10 +3821,7 @@ impl Screen<'_> {
             binding: None,
         });
 
-        let mut uri = hyperlink.uri().to_string();
-        if hint_config.post_processing {
-            uri = post_process_hyperlink_uri(&uri);
-        }
+        let uri = hyperlink.uri().to_string();
 
         Some(crate::hints::HintMatch {
             text: uri,
@@ -3917,9 +3931,9 @@ impl Screen<'_> {
             let main_fd = *self.ctx().current().main_fd;
             let shell_pid = &self.ctx().current().shell_pid;
             match teletypewriter::spawn_daemon(program, args, main_fd, *shell_pid) {
-                Ok(_) => tracing::debug!("Launched {} with args {:?}", program, args),
+                Ok(_) => tracing::debug!("Configured process launched"),
                 Err(_) => {
-                    tracing::warn!("Unable to launch {} with args {:?}", program, args)
+                    tracing::warn!("Unable to launch configured process")
                 }
             }
         }
@@ -3927,9 +3941,9 @@ impl Screen<'_> {
         #[cfg(windows)]
         {
             match teletypewriter::spawn_daemon(program, args) {
-                Ok(_) => tracing::debug!("Launched {} with args {:?}", program, args),
+                Ok(_) => tracing::debug!("Configured process launched"),
                 Err(_) => {
-                    tracing::warn!("Unable to launch {} with args {:?}", program, args)
+                    tracing::warn!("Unable to launch configured process")
                 }
             }
         }
@@ -3974,10 +3988,19 @@ impl Screen<'_> {
             return;
         }
 
-        let mut terminal = self.context_manager.current_mut().terminal.lock();
-        terminal.scroll_display(Scroll::Delta(delta));
+        let current = self.context_manager.current_mut();
+        let mut terminal = current.terminal.lock();
+        current
+            .renderable_content
+            .scroll_lines(&mut terminal, delta);
         drop(terminal);
 
+        if current.renderable_content.command_rows.expanded() {
+            // The new native snapshot may reveal differently wrapped headers.
+            // Resolve drag coordinates after that frame publishes its map.
+            self.context_manager.request_render();
+            return;
+        }
         // Update selection to match the new scroll position.
         let display_offset = self.display_offset();
         let point = self.mouse_position(display_offset);
@@ -4321,8 +4344,11 @@ impl Screen<'_> {
         let rich_text_id = item.context().rich_text_id;
 
         let terminal = item.context().terminal.lock();
-        let display_offset = terminal.display_offset();
-        let history_size = terminal.history_size();
+        let (display_offset, history_size) = item
+            .context()
+            .renderable_content
+            .command_rows
+            .scrollbar(terminal.display_offset(), terminal.history_size());
         let screen_lines = terminal.screen_lines();
         drop(terminal);
 
@@ -4346,11 +4372,7 @@ impl Screen<'_> {
             // If clicked on track (not on thumb), jump-scroll to that position
             if grab_offset.is_none() {
                 if let Some(new_offset) = self.renderer.scrollbar.drag_update(mouse_y) {
-                    let mut terminal = self.context_manager.current_mut().terminal.lock();
-                    let current = terminal.display_offset();
-                    let delta = new_offset as i32 - current as i32;
-                    terminal.scroll_display(Scroll::Delta(delta));
-                    drop(terminal);
+                    self.scrollbar_to_offset(new_offset);
                 }
             }
             self.mark_dirty();
@@ -4366,16 +4388,25 @@ impl Screen<'_> {
         }
 
         if let Some(new_offset) = self.renderer.scrollbar.drag_update(mouse_y) {
-            let mut terminal = self.context_manager.current_mut().terminal.lock();
-            let current = terminal.display_offset();
-            let delta = new_offset as i32 - current as i32;
-            if delta != 0 {
-                terminal.scroll_display(Scroll::Delta(delta));
-            }
-            drop(terminal);
+            self.scrollbar_to_offset(new_offset);
             self.mark_dirty();
         }
         true
+    }
+
+    fn scrollbar_to_offset(&mut self, offset: usize) {
+        let current = self.context_manager.current_mut();
+        let mut terminal = current.terminal.lock();
+        let previous = current
+            .renderable_content
+            .command_rows
+            .scrollbar(terminal.display_offset(), terminal.history_size())
+            .0;
+        let delta = (offset as i64 - previous as i64)
+            .clamp(i32::MIN as i64, i32::MAX as i64) as i32;
+        current
+            .renderable_content
+            .scroll_lines(&mut terminal, delta);
     }
 
     pub fn handle_scrollbar_release(&mut self) {
@@ -4405,8 +4436,11 @@ impl Screen<'_> {
         );
 
         let terminal = item.context().terminal.lock();
-        let display_offset = terminal.display_offset();
-        let history_size = terminal.history_size();
+        let (display_offset, history_size) = item
+            .context()
+            .renderable_content
+            .command_rows
+            .scrollbar(terminal.display_offset(), terminal.history_size());
         let screen_lines = terminal.screen_lines();
         drop(terminal);
 
@@ -5884,7 +5918,9 @@ impl Screen<'_> {
                 let current = self.context_manager.current_mut();
                 let rich_text_id = current.rich_text_id;
                 let mut terminal = current.terminal.lock();
-                terminal.scroll_display(Scroll::Delta(lines));
+                current
+                    .renderable_content
+                    .scroll_lines(&mut terminal, lines);
                 drop(terminal);
                 self.renderer.scrollbar.notify_scroll(rich_text_id);
             }
@@ -6111,6 +6147,7 @@ impl Screen<'_> {
             PaletteAction::PreviewSelectedImage => {
                 self.preview_selected_image();
             }
+            PaletteAction::ViewTableOutput => self.open_table_view(),
             PaletteAction::ClearScreen => {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
                 terminal.clear_screen_and_history();
@@ -6125,6 +6162,143 @@ impl Screen<'_> {
                 self.context_manager.quit();
             }
         }
+    }
+
+    fn open_table_view(&mut self) {
+        self.stop_hint_mode_if_active();
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
+        self.dismiss_image_preview();
+        self.renderer.command_palette.set_enabled(false);
+        let current = self.context_manager.current();
+        let table = crate::automexia::table_output::capture(&*current.terminal.lock());
+        self.table_view.open(current.route_id, table);
+        self.fit_table_view();
+        self.mark_dirty();
+    }
+
+    fn fit_table_view(&mut self) {
+        if !self.table_view.is_open() {
+            return;
+        }
+        self.table_view
+            .retain_route(self.context_manager.current().route_id);
+        let size = self.sugarloaf.window_size();
+        let scale = self.sugarloaf.scale_factor().max(0.1);
+        let font = self
+            .context_manager
+            .current()
+            .dimension
+            .font_size
+            .clamp(10.0, 24.0);
+        let opts = rio_backend::sugarloaf::text::DrawOpts {
+            font_size: font,
+            ..Default::default()
+        };
+        let cell = self.sugarloaf.text_mut().measure("M", &opts);
+        self.table_view
+            .fit(size.width / scale, size.height / scale, font, cell);
+    }
+
+    fn finish_table_effect(
+        &mut self,
+        effect: crate::table_view::Effect,
+        clipboard: &mut Clipboard,
+    ) {
+        match effect {
+            crate::table_view::Effect::Close => self.table_view.close(),
+            crate::table_view::Effect::Copy => {
+                if let Some(text) = self.table_view.copy_text() {
+                    clipboard.set(ClipboardType::Clipboard, text);
+                }
+            }
+            _ => (),
+        }
+        if effect != crate::table_view::Effect::Pass {
+            self.mark_dirty();
+        }
+    }
+
+    fn finish_table_key(
+        &mut self,
+        key: &rio_window::event::KeyEvent,
+        effect: crate::table_view::Effect,
+        clipboard: &mut Clipboard,
+    ) {
+        // Retain ownership across view closure for Kitty as well as Win32.
+        if key.state == ElementState::Pressed
+            && !self.table_key_releases.contains(&key.physical_key)
+            && self.table_key_releases.len() < 512
+        {
+            self.table_key_releases.push(key.physical_key);
+        }
+        // Retain ownership of key-up even when Escape just closed the view.
+        #[cfg(windows)]
+        if key.state == ElementState::Pressed {
+            self.consumed_win32_key_releases
+                .record_press(key.physical_key);
+        } else {
+            self.consumed_win32_key_releases
+                .take_release(&key.physical_key);
+        }
+        #[cfg(not(windows))]
+        let _ = key;
+        self.finish_table_effect(effect, clipboard);
+    }
+
+    pub(crate) fn handle_table_window_event(
+        &mut self,
+        event: &rio_window::event::WindowEvent,
+        clipboard: &mut Clipboard,
+    ) -> bool {
+        if let rio_window::event::WindowEvent::KeyboardInput { event, .. } = event {
+            if self.consume_table_key_release(event) {
+                return true;
+            }
+        }
+        if !self.table_view.is_open() {
+            return false;
+        }
+        if let rio_window::event::WindowEvent::CursorMoved { position, .. } = event {
+            // Keep the application-drawn cursor current without dispatching
+            // hover, selection, paste or pane focus to the covered terminal.
+            let size = self.sugarloaf.window_size();
+            self.mouse.x = position.x.clamp(0.0, f64::from(size.width.max(1.0) - 1.0));
+            self.mouse.y = position.y.clamp(0.0, f64::from(size.height.max(1.0) - 1.0));
+        }
+        // Recompute before hit-testing, including a click arriving before the
+        // first frame after resize. No stale layout reaches underlying panes.
+        self.fit_table_view();
+        let effect = self.table_view.event(
+            event,
+            self.modifiers.state(),
+            self.sugarloaf.scale_factor(),
+        );
+        if let rio_window::event::WindowEvent::KeyboardInput { event, .. } = event {
+            self.finish_table_key(event, effect, clipboard);
+        } else {
+            self.finish_table_effect(effect, clipboard);
+        }
+        effect != crate::table_view::Effect::Pass
+    }
+
+    fn consume_table_key_release(&mut self, key: &rio_window::event::KeyEvent) -> bool {
+        if key.state != ElementState::Released {
+            return false;
+        }
+        let Some(index) = self
+            .table_key_releases
+            .iter()
+            .position(|pressed| *pressed == key.physical_key)
+        else {
+            return false;
+        };
+        self.table_key_releases.swap_remove(index);
+        #[cfg(windows)]
+        self.consumed_win32_key_releases
+            .take_release(&key.physical_key);
+        true
     }
 
     pub fn open_extension_marketplace(&mut self) {
@@ -6148,6 +6322,7 @@ impl Screen<'_> {
     }
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
+        self.validate_hint_snapshot();
         let (over_search, _) = self.update_search_hover(self.mouse.x, self.mouse.y);
         if over_search {
             self.clear_close_button_hover();
@@ -6220,9 +6395,21 @@ impl Screen<'_> {
         }
 
         self.publish_compatibility_indicators();
+        let update_scrolled_selection = self.mouse.left_button_state
+            == rio_window::event::ElementState::Pressed
+            && self
+                .context_manager
+                .current()
+                .renderable_content
+                .command_rows
+                .pending_scroll();
         let (window_update, any_panel_dirty) = self
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
+        if update_scrolled_selection {
+            let point = self.mouse_position(self.display_offset());
+            self.update_selection(point, self.mouse.square_side);
+        }
         #[cfg(feature = "native-gui-test-hooks")]
         let force_present_for_control = self.native_test_present_after_control;
         #[cfg(feature = "native-gui-test-hooks")]
@@ -6459,6 +6646,14 @@ impl Screen<'_> {
                 .draw(&mut self.sugarloaf, route_id, rich_text_id, pane);
         }
         let preview_visible = self.image_preview.is_visible();
+        self.fit_table_view();
+        let table_theme = crate::renderer::ui_theme::UiTheme::resolve(
+            self.renderer.named_colors.background.0,
+            crate::renderer::ui_theme::TEXT,
+            crate::renderer::ui_theme::MUTED_TEXT,
+        );
+        self.table_view.draw(&mut self.sugarloaf, table_theme);
+        crate::hints::preview::draw(&mut self.sugarloaf, &self.hint_state, table_theme);
         let has_animation = self.renderer.needs_redraw();
         let should_present =
             any_panel_dirty || has_animation || preview_changed || preview_visible;
@@ -6497,7 +6692,10 @@ impl Screen<'_> {
 
                 let current = self.context_manager.current();
                 let cursor = &current.renderable_content.cursor;
-                let cursor_row = cursor.state.pos.row.0 as usize;
+                let cursor_row = current
+                    .renderable_content
+                    .command_rows
+                    .visual_row(cursor.state.pos.row.0.max(0) as usize);
                 let cursor_col = cursor.state.pos.col.0;
 
                 // Cursor position in physical pixels.
@@ -6559,6 +6757,7 @@ impl Screen<'_> {
                 term_colors: rio_backend::config::colors::term::TermColors,
                 cursor_col: u16,
                 cursor_row: u16,
+                command_rows: crate::automexia::ui::command_info::RowProjection,
                 cursor_visible: bool,
                 /// Terminal-side cursor shape (block / underline /
                 /// beam / hidden). Driven by DECSCUSR + the
@@ -6733,6 +6932,12 @@ impl Screen<'_> {
                 let cursor_color = term_colors
                     [rio_backend::config::colors::NamedColor::Cursor as usize]
                     .unwrap_or(self.renderer.named_colors.cursor);
+                let projected_cursor = ctx
+                    .renderable_content
+                    .command_rows
+                    .visual_row(cursor.state.pos.row.0.max(0) as usize);
+                let command_rows =
+                    std::mem::take(&mut ctx.renderable_content.command_rows);
                 panels.push(PanelFrame {
                     route_id: ctx.route_id,
                     layout_rect: terminal_rect,
@@ -6746,8 +6951,12 @@ impl Screen<'_> {
                     extras,
                     term_colors,
                     cursor_col: cursor.state.pos.col.0 as u16,
-                    cursor_row: cursor.state.pos.row.0 as u16,
-                    cursor_visible: cursor.state.is_visible(),
+                    cursor_row: projected_cursor.max(0) as u16,
+                    cursor_visible: cursor.state.is_visible()
+                        && projected_cursor >= 0
+                        && projected_cursor
+                            < ctx.renderable_content.screen_lines as isize,
+                    command_rows,
                     cursor_shape,
                     cursor_blinking,
                     cursor_blink_visible,
@@ -6847,13 +7056,19 @@ impl Screen<'_> {
                      y: usize,
                      grid: &mut rio_backend::sugarloaf::grid::GridRenderer,
                      rasterizer: &mut crate::grid_emit::GridGlyphRasterizer| {
-                        let Some(row) = p.visible_rows.get(y) else {
+                        let Some(source_y) = p.command_rows.source_row(y) else {
+                            row_scratch.backgrounds.resize(cols, Default::default());
+                            row_scratch.backgrounds.fill(Default::default());
+                            grid.write_row(y as u32, &row_scratch.backgrounds, &[]);
+                            return;
+                        };
+                        let Some(row) = p.visible_rows.get(source_y) else {
                             return;
                         };
                         let style_table = p.style_table.as_slice();
                         let row_sel = crate::grid_emit::row_selection_for(
                             p.selection,
-                            y,
+                            source_y,
                             cols,
                             p.display_offset,
                         );
@@ -6861,7 +7076,7 @@ impl Screen<'_> {
                             p.hint_matches.as_deref(),
                             p.focused_match.as_ref(),
                             p.hovered_hyperlink,
-                            y,
+                            source_y,
                             cols,
                             p.display_offset,
                             &mut row_scratch.hints,
@@ -6872,7 +7087,7 @@ impl Screen<'_> {
                                 match crate::grid_emit::overlay_hint_labels(
                                     row,
                                     labels,
-                                    y,
+                                    source_y,
                                     p.display_offset,
                                     style_base,
                                     &mut row_scratch.hints,
@@ -6956,11 +7171,14 @@ impl Screen<'_> {
                         // so next frame starts clean.
                         #[allow(clippy::needless_range_loop)]
                         for y in 0..p.visible_rows.len() {
-                            if !p.visible_rows[y].dirty {
+                            let Some(source_y) = p.command_rows.source_row(y) else {
+                                continue;
+                            };
+                            if !p.visible_rows[source_y].dirty {
                                 continue;
                             }
                             rebuild_row(p, y, grid, rasterizer);
-                            p.visible_rows[y].dirty = false;
+                            p.visible_rows[source_y].dirty = false;
                         }
                     }
                 }
@@ -7154,6 +7372,7 @@ impl Screen<'_> {
                         style_table.truncate(base as usize);
                     }
                     item.val.renderable_content.visible_rows = p.visible_rows;
+                    item.val.renderable_content.command_rows = p.command_rows;
                     item.val.renderable_content.style_table = style_table;
                     item.val.renderable_content.extras = p.extras;
                     item.val.renderable_content.hint_labels = p.hint_labels;
@@ -7517,7 +7736,12 @@ impl Screen<'_> {
         // Convert grid position to pixel position
         let pixel_x =
             origin_x + (cursor_pos.col.0 as f32 * cell_width) + (cell_width * 0.5);
-        let pixel_y = origin_y + (cursor_pos.row.0 as f32 * cell_height);
+        let projected_row = current_item
+            .val
+            .renderable_content
+            .command_rows
+            .visual_row(cursor_pos.row.0.max(0) as usize);
+        let pixel_y = origin_y + projected_row.max(0) as f32 * cell_height;
 
         // Validate final coordinates
         if pixel_x.is_nan() || pixel_y.is_nan() || pixel_x < 0.0 || pixel_y < 0.0 {
@@ -7542,28 +7766,155 @@ impl Screen<'_> {
         );
     }
 
-    fn stop_hint_mode_if_active(&mut self) {
-        if self.hint_state.is_active() {
-            self.hint_state.stop();
-            self.update_hint_state();
+    fn remember_hint_key(&mut self, key: &rio_window::event::KeyEvent) {
+        if key.state == ElementState::Pressed
+            && !self.table_key_releases.contains(&key.physical_key)
+            && self.table_key_releases.len() < 512
+        {
+            self.table_key_releases.push(key.physical_key);
         }
     }
 
-    /// Process a new character for keyboard hints
-    #[allow(dead_code)]
-    pub fn hint_input(&mut self, c: char, clipboard: &mut Clipboard) {
-        let terminal = self.context_manager.current().terminal.lock();
-        if let Some(hint_match) = self.hint_state.keyboard_input(&*terminal, c) {
-            drop(terminal);
-            self.execute_hint_action(&hint_match, clipboard);
-            // Stop hint mode and update state with proper damage tracking
+    fn validate_hint_snapshot(&mut self) -> bool {
+        if !self.hint_state.is_active() {
+            return false;
+        }
+        let current = self.context_manager.current();
+        let valid = self.hint_route == Some(current.route_id)
+            && self.hint_state.is_current(&*current.terminal.lock());
+        if !valid {
+            self.stop_hint_mode_if_active();
+        }
+        valid
+    }
+
+    fn process_hint_key(
+        &mut self,
+        key: &rio_window::event::KeyEvent,
+        clipboard: &mut Clipboard,
+    ) -> bool {
+        if !self.hint_state.is_active() {
+            return false;
+        }
+        self.remember_hint_key(key);
+        if key.state != ElementState::Pressed || key.repeat {
+            return true;
+        }
+        if !self.validate_hint_snapshot() {
+            self.mark_dirty();
+            return true;
+        }
+        use crate::hints::KeyIntent;
+        let mods = self.modifiers.state();
+        match crate::hints::key_intent(
+            &key.logical_key,
+            mods,
+            key.state == ElementState::Pressed,
+            key.repeat,
+        ) {
+            KeyIntent::Close => self.stop_hint_mode_if_active(),
+            KeyIntent::Next(forward) => self.hint_state.cycle(forward),
+            KeyIntent::Pan(forward) => self.hint_state.pan(forward),
+            KeyIntent::Activate => {
+                let selected = self.hint_state.focused().cloned();
+                if let Some(selected) = selected {
+                    let allowed = !matches!(
+                        selected.hint.action,
+                        rio_backend::config::hints::HintAction::Action {
+                            action: rio_backend::config::hints::HintInternalAction::Open
+                        }
+                    ) || crate::hints::safe_open_target(&selected.text);
+                    if allowed {
+                        let selected = self.hint_state.activate().expect("focused match");
+                        self.execute_hint_action(&selected, clipboard);
+                        if !self.hint_state.is_active() {
+                            self.hint_route = None;
+                            self.context_manager.current_mut().set_hyperlink_range(None);
+                        }
+                    }
+                }
+            }
+            KeyIntent::Copy => {
+                if let Some(selected) = self.hint_state.focused() {
+                    clipboard.set(ClipboardType::Clipboard, selected.text.clone());
+                }
+            }
+            KeyIntent::Backspace => {
+                let term = self.context_manager.current().terminal.lock();
+                self.hint_state.keyboard_input(&*term, '\x08');
+            }
+            KeyIntent::Label(c) => {
+                let term = self.context_manager.current().terminal.lock();
+                self.hint_state.keyboard_input(&*term, c);
+            }
+            _ => (),
+        }
+        self.update_hint_state();
+        self.mark_dirty();
+        true
+    }
+
+    pub(crate) fn handle_hint_window_event(
+        &mut self,
+        event: &rio_window::event::WindowEvent,
+        clipboard: &mut Clipboard,
+    ) -> bool {
+        use rio_window::event::WindowEvent;
+        if let WindowEvent::KeyboardInput { event, .. } = event {
+            if self.consume_table_key_release(event) {
+                return true;
+            }
+            return self.process_hint_key(event, clipboard);
+        }
+        if !self.hint_state.is_active() {
+            return false;
+        }
+        match event {
+            WindowEvent::Ime(_) | WindowEvent::Touch(_) | WindowEvent::DroppedFile(_) => {
+                true
+            }
+            WindowEvent::MouseInput { .. } | WindowEvent::MouseWheel { .. } => {
+                self.stop_hint_mode_if_active();
+                self.mark_dirty();
+                true
+            }
+            WindowEvent::CursorMoved { position, .. } => {
+                self.mouse.x = position.x.max(0.0);
+                self.mouse.y = position.y.max(0.0);
+                true
+            }
+            WindowEvent::Resized(_)
+            | WindowEvent::ScaleFactorChanged { .. }
+            | WindowEvent::Focused(false) => {
+                self.stop_hint_mode_if_active();
+                self.mark_dirty();
+                false
+            }
+            _ => false,
+        }
+    }
+
+    fn stop_hint_mode_if_active(&mut self) {
+        if self.hint_state.is_active() {
             self.hint_state.stop();
-            self.update_hint_state();
-        } else {
-            drop(terminal);
+            let route = self.hint_route;
+            for grid in self.context_manager.contexts_mut() {
+                for context in grid.contexts_mut().values_mut() {
+                    let ctx = context.context_mut();
+                    if Some(ctx.route_id) == route {
+                        ctx.set_hyperlink_range(None);
+                        ctx.renderable_content.hint_labels = None;
+                        ctx.renderable_content.hint_matches = None;
+                        ctx.renderable_content.pending_update.set_terminal_damage(
+                            rio_backend::event::TerminalDamage::Full,
+                        );
+                    }
+                }
+            }
+            self.hint_route = None;
+            self.context_manager.current_mut().set_hyperlink_range(None);
             self.update_hint_state();
         }
-        self.mark_dirty();
     }
 
     /// Start hint mode with the given hint configuration
@@ -7571,6 +7922,15 @@ impl Screen<'_> {
         &mut self,
         hint: std::rc::Rc<rio_backend::config::hints::Hint>,
     ) {
+        if self.search_active() || self.table_view.is_open() {
+            return;
+        }
+        self.dismiss_suggestions(
+            crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
+        );
+        self.dismiss_image_preview();
+        self.renderer.command_palette.set_enabled(false);
+        self.hint_route = Some(self.context_manager.current().route_id);
         self.hint_state.start(hint);
         let terminal = self.context_manager.current().terminal.lock();
         self.hint_state.update_matches(&*terminal);
@@ -7586,6 +7946,13 @@ impl Screen<'_> {
     /// resolves to against the terminal's OSC 7 CWD when it names one that
     /// exists. URLs and non-existent paths come back unchanged.
     fn hint_open_target(&self, hint_match: &crate::hints::HintMatch) -> String {
+        // URI activation has no filesystem discovery. Preserve exact OSC 8
+        // spelling, including uppercase schemes and meaningful punctuation.
+        if url::Url::parse(&hint_match.text).is_ok()
+            && !(cfg!(windows) && hint_match.text.as_bytes().get(1) == Some(&b':'))
+        {
+            return hint_match.text.clone();
+        }
         // Cloned so the terminal lock is released before resolving, which
         // goes to the filesystem.
         let cwd = self
@@ -7637,6 +8004,9 @@ impl Screen<'_> {
                     self.mark_dirty();
                 }
                 HintInternalAction::Open => {
+                    if !crate::hints::safe_open_target(&hint_match.text) {
+                        return;
+                    }
                     let target = self.hint_open_target(hint_match);
                     self.open_with_default_handler(&target);
                 }
@@ -7663,6 +8033,12 @@ impl Screen<'_> {
         use rio_backend::event::TerminalDamage;
 
         if self.hint_state.is_active() {
+            let range = self.hint_state.focused().map(|hint| {
+                rio_backend::selection::SelectionRange::new(hint.start, hint.end, false)
+            });
+            self.context_manager
+                .current_mut()
+                .set_hyperlink_range(range);
             // Update hint labels
             self.update_hint_labels();
 
@@ -7753,28 +8129,17 @@ impl Screen<'_> {
         use crate::context::renderable::HintLabel;
 
         let hint_labels = if self.hint_state.is_active() {
-            let matches = self.hint_state.matches();
-            let visible_labels = self.hint_state.visible_labels();
-
-            let mut labels = Vec::new();
-            for (match_index, remaining_label) in visible_labels {
-                if let Some(hint_match) = matches.get(match_index) {
-                    // Create labels for each character in the hint label
-                    for (char_index, &label_char) in remaining_label.iter().enumerate() {
-                        let position = rio_backend::crosswords::pos::Pos::new(
-                            hint_match.start.row,
-                            hint_match.start.col + char_index,
-                        );
-
-                        labels.push(HintLabel {
-                            position,
-                            label: label_char,
-                            is_first: char_index == 0, // First character gets different styling
-                        });
-                    }
-                }
-            }
-            Some(labels)
+            Some(
+                self.hint_state
+                    .label_cells()
+                    .into_iter()
+                    .map(|(position, label, is_first)| HintLabel {
+                        position,
+                        label,
+                        is_first,
+                    })
+                    .collect(),
+            )
         } else {
             None
         };
@@ -7885,82 +8250,13 @@ impl Screen<'_> {
 /// rather than a command line, so metacharacters in it stay data.
 #[cfg(windows)]
 fn shell_execute_open(target: &str) {
-    use std::os::windows::ffi::OsStrExt;
-    let wide_target: Vec<u16> = std::ffi::OsStr::new(target)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect();
-    let operation: Vec<u16> = "open\0".encode_utf16().collect();
-    let result = unsafe {
-        windows_sys::Win32::UI::Shell::ShellExecuteW(
-            std::ptr::null_mut(),
-            operation.as_ptr(),
-            wide_target.as_ptr(),
-            std::ptr::null(),
-            std::ptr::null(),
-            windows_sys::Win32::UI::WindowsAndMessaging::SW_SHOWNORMAL,
-        )
-    };
-
-    // A return at or below 32 is an error code rather than an instance
-    // handle. Worth logging, because the symptom of failing here is a click
-    // that appears to do nothing at all.
-    let code = result as isize;
-    if code <= 32 {
-        tracing::warn!("ShellExecuteW could not open {target}: code {code}");
+    if let Err(error) = crate::automexia::desktop_open::open(target) {
+        tracing::warn!("{error}");
     }
 }
 
-/// Apply post-processing to hyperlink URIs to remove trailing delimiters and handle uneven brackets.
-fn post_process_hyperlink_uri(uri: &str) -> String {
-    let chars: Vec<char> = uri.chars().collect();
-    if chars.is_empty() {
-        return String::new();
-    }
-
-    let mut end_idx = chars.len() - 1;
-    let mut open_parents = 0;
-    let mut open_brackets = 0;
-
-    // First pass: handle uneven brackets/parentheses
-    for (i, &c) in chars.iter().enumerate() {
-        match c {
-            '(' => open_parents += 1,
-            '[' => open_brackets += 1,
-            ')' => {
-                if open_parents == 0 {
-                    // Unmatched closing parenthesis, truncate here
-                    end_idx = i.saturating_sub(1);
-                    break;
-                } else {
-                    open_parents -= 1;
-                }
-            }
-            ']' => {
-                if open_brackets == 0 {
-                    // Unmatched closing bracket, truncate here
-                    end_idx = i.saturating_sub(1);
-                    break;
-                } else {
-                    open_brackets -= 1;
-                }
-            }
-            _ => (),
-        }
-    }
-
-    // Second pass: remove trailing delimiters
-    while end_idx > 0 {
-        match chars[end_idx] {
-            '.' | ',' | ':' | ';' | '?' | '!' | '(' | '[' | '\'' => {
-                end_idx = end_idx.saturating_sub(1);
-            }
-            _ => break,
-        }
-    }
-
-    chars.into_iter().take(end_idx + 1).collect()
-}
+#[cfg(test)]
+use crate::hints::post_process_hyperlink_uri;
 
 #[cfg(test)]
 mod tests {

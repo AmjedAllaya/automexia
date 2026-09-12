@@ -424,6 +424,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_PURPLE,
         },
+        ViewTableOutput => RowPresentation {
+            icon: CommandIcon::Code,
+            accent: BRAND_CYAN,
+        },
         PreviewSelectedImage => RowPresentation {
             icon: CommandIcon::Image,
             accent: BRAND_CYAN,
@@ -660,6 +664,11 @@ const COMMANDS: &[Command] = &[
         title: "Preview Selected Image",
         shortcut: SHORTCUT_PREVIEW_IMAGE,
         action: PaletteAction::PreviewSelectedImage,
+    },
+    Command {
+        title: "View Table Output",
+        shortcut: "Ctrl+Shift+F7",
+        action: PaletteAction::ViewTableOutput,
     },
     Command {
         title: "Clear Screen and History",
