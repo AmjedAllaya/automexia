@@ -1,5 +1,6 @@
 """Explicit post-build native shell smoke; browser opening is never requested."""
 import argparse
+import json
 import os
 from pathlib import Path
 import shutil
@@ -27,6 +28,35 @@ def run(command, environment, cwd=ROOT):
 
 
 class GoogleCommandTests(unittest.TestCase):
+    def test_real_directory_preview_is_exact_and_never_writes(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-open-") as temporary:
+            root = Path(temporary).resolve()
+            folder = root / "folder & Unicode-é"
+            folder.mkdir()
+            (root / "file").write_text("not an executable")
+            env = self.environment(temporary)
+            before = set(root.rglob("*"))
+            hints = []
+            guest = os.name != "nt" and BINARY.suffix.lower() == ".exe"
+            if guest:
+                hints = ["--amx-wsl-distribution", os.environ["WSL_DISTRO_NAME"], "--amx-wsl-cwd", str(root),
+                         "--amx-wsl-path", "/usr/bin:/bin", "--amx-wsl-home", str(root)]
+            for args, expected in (([], root), ([folder.name], folder), ([str(folder)], folder), (["--", folder.name], folder)):
+                code, output = run([str(BINARY), *hints, "open", "--preview", *args], env, cwd=root)
+                self.assertEqual(code, 0, "native directory preview failed")
+                plan = json.loads(output)
+                target = str(expected)
+                if guest:
+                    target = "\\\\wsl.localhost\\" + os.environ["WSL_DISTRO_NAME"] + target.replace("/", "\\")
+                self.assertTrue(plan["destination"] == target, "native directory changed identity")
+                self.assertEqual(plan["action"], "open-directory")
+                self.assertEqual(plan["execution"], "preview-only")
+            for target in ("file", "missing", "bad\npath", "bad\u202epath", "x" * 4097):
+                code, output = run([str(BINARY), *hints, "open", "--preview", target], env, cwd=root)
+                self.assertNotEqual(code, 0)
+                self.assertNotIn(str(root).encode(), output)
+            self.assertEqual(set(root.rglob("*")), before)
+
     def test_real_search_and_docs_routes_are_offline_and_bounded(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-search-") as temporary:
             env = self.environment(temporary)
@@ -73,7 +103,7 @@ class GoogleCommandTests(unittest.TestCase):
 
     def test_native_shell_forwarding_collision_disable_and_repeat_source(self):
         for shell in SHELLS:
-            for case in ("normal", "function", "alias", "external", "disabled", "missing", "searches", "local"):
+            for case in ("normal", "function", "alias", "external", "disabled", "missing", "searches", "local", "directory"):
                 with self.subTest(shell=shell, case=case), tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="google-shell-") as temporary:
                     env = self.environment(temporary)
                     ps = shell in ("powershell", "pwsh")
@@ -83,6 +113,8 @@ class GoogleCommandTests(unittest.TestCase):
                     if case == "local":
                         (Path(temporary) / ".git").mkdir()
                         (Path(temporary) / "Dockerfile").write_text("fixture\n")
+                    if case == "directory":
+                        (Path(temporary) / "folder & Unicode-é").mkdir()
                     if case == "external":
                         # Fixed independent executable sentinel proves the wrapper
                         # does not hijack an existing command on PATH.
@@ -93,7 +125,7 @@ class GoogleCommandTests(unittest.TestCase):
                     fixture = str(ROOT / f"tests/fixtures/google-command/query.{suffix}")
                     arguments = [shutil.which(shell)]
                     arguments += ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", fixture] if ps else (["--noprofile", "--norc", fixture] if shell == "bash" else ["-f", fixture] if shell == "zsh" else ["--no-config", fixture])
-                    code, output = run(arguments, env, cwd=Path(temporary) if case == "local" else ROOT)
+                    code, output = run(arguments, env, cwd=Path(temporary) if case in ("local", "directory") else ROOT)
                     self.assertEqual(code, 0, "native amx scenario failed")
                     marker = b"AMX_OUTPUT_BEGIN"
                     self.assertIn(marker, output, "native fixture did not reach its assertion boundary")
@@ -111,6 +143,11 @@ class GoogleCommandTests(unittest.TestCase):
                     if case == "local":
                         actual = actual.replace(b"\\", b"/")
                         expected = b"./Dockerfile"
+                    if case == "directory":
+                        destination = str((Path(temporary) / "folder & Unicode-é").resolve())
+                        if os.name != "nt" and BINARY.suffix.lower() == ".exe":
+                            destination = "\\\\wsl.localhost\\" + os.environ["WSL_DISTRO_NAME"] + destination.replace("/", "\\")
+                        expected = json.dumps(dict(action="open-directory", destination=destination, execution="preview-only"), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
                     if shell == "zsh":
                         # Zsh's installed preexec hook announces the command even
                         # in this source fixture. Check its exact frame rather

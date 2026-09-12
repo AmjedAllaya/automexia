@@ -605,13 +605,34 @@ Local-tool reinforcement: exact rg/tldr argv, default ignores plus negative
 privacy rules, bounded JSON/NUL parsing, terminal-control/bidi escaping, no
 automatic install/update and no browser fallback. Require actual child/process
 handle evidence for cancellation, timeout, stream saturation, descendant cleanup
-and guest-lease EOF. The WSL import-path canary must prove project Python modules
+and guest-lease EOF. Windows cleanup tests must acquire the acknowledged live process
+handle before allowing parent exit or requesting cancellation, and retain it
+through the immediate post-capture assertion. A PID lookup after cleanup can
+observe a reused identity. Run four concurrent workers over 25 cycles each,
+including descendants with inherited and closed output pipes; EOF alone is not
+native process-exit evidence. A later diagnostic wait must not turn an initial
+failure into success. Require the Windows observer to attach before resume, pin
+bounded member handles before termination, and gate completion on both native
+signals and an empty job. Over-limit and unqueryable state must not report success.
+Use an isolated native fixture to assert exact handle recovery after each capture
+and measure checked capture latency. Do not move this work onto the GUI path.
+The WSL import-path canary must prove project Python modules
 cannot execute; a default safe host environment is not a sufficient oracle.
 The native shell smoke runs a real search from an isolated project directory.
 The separate `check_amx_guest_native.py` entrypoint exercises Linux supervision;
 it cannot be replaced by a Windows-only mock. Keep a real tealdeer cache and
 unexecuted native Unix adapters external until tested. Parser timing is distinct
 from process/filesystem latency. Mutate each boundary and its test dispatch.
+
+Directory opening must preserve native and guest path identity, resolve symlinks
+in the owning OS, reject files and ambiguous Windows components, and keep preview
+free of desktop launches and storage mutations. Assert exact destinations and
+redacted errors/debug over default, relative, absolute, Unicode, missing and
+over-limit paths. Keep the fixed guest probe isolated from project imports and
+under the existing lease owner. Mutation-test its route, limits, preview, path
+validation and real CLI/guest oracle. Measure checked conversion separately from
+filesystem/desktop latency; unexecuted native desktop and Unix Rust evidence
+remains external.
 
 Use live eza output over isolated fictional variable-length filenames to cover
 multi-column resize behavior, not only equal-width synthetic rows. Preserve icons

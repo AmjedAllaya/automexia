@@ -319,10 +319,12 @@ for _feature in WRAPPING_FEATURES:
         _details[_field] = (*_details.get(_field, ()), _phrase)
 
 NATIVE_CONTRACT_SOURCES = {
+    "directory_open": "apps/automexia-terminal/src/automexia/directory_open.rs",
     "local_tools": "apps/automexia-terminal/src/automexia/local_tools.rs",
     "local_tool_tests": "apps/automexia-terminal/src/automexia/local_tools/boundary_tests.rs",
     "local_session": "apps/automexia-terminal/src/automexia/local_tools/session.rs",
     "cli_process": "apps/automexia-terminal/src/automexia/cli_process.rs",
+    "cli_completion": "apps/automexia-terminal/src/automexia/cli_process/windows_completion.rs",
     "cli_cancellation": "apps/automexia-terminal/src/automexia/cli_process/cancellation.rs",
     "guest_bridge": "shell-integration/amx-tool-bridge.py",
     "guest_native": "tools/ci/check_amx_guest_native.py",
@@ -667,20 +669,52 @@ def _validate_google_sources(sources: dict[str, str]) -> None:
 
 
 LOCAL_TOOL_CONTRACTS = {
+    "directory_open": ('run_tool("amx-directory"', "if !resolved.is_dir()", "if preview", "MAX_PATH_BYTES: usize = 4096", "all(windows_directory_component)", "stem.eq_ignore_ascii_case(name)", "fn amx_open_preview_never_launches_and_failure_is_redacted()", "fn amx_open_benchmark_checked_guest_mapping()"),
+    "desktop_open": ('open_windows_verb(target, "explore")', 'directory_command(target, cfg!(target_os = "macos"))', 'command.arg("-R")', 'fn amx_open_directory_commands_preserve_literal_targets_and_reveal_packages()'),
+    "cli_main": ("CliCommand::Open(command)", "automexia::directory_open::execute(command, session)"),
     "local_tools": ('"--no-config"', '"--fixed-strings"', '"--no-auto-update"', "cancellation.cancelled()", "MAX_RESULTS: usize = 1000", "MAX_FILES: usize = 32768", "relative_name(path)?", "incomplete structured search output"),
     "local_tool_tests": ("fn amx_local_structured_matches_cannot_inject_controls_or_fake_result_rows()", "fn amx_local_benchmark_checked_parsing()"),
     "local_session": ('"python3", "-I", "-c"', "guest invocation exceeds the native command-line limit"),
     "cli_process": ("CreationFlags(Default::default())", "libc::WNOWAIT", "WaitForSingleObject", "drop(lease)", "limits.stdout > 4 * 1024 * 1024", "fn amx_process_native_console_cancel_retires_the_owned_tool()"),
     "cli_cancellation": ("ACTIVE.swap(true", "SetConsoleCtrlHandler", "signal_hook::flag::register", "impl Drop for Cancellation"),
-    "guest_bridge": ("object_pairs_hook=unique_fields", "start_new_session=True", "os.WNOWAIT", "selector.select(0)", "signal.signal(signal.SIGTERM, interrupted)", "os.killpg(child.pid, signal.SIGKILL)"),
+    "guest_bridge": ("object_pairs_hook=unique_fields", "start_new_session=True", "os.WNOWAIT", "selector.select(0)", "signal.signal(signal.SIGTERM, interrupted)", "os.killpg(child.pid, signal.SIGKILL)", 'len(args) != 1 or not args[0]', 'sys.executable, "-I", "-c", DIRECTORY_PROBE', 'os.path.realpath(sys.argv[1], strict=True)', "not os.path.isdir(target)"),
     "guest_native": ("def test_lease_eof_termination_and_deadline_retire_exact_guest_child(self):", "os.pidfd_open", "def test_project_python_modules_cannot_execute_during_guest_launch(self):", "def test_real_ripgrep_respects_ignore_privacy_binary_and_symlink_rules(self):"),
-    "google_native": ('"searches", "local"', 'expected = b"./Dockerfile"'),
+    "google_native": ('"searches", "local", "directory"', 'expected = b"./Dockerfile"', 'def test_real_directory_preview_is_exact_and_never_writes(self):', 'plan["destination"] == target', 'if case == "directory":'),
 }
+
+LOCAL_TOOL_CONTRACTS["guest_native"] += (
+    "def test_directory_preview_resolves_guest_symlinks_without_desktop_or_writes(self):",
+    'plan["destination"] == expected', '("alias/..", parent)',
+    '"directory probe imported untrusted project code"',
+)
+LOCAL_TOOL_CONTRACTS["cli_process"] += (
+    "self.completion.pin_members()", "self.completion.is_empty()?",
+    "windows_completion::members_stopped(&self.members)?", "if self.reaped && tree_empty",
+    "if had_lease && !self.reaped", "GetProcessHandleCount", "for _ in 0..20",
+    '"native handles grew after completed capture"',
+    "fn observe_identity(", "struct PinnedIdentity", '"descendant-no-pipes"',
+    "for _ in 0..4", "for iteration in 0..25", "AMX_PROCESS_RELEASE",
+    '"fixture must remain live until the parent pins its identity"',
+    '"pinned native descendant remained live after capture; later completion={}"',
+)
+
+LOCAL_TOOL_CONTRACTS["cli_completion"] = (
+    "MAX_MEMBERS: usize = 256", "QueryInformationJobObject(",
+    "accounting.ActiveProcesses == 0", "JobObjectBasicProcessIdList",
+    "IsProcessInJob(", "WAIT_OBJECT_0 => Ok(true)", "WAIT_TIMEOUT => Ok(false)",
+    "core.get_wrap::<JobObject>().is_none()", "fn post_spawn(",
+    "AssignProcessToJobObject(", "let _ = child.kill();",
+    "Instant::now() < deadline", "OwnedHandle::from_raw_handle(raw)",
+    "fn amx_process_completion_requires_suspended_job_owner_before_spawn()",
+    "fn amx_process_completion_list_layout_matches_win32()",
+)
 
 
 def _validate_local_tool_sources(sources: dict[str, str]) -> None:
     for owner, fragments in LOCAL_TOOL_CONTRACTS.items():
         _require_fragments(sources[owner], fragments, "local tool " + owner)
+    retire = _source_slice(sources["cli_process"], "fn retire(", "fn cleanup(", "native completion")
+    _require_order(retire, ("self.completion.pin_members()", "self.inner.start_kill()", "self.members = members?"), "pin-before-termination")
 
 
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:

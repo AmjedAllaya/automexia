@@ -55,7 +55,7 @@ fn preview(program: &str, args: &[String]) -> io::Result<()> {
     writeln!(io::stdout().lock(), "{plan}")
 }
 
-fn run_tool(
+pub(crate) fn run_tool(
     program: &str,
     args: &[String],
     session: &ToolSession,

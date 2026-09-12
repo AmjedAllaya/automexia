@@ -850,6 +850,29 @@ the real user profile, host, environment, Git identity, or shell history.
 
 ## Explicit local tools
 
+Windows process regressions retain a live native process handle before cancellation
+or before releasing an acknowledged parent to exit. They assert that same handle
+is signaled immediately after capture; post-cleanup PID lookup is not an exact
+identity oracle. The descendant regression runs four concurrent workers with
+25 cycles each, both inherited-pipe and closed-pipe children. Failure-only later
+observations remain diagnostic and never convert a failed assertion into a pass.
+
+Directory handoff tests use `cargo test -p automexia-terminal --lib --locked amx_open_`.
+Windows local-tool cleanup additionally verifies empty job accounting and native
+signals from bounded member handles pinned before termination. The process suite
+includes 100 concurrent descendant cycles and an isolated 20-cycle exact handle-
+recovery measurement. A later diagnostic wait does not erase an immediate failure;
+leader exit and pipe EOF alone are insufficient. No native Unix equivalence or
+interactive performance is inferred from these Windows fixtures.
+Run the ignored `amx_open_benchmark_checked_guest_mapping` test explicitly with
+`-- --ignored --nocapture` for checked pure conversion timing, not desktop latency.
+The post-build native CLI harness verifies exact directory previews and no writes;
+the guest runner additionally proves POSIX symlinks and isolated Python imports.
+Neither opens a file manager. Manually check a disposable directory through the
+real installed desktop association on every claimed platform, then close it.
+Do not substitute Windows-backed WSL previews for native Linux Rust or macOS
+execution, native desktop visibility, accessibility or handler-failure evidence.
+
 ```text
 cargo test -p automexia-terminal --lib --locked amx_local_ -- --nocapture
 cargo test -p automexia-terminal --lib --locked amx_process_ -- --nocapture

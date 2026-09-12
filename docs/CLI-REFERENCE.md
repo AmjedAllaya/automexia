@@ -25,6 +25,12 @@ Everything after the explicit program is passed as an exact argument. Do not
 use this option as a replacement for shell pipelines, redirects, aliases,
 functions, or expansion; enter those in the real shell.
 
+## Open a directory
+
+`automexia open [directory]` opens an existing directory in the desktop file
+manager; the default is `.`. `--preview` resolves the destination without opening
+it. Files are rejected. See [directory opening and platform limits](user-guide/open-directory.md).
+
 ## Google search
 
 `automexia search <source> <terms>` supports `google`, `github` (repositories),

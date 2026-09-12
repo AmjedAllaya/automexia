@@ -14,9 +14,22 @@ import subprocess
 import sys
 import time
 
-PROGRAMS = {"rg", "tldr"}
+PROGRAMS = {"rg", "tldr", "amx-directory"}
 MAX_REQUEST_BYTES = 16384
 MAX_ARGUMENTS = 256
+
+# Only this package-owned probe runs for directory resolution. It is a child
+# under the existing lease/deadline owner, so filesystem stalls do not block the
+# supervisor. Never turn the request into arbitrary Python or shell source.
+DIRECTORY_PROBE = """import json, os, sys
+try:
+    target = os.path.realpath(sys.argv[1], strict=True)
+    if not os.path.isdir(target) or len(target.encode('utf-8')) > 4096:
+        raise ValueError('invalid directory')
+    os.write(1, json.dumps(target, ensure_ascii=True).encode('ascii'))
+except (OSError, ValueError, UnicodeError):
+    sys.exit(4)
+"""
 
 
 def unique_fields(pairs):
@@ -44,6 +57,8 @@ def validate_request(raw):
     for arg in args:
         if not isinstance(arg, str) or len(arg.encode("utf-8")) > 4096 or any(ord(c) < 32 or ord(c) == 127 for c in arg):
             raise ValueError("argument rejected")
+    if request["program"] == "amx-directory" and (len(args) != 1 or not args[0]):
+        raise ValueError("directory request rejected")
     if type(request["timeout_seconds"]) is not int or not 1 <= request["timeout_seconds"] <= 60:
         raise ValueError("deadline rejected")
     return request
@@ -59,10 +74,14 @@ def resolve_tool(program):
 
 
 def supervise(request):
-    program = resolve_tool(request["program"])
-    if not program:
-        sys.stderr.write("amx: required Linux tool is missing; install ripgrep (rg) or tealdeer (tldr) explicitly. Nothing was installed.\n")
-        return 127
+    if request["program"] == "amx-directory":
+        arguments = [sys.executable, "-I", "-c", DIRECTORY_PROBE, *request["arguments"]]
+    else:
+        program = resolve_tool(request["program"])
+        if not program:
+            sys.stderr.write("amx: required Linux tool is missing; install ripgrep (rg) or tealdeer (tldr) explicitly. Nothing was installed.\n")
+            return 127
+        arguments = [program, *request["arguments"]]
     selector = selectors.DefaultSelector()
     child = None
     try:
@@ -70,7 +89,7 @@ def supervise(request):
         # A closed lease must never launch a child in the first place.
         if selector.select(0):
             return 130
-        child = subprocess.Popen([program, *request["arguments"]], stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True)
+        child = subprocess.Popen(arguments, stdin=subprocess.DEVNULL, start_new_session=True, close_fds=True)
         deadline = time.monotonic() + request["timeout_seconds"]
         while True:
             status = os.waitid(os.P_PID, child.pid, os.WEXITED | os.WNOHANG | os.WNOWAIT)

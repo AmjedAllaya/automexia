@@ -9,6 +9,8 @@ use std::{
 const CLEANUP_TIMEOUT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_millis(5);
 mod cancellation;
+#[cfg(windows)]
+mod windows_completion;
 pub(crate) use cancellation::Cancellation;
 
 #[derive(Clone, Copy)]
@@ -66,6 +68,8 @@ fn capture_inner(
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut command = CommandWrap::from(command);
+    #[cfg(windows)]
+    let completion = windows_completion::CompletionJob::new()?;
     #[cfg(unix)]
     command.wrap(process_wrap::std::ProcessGroup::leader());
     #[cfg(windows)]
@@ -75,9 +79,17 @@ fn capture_inner(
         // shared console group and job assignment remains suspended/atomic.
         let mut flags = process_wrap::std::CreationFlags(Default::default());
         flags.0 .0 = windows_sys::Win32::System::Threading::CREATE_NEW_PROCESS_GROUP;
-        command.wrap(flags).wrap(process_wrap::std::JobObject);
+        command
+            .wrap(flags)
+            .wrap(process_wrap::std::JobObject)
+            .wrap(completion.clone());
     }
-    let mut child = OwnedChild { inner: command.spawn().map_err(|_| io::Error::new(io::ErrorKind::NotFound, "local tool could not be started; check that the required tool is installed"))?, reaped: false, killed: false };
+    let mut child = OwnedChild { inner: command.spawn().map_err(|_| io::Error::new(io::ErrorKind::NotFound, "local tool could not be started; check that the required tool is installed"))?, reaped: false, killed: false,
+        #[cfg(windows)]
+        completion,
+        #[cfg(windows)]
+        members: Vec::new(),
+    };
     let result = (|| {
         let mut stdout = child.inner.stdout().take().ok_or_else(pipe_error)?;
         let mut stderr = child.inner.stderr().take().ok_or_else(pipe_error)?;
@@ -145,25 +157,34 @@ struct OwnedChild {
     inner: Box<dyn ChildWrapper>,
     reaped: bool,
     killed: bool,
+    #[cfg(windows)]
+    completion: windows_completion::CompletionJob,
+    #[cfg(windows)]
+    members: Vec<std::os::windows::io::OwnedHandle>,
 }
 
 impl OwnedChild {
     fn retire(&mut self) -> io::Result<()> {
         if !self.killed && !self.reaped {
+            // Pin live members before requesting termination. A zero active-job
+            // count may precede the final native process-handle signal.
+            #[cfg(windows)]
+            let members = self.completion.pin_members();
             self.inner.start_kill().map_err(|_| cleanup_error())?;
             self.killed = true;
+            #[cfg(windows)]
+            {
+                self.members = members?;
+            }
         }
         Ok(())
     }
 
     fn cleanup(&mut self) -> io::Result<()> {
-        if self.reaped {
-            return Ok(());
-        }
         let lease = self.inner.stdin().take();
         let had_lease = lease.is_some();
         drop(lease);
-        if had_lease {
+        if had_lease && !self.reaped {
             // EOF is the guest supervisor's cancellation handshake. Give it a
             // bounded chance to retire its Linux group before the Windows job.
             let deadline = Instant::now() + Duration::from_millis(500);
@@ -174,13 +195,23 @@ impl OwnedChild {
         self.retire()?;
         let deadline = Instant::now() + CLEANUP_TIMEOUT;
         loop {
-            if self
-                .inner
-                .try_wait()
-                .map_err(|_| cleanup_error())?
-                .is_some()
+            if !self.reaped
+                && self
+                    .inner
+                    .try_wait()
+                    .map_err(|_| cleanup_error())?
+                    .is_some()
             {
                 self.reaped = true;
+            }
+            // Leader exit and pipe EOF are not job quiescence. In particular a
+            // descendant may close both pipes while kernel teardown is pending.
+            #[cfg(windows)]
+            let tree_empty = self.completion.is_empty()?
+                && windows_completion::members_stopped(&self.members)?;
+            #[cfg(unix)]
+            let tree_empty = true;
+            if self.reaped && tree_empty {
                 return Ok(());
             }
             if Instant::now() >= deadline {
@@ -423,6 +454,7 @@ mod tests {
         for timed_out in [false, true] {
             let temporary = tempfile::tempdir().unwrap();
             let ready = temporary.path().join("ready");
+            let identity = std::cell::RefCell::new(None);
             let mut command = fixture("wait");
             command.env("AMX_PROCESS_READY", &ready);
             let limit = Limits {
@@ -430,7 +462,9 @@ mod tests {
                 ..limits()
             };
             let begin = Instant::now();
-            let result = capture(command, limit, || !timed_out && ready.exists());
+            let result = capture(command, limit, || {
+                observe_identity(&ready, &identity) && !timed_out
+            });
             assert!(ready.is_file(), "child never acknowledged readiness");
             assert_eq!(
                 result.err().unwrap().kind(),
@@ -441,10 +475,11 @@ mod tests {
                 }
             );
             assert!(begin.elapsed() < Duration::from_secs(6));
-            // The identity is produced only in an isolated native fixture. It is
-            // consumed locally and never emitted in reports or persisted examples.
-            let pid: u32 = std::fs::read_to_string(&ready).unwrap().parse().unwrap();
-            assert_child_stopped(pid);
+            identity
+                .borrow()
+                .as_ref()
+                .expect("native readiness did not publish a complete identity")
+                .assert_stopped();
         }
     }
 
@@ -481,8 +516,9 @@ mod tests {
             .env("AMX_PROCESS_READY", &ready)
             .env("AMX_PROCESS_OWNER", &owner);
         let sent = std::cell::Cell::new(false);
+        let identity = std::cell::RefCell::new(None);
         let result = capture(command, limits(), || {
-            if !sent.get() && ready.is_file() {
+            if !sent.get() && observe_identity(&ready, &identity) {
                 let pid: u32 = std::fs::read_to_string(&owner).unwrap().parse().unwrap();
                 // Send only to the live fixture's distinct console group, never
                 // to the test runner's console or an unrelated terminal session.
@@ -497,43 +533,194 @@ mod tests {
         .unwrap();
         assert!(sent.get());
         assert!(result.status.success());
-        let pid: u32 = std::fs::read_to_string(&ready).unwrap().parse().unwrap();
-        assert_child_stopped(pid);
+        identity.borrow().as_ref().unwrap().assert_stopped();
     }
 
     #[test]
     fn amx_process_leader_exit_retires_descendant_holding_pipes() {
-        let temporary = tempfile::tempdir().unwrap();
-        let ready = temporary.path().join("ready");
-        let mut command = fixture("descendant");
-        command.env("AMX_PROCESS_READY", &ready);
-        let output = capture(command, limits(), || false).unwrap();
-        assert!(output.status.success());
-        assert!(ready.is_file());
-        let pid: u32 = std::fs::read_to_string(&ready).unwrap().parse().unwrap();
-        assert_child_stopped(pid);
+        std::thread::scope(|scope| {
+            for _ in 0..4 {
+                scope.spawn(|| {
+                    for iteration in 0..25 {
+                        let temporary = tempfile::tempdir().unwrap();
+                        let ready = temporary.path().join("ready");
+                        let release = temporary.path().join("release");
+                        let identity = std::cell::RefCell::new(None);
+                        let mut command = fixture(if iteration % 2 == 0 {
+                            "descendant"
+                        } else {
+                            "descendant-no-pipes"
+                        });
+                        command
+                            .env("AMX_PROCESS_READY", &ready)
+                            .env("AMX_PROCESS_RELEASE", &release);
+                        let output = capture(command, limits(), || {
+                            if identity.borrow().is_none() {
+                                if let Some(pinned) = PinnedIdentity::from_ready(&ready) {
+                                    *identity.borrow_mut() = Some(pinned);
+                                    std::fs::write(&release, b"release").unwrap();
+                                }
+                            }
+                            false
+                        })
+                        .unwrap();
+                        assert!(output.status.success());
+                        identity
+                            .borrow()
+                            .as_ref()
+                            .expect("native child identity was not pinned")
+                            .assert_stopped();
+                    }
+                });
+            }
+        });
     }
 
-    fn assert_child_stopped(pid: u32) {
+    #[cfg(windows)]
+    #[test]
+    fn amx_process_completion_recovers_native_handles_and_measures_capture() {
+        // Isolate the counter from other concurrently executing test fixtures.
+        let result =
+            capture(fixture("completion-resources"), limits(), || false).unwrap();
+        assert!(
+            result.status.success(),
+            "isolated native resource fixture failed"
+        );
+        let text = String::from_utf8(result.stdout).unwrap();
+        let report = text
+            .lines()
+            .find(|line| line.starts_with("AMX_CAPTURE_RESOURCES "))
+            .unwrap();
+        println!("{report}");
+    }
+
+    #[cfg(windows)]
+    fn completion_resources() {
+        use windows_sys::Win32::System::Threading::{
+            GetCurrentProcess, GetProcessHandleCount,
+        };
+        fn handles() -> u32 {
+            let mut count = 0;
+            assert_ne!(
+                unsafe { GetProcessHandleCount(GetCurrentProcess(), &mut count) },
+                0
+            );
+            count
+        }
+        // Warm the test runtime, then require exact recovery after each lifecycle.
+        for _ in 0..3 {
+            assert!(capture(fixture("success"), limits(), || false)
+                .unwrap()
+                .status
+                .success());
+        }
+        let baseline = handles();
+        let mut timings = Vec::new();
+        for _ in 0..20 {
+            let start = Instant::now();
+            let result = capture(fixture("success"), limits(), || false).unwrap();
+            assert!(result.status.success());
+            assert_eq!(result.stderr, b"fixture diagnostic");
+            assert!(result
+                .stdout
+                .windows(b"fixture & output".len())
+                .any(|text| text == b"fixture & output"));
+            timings.push(start.elapsed().as_micros());
+            assert!(
+                capture(Command::new("missing-resource-fixture"), limits(), || false)
+                    .is_err()
+            );
+            assert_eq!(
+                handles(),
+                baseline,
+                "native handles grew after completed capture"
+            );
+        }
+        timings.sort_unstable();
+        println!("AMX_CAPTURE_RESOURCES cycles=20 handle_delta=0 median_us={} p95_us={}; native fixture capture, not interactive latency", timings[10], timings[19]);
+    }
+
+    struct PinnedIdentity {
         #[cfg(windows)]
-        {
-            use windows_sys::Win32::{
-                Foundation::{CloseHandle, WAIT_OBJECT_0},
-                System::Threading::{
-                    OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE,
-                },
-            };
-            // Open by the captured identity immediately; never terminate by PID.
-            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
-            if !handle.is_null() {
-                let stopped = unsafe { WaitForSingleObject(handle, 0) } == WAIT_OBJECT_0;
-                unsafe {
-                    CloseHandle(handle);
+        handle: std::os::windows::io::OwnedHandle,
+        #[cfg(unix)]
+        pid: u32,
+    }
+
+    fn observe_identity(
+        ready: &std::path::Path,
+        identity: &std::cell::RefCell<Option<PinnedIdentity>>,
+    ) -> bool {
+        let mut pinned = identity.borrow_mut();
+        if pinned.is_none() {
+            *pinned = PinnedIdentity::from_ready(ready);
+        }
+        pinned.is_some()
+    }
+
+    impl PinnedIdentity {
+        fn from_ready(ready: &std::path::Path) -> Option<Self> {
+            let pid: u32 = std::fs::read_to_string(ready).ok()?.parse().ok()?;
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::AsRawHandle;
+                use std::os::windows::io::FromRawHandle;
+                use windows_sys::Win32::System::Threading::{
+                    OpenProcess, PROCESS_SYNCHRONIZE,
+                };
+                let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, 0, pid) };
+                if handle.is_null() {
+                    return None;
                 }
-                assert!(stopped, "native fixture process is still running");
+                let handle =
+                    unsafe { std::os::windows::io::OwnedHandle::from_raw_handle(handle) };
+                assert_eq!(
+                    unsafe {
+                        windows_sys::Win32::System::Threading::WaitForSingleObject(
+                            handle.as_raw_handle(),
+                            0,
+                        )
+                    },
+                    windows_sys::Win32::Foundation::WAIT_TIMEOUT,
+                    "fixture must remain live until the parent pins its identity"
+                );
+                // Open while the acknowledged child is still alive. A PID read
+                // only after capture returns can identify a reused process.
+                Some(Self { handle })
+            }
+            #[cfg(unix)]
+            {
+                Some(Self { pid })
             }
         }
-        #[cfg(unix)]
+
+        fn assert_stopped(&self) {
+            #[cfg(windows)]
+            {
+                use std::os::windows::io::AsRawHandle;
+                let immediate = unsafe {
+                    windows_sys::Win32::System::Threading::WaitForSingleObject(
+                        self.handle.as_raw_handle(),
+                        0,
+                    )
+                };
+                if immediate != windows_sys::Win32::Foundation::WAIT_OBJECT_0 {
+                    let later = unsafe {
+                        windows_sys::Win32::System::Threading::WaitForSingleObject(
+                            self.handle.as_raw_handle(),
+                            2000,
+                        )
+                    };
+                    panic!("pinned native descendant remained live after capture; later completion={}", later == windows_sys::Win32::Foundation::WAIT_OBJECT_0);
+                }
+            }
+            #[cfg(unix)]
+            assert_child_stopped(self.pid);
+        }
+    }
+
+    #[cfg(unix)]
+    fn assert_child_stopped(pid: u32) {
         {
             let deadline = Instant::now() + Duration::from_secs(2);
             loop {
@@ -555,6 +742,8 @@ mod tests {
     #[ignore = "only executed by the bounded process regression parent"]
     fn amx_process_child_fixture() {
         match std::env::var("AMX_PROCESS_FIXTURE").as_deref() {
+            #[cfg(windows)]
+            Ok("completion-resources") => completion_resources(),
             Ok("success") => {
                 print!("AMX_PAYLOAD_BEGIN\nfixture & output\nAMX_PAYLOAD_END");
                 std::io::stderr().write_all(b"fixture diagnostic").unwrap();
@@ -600,13 +789,18 @@ mod tests {
                         .unwrap();
                 assert_eq!(error.kind(), io::ErrorKind::Interrupted);
             }
-            Ok("descendant") => {
+            Ok("descendant") | Ok("descendant-no-pipes") => {
                 let ready = std::env::var_os("AMX_PROCESS_READY").unwrap();
+                let release = std::env::var_os("AMX_PROCESS_RELEASE").unwrap();
                 let mut command = fixture("wait");
                 command.env("AMX_PROCESS_READY", &ready);
+                if std::env::var("AMX_PROCESS_FIXTURE").unwrap() == "descendant-no-pipes"
+                {
+                    command.stdout(Stdio::null()).stderr(Stdio::null());
+                }
                 let _child = command.spawn().unwrap();
                 let deadline = Instant::now() + Duration::from_secs(5);
-                while !std::path::Path::new(&ready).is_file() {
+                while !std::path::Path::new(&release).is_file() {
                     assert!(Instant::now() < deadline, "descendant readiness timed out");
                     std::thread::sleep(Duration::from_millis(5));
                 }

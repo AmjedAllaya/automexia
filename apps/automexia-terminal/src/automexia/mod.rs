@@ -11,6 +11,7 @@ pub(crate) mod cli_process;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connections;
 pub mod desktop_open;
+pub mod directory_open;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ecosystem;
 #[doc(hidden)]

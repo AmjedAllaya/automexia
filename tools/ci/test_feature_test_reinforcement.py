@@ -20,7 +20,18 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
-    def test_local_tool_limits_native_cancellation_and_guest_import_isolation_cannot_disappear(self):
+    def test_native_member_identity_must_be_pinned_before_termination(self):
+        sources = self.native_sources.copy()
+        source = sources["cli_process"]
+        pin = "self.completion.pin_members()"
+        kill = "self.inner.start_kill()"
+        self.assertIn(pin, source)
+        self.assertIn(kill, source)
+        sources["cli_process"] = source.replace(pin, "PIN_PLACEHOLDER", 1).replace(kill, pin, 1).replace("PIN_PLACEHOLDER", kill, 1)
+        with self.assertRaises(REINFORCEMENT.ReinforcementError):
+            REINFORCEMENT._validate_local_tool_sources(sources)
+
+    def test_local_tool_limits_directory_handoff_native_cancellation_and_guest_import_isolation_cannot_disappear(self):
         REINFORCEMENT._validate_local_tool_sources(self.native_sources)
         for owner, fragments in REINFORCEMENT.LOCAL_TOOL_CONTRACTS.items():
             for fragment in fragments:

@@ -8,6 +8,7 @@ case $AMX_TEST_CASE in
   disabled) (( ${+functions[amx]} )) && exit 3; print -r -- AMX_DISABLED_OK ;;
   function|alias|external) amx ;;
   local) amx find file Dockerfile ;;
+  directory) amx open --preview 'folder & Unicode-é' ;;
   searches)
     for provider in google github youtube ddg; do
       amx search "$provider" --print-url 'fixture & query' || exit 4

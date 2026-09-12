@@ -18,6 +18,10 @@ if ($env:AMX_TEST_CASE -eq 'disabled') {
     $captured = @(amx find file Dockerfile)
     if ($LASTEXITCODE -ne 0 -or $captured.Count -ne 1) { throw 'local search failed' }
     $captured
+} elseif ($env:AMX_TEST_CASE -eq 'directory') {
+    $captured = @(amx open --preview ('folder & Unicode-' + [char]0xe9))
+    if ($LASTEXITCODE -ne 0 -or $captured.Count -ne 1) { throw 'directory preview failed' }
+    $captured
 } elseif ($env:AMX_TEST_CASE -eq 'missing') {
     $env:AUTOMEXIA_CLI = 'missing-fixture-executable'
     try { amx google fixture } catch { 'AMX_MISSING_OK' }

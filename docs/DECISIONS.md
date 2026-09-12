@@ -46,6 +46,7 @@ listed or summarized here.
 | [0062](adr/0062-explicit-google-search-command.md) | Explicit one-shot Google search and session-local command helpers |
 | [0063](adr/0063-explicit-browser-search-routing.md) | Bounded multi-provider and official-documentation browser searches |
 | [0064](adr/0064-bounded-explicit-local-tools.md) | Bounded local search, offline examples and native/WSL process ownership |
+| [0065](adr/0065-explicit-directory-handoff.md) | Explicit directory-only desktop handoff and supervised WSL resolution |
 
 ## When an ADR is required
 

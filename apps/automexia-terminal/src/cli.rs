@@ -79,6 +79,8 @@ pub enum CliCommand {
     Find(FindCommand),
     /// Show offline usage examples from installed tealdeer; never execute them.
     Explain(ExplainCommand),
+    /// Open an existing directory in the desktop file manager, never execute a file.
+    Open(OpenCommand),
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
     /// Search and manage typed Quick Actions without opening a window.
@@ -102,6 +104,24 @@ pub struct FindCommand {
     /// Show exact arguments without searching or launching a tool.
     #[clap(long)]
     pub preview: bool,
+}
+
+#[derive(Args)]
+pub struct OpenCommand {
+    /// Directory to open; defaults to the current directory. Quote spaces.
+    #[clap(default_value = ".", value_hint = ValueHint::DirPath)]
+    pub directory: String,
+    /// Resolve and show the destination without launching the file manager.
+    #[clap(long)]
+    pub preview: bool,
+}
+
+impl std::fmt::Debug for OpenCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("OpenCommand")
+            .field("preview", &self.preview)
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Clone, Copy, Debug, ValueEnum)]

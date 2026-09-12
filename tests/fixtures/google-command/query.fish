@@ -13,6 +13,8 @@ case function alias external
     amx
 case local
     amx find file Dockerfile
+case directory
+    amx open --preview 'folder & Unicode-é'
 case missing
     set -gx AUTOMEXIA_CLI missing-fixture-executable
     amx google fixture 2>/dev/null

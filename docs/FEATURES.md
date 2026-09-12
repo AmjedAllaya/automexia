@@ -19,6 +19,7 @@ unlisted product capability is available.
 | Shell integration | Session-local integration for supported shells, prompt metadata, and object-preserving listings | [Shell integration](SHELL-INTEGRATION.md) |
 | Explicit web search | `amx google`, `amx search` and `amx docs` use encoded queries, default-browser handoff and offline URL preview | [Browser search](user-guide/google-search.md) |
 | Explicit local tools | `amx find` uses installed ripgrep; `amx explain` displays offline tealdeer examples, with bounded execution and argument previews | [Local tools](user-guide/local-tools.md) |
+| Directory opening | `amx open` hands an existing directory to the desktop file manager, with a non-launching destination preview | [Open a directory](user-guide/open-directory.md) |
 | Local and inline images | Bounded local raster preview plus Sixel, Kitty, and iTerm2 protocol images | [Image previews](IMAGE-PREVIEWS.md) |
 | OpenSSH interoperability | Ordinary system OpenSSH use and explicit, reviewed local inventory behavior described in the public guide | [Remote connections](guide/remote-connections.md), [SSH inventory](SSH-INVENTORY.md) |
 | Accessibility | Keyboard-only operation, focus models, high-contrast support, reduced motion, and renderer-neutral accessibility semantics | [Accessibility](ACCESSIBILITY.md) |

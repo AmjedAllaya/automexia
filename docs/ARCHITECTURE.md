@@ -111,6 +111,11 @@ the app-owned bounded process adapter, not terminal hot paths or generic Quick
 Action execution. WSL uses a scoped guest lease and isolated Python supervisor;
 see [ADR 0064](adr/0064-bounded-explicit-local-tools.md).
 
+`amx open` extends this explicit application boundary with directory-only
+validation and the existing desktop adapter. WSL directory resolution is a fixed
+isolated child of the leased helper; no startup, renderer or PTY path performs
+filesystem discovery. See [ADR 0065](adr/0065-explicit-directory-handoff.md).
+
 Current capability-free shared contracts are owned by
 `automexia-connectivity` and `automexia-command-productivity` where required
 by existing source consumers. These package names are maintenance facts, not

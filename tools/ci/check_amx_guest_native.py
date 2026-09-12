@@ -133,6 +133,34 @@ class GuestNativeTests(unittest.TestCase):
             self.assertEqual(code, 0, "real project search failed")
             self.assertEqual(output, expected)
 
+    def test_directory_preview_resolves_guest_symlinks_without_desktop_or_writes(self):
+        parent = self.root / "container"
+        parent.mkdir()
+        destination = parent / "folder & Unicode-é"
+        destination.mkdir()
+        (self.root / "alias").symlink_to(destination, target_is_directory=True)
+        (self.root / "file").write_text("not a directory")
+        before = set(self.root.rglob("*"))
+        # A link into another parent distinguishes real POSIX resolution from
+        # lexical '..' removal performed on the host before following the link.
+        for target, resolved in (("container/folder & Unicode-é", destination), ("alias", destination),
+                                 (str(destination), destination), ("alias/..", parent), ("/", Path("/"))):
+            code, output, _ = self.invoke(["open", "--preview", target])
+            self.assertEqual(code, 0, "directory preview must resolve the real guest directory")
+            plan = json.loads(output)
+            self.assertEqual(plan["action"], "open-directory")
+            self.assertEqual(plan["execution"], "preview-only")
+            expected = str(resolved)
+            if BINARY.suffix.lower() == ".exe":
+                expected = "\\\\wsl.localhost\\" + os.environ["WSL_DISTRO_NAME"] + expected.replace("/", "\\")
+            self.assertTrue(plan["destination"] == expected, "resolved directory differs from the independent native path oracle")
+        for target in ("missing", "file", "bad\npath", "x" * 4097):
+            code, output, errors = self.invoke(["open", "--preview", target])
+            self.assertNotEqual(code, 0)
+            self.assertEqual(output, b"")
+            self.assertNotIn(str(self.root).encode(), errors)
+        self.assertEqual(set(self.root.rglob("*")), before)
+
     def test_project_python_modules_cannot_execute_during_guest_launch(self):
         # The Windows-backed supervisor is fixed code, but Python's default -c
         # import path otherwise lets the current project replace stdlib modules.
@@ -144,6 +172,10 @@ class GuestNativeTests(unittest.TestCase):
         self.assertFalse((self.root / "unexpected-execution").exists(), "project module executed during tool setup")
         self.assertEqual(code, 0, "guest launch trusted a project Python module")
         self.assertEqual(output, b"./Dockerfile\n")
+        code, output, _ = self.invoke(["open", "--preview", "."])
+        self.assertEqual(code, 0, "directory probe imported untrusted project code")
+        self.assertEqual(json.loads(output)["action"], "open-directory")
+        self.assertFalse((self.root / "unexpected-execution").exists())
 
     def test_explain_uses_offline_exact_client_argv_and_never_executes_examples(self):
         self.client("tldr")

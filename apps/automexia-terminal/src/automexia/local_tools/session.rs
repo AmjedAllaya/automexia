@@ -23,6 +23,16 @@ impl std::fmt::Debug for ToolSession {
 }
 
 impl ToolSession {
+    pub(crate) fn has_guest_hints(&self) -> bool {
+        [&self.distribution, &self.cwd, &self.path, &self.home]
+            .iter()
+            .any(|hint| hint.is_some())
+    }
+
+    pub(crate) fn distribution(&self) -> Option<&str> {
+        self.distribution.as_deref()
+    }
+
     pub(super) fn command(
         &self,
         program: &str,

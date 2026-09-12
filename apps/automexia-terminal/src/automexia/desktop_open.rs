@@ -36,6 +36,45 @@ pub fn open(target: &str) -> io::Result<()> {
     }
 }
 
+/// Directory callers validate filesystem type before this explicit handoff.
+/// Windows uses the folder-specific verb, not an executable's default action.
+pub(crate) fn open_directory(target: &str) -> io::Result<()> {
+    if target.contains('\0') {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "invalid directory",
+        ));
+    }
+    #[cfg(windows)]
+    {
+        with_com_apartment(|| open_windows_verb(target, "explore"))
+    }
+    #[cfg(not(windows))]
+    {
+        directory_command(target, cfg!(target_os = "macos"))
+            .spawn()
+            .map(|_| ())
+            .map_err(|_| io::Error::other("could not start the desktop directory handler; check your file manager and desktop session"))
+    }
+}
+
+#[cfg(any(not(windows), test))]
+fn directory_command(target: &str, macos: bool) -> std::process::Command {
+    use std::process::{Command, Stdio};
+    let mut command = Command::new(if macos { "/usr/bin/open" } else { "xdg-open" });
+    if macos {
+        // Application bundles are directories too. Reveal in Finder rather than
+        // invoking an associated application's default action for a package.
+        command.arg("-R");
+    }
+    command
+        .arg(target)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    command
+}
+
 #[cfg(windows)]
 fn with_com_apartment<T>(operation: impl FnOnce() -> io::Result<T>) -> io::Result<T> {
     use windows_sys::Win32::System::Com::{
@@ -68,8 +107,13 @@ fn with_com_apartment<T>(operation: impl FnOnce() -> io::Result<T>) -> io::Resul
 
 #[cfg(windows)]
 fn open_windows(target: &str) -> io::Result<()> {
+    open_windows_verb(target, "open")
+}
+
+#[cfg(windows)]
+fn open_windows_verb(target: &str, verb: &str) -> io::Result<()> {
     let target: Vec<u16> = target.encode_utf16().chain(Some(0)).collect();
-    let operation: Vec<u16> = "open\0".encode_utf16().collect();
+    let operation: Vec<u16> = verb.encode_utf16().chain(Some(0)).collect();
     // Both buffers are NUL-terminated and live through this synchronous
     // native call. The destination is never interpreted as a shell command.
     let result = unsafe {
@@ -84,10 +128,26 @@ fn open_windows(target: &str) -> io::Result<()> {
     };
     if result as isize <= 32 {
         return Err(io::Error::other(
-            "default handler failed; check your browser association",
+            "default desktop handler failed; check the requested application association",
         ));
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod directory_tests {
+    #[test]
+    fn amx_open_directory_commands_preserve_literal_targets_and_reveal_packages() {
+        for (macos, program, expected) in [
+            (false, "xdg-open", vec!["/fixture/a & café.app"]),
+            (true, "/usr/bin/open", vec!["-R", "/fixture/a & café.app"]),
+        ] {
+            let command = super::directory_command("/fixture/a & café.app", macos);
+            assert_eq!(command.get_program(), program);
+            assert_eq!(command.get_args().collect::<Vec<_>>(), expected);
+        }
+        assert!(super::open_directory("invalid\0directory").is_err());
+    }
 }
 
 #[cfg(all(test, windows))]

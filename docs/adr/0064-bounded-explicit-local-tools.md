@@ -37,6 +37,24 @@ These lifecycle controls are not a sandbox for hostile installed executables.
 Forced OS termination and uninterruptible kernel work have no universal cleanup
 guarantee.
 
+Windows completion additionally uses a private accounting adapter within that
+same child owner. The process-wrap post-spawn hook assigns an unnamed outer job
+while the leader is suspended; process-wrap then assigns its termination job
+and resumes the leader. It remains the termination authority. Its private job
+handle and leader-only `try_wait` do not expose whole-tree completion; vendoring
+the dependency or replacing process creation would broaden the unsafe boundary.
+The observer adds one native handle and shared handle allocation per capture,
+without a thread, service, new dependency version or PTY-owner coupling.
+
+Before termination, at most 256 live job-member handles are pinned and checked
+for job membership. Over-limit lists, inaccessible identities and live membership
+mismatches fail closed after requesting termination. Completion requires both a
+zero active-job count and signals from retained member handles within the existing
+two-second cleanup budget. Neither leader exit, pipe EOF nor accounting alone is
+native handle completion. This is not a guarantee against hostile processes that
+delegate work outside the job or every kernel teardown race; no PID-name kill or
+system-wide process scan is used. Lease EOF still precedes forced WSL cleanup.
+
 Windows-backed WSL wrappers pass transient distro, directory, PATH and HOME
 hints only to Automexia's fallback, never to an existing `amx` executable.
 An embedded, fixed Python-stdlib supervisor launches exact guest argv and owns
@@ -68,7 +86,13 @@ as a read-only filesystem or network sandbox.
 Unit tests cover literal arguments, bounds, malformed results, redaction and
 control injection. Real child tests cover cancellation, deadlines, stream
 saturation, descendant pipes, lease EOF and native console signaling. Native
-WSL tests use real ripgrep, exact process handles and a project-module canary;
+Windows descendant tests pin acknowledged live handles before releasing the
+leader; four workers run 25 inherited/closed-pipe cycles each. An isolated native
+fixture checks exact handle recovery after each of 20 captures and reports
+correctness-checked capture timing, not interactive terminal latency. These
+tests reproduced delayed process signaling after both leader exit and a zero
+active-job count; a later diagnostic wait remains a failure, never a retry pass.
+Native WSL tests use real ripgrep, exact process handles and a project-module canary;
 tealdeer argv is tested with an independent client fixture. A real installed
 tealdeer cache, native Unix Rust process execution and native desktop behavior
 remain separate validation requirements when unavailable.
@@ -87,4 +111,6 @@ existing aliases/functions/executables retain ownership.
 - [signal-hook source](https://github.com/vorner/signal-hook)
 - [Python isolated mode](https://docs.python.org/3/using/cmdline.html#cmdoption-I)
 - [Windows console handlers](https://learn.microsoft.com/en-us/windows/console/setconsolectrlhandler)
+- [Windows nested-job accounting](https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs)
+- [QueryInformationJobObject](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-queryinformationjobobject)
 - [Linux waitid and WNOWAIT](https://man7.org/linux/man-pages/man2/waitpid.2.html)
