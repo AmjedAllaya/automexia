@@ -116,6 +116,11 @@ validation and the existing desktop adapter. WSL directory resolution is a fixed
 isolated child of the leased helper; no startup, renderer or PTY path performs
 filesystem discovery. See [ADR 0065](adr/0065-explicit-directory-handoff.md).
 
+`amx edit` shares only the path mechanism with directory opening. Its regular-file
+policy, strict user-root editor preference and fixed editor-URI authority remain
+application-owned. It does not change terminal settings-editor behavior or enable
+generic Quick Action execution. See [ADR 0066](adr/0066-explicit-editor-file-handoff.md).
+
 Current capability-free shared contracts are owned by
 `automexia-connectivity` and `automexia-command-productivity` where required
 by existing source consumers. These package names are maintenance facts, not

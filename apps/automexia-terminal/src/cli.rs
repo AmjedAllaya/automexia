@@ -81,6 +81,8 @@ pub enum CliCommand {
     Explain(ExplainCommand),
     /// Open an existing directory in the desktop file manager, never execute a file.
     Open(OpenCommand),
+    /// Open an existing file in the configured desktop editor (default: VS Code).
+    Edit(EditCommand),
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
     /// Search and manage typed Quick Actions without opening a window.
@@ -114,6 +116,34 @@ pub struct OpenCommand {
     /// Resolve and show the destination without launching the file manager.
     #[clap(long)]
     pub preview: bool,
+}
+
+#[derive(Args)]
+pub struct EditCommand {
+    /// Existing file to edit. Use -- before a filename starting with a minus.
+    #[clap(value_hint = ValueHint::FilePath)]
+    pub file: String,
+    /// One-based line; the editor clamps positions beyond the end of a file.
+    #[clap(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=2147483647))]
+    pub line: u32,
+    /// One-based editor column (not a terminal display-cell offset).
+    #[clap(long, default_value_t = 1, value_parser = clap::value_parser!(u32).range(1..=2147483647))]
+    pub column: u32,
+    /// Select a supported editor for this invocation, unless editing is disabled.
+    #[clap(long, value_enum)]
+    pub editor: Option<crate::automexia::editor::Editor>,
+    /// Print the exact destination without launching the editor or writing settings.
+    #[clap(long)]
+    pub preview: bool,
+}
+
+impl std::fmt::Debug for EditCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("EditCommand")
+            .field("editor", &self.editor)
+            .field("preview", &self.preview)
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for OpenCommand {

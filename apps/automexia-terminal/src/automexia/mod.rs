@@ -11,9 +11,11 @@ pub(crate) mod cli_process;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connections;
 pub mod desktop_open;
+mod desktop_path;
 pub mod directory_open;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ecosystem;
+pub mod editor;
 #[doc(hidden)]
 pub mod export;
 pub mod ghostty_migration;

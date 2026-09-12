@@ -38,6 +38,7 @@ including open-source ideas, and commercial strategy.
 | Keyboard hyperlinks | [Link review, opening and copying](user-guide/hyperlinks.md) |
 | Command line | [CLI](CLI-REFERENCE.md), [compact reference](reference/cli.md) |
 | Directory opening | [Desktop handoff and preview](user-guide/open-directory.md) |
+| File editing | [Editor choice, file position and preview](user-guide/edit-file.md) |
 | Shell integration | [Shell integration](SHELL-INTEGRATION.md) |
 | Kubernetes prompt context | [Behavior and assurance](PROMPT-CONTEXT-ASSURANCE.md) |
 | Image behavior | [Image previews](IMAGE-PREVIEWS.md) |

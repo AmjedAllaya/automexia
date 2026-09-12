@@ -4,8 +4,9 @@ Status: accepted for `amx open [directory]`.
 
 ## Placement and reuse
 
-The application CLI owns the explicit request; `directory_open` validates the
-destination and the existing `desktop_open` adapter hands it to the desktop.
+The application CLI owns the explicit request; `directory_open` selects the
+directory policy, the shared `desktop_path` owner resolves and validates the
+destination, and the existing `desktop_open` adapter hands it to the desktop.
 No renderer, PTY, startup hook, extension or background service acquires new
 authority. There is no new crate or dependency. A separate file-manager extension
 or a custom file browser would duplicate the installed desktop and add lifecycle

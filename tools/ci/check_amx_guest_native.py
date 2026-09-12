@@ -11,6 +11,7 @@ import sys
 import tempfile
 import time
 import unittest
+from urllib.parse import quote
 
 ROOT = Path(__file__).resolve().parents[2]
 BRIDGE = ROOT / "shell-integration/amx-tool-bridge.py"
@@ -24,6 +25,8 @@ class GuestNativeTests(unittest.TestCase):
         self.root = Path(self.temporary.name)
         (self.root / ".git").mkdir()
         self.environment = dict(os.environ, HOME=str(self.root), PATH="/usr/bin:/bin", LC_ALL="C.UTF-8")
+        self.environment["AUTOMEXIA_CONFIG_HOME"] = str(self.root)
+        self.environment["WSLENV"] = "AUTOMEXIA_CONFIG_HOME/pw"
 
     def client(self, name="rg"):
         tools = self.root / "clients"
@@ -167,7 +170,7 @@ class GuestNativeTests(unittest.TestCase):
         (self.root / "json.py").write_text("from pathlib import Path\nPath('unexpected-execution').touch()\nraise RuntimeError('fixture blocked')\n")
         (self.root / "Dockerfile").write_text("fixture\n")
         self.environment["PYTHONPATH"] = str(self.root)
-        self.environment["WSLENV"] = "PYTHONPATH/u"
+        self.environment["WSLENV"] += ":PYTHONPATH/u"
         code, output, _ = self.invoke(["find", "file", "Dockerfile"])
         self.assertFalse((self.root / "unexpected-execution").exists(), "project module executed during tool setup")
         self.assertEqual(code, 0, "guest launch trusted a project Python module")
@@ -176,6 +179,27 @@ class GuestNativeTests(unittest.TestCase):
         self.assertEqual(code, 0, "directory probe imported untrusted project code")
         self.assertEqual(json.loads(output)["action"], "open-directory")
         self.assertFalse((self.root / "unexpected-execution").exists())
+        code, output, _ = self.invoke(["edit", "--preview", "Dockerfile"])
+        self.assertEqual(code, 0, "file probe imported untrusted project code")
+        self.assertEqual(json.loads(output)["action"], "edit-file")
+        self.assertFalse((self.root / "unexpected-execution").exists())
+
+    def test_editor_preview_resolves_guest_file_links_and_rejects_directories(self):
+        target = self.root / "file & Unicode-é.rs"
+        target.write_text("fixture\n")
+        (self.root / "alias.rs").symlink_to(target)
+        for name in (target.name, "alias.rs"):
+            code, output, _ = self.invoke(["edit", "--preview", "--line", "42", name])
+            self.assertEqual(code, 0, "guest file resolution failed")
+            destination = str(target)
+            if BINARY.suffix.lower() == ".exe":
+                destination = "//wsl.localhost/" + os.environ["WSL_DISTRO_NAME"] + destination
+            expected = "vscode://file" + quote(destination, safe="/:&") + ":42:1"
+            self.assertTrue(json.loads(output)["destination"] == expected, "guest file identity or position changed")
+        for name in (".", "missing"):
+            code, _, _ = self.invoke(["edit", "--preview", name])
+            self.assertNotEqual(code, 0)
+        self.assertEqual(target.read_text(), "fixture\n")
 
     def test_explain_uses_offline_exact_client_argv_and_never_executes_examples(self):
         self.client("tldr")

@@ -31,6 +31,15 @@ functions, or expansion; enter those in the real shell.
 manager; the default is `.`. `--preview` resolves the destination without opening
 it. Files are rejected. See [directory opening and platform limits](../user-guide/open-directory.md).
 
+## Edit a file
+
+`automexia edit <file> [--line N] [--column N]` requests an existing file in
+Visual Studio Code by default. `--preview` prints the encoded destination without
+opening an editor. `--editor vscode-insiders` selects Insiders for one invocation;
+strict user-root `amx.toml` preferences can select or disable editing. See
+[editor behavior and limits](../user-guide/edit-file.md). The same command is
+available as `amx edit` in integrated shells.
+
 ## Google search
 
 `automexia search <source> <terms>` supports `google`, `github` (repositories),

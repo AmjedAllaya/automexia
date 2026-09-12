@@ -14,18 +14,19 @@ import subprocess
 import sys
 import time
 
-PROGRAMS = {"rg", "tldr", "amx-directory"}
+PROGRAMS = {"rg", "tldr", "amx-directory", "amx-file"}
 MAX_REQUEST_BYTES = 16384
 MAX_ARGUMENTS = 256
 
-# Only this package-owned probe runs for directory resolution. It is a child
+# Only this package-owned probe runs for file/directory resolution. It is a child
 # under the existing lease/deadline owner, so filesystem stalls do not block the
 # supervisor. Never turn the request into arbitrary Python or shell source.
-DIRECTORY_PROBE = """import json, os, sys
+PATH_PROBE = """import json, os, sys
 try:
     target = os.path.realpath(sys.argv[1], strict=True)
-    if not os.path.isdir(target) or len(target.encode('utf-8')) > 4096:
-        raise ValueError('invalid directory')
+    eligible = os.path.isdir(target) if sys.argv[2] == 'amx-directory' else os.path.isfile(target)
+    if not eligible or len(target.encode('utf-8')) > 4096:
+        raise ValueError('invalid path')
     os.write(1, json.dumps(target, ensure_ascii=True).encode('ascii'))
 except (OSError, ValueError, UnicodeError):
     sys.exit(4)
@@ -57,8 +58,8 @@ def validate_request(raw):
     for arg in args:
         if not isinstance(arg, str) or len(arg.encode("utf-8")) > 4096 or any(ord(c) < 32 or ord(c) == 127 for c in arg):
             raise ValueError("argument rejected")
-    if request["program"] == "amx-directory" and (len(args) != 1 or not args[0]):
-        raise ValueError("directory request rejected")
+    if request["program"] in {"amx-directory", "amx-file"} and (len(args) != 1 or not args[0]):
+        raise ValueError("path request rejected")
     if type(request["timeout_seconds"]) is not int or not 1 <= request["timeout_seconds"] <= 60:
         raise ValueError("deadline rejected")
     return request
@@ -74,8 +75,8 @@ def resolve_tool(program):
 
 
 def supervise(request):
-    if request["program"] == "amx-directory":
-        arguments = [sys.executable, "-I", "-c", DIRECTORY_PROBE, *request["arguments"]]
+    if request["program"] in {"amx-directory", "amx-file"}:
+        arguments = [sys.executable, "-I", "-c", PATH_PROBE, *request["arguments"], request["program"]]
     else:
         program = resolve_tool(request["program"])
         if not program:

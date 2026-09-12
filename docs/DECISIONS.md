@@ -47,6 +47,7 @@ listed or summarized here.
 | [0063](adr/0063-explicit-browser-search-routing.md) | Bounded multi-provider and official-documentation browser searches |
 | [0064](adr/0064-bounded-explicit-local-tools.md) | Bounded local search, offline examples and native/WSL process ownership |
 | [0065](adr/0065-explicit-directory-handoff.md) | Explicit directory-only desktop handoff and supervised WSL resolution |
+| [0066](adr/0066-explicit-editor-file-handoff.md) | Explicit file-and-position handoff to a configured desktop editor |
 
 ## When an ADR is required
 

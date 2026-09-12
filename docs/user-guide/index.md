@@ -18,6 +18,7 @@ terminal behavior.
 - [Browser and official-documentation search](google-search.md)
 - [Local search and offline examples](local-tools.md)
 - [Open a directory](open-directory.md)
+- [Edit a file](edit-file.md)
 - [Productivity](productivity.md)
 - [Customization](customization.md)
 - [Files and images](files-and-images.md)

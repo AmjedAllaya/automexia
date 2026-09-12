@@ -16,6 +16,7 @@ case $AMX_TEST_CASE in
   function|alias|external) amx ;;
   local) amx find file Dockerfile ;;
   directory) amx open --preview 'folder & Unicode-é' ;;
+  editor) amx edit --preview --line 42 --column 7 'source & Unicode-é.rs' ;;
   searches)
     for provider in google github youtube ddg; do
       amx search "$provider" --print-url 'fixture & query' || exit 4

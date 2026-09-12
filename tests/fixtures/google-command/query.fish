@@ -15,6 +15,8 @@ case local
     amx find file Dockerfile
 case directory
     amx open --preview 'folder & Unicode-é'
+case editor
+    amx edit --preview --line 42 --column 7 'source & Unicode-é.rs'
 case missing
     set -gx AUTOMEXIA_CLI missing-fixture-executable
     amx google fixture 2>/dev/null

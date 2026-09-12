@@ -858,6 +858,18 @@ identity oracle. The descendant regression runs four concurrent workers with
 observations remain diagnostic and never convert a failed assertion into a pass.
 
 Directory handoff tests use `cargo test -p automexia-terminal --lib --locked amx_open_`.
+Editor tests use `cargo test -p automexia-terminal --lib --locked amx_edit_`.
+Run `amx_edit_benchmark_checked_uri_encoding` explicitly with `-- --ignored --nocapture`;
+its checked URI timing excludes metadata, process and desktop latency. The real
+post-build CLI tests cover configuration, disable/override, exact paths and
+positions without launches or writes. Ten scenarios run through each available
+shipped native shell. The guest suite also checks file symlinks and import isolation.
+On an installed native desktop, manually open a disposable file at a known
+line/column in both supported editions, check permission/UNC prompts, missing
+registration and focus/close behavior. Do not mark preview-only execution as
+actual editor-window evidence. Native Linux/macOS Rust and desktop checks must
+be recorded separately from Windows-backed WSL. Preferences remain untouched
+outside isolated fixtures; do not run this test using a real user configuration.
 Windows local-tool cleanup additionally verifies empty job accounting and native
 signals from bounded member handles pinned before termination. The process suite
 includes 100 concurrent descendant cycles and an isolated 20-cycle exact handle-

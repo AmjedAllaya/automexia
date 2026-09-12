@@ -21,10 +21,12 @@ finally:
 class GuestBridgeTests(unittest.TestCase):
     def test_directory_probe_accepts_one_literal_path_not_source_or_extra_arguments(self):
         request = dict(version=1, program="amx-directory", arguments=["folder & café"], timeout_seconds=10)
-        self.assertEqual(BRIDGE.validate_request(json.dumps(request)), request)
-        for args in ([], [""], ["one", "two"], ["bad\npath"]):
-            with self.assertRaises(ValueError):
-                BRIDGE.validate_request(json.dumps(dict(request, arguments=args)))
+        for program in ("amx-directory", "amx-file"):
+            request["program"] = program
+            self.assertEqual(BRIDGE.validate_request(json.dumps(request)), request)
+            for args in ([], [""], ["one", "two"], ["bad\npath"]):
+                with self.assertRaises(ValueError):
+                    BRIDGE.validate_request(json.dumps(dict(request, arguments=args)))
 
     def test_exact_request_and_literal_arguments(self):
         request = dict(version=1, program="rg", arguments=["--fixed-strings", "--", "$(fixture); & text"], timeout_seconds=10)

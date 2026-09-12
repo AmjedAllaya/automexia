@@ -20,6 +20,18 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_editor_disable_precedes_override_and_unc_identity_is_retained(self):
+        REINFORCEMENT._validate_local_tool_sources(self.native_sources)
+        first = "configured.scheme()?;"
+        second = "selected.scheme()?;"
+        source = self.native_sources["editor"]
+        mutations = [source.replace(first, "POLICY_PLACEHOLDER", 1).replace(second, first, 1).replace("POLICY_PLACEHOLDER", second, 1),
+                     source.replace("uri.insert(boundary,", "removed_unc_boundary(", 1)]
+        for mutation in mutations:
+            sources = dict(self.native_sources, editor=mutation)
+            with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                REINFORCEMENT._validate_local_tool_sources(sources)
+
     def test_native_member_identity_must_be_pinned_before_termination(self):
         sources = self.native_sources.copy()
         source = sources["cli_process"]

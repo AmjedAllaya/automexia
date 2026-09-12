@@ -34,6 +34,15 @@ The main file must be a regular UTF-8 file no larger than 4 MiB. Each theme
 must be a regular UTF-8 file no larger than 1 MiB. Parse/read/theme failure is
 reported and runtime reload keeps the last known-good configuration.
 
+## Explicit command preferences
+
+Optional `amx.toml` beside `config.toml` configures only the explicit `amx edit`
+desktop handoff. It is not loaded at terminal startup and does not replace the
+terminal settings editor. Use `version = 1` and `editor = "vscode"`,
+`"vscode-insiders"` or `"disabled"`. The strict regular-file limit is 16 KiB;
+unknown/invalid fields fail closed. Automexia never writes this file. See
+[editor configuration, overrides and rollback](../user-guide/edit-file.md).
+
 ## Minimal example
 
 ```toml

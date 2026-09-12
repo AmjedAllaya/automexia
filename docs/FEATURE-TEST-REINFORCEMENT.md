@@ -634,6 +634,19 @@ validation and real CLI/guest oracle. Measure checked conversion separately from
 filesystem/desktop latency; unexecuted native desktop and Unix Rust evidence
 remains external.
 
+Editor handoff uses the same path owner with a distinct regular-file kind.
+Assert exact VS Code/Insiders URI authority, escaping, Unicode, literal percent
+bytes and positive line/column bounds. Reject ambiguous filenames and workspace
+manifests. Strict bounded user-root preferences, explicit override and disable
+must not become project-script authority or fall back on invalid configuration.
+Require real CLI and shipped-shell preview tests, guest file-symlink resolution,
+hostile Python import canaries and unchanged files/settings. WSL test preferences
+must reach the isolated host root through explicit one-way path translation.
+Mutate editor dispatch, file-kind checks, config limits/version/disable, encoding,
+preview, native oracles and benchmark correctness. URI timing does not measure
+editor startup; no-launch tests do not prove visible desktop activation. Native
+macOS/Linux desktop, editor prompts and actual cursor placement remain external.
+
 Use live eza output over isolated fictional variable-length filenames to cover
 multi-column resize behavior, not only equal-width synthetic rows. Preserve icons
 and colors, verify every filename occurs once and restore exact initial cell

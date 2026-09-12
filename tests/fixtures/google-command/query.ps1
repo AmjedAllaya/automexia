@@ -22,6 +22,10 @@ if ($env:AMX_TEST_CASE -eq 'disabled') {
     $captured = @(amx open --preview ('folder & Unicode-' + [char]0xe9))
     if ($LASTEXITCODE -ne 0 -or $captured.Count -ne 1) { throw 'directory preview failed' }
     $captured
+} elseif ($env:AMX_TEST_CASE -eq 'editor') {
+    $captured = @(amx edit --preview --line 42 --column 7 ('source & Unicode-' + [char]0xe9 + '.rs'))
+    if ($LASTEXITCODE -ne 0 -or $captured.Count -ne 1) { throw 'editor preview failed' }
+    $captured
 } elseif ($env:AMX_TEST_CASE -eq 'missing') {
     $env:AUTOMEXIA_CLI = 'missing-fixture-executable'
     try { amx google fixture } catch { 'AMX_MISSING_OK' }

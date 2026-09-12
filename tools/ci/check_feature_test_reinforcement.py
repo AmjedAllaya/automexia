@@ -319,6 +319,8 @@ for _feature in WRAPPING_FEATURES:
         _details[_field] = (*_details.get(_field, ()), _phrase)
 
 NATIVE_CONTRACT_SOURCES = {
+    "desktop_path": "apps/automexia-terminal/src/automexia/desktop_path.rs",
+    "editor": "apps/automexia-terminal/src/automexia/editor.rs",
     "directory_open": "apps/automexia-terminal/src/automexia/directory_open.rs",
     "local_tools": "apps/automexia-terminal/src/automexia/local_tools.rs",
     "local_tool_tests": "apps/automexia-terminal/src/automexia/local_tools/boundary_tests.rs",
@@ -669,20 +671,24 @@ def _validate_google_sources(sources: dict[str, str]) -> None:
 
 
 LOCAL_TOOL_CONTRACTS = {
-    "directory_open": ('run_tool("amx-directory"', "if !resolved.is_dir()", "if preview", "MAX_PATH_BYTES: usize = 4096", "all(windows_directory_component)", "stem.eq_ignore_ascii_case(name)", "fn amx_open_preview_never_launches_and_failure_is_redacted()", "fn amx_open_benchmark_checked_guest_mapping()"),
+    "directory_open": ('Kind::Directory', "if preview", "fn amx_open_preview_never_launches_and_failure_is_redacted()"),
+    "desktop_path": ('local_tools::run_tool(kind.probe()', 'Self::Directory => "amx-directory"', 'Self::File => "amx-file"', 'Self::Directory => path.is_dir()', 'Self::File => path.is_file()', "if !kind.matches(&resolved)", "MAX_PATH_BYTES: usize = 4096", "all(windows_directory_component)", "stem.eq_ignore_ascii_case(name)", "fn amx_open_benchmark_checked_guest_mapping()"),
+    "editor": ('Kind::File', 'read_bounded_untrusted_regular', 'MAX_CONFIG_BYTES: usize = 16 * 1024', 'preferences.version != 1', 'configured.scheme()?;', 'serde(deny_unknown_fields)', 'desktop_path::valid_text(path)', 'line > MAX_POSITION', 'column > MAX_POSITION', 'path.contains', 'ends_with(".code-workspace")', 'uri.path_segments_mut()', 'if preview', 'super::desktop_open::open', 'fn amx_edit_urls_preserve_exact_path_authority_and_coordinates()', 'fn amx_edit_preferences_are_bounded_strict_and_user_disable_wins()', 'fn amx_edit_preview_and_error_never_launch_or_disclose_diagnostics()', 'fn amx_edit_benchmark_checked_uri_encoding()'),
     "desktop_open": ('open_windows_verb(target, "explore")', 'directory_command(target, cfg!(target_os = "macos"))', 'command.arg("-R")', 'fn amx_open_directory_commands_preserve_literal_targets_and_reveal_packages()'),
-    "cli_main": ("CliCommand::Open(command)", "automexia::directory_open::execute(command, session)"),
+    "cli_main": ("CliCommand::Open(command)", "automexia::directory_open::execute(command, session)", "CliCommand::Edit(command)", "automexia::editor::execute(command, session)"),
     "local_tools": ('"--no-config"', '"--fixed-strings"', '"--no-auto-update"', "cancellation.cancelled()", "MAX_RESULTS: usize = 1000", "MAX_FILES: usize = 32768", "relative_name(path)?", "incomplete structured search output"),
     "local_tool_tests": ("fn amx_local_structured_matches_cannot_inject_controls_or_fake_result_rows()", "fn amx_local_benchmark_checked_parsing()"),
     "local_session": ('"python3", "-I", "-c"', "guest invocation exceeds the native command-line limit"),
     "cli_process": ("CreationFlags(Default::default())", "libc::WNOWAIT", "WaitForSingleObject", "drop(lease)", "limits.stdout > 4 * 1024 * 1024", "fn amx_process_native_console_cancel_retires_the_owned_tool()"),
     "cli_cancellation": ("ACTIVE.swap(true", "SetConsoleCtrlHandler", "signal_hook::flag::register", "impl Drop for Cancellation"),
-    "guest_bridge": ("object_pairs_hook=unique_fields", "start_new_session=True", "os.WNOWAIT", "selector.select(0)", "signal.signal(signal.SIGTERM, interrupted)", "os.killpg(child.pid, signal.SIGKILL)", 'len(args) != 1 or not args[0]', 'sys.executable, "-I", "-c", DIRECTORY_PROBE', 'os.path.realpath(sys.argv[1], strict=True)', "not os.path.isdir(target)"),
+    "guest_bridge": ("object_pairs_hook=unique_fields", "start_new_session=True", "os.WNOWAIT", "selector.select(0)", "signal.signal(signal.SIGTERM, interrupted)", "os.killpg(child.pid, signal.SIGKILL)", 'len(args) != 1 or not args[0]', 'sys.executable, "-I", "-c", PATH_PROBE', 'os.path.realpath(sys.argv[1], strict=True)', "os.path.isdir(target)", "os.path.isfile(target)", 'request["program"] in {"amx-directory", "amx-file"}'),
     "guest_native": ("def test_lease_eof_termination_and_deadline_retire_exact_guest_child(self):", "os.pidfd_open", "def test_project_python_modules_cannot_execute_during_guest_launch(self):", "def test_real_ripgrep_respects_ignore_privacy_binary_and_symlink_rules(self):"),
-    "google_native": ('"searches", "local", "directory"', 'expected = b"./Dockerfile"', 'def test_real_directory_preview_is_exact_and_never_writes(self):', 'plan["destination"] == target', 'if case == "directory":'),
+    "google_native": ('"searches", "local", "directory", "editor"', 'expected = b"./Dockerfile"', 'def test_real_directory_preview_is_exact_and_never_writes(self):', 'plan["destination"] == target', 'if case == "directory":', 'def test_real_editor_preview_preserves_file_position_and_never_writes(self):', 'def test_real_editor_config_override_disable_and_invalid_targets(self):', 'if case == "editor":', 'AUTOMEXIA_CONFIG_HOME/pw'),
 }
 
 LOCAL_TOOL_CONTRACTS["guest_native"] += (
+    "def test_editor_preview_resolves_guest_file_links_and_rejects_directories(self):",
+    '"file probe imported untrusted project code"',
     "def test_directory_preview_resolves_guest_symlinks_without_desktop_or_writes(self):",
     'plan["destination"] == expected', '("alias/..", parent)',
     '"directory probe imported untrusted project code"',
@@ -713,6 +719,9 @@ LOCAL_TOOL_CONTRACTS["cli_completion"] = (
 def _validate_local_tool_sources(sources: dict[str, str]) -> None:
     for owner, fragments in LOCAL_TOOL_CONTRACTS.items():
         _require_fragments(sources[owner], fragments, "local tool " + owner)
+    editor = _source_slice(sources["editor"], "fn selected_editor(", "pub fn execute(", "editor preference policy")
+    _require_order(editor, ("configured.scheme()?;", "override_editor.unwrap_or(configured)", "selected.scheme()?;"), "disable-before-editor-override")
+    _require_fragments(sources["editor"], ('uri.insert(boundary,',), "editor UNC identity")
     retire = _source_slice(sources["cli_process"], "fn retire(", "fn cleanup(", "native completion")
     _require_order(retire, ("self.completion.pin_members()", "self.inner.start_kill()", "self.members = members?"), "pin-before-termination")
 
