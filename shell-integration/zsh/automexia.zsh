@@ -11,6 +11,26 @@ typeset -g AUTOMEXIA_ZSH_INTEGRATION_LOADED=1
 export COLORTERM=truecolor
 export TERM_PROGRAM=Automexia
 export AUTOMEXIA_SHELL_INTEGRATION=1
+if [[ ${AUTOMEXIA_AMX:-1} != 0 ]] && ! (( ${+aliases[amx]} || ${+functions[amx]} )); then
+  function amx {
+    local binary
+    if binary=$(builtin whence -p amx 2>/dev/null); then
+      command "$binary" "$@"
+      return $?
+    fi
+    binary=${AUTOMEXIA_CLI:-}
+    [[ -n $binary ]] || binary=$(builtin whence -p automexia 2>/dev/null)
+    if [[ -z $binary || ! -x $binary ]]; then
+      print -u2 -r -- 'amx: Automexia command unavailable; reopen a current Automexia session.'
+      return 127
+    fi
+    if [[ $binary == *.exe && -n ${WSL_DISTRO_NAME:-} ]]; then
+      command "$binary" --amx-wsl-distribution "$WSL_DISTRO_NAME" --amx-wsl-cwd "$PWD" --amx-wsl-path "$PATH" --amx-wsl-home "$HOME" "$@"
+    else
+      command "$binary" "$@"
+    fi
+  }
+fi
 typeset -gi __automexia_prompt_generation=${__automexia_prompt_generation:-0}
 typeset -gi __automexia_prompt_is_active=0
 

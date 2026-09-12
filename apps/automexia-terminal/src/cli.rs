@@ -13,6 +13,9 @@ pub struct Cli {
     #[clap(subcommand)]
     pub command: Option<CliCommand>,
 
+    #[clap(flatten)]
+    pub tool_session: crate::automexia::local_tools::ToolSession,
+
     /// List typed compatibility actions without starting the GUI.
     #[clap(long, conflicts_with = "list_keybinds")]
     pub list_actions: bool,
@@ -64,6 +67,18 @@ pub struct Cli {
 
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
+    /// Open a Google search in the default browser (also available as amx google).
+    Google(GoogleCommand),
+    /// Search the web, repositories or videos in the default browser.
+    #[clap(after_help = crate::automexia::browser_search::provider_help())]
+    Search(SearchCommand),
+    /// Search a tool's official documentation in the browser using Google.
+    #[clap(after_help = crate::automexia::browser_search::docs_help())]
+    Docs(SearchCommand),
+    /// Search the current project subtree using installed ripgrep (no downloads).
+    Find(FindCommand),
+    /// Show offline usage examples from installed tealdeer; never execute them.
+    Explain(ExplainCommand),
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
     /// Search and manage typed Quick Actions without opening a window.
@@ -76,6 +91,85 @@ pub enum CliCommand {
     Migrate(MigrationCommand),
     /// Inspect and manage declarative multi-environment workspaces.
     Workspaces(WorkspacesCommand),
+}
+
+#[derive(Args)]
+pub struct FindCommand {
+    #[clap(value_enum)]
+    pub kind: FindKind,
+    /// Literal file/path fragment or literal text; quote spaces and shell symbols.
+    pub query: String,
+    /// Show exact arguments without searching or launching a tool.
+    #[clap(long)]
+    pub preview: bool,
+}
+
+#[derive(Clone, Copy, Debug, ValueEnum)]
+pub enum FindKind {
+    File,
+    Text,
+}
+
+impl std::fmt::Debug for FindCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FindCommand")
+            .field("kind", &self.kind)
+            .field("preview", &self.preview)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Args)]
+pub struct ExplainCommand {
+    /// Command name and optional subcommands, such as tar or git log.
+    #[clap(required = true, num_args = 1..)]
+    pub command: Vec<String>,
+    /// Show exact arguments without consulting the offline cache or client.
+    #[clap(long)]
+    pub preview: bool,
+}
+
+impl std::fmt::Debug for ExplainCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ExplainCommand")
+            .field("preview", &self.preview)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Args)]
+pub struct SearchCommand {
+    /// Named search source or documentation tool; see the list below.
+    pub source: String,
+    #[clap(flatten)]
+    pub search: GoogleCommand,
+}
+
+impl std::fmt::Debug for SearchCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("SearchCommand")
+            .field("search", &self.search)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Args)]
+pub struct GoogleCommand {
+    /// Print the encoded URL without opening a browser. Put this before the query.
+    #[clap(long)]
+    pub print_url: bool,
+    /// Search terms; quote shell metacharacters. Use -- before a leading minus.
+    #[clap(trailing_var_arg = true, allow_hyphen_values = true)]
+    pub query: Vec<String>,
+}
+
+impl std::fmt::Debug for GoogleCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GoogleCommand")
+            .field("print_url", &self.print_url)
+            .field("query_arguments", &self.query.len())
+            .finish_non_exhaustive()
+    }
 }
 
 #[derive(Args, Debug)]
@@ -770,6 +864,28 @@ pub enum ShellIntegrationAction {
 mod tests {
     use super::*;
     use clap::CommandFactory;
+
+    #[test]
+    fn google_command_accepts_query_and_offline_preview_before_gui_startup() {
+        for arguments in [
+            vec!["automexia", "google", "kubernetes", "ingress", "examples"],
+            vec!["automexia", "google", "--print-url", "café & rust"],
+            vec!["automexia", "google", "--", "-deprecated", "--literal"],
+        ] {
+            assert!(
+                Cli::try_parse_from(arguments).is_ok(),
+                "Google command is unavailable"
+            );
+        }
+        let preview =
+            Cli::try_parse_from(["automexia", "google", "--print-url", "fixture"])
+                .unwrap();
+        let Some(CliCommand::Google(preview)) = preview.command else {
+            panic!("wrong command");
+        };
+        assert!(preview.print_url);
+        assert_eq!(preview.query, ["fixture"]);
+    }
 
     #[test]
     fn command_identity_matches_the_installed_executable() {

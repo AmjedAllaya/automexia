@@ -12,6 +12,27 @@ esac
 export COLORTERM=truecolor
 export TERM_PROGRAM=Automexia
 export AUTOMEXIA_SHELL_INTEGRATION=1
+if [[ ${AUTOMEXIA_AMX:-1} != 0 ]] && ! builtin alias amx >/dev/null 2>&1 && ! declare -F amx >/dev/null; then
+  amx() {
+    # Resolve external-name collisions only on use, not on WSL's startup path.
+    local binary
+    if binary=$(type -P amx 2>/dev/null); then
+      command "$binary" "$@"
+      return $?
+    fi
+    binary=${AUTOMEXIA_CLI:-}
+    [[ -n $binary ]] || binary=$(type -P automexia 2>/dev/null)
+    if [[ -z $binary || ! -x $binary ]]; then
+      printf '%s\n' 'amx: Automexia command unavailable; reopen a current Automexia session.' >&2
+      return 127
+    fi
+    if [[ $binary == *.exe && -n ${WSL_DISTRO_NAME:-} ]]; then
+      command "$binary" --amx-wsl-distribution "$WSL_DISTRO_NAME" --amx-wsl-cwd "$PWD" --amx-wsl-path "$PATH" --amx-wsl-home "$HOME" "$@"
+    else
+      command "$binary" "$@"
+    fi
+  }
+fi
 __automexia_prompt_generation=${__automexia_prompt_generation:-0}
 __automexia_prompt_is_active=0
 

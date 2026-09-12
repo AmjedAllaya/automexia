@@ -958,6 +958,7 @@ fn ready() -> TaskResult {
     complete_ci_gate()?;
     build_debug_app()?;
     smoke_debug_app()?;
+    smoke_google_command()?;
     println!("PASS: Automexia is locally ready to run and submit");
     Ok(())
 }
@@ -1273,6 +1274,19 @@ fn smoke_debug_app() -> TaskResult {
     )?;
     println!("PASS: debug executable reports {expected}");
     Ok(())
+}
+
+fn smoke_google_command() -> TaskResult {
+    let program =
+        python_program().ok_or("Python 3 is required for native command smoke")?;
+    let binary = debug_binary(&product_identity()?);
+    let mut command = Command::new(program);
+    command.current_dir(root()).args([
+        OsStr::new("tools/ci/check_google_command_native.py"),
+        OsStr::new("--binary"),
+        binary.as_os_str(),
+    ]);
+    run_command(command, "native Google command smoke (offline preview)")
 }
 
 fn launch_debug_app(app_args: &[String]) -> TaskResult {

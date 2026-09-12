@@ -5,14 +5,20 @@
 //! renderer backends, or platform-specific windowing code.
 
 pub mod api;
+pub mod browser_search;
 pub mod builtins;
+pub(crate) mod cli_process;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connections;
+pub mod desktop_open;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ecosystem;
 #[doc(hidden)]
 pub mod export;
 pub mod ghostty_migration;
+pub mod google;
+#[doc(hidden)]
+pub mod local_tools;
 pub mod marketplace;
 pub mod migration;
 #[cfg(not(target_arch = "wasm32"))]

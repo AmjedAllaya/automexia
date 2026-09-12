@@ -12,6 +12,32 @@ set -g AUTOMEXIA_FISH_INTEGRATION_LOADED 1
 set -gx AUTOMEXIA_SHELL_INTEGRATION 1
 set -gx TERM_PROGRAM Automexia
 set -gx COLORTERM truecolor
+if not set -q AUTOMEXIA_AMX; or test "$AUTOMEXIA_AMX" != 0
+    if not functions -q amx
+        function amx --description 'Automexia commands, including google search'
+            set -l binary (command -s amx)
+            if test (count $binary) -gt 0
+                command "$binary" $argv
+                return $status
+            end
+            if set -q AUTOMEXIA_CLI
+                set binary "$AUTOMEXIA_CLI"
+            end
+            if test (count $binary) -eq 0
+                set binary (command -s automexia)
+            end
+            if test (count $binary) -eq 0; or not test -x "$binary"
+                printf '%s\n' 'amx: Automexia command unavailable; reopen a current Automexia session.' >&2
+                return 127
+            end
+            if string match -q '*.exe' -- "$binary"; and set -q WSL_DISTRO_NAME
+                command "$binary" --amx-wsl-distribution "$WSL_DISTRO_NAME" --amx-wsl-cwd "$PWD" --amx-wsl-path (string join ':' -- $PATH) --amx-wsl-home "$HOME" $argv
+            else
+                command "$binary" $argv
+            end
+        end
+    end
+end
 set -g __automexia_fish_prompt_generation 0
 
 function __automexia_hint_encode --argument-names value

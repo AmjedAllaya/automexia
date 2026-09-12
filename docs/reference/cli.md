@@ -25,6 +25,20 @@ Everything after the explicit program is passed as an exact argument. Do not
 use this option as a replacement for shell pipelines, redirects, aliases,
 functions, or expansion; enter those in the real shell.
 
+## Google search
+
+`automexia search <source> <terms>` supports `google`, `github` (repositories),
+`youtube` and `ddg`. `automexia docs <tool> <terms>` searches Google restricted
+to official documentation for `kubernetes`, `docker`, `rust`, `python`, `git`
+or `terraform`. Both accept `--print-url` before query terms for an offline
+preview. Integrated shells expose the same commands as `amx`. Unknown names
+fail without fallback. See [search examples](../user-guide/google-search.md).
+
+`automexia google <terms>` opens one encoded Google search in the default
+browser. Integrated sessions expose `amx google <terms>` without installing a
+global alias. `--print-url` before the query previews it offline; `--` allows
+leading search operators. See [usage, limits and privacy](../user-guide/google-search.md).
+
 ## Local actions, aliases, packs, and workspaces
 
 These source-owned local command families are part of the free product. Their
@@ -153,3 +167,11 @@ mutating by their nature. Review their current help before use.
 Do not lower storage guards in routine development or CI. See
 [Configuration](../CONFIGURATION.md), [Testing](../TESTING.md), and
 [WSL development](../WSL-DEVELOPMENT.md).
+
+## Local tools
+
+`automexia find file <literal>`, `automexia find text <literal>` and
+`automexia explain <command> [subcommand]` are also available through `amx` in
+integrated shells. `--preview` performs no client execution. See [local tools](../user-guide/local-tools.md)
+for required clients, bounded search semantics, offline cache preparation and
+guest cancellation. These commands do not enable generic Quick Action execution.

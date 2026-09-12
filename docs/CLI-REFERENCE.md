@@ -25,6 +25,20 @@ Everything after the explicit program is passed as an exact argument. Do not
 use this option as a replacement for shell pipelines, redirects, aliases,
 functions, or expansion; enter those in the real shell.
 
+## Google search
+
+`automexia search <source> <terms>` supports `google`, `github` (repositories),
+`youtube` and `ddg`. `automexia docs <tool> <terms>` searches Google restricted
+to official documentation for `kubernetes`, `docker`, `rust`, `python`, `git`
+or `terraform`. Both accept `--print-url` before query terms for an offline
+preview. Integrated shells expose the same commands as `amx`. Unknown names
+fail without fallback. See [search examples](user-guide/google-search.md).
+
+`automexia google <terms>` opens one encoded Google search in the default
+browser. Integrated sessions expose `amx google <terms>` without installing a
+global alias. `--print-url` before the query previews it offline; `--` allows
+leading search operators. See [usage, limits and privacy](user-guide/google-search.md).
+
 ## Local actions, aliases, packs, and workspaces
 
 These source-owned local command families are part of the free product. Their
@@ -184,3 +198,13 @@ CP3.2 pack commands list, inspect, preview, verify, enable, disable, and remove
 reviewed static candidates without implicit activation. CP3.3 import and
 workspace commands produce bounded candidates only; read paths never start a
 provider, network connection, task, terminal session, or action.
+
+## Explicit local tools
+
+`automexia find file <literal>` and `automexia find text <literal>` search the current
+directory subtree using installed ripgrep. `automexia explain <command> [subcommand]`
+displays offline tealdeer examples without executing them. Each accepts
+`--preview` to show exact arguments without launching its client. Missing tools
+are never installed automatically. Integrated shells expose these through `amx`.
+See [limits, privacy, cancellation and WSL
+requirements](user-guide/local-tools.md).

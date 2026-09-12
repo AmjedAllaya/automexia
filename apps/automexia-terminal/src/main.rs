@@ -110,11 +110,27 @@ pub fn setup_environment_variables(config: &rio_backend::config::Config) {
 
 fn execute_cli_command(
     command: &cli::CliCommand,
+    session: &automexia::local_tools::ToolSession,
 ) -> Result<(), Box<dyn std::error::Error>> {
     use automexia::shell_integration::{self, PersistentOperation};
     use cli::{CliCommand, ShellIntegrationAction};
 
     match command {
+        CliCommand::Google(command) => {
+            automexia::google::execute(command).map_err(Into::into)
+        }
+        CliCommand::Search(command) => {
+            automexia::browser_search::execute(command, false).map_err(Into::into)
+        }
+        CliCommand::Docs(command) => {
+            automexia::browser_search::execute(command, true).map_err(Into::into)
+        }
+        CliCommand::Find(command) => {
+            automexia::local_tools::execute_find(command, session).map_err(Into::into)
+        }
+        CliCommand::Explain(command) => {
+            automexia::local_tools::execute_explain(command, session).map_err(Into::into)
+        }
         CliCommand::ShellIntegration(command) => match &command.action {
             ShellIntegrationAction::Doctor => {
                 println!("{}", shell_integration::status());
@@ -550,7 +566,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     if let Some(command) = &args.command {
-        let result = execute_cli_command(command);
+        let result = execute_cli_command(command, &args.tool_session);
         #[cfg(windows)]
         unsafe {
             FreeConsole();

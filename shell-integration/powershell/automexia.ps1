@@ -16,6 +16,27 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $env:TERM_PROGRAM = 'Automexia'
     $env:AUTOMEXIA_SHELL_INTEGRATION = '1'
 
+    if ($env:AUTOMEXIA_AMX -ne '0' -and
+        -not (Test-Path Alias:amx) -and -not (Test-Path Function:amx)) {
+        function global:amx {
+            # Application discovery is deferred until the user invokes amx.
+            $existing = Get-Command amx -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+            $program = if ($existing) { $existing.Source } else { $env:AUTOMEXIA_CLI }
+            if (-not $program) {
+                $installed = Get-Command automexia -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
+                if ($installed) { $program = $installed.Source }
+            }
+            if (-not $program -or -not (Test-Path -LiteralPath $program -PathType Leaf)) {
+                $global:LASTEXITCODE = 127
+                Write-Error 'amx: Automexia command unavailable; reopen a current Automexia session.'
+                return
+            }
+            # Wait for the GUI-subsystem CLI without consuming its output:
+            # callers can still capture or redirect it like any native command.
+            & $program @args | ForEach-Object { $_ }
+        }
+    }
+
     $script:AutomexiaCmdExecutable = if ($env:ComSpec) {
         $env:ComSpec
     } else {
