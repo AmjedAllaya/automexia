@@ -153,6 +153,58 @@ fn quick_action_search_and_expansion(criterion: &mut Criterion) {
     });
 }
 
+fn bounded_search_scoring(criterion: &mut Criterion) {
+    let mut group = criterion.benchmark_group("bounded_search_scoring");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    let context = SearchContext {
+        session_id: 7,
+        capsule_revision: 1,
+        workspace_identity: None,
+        workspace_trusted: false,
+        shell: ShellKind::Bash,
+    };
+    for (name, count, padded, query, expected_score) in [
+        ("inventory_1024", 1_024, false, "benchmark 1023", 1432),
+        ("maximum_candidate", 1, true, "ab", -116),
+    ] {
+        let mut actions = automexia_command_productivity::actions::parse_quick_actions(
+            &source_with_actions(count),
+        )
+        .unwrap()
+        .into_document()
+        .actions;
+        if padded {
+            actions[0].display_name = format!("{}b", "a".repeat(4_095));
+        }
+        let index = ActionIndex::build(vec![ActionLayer {
+            identity: LayerIdentity::Session { session_id: 7 },
+            revision: 3,
+            actions,
+        }])
+        .unwrap();
+        group.bench_function(name, |bencher| {
+            bencher.iter(|| {
+                let hits = index.search(black_box(query), black_box(&context)).unwrap();
+                assert_eq!(hits.len(), 1);
+                assert_eq!(hits[0].score, expected_score);
+                assert_eq!(
+                    hits[0].action.id,
+                    if padded {
+                        "benchmark.0000"
+                    } else {
+                        "benchmark.1023"
+                    }
+                );
+                black_box(hits)
+            })
+        });
+    }
+    group.finish();
+}
+
 fn quick_action_projection_compile(criterion: &mut Criterion) {
     use automexia_command_productivity::actions::{
         canonical_projection_source_digest, compile_shell_projection,
@@ -437,6 +489,7 @@ criterion_group!(
     benches,
     quick_action_parsing,
     quick_action_search_and_expansion,
+    bounded_search_scoring,
     context_label_compaction,
     quick_action_projection_compile,
     quick_action_pack_registry,

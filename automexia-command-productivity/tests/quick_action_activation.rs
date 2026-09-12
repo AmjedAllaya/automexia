@@ -7,6 +7,69 @@ use automexia_command_productivity::actions::{
 };
 use std::sync::Arc;
 
+mod search_allocations {
+    use std::{
+        alloc::{GlobalAlloc, Layout, System},
+        cell::Cell,
+    };
+    pub struct Allocator;
+    thread_local! {
+        static ENABLED: Cell<bool> = const { Cell::new(false) };
+        static LARGEST: Cell<usize> = const { Cell::new(0) };
+    }
+    fn record(bytes: usize) {
+        if ENABLED.try_with(Cell::get).unwrap_or(false) {
+            let _ = LARGEST.try_with(|size| size.set(size.get().max(bytes)));
+        }
+    }
+    pub struct Window;
+    impl Window {
+        pub fn start() -> Self {
+            LARGEST.set(0);
+            ENABLED.set(true);
+            Self
+        }
+    }
+    impl Drop for Window {
+        fn drop(&mut self) {
+            ENABLED.set(false);
+        }
+    }
+    pub fn largest() -> usize {
+        LARGEST.get()
+    }
+    pub fn enabled() -> bool {
+        ENABLED.get()
+    }
+    // SAFETY: Test-only accounting neither allocates nor changes System's
+    // pointer/layout contract. Thread-local windows exclude parallel tests.
+    unsafe impl GlobalAlloc for Allocator {
+        unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+            record(layout.size());
+            unsafe { System.alloc(layout) }
+        }
+        unsafe fn alloc_zeroed(&self, layout: Layout) -> *mut u8 {
+            record(layout.size());
+            unsafe { System.alloc_zeroed(layout) }
+        }
+        unsafe fn realloc(
+            &self,
+            pointer: *mut u8,
+            layout: Layout,
+            size: usize,
+        ) -> *mut u8 {
+            record(size);
+            unsafe { System.realloc(pointer, layout, size) }
+        }
+        unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+            unsafe { System.dealloc(pointer, layout) }
+        }
+    }
+}
+
+#[global_allocator]
+static SEARCH_ALLOCATOR: search_allocations::Allocator = search_allocations::Allocator;
+
 fn action(id: &str, scope: ActionScope, shell: ShellKind) -> QuickAction {
     QuickAction {
         id: id.into(),
@@ -328,4 +391,173 @@ fn cached_provider_hits_take_precedence_without_duplicate_rows() {
     assert_eq!(merged[0].source, "Provider capsule");
     assert_eq!(merged[0].source_revision, 9);
     assert_eq!(merged[0].shadowed_count, 4);
+}
+
+fn score_fixture(label: &str) -> (ActionIndex, QuickAction) {
+    let mut candidate =
+        action("search.fixture", ActionScope::GlobalUser, ShellKind::Bash);
+    candidate.display_name = label.into();
+    candidate.description.clear();
+    candidate.tags.clear();
+    let index = ActionIndex::build(vec![ActionLayer {
+        identity: LayerIdentity::GlobalUser,
+        revision: 1,
+        actions: vec![candidate.clone()],
+    }])
+    .unwrap();
+    (index, candidate)
+}
+
+// Deliberately indexed scalar oracle, independent of a streaming scorer. Case
+// folding remains string-level: Greek final sigma depends on its neighbours.
+fn reference_search_score(query: &str, action: &QuickAction) -> Option<i32> {
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Some(0);
+    }
+    [&action.display_name, &action.id, &action.description]
+        .into_iter()
+        .chain(action.tags.iter())
+        .filter_map(|label| {
+            let chars: Vec<_> = label.to_lowercase().chars().collect();
+            let mut start = 0;
+            let mut score = 0;
+            for needle in query.chars() {
+                let found = (start..chars.len()).find(|&index| chars[index] == needle)?;
+                score += 100 - ((found - start).min(90) as i32);
+                if found == 0
+                    || chars[found - 1].is_whitespace()
+                    || ['-', '.', '_', '/'].contains(&chars[found - 1])
+                {
+                    score += 30;
+                }
+                start = found + 1;
+            }
+            Some(score - chars.len().min(256) as i32)
+        })
+        .max()
+}
+
+#[test]
+fn search_preserves_literal_scores_and_contextual_unicode_folding() {
+    for (label, query, expected) in [
+        ("ab", "ab", Some(228)),
+        ("a b", "ab", Some(256)),
+        ("a-b", "ab", Some(256)),
+        ("cab", "ab", Some(196)),
+        ("a🐈b", "ab", Some(226)),
+        ("aaaa", "aa", Some(226)),
+        ("ab", "ba", None),
+        ("ΟΣ", "ς", Some(97)),
+        ("ΟΣ", "σ", None),
+        ("ab", "  ", Some(0)),
+    ] {
+        let (index, _) = score_fixture(label);
+        let hits = index.search(query, &context(ShellKind::Bash)).unwrap();
+        assert_eq!(hits.first().map(|hit| hit.score), expected);
+    }
+}
+
+#[test]
+fn maximum_length_search_avoids_character_tables() {
+    use automexia_command_productivity::actions::MAX_STRING_BYTES;
+    for label in [
+        "a".repeat(MAX_STRING_BYTES),
+        "猫".repeat(MAX_STRING_BYTES / 3),
+    ] {
+        let (index, _) = score_fixture(&label);
+        let query: String = label.chars().take(2).collect();
+        let context = context(ShellKind::Bash);
+        let measured = search_allocations::Window::start();
+        for _ in 0..32 {
+            for query in [&query, &label] {
+                let hits = index.search(std::hint::black_box(query), &context).unwrap();
+                assert_eq!(hits.len(), 1);
+                assert_eq!(
+                    hits[0].score,
+                    (query.chars().count() as i32) * 100 + 30 - 256
+                );
+                std::hint::black_box(hits);
+            }
+        }
+        drop(measured);
+        // Lowercase strings and small result structures fit this ceiling;
+        // materializing 4,096 byte-offset/character pairs does not.
+        assert!(
+            search_allocations::largest() <= MAX_STRING_BYTES * 2,
+            "largest search allocation: {}",
+            search_allocations::largest()
+        );
+        println!(
+            "maximum-input search: largest_allocation_bytes={}",
+            search_allocations::largest()
+        );
+    }
+}
+
+#[test]
+fn search_allocation_guard_detects_temporary_tables_and_resets() {
+    let measured = search_allocations::Window::start();
+    std::hint::black_box(vec![0_u8; std::hint::black_box(16_384)]);
+    drop(measured);
+    assert!(search_allocations::largest() >= 16_384);
+    let failure = std::panic::catch_unwind(|| {
+        let _measured = search_allocations::Window::start();
+        panic!("fictional measurement failure");
+    });
+    assert!(failure.is_err());
+    assert!(!search_allocations::enabled());
+    let measured = search_allocations::Window::start();
+    drop(measured);
+    assert_eq!(search_allocations::largest(), 0);
+}
+
+#[test]
+fn empty_search_preserves_deterministic_ties_and_result_ceiling() {
+    let actions = (0..256)
+        .rev()
+        .map(|number| {
+            let mut value = action(
+                &format!("sort.{number:03}"),
+                ActionScope::GlobalUser,
+                ShellKind::Bash,
+            );
+            value.display_name = "Same label".into();
+            value
+        })
+        .collect();
+    let index = ActionIndex::build(vec![ActionLayer {
+        identity: LayerIdentity::GlobalUser,
+        revision: 1,
+        actions,
+    }])
+    .unwrap();
+    let hits = index.search("", &context(ShellKind::Bash)).unwrap();
+    assert_eq!(hits.len(), 128);
+    for (number, hit) in hits.iter().enumerate() {
+        assert_eq!(hit.action.id, format!("sort.{number:03}"));
+        assert_eq!(hit.score, 0);
+    }
+}
+
+proptest::proptest! {
+    #![proptest_config(proptest::test_runner::Config {
+        cases: 128,
+        rng_seed: proptest::test_runner::RngSeed::Fixed(0x0053_434f_5245),
+        failure_persistence: Some(Box::new(proptest::test_runner::FileFailurePersistence::Direct(
+            "tests/proptest-regressions/search_scores.txt",
+        ))),
+        ..proptest::test_runner::Config::default()
+    })]
+    #[test]
+    fn public_search_matches_independent_scalar_oracle(
+        label in "[abAB ./_éΣΟςσ猫́-]{0,64}",
+        query in "[abAB ./_éΣΟςσ猫́-]{0,8}",
+    ) {
+        let (index, action) = score_fixture(&format!("Name {label}"));
+        let expected = reference_search_score(&query, &action);
+        let hits = index.search(&query, &context(ShellKind::Bash)).unwrap();
+        proptest::prop_assert_eq!(hits.first().map(|hit| hit.score), expected);
+        proptest::prop_assert_eq!(hits.len(), usize::from(expected.is_some()));
+    }
 }

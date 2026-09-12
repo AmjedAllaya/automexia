@@ -429,21 +429,24 @@ fn search_score(query: &str, action: &QuickAction) -> Option<i32> {
 
 fn fuzzy_score(query: &str, candidate: &str) -> Option<i32> {
     let mut score = 0i32;
-    let mut position = 0usize;
-    let chars = candidate.char_indices().collect::<Vec<_>>();
+    let mut remaining = candidate.chars();
+    let mut previous: Option<char> = None;
     for needle in query.chars() {
-        let relative = chars[position..]
-            .iter()
-            .position(|(_, value)| *value == needle)?;
-        let index = position + relative;
-        score += 100 - i32::try_from(relative.min(90)).unwrap_or(90);
-        if index == 0
-            || chars[index - 1].1.is_whitespace()
-            || "-._/".contains(chars[index - 1].1)
-        {
-            score += 30;
+        let mut skipped = 0usize;
+        loop {
+            let value = remaining.next()?;
+            let predecessor = previous.replace(value);
+            if value == needle {
+                score += 100 - i32::try_from(skipped.min(90)).unwrap_or(90);
+                if predecessor
+                    .is_none_or(|value| value.is_whitespace() || "-._/".contains(value))
+                {
+                    score += 30;
+                }
+                break;
+            }
+            skipped += 1;
         }
-        position = index + 1;
     }
     Some(score - i32::try_from(candidate.chars().count().min(256)).unwrap_or(256))
 }
