@@ -537,7 +537,11 @@ cleanup handshake may silently repair or scroll the screen under test.
 Resize regressions must keep the real shell and native PTY alive while changing
 both dimensions. Wait for bounded native acknowledgments after every resize;
 include long padded table rows exceeding viewport height, not only short sentinel
-lines. Assert exact row contents, order and uniqueness after shrinking and
+lines. Include consecutive mixed-axis transitions, one/two-cell viewports,
+large restoration and fixed-seed sequences, not only independent shrink/restore
+pairs. Check native space-filled rows below the cursor and former padded seams
+that move entirely into history; preserve soft wraps and intentional separators.
+Assert exact row contents, order and uniqueness after shrinking and
 restoring, and distinguish native hard-line fill from Unix explicit spaces and
 forced wraps. Stress entrypoints must execute their integration/native binaries,
 not just library name filters; mutation-test dispatch and failure propagation.

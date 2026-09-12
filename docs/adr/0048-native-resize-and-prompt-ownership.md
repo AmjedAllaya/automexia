@@ -113,6 +113,69 @@ This stays in the existing process adapter, not the renderer or an extension.
 Primary evidence: [PSReadLine render optimization](https://github.com/PowerShell/PSReadLine/blob/v2.4.5/PSReadLine/Render.cs)
 and [interactive input lifecycle](https://github.com/PowerShell/PSReadLine/blob/v2.4.5/PSReadLine/ReadLine.cs).
 
+## Multi-column history seams and exact cursor margins
+
+Native WSL/eza tests reproduced lost inter-column spaces when a wrapped row
+crossed the history/live seam. Temporarily clearing its wrap flag allowed
+hard-line padding removal to discard real column cells. The existing reflow
+passes now partition at that seam without clearing its wrap identity and track
+its final content cell alongside selection and viewport points. Only newly
+added fill is marked as non-content padding. This adds one fixed-size, frame-local
+point, no persistent cache, worker, process, per-cell identity or dependency.
+
+A second native failure occurred when the cursor column exactly equalled the
+new width. ConPTY reserves the blank cell under its cursor and wraps it onto the
+next row; substituting Unix delayed-wrap behavior changed the native viewport
+origin and let repaint overwrite adjacent text. The native policy now includes
+that exact-boundary cell; Unix delayed-wrap behavior remains unchanged.
+Copying all-blank soft-wrap fragments also retains their spacing instead of
+inserting newlines. Intentional hard blank lines remain distinct.
+
+The independent oracles are exact retained text, per-filename uniqueness,
+original column positions, pre-resize selection, cursor position, history bounds
+and controlled CPU pixels after the suffix enters history. The live WSL test
+uses installed eza with 28 fictional filenames, explicit arguments and no user
+profile. Raw adapter, burst and intermediate worker commits cover 48 transitions
+at two viewport heights, preceded by a no-resize acknowledgment check. The
+existing workspace `tempfile` library is reused only as a Windows test dependency:
+explicit workspace-local roots, cleanup on unwind and checked `TempDir::close`
+replace fixture-owned shell cleanup. No resolved dependency version or shipped
+binary dependency changes. See the [cleanup contract](https://docs.rs/tempfile/latest/tempfile/struct.TempDir.html).
+
+Native reference: [row width measurement](https://github.com/microsoft/terminal/blob/main/src/buffer/out/Row.cpp)
+preserves forced-wrap width; [buffer reflow](https://github.com/microsoft/terminal/blob/main/src/buffer/out/textBuffer.cpp)
+reserves the cursor cell and preserves the mutable viewport boundary. The fix
+extends the existing core owner, not the listing adapter or an extension. Hiding
+icons, caching output or rerunning user commands would not correct these contracts.
+
+## Extreme mixed-dimension resize ordering
+
+Fixed-seed live WSL/eza sequences exposed cases absent from independent
+shrink/restore pairs. A wider but shorter viewport must join its wrapped live
+rows before removing rows. Reducing height first archives a prefix which the
+native repaint then duplicates. The core native policy now defers height
+reduction until column reflow and live-origin reconciliation complete. Unix
+policy and height-only changes retain their existing ordering.
+
+ConPTY also paints unused rows below its cursor with spaces. Their lack of
+visible content must use the same predicate as native hard-line trimming, not
+the erased-cell-only predicate. Unicode extras, wide cells and intentional
+prompt separators are not disposable native fill.
+
+A former history/live seam can become entirely historical and shorter than a
+later width. Extending that short row now preserves its soft-wrap marker and
+marks only newly added fill as non-content. Otherwise a filename can acquire a
+hard break and lose its column placement. Both column directions use the same
+private row-extension mechanism; no output cache or second state owner is added.
+
+Evidence owners include live fixed-seed sequences, deterministic byte-fragmented
+native replays, exact copied text and cursor assertions, restored live/history
+CPU pixels, and the correctness-checked extreme replay benchmark. The campaign
+uses one- and two-cell dimensions, long fictional names with file/directory
+icons, consecutive mixed-axis changes, and restoration through 512 by 96 cells.
+Native desktop gestures, GPU drivers and assistive technology remain separate
+gates. This is not a guarantee for every possible viewport or platform.
+
 ## Alternatives and evidence
 
 ### Native lifetime and final output

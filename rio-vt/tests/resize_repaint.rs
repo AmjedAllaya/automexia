@@ -128,6 +128,201 @@ fn native_padded_table_repaint_matches_the_retained_viewport() {
 }
 
 #[test]
+fn native_wider_shorter_resize_does_not_archive_a_live_prompt_fragment() {
+    let (mut terminal, _) = terminal(ResizePolicy::Conpty, 146, 16);
+    let output: Vec<_> = (1..=14).map(|index| format!(
+        "ROW-{index:02}  folder-{index:02}                          document-{index:02}.txt"
+    )).collect();
+    let mut parser = Processor::default();
+    parser.advance(&mut terminal, &fixture(&output));
+    let before = copy_all(&mut terminal);
+    let find_row = |needle: &str| {
+        (terminal.grid.topmost_line().0..=terminal.grid.bottommost_line().0)
+            .map(Line)
+            .find(|line| {
+                terminal.grid[*line]
+                    .inner
+                    .iter()
+                    .map(|cell| cell.c())
+                    .collect::<String>()
+                    .starts_with(needle)
+            })
+            .expect("parser-created table row")
+    };
+    let mut selected = Selection::new(
+        SelectionType::Simple,
+        Pos::new(find_row("ROW-01"), Column(0)),
+        Side::Left,
+    );
+    selected.update(
+        Pos::new(find_row("ROW-14"), Column(output[13].chars().count() - 1)),
+        Side::Right,
+    );
+    terminal.selection = Some(selected);
+    let selected_text = output.join("\n");
+    terminal.resize(CrosswordsSize::new(2, 24));
+    assert_eq!(copy_all(&mut terminal), before);
+    assert_eq!(
+        terminal.selection_to_string().as_deref(),
+        Some(selected_text.as_str())
+    );
+    terminal.resize(CrosswordsSize::new(16, 3));
+    // Real ConPTY redraw observed after 2x24 -> 16x3. Widening fits the
+    // three prompt rows before height reduction; no prefix enters history.
+    for byte in
+        b"\x1b[?25l\x1b[H\x1b[K\r\n/example        \r\nlambda\x1b[K\x1b[1C\x1b[?25h"
+    {
+        parser.advance(&mut terminal, &[*byte]);
+    }
+    assert_eq!(copy_all(&mut terminal), before);
+    terminal.resize(CrosswordsSize::new(146, 16));
+    assert_eq!(copy_all(&mut terminal), before);
+    assert_eq!(
+        terminal.selection_to_string().as_deref(),
+        Some(selected_text.as_str())
+    );
+    assert_result_ownership(&terminal);
+}
+
+#[test]
+fn native_narrower_shorter_resize_does_not_archive_a_live_prompt_prefix() {
+    let (mut terminal, _) = terminal(ResizePolicy::Conpty, 8, 96);
+    let mut parser = Processor::default();
+    // ConPTY fills unused rows with printed spaces, not erased NUL cells.
+    // Preserve the real cursor above that fill before shrinking both axes.
+    parser.advance(
+        &mut terminal,
+        format!("lambda  \r\n{}        \x1b[1;8H", "        \r\n".repeat(94)).as_bytes(),
+    );
+    let before = copy_all(&mut terminal);
+    assert_eq!(before, "lambda");
+    terminal.resize(CrosswordsSize::new(4, 2));
+    assert_eq!(terminal.grid.cursor.pos, Pos::new(Line(1), Column(3)));
+    for byte in b"\x1b[?25l\x1b[Hlambda  \x1b[2;4H\x1b[?25h" {
+        parser.advance(&mut terminal, &[*byte]);
+    }
+    assert_eq!(copy_all(&mut terminal), before);
+}
+
+#[test]
+fn former_native_seam_short_fragment_keeps_its_soft_wrap() {
+    let (mut terminal, _) = terminal(ResizePolicy::Conpty, 9, 8);
+    let prefix = "xxxxxx   ".repeat(6);
+    let mut parser = Processor::default();
+    parser.advance(
+        &mut terminal,
+        format!("{prefix}tail\r\n{}", "\r\n".repeat(6)).as_bytes(),
+    );
+    terminal.resize(CrosswordsSize::new(100, 8));
+    terminal.resize(CrosswordsSize::new(53, 8));
+    parser.advance(&mut terminal, "after\r\n".repeat(8).as_bytes());
+    let expected = format!("{prefix}tail{}{}", "\n".repeat(7), "after\n".repeat(8));
+    assert_eq!(copy_all(&mut terminal), expected.trim_end_matches('\n'));
+    // The old seam now lives wholly in history. Its one-cell remainder fits
+    // the new width, but must not turn into a hard line when filled to eight.
+    terminal.resize(CrosswordsSize::new(8, 8));
+    assert_eq!(copy_all(&mut terminal), expected.trim_end_matches('\n'));
+    terminal.resize(CrosswordsSize::new(100, 8));
+    assert_eq!(copy_all(&mut terminal), expected.trim_end_matches('\n'));
+}
+
+#[test]
+fn native_cursor_at_new_margin_reserves_the_next_live_cell() {
+    for columns in [2, 7, 8, 16, 32] {
+        let (mut terminal, _) = terminal(ResizePolicy::Conpty, 100, 8);
+        Processor::default()
+            .advance(&mut terminal, format!("x\x1b[{}G", columns + 1).as_bytes());
+        terminal.resize(CrosswordsSize::new(columns, 8));
+        assert_eq!(
+            terminal.grid.cursor.pos,
+            rio_vt::crosswords::pos::Pos::new(Line(1), Column(0))
+        );
+        assert!(
+            !terminal.grid.cursor.should_wrap,
+            "native cursor occupies a real blank cell"
+        );
+    }
+}
+
+#[test]
+fn native_history_seam_retains_intercolumn_spaces() {
+    for gap in [1, 3, 8] {
+        let prefix = format!("{}{}", "x".repeat(9 - gap), " ".repeat(gap)).repeat(6);
+        let (mut terminal, _) = terminal(ResizePolicy::Conpty, 9, 8);
+        // The six wrapped prefix rows enter history; the native repaint owns
+        // only the live suffix. Spaces at that seam are table cells, not fill.
+        Processor::default().advance(
+            &mut terminal,
+            format!("{prefix}tail\r\n{}", "\r\n".repeat(6)).as_bytes(),
+        );
+        assert!(terminal.grid[Line(-1)][Column(8)].wrapline());
+        let before = copy_all(&mut terminal);
+        assert_eq!(before, format!("{prefix}tail"));
+        for width in [100, 9, 32, 9, 8, 9, 10, 9].into_iter().cycle().take(256) {
+            terminal.resize(CrosswordsSize::new(width, 8));
+            assert_eq!(
+                copy_all(&mut terminal),
+                before,
+                "seam gap {gap}, width {width}"
+            );
+            assert!(
+                terminal.grid.history_size() < 64,
+                "seam reflow stays bounded"
+            );
+        }
+    }
+}
+
+#[test]
+fn copying_blank_soft_wrap_fragments_preserves_gaps_not_extra_newlines() {
+    for policy in [ResizePolicy::Reflow, ResizePolicy::Conpty] {
+        for spaces in [0, 1, 7, 8, 9, 10, 18, 27] {
+            let (mut terminal, _) = terminal(policy, 9, 8);
+            let line = format!("left{}right", " ".repeat(spaces));
+            Processor::default()
+                .advance(&mut terminal, format!("{line}\r\n\r\nend").as_bytes());
+            assert_eq!(
+                copy_all(&mut terminal),
+                format!("{line}\n\nend"),
+                "{policy:?}, {spaces} spaces"
+            );
+        }
+    }
+}
+
+#[test]
+fn native_seam_erased_gaps_and_retained_selection_keep_their_cell_extent() {
+    let (mut terminal, _) = terminal(ResizePolicy::Conpty, 9, 8);
+    let input = format!(
+        "{}tail\r\n{}",
+        "x\x1b[7X\x1b[7C ".repeat(6),
+        "\r\n".repeat(6)
+    );
+    let mut parser = Processor::default();
+    for byte in input.as_bytes() {
+        parser.advance(&mut terminal, &[*byte]);
+    }
+    let expected = format!("{}tail", "x        ".repeat(6));
+    assert_eq!(copy_all(&mut terminal), expected);
+    let mut selection = Selection::new(
+        SelectionType::Simple,
+        Pos::new(terminal.grid.topmost_line(), Column(0)),
+        Side::Left,
+    );
+    selection.update(Pos::new(Line(0), Column(3)), Side::Right);
+    terminal.selection = Some(selection);
+    for width in [100, 9, 16, 9] {
+        terminal.resize(CrosswordsSize::new(width, 8));
+        assert_eq!(
+            terminal.selection_to_string().as_deref(),
+            Some(expected.as_str()),
+            "selection across erased seam gaps"
+        );
+        assert_eq!(copy_all(&mut terminal), expected);
+    }
+}
+
+#[test]
 fn table_roundtrips_preserve_text_blanks_styles_and_unicode_at_history_boundaries() {
     for policy in [ResizePolicy::Reflow, ResizePolicy::Conpty] {
         for count in [1, 8, 23, 24, 25, 32] {

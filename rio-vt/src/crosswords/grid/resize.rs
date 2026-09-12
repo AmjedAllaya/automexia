@@ -10,6 +10,9 @@ use crate::crosswords::Row;
 use std::cmp::{max, min, Ordering};
 use std::mem;
 
+// Selection endpoints, visible anchor, native viewport start and seam end.
+const REFLOW_POINTS: usize = 5;
+
 impl Grid<Square> {
     /// Resize the grid's width and/or height.
     pub fn resize(&mut self, reflow: bool, lines: usize, columns: usize) {
@@ -39,6 +42,12 @@ impl Grid<Square> {
         // Use empty template cell for resetting cells due to resize.
         let template = mem::take(&mut self.cursor.template);
 
+        // Reflow a native live viewport before removing its bottom rows.
+        // Shrinking height first archives prefixes which ConPTY keeps live
+        // after either joining or wrapping columns; its repaint duplicates them.
+        let defer_native_shrink =
+            preserve_history && reflow && columns != self.columns && lines < self.lines;
+
         // A numeric distance from the live bottom is not a content anchor:
         // reflow may add/remove rows anywhere below the first visible cell.
         // Track that cell in the same transaction as the selection endpoints.
@@ -46,7 +55,7 @@ impl Grid<Square> {
             .then(|| Pos::new(Line(-(self.display_offset as i32)), Column(0)));
         let native_top =
             (reflow && preserve_history).then_some(Pos::new(Line(0), Column(0)));
-        let mut tracked = [points[0], points[1], viewport, native_top];
+        let mut tracked = [points[0], points[1], viewport, native_top, None];
 
         // Only the column passes below produce a row remap; a stale
         // one from an earlier resize must not leak through.
@@ -58,6 +67,8 @@ impl Grid<Square> {
             } else {
                 min(lines - self.lines, self.history_size()) as i32
             }
+        } else if defer_native_shrink {
+            0
         } else {
             -((self.cursor.pos.row.0 as usize + 1).saturating_sub(lines) as i32)
         };
@@ -70,7 +81,8 @@ impl Grid<Square> {
 
         match self.lines.cmp(&lines) {
             Ordering::Less => self.grow_lines(lines, preserve_history),
-            Ordering::Greater => self.shrink_lines(lines),
+            Ordering::Greater if !defer_native_shrink => self.shrink_lines(lines),
+            Ordering::Greater => (),
             Ordering::Equal => (),
         }
 
@@ -90,17 +102,31 @@ impl Grid<Square> {
             tracked[3] = Some(Pos::new(Line(0), Column(0)));
         }
         if native_seam {
-            let last = self.last_column();
-            self[Line(-1)][last].set_wrapline(false);
+            // Keep the wrap identity while partitioning the reflow passes.
+            // Clearing it would let native hard-line trimming erase real spaces
+            // (including erased cells) between table columns. Track the extent
+            // independently so only newly added fill becomes REFLOW_PADDING.
+            let end = self[Line(-1)].line_length().0;
+            tracked[4] = end
+                .checked_sub(1)
+                .map(|col| Pos::new(Line(-1), Column(col)));
         }
 
         match self.columns.cmp(&columns) {
-            Ordering::Less => {
-                self.grow_columns(reflow, columns, &mut tracked, preserve_history)
-            }
-            Ordering::Greater => {
-                self.shrink_columns(reflow, columns, &mut tracked, preserve_history)
-            }
+            Ordering::Less => self.grow_columns(
+                reflow,
+                columns,
+                &mut tracked,
+                preserve_history,
+                native_seam,
+            ),
+            Ordering::Greater => self.shrink_columns(
+                reflow,
+                columns,
+                &mut tracked,
+                preserve_history,
+                native_seam,
+            ),
             Ordering::Equal => (),
         }
 
@@ -115,7 +141,11 @@ impl Grid<Square> {
                 // previous native viewport, never older retained history.
                 let blank_tail = (self.cursor.pos.row.0 as usize + 1..self.lines)
                     .rev()
-                    .take_while(|line| self[Line(*line as i32)].is_clear())
+                    .take_while(|line| {
+                        let row = &self[Line(*line as i32)];
+                        row.semantic_prompt != SemanticPrompt::Prompt
+                            && native_row_content_end(row) == 0
+                    })
                     .count();
                 let pull =
                     min((-top.row.0) as usize, min(blank_tail, self.history_size()));
@@ -143,12 +173,20 @@ impl Grid<Square> {
             }
         }
 
+        if defer_native_shrink {
+            let shift = (self.cursor.pos.row.0 as usize + 1).saturating_sub(lines);
+            self.shrink_lines(lines);
+            for point in tracked.iter_mut().flatten() {
+                point.row -= shift;
+            }
+        }
+
         if native_seam {
-            if let Some(top) = tracked[3] {
-                let previous = top.row - 1i32;
-                if previous >= self.topmost_line() {
-                    let row = &mut self[previous];
-                    let end = row.line_length().0;
+            if let Some(last_content) = tracked[4] {
+                if last_content.row >= self.topmost_line() {
+                    let row = &mut self[last_content.row];
+                    let end = last_content.col.0 + 1;
+                    row[last_content.col].set_wrapline(false);
                     for cell in &mut row.inner[end..] {
                         cell.insert_cell_flag(CellFlags::REFLOW_PADDING);
                     }
@@ -251,8 +289,9 @@ impl Grid<Square> {
         &mut self,
         reflow: bool,
         columns: usize,
-        points: &mut [Option<Pos>; 4],
+        points: &mut [Option<Pos>; REFLOW_POINTS],
         native: bool,
+        native_seam: bool,
     ) {
         // Check if a row needs to be wrapped.
         let should_reflow = |row: &Row<Square>| -> bool {
@@ -326,7 +365,12 @@ impl Grid<Square> {
 
             // Check if reflowing should be performed.
             let last_row = match reversed.last_mut() {
-                Some(last_row) if should_reflow(last_row) => last_row,
+                Some(last_row)
+                    if should_reflow(last_row)
+                        && !(native_seam && i == self.lines - 1) =>
+                {
+                    last_row
+                }
                 _ => {
                     point_remap.finish_row(reversed.len(), row.len());
                     reversed.push(row);
@@ -516,7 +560,7 @@ impl Grid<Square> {
         reversed.reverse();
         for row in reversed.iter_mut() {
             if row.len() < columns {
-                row.grow(columns);
+                extend_reflow_row(row, columns);
             }
         }
 
@@ -534,8 +578,9 @@ impl Grid<Square> {
         &mut self,
         reflow: bool,
         columns: usize,
-        points: &mut [Option<Pos>; 4],
+        points: &mut [Option<Pos>; REFLOW_POINTS],
         native: bool,
+        native_seam: bool,
     ) {
         // Fast path: if no row has occupied content beyond `columns` there is
         // nothing to wrap down, so shrinking is a per-row truncation of
@@ -546,8 +591,12 @@ impl Grid<Square> {
         // path builds).
         let effective_cursor_col =
             self.cursor.pos.col.0 + usize::from(self.cursor.should_wrap && reflow);
+        // ConPTY reserves the cell under its cursor, even when that blank cell
+        // lands on the next row. Unix retains its existing delayed-wrap policy.
         if !self.track_reflow_remap
-            && (!reflow || effective_cursor_col <= columns)
+            && (!reflow
+                || effective_cursor_col < columns
+                || (!native && effective_cursor_col == columns))
             && self.raw.rows().all(|row| row.occ <= columns)
         {
             self.columns = columns;
@@ -651,14 +700,15 @@ impl Grid<Square> {
                             self.lines - self.cursor.pos.row.0 as usize - 1;
                         if reflow
                             && i == cursor_buffer_line
-                            && self.cursor.pos.col > columns
+                            && (self.cursor.pos.col > columns
+                                || (native && self.cursor.pos.col == columns))
                         {
                             // If there are empty cells before the cursor, we assume it is explicit
                             // whitespace and need to wrap it like normal content.
                             Vec::new()
                         } else {
                             // Since it fits, just push the existing line without any reflow.
-                            row.grow(columns);
+                            extend_reflow_row(&mut row, columns);
                             point_remap.finish_row(new_raw.len(), row.len());
                             new_raw.push(row);
                             if let Some(r) = remap.as_mut() {
@@ -767,6 +817,7 @@ impl Grid<Square> {
                     .map(|c| c.wrapline() && i >= 1)
                     .unwrap_or(false)
                     && wrapped.len() < columns
+                    && !(native_seam && i == self.lines)
                 {
                     // Make sure previous wrap flag doesn't linger around.
                     if let Some(cell) = wrapped.last_mut() {
@@ -851,21 +902,21 @@ impl Grid<Square> {
 /// follow the cell stream only while a row is split or merged; no text search,
 /// persistent cell identity, or duplicate grid is involved.
 struct PointReflow {
-    source: [Option<(usize, usize)>; 4],
-    pending: [Option<usize>; 4],
-    output: [Option<(usize, usize)>; 4],
+    source: [Option<(usize, usize)>; REFLOW_POINTS],
+    pending: [Option<usize>; REFLOW_POINTS],
+    output: [Option<(usize, usize)>; REFLOW_POINTS],
 }
 
 impl PointReflow {
-    fn new(points: [Option<Pos>; 4], history: usize) -> Self {
+    fn new(points: [Option<Pos>; REFLOW_POINTS], history: usize) -> Self {
         Self {
             source: points.map(|point| {
                 point.map(|point| {
                     ((point.row.0 as i64 + history as i64) as usize, point.col.0)
                 })
             }),
-            pending: [None; 4],
-            output: [None; 4],
+            pending: [None; REFLOW_POINTS],
+            output: [None; REFLOW_POINTS],
         }
     }
 
@@ -897,7 +948,7 @@ impl PointReflow {
     }
 
     fn discard_pending(&mut self) {
-        self.pending = [None; 4];
+        self.pending = [None; REFLOW_POINTS];
     }
 
     fn retain_pending(&mut self, len: usize) {
@@ -924,7 +975,12 @@ impl PointReflow {
         }
     }
 
-    fn finish(self, retained: usize, visible: usize, evicted: usize) -> [Option<Pos>; 4] {
+    fn finish(
+        self,
+        retained: usize,
+        visible: usize,
+        evicted: usize,
+    ) -> [Option<Pos>; REFLOW_POINTS] {
         self.output.map(|point| {
             let (row, column) = point?;
             let row = row.checked_sub(evicted)?;
@@ -946,6 +1002,22 @@ fn is_prompt_spacer(row: &Row<Square>) -> bool {
             .all(|square| square.is_bg_only() || matches!(square.c(), '\0' | ' '))
 }
 
+// A former native seam can be wholly in history and shorter than the new
+// width after trimming. Extending it must retain both the logical continuation
+// and the non-content nature of its fill, even when no split is necessary.
+fn extend_reflow_row(row: &mut Row<Square>, columns: usize) {
+    let len = row.len();
+    let wrapped = row.last().is_some_and(|cell| cell.wrapline());
+    row.grow(columns);
+    if wrapped && len < columns {
+        row[Column(len - 1)].set_wrapline(false);
+        for cell in &mut row.inner[len..] {
+            cell.insert_cell_flag(CellFlags::REFLOW_PADDING);
+        }
+        row[Column(columns - 1)].set_wrapline(true);
+    }
+}
+
 // ConPTY serializes hard-line fill as spaces, but its reflow measures through
 // the last non-space glyph (or the cursor). Treating that fill as Unix explicit
 // whitespace creates extra rows and makes the native repaint overwrite history.
@@ -954,18 +1026,24 @@ fn trim_native_row_padding(row: &mut Row<Square>, cursor: Option<usize>) {
     if row.last().is_some_and(|cell| cell.wrapline()) {
         return;
     }
-    let end = row
-        .inner
+    let end = native_row_content_end(row)
+        .max(cursor.map_or(0, |column| column + 1))
+        .max(1);
+    row.inner.truncate(end);
+    row.occ = row.occ.min(row.len());
+}
+
+// Use one definition for hard-line trimming and unused rows below the native
+// cursor. ConPTY can paint those rows with spaces instead of erased cells.
+fn native_row_content_end(row: &Row<Square>) -> usize {
+    row.inner
         .iter()
         .rposition(|cell| {
             !matches!(cell.c(), '\0' | ' ')
                 || cell.has_extras()
                 || !matches!(cell.wide(), Wide::Narrow)
         })
-        .map_or(0, |index| index + 1);
-    let end = end.max(cursor.map_or(0, |column| column + 1)).max(1);
-    row.inner.truncate(end);
-    row.occ = row.occ.min(row.len());
+        .map_or(0, |index| index + 1)
 }
 
 fn trim_reflow_padding(row: &mut Row<Square>) {

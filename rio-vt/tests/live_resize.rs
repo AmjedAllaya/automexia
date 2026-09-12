@@ -71,7 +71,9 @@ fn logical_rows<U: rio_vt::event::EventListener>(
             if !cell
                 .contains_cell_flag(rio_vt::crosswords::square::CellFlags::REFLOW_PADDING)
             {
-                text.push(cell.c());
+                // Erased cells and printed spaces have identical cell geometry.
+                // Keep one character per cell; never collapse inter-column gaps.
+                text.push(if cell.c() == '\0' { ' ' } else { cell.c() });
             }
         }
         if !row[Column(terminal.columns() - 1)].wrapline() {
@@ -278,6 +280,23 @@ fn run_worker_output_fixture(
     expected: &[String],
     exit_input: ExitInput,
 ) {
+    let sizes: Vec<_> = [(16, 10), (146, 28), (60, 8), (100, 24), (80, 12), (146, 28)]
+        .into_iter()
+        .cycle()
+        .take(12)
+        .collect();
+    run_worker_output_sizes(shell, arguments, delivery, expected, exit_input, &sizes);
+}
+
+#[cfg(windows)]
+fn run_worker_output_sizes(
+    shell: &str,
+    arguments: Vec<String>,
+    delivery: ResizeDelivery,
+    expected: &[String],
+    exit_input: ExitInput,
+    sizes: &[(usize, usize)],
+) {
     use rio_vt::event::sync::FairMutex;
     use rio_vt::event::{EventListener, Msg, RioEvent, WindowSize};
     use rio_vt::performer::Machine;
@@ -307,14 +326,23 @@ fn run_worker_output_fixture(
         }
     }
     let line_input = arguments.last().is_some_and(|arg| arg == "line");
-    let pty = teletypewriter::create_pty(Some(shell), arguments, &None, None, 100, 24)
-        .unwrap_or_else(|_| panic!("worker fixture launch"));
+    let baseline_probe = arguments.iter().any(|arg| arg == "scan");
+    let (initial_cols, initial_rows) = fixture_initial_size(&arguments);
+    let pty = teletypewriter::create_pty(
+        Some(shell),
+        arguments,
+        &None,
+        None,
+        initial_cols as u16,
+        initial_rows as u16,
+    )
+    .unwrap_or_else(|_| panic!("worker fixture launch"));
     let child_exit = observed_pty::ChildExitProbe::new(&pty);
     let (pty, observation) = observed_pty::ObservedPty::new(pty);
     let (sender, receiver) = mpsc::sync_channel(32);
     let events = Events(sender);
     let terminal = Arc::new(FairMutex::new(Crosswords::new(
-        CrosswordsSize::new(100, 24),
+        CrosswordsSize::new(initial_cols, initial_rows),
         CursorShape::Block,
         events.clone(),
         WindowId::from(0),
@@ -334,13 +362,44 @@ fn run_worker_output_fixture(
             .expect("native worker ready"),
         "RESIZE-READY"
     );
-    for (step, (cols, rows)) in
-        [(16, 10), (146, 28), (60, 8), (100, 24), (80, 12), (146, 28)]
-            .into_iter()
-            .cycle()
-            .take(12)
-            .enumerate()
-    {
+    if baseline_probe {
+        let (before, cursor, probe) = {
+            let terminal = terminal.lock();
+            (
+                logical_rows(&terminal),
+                (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap),
+                fixture_probe(shell, &terminal),
+            )
+        };
+        worker
+            .sender
+            .send(Msg::Input(std::borrow::Cow::Borrowed(probe)))
+            .expect("worker baseline probe");
+        assert_eq!(
+            receiver
+                .recv_timeout(Duration::from_secs(20))
+                .expect("worker baseline"),
+            "RESIZE-BASELINE"
+        );
+        let terminal = terminal.lock();
+        assert_eq!(
+            logical_rows(&terminal),
+            before,
+            "worker probe cannot repair output"
+        );
+        assert_eq!(
+            (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap),
+            cursor
+        );
+    }
+    let listing;
+    let expected = if expected.is_empty() {
+        listing = listing_rows(&logical_rows(&terminal.lock()));
+        listing.as_slice()
+    } else {
+        expected
+    };
+    for (step, (cols, rows)) in sizes.iter().copied().enumerate() {
         for (cols, rows) in [(cols, rows), (100, 24), (cols, rows)] {
             terminal.lock().resize(CrosswordsSize::new(cols, rows));
             worker
@@ -388,11 +447,7 @@ fn run_worker_output_fixture(
             format!("RESIZE-ACK-{step}")
         );
         let actual = logical_rows(&terminal.lock());
-        assert_eq!(
-            actual.iter().filter(|row| row.starts_with("ROW-")).count(),
-            expected.len(),
-            "no duplicated table rows"
-        );
+        assert_output_uniqueness(&actual, expected);
         let first = actual
             .iter()
             .position(|row| row == &expected[0])
@@ -578,6 +633,251 @@ fn native_live_wsl_resize_preserves_output_and_prompt_adjacency() {
     );
 }
 
+#[test]
+#[cfg(windows)]
+#[ignore = "requires an explicitly selected installed WSL distribution"]
+fn native_live_wsl_multicolumn_icons_preserve_layout() {
+    let distribution = std::env::var("AUTOMEXIA_TEST_WSL_DISTRIBUTION")
+        .expect("select the isolated WSL test distribution");
+    let path =
+        std::env::var("AUTOMEXIA_TEST_WSL_FIXTURE").expect("select the WSL fixture path");
+    assert!(
+        path.starts_with('/') && path.len() <= 4096 && !path.contains(['\r', '\n', '\0'])
+    );
+    let arguments = vec![
+        "--distribution".into(),
+        distribution,
+        "--exec".into(),
+        "bash".into(),
+        "--noprofile".into(),
+        "--norc".into(),
+        path,
+        "columns".into(),
+    ];
+    let expected: Vec<_> = (1..=32).map(|index| format!(
+        "ROW-{index:02}  \u{f07b} alpha-{index:02}       \u{f19fc} scripts-{index:02}       \u{f15c} document-{index:02}.txt"
+    )).collect();
+    run_fixture_session(
+        "wsl.exe",
+        arguments.clone(),
+        rio_vt::crosswords::ResizePolicy::Conpty,
+        &expected,
+    );
+    for delivery in [ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit] {
+        run_worker_output_fixture(
+            "wsl.exe",
+            arguments.clone(),
+            delivery,
+            &expected,
+            ExitInput::Key,
+        );
+    }
+    let sizes: Vec<_> = [
+        99, 98, 97, 96, 95, 94, 93, 92, 91, 90, 89, 88, 81, 80, 79, 65, 64, 63, 33, 32,
+        31, 17, 16, 15,
+    ]
+    .into_iter()
+    .flat_map(|columns| [(columns, 8), (100, 24)])
+    .collect();
+    let mut arguments = arguments;
+    arguments.push("scan".into());
+    run_fixture_sizes(
+        "wsl.exe",
+        arguments,
+        rio_vt::crosswords::ResizePolicy::Conpty,
+        &expected,
+        &sizes,
+    );
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires an explicitly selected WSL distribution with eza installed"]
+fn native_live_wsl_eza_listing_restores_columns() {
+    let sizes: Vec<_> = [
+        99, 95, 81, 80, 79, 65, 64, 63, 33, 32, 31, 17, 16, 15, 14, 13, 12, 11, 10, 9, 8,
+        7, 4, 2,
+    ]
+    .into_iter()
+    .flat_map(|columns| [(columns, 8), (100, 24)])
+    .collect();
+    for height in [8, 2] {
+        let sizes: Vec<_> = sizes
+            .iter()
+            .map(|&(cols, rows)| (cols, if rows == 8 { height } else { rows }))
+            .collect();
+        run_native_eza_listing(&sizes, "listing");
+    }
+}
+
+#[test]
+#[cfg(windows)]
+#[ignore = "requires an explicitly selected WSL distribution with eza installed"]
+fn native_live_wsl_eza_extreme_resize_restores_columns() {
+    // A drag does not restore the baseline between every intermediate size.
+    // One-cell and large viewports exercise both directions of the live seam.
+    let sizes: Vec<_> = [
+        (1, 1),
+        (2, 1),
+        (1, 2),
+        (7, 3),
+        (3, 2),
+        (17, 4),
+        (2, 2),
+        (81, 8),
+        (4, 1),
+        (146, 28),
+        (512, 96),
+        (146, 16),
+    ]
+    .into_iter()
+    .cycle()
+    .take(48)
+    .collect();
+    run_native_eza_listing(&sizes, "listing-wide");
+    for seed in 1..=8u64 {
+        let mut state = seed;
+        let sizes: Vec<_> = (0..48)
+            .map(|step| {
+                if step == 47 {
+                    return (146, 16);
+                }
+                state = state.wrapping_mul(6364136223846793005).wrapping_add(1);
+                let widths = [
+                    1, 2, 3, 4, 7, 8, 13, 16, 17, 31, 33, 63, 65, 99, 100, 127, 145, 146,
+                    147, 255, 512,
+                ];
+                let heights = [1, 2, 3, 4, 8, 16, 24, 28, 48, 96];
+                (
+                    widths[(state >> 32) as usize % widths.len()],
+                    heights[(state >> 16) as usize % heights.len()],
+                )
+            })
+            .collect();
+        eprintln!("extreme listing seed {seed}");
+        run_native_eza_listing(&sizes, "listing-wide");
+    }
+}
+
+#[cfg(windows)]
+fn run_native_eza_listing(sizes: &[(usize, usize)], mode: &str) {
+    let distribution =
+        std::env::var("AUTOMEXIA_TEST_WSL_DISTRIBUTION").expect("select WSL");
+    let path = std::env::var("AUTOMEXIA_TEST_WSL_FIXTURE").expect("select fixture");
+    assert!(
+        path.starts_with('/') && path.len() <= 4096 && !path.contains(['\r', '\n', '\0'])
+    );
+    let guest_root = path
+        .strip_suffix("/rio-vt/tests/fixtures/live-resize-output.sh")
+        .expect("fixture must be the selected checkout's shell fixture");
+    let scratch = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../target/qa/native-listings");
+    std::fs::create_dir_all(&scratch)
+        .unwrap_or_else(|_| panic!("create fixture scratch"));
+    let directory = tempfile::Builder::new()
+        .prefix("listing-")
+        .tempdir_in(&scratch)
+        .unwrap_or_else(|_| panic!("create isolated listing"));
+    for index in 1..=28 {
+        let name = if mode == "listing-wide" {
+            format!(
+                "entry-{index:02}-{}.{}",
+                "abcdefgh".repeat(index % 5 + 1),
+                ["rs", "md", "zip", "toml"][index % 4]
+            )
+        } else {
+            listing_name(index)
+        };
+        let path = directory.path().join(name);
+        if mode == "listing-wide" && index % 3 == 0 {
+            std::fs::create_dir(path)
+                .unwrap_or_else(|_| panic!("create fictional listing directory"));
+        } else {
+            std::fs::File::create_new(path)
+                .unwrap_or_else(|_| panic!("create fictional listing file"));
+        }
+    }
+    let guest_directory = format!(
+        "{guest_root}/target/qa/native-listings/{}",
+        directory.path().file_name().unwrap().to_str().unwrap()
+    );
+    let arguments = vec![
+        "--distribution".into(),
+        distribution,
+        "--exec".into(),
+        "bash".into(),
+        "--noprofile".into(),
+        "--norc".into(),
+        path,
+        mode.into(),
+        "scan".into(),
+        guest_directory,
+    ];
+    run_fixture_sizes(
+        "wsl.exe",
+        arguments.clone(),
+        rio_vt::crosswords::ResizePolicy::Conpty,
+        &[],
+        sizes,
+    );
+    for delivery in [ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit] {
+        run_worker_output_sizes(
+            "wsl.exe",
+            arguments.clone(),
+            delivery,
+            &[],
+            ExitInput::Key,
+            sizes,
+        );
+    }
+    directory
+        .close()
+        .unwrap_or_else(|_| panic!("listing fixture cleanup"));
+}
+
+#[cfg(windows)]
+fn listing_name(index: usize) -> String {
+    format!("entry-{index:02}-{}.txt", "x".repeat(index % 9))
+}
+
+fn fixture_initial_size(arguments: &[String]) -> (usize, usize) {
+    if arguments.iter().any(|arg| arg == "listing-wide") {
+        (146, 16)
+    } else {
+        (100, 24)
+    }
+}
+
+fn listing_rows(rows: &[String]) -> Vec<String> {
+    let listing: Vec<_> = rows
+        .iter()
+        .filter(|row| row.contains("entry-"))
+        .cloned()
+        .collect();
+    assert!(!listing.is_empty(), "native listing is nonempty");
+    assert_output_uniqueness(rows, &listing);
+    listing
+}
+
+fn assert_output_uniqueness(actual: &[String], expected: &[String]) {
+    if expected[0].starts_with("ROW-") {
+        assert_eq!(
+            actual.iter().filter(|row| row.starts_with("ROW-")).count(),
+            expected.len(),
+            "no duplicated table rows"
+        );
+    } else {
+        let text = actual.join("\n");
+        for index in 1..=28 {
+            assert_eq!(
+                text.matches(&format!("entry-{index:02}-")).count(),
+                1,
+                "no lost or duplicated listing entry {index}"
+            );
+        }
+    }
+}
+
 fn run_fixture(
     shell: &str,
     arguments: Vec<String>,
@@ -624,24 +924,47 @@ fn run_fixture_session(
     policy: rio_vt::crosswords::ResizePolicy,
     expected: &[String],
 ) {
+    let sizes: Vec<_> = [(16, 10), (146, 28), (60, 8), (100, 24), (80, 12), (146, 28)]
+        .into_iter()
+        .cycle()
+        .take(12)
+        .collect();
+    run_fixture_sizes(shell, arguments, policy, expected, &sizes);
+}
+
+fn run_fixture_sizes(
+    shell: &str,
+    arguments: Vec<String>,
+    policy: rio_vt::crosswords::ResizePolicy,
+    expected: &[String],
+    sizes: &[(usize, usize)],
+) {
+    let baseline_probe = arguments.iter().any(|arg| arg == "scan");
+    let (initial_cols, initial_rows) = fixture_initial_size(&arguments);
     #[cfg(windows)]
-    let mut pty =
-        teletypewriter::create_pty(Some(shell), arguments, &None, None, 100, 24)
-            .unwrap_or_else(|_| panic!("native resize fixture launch failed"));
+    let mut pty = teletypewriter::create_pty(
+        Some(shell),
+        arguments,
+        &None,
+        None,
+        initial_cols as u16,
+        initial_rows as u16,
+    )
+    .unwrap_or_else(|_| panic!("native resize fixture launch failed"));
     #[cfg(unix)]
     let mut pty = teletypewriter::create_pty_with_spawn(
         Some(shell),
         arguments,
         &None,
         None,
-        100,
-        24,
+        initial_cols as u16,
+        initial_rows as u16,
         0,
         0,
     )
     .unwrap_or_else(|_| panic!("native resize fixture launch failed"));
     let mut terminal = Crosswords::new(
-        CrosswordsSize::new(100, 24),
+        CrosswordsSize::new(initial_cols, initial_rows),
         CursorShape::Block,
         VoidListener,
         WindowId::from(0),
@@ -651,14 +974,38 @@ fn run_fixture_session(
     let mut parser = Processor::default();
     terminal.set_resize_policy(policy);
     receive_until(&mut pty, &mut terminal, &mut parser, b"RESIZE-READY\x07");
-    for (step, (cols, rows)) in
-        [(16, 10), (146, 28), (60, 8), (100, 24), (80, 12), (146, 28)]
-            .into_iter()
-            .cycle()
-            .take(12)
-            .enumerate()
-    {
+    if baseline_probe {
+        let before = logical_rows(&terminal);
+        let cursor = (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap);
+        pty.writer()
+            .write_all(fixture_probe(shell, &terminal))
+            .expect("silent baseline probe");
+        receive_until(&mut pty, &mut terminal, &mut parser, b"RESIZE-BASELINE\x07");
+        assert_eq!(
+            logical_rows(&terminal),
+            before,
+            "probe cannot redraw or scroll the fixture"
+        );
+        assert_eq!(
+            (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap),
+            cursor,
+            "probe preserves exact cursor"
+        );
+    }
+    let listing;
+    let expected = if expected.is_empty() {
+        listing = listing_rows(&logical_rows(&terminal));
+        listing.as_slice()
+    } else {
+        expected
+    };
+    let mut recent = std::collections::VecDeque::with_capacity(4);
+    for (step, (cols, rows)) in sizes.iter().copied().enumerate() {
+        let previous_cursor =
+            (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap);
+        let previous_size = (terminal.columns(), terminal.screen_lines());
         terminal.resize(CrosswordsSize::new(cols, rows));
+        let reflow_cursor = (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap);
         pty.set_winsize(WinsizeBuilder {
             rows: rows as u16,
             cols: cols as u16,
@@ -677,9 +1024,23 @@ fn run_fixture_session(
             format!("RESIZE-ACK-{step}\x07").as_bytes(),
         );
         let actual = logical_rows(&terminal);
+        if recent.len() == 4 {
+            recent.pop_front();
+        }
+        recent.push_back(format!("step {step}: {previous_size:?} -> {cols}x{rows}; cursor {previous_cursor:?} -> {reflow_cursor:?} -> {:?}; frame {:?}",
+            (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap), String::from_utf8_lossy(&received)));
         if !actual.windows(expected.len()).any(|rows| rows == expected)
-            || actual.iter().filter(|row| row.starts_with("ROW-")).count()
-                != expected.len()
+            || (expected[0].starts_with("ROW-")
+                && actual.iter().filter(|row| row.starts_with("ROW-")).count()
+                    != expected.len())
+            || (!expected[0].starts_with("ROW-")
+                && (1..=28).any(|index| {
+                    actual
+                        .join("\n")
+                        .matches(&format!("entry-{index:02}-"))
+                        .count()
+                        != 1
+                }))
         {
             let mut late = Vec::new();
             let deadline = Instant::now() + Duration::from_millis(250);
@@ -703,11 +1064,23 @@ fn run_fixture_session(
             eprintln!("LATE FRAME: {:?}", String::from_utf8_lossy(&late));
             eprintln!("LATE ROWS: {:?}", logical_rows(&terminal));
         }
-        assert_eq!(
-            actual.iter().filter(|row| row.starts_with("ROW-")).count(),
-            expected.len(),
-            "no duplicated table rows"
-        );
+        if expected[0].starts_with("ROW-") {
+            assert_eq!(
+                actual.iter().filter(|row| row.starts_with("ROW-")).count(),
+                expected.len(),
+                "no duplicated table rows"
+            );
+        } else {
+            let text = actual.join("\n");
+            for index in 1..=28 {
+                let name = format!("entry-{index:02}-");
+                assert_eq!(
+                    text.matches(&name).count(),
+                    1,
+                    "no lost or duplicated listing entries at resize {step}"
+                );
+            }
+        }
         let first = actual
             .iter()
             .position(|row| row == &expected[0])
@@ -732,7 +1105,9 @@ fn run_fixture_session(
         assert_eq!(
             actual[first + expected.len() + 2],
             "lambda",
-            "live input remains adjacent"
+            "live input remains adjacent at step {step} ({cols}x{rows}); tail {:?}; recent {:?}",
+            &actual[first + expected.len()..],
+            recent
         );
     }
     let release = fixture_release(shell, &terminal);
