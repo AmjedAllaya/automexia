@@ -335,10 +335,14 @@ fn canonical_regular(path: &Path, role: &str) -> Result<PathBuf, String> {
     let metadata = fs::symlink_metadata(path)
         .map_err(|error| format!("{role} is unavailable: {}", error.kind()))?;
     if metadata.file_type().is_symlink() || !metadata.is_file() {
-        return Err(format!("{role} must be a regular non-symlink file"));
+        return Err(regular_file_requirement(role));
     }
     path.canonicalize()
         .map_err(|error| format!("{role} could not be resolved: {}", error.kind()))
+}
+
+fn regular_file_requirement(role: &str) -> String {
+    format!("{role} must be a regular file and must not be a symbolic link")
 }
 
 fn read_bounded(path: &Path) -> Result<Vec<u8>, String> {
@@ -382,9 +386,7 @@ pub fn apply(
     let existing = match fs::symlink_metadata(destination) {
         Ok(metadata) => {
             if metadata.file_type().is_symlink() || !metadata.is_file() {
-                return Err(
-                    "Automexia configuration must be a regular non-symlink file".into()
-                );
+                return Err(regular_file_requirement("Automexia configuration"));
             }
             let bytes = read_bounded(destination)?;
             String::from_utf8(bytes)
@@ -579,6 +581,14 @@ mod tests {
         assert!(preview(&first).unwrap_err().contains("cycle"));
     }
 
+    #[test]
+    fn link_rejection_diagnostic_is_stable_and_role_specific() {
+        assert_eq!(
+            regular_file_requirement("Ghostty configuration include"),
+            "Ghostty configuration include must be a regular file and must not be a symbolic link"
+        );
+    }
+
     #[cfg(unix)]
     #[test]
     fn source_and_include_symlinks_fail_closed() {
@@ -589,9 +599,10 @@ mod tests {
         let linked_source = root.path().join("linked-source");
         fs::write(&real_source, "keybind = ctrl+x=quit\n").unwrap();
         symlink(&real_source, &linked_source).unwrap();
-        assert!(preview(&linked_source)
-            .unwrap_err()
-            .contains("symbolic link"));
+        assert_eq!(
+            preview(&linked_source).unwrap_err(),
+            "Ghostty configuration must be a regular file and must not be a symbolic link"
+        );
 
         let real_include = root.path().join("real-include");
         let linked_include = root.path().join("linked-include");
@@ -599,7 +610,10 @@ mod tests {
         fs::write(&real_include, "keybind = ctrl+y=quit\n").unwrap();
         symlink(&real_include, &linked_include).unwrap();
         fs::write(&source, "config-file = linked-include\n").unwrap();
-        assert!(preview(&source).unwrap_err().contains("symbolic link"));
+        assert_eq!(
+            preview(&source).unwrap_err(),
+            "Ghostty configuration include must be a regular file and must not be a symbolic link"
+        );
     }
 
     #[test]

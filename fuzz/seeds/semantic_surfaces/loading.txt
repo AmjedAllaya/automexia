@@ -1,0 +1,1 @@
+{"version":1,"binding":{"extension":"example.inventory","session":4,"capsule_revision":2,"operation":3},"surface":1,"generation":7,"revision":1,"event":"loading"}

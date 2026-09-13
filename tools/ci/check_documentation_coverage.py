@@ -106,6 +106,14 @@ def serde_keys(body: str) -> set[str]:
             continue
         name = field.group(1)
         attributes = " ".join(pending_attributes)
+        serde_options = re.findall(r"#\[serde\((.*?)\)\]", attributes)
+        # A skipped input field is runtime state, not a config.toml setting.
+        # skip_serializing alone still permits configuration input.
+        if any(re.search(r"(?:^|,)\s*(?:skip|skip_deserializing)\s*(?:,|$)",
+                         re.sub(r'"(?:\\.|[^"\\])*"', '""', options))
+               for options in serde_options):
+            pending_attributes.clear()
+            continue
         rename = re.search(r'\brename\s*=\s*"([^"]+)"', attributes)
         keys.add(rename.group(1) if rename else name)
         pending_attributes.clear()
@@ -197,12 +205,67 @@ def application_cli_commands(root: Path = ROOT) -> set[str]:
     }
 
 
+def split_usage_alternatives(value: str) -> list[str]:
+    parts: list[str] = []
+    start = 0
+    square_depth = 0
+    angle_depth = 0
+    for index, character in enumerate(value):
+        if character == "[":
+            square_depth += 1
+        elif character == "]":
+            square_depth -= 1
+            if square_depth < 0:
+                raise DocumentationCoverageError("xtask usage has unmatched brackets")
+        elif character == "<":
+            angle_depth += 1
+        elif character == ">":
+            angle_depth -= 1
+            if angle_depth < 0:
+                raise DocumentationCoverageError("xtask usage has unmatched brackets")
+        elif character == "|" and square_depth == 0 and angle_depth == 0:
+            parts.append(value[start:index])
+            start = index + 1
+    if square_depth != 0 or angle_depth != 0:
+        raise DocumentationCoverageError("xtask usage has unmatched brackets")
+    parts.append(value[start:])
+    return parts
+
+
 def xtask_commands(root: Path = ROOT) -> set[str]:
     source = (root / "tools/xtask/src/main.rs").read_text(encoding="utf-8")
     match = re.search(r'"usage: cargo xtask <([^\"]+)>"', source)
     if not match:
         raise DocumentationCoverageError("could not find xtask usage registry")
-    return {item.strip() for item in re.split(r"\|(?=[a-z])", match.group(1))}
+    usage = match.group(1)
+    groups = list(
+        re.finditer(r"(?P<owner>[a-z-]+) <(?P<items>[a-z][^>]+)>", usage)
+    )
+    owners = {group.group("owner") for group in groups}
+    if not {"assurance", "cache"}.issubset(owners):
+        raise DocumentationCoverageError(
+            "xtask usage is missing the assurance or cache scope registry"
+        )
+    flattened = usage
+    for group in reversed(groups):
+        flattened = (
+            flattened[: group.start()]
+            + group.group("owner")
+            + flattened[group.end() :]
+        )
+    commands = {
+        item.strip()
+        for item in split_usage_alternatives(flattened)
+    }
+    for group in groups:
+        owner = group.group("owner")
+        commands.remove(owner)
+        commands.update(
+            f"{owner} {scope.strip()}"
+            for scope in split_usage_alternatives(group.group("items"))
+            if scope.strip()
+        )
+    return commands
 
 
 def require_tokens(owner: str, expected: set[str], content: str) -> int:

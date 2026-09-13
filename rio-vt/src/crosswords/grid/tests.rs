@@ -306,7 +306,19 @@ fn grow_reflow_multiline() {
 
 #[test]
 fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
-    use crate::crosswords::grid::row::{SemanticCommandResult, SemanticPrompt};
+    use crate::crosswords::grid::row::{
+        SemanticCommandResult, SemanticCommandTimestamp, SemanticPrompt,
+    };
+
+    let completed_at = Some(SemanticCommandTimestamp {
+        unix_ms: 1_777_575_942_000,
+        year: 2026,
+        month: 8,
+        day: 26,
+        hour: 19,
+        minute: 5,
+        second: 42,
+    });
 
     let mut grid = Grid::<Square>::new(3, 8, 8);
     grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(42));
@@ -314,6 +326,7 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
         id: 77,
         exit_code: Some(17),
         elapsed_ms: Some(1_234),
+        completed_at,
     });
     grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(42));
     for (column, character) in "12345678".chars().enumerate() {
@@ -333,6 +346,7 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
                     id: 77,
                     exit_code: Some(17),
                     elapsed_ms: Some(1_234),
+                    completed_at,
                 })
     }));
     assert!(rows_after_shrink
@@ -356,6 +370,7 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
                     id: 77,
                     exit_code: Some(17),
                     elapsed_ms: Some(1_234),
+                    completed_at,
                 })
     }));
     assert!(rows_after_grow
@@ -370,13 +385,23 @@ fn semantic_prompt_rows_survive_shrink_and_grow_reflow() {
 #[test]
 fn semantic_command_boundary_survives_shrink_and_grow_reflow() {
     use crate::crosswords::grid::row::{
-        SemanticCommandBoundary, SemanticCommandResult, SemanticPrompt,
+        SemanticCommandBoundary, SemanticCommandResult, SemanticCommandTimestamp,
+        SemanticPrompt,
     };
 
     let result = SemanticCommandResult {
         id: 91,
         exit_code: Some(7),
         elapsed_ms: Some(2_500),
+        completed_at: Some(SemanticCommandTimestamp {
+            unix_ms: 1_777_575_942_000,
+            year: 2026,
+            month: 8,
+            day: 26,
+            hour: 19,
+            minute: 5,
+            second: 42,
+        }),
     };
     let boundary = SemanticCommandBoundary {
         source_prompt_id: Some(41),
@@ -482,8 +507,7 @@ fn multiple_three_row_prompts_keep_order_and_text_through_reflow() {
 fn active_three_row_prompt_restores_its_complete_path_after_extreme_reflow() {
     use crate::crosswords::grid::row::SemanticPrompt;
 
-    let path =
-        "D:\\workstation\\projects\\business-project\\custom_terminal\\automexia-terminal\\standalone";
+    let path = "<REDACTED_LOCAL_VALUE>";
     let mut grid = Grid::<Square>::new(3, 120, 512);
     grid[Line(0)].set_semantic_prompt(SemanticPrompt::Prompt, Some(77));
     grid[Line(1)].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(77));

@@ -62,16 +62,7 @@ class FeatureOwnershipTests(unittest.TestCase):
         for relative, contents in {
             "docs/DEVOPS-ALIASES.md": "models owned by automexia-command-productivity\n",
             "docs/CONNECTION-HUB.md": "provider-neutral automexia-connectivity\n",
-            "docs/SSH-CONNECTION-AUTOMATION.md": (
-                "automexia-connectivity automexia-command-productivity\n"
-            ),
-            "docs/CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md": (
-                "automexia-connectivity automexia-command-productivity\n"
-            ),
-            "docs/ROADMAP.md": (
-                "automexia-connectivity automexia-command-productivity\n"
-            ),
-            "docs/PHASE-IMPLEMENTATION-AUDIT.md": (
+            "docs/ARCHITECTURE.md": (
                 "automexia-connectivity automexia-command-productivity\n"
             ),
         }.items():

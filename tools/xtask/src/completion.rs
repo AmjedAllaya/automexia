@@ -33,6 +33,7 @@ const MAX_ARTIFACT_BYTES: usize = MAX_PROVIDER_OUTPUT + 64 * 1024;
 const MAX_DIGEST_BYTES: usize = 192;
 const MAX_METADATA_BYTES: usize = 64 * 1024;
 const MAX_OVERRIDE_BYTES: usize = 64;
+const COMPLETION_ROOT_LOG_LABEL: &str = "<managed-user-state>";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum CompletionShell {
@@ -374,7 +375,7 @@ fn parse_operation(args: &[String]) -> TaskResult<ParsedOperation> {
 pub(super) fn report_health() -> TaskResult {
     let root = completion_root()?;
     let mut report = String::new();
-    let _ = writeln!(report, "completion root    {}", root.display());
+    let _ = writeln!(report, "{}", completion_root_report_line());
     let disabled_path = root.join(".disabled");
     let state = match read_regular_bounded(&disabled_path, MAX_OVERRIDE_BYTES) {
         Ok(Some(bytes)) if bytes == b"disabled-by-user-v1\n" => {
@@ -438,6 +439,10 @@ pub(super) fn report_health() -> TaskResult {
         "completion safety  read-only health; provider commands run only through explicit `completion refresh`"
     );
     emit_output(&report)
+}
+
+fn completion_root_report_line() -> String {
+    format!("completion root    {COMPLETION_ROOT_LOG_LABEL}")
 }
 
 fn emit_output(output: &str) -> TaskResult {
@@ -1620,7 +1625,8 @@ mod tests {
 
     #[test]
     fn provider_process_does_not_inherit_ambient_secret_environment() {
-        const SECRET: &str = "AUTOMEXIA_CP1_SECRET_FIXTURE";
+        const SENSITIVE_FIXTURE: &str = "<redacted>";
+        const SECRET: &str = SENSITIVE_FIXTURE;
         env::set_var(SECRET, "must-not-reach-provider");
         #[cfg(windows)]
         let probe =
@@ -1740,11 +1746,18 @@ mod tests {
     }
 
     #[test]
+    fn completion_health_uses_a_logical_root_label() {
+        let line = completion_root_report_line();
+        assert_eq!(line, "completion root    <managed-user-state>");
+        assert!(!line.contains(['\\', '/']));
+    }
+
+    #[test]
     fn config_roots_are_absolute_and_macos_matches_the_product_contract() {
         #[cfg(windows)]
-        let home = PathBuf::from(r"C:\Users\amjed");
+        let home = PathBuf::from(r"C:\Users\alice");
         #[cfg(not(windows))]
-        let home = PathBuf::from("/Users/amjed");
+        let home = PathBuf::from("/Users/alice");
         let mac =
             select_config_root(HostPlatform::MacOs, None, None, Some(home.clone()), None)
                 .unwrap();

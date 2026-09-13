@@ -10,10 +10,17 @@ import sys
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED_PARTS = {".git", ".cargo-packager", "target"}
+EXCLUDED_PARTS = {
+    ".git",
+    ".cargo-packager",
+    ".automexia-private",
+    ".automexia-tools",
+    "target",
+}
 MAX_MARKDOWN_BYTES = 8 * 1024 * 1024
 FENCE_OPEN = re.compile(r"^ {0,3}(`{3,}|~{3,})(.*)$")
 HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*\s*$")
+MERGE_MARKER = re.compile(r"^(?:<{7,}|>{7,}|\|{7,})(?:\s|$)")
 
 
 class DocumentationHygieneError(ValueError):
@@ -60,6 +67,11 @@ def validate_markdown_payload(
     fence: tuple[str, int, int] | None = None
     headings: list[tuple[int, int, str]] = []
     for line_number, line in enumerate(text.splitlines(), 1):
+        # A fenced block must not hide a conflict; its branch label may be private.
+        if MERGE_MARKER.match(line):
+            raise DocumentationHygieneError(
+                f"{name}:{line_number} contains an unresolved merge marker"
+            )
         if fence is None:
             opener = FENCE_OPEN.match(line)
             if opener:

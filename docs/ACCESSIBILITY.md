@@ -1,158 +1,88 @@
-# Accessibility baseline
+# Accessibility
 
-## v0.4 scope and claim
+Accessibility is a release contract for Automexia's public free terminal, not a
+visual-style claim.
 
-Automexia v0.4 treats accessibility as a release contract, not as a visual
-style claim. The local baseline covers keyboard reachability, visible focus,
-semantic labels, contrast, extreme viewport behavior, and 200% scaling. Stable
-release also requires recorded smoke evidence from supported assistive
-technologies. Automexia does **not** claim a complete platform accessibility
-tree in v0.4; that renderer-independent model is the v0.5 decision recorded in
-[ADR 0013](adr/0013-renderer-independent-accessibility-model.md).
+## Public baseline
 
-The v0.5 platform adapter will adopt AccessKit over that model, as sequenced in
-the [build, wrap, and adopt architecture](BUILD-WRAP-ADOPT-ARCHITECTURE.md).
-Automexia continues to own stable semantic IDs, roles, names, states, actions,
-focus, privacy, update cadence, terminal text/document projection, and
-renderer-neutral tests. AccessKit owns translation to Windows UI Automation,
-macOS accessibility, and Unix AT-SPI; it does not become a second renderer or
-make pixels the semantic source of truth. Initial delivery covers application
-chrome and structured overlays. Complete terminal-grid range semantics remain
-a separate Automexia text/document milestone.
+The terminal must support:
 
-## Custom surface inventory
+- complete keyboard access to public controls;
+- visible and predictable focus;
+- role, name, value, state, and relationship semantics;
+- focus order and restoration;
+- error and live-status announcements without flooding;
+- high contrast and meaning that does not rely on color;
+- reduced motion;
+- long and localized text;
+- Unicode, combining characters, bidirectional text, and IME;
+- 200% and 400% text/scale where applicable; and
+- layouts from small windows through high-resolution displays.
 
-| Surface | v0.4 semantic contract | Keyboard contract | Current limitation |
-|---|---|---|---|
-| Tab rail | Selected tab, stable title, close/add hit regions | Existing tab creation, selection, and close bindings | Native screen-reader role exposure is not yet complete |
-| Window caption controls | Separated minimize, maximize/restore, and close cards have distinct shapes and no shared border or decorative underline; cyan/purple/coral glyph colors are redundant | 40–46 pixel pointer targets latch on press, activate on release over the same control, and cancel on drag-away or focus loss; existing window shortcuts remain available | Native caption-button names and state announcements require the v0.5 platform adapter |
-| Split panes | Exactly one active pane with a visible outline | `Alt`+Arrow (`Cmd`+`Alt`+Arrow on macOS) geometric focus plus next/previous cycling | Native screen-reader focus announcements require the v0.5 adapter |
-| Command palette | Search input, selected command, visible shortcut, category label | Open, filter, move, activate, and dismiss without a pointer | Platform role announcements require the v0.5 adapter |
-| Pane and workspace search | One continuous surface with labeled query, mutually exclusive `PANE` / `ALL PANES` checked states, bounded visible-result status, previous/next, and close | Scope shortcuts switch in place; Tab enters/leaves the scope group; arrows select; Space/Enter keeps selection; click returns query focus; Escape closes | Renderer-neutral roles, checked/focused state, and privacy-safe scope announcements are implemented; native screen-reader delivery requires the v0.5 adapter |
-| First-run welcome | Automexia title, concise time/effort/flexibility value statement, and one visible Enter instruction; no local path is rendered | Enter creates starter settings and continues; no pointer-only action or background animation | Platform heading/action announcements require the v0.5 adapter |
-| Diagnostic assistant | Error/warning text, severity label, visible close, and troubleshooting action | Escape or Enter dismisses; D opens the fixed guide; all terminal input behind the scrim is inert | Platform dialog/action announcements require the v0.5 adapter |
-| Compatibility inspector | Explicit REDACTED label, public snapshot fields, diagnostic empty state, and visible close | Escape dismisses; all terminal input behind the scrim is inert | Platform dialog/list announcements require the v0.5 adapter |
-| Quit confirmation | Destructive consequence, explicit Cancel/Close labels, key hints, and pointer hover | Escape/N cancels; Y confirms; both buttons have large hit targets | Platform alert-dialog announcements require the v0.5 adapter |
-| Tab appearance picker | Labeled title field, 24-pixel swatches, selected check, clear icon, and apply/cancel help | Type/backspace edits; Enter applies; Escape cancels; non-fitting layouts cancel safely | Platform field/radio-group announcements require the v0.5 adapter |
-| Connection Hub | Search/filter/group controls, labeled actions, status and empty/error states | Complete keyboard navigation and visible close; terminal input behind the scrim is inert | Native picker and screen-reader evidence remains release-gated |
-| Scrollbar | Rounded cyan/blue thumb plus a wider invisible grab area; drag state differs in opacity and color | Wheel and terminal navigation remain primary; pointer dragging is optional | Native screen readers use terminal/document scrolling rather than this visual thumb |
-| Context segments | Icon plus text label; meaning never depends only on color | Passive information; no hidden pointer-only action | Freshness/error announcements remain provider-neutral roadmap work |
-| Completed command output | Command-agnostic persistent tint, adaptive 6-10 pixel gutter, end rule, known-status icon/duration or explicit neutral treatment, one 540 ms lightening, and stable pane-local boundary identity through viewport/full source-prompt eviction | Passive feedback only; shell input, cursor, selection, copy, search, and history keep their existing owners | Native screen readers consume terminal text; the visual result grouping is not yet exposed as a native region |
-| Session footer | Passive pane/tab/grid/line-ending/clock status | No action is hidden in the footer | It is intentionally omitted when a pane cannot spare terminal rows |
-| Terminal grid | Shell output, selection, cursor, and input remain authoritative | Standard terminal and configured shell bindings | Full text-range exposure requires the v0.5 accessibility model |
-| Image quick look | Filename, dimensions, and size remain visible as text; preview never conveys required terminal state | Hover previews; click pins; arrows browse visible image paths; `Ctrl+Alt+I`/`Cmd+Alt+I` previews selection; `Esc` dismisses | Native screen-reader announcement of the preview card requires the v0.5 adapter |
+## Surface contracts
 
-## Completed output cues
+| Surface | Keyboard and semantic requirement |
+|---|---|
+| Tab rail | Selected state, stable title, add/close controls, and documented navigation |
+| Split panes | One visible active pane, geometric/cyclic focus, and independent session identity |
+| Command palette | Labeled search, selected result, shortcut/category text, scroll state, activate, and dismiss |
+| Search | Labeled query, pane/workspace scope, result status, previous/next, and focus restoration |
+| First run | Clear heading, one primary action, no pointer-only requirement |
+| Diagnostics | Severity, actionable text, close/recovery actions, and PTY input isolation |
+| Compatibility inspector | Redacted public fields, empty state, and dismiss |
+| Quit confirmation | Explicit consequence, cancel/confirm labels, keyboard and pointer access |
+| Appearance controls | Labeled values, selected states, apply/cancel, and safe narrow-layout behavior |
+| Scrollbar | Optional pointer target with terminal/document scrolling still available by keyboard |
+| Terminal grid | Text, cursor, selection, input, scroll, and screen-reader document semantics |
+| Local image preview | Filename/dimensions/size text, keyboard dismissal, and no image-only required meaning |
 
-Completed output never depends on a flash or color alone. The visible persistent
-9.9% tint, end rule, whitespace, and known-status icon plus elapsed time retain
-the boundary after the temporary lightening ends. The cue changes opacity only;
-it does not move or resize content, holds briefly and fades once within 540
-milliseconds, and is suppressed for historical content and while the pane is in
-scrollback. It has one opposing light/dark transition rather than a repeating
-blink, and the existing reduced-motion visual fixture suppresses it without
-removing the persistent grouping.
+## Focus and input ownership
 
-Semantic prompt ownership must prove output before the surface is drawn. A
-stable, content-free completion ID and following-prompt boundary preserve that
-proof through prompt repaint, reflow, viewport overflow and complete source-row
-eviction. Silent commands publish no empty surface, and source/boundary anchors
-are deduplicated by ID. Failure to prove output leaves terminal content unchanged
-instead of guessing. The boundary stores no command or output text and is not a
-complete output-region model. The current cue is visual-only and passive; it
-emits no PTY input or accessibility announcement and creates no focus target.
+Only the focused public surface receives keyboard, pointer, or IME input.
+Opening an overlay prevents its keys from reaching the PTY. Dismissal restores
+the previous valid target or a documented safe fallback.
 
-The controlled Windows native check verifies more than geometry: every tested
-command must publish a new owning result identity, captured output glyphs must
-remain visible independently of the divider/status decoration, and blank
-resting-surface pixels must differ from the adjacent gutter. It runs against WGPU and the CPU
-fallback. This is visual evidence only; it does not replace the outstanding
-native screen-reader region semantics.
+Focus never moves merely because background output, search, metadata, or an
+optional worker updates.
 
-## Search scope semantics
+## Motion, contrast, and status
 
-The renderer-neutral search model exposes a `Search scope` group with `Current
-pane` and `All visible panes` options, exactly one checked option, explicit
-query/scope focus, a nonvisual result status, and a generation-numbered live
-announcement after opening or a real scope change. Repeating the active scope
-shortcut does not emit a duplicate announcement. The announcement contains
-scope and bounded result status but never the query or terminal contents.
+Persistent structure, text, shape, and icons carry meaning; color and animation
+are redundant. Reduced-motion mode suppresses nonessential transitions without
+removing state.
 
-This interaction follows the mutually exclusive selection and arrow-key model
-in the [W3C Radio Group Pattern](https://www.w3.org/WAI/ARIA/apg/patterns/radio/).
-The current v0.4 contract stops at renderer-neutral semantics, as required by
-[ADR 0013](adr/0013-renderer-independent-accessibility-model.md); the accepted
-v0.5 platform adapter remains responsible for UI Automation, VoiceOver, and
-AT-SPI delivery.
+Transient completion or status cues do not blink repeatedly, resize content, or
+become required to understand terminal text.
 
-## Automated v0.4 contract
+## Terminal text and privacy
 
-The normal and Phase 0 gates cover:
+Accessibility projection follows current terminal state and route ownership.
+Announcements and diagnostics do not expose hidden history, credentials,
+environment values, unrelated panes, private paths, or raw control characters.
 
-- shortcut collision and command-palette visibility tests;
-- keyboard-only creation, selection, cloning, and isolated close paths;
-- active-pane outline geometry at tiny, normal, split, HiDPI, 4K, and
-  8K-equivalent layouts;
-- semantic color contrast correction and redundant icon/text identity;
-- first-run startup layout/DPI/target invariants and a regression guard against
-  rendering local configuration paths;
-- diagnostic/inspector/quit layout, 24-pixel pointer-target, hover, hit-test,
-  redaction, modal-input, and opaque-surface tests;
-- tab-appearance fit, 24-pixel swatch, redundant selected/clear meaning, and
-  256-byte control-free UTF-8 title tests;
-- Proptest viewport/DPI invariants with checked-in minimized regressions;
-- reviewed structured footer geometry snapshots;
-- font/glyph coverage and responsive omission of low-priority chrome;
-- keyboard, plain-hover, click-to-pin, arrow-browse, and Escape image-preview
-  reachability, bounded geometry, route isolation, complete mouse-pair
-  ownership, and a native decoded-overlay lifecycle;
-- Clippy, Nextest/JUnit, Cargo doctests, deterministic resize storms, and the
-  native Windows GUI gate.
+Large output is bounded and coalesced. Stale generations cannot publish events
+after route replacement or closure.
 
-Run the locally applicable evidence with:
+## Testing
 
-```text
-cargo qa
-cargo xtask qa --full --bundle
-```
+Visible changes require:
 
-The bundle never captures terminal contents, clipboard data, inherited
-environment values, or an environment dump. Private ETL traces are excluded.
+1. renderer-neutral geometry, hierarchy, focus, semantic, clipping, contrast,
+   and reduced-motion assertions;
+2. exact deterministic raster comparisons in a controlled environment; and
+3. native frame and accessibility-tree/event evidence on each claimed
+   operating system.
 
-## Required manual smoke matrix
+Automated checks do not replace manual Narrator/NVDA, VoiceOver, and Orca review
+for a release claiming those environments. Record the exact commit, package,
+OS, display, assistive-technology version, scenarios, failures, and cleanup.
 
-A stable release record must identify date, commit, OS/build, display scale,
-GPU/driver, assistive technology/version, operator, and result for:
+## Reporting problems
 
-| Platform | Required tools | Required tasks |
-|---|---|---|
-| Windows | Narrator and NVDA | Launch, identify tabs and active pane, open/filter/activate/dismiss palette, split/select/close, 200% scale |
-| macOS | VoiceOver | Same tasks, including native window/tab behavior and full keyboard access |
-| Linux X11 and Wayland | Orca with the supported desktop stack | Same tasks, including focus restoration after split close |
+Accessibility reports should include the public workflow, expected result,
+actual result, operating system, input method or assistive technology, display
+scale, and a redacted reproduction. Never attach credentials, real host data,
+terminal history, local paths, or private planning documents.
 
-Record failures with renderer-neutral state, a screenshot when safe, and exact
-reproduction steps. Never include shell output, paths containing private user
-data, clipboard content, credentials, or tokens in a public artifact.
-
-The release record is machine-checked against
-`tests/assurance/s1-assurance-policy-v1.json`. It requires distinct Narrator,
-NVDA, VoiceOver, Orca X11, and Orca Wayland suites, a fresh exact source commit,
-bounded private artifact digests, redaction canaries, and independent
-HTTPS-linked approval. Local QA reports missing native sessions as external;
-stable release validation uses `--require-complete` and fails closed.
-
-```text
-python tools/ci/s1_assurance.py check-policy
-python tools/ci/s1_assurance.py validate --manifest <private-redacted-manifest.json> --expected-commit <commit> --require-complete
-```
-
-This evidence gate does not change the stated v0.4 limitation: it verifies the
-semantics currently exposed and cannot substitute for ADR 0013's deferred
-renderer-independent native accessibility tree.
-
-## Release limitations
-
-Until the v0.5 model and platform adapters land, release notes must state that
-custom chrome has a tested keyboard/visual baseline but incomplete native
-screen-reader semantics. Manual smoke results cannot be generalized to an
-untested desktop, screen reader, locale, or renderer backend.
+Unreleased product surfaces are not part of this public accessibility
+specification.

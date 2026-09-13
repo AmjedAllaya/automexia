@@ -9,18 +9,58 @@ cargo-fuzz = true
 
 [dependencies]
 libfuzzer-sys = "0.4"
-automexia-image = { path = "../automexia-image" }
-automexia-keybindings = { path = "../automexia-keybindings" }
-automexia-terminal = { path = "../apps/automexia-terminal", default-features = false }
-automexia-devops = { path = "../automexia-devops" }
-automexia-connectivity = { path = "../automexia-connectivity" }
-automexia-command-productivity = { path = "../automexia-command-productivity" }
-automexia-ecosystem = { path = "../automexia-ecosystem" }
-automexia-ecosystem-runtime = { path = "../automexia-ecosystem-runtime" }
-automexia-devops-ssh = { path = "../extensions/devops-ssh" }
-rio-backend = { path = "../rio-backend", default-features = false }
-rio-vt = { path = "../rio-vt", default-features = false }
-tempfile = "3.23.0"
+automexia-extension-api = { path = "../automexia-extension-api", optional = true }
+serde_json = { version = "1.0.145", optional = true }
+automexia-image = { path = "../automexia-image", optional = true }
+automexia-keybindings = { path = "../automexia-keybindings", optional = true }
+automexia-terminal = { path = "../apps/automexia-terminal", default-features = false, optional = true }
+automexia-devops = { path = "../automexia-devops", optional = true }
+automexia-connectivity = { path = "../automexia-connectivity", optional = true }
+automexia-command-productivity = { path = "../automexia-command-productivity", optional = true }
+automexia-ecosystem = { path = "../automexia-ecosystem", optional = true }
+automexia-ecosystem-runtime = { path = "../automexia-ecosystem-runtime", optional = true }
+automexia-devops-ssh = { path = "../extensions/devops-ssh", optional = true }
+automexia-devops-aws = { path = "../extensions/devops-aws", optional = true }
+automexia-devops-azure = { path = "../extensions/devops-azure", optional = true }
+automexia-devops-gcp = { path = "../extensions/devops-gcp", optional = true }
+automexia-devops-kubernetes = { path = "../extensions/devops-kubernetes", optional = true }
+automexia-devops-teleport = { path = "../extensions/devops-teleport", optional = true }
+rio-backend = { path = "../rio-backend", default-features = false, optional = true }
+rio-vt = { path = "../rio-vt", default-features = false, optional = true }
+tempfile = { version = "3.23.0", optional = true }
+
+[features]
+default = ["all-targets"]
+all-targets = [
+    "semantic-surfaces",
+    "multicloud-provider-inputs",
+    "dep:automexia-image",
+    "dep:automexia-keybindings",
+    "dep:automexia-terminal",
+    "dep:automexia-devops",
+    "dep:automexia-connectivity",
+    "dep:automexia-command-productivity",
+    "dep:automexia-ecosystem",
+    "dep:automexia-ecosystem-runtime",
+    "dep:automexia-devops-ssh",
+    "dep:automexia-devops-aws",
+    "dep:automexia-devops-azure",
+    "dep:automexia-devops-gcp",
+    "dep:automexia-devops-kubernetes",
+    "dep:automexia-devops-teleport",
+    "dep:rio-backend",
+    "dep:rio-vt",
+    "dep:tempfile",
+]
+multicloud-provider-inputs = [
+    "dep:automexia-connectivity",
+    "dep:automexia-devops-aws",
+    "dep:automexia-devops-azure",
+    "dep:automexia-devops-gcp",
+    "dep:automexia-devops-kubernetes",
+    "dep:automexia-devops-teleport",
+]
+semantic-surfaces = ["dep:automexia-extension-api", "dep:serde_json"]
 
 [workspace]
 members = ["."]
@@ -129,6 +169,14 @@ path = "fuzz_targets/provider_quick_actions.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "multicloud_provider_inputs"
+path = "fuzz_targets/multicloud_provider_inputs.rs"
+test = false
+doc = false
+bench = false
+required-features = ["multicloud-provider-inputs"]
 [[bin]]
 name = "suggestion_bridge"
 path = "fuzz_targets/suggestion_bridge.rs"
@@ -142,3 +190,11 @@ path = "fuzz_targets/ecosystem_bundle.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "semantic_surfaces"
+path = "fuzz_targets/semantic_surfaces.rs"
+test = false
+doc = false
+bench = false
+required-features = ["semantic-surfaces"]

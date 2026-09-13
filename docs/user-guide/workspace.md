@@ -28,6 +28,17 @@ OS window
 
 ## Which approach should I use?
 
+### Closing a window or quitting
+
+The close control closes only its window; Quit closes the application. Current
+source dismisses confirmed closing windows before waiting for shell cleanup.
+Cancellation keeps the window and its sessions open. Other windows remain
+usable when only one is closed.
+
+Shells and their owned child processes are still cleaned up after dismissal;
+the process may remain briefly while that finishes. Save work before confirming
+close. This correction is in current source, not the earlier 0.4.0 download.
+
 ### Use a window-level tab for a different workspace
 
 A window-level tab is the simplest way to separate substantial contexts without opening another desktop window.
@@ -48,6 +59,11 @@ Switch with `Ctrl+Tab` / `Ctrl+Shift+Tab`. On macOS, `Cmd+Shift+[` / `Cmd+Shift+
 
 ### Use a split when two sessions must stay visible
 
+When a closed workspace is retained for undo, a session that exits does not
+close its healthy sibling panes or pane-local tabs. Undo restores the remaining
+sessions using the current window size and display scale. This history is
+temporary: it is not a saved session or a way to restart an exited shell.
+
 Splits are for simultaneous visibility: processing command + logs, source
 files + generated results, server + monitor, shell + database console, or local
 + remote.
@@ -56,12 +72,16 @@ Automexia offers two different split behaviors.
 
 **Fresh split:** starts the default shell/session definition.
 
-- Windows/Linux/BSD: `Ctrl+Shift+R` for right, `Ctrl+Shift+D` for down.
+- Windows/Linux/BSD: `Alt+Shift+R` for right, `Alt+Shift+D` for down.
 - macOS: `Cmd+D` for right, `Cmd+Shift+D` for down.
 
 **Clone split:** starts an independent session using the active session's launch profile and validated working directory.
 
-- All platforms: `Ctrl+R` for right, `Ctrl+D` for down.
+- Windows/Linux/BSD: `Alt+R` for right, `Alt+D` for down.
+- macOS: `Cmd+Alt+Shift+R` for right, `Cmd+Alt+Shift+D` for down.
+- All platforms: **Panes & Sessions** in the palette contains both clone actions.
+  Ctrl+R/Ctrl+D remain shell-owned; previously published 0.4.0 binaries do not
+  include these current-source corrections. Explicit user mappings are preserved.
 
 A clone is not shared terminal state. The new pane owns its own PTY and process tree. Think “start another session from the same launch context,” not “mirror this terminal.”
 
@@ -154,6 +174,12 @@ Terminal selection belongs to the selected pane.
 - Typing, pasting, or pressing an Arrow without `Shift` exits terminal selection before that input is sent to the shell.
 
 This behavior prevents Automexia's selection controls from secretly changing shell-editor history or line-editor state.
+
+When you inspect retained scrollback, resizing keeps the row containing the
+previously first-visible content at the top where history permits. Wider rows
+may also show preceding text from the same wrapped line. A taller pane can
+absorb that content into the live screen; history that was actually evicted
+cannot be restored. Resizing does not send a command to the shell.
 
 ## Search scrollback without changing the shell command
 

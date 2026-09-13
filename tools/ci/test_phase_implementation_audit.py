@@ -18,20 +18,105 @@ SPEC.loader.exec_module(AUDIT)
 
 
 class PhaseImplementationAuditTests(unittest.TestCase):
+    @staticmethod
+    def detailed_legacy_fixture() -> tuple[str, str, set[str]]:
+        lines = [
+            "# Phase implementation audit",
+            "",
+            "Audited source baseline: " + "a" * 40,
+            "",
+            " ".join(AUDIT.REQUIRED_EVIDENCE_TERMS),
+            "",
+        ]
+        for source in AUDIT.CANONICAL_PHASE_SOURCES:
+            lines.append(f"[{Path(source).name}]({Path(source).name})")
+        lines.extend(
+            [
+                "",
+                "## Status rules",
+                "",
+                "## Audit method and current evidence",
+                "",
+                "## Executive phase matrix",
+                "",
+                "| Track | Phase | Implementation | Evidence | Remaining |",
+                "|---|---|---|---|---|",
+                "| Command | CP1 | **Fully implemented at source boundary.** | fixture | fixture |",
+                "",
+            ]
+        )
+        emitted = {
+            "# Phase implementation audit",
+            "## Status rules",
+            "## Audit method and current evidence",
+            "## Executive phase matrix",
+        }
+        for heading in AUDIT.REQUIRED_GLOBAL_HEADINGS:
+            if heading in emitted:
+                continue
+            if heading == "### v0.5 assurance maturation":
+                lines.extend([heading, "", "**Partially implemented.**", ""])
+            else:
+                lines.extend([heading, ""])
+            emitted.add(heading)
+        for prefix in AUDIT.REQUIRED_PHASE_PREFIXES:
+            if prefix == "### v0.5 assurance maturation":
+                heading = prefix
+                status = "**Partially implemented.**"
+            elif prefix == "### D1 ":
+                heading = "### D1 — private contracts and bounded stable types"
+                status = "**Fully implemented at source boundary.**"
+            else:
+                heading = prefix + "fixture"
+                status = "**Partially implemented.**"
+            lines.extend([heading, "", status, ""])
+        text = "\n".join(lines) + "\n"
+        phases = AUDIT.audit_heading_phase_ids(text.splitlines())
+        roadmap = (
+            "# Roadmap\n\n"
+            f"{AUDIT.ROADMAP_STATUS_START}\n"
+            "| Status | Phase | Note |\n"
+            "|---|---|---|\n"
+            "| **Fully done** | CP1 | fixture |\n"
+            f"{AUDIT.ROADMAP_STATUS_END}\n"
+        )
+        return text, roadmap, phases
+
     @classmethod
     def setUpClass(cls) -> None:
-        cls.text = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
-        cls.roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
-        cls.phases = AUDIT.canonical_phase_ids()
+        cls.text, cls.roadmap, cls.phases = cls.detailed_legacy_fixture()
 
     def test_repository_audit_passes(self) -> None:
         counts = AUDIT.validate()
-        self.assertGreaterEqual(counts["phase_sections"], 40)
-        self.assertGreaterEqual(counts["canonical_phases"], 20)
-        self.assertEqual(
-            counts["evidence_dimensions"], len(AUDIT.REQUIRED_EVIDENCE_TERMS)
-        )
-        self.assertGreaterEqual(counts["roadmap_statuses"], 25)
+        self.assertEqual(counts["phase_sections"], 0)
+        self.assertEqual(counts["canonical_phases"], 0)
+        self.assertEqual(counts["evidence_dimensions"], 0)
+        self.assertEqual(counts["roadmap_statuses"], len(AUDIT.PUBLIC_AUDIT_AREAS))
+
+    def test_public_summary_missing_area_is_rejected(self) -> None:
+        audit = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
+        roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
+        mutated = audit.replace("Command productivity foundations", "Removed area", 1)
+        with self.assertRaisesRegex(AUDIT.PhaseAuditError, "missing areas"):
+            AUDIT.validate_public_summary(mutated, roadmap)
+
+    def test_unreviewed_or_duplicate_public_area_is_rejected(self) -> None:
+        audit = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
+        roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
+        for row in (
+            "| Future free component | A proposal, not current software. |",
+            "| Command productivity foundations | Duplicate status. |",
+        ):
+            with self.subTest(row=row), self.assertRaisesRegex(
+                AUDIT.PhaseAuditError, "duplicate or unreviewed"
+            ):
+                AUDIT.validate_public_summary(audit + "\n" + row + "\n", roadmap)
+
+    def test_public_roadmap_private_phase_code_is_rejected(self) -> None:
+        audit = (AUDIT.ROOT / AUDIT.AUDIT_PATH).read_text(encoding="utf-8")
+        roadmap = (AUDIT.ROOT / AUDIT.ROADMAP_PATH).read_text(encoding="utf-8")
+        with self.assertRaisesRegex(AUDIT.PhaseAuditError, "phase codes"):
+            AUDIT.validate_public_summary(audit, roadmap + "\nPO7\n")
 
     def test_missing_phase_heading_is_rejected(self) -> None:
         mutated = self.text.replace("### D4 ", "### removed-D4 ", 1)
@@ -95,7 +180,9 @@ class PhaseImplementationAuditTests(unittest.TestCase):
             count=1,
             flags=re.MULTILINE,
         )
-        with self.assertRaisesRegex(AUDIT.PhaseAuditError, "do not match"):
+        with self.assertRaisesRegex(
+            AUDIT.PhaseAuditError, "do not match|contains no feature rows"
+        ):
             AUDIT.validate_roadmap_status_register(self.text, mutated)
 
     def test_bad_source_baseline_is_rejected(self) -> None:

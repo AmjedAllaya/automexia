@@ -43,7 +43,8 @@ redacted findings.
 
 `main` has no bypass actor and requires pull requests, linear squash-only
 history, signed commits, resolved conversations, current CODEOWNER review,
-last-push approval, stale-review dismissal, and the exact CI/CodeQL check set.
+last-push approval, stale-review dismissal, and the exact CI and Actions-static-
+analysis check set.
 The repository policy check separately requires two distinct non-author,
 non-bot approvals bound to the exact pull-request head for protected paths.
 Release tags matching `v*` reject deletion and non-fast-forward updates.
@@ -53,9 +54,10 @@ declared default-branch evidence workflow has a latest `main` run that executed
 successfully, belongs to the exact current `main` commit, and is at most seven
 days old. A skipped-only run, stale run, different commit, missing run, or zero-
 step billing rejection cannot pass. The stable-release workflow is required to
-remain active but is not a routine default-branch evidence workflow. The pinned
-advanced CodeQL workflow remains the sole CodeQL owner; default setup must not
-be enabled in parallel.
+remain active but is not a routine default-branch evidence workflow. On the
+GitHub-Free/private plan, pinned actionlint and offline zizmor own workflow
+static analysis; CodeQL and private code-scanning uploads remain deliberately
+absent.
 
 The repository permits GitHub-owned Actions plus an exact list of required
 third-party actions, with full commit-SHA enforcement. Default workflow tokens
@@ -85,9 +87,9 @@ Stable tag preflight now consumes the separate digest-pinned stable-release
 source policy. Before packaging it requires an annotated local and remote tag at
 the exact remote `main` head, the annotated published Rio fork tag at the audited
 base, complete clean linear downstream history, and author-matching DCO trailers.
-The protected `stable-release` environment supplies a read-only repository audit
-credential, and preflight accepts only an all-pass authenticated audit. Exit 1
-drift and exit 2 external prerequisites both block publication. This adds no
+The release workflow consumes a minimally scoped repository audit credential
+from repository secrets, and preflight accepts only an all-pass authenticated
+audit. Exit 1 drift and exit 2 external prerequisites both block publication. This adds no
 runtime authority and does not permit visibility, billing, plan, collaborator,
 credential, security-entitlement, or history changes.
 
@@ -119,3 +121,25 @@ and reruns the exact protected commit. Private vulnerability reporting and
 secret scanning remain accurately external until their visibility/entitlement
 conditions are met. Product capability activation and stable release continue
 to fail closed while any of those gates remains.
+
+## 2026-08-31 complete mutation and coverage amendment
+
+The ordinary policy job now runs the complete Python checker/mutation discovery
+suite after pinned PyYAML and Semgrep installation. Local full QA owns the same
+discovery command, so a newly added `tools/ci/test_*.py` file is not omitted by
+an independently maintained allowlist. Per-feature checkers verify that semantic
+discovery command instead of relying on comments or selected test filenames.
+
+Release coverage is a separate internal-release-only `windows-2025` job. The
+recorded baseline is `windows-x86_64-msvc`; comparing it with the former Linux
+report was invalid, and the old job did not provide the environment variables
+required by the checker. Coverage now waits for ordinary quality and release
+validation, binds the exact PR base/head commits, normalizes sources against the
+checkout, covers every Automexia-owned crate/extension, bounds hostile reports,
+and publishes no raw source evidence.
+
+The stable-release manifest builder now requires exactly one artifact for every
+declared OS/architecture/package slot, exact SPDX/CycloneDX names and identities,
+regular unlinked bounded files, deterministic hashes, and atomic manifest
+replacement. Direct mutation suites cover this builder, Action pinning,
+coverage, and vendored-license walking.

@@ -1,14 +1,16 @@
 #!/usr/bin/env python3
-"""Regression tests for the repository-aligned documentation pack."""
+"""Regression tests for legacy pack integrity and the private-doc boundary."""
 
 from __future__ import annotations
 
 import hashlib
 import importlib.util
 import json
+import os
 from pathlib import Path
 from tempfile import TemporaryDirectory
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("check_repository_aligned_docs.py")
@@ -209,6 +211,155 @@ class RepositoryAlignedDocumentationTests(unittest.TestCase):
             self.refresh_entry(pack, "README.md")
             with self.assertRaisesRegex(CHECKER.DocumentationPackError, "skips"):
                 CHECKER.validate(root)
+
+    @staticmethod
+    def create_private_boundary(root: Path) -> None:
+        (root / ".gitignore").write_text(
+            "/.automexia-private/\n", encoding="utf-8"
+        )
+        policy = root / CHECKER.POLICY_PATH
+        policy.parent.mkdir(parents=True)
+        policy.write_text(
+            "# Boundary\n\n"
+            "## Public documentation\n\nPublic behavior.\n\n"
+            "## Local-only documentation\n\nUnreleased detail.\n\n"
+            "## Never document in the repository\n\nNo secrets.\n\n"
+            "## Publication review\n\nReview before sharing.\n",
+            encoding="utf-8",
+        )
+        (policy.parent / "index.md").write_text(
+            "# Documentation\n", encoding="utf-8"
+        )
+
+    def test_private_boundary_passes_and_skips_local_content(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            private = root / CHECKER.PRIVATE_PATH
+            private.mkdir()
+            (private / "internal.md").write_text(
+                f"# Internal\n\n{CHECKER.PACK_PATH}\n", encoding="utf-8"
+            )
+            counts = CHECKER.validate(root)
+            self.assertEqual(counts["files"], 2)
+            self.assertEqual(counts["historical"], 0)
+            self.assertEqual(counts["duplicates"], 0)
+
+    def test_private_boundary_prunes_ignored_roots_before_scanning(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            excluded = {".automexia-private", ".automexia-tools", ".git", "target", "artifacts"}
+            for name in excluded:
+                cached = root / name / "nested" / "cached.md"
+                cached.parent.mkdir(parents=True)
+                cached.write_bytes(b"\xff")
+            scandir = os.scandir
+            visits = []
+
+            def observe(path):
+                relative = Path(path).relative_to(root)
+                self.assertFalse(excluded.intersection(relative.parts), "private/tool/build trees must not be traversed")
+                visits.append(relative.as_posix())
+                return scandir(path)
+
+            with mock.patch("os.scandir", side_effect=observe):
+                self.assertEqual(CHECKER.validate(root)["files"], 2)
+            self.assertCountEqual(visits, [".", "docs"])
+
+    def test_private_boundary_fails_on_unreadable_public_directory(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            scandir = os.scandir
+
+            def deny_public(path):
+                if Path(path) == root / "docs":
+                    raise PermissionError("fixture documentation denied")
+                return scandir(path)
+
+            with mock.patch("os.scandir", side_effect=deny_public):
+                with self.assertRaisesRegex(CHECKER.DocumentationPackError, "cannot read a public documentation directory"):
+                    CHECKER.validate(root)
+
+    def test_private_boundary_still_checks_nested_public_target_names(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            public = root / "docs" / "target" / "public.md"
+            public.parent.mkdir()
+            public.write_text("# Future features\n", encoding="utf-8")
+            with self.assertRaisesRegex(CHECKER.DocumentationPackError, "future planning"):
+                CHECKER.validate(root)
+
+    def test_private_boundary_rejects_legacy_public_pack(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            (root / CHECKER.PACK_PATH).mkdir()
+            with self.assertRaisesRegex(
+                CHECKER.DocumentationPackError, "must remain removed"
+            ):
+                CHECKER.validate(root)
+
+    def test_private_boundary_rejects_negated_ignore_rule(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            with (root / ".gitignore").open("a", encoding="utf-8") as target:
+                target.write("!/.automexia-private/README.md\n")
+            with self.assertRaisesRegex(CHECKER.DocumentationPackError, "negated"):
+                CHECKER.validate(root)
+
+    def test_private_boundary_rejects_public_link_to_private_content(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            (root / "docs" / "index.md").write_text(
+                "# Documentation\n\n[Internal](../.automexia-private/README.md)\n",
+                encoding="utf-8",
+            )
+            with self.assertRaisesRegex(
+                CHECKER.DocumentationPackError, "links into the ignored"
+            ):
+                CHECKER.validate(root)
+
+    def test_future_plans_are_rejected_even_under_renamed_public_pages(self) -> None:
+        # The release merge restored proposal text in otherwise current-status
+        # pages. Renaming a page or calling the feature free must not evade review.
+        examples = (
+            "## Direction after the first stable release\n\nA later free feature.\n",
+            "## Future features\n\nAn open-source addition.\n",
+            "Status: planned public direction.\n",
+            "Status: proposed public summary; no implementation exists.\n",
+            "| Optional component | Separate later direction only. |\n",
+        )
+        for relative in ("README.md", "docs/guide/renamed.md", "changes/review.md"):
+            for example in examples:
+                with self.subTest(path=relative, example=example.splitlines()[0]):
+                    with TemporaryDirectory() as directory:
+                        root = Path(directory)
+                        self.create_private_boundary(root)
+                        target = root / relative
+                        target.parent.mkdir(parents=True, exist_ok=True)
+                        target.write_text("# Current status\n\n" + example, encoding="utf-8")
+                        with self.assertRaisesRegex(
+                            CHECKER.DocumentationPackError, "future planning"
+                        ) as failure:
+                            CHECKER.validate(root)
+                        self.assertNotIn(example.strip(), str(failure.exception))
+
+    def test_current_behavior_and_external_release_gates_remain_public(self) -> None:
+        with TemporaryDirectory() as directory:
+            root = Path(directory)
+            self.create_private_boundary(root)
+            (root / "README.md").write_text(
+                "# Current status\n\n"
+                "Tabs are implemented in source. Native release evidence is external.\n"
+                "Future feature plans must not be published here.\n",
+                encoding="utf-8",
+            )
+            self.assertEqual(CHECKER.validate(root)["files"], 3)
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

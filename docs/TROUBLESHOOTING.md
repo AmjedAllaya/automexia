@@ -14,7 +14,7 @@ Persistent integration is optional. If
 `automexia shell-integration install` is blocked, continue using the
 session-only integration and do not add an antivirus exclusion or pass
 `-ExecutionPolicy Bypass`. For a protected release, verify the MSI/ZIP
-checksum, Authenticode publisher/timestamp, and GitHub attestation as described
+checksum, Authenticode publisher/timestamp, and signed release manifest as described
 in [Release trust](RELEASE-TRUST.md), then submit only that exact public
 artifact through the antivirus vendor's official false-positive process.
 Developer builds and checked-out scripts are intentionally unsigned and should
@@ -59,7 +59,7 @@ without prompt/context/listing features.
    `AUTOMEXIA_SHELL_INTEGRATION=1`.
 3. Confirm the shell is PowerShell, CMD, Bash, or Zsh; unsupported shells remain
    usable but may not emit enhanced metadata.
-4. Run the native checks in [Shell integration](SHELL-INTEGRATION.md#verification).
+4. Run the native checks in [Shell integration](SHELL-INTEGRATION.md#testing).
 
 Do not add prompt escape sequences manually before testing the repository-owned
 integration; duplicate hooks can create repeated semantic generations.
@@ -161,6 +161,18 @@ OS window. `Quit` intentionally exits the application. If current `main`
 reproduces cross-window teardown, capture the exact shortcut/control, shell,
 and `automexia --version`, then run the native window/resize gate and report a
 platform regression.
+
+## The terminal stays visible after closing
+
+Current source dismisses confirmed closing windows before native shell and
+background-service waits. It also drains saturated Windows output during PTY
+teardown and retains final buffered output before pipe EOF. Restart a build
+containing these changes; the earlier 0.4.0 package does not contain them.
+
+Distinguish a window that remains visible from a process that is briefly
+finishing cleanup. If either remains stuck, report which close control was used,
+the number of windows/panes, whether a command was producing output, OS/build,
+shell and application version. Do not include private command contents or paths.
 
 ## Report a reproducible issue
 

@@ -14,4 +14,13 @@ serde = { workspace = true }
 unicode-segmentation = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 serde_json = { workspace = true }
+
+[[bench]]
+name = "text_compaction"
+harness = false
+
+[[bench]]
+name = "semantic_surfaces"
+harness = false

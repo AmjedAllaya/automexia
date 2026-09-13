@@ -13,12 +13,13 @@ use automexia_command_productivity::actions::{
     ProviderActionSpec, RiskClass,
 };
 use automexia_connectivity::connections::{
-    validate_provider_auth_operation, AuthState, EnvironmentRisk, OpaqueReference,
-    ProviderAuthOperation, ProviderAuthOperationKind, ProviderBrowserFlow,
-    ProviderBrowserPolicy, ProviderCapsule, ProviderContextFreshness,
-    ProviderContextProvenance, ProviderContextTemplate, ProviderIsolationBinding,
-    ProviderIsolationStrategy, ProviderKind, ProviderProvenanceKind,
-    ProviderScopeBinding, TransportDescriptor, CONNECTION_SCHEMA_VERSION,
+    from_json_slice_without_duplicate_keys, validate_provider_auth_operation, AuthState,
+    EnvironmentRisk, OpaqueReference, ProviderAuthOperation, ProviderAuthOperationKind,
+    ProviderBrowserFlow, ProviderBrowserPolicy, ProviderCapsule,
+    ProviderContextFreshness, ProviderContextProvenance, ProviderContextTemplate,
+    ProviderIsolationBinding, ProviderIsolationStrategy, ProviderKind,
+    ProviderProvenanceKind, ProviderScopeBinding, TransportDescriptor,
+    CONNECTION_SCHEMA_VERSION,
 };
 use automexia_extension_api::{
     BoundedText, Capability, CapabilityRequest, ExecutableId, ExtensionId,
@@ -51,6 +52,8 @@ pub enum AwsAdapterErrorCode {
     InvalidUtf8,
     MalformedConfig,
     DuplicateProfile,
+    DuplicateSsoSession,
+    DuplicateEntry,
     TooManyProfiles,
     UnsafePublicField,
     MissingProfile,
@@ -152,6 +155,7 @@ pub struct AwsPublicProfile {
     pub role: Option<String>,
     pub source_profile: Option<String>,
     pub sso_session: Option<String>,
+    pub sso_region: Option<String>,
 }
 
 impl AwsPublicProfile {
@@ -190,25 +194,93 @@ fn profile_section_name(section: &str) -> Option<&str> {
     }
 }
 
-fn reject_duplicate_profile_sections(source: &str) -> Result<(), AwsAdapterError> {
+fn sso_session_section_name(section: &str) -> Option<&str> {
+    section.strip_prefix("sso-session ").map(str::trim)
+}
+
+fn validate_region(value: &str, field: &'static str) -> Result<(), AwsAdapterError> {
+    validate_public(value, field)?;
+    if value.starts_with('-')
+        || value.ends_with('-')
+        || !value.bytes().all(|byte| {
+            byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-'
+        })
+    {
+        return Err(AwsAdapterError::new(
+            AwsAdapterErrorCode::UnsafePublicField,
+            field,
+        ));
+    }
+    Ok(())
+}
+
+fn validate_config_structure(source: &str) -> Result<(), AwsAdapterError> {
     let mut profiles = HashSet::new();
-    for line in source.lines() {
-        let line = line.trim();
-        let Some(section) = line
-            .strip_prefix('[')
-            .and_then(|line| line.strip_suffix(']'))
-        else {
+    let mut sso_sessions = HashSet::new();
+    let mut entries = HashSet::new();
+    let mut current_owned_section: Option<String> = None;
+    let mut saw_section = false;
+    for raw_line in source.lines() {
+        let line = raw_line.trim();
+        if line.is_empty() || line.starts_with('#') || line.starts_with(';') {
             continue;
-        };
-        let Some(profile) = profile_section_name(section.trim()) else {
+        }
+        if line.starts_with('[') {
+            let Some(section) = line
+                .strip_prefix('[')
+                .and_then(|line| line.strip_suffix(']'))
+            else {
+                return Err(AwsAdapterError::new(
+                    AwsAdapterErrorCode::MalformedConfig,
+                    "section",
+                ));
+            };
+            let section = section.trim();
+            saw_section = true;
+            current_owned_section = None;
+            if let Some(profile) = profile_section_name(section) {
+                validate_public(profile, "profile.name")?;
+                if !profiles.insert(profile.to_owned()) {
+                    return Err(AwsAdapterError::new(
+                        AwsAdapterErrorCode::DuplicateProfile,
+                        "profile.name",
+                    ));
+                }
+                current_owned_section = Some(format!("profile:{profile}"));
+            } else if let Some(session) = sso_session_section_name(section) {
+                validate_public(session, "sso_session.name")?;
+                if !sso_sessions.insert(session.to_owned()) {
+                    return Err(AwsAdapterError::new(
+                        AwsAdapterErrorCode::DuplicateSsoSession,
+                        "sso_session.name",
+                    ));
+                }
+                current_owned_section = Some(format!("sso-session:{session}"));
+            }
             continue;
-        };
-        validate_public(profile, "profile.name")?;
-        if !profiles.insert(profile.to_owned()) {
+        }
+        if !saw_section {
             return Err(AwsAdapterError::new(
-                AwsAdapterErrorCode::DuplicateProfile,
-                "profile.name",
+                AwsAdapterErrorCode::MalformedConfig,
+                "entry",
             ));
+        }
+        let Some((key, _)) = line.split_once(['=', ':']) else {
+            return Err(AwsAdapterError::new(
+                AwsAdapterErrorCode::MalformedConfig,
+                "entry",
+            ));
+        };
+        let key = key.trim();
+        validate_public(key, "entry.key")?;
+        if let Some(section) = current_owned_section.as_ref() {
+            let identity = (section.clone(), key.to_ascii_lowercase());
+            if !entries.insert(identity) {
+                return Err(AwsAdapterError::new(
+                    AwsAdapterErrorCode::DuplicateEntry,
+                    "entry.key",
+                ));
+            }
         }
     }
     Ok(())
@@ -229,18 +301,46 @@ pub fn parse_public_config(bytes: &[u8]) -> Result<AwsPublicConfig, AwsAdapterEr
     }
     let source = std::str::from_utf8(bytes)
         .map_err(|_| AwsAdapterError::new(AwsAdapterErrorCode::InvalidUtf8, "config"))?;
-    reject_duplicate_profile_sections(source)?;
+    validate_config_structure(source)?;
 
     let mut parser = Ini::new_cs();
     let parsed = parser.read(source.to_owned()).map_err(|_| {
         AwsAdapterError::new(AwsAdapterErrorCode::MalformedConfig, "config")
     })?;
+    let mut sso_sessions = BTreeMap::new();
+    for (section_name, section) in &parsed {
+        let Some(session_name) = sso_session_section_name(section_name.trim()) else {
+            continue;
+        };
+        let region = value(section, "sso_region");
+        if let Some(region) = region.as_deref() {
+            validate_region(region, "sso_session.region")?;
+        }
+        sso_sessions.insert(session_name.to_owned(), region);
+    }
     let mut profiles = BTreeMap::new();
     for (section_name, section) in parsed {
         let Some(profile_name) = profile_section_name(section_name.trim()) else {
             continue;
         };
         validate_public(profile_name, "profile.name")?;
+        let sso_session = value(&section, "sso_session");
+        let legacy_sso_region = value(&section, "sso_region");
+        let session_sso_region = sso_session
+            .as_ref()
+            .and_then(|session| sso_sessions.get(session))
+            .cloned()
+            .flatten();
+        if legacy_sso_region.is_some()
+            && session_sso_region.is_some()
+            && legacy_sso_region != session_sso_region
+        {
+            return Err(AwsAdapterError::new(
+                AwsAdapterErrorCode::MalformedConfig,
+                "profile.sso_region",
+            ));
+        }
+        let sso_region = session_sso_region.or(legacy_sso_region);
         let profile = AwsPublicProfile {
             name: profile_name.to_owned(),
             region: value(&section, "region"),
@@ -248,7 +348,8 @@ pub fn parse_public_config(bytes: &[u8]) -> Result<AwsPublicConfig, AwsAdapterEr
             role: value(&section, "sso_role_name")
                 .or_else(|| value(&section, "role_arn")),
             source_profile: value(&section, "source_profile"),
-            sso_session: value(&section, "sso_session"),
+            sso_session,
+            sso_region,
         };
         for (field, candidate) in [
             ("profile.region", profile.region.as_deref()),
@@ -260,6 +361,9 @@ pub fn parse_public_config(bytes: &[u8]) -> Result<AwsPublicConfig, AwsAdapterEr
             if let Some(candidate) = candidate {
                 validate_public(candidate, field)?;
             }
+        }
+        if let Some(region) = profile.sso_region.as_deref() {
+            validate_region(region, "profile.sso_region")?;
         }
         if profiles.insert(profile.name.clone(), profile).is_some() {
             return Err(AwsAdapterError::new(
@@ -295,6 +399,7 @@ pub fn public_context(
         ("role", profile.role.as_deref()),
         ("source_profile", profile.source_profile.as_deref()),
         ("sso_session", profile.sso_session.as_deref()),
+        ("sso_region", profile.sso_region.as_deref()),
     ] {
         if let Some(candidate) = candidate {
             validate_public(candidate, field)?;
@@ -308,6 +413,7 @@ pub fn public_context(
         ("region", profile.region.as_ref()),
         ("account", profile.account_id.as_ref()),
         ("role", profile.role.as_ref()),
+        ("sso_region", profile.sso_region.as_ref()),
     ] {
         if let Some(candidate) = candidate {
             scope.push(ProviderScopeBinding {
@@ -469,9 +575,11 @@ pub fn build_sso_login(
     let profile = scope(context, "profile").ok_or_else(|| {
         AwsAdapterError::new(AwsAdapterErrorCode::CapsuleMismatch, "profile")
     })?;
-    let region = scope(context, "region").unwrap_or("us-east-1");
+    let region = scope(context, "sso_region").ok_or_else(|| {
+        AwsAdapterError::new(AwsAdapterErrorCode::CapsuleMismatch, "sso_region")
+    })?;
     validate_public(profile, "profile")?;
-    validate_public(region, "region")?;
+    validate_region(region, "sso_region")?;
     let (flow_argument, browser_flow, host) = match flow {
         AwsSsoFlow::Pkce => (
             None,
@@ -599,9 +707,10 @@ pub fn parse_sts_caller_identity(
             "sts_observation",
         ));
     }
-    let identity: AwsCallerIdentity = serde_json::from_slice(bytes).map_err(|_| {
-        AwsAdapterError::new(AwsAdapterErrorCode::MalformedConfig, "sts_observation")
-    })?;
+    let identity: AwsCallerIdentity = from_json_slice_without_duplicate_keys(bytes)
+        .map_err(|_| {
+            AwsAdapterError::new(AwsAdapterErrorCode::MalformedConfig, "sts_observation")
+        })?;
     validate_public(&identity.user_id, "caller.user_id")?;
     validate_public(&identity.account, "caller.account")?;
     validate_public(&identity.arn, "caller.arn")?;
@@ -900,6 +1009,7 @@ mod tests {
             role: Some("Developer".into()),
             source_profile: None,
             sso_session: Some("company".into()),
+            sso_region: Some("eu-west-3".into()),
         }
     }
 
@@ -934,7 +1044,8 @@ mod tests {
 
     #[test]
     fn public_config_ignores_all_credential_material() {
-        let secret = "credential-canary-value";
+        let credential_fixture = "<redacted>";
+        let secret = credential_fixture;
         let parsed = parse_public_config(
             format!(
                 "[profile engineering]\nregion=eu-west-3\nsso_account_id=123456789012\nsso_role_name=Developer\naws_access_key_id={secret}\naws_secret_access_key={secret}\naws_session_token={secret}\ncredential_process=helper {secret}\nweb_identity_token_file={secret}\n"
@@ -952,6 +1063,7 @@ mod tests {
     fn profile_without_session() -> AwsPublicProfile {
         AwsPublicProfile {
             sso_session: None,
+            sso_region: None,
             ..profile()
         }
     }
@@ -969,6 +1081,69 @@ mod tests {
                 .code(),
             AwsAdapterErrorCode::InputTooLarge
         );
+        assert!(parse_public_config(
+            b"[profile dev]\nregion=eu-west-1\nregion=us-east-1\n"
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn sso_login_uses_the_bound_sso_region_and_never_the_service_region() {
+        let parsed = parse_public_config(
+            b"[profile engineering]\nregion=eu-west-3\nsso_session=company\nsso_account_id=123456789012\nsso_role_name=Developer\n[sso-session company]\nsso_region=eu-central-1\nsso_start_url=https://example.awsapps.com/start\n",
+        )
+        .unwrap();
+        let context = public_context(
+            parsed.profile("engineering").unwrap(),
+            OpaqueReference::new("aws.engineering"),
+            OpaqueReference::new("grant.aws.config"),
+            "revision-sso-region".into(),
+            100,
+            EnvironmentRisk::Production,
+        )
+        .unwrap();
+        let capsule = ProviderCapsule {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            capsule_id: "capsule.aws.sso-region".into(),
+            session_id: 9,
+            revision: 1,
+            contexts: vec![context],
+            created_at_ms: 100,
+        };
+        let login =
+            build_sso_login(&capsule, OperationId::new(13), AwsSsoFlow::Pkce).unwrap();
+        assert_eq!(
+            login.browser.allowed_origins,
+            vec!["https://oidc.eu-central-1.amazonaws.com"]
+        );
+
+        let missing_session = parse_public_config(
+            b"[profile engineering]\nregion=eu-west-3\nsso_session=missing\n",
+        )
+        .unwrap();
+        let context = public_context(
+            missing_session.profile("engineering").unwrap(),
+            OpaqueReference::new("aws.engineering"),
+            OpaqueReference::new("grant.aws.config"),
+            "revision-missing-sso-region".into(),
+            100,
+            EnvironmentRisk::Production,
+        )
+        .unwrap();
+        let missing_capsule = ProviderCapsule {
+            schema_version: CONNECTION_SCHEMA_VERSION,
+            capsule_id: "capsule.aws.missing-sso-region".into(),
+            session_id: 10,
+            revision: 1,
+            contexts: vec![context],
+            created_at_ms: 100,
+        };
+        assert!(build_sso_login(
+            &missing_capsule,
+            OperationId::new(14),
+            AwsSsoFlow::Pkce
+        )
+        .is_err());
     }
 
     #[test]
@@ -1093,8 +1268,11 @@ mod tests {
                 .map(|binding| binding.public_value.as_str()),
             Some("123456789012")
         );
-        let secret_bearing = br#"{"UserId":"u","Account":"123456789012","Arn":"arn:aws:iam::123456789012:user/u","Token":"credential-canary"}"#;
+        let credential_response_fixture = br#"{"UserId":"u","Account":"123456789012","Arn":"arn:aws:iam::123456789012:user/u","Token":"<redacted>"}"#;
+        let secret_bearing = credential_response_fixture;
         assert!(parse_sts_caller_identity(secret_bearing).is_err());
+        let duplicate_account = br#"{"UserId":"u","Account":"123456789012","\u0041ccount":"999999999999","Arn":"arn:aws:iam::123456789012:user/u"}"#;
+        assert!(parse_sts_caller_identity(duplicate_account).is_err());
         assert_eq!(
             parse_sts_caller_identity(&vec![b'a'; MAX_OBSERVATION_BYTES + 1])
                 .unwrap_err()

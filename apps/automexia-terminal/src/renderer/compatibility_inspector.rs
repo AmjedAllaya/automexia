@@ -465,7 +465,7 @@ impl CompatibilityInspector {
                     color_u8(theme.text)
                 };
                 let body = DrawOpts { color, ..body };
-                let line = elide_end(sugarloaf, &line, available_width, body.font_size);
+                let line = elide_end(sugarloaf, &line, available_width, &body);
                 sugarloaf.text_mut().draw(
                     body_x,
                     body_y + index as f32 * LINE_HEIGHT,

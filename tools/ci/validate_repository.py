@@ -17,6 +17,8 @@ import xml.etree.ElementTree as element_tree
 
 import yaml
 
+from markdown_anchors import markdown_anchors
+
 from check_command_productivity import (
     validate_repository as validate_command_productivity,
 )
@@ -68,6 +70,7 @@ from check_production_operations_po0 import (
 )
 from check_repository_aligned_docs import validate as validate_repository_aligned_docs
 from check_platform_coverage import validate_repository_workflows
+from rust_toolchain import validate_policy as validate_rust_toolchain_policy
 from repository_protection import validate_repository as validate_repository_protection
 from release_trust import load_policy as validate_release_trust_policy
 from stable_release import (
@@ -78,7 +81,13 @@ from stable_release import (
 
 
 ROOT = Path(__file__).resolve().parents[2]
-EXCLUDED_PARTS = {".git", ".cargo-packager", "target"}
+EXCLUDED_PARTS = {
+    ".git",
+    ".cargo-packager",
+    ".automexia-private",
+    ".automexia-tools",
+    "target",
+}
 MARKDOWN_LINK = re.compile(r"!?\[[^\]]*\]\(([^)]+)\)")
 ACTION_USE = re.compile(r"^\s*-\s+uses:\s*([^\s#]+)", re.MULTILINE)
 
@@ -196,22 +205,6 @@ def validate_brand_assets() -> None:
         )
 
 
-def markdown_anchors(path: Path) -> set[str]:
-    anchors: set[str] = set()
-    occurrences: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
-            continue
-        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
-        duplicate = occurrences.get(slug, 0)
-        occurrences[slug] = duplicate + 1
-        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
-    return anchors
-
-
 def validate_markdown_links() -> int:
     markdown_files = files_with_suffixes(".md")
     anchor_cache: dict[Path, set[str]] = {}
@@ -237,7 +230,9 @@ def validate_markdown_links() -> int:
                     f"{relative(source)} has a missing local link: {raw_target}"
                 )
             if separator and anchor and target.suffix.lower() == ".md":
-                anchors = anchor_cache.setdefault(target, markdown_anchors(target))
+                if target not in anchor_cache:
+                    anchor_cache[target] = markdown_anchors(target)
+                anchors = anchor_cache[target]
                 if unquote(anchor).lower() not in anchors:
                     raise ValueError(
                         f"{relative(source)} has a missing Markdown anchor: {raw_target}"
@@ -316,11 +311,12 @@ def validate() -> None:
 
     counts["Markdown"] = validate_markdown_links()
     counts["Markdown hygiene"] = validate_documentation_hygiene()
-    counts["aligned documentation pack"] = validate_repository_aligned_docs()
+    counts["public/private documentation boundary"] = validate_repository_aligned_docs()
     counts["pinned Actions"] = validate_action_pins()
 
     validate_repository_workflows()
     counts["platform workflow matrix"] = 1
+    counts["verified compiler workflow jobs"] = validate_rust_toolchain_policy()
 
     protection_counts = validate_repository_protection()
     counts["repository protection rulesets"] = protection_counts["rulesets"]
@@ -377,8 +373,8 @@ def validate() -> None:
     ecosystem_d7_cp6_counts = validate_ecosystem_d7_cp6()
     counts["ecosystem D7/CP6 accepted source"] = ecosystem_d7_cp6_counts["source_files"]
     production_operations_po0_counts = validate_production_operations_po0()
-    counts["Production Operations PO0 proposal"] = (
-        production_operations_po0_counts["traceability"]
+    counts["Production Operations public planning boundary"] = (
+        production_operations_po0_counts["documents"]
     )
     session_launch_d0_counts = validate_session_launch_d0()
     counts["session launch D0/D3"] = session_launch_d0_counts["scenarios"]

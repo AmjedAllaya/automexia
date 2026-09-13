@@ -11,6 +11,119 @@ use rio_vt::performer::handler::Processor;
 
 type Fixture = BTreeMap<String, String>;
 
+#[cfg(all(windows, feature = "pty"))]
+#[test]
+fn native_powershell_output_retains_selection_after_exit_and_reflow() {
+    use rio_vt::crosswords::grid::Scroll;
+    use rio_vt::crosswords::pos::{Column, Pos, Side};
+    use rio_vt::selection::{Selection, SelectionType};
+    use std::io::{ErrorKind, Read};
+    use std::time::{Duration, Instant};
+    use teletypewriter::{ChildEvent, EventedPty, ProcessReadWrite};
+
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/selection-output.ps1");
+    let mut pty = teletypewriter::create_pty(
+        Some("powershell.exe"),
+        vec![
+            "-NoLogo".into(),
+            "-NoProfile".into(),
+            "-NonInteractive".into(),
+            "-File".into(),
+            fixture.to_string_lossy().into_owned(),
+        ],
+        &None,
+        None,
+        180,
+        12,
+    )
+    .unwrap_or_else(|_| panic!("native selection fixture could not start"));
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(180, 12),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        2_000,
+    );
+    let mut processor = Processor::default();
+    let deadline = Instant::now() + Duration::from_secs(20);
+    let mut buffer = [0u8; 4_096];
+    let mut received = 0usize;
+    let mut exited = false;
+    let mut complete = false;
+    while Instant::now() < deadline {
+        match pty.reader().read(&mut buffer) {
+            Ok(read) => {
+                received += read;
+                assert!(
+                    received <= 64 * 1024,
+                    "native fixture exceeded its output bound"
+                );
+                processor.advance(&mut terminal, &buffer[..read]);
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+            Err(_) => panic!("native selection fixture read failed"),
+        }
+        if let Some(ChildEvent::Exited(status)) = pty.next_child_event() {
+            assert_eq!(status, Some(0), "native fixture did not exit successfully");
+            exited = true;
+        }
+        complete = terminal
+            .visible_rows()
+            .iter()
+            .any(|row| row_text(row) == "NATIVE_SELECTION_DONE");
+        if exited && complete {
+            break;
+        }
+        // This is bounded readiness polling, not a sleep-as-success oracle.
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(
+        exited && complete,
+        "native fixture lacked both completion and child exit"
+    );
+    drop(pty);
+
+    let first = format!("NATIVE-SOURCE {}end", "retained text  ".repeat(8));
+    let second = "NATIVE-SECOND 界e\u{301} end";
+    let start_row = (terminal.grid.topmost_line().0..=terminal.grid.bottommost_line().0)
+        .map(Line)
+        .find(|row| row_text(&terminal.grid[*row]) == first)
+        .expect("native first line was not retained exactly");
+    let second_row = start_row + 1i32;
+    let second_end = terminal.grid[second_row]
+        .inner
+        .iter()
+        .rposition(|cell| cell.c() == 'd')
+        .expect("native second line lacked its final cell");
+    let mut selection = Selection::new(
+        SelectionType::Simple,
+        Pos::new(start_row, Column(0)),
+        Side::Left,
+    );
+    selection.update(Pos::new(second_row, Column(second_end)), Side::Right);
+    terminal.selection = Some(selection);
+    let expected = format!("{first}\n{second}");
+    assert_eq!(
+        terminal.selection_to_string().as_deref(),
+        Some(expected.as_str())
+    );
+    // The shell produced the bytes and exited. This covers retained-output
+    // reflow, not a live ConPTY redraw, native selection gesture or pixels.
+    for _ in 0..4 {
+        for (cols, rows) in [(120, 9), (80, 20), (62, 3), (40, 16), (100, 7), (180, 12)] {
+            terminal.resize(CrosswordsSize::new(cols, rows));
+            terminal.scroll_display(Scroll::Top);
+            assert_eq!(
+                terminal.selection_to_string().as_deref(),
+                Some(expected.as_str())
+            );
+            terminal.scroll_display(Scroll::Bottom);
+        }
+    }
+}
+
 fn fixture(name: &str) -> Fixture {
     let path = format!("{}/../tests/fixtures/{name}", env!("CARGO_MANIFEST_DIR"));
     serde_json::from_str(&std::fs::read_to_string(path).expect("fixture is readable"))
@@ -110,7 +223,7 @@ fn prompts_created_while_narrow_survive_grow_reflow_without_detaching() {
         128,
     );
     let mut processor = Processor::default();
-    let path = "/mnt/d/workstation/projects/business-project/custom_terminal/automexia-terminal/standalone";
+    let path = "<REDACTED_LOCAL_VALUE>";
 
     let initial = format!(
         "\x1b]1337;SetUserVar=automexia_prompt_active=MQ==\x07\

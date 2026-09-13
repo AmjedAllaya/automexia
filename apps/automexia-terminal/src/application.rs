@@ -30,6 +30,11 @@ use rio_window::window::{CursorIcon, Fullscreen, ResizeDirection};
 use std::error::Error;
 use std::time::{Duration, Instant};
 
+use crate::automexia::preferences::{
+    self as runtime_preferences, PreferenceErrorCode, PreferenceWriter, UserPreferences,
+    MAX_FONT_POINTS, MIN_FONT_POINTS,
+};
+
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
 enum RuntimeConfigReload {
@@ -63,6 +68,45 @@ fn prepare_runtime_font_reload(
     match errors {
         Some(error) => Err(error.fonts_not_found),
         None => Ok(Some(font_library)),
+    }
+}
+
+fn preference_warning(
+    error: PreferenceErrorCode,
+    recovered: bool,
+) -> rio_backend::error::RioError {
+    let recovery = if recovered {
+        " The last known-good saved settings were restored."
+    } else {
+        " The configured defaults remain active."
+    };
+    rio_backend::error::RioError {
+        level: rio_backend::error::RioErrorLevel::Warning,
+        report: rio_backend::error::RioErrorType::InvalidConfigurationFormat(format!(
+            "saved terminal settings could not be applied ({error:?}).{recovery}"
+        )),
+    }
+}
+
+fn apply_font_size_request(
+    preferences: &mut UserPreferences,
+    request: rio_backend::event::FontSizeRequest,
+) -> Result<(), PreferenceErrorCode> {
+    use rio_backend::event::FontSizeRequest;
+
+    match request {
+        FontSizeRequest::Set(points)
+            if points.is_finite()
+                && (MIN_FONT_POINTS..=MAX_FONT_POINTS).contains(&points) =>
+        {
+            preferences.font_size = Some(points);
+            Ok(())
+        }
+        FontSizeRequest::Reset => {
+            preferences.font_size = None;
+            Ok(())
+        }
+        FontSizeRequest::Set(_) => Err(PreferenceErrorCode::InvalidData),
     }
 }
 
@@ -111,8 +155,53 @@ fn should_confirm_window_close(
     window_count == 1 && confirm_before_quit && !already_confirmed_by_platform
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum WheelEventTarget {
+    Blocked,
+    CommandPalette,
+    Terminal,
+}
+
+/// Resolve the single owner of a wheel event before any pane, terminal, or
+/// PTY-facing behavior runs. The command palette is above secondary overlays
+/// in the modal stack; confirmation and non-terminal routes remain absolute
+/// blockers.
+#[inline]
+fn wheel_event_target(
+    route_is_terminal: bool,
+    hard_blocker_active: bool,
+    secondary_modal_active: bool,
+    command_palette_active: bool,
+) -> WheelEventTarget {
+    if !route_is_terminal || hard_blocker_active {
+        WheelEventTarget::Blocked
+    } else if command_palette_active {
+        WheelEventTarget::CommandPalette
+    } else if secondary_modal_active {
+        WheelEventTarget::Blocked
+    } else {
+        WheelEventTarget::Terminal
+    }
+}
+
+/// Winit reports precision-trackpad motion in physical pixels while palette
+/// geometry is logical. Fail closed for malformed scale state rather than
+/// publishing an unbounded or direction-flipped delta.
+#[inline]
+fn logical_wheel_pixels(physical_pixels: f64, scale_factor: f32) -> f64 {
+    if !physical_pixels.is_finite() || !scale_factor.is_finite() || scale_factor <= 0.0 {
+        0.0
+    } else {
+        physical_pixels / scale_factor as f64
+    }
+}
+
 pub struct Application<'a> {
+    /// Parsed config before runtime UI preferences are layered onto it.
+    base_config: rio_backend::config::Config,
     config: rio_backend::config::Config,
+    user_preferences: UserPreferences,
+    preference_writer: PreferenceWriter,
     event_proxy: EventProxy,
     router: Router<'a>,
     scheduler: Scheduler,
@@ -136,9 +225,28 @@ impl Application<'_> {
         let clipboard =
             unsafe { Clipboard::new(event_loop.display_handle().unwrap().as_raw()) };
 
+        let base_config = config;
+        let preference_load = runtime_preferences::load();
+        let user_preferences = preference_load.preferences;
+        let mut config = user_preferences.apply_to(&base_config);
+        let incompatible_shortcuts =
+            crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
+
         let mut router = Router::new(config.fonts.to_owned(), clipboard);
+        if incompatible_shortcuts {
+            router.propagate_error_to_next_route(preference_warning(
+                runtime_preferences::PreferenceErrorCode::InvalidData,
+                false,
+            ));
+        }
         if let Some(error) = config_error {
             router.propagate_error_to_next_route(error.into());
+        }
+        if let Some(error) = preference_load.warning {
+            router.propagate_error_to_next_route(preference_warning(
+                error,
+                preference_load.source == runtime_preferences::PreferenceSource::Previous,
+            ));
         }
 
         let proxy = event_loop.create_proxy();
@@ -156,7 +264,20 @@ impl Application<'_> {
         rio_notifier::request_authorization();
 
         Application {
+            base_config,
             config,
+            user_preferences,
+            preference_writer: {
+                let mut writer = runtime_preferences::writer();
+                let proxy = event_proxy.clone();
+                writer.set_wake(std::sync::Arc::new(move || {
+                    proxy.send_event(
+                        RioEventType::Rio(RioEvent::PreferencesWritten),
+                        rio_backend::event::WindowId::from(0),
+                    );
+                }));
+                writer
+            },
             event_proxy,
             router,
             scheduler,
@@ -164,6 +285,129 @@ impl Application<'_> {
             global_hotkey: None,
             #[cfg(target_os = "macos")]
             quake_previous_app: None,
+        }
+    }
+
+    fn publish_user_preferences(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        has_font_updates: bool,
+    ) {
+        let mut config = self.user_preferences.apply_to(&self.base_config);
+        crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
+        let theme = config
+            .force_theme
+            .map(|theme| theme.to_window_theme())
+            .or_else(|| event_loop.system_theme());
+        update_colors_based_on_theme(&mut config, theme);
+        self.config = config;
+
+        for route in self.router.routes.values_mut() {
+            route.update_config(
+                &self.config,
+                &self.router.font_library,
+                has_font_updates,
+                None,
+                false,
+            );
+            route.window.configure_window(&self.config);
+            route.request_redraw();
+        }
+        self.preference_writer.submit(self.user_preferences.clone());
+    }
+
+    fn apply_shortcut_edit(&mut self, window_id: rio_backend::event::WindowId) {
+        let Some(change) = self.router.routes.get_mut(&window_id).and_then(|route| {
+            route
+                .window
+                .screen
+                .renderer
+                .command_palette
+                .take_shortcut_change()
+        }) else {
+            return;
+        };
+        let mut candidate = self.user_preferences.clone();
+        let id = crate::bindings::shortcut::action_id(change.action);
+        candidate.shortcuts.retain(|record| record.action != id);
+        if let Some(trigger) = change.trigger {
+            candidate
+                .shortcuts
+                .push(rio_backend::config::bindings::UiShortcut {
+                    action: id,
+                    trigger,
+                });
+        }
+        let config = candidate.apply_to(&self.base_config);
+        let snapshot = match crate::bindings::registry::build(&config) {
+            Ok(snapshot) => snapshot,
+            Err(_) => {
+                if let Some(route) = self.router.routes.get_mut(&window_id) {
+                    route.window.screen.renderer.command_palette.shortcut_save_failed("Shortcut conflicts with current configuration; choose another combination");
+                    route.request_redraw();
+                }
+                return;
+            }
+        };
+        self.user_preferences = candidate;
+        // Preserve the prepared theme/font configuration. This transaction changes
+        // only bindings, not window geometry, session state or OS registrations.
+        self.config.bindings = config.bindings;
+        for route in self.router.routes.values_mut() {
+            route
+                .window
+                .screen
+                .update_bindings(&self.config, snapshot.clone());
+            route.request_redraw();
+        }
+        let revision = self.preference_writer.submit(self.user_preferences.clone());
+        if let Some(route) = self.router.routes.get_mut(&window_id) {
+            let palette = &mut route.window.screen.renderer.command_palette;
+            if revision == 0 {
+                palette.shortcut_save_failed(
+                    "Active this session only; settings could not be queued",
+                );
+            } else {
+                palette.shortcut_save_started(revision);
+            }
+        }
+    }
+
+    fn finish_shortcut_writes(&mut self) {
+        if let Some((revision, result)) = self.preference_writer.completion() {
+            for route in self.router.routes.values_mut() {
+                if route
+                    .window
+                    .screen
+                    .renderer
+                    .command_palette
+                    .shortcut_write_finished(revision, result.is_ok())
+                {
+                    route.request_redraw();
+                }
+            }
+        }
+    }
+
+    fn report_preference_write_failure(&mut self) {
+        let Some(error) = self.preference_writer.take_error() else {
+            return;
+        };
+        let report = preference_warning(error, false);
+        for route in self.router.routes.values_mut() {
+            // The editor already shows the exact save outcome. Do not stack
+            // another modal over its retry and reset controls.
+            if route
+                .window
+                .screen
+                .renderer
+                .command_palette
+                .is_editing_shortcut()
+            {
+                continue;
+            }
+            route.report_error(&report);
+            route.request_redraw();
         }
     }
 
@@ -244,11 +488,17 @@ impl Application<'_> {
     /// only application-level per-window destruction path; explicit Quit is
     /// deliberately separate and remains process-wide.
     fn close_window_route(&mut self, window_id: rio_backend::event::WindowId) -> bool {
-        let route_ids = self
+        let (route_ids, shutdown_requests) = self
             .router
             .routes
             .get(&window_id)
-            .map(|route| route.window.screen.context_manager.route_ids())
+            .map(|route| {
+                // Native destruction can be queued behind the final callback.
+                // Dismiss the confirmed window before any destructor can wait.
+                route.window.winit_window.set_visible(false);
+                let manager = &route.window.screen.context_manager;
+                (manager.route_ids(), manager.request_pty_shutdown())
+            })
             .unwrap_or_default();
         let Some(route) = self.router.remove_window(window_id) else {
             return false;
@@ -257,7 +507,18 @@ impl Application<'_> {
             self.scheduler.unschedule_window(route_id);
         }
         drop(route);
+        tracing::debug!(shutdown_requests, "window PTY shutdown broadcast completed");
         true
+    }
+
+    fn request_application_exit(&mut self, event_loop: &ActiveEventLoop) {
+        self.router.hide_windows_for_exit();
+        let shutdown_requests = self.router.request_pty_shutdown();
+        tracing::debug!(
+            shutdown_requests,
+            "application PTY shutdown broadcast completed"
+        );
+        event_loop.exit();
     }
 
     fn close_window_and_maybe_exit(
@@ -669,7 +930,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::UpdateConfig) => {
-                let mut config = match prepare_runtime_config_reload(
+                let base_config = match prepare_runtime_config_reload(
                     rio_backend::config::Config::try_load(),
                 ) {
                     RuntimeConfigReload::Apply(config) => *config,
@@ -684,6 +945,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         return;
                     }
                 };
+                let mut config = self.user_preferences.apply_to(&base_config);
 
                 let system_theme = event_loop.system_theme();
                 let theme = config
@@ -770,6 +1032,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 if let Some(font_library) = prepared_font_library {
                     *self.router.font_library = font_library;
                 }
+                self.base_config = base_config;
                 self.config = config;
 
                 for route in self.router.routes.values_mut() {
@@ -786,12 +1049,21 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::Exit | RioEvent::Quit) => {
-                if let Some(route) = self.router.routes.get_mut(&window_id) {
-                    if self.config.confirm_before_quit {
-                        route.confirm_quit();
+                let should_exit =
+                    if let Some(route) = self.router.routes.get_mut(&window_id) {
+                        if self.config.confirm_before_quit
+                            && !route.window.screen.renderer.confirm_quit.is_active()
+                        {
+                            route.confirm_quit();
+                            false
+                        } else {
+                            true
+                        }
                     } else {
-                        route.quit();
-                    }
+                        false
+                    };
+                if should_exit {
+                    self.request_application_exit(event_loop);
                 }
             }
             RioEventType::Rio(RioEvent::GlyphProtocolInstalled {
@@ -991,6 +1263,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
             RioEventType::Rio(RioEvent::UpdateTitles) => {
                 self.router.update_titles();
+                self.report_preference_write_failure();
             }
             RioEventType::Rio(RioEvent::MouseCursorDirty) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
@@ -1221,35 +1494,43 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
             }
+            RioEventType::Rio(RioEvent::ApplyShortcutEdit) => {
+                self.apply_shortcut_edit(window_id)
+            }
+            RioEventType::Rio(RioEvent::PreferencesWritten) => {
+                self.finish_shortcut_writes();
+                self.report_preference_write_failure();
+            }
             RioEventType::Rio(RioEvent::ToggleAppearanceTheme) => {
-                if let Some(route) = self.router.routes.get_mut(&window_id) {
-                    use rio_backend::config::theme::AppearanceTheme;
-                    let current = self
-                        .config
-                        .force_theme
-                        .or_else(|| {
+                use rio_backend::config::theme::AppearanceTheme;
+                let current = self
+                    .config
+                    .force_theme
+                    .or_else(|| {
+                        self.router.routes.get(&window_id).and_then(|route| {
                             route
                                 .window
                                 .winit_window
                                 .theme()
                                 .map(AppearanceTheme::from_window_theme)
                         })
-                        .unwrap_or(AppearanceTheme::Dark);
-                    let toggled = current.toggled();
-                    self.config.force_theme = Some(toggled);
-                    update_colors_based_on_theme(
-                        &mut self.config,
-                        Some(toggled.to_window_theme()),
-                    );
-                    route.window.screen.update_config(
-                        &self.config,
-                        &self.router.font_library,
-                        false,
-                        None,
-                        false,
-                    );
-                    route.window.configure_window(&self.config);
+                    })
+                    .unwrap_or(AppearanceTheme::Dark);
+                self.user_preferences.appearance_theme = Some(current.toggled());
+                self.publish_user_preferences(event_loop, false);
+            }
+            RioEventType::Rio(RioEvent::UpdateFontSize(request)) => {
+                if let Err(error) =
+                    apply_font_size_request(&mut self.user_preferences, request)
+                {
+                    let report = preference_warning(error, false);
+                    if let Some(route) = self.router.routes.get_mut(&window_id) {
+                        route.report_error(&report);
+                        route.request_redraw();
+                    }
+                    return;
                 }
+                self.publish_user_preferences(event_loop, true);
             }
             RioEventType::Rio(RioEvent::ColorChange(route_id, index, color)) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
@@ -1398,6 +1679,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::MouseInput { state, button, .. } => {
+                if route.window.screen.mouse.palette_consumes_button(
+                    button,
+                    state,
+                    route.window.screen.renderer.command_palette.is_enabled(),
+                ) {
+                    if button == MouseButton::Left {
+                        let id = route.window.screen.ctx().current_route();
+                        self.scheduler
+                            .unschedule(TimerId::new(Topic::SelectionScrolling, id));
+                        route.window.screen.renderer.scrollbar.end_drag();
+                        route.window.screen.resize_state = None;
+                    }
+                    return;
+                }
                 if route.window.screen.renderer.confirm_quit.is_active() {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let scale = route.window.screen.sugarloaf.scale_factor();
@@ -1438,7 +1733,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
-                if route.window.screen.connection_hub_is_active() {
+                if route.window.screen.connection_hub_is_active()
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let scale = route.window.screen.sugarloaf.scale_factor();
                         let size = route.window.screen.sugarloaf.window_size();
@@ -1451,13 +1748,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             if hit
                                 == crate::renderer::connection_hub::ConnectionHubHit::ReviewFiles
                             {
-                                let selected = rfd::FileDialog::new()
-                                    .set_title("Review exact OpenSSH configuration files")
-                                    .set_parent(&route.window.winit_window)
-                                    .pick_files();
-                                if let Some(paths) = selected {
-                                    route.window.screen.review_connection_files(paths);
-                                }
+                                route.choose_connection_hub_files();
                             } else {
                                 route.window.screen.handle_connection_hub_hit(hit);
                             }
@@ -1529,7 +1820,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     .island
                     .as_ref()
                     .is_some_and(|island| island.is_color_picker_open());
-                if picker_open {
+                if picker_open
+                    && !route.window.screen.renderer.command_palette.is_enabled()
+                {
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let _ = route.window.screen.handle_tab_appearance_picker_click();
                         route.request_redraw();
@@ -1626,6 +1919,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
 
+                if state == ElementState::Pressed {
+                    route.window.screen.mouse.set_clipboard_press(button, true);
+                }
+
                 match state {
                     ElementState::Pressed => {
                         // Calculate time since the last click to handle double/triple clicks.
@@ -1655,8 +1952,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         let chrome_press = route.window.screen.take_chrome_press();
 
                         if let MouseButton::Left = button {
-                            // Search owns its complete surface before split
-                            // borders, terminal content, or window chrome.
+                            // The palette is the top modal; search remains above
+                            // split borders, terminal content and window chrome.
+                            if route
+                                .window
+                                .screen
+                                .handle_palette_click(&mut self.router.clipboard)
+                            {
+                                route.request_redraw();
+                                return;
+                            }
+
                             if route
                                 .window
                                 .screen
@@ -1694,15 +2000,6 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                         });
                                     return;
                                 }
-                            }
-
-                            if route
-                                .window
-                                .screen
-                                .handle_palette_click(&mut self.router.clipboard)
-                            {
-                                route.request_redraw();
-                                return;
                             }
 
                             let handled_by_island =
@@ -1758,8 +2055,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // click always uses the target pane's cwd and shell
                         // metadata. The click still does not start a
                         // selection merely because focus changed.
-                        let selected_new_panel = button == MouseButton::Left
-                            && route.window.screen.select_current_based_on_mouse();
+                        let selected_new_panel = match button {
+                            MouseButton::Left => {
+                                route.window.screen.select_current_based_on_mouse()
+                            }
+                            MouseButton::Right | MouseButton::Middle => {
+                                let Some(changed) =
+                                    route.window.screen.select_mouse_clipboard_target()
+                                else {
+                                    return;
+                                };
+                                changed
+                            }
+                            _ => false,
+                        };
                         if selected_new_panel {
                             route.request_redraw();
                         }
@@ -1789,7 +2098,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                         // Always try panel switching first: if the click
                         // targets a different panel, switch to it regardless
                         // of mouse mode (e.g. neovim capturing clicks).
-                        if selected_new_panel {
+                        if selected_new_panel && button == MouseButton::Left {
                             // Focus change owns this click.
                         } else if should_report_terminal_mouse(
                             route.window.screen.modifiers.state().shift_key(),
@@ -1814,10 +2123,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                                 .screen
                                 .mouse_report(code, ElementState::Pressed);
 
-                            route.window.screen.process_mouse_bindings(
-                                button,
-                                &mut self.router.clipboard,
-                            );
+                            route.window.screen.mouse.set_clipboard_press(button, false);
                         } else {
                             // Load mouse point, treating message bar and padding as the closest square.
                             let display_offset = route.window.screen.display_offset();
@@ -1846,6 +2152,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             let timer_id =
                                 TimerId::new(Topic::SelectionScrolling, scroll_timer_id);
                             self.scheduler.unschedule(timer_id);
+                        }
+
+                        if route.window.screen.mouse.take_clipboard_release(button) {
+                            return;
                         }
 
                         if button == MouseButton::Left
@@ -2407,25 +2717,89 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::MouseWheel { delta, phase, .. } => {
-                if route.path != RoutePath::Terminal
-                    || route.window.screen.renderer.confirm_quit.is_active()
-                    || route.window.screen.connection_hub_is_active()
-                    || route.window.screen.renderer.assistant.is_active()
-                    || route
-                        .window
-                        .screen
-                        .renderer
-                        .compatibility_inspector
-                        .is_active()
-                    || route
-                        .window
-                        .screen
-                        .renderer
-                        .island
-                        .as_ref()
-                        .is_some_and(|island| island.is_color_picker_open())
-                {
-                    return;
+                let hard_blocker_active =
+                    route.window.screen.renderer.confirm_quit.is_active()
+                        || route.window.screen.connection_hub_is_active();
+                let secondary_modal_active =
+                    route.window.screen.renderer.assistant.is_active()
+                        || route
+                            .window
+                            .screen
+                            .renderer
+                            .compatibility_inspector
+                            .is_active()
+                        || route
+                            .window
+                            .screen
+                            .renderer
+                            .island
+                            .as_ref()
+                            .is_some_and(|island| island.is_color_picker_open());
+                match wheel_event_target(
+                    route.path == RoutePath::Terminal,
+                    hard_blocker_active,
+                    secondary_modal_active,
+                    route.window.screen.renderer.command_palette.is_enabled(),
+                ) {
+                    WheelEventTarget::Blocked => return,
+                    WheelEventTarget::CommandPalette => {
+                        if self.config.hide_cursor_when_typing {
+                            route.window.winit_window.set_cursor_visible(true);
+                        }
+                        let changed = match delta {
+                            MouseScrollDelta::LineDelta(_, lines) => route
+                                .window
+                                .screen
+                                .renderer
+                                .command_palette
+                                .scroll_line_delta(lines),
+                            MouseScrollDelta::PixelDelta(lpos) => match phase {
+                                TouchPhase::Started => {
+                                    route
+                                        .window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .reset_scroll_gesture();
+                                    false
+                                }
+                                TouchPhase::Moved => {
+                                    let magnitude = lpos.x.hypot(lpos.y);
+                                    let physical_vertical = if magnitude > 0.0
+                                        && lpos.x.abs() / magnitude > 0.9
+                                    {
+                                        0.0
+                                    } else {
+                                        lpos.y
+                                    };
+                                    let vertical = logical_wheel_pixels(
+                                        physical_vertical,
+                                        route.window.screen.sugarloaf.scale_factor(),
+                                    );
+                                    route
+                                        .window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .scroll_pixel_delta(vertical)
+                                }
+                                _ => {
+                                    route
+                                        .window
+                                        .screen
+                                        .renderer
+                                        .command_palette
+                                        .reset_scroll_gesture();
+                                    false
+                                }
+                            },
+                        };
+                        if changed {
+                            route.request_overlay_redraw();
+                        }
+                        return;
+                    }
+                    WheelEventTarget::Terminal => {}
                 }
                 // Focus the pane under the pointer before reading dimensions
                 // or delivering this same wheel event.
@@ -2530,6 +2904,46 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::Ime(ime) => {
+                if route.window.screen.renderer.command_palette.is_enabled() {
+                    if route
+                        .window
+                        .screen
+                        .renderer
+                        .command_palette
+                        .is_editing_shortcut()
+                    {
+                        route
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .interrupt_shortcut_capture();
+                    } else if let Ime::Commit(text) = ime {
+                        let mut query =
+                            route.window.screen.renderer.command_palette.query.clone();
+                        if text.len() <= 4096 {
+                            query.push_str(&text);
+                        }
+                        if route
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .is_action_search()
+                        {
+                            route.window.screen.set_action_query(query);
+                        } else {
+                            route
+                                .window
+                                .screen
+                                .renderer
+                                .command_palette
+                                .set_query(query);
+                        }
+                    }
+                    route.request_redraw();
+                    return;
+                }
                 if route.window.screen.renderer.assistant.is_active()
                     || route
                         .window
@@ -2617,6 +3031,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::Focused(focused) => {
+                if !focused {
+                    route
+                        .window
+                        .screen
+                        .renderer
+                        .command_palette
+                        .interrupt_shortcut_capture();
+                }
                 if self.config.hide_cursor_when_typing {
                     route.window.winit_window.set_cursor_visible(true);
                 }
@@ -2681,6 +3103,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
 
             WindowEvent::DroppedFile(path) => {
+                if route.window.screen.renderer.command_palette.is_enabled() {
+                    return;
+                }
                 if route.window.screen.renderer.assistant.is_active()
                     || route
                         .window
@@ -2827,7 +3252,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
-        let control_flow = match self.scheduler.update() {
+        let scheduled = self.scheduler.update();
+        let cleanup = self.router.workers.poll_cleanup();
+        let next_wake = scheduled.into_iter().chain(cleanup).min();
+        let control_flow = match next_wake {
             Some(instant) => ControlFlow::WaitUntil(instant),
             None => ControlFlow::Wait,
         };
@@ -2883,10 +3311,26 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     // This is irreversible - if this event is emitted, it is guaranteed to be the last event that gets emitted.
     // You generally want to treat this as an “do on quit” event.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
-        self.router.shutdown_services();
-        // Ensure that all the windows are dropped, so the destructors for
-        // Renderer and contexts ran.
+        // OS-driven termination may bypass the explicit Quit event. Start every
+        // owned PTY concurrently before waiting on settings, services, or route
+        // destructors in that path as well.
+        self.router.hide_windows_for_exit();
+        let shutdown_requests = self.router.request_pty_shutdown();
+        tracing::debug!(shutdown_requests, "final PTY shutdown broadcast completed");
+        // Destroy native surfaces before service waits, including backends
+        // without visibility control. Context drops only retire worker leases.
         self.router.routes.clear();
+        if !self.preference_writer.shutdown(Duration::from_secs(2)) {
+            tracing::warn!(
+                "saved terminal settings did not finish flushing before shutdown"
+            );
+        }
+        self.router.shutdown_services();
+
+        let pending = self.router.workers.finish_shutdown(Duration::from_secs(10));
+        if pending != 0 {
+            tracing::error!(pending, "PTY workers remain at final application exit");
+        }
 
         // SAFETY: The clipboard must be dropped before the event loop, so
         // replace it with a safe no-op placeholder.
@@ -2973,6 +3417,44 @@ mod custom_chrome_tests {
     use super::*;
 
     #[test]
+    fn font_preference_request_accepts_exact_bounds_and_reset() {
+        use rio_backend::event::FontSizeRequest;
+
+        let mut preferences = UserPreferences::default();
+        apply_font_size_request(&mut preferences, FontSizeRequest::Set(MIN_FONT_POINTS))
+            .unwrap();
+        assert_eq!(preferences.font_size, Some(MIN_FONT_POINTS));
+        apply_font_size_request(&mut preferences, FontSizeRequest::Set(MAX_FONT_POINTS))
+            .unwrap();
+        assert_eq!(preferences.font_size, Some(MAX_FONT_POINTS));
+        apply_font_size_request(&mut preferences, FontSizeRequest::Reset).unwrap();
+        assert_eq!(preferences.font_size, None);
+    }
+
+    #[test]
+    fn invalid_font_preference_request_is_side_effect_free() {
+        use rio_backend::event::FontSizeRequest;
+
+        for invalid in [
+            f32::NAN,
+            f32::INFINITY,
+            MIN_FONT_POINTS - 0.01,
+            MAX_FONT_POINTS + 0.01,
+        ] {
+            let mut preferences = UserPreferences {
+                font_size: Some(18.0),
+                appearance_theme: None,
+                ..UserPreferences::default()
+            };
+            assert_eq!(
+                apply_font_size_request(&mut preferences, FontSizeRequest::Set(invalid)),
+                Err(PreferenceErrorCode::InvalidData)
+            );
+            assert_eq!(preferences.font_size, Some(18.0));
+        }
+    }
+
+    #[test]
     fn every_runtime_load_failure_keeps_the_last_known_good_config() {
         let errors = [
             rio_backend::config::ConfigError::ErrLoadingConfig(
@@ -3044,6 +3526,45 @@ mod custom_chrome_tests {
         assert!(!should_report_terminal_mouse(false, true, true));
         assert!(!should_report_terminal_mouse(true, true, false));
         assert!(!should_report_terminal_mouse(false, false, false));
+    }
+
+    #[test]
+    fn palette_owns_wheel_before_pane_selection_terminal_scrollback_or_pty_input() {
+        assert_eq!(
+            wheel_event_target(true, false, false, true),
+            WheelEventTarget::CommandPalette
+        );
+        assert_eq!(
+            wheel_event_target(true, false, false, false),
+            WheelEventTarget::Terminal
+        );
+        assert_eq!(
+            wheel_event_target(true, true, false, true),
+            WheelEventTarget::Blocked
+        );
+        assert_eq!(
+            wheel_event_target(false, false, false, true),
+            WheelEventTarget::Blocked
+        );
+        assert_eq!(
+            wheel_event_target(true, false, true, true),
+            WheelEventTarget::CommandPalette
+        );
+        assert_eq!(
+            wheel_event_target(true, false, true, false),
+            WheelEventTarget::Blocked
+        );
+    }
+
+    #[test]
+    fn precision_trackpad_pixels_follow_logical_hidpi_geometry() {
+        assert_eq!(logical_wheel_pixels(44.0, 1.0), 44.0);
+        assert_eq!(logical_wheel_pixels(88.0, 2.0), 44.0);
+        assert_eq!(logical_wheel_pixels(-132.0, 3.0), -44.0);
+        assert_eq!(logical_wheel_pixels(f64::NAN, 1.0), 0.0);
+        assert_eq!(logical_wheel_pixels(44.0, f32::INFINITY), 0.0);
+        assert_eq!(logical_wheel_pixels(44.0, 0.0), 0.0);
+        assert_eq!(logical_wheel_pixels(44.0, -1.0), 0.0);
     }
 
     #[test]

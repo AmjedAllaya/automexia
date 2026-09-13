@@ -54,11 +54,17 @@ fragment only when the corresponding repository label is applied.
 
 ## One-command workflows
 
+The development/release compiler is pinned in `rust-toolchain.toml`; the
+workspace `rust-version` is the separately tested minimum. Hosted workflows
+explicitly select and verify the compiler rather than changing rustup's global
+default. See [compiler identity](docs/adr/0053-effective-rust-toolchain-identity.md).
+
 ```text
 cargo dev       # complete local gate, then launch Automexia
 cargo automexia # fast incremental build and launch
 cargo ready     # complete local gate without launching
 cargo storage   # report target size, free space, and largest target children
+cargo xtask cache status # inventory shared and per-worktree generated caches
 cargo purge     # remove Cargo artifacts after closing Automexia windows
 ```
 
@@ -73,14 +79,28 @@ user profiles.
 
 `cargo ready` is the required contributor command. It includes tool and
 structured-file validation, all Automexia verification scopes, package metadata,
-rustfmt, locked workspace checks, warning-denied Clippy, workspace tests,
-dependency policy, a debug build, and executable identity smoke.
+rustfmt, locked all-feature workspace checks, warning-denied all-feature Clippy,
+all-feature workspace tests, dependency policy, a debug build, and executable
+identity smoke.
 Compilation-heavy checks run with incremental compilation disabled inside an
 isolated target that is deleted on both success and ordinary failure. This
 keeps a complete contributor gate from permanently multiplying workspace
 artifacts. The final application build remains incremental for fast daily use.
 The gate requires 12 GiB free on the selected target filesystem; the app-only
 workflow requires 4 GiB.
+
+GitHub's free hosted `CI` workflow is the automatic push and pull-request gate.
+The repository's local pre-push hook is temporarily dormant so a push does not
+start or wait for a local pipeline. `cargo xtask assurance install-hook`
+installs only a non-blocking placeholder and never overwrites an existing hook.
+Run `cargo xtask assurance pre-push` explicitly when local assurance is useful.
+
+Pinned assurance executables are shared through a platform- and
+version-addressed integrity-checked cache. Compiler targets remain isolated per
+worktree. Inspect the complete ownership model with `cargo xtask cache status`;
+preview cleanup with `cargo xtask cache gc --scope automatic`, and add
+`--apply` only after reviewing the exact candidates. See
+[Development cache and build storage](docs/DEVELOPMENT-CACHE.md).
 
 Set `CARGO_TARGET_DIR` to place both persistent and isolated artifacts on a
 different filesystem. Diagnostic reproductions may set
@@ -127,10 +147,13 @@ python tools/ci/test_feature_test_reinforcement.py
 
 ## Reviews and merging
 
-`main` requires passing checks, resolved conversations, one approval, and the
-applicable CODEOWNERS approval. Protected release, signing, security,
-capability, provenance, policy, and audited-engine-base paths require two
-approvals. Stale approvals are dismissed. Maintainers squash-merge and delete
+The versioned project policy requires passing checks, resolved conversations,
+one approval, and the applicable CODEOWNERS approval. Protected release,
+signing, security, capability, provenance, policy, and audited-engine-base paths
+require two approvals. On a private repository using GitHub Free these review
+and ruleset requirements are a maintainer convention because GitHub does not
+server-enforce them; the authenticated release audit therefore fails closed
+until the required external governance is available. Maintainers squash-merge and delete
 the source branch; force pushes to `main` are prohibited.
 
 Security reports must follow `SECURITY.md`, not public issues.

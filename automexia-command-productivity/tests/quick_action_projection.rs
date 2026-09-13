@@ -1074,8 +1074,6 @@ fn available_native_shells_parse_and_capture_exact_typed_arguments() {
                 "shopt -s expand_aliases\nsource '{}'\nnsh \"space ' quote\"\n",
                 path.display()
             )
-        } else if shell == ShellKind::Zsh {
-            format!("source '{}'\nnsh \"space ' quote\"\n", path.display())
         } else {
             format!("source '{}'\nnsh \"space ' quote\"\n", path.display())
         };

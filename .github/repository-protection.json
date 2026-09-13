@@ -1,205 +1,63 @@
 {
-  "schema": 1,
-  "repository": "AmjedAllaya/automexia-terminal",
-  "default_branch": "main",
-  "repository_settings": {
-    "allow_auto_merge": false,
-    "allow_merge_commit": false,
-    "allow_rebase_merge": false,
-    "allow_squash_merge": true,
-    "allow_update_branch": true,
-    "delete_branch_on_merge": true,
-    "squash_merge_commit_message": "PR_BODY",
-    "squash_merge_commit_title": "PR_TITLE",
-    "web_commit_signoff_required": true
-  },
-  "actions": {
-    "permissions": {
-      "allowed_actions": "selected",
-      "enabled": true,
-      "sha_pinning_required": true
-    },
-    "selected_actions": {
-      "github_owned_allowed": true,
-      "patterns_allowed": [
-        "anchore/sbom-action@*",
-        "azure/artifact-signing-action@*",
-        "azure/login@*",
-        "codecov/codecov-action@*",
-        "release-drafter/release-drafter@*",
-        "taiki-e/install-action@*"
-      ],
-      "verified_allowed": false
-    },
-    "workflow_permissions": {
-      "can_approve_pull_request_reviews": false,
-      "default_workflow_permissions": "read"
-    }
-  },
-  "security": {
-    "artifact_attestations": "release-workflow",
-    "codeql": "pinned-advanced-workflow",
-    "dependabot_alerts": true,
-    "dependabot_security_updates": true,
-    "dependency_graph": true,
-    "immutable_releases": true,
-    "private_vulnerability_reporting": "required-when-public",
-    "secret_scanning": "required-when-available",
-    "secret_scanning_push_protection": "required-when-available"
-  },
-  "hosted_ci": {
-    "default_branch_evidence_workflows": [
-      "ci.yml",
-      "codeql.yml",
-      "nightly.yml",
-      "release-drafter.yml"
+  "schema": 2,
+  "mode": "github-free-private",
+  "server_side_paid_controls_required": false,
+  "ordinary_ci": {
+    "hosted_os": [
+      "ubuntu-24.04"
     ],
-    "required_pull_request_checks": [
-      "CodeQL / Rust",
-      "Coverage",
-      "Cross-check aarch64-apple-darwin",
-      "Cross-check aarch64-pc-windows-msvc",
-      "Cross-check x86_64-apple-darwin",
-      "Dependency policy",
-      "Dependency review",
-      "Linux wayland",
-      "Linux x11",
-      "Linux x11-wayland",
-      "Native macos-latest",
-      "Native ubuntu-latest",
-      "Native windows-latest",
-      "Policy and repository contracts"
+    "required_checks": [
+      "Repository and workflow policy",
+      "Rust quality and tests",
+      "Dependency security"
     ],
-    "required_workflows": [
-      "CI",
-      "CodeQL",
-      "F5 controlled native OpenSSH assurance",
-      "Nightly depth",
-      "Release Drafter",
-      "Stable release",
-      "S1 controlled assurance",
-      "S2 controlled activation"
+    "release_branch_extra_check": "Release candidate gate",
+    "reason": "Routine pull requests stay on Linux; Windows coverage and native platform minutes are reserved for internal release work."
+  },
+  "release": {
+    "trigger": "merged internal release/X.Y.Z pull request into main",
+    "same_repository_only": true,
+    "stable_semver_only": true,
+    "must_equal_current_main": true,
+    "workflow_creates_tag_after_all_gates": true,
+    "minimum_approvals_variable": "AUTOMEXIA_RELEASE_MIN_APPROVALS",
+    "distinct_merger_variable": "AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER",
+    "protected_release_pr_paths": [
+      ".github/",
+      "tools/ci/",
+      "tools/xtask/",
+      "packaging/",
+      "shell-integration/"
     ],
-    "success_recency_days": 7
+    "default_minimum_human_approvals": 1,
+    "default_require_distinct_merger": true
   },
-  "review": {
-    "minimum_independent_approvals_for_protected_paths": 2,
-    "minimum_total_human_reviewers": 3
-  },
-  "rulesets": [
-    {
-      "bypass_actors": [],
-      "conditions": {
-        "ref_name": {
-          "exclude": [],
-          "include": [
-            "~DEFAULT_BRANCH"
-          ]
-        }
-      },
-      "enforcement": "active",
-      "name": "Protect main",
-      "rules": [
-        {
-          "type": "deletion"
-        },
-        {
-          "type": "non_fast_forward"
-        },
-        {
-          "type": "required_linear_history"
-        },
-        {
-          "type": "required_signatures"
-        },
-        {
-          "parameters": {
-            "allowed_merge_methods": [
-              "squash"
-            ],
-            "dismiss_stale_reviews_on_push": true,
-            "require_code_owner_review": true,
-            "require_last_push_approval": true,
-            "required_approving_review_count": 1,
-            "required_review_thread_resolution": true
-          },
-          "type": "pull_request"
-        },
-        {
-          "parameters": {
-            "do_not_enforce_on_create": false,
-            "required_status_checks": [
-              {
-                "context": "CodeQL / Rust"
-              },
-              {
-                "context": "Coverage"
-              },
-              {
-                "context": "Cross-check aarch64-apple-darwin"
-              },
-              {
-                "context": "Cross-check aarch64-pc-windows-msvc"
-              },
-              {
-                "context": "Cross-check x86_64-apple-darwin"
-              },
-              {
-                "context": "Dependency policy"
-              },
-              {
-                "context": "Dependency review"
-              },
-              {
-                "context": "Linux wayland"
-              },
-              {
-                "context": "Linux x11"
-              },
-              {
-                "context": "Linux x11-wayland"
-              },
-              {
-                "context": "Native macos-latest"
-              },
-              {
-                "context": "Native ubuntu-latest"
-              },
-              {
-                "context": "Native windows-latest"
-              },
-              {
-                "context": "Policy and repository contracts"
-              }
-            ],
-            "strict_required_status_checks_policy": true
-          },
-          "type": "required_status_checks"
-        }
-      ],
-      "target": "branch"
-    },
-    {
-      "bypass_actors": [],
-      "conditions": {
-        "ref_name": {
-          "exclude": [],
-          "include": [
-            "refs/tags/v*"
-          ]
-        }
-      },
-      "enforcement": "active",
-      "name": "Protect release tags",
-      "rules": [
-        {
-          "type": "deletion"
-        },
-        {
-          "type": "non_fast_forward"
-        }
-      ],
-      "target": "tag"
-    }
-  ]
+  "paid_github_features_not_used": [
+    "private artifact attestations",
+    "private protected-environment reviewers",
+    "GitHub Code Security dependency review",
+    "private CodeQL result upload",
+    "private ruleset enforcement"
+  ],
+  "release_platforms": [
+    "windows-2025 x86_64",
+    "windows-11-arm aarch64",
+    "ubuntu-22.04 x86_64 build baseline",
+    "ubuntu-22.04-arm aarch64 build baseline",
+    "macos-26-intel x86_64",
+    "macos-26 arm64"
+  ],
+  "actions_policy": {
+    "mode": "selected-actions",
+    "github_owned_actions_allowed": true,
+    "third_party_patterns": [
+      "anchore/sbom-action@*",
+      "azure/artifact-signing-action@*",
+      "azure/login@*",
+      "mozilla-actions/sccache-action@*",
+      "taiki-e/install-action@*"
+    ],
+    "full_length_sha_required": true,
+    "zizmor_delivery": "zizmor@1.21.0 via taiki-e/install-action; no zizmorcore/zizmor-action use"
+  }
 }

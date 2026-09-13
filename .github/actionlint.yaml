@@ -1,0 +1,14 @@
+# Exact self-hosted labels used by controlled, opt-in assurance jobs. Keeping
+# this list narrow makes Actionlint reject accidental or misspelled routing.
+self-hosted-runner:
+  labels:
+    - automexia-assurance
+    - automexia-benchmark
+    - automexia-elevated
+    - automexia-gpu
+    - automexia-openssh-*
+    - automexia-release
+    - automexia-wsl
+    - defender
+    - gpu
+    - wsl

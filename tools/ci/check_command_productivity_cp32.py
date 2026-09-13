@@ -125,8 +125,7 @@ EXPECTED_FUZZ_TARGET = "fuzz/fuzz_targets/quick_action_packs.rs"
 EXPECTED_DOCUMENTS = [
     "docs/ARCHITECTURE.md", "docs/CLI-REFERENCE.md",
     "docs/COMMAND-PRODUCTIVITY-THREAT-MODEL.md", "docs/COMMAND-PRODUCTIVITY.md",
-    "docs/DEVOPS-ALIASES.md", "docs/PHASE-IMPLEMENTATION-AUDIT.md",
-    "docs/ROADMAP.md", "docs/TESTING.md",
+    "docs/DEVOPS-ALIASES.md", "docs/TESTING.md",
 ]
 
 

@@ -9,6 +9,12 @@ explicit opt-in profiles; they never replace the active default implicitly.
 their mode is active. A terminal application can own a key when the table says
 the action is mode-sensitive.
 
+Current source includes a contextual shortcut editor: select a command in the
+palette and press F2, or double-click its badge. Enter saves, Esc returns without
+saving an unsubmitted draft, Tab/Shift+Tab moves focus, and Reset restores the
+underlying configuration. See the [editor guide](../user-guide/shortcuts.md#customize-a-shortcut-in-the-palette)
+for scope, conflicts and persistence. The default tables below remain unchanged.
+
 ## Windows and Linux/BSD defaults
 
 ### Windows, tabs, and panes
@@ -24,9 +30,9 @@ the action is mode-sensitive.
 | `Ctrl+Tab` / `Ctrl+Shift+Tab` | Next / previous window-level tab. |
 | `Alt+PageDown` / `Alt+PageUp` | Next / previous local tab inside the selected pane. |
 | `Ctrl+1` … `Ctrl+8`; `Ctrl+9` | Select window tab 1…8; select the last tab. Windows only. |
-| `Ctrl+Shift+R` / `Ctrl+Shift+D` | Fresh default-shell split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone the active shell/profile/directory into an independent split right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send shell history-search / EOF control byte displaced by cloning. |
+| `Alt+Shift+R` / `Alt+Shift+D` | Fresh default-shell split right / down. Add Shift to start fresh. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| `Alt+R` / `Alt+D` | Clone the active shell/profile/directory into an independent session right / down. |
 | `Alt+Arrow` | Select the nearest pane geometrically. |
 | `F6` / `Shift+F6` | Cycle to next / previous pane. |
 | `Alt+Shift+Arrow` | Resize the selected split on Windows. |
@@ -48,9 +54,10 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Shift+Arrow` | Start at the terminal insertion cursor, then extend/reverse selection by one cell or row. |
 | `Ctrl+Shift+Left/Right` | Extend/reverse selection by a Unicode word boundary. |
 | `Ctrl+Shift+A` | Select all on Windows. |
-| `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Reset, increase, or decrease pane font size. |
+| `Ctrl+0`, `Ctrl+=` or `Ctrl++`, `Ctrl+-` | Clear the saved override, increase, or decrease the application-wide font size; the result is restored next launch. |
 | `Shift+Home/End` | Scroll to history top / bottom outside the alternate screen. |
 | `Shift+PageUp/PageDown` | Scroll one page up / down outside the alternate screen. |
+| `Ctrl+Shift+Up/Down` | Jump to the previous / next shell-integrated command in the selected pane. |
 | `Ctrl+F` | Select or refocus the current-pane scope in the active search session. |
 | `Ctrl+Shift+F` / `Ctrl+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
 | `Ctrl+Shift+Space` | Toggle Vi mode on Windows. |
@@ -59,9 +66,6 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `F11` or `Alt+Enter` | Toggle fullscreen on Windows. |
 | `Ctrl+Alt+I` | Preview the selected or pointer-targeted local raster image. |
 | `Ctrl+Shift+P` | Open the command palette. |
-| `Ctrl+Shift+H` | Open the read-only Connection Hub. |
-| `Ctrl+Shift+O` | Open Quick Actions search and review. |
-| `Ctrl+Shift+M` | Open the Extensions marketplace. |
 | `Ctrl+Shift+L` | List registered font families. |
 | `Ctrl+,` (Windows) / `Ctrl+Shift+,` (Linux/BSD) | Open the configuration file in the configured editor. |
 | `Ctrl+Alt+Space` | Toggle the quake window on Windows. |
@@ -91,23 +95,21 @@ keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 | `Cmd+Alt+[` / `Cmd+Alt+]` | Previous / next local tab in the selected pane. |
 | `Cmd+1` … `Cmd+8`; `Cmd+9` | Select window tab 1…8; select the last tab. |
 | `Cmd+D` / `Cmd+Shift+D` | Fresh split right / down. |
-| `Ctrl+R` / `Ctrl+D` | Clone active session right / down. |
-| `Ctrl+Alt+R` / `Ctrl+Alt+D` | Send history search / EOF to the shell. |
+| `Ctrl+R` / `Ctrl+D` | Native shell controls: history search / delete-or-EOF, depending on the shell and editing mode. |
+| `Cmd+Alt+Shift+R` / `Cmd+Alt+Shift+D` | Clone active session right / down with an independent PTY. |
 | `Cmd+Alt+Arrow` | Select a neighboring pane. |
 | `Cmd+]` / `Cmd+[` | Cycle next / previous pane. |
 | `Ctrl+Cmd+Arrow` | Resize the selected split. |
 | `Cmd+C` / `Cmd+V` | Copy / paste. `Ctrl+C` remains selection-aware as described above. |
 | `Cmd+A` | Select all. |
-| `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Reset, increase, or decrease font size. |
+| `Cmd+0`, `Cmd+=` or `Cmd++`, `Cmd+-` | Clear the saved override, increase, or decrease the application-wide font size; the result is restored next launch. |
 | `Cmd+F` / `Cmd+B` | Select or refocus the current-pane scope in the active search session. |
 | `Cmd+Shift+F` / `Cmd+Shift+B` | Select or refocus the all-visible-panes scope in the active search session. |
+| `Cmd+Shift+Up` / `Cmd+Shift+Down` | Jump to the previous / next marked command in the selected pane's scrollback. |
 | `Cmd+K` | Clear visible screen and then history. |
 | `Ctrl+Cmd+F` | Toggle fullscreen. |
 | `Cmd+Alt+I` | Preview selected image. |
 | `Cmd+Shift+P` | Open command palette. |
-| `Cmd+Shift+H` | Open the read-only Connection Hub. |
-| `Cmd+Shift+O` | Open Quick Actions search and review. |
-| `Cmd+Shift+M` | Open the Extensions marketplace. |
 | `Cmd+Shift+L` | List registered font families. |
 | `Cmd+Alt+Shift+T` | Toggle light/dark appearance. |
 | `Cmd+,` | Open the configuration file. |
@@ -119,32 +121,16 @@ the keyboard anchor. Once a selection exists, an unmodified Arrow key or any
 non-empty text/paste/IME input exits selection mode before the input is
 forwarded to the shell. Search and Vi mode retain their own input ownership.
 
-## Connection Hub controls (v0.5 release-gated)
+## Command palette
 
-These shortcuts work only while the read-only Hub or Connection Review owns
-input. They never insert a command or implicit Enter into a terminal PTY.
-Current Allow actions stop at the protected-review diagnostic and start no
-process.
+The palette opens six categories with global type-to-search, a fixed Back button and Back row,
+Alt+Left, empty-query Backspace, paging and mouse scrolling. Empty results stay
+editable; held Enter cannot activate through category entry. See the canonical
+[palette controls and shortcut migration](../KEYBOARD.md#command-palette).
 
-| Shortcut | Result |
-|---|---|
-| `L` | From Hub results or first-run setup, open the typed host/user/port editor. If Search owns focus, `l` remains search text. |
-| `W` | From the Connections or Providers catalog, open saved Workspaces. If Search or a review owns focus, `w` remains owned by that surface. |
-| `P` | From the Connections or Workspaces catalog, open cached Providers. If Search or a review owns focus, `p` remains owned by that surface. |
-| `C` | From Workspaces or Providers, return to Connections. In Connection Review it copies the exact reviewed SSH command; it never executes or appends a newline. |
-| Up / Down / Home / End | In Workspaces or Providers, move the selected row within the bounded catalog. |
-| `Tab` / `Shift+Tab` | Move through the active modal focus order; Connection Review includes its Allow once action. |
-| `Enter` | Review a valid host or activate the focused editor control; in Connection Review, Allow once only when Review or Allow once owns focus. |
-| `A` | Request Allow once from Connection Review. |
-| `S` | Request Allow for session from Connection Review. For remote, non-loopback, or production tunnels this action is disabled, omitted from focus, and reports that a fresh Allow once decision is required. |
-| `D` | Deny the managed launch and return to results. |
-| `Escape` | Cancel the host editor; return from connection review to results, workspace review to Workspaces, or provider review to Providers. |
-
-While the host editor owns the modal, Tab/Shift+Tab cycles Host, User, Port,
-Review, and Cancel. Its visible Cancel control replaces the redundant top-level
-close icon, keeping focus and pointer targets unambiguous at small scaled
-viewports. Modified approval/copy letters remain available to their existing
-owners.
+Closing a pane/local tab removes its surface without waiting for the shell's
+native shutdown. Cleanup remains owned in the background. A temporary session
+capacity error means closing sessions must finish before another can start.
 
 ## Search mode
 
@@ -248,36 +234,22 @@ actions are rejected and do not silently remove the matching default.
 
 ## Ownership and precedence
 
+Current source restores shell-owned Ctrl+R/Ctrl+D; published 0.4.0 predates the
+correction. Explicit user mappings remain unchanged. Clone actions are
+discoverable in the palette and have the non-shell chords listed above.
+Ctrl+Alt+R/Ctrl+Alt+D now use normal terminal encoding, not a forced bare byte.
+See [ADR 0041](../adr/0041-shell-owned-history-and-eof-shortcuts.md).
+
 Explicit user bindings replace the matching key/modifier/mode trigger. Search,
 Vi mode, alternate-screen applications, pinned image browsing, terminal mouse
 reporting, and the line editor each have scoped ownership. Automexia never
 sends terminal-owned selection motions to the PTY. See
-[Architecture](../developer/architecture.md#keyboard-compatibility-boundary) for why one
+[Architecture](../ARCHITECTURE.md#keyboard-compatibility-boundary) for why one
 global shortcut table is not used across every mode and OS.
 
-The four app-surface launchers are inactive while Search, Vi mode, or an
-alternate-screen terminal application owns input. They only open application
-UI: Connection Hub remains read-only, and Quick Actions still requires its
-normal review/insert step. A published CP4 production-context row adds a second
-confirmation; broker-required or non-current provider rows cannot copy or
-insert. None of these shortcuts writes to or executes in the PTY. The mnemonic
-letters are **H**ub, **O**pen actions, **M**arketplace, and
-**L**ist fonts.
-
-## Optional suggestion shortcuts
-
-CP5 installs no default shortcut and exposes no public binding action while its
-preview is disabled. The inert PowerShell 7, Bash 5, Zsh 5.8, and Fish 3.6
-request scaffolds can bind only an explicitly supplied shell chord after checking
-that shell's current registry. They are not sourced by normal integration.
-`Ctrl+Space`, Tab, Right, and Enter are never reserved globally; Fish
-`Ctrl+Space` is explicitly treated as a collision. Unsupported, disconnected,
-killed, or disabled adapters leave the shell's native editor and CP1 completion
-unchanged.
-
-A future activated shortcut must be unused in both application and shell
-registries, act only while the pane-owned popup is active, replace through the
-native editor after exact state revalidation, and never send Enter or PTY text.
+Application-surface shortcuts are inactive while Search, Vi mode, or an
+alternate-screen terminal application owns input. They open application UI
+only and never write to or execute in the PTY.
 
 ## Ghostty compatibility profiles
 

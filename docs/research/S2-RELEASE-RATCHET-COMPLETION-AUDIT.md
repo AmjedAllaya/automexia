@@ -1,7 +1,7 @@
 # S2 release-ratchet completion audit
 
 Status: **source and automation fully implemented; controlled evidence
-collecting**. Audited 2026-08-24 against the current repository. The roadmap
+collecting**. Audited 2026-08-27 against the current repository. The roadmap
 implementation badge is **Fully done**; release evidence remains incomplete
 because the first active baseline needs elapsed native evidence and independent
 human review that cannot be created by a source change.
@@ -44,8 +44,9 @@ baseline on another person's behalf are out of scope.
 | 30-90 consecutive-day active baseline | Partially implemented, now source complete | Every day carries its measurement time, operator, and canonical evidence digest. Acceptance must follow the final measurement within seven days and use a reviewer independent of every collector. |
 | Exact, temporary waiver | Partially implemented, now source complete | Waivers remain commit/metric/baseline/maximum bound and at most 30 days; strict HTTPS URLs and an approver independent of the candidate operator are now required. |
 | Candidate release evaluation | Partially implemented, now source complete | Evaluation requires the exact expected commit, fresh evidence, an active non-future baseline, and emits bounded sample/interval information. |
-| Activation review automation | Not implemented, now source complete | The registered `S2 controlled activation` workflow validates a clean exact-source active baseline through the protected `stable-release` environment and retains only a bounded digest summary for 90 days. |
-| First active baseline | External prerequisite | The checked-in fixture remains `collecting`; 30 real consecutive complete days, controlled runner variables, a protected-environment reviewer, and an HTTPS review record do not yet exist. |
+| Activation review automation | Not implemented, now source complete | The registered `S2 controlled activation` workflow validates a clean exact-source active baseline on the GitHub-Free Ubuntu runner and retains one exact digest summary for 90 days. Repository validation and hostile mutations reject non-manual triggers, private-environment or secret use, concurrent cancellation, runner drift, missing exact-commit binding, removed policy/mutation checks, fail-open steps, unbounded time, redirected summaries, and weakened retention. |
+| Stable-tag dependency | Partially enforced, now source complete | Semantic workflow validation requires native GUI, native WSL, S1, and S2 jobs as direct preflight dependencies and requires an explicit `success` result for every gate. The release S2 job must retain its exact controlled-runner activation, bounded timeout, native/QA workload, classified evidence, exact-commit binding, `--require-active`, fail-closed steps, and 90-day evidence identity. |
+| First active baseline | External prerequisite | The checked-in fixture remains `collecting`; 30 real consecutive complete days, controlled runner variables, independent manual review, and an HTTPS review record do not yet exist. |
 
 ## Reuse and current practice
 
@@ -62,8 +63,10 @@ authority. Nightly and activation summaries use the existing pinned upload
 action with 90-day retention. GitHub's artifact API and retention behavior are
 documented at <https://docs.github.com/en/rest/actions/artifacts> and
 <https://docs.github.com/en/actions/how-tos/manage-workflow-runs/download-workflow-artifacts>.
-Independent activation uses the existing `stable-release` environment because
-GitHub environments can require reviewers before a job proceeds:
+GitHub Free/private cannot use protected-environment reviewers. Independent
+activation therefore requires a recorded review before manual dispatch, with
+repository write access restricted to release-authorized maintainers. GitHub
+documents the plan limits for environments at
 <https://docs.github.com/en/actions/reference/workflows-and-actions/deployments-and-environments>.
 
 Build/wrap/adopt conclusion: **wrap** the maintained benchmark output and native
@@ -130,9 +133,10 @@ not be simulated with an environment fallback or a permissive waiver.
 
 5. Review the baseline diff and canonical daily digests through a pull request.
    The collector/operator must not approve it.
-6. Dispatch `S2 controlled activation` for the protected commit. A configured
-   independent reviewer for the `stable-release` environment must approve the
-   job. Its bounded summary must pass and remain attached for 90 days.
+6. Record independent review of the exact commit, then dispatch `S2 controlled
+   activation` manually. Its bounded summary must pass and remain attached for
+   90 days. On GitHub Free/private this is a documented human control, not a
+   server-enforced reviewer gate.
 7. Merge only through normal protected-branch review. Stable tags then run
    `evaluate --require-active --expected-commit <tag-commit>` on fresh exact-
    commit candidate evidence.

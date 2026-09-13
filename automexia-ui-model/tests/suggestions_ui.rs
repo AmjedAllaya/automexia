@@ -1,6 +1,6 @@
 use automexia_command_productivity::suggestions::{
     Candidate, CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource,
-    QuoteContext, RankedCandidate, ReplacementSpan,
+    QuoteContext, RankedCandidate, ReplacementSpan, SuggestionLimits,
 };
 use automexia_ui_model::suggestions::{
     project_surface, AnnouncementGate, Navigation, Point, Rect, SuggestionGeometry,
@@ -271,4 +271,87 @@ fn narrow_pane_uses_compact_hint_instead_of_compressed_rows() {
     assert!(!surface.interactive);
     assert!(!surface.show_description);
     assert!(!surface.show_freshness);
+}
+
+#[test]
+fn visual_compaction_preserves_whitespace_and_full_accessible_values() {
+    let mut candidate = ranked(1, &format!(" {}", "e\u{301}".repeat(80)));
+    candidate.candidate.description = "文".repeat(100);
+    candidate.candidate.insertion = format!("echo {}", "e\u{301}".repeat(100));
+    let original = candidate.candidate.clone();
+    let surface = project_surface(&request(), &[candidate]).unwrap();
+    let option = &surface.options[0];
+    assert_eq!(option.display, format!(" {}…", "e\u{301}".repeat(70)));
+    assert_eq!(option.description, format!("{}…", "文".repeat(95)));
+    assert_eq!(option.accessible_value, original.insertion);
+    assert_eq!(
+        option.accessible_name,
+        format!(
+            "{}, command, {}, native shell, current, read only, 1 of 1",
+            original.display, original.description
+        )
+    );
+    assert!(option.selected);
+    assert_eq!(
+        surface.hit_test(Point::new(
+            surface.bounds.x + 2.0,
+            surface.bounds.y + surface.header_height + 2.0
+        )),
+        Some(0)
+    );
+
+    let short = project_surface(&request(), &[ranked(1, "  git status  ")]).unwrap();
+    assert_eq!(short.options[0].display, "  git status  ");
+    assert_eq!(short.options[0].accessible_value, "  git status  ");
+}
+
+#[test]
+fn elision_marker_is_not_highlighted_as_original_matched_text() {
+    for count in [71, 72, 73, 80] {
+        let mut candidate = ranked(1, &"e\u{301}".repeat(count));
+        candidate.matched_graphemes = vec![0, 70, 71, 72, usize::MAX];
+        let surface = project_surface(&request(), &[candidate]).unwrap();
+        let expected = if count == 72 {
+            vec![0, 70, 71]
+        } else {
+            vec![0, 70]
+        };
+        assert_eq!(surface.options[0].matched_graphemes, expected);
+    }
+    let mut candidate = ranked(1, &"x".repeat(73));
+    candidate.matched_graphemes = vec![70, 0, 70, 71, usize::MAX];
+    let surface = project_surface(&request(), &[candidate]).unwrap();
+    assert_eq!(surface.options[0].matched_graphemes, vec![0, 70]);
+}
+
+#[test]
+fn full_semantics_reject_over_limit_input_before_copying_visible_rows() {
+    let maximum = SuggestionLimits::CANDIDATE_BYTES;
+    let mut candidate = ranked(1, &"x".repeat(maximum));
+    candidate.candidate.description = "d".repeat(SuggestionLimits::DESCRIPTION_BYTES);
+    assert!(project_surface(&request(), &[candidate.clone()]).is_ok());
+    for field in ["display", "insertion", "description", "matches"] {
+        let mut invalid = candidate.clone();
+        match field {
+            "display" => invalid.candidate.display.push('x'),
+            "insertion" => invalid.candidate.insertion.push('x'),
+            "description" => invalid.candidate.description.push('x'),
+            _ => invalid.matched_graphemes = vec![0; maximum + 1],
+        }
+        assert!(project_surface(&request(), &[invalid]).is_err());
+    }
+    let mut candidates = vec![ranked(1, "x"); SuggestionLimits::CANDIDATE_COUNT];
+    assert!(project_surface(&request(), &candidates).is_ok());
+    candidates.push(ranked(1, "x"));
+    assert!(project_surface(&request(), &candidates).is_err());
+    candidates.pop();
+    candidates.last_mut().unwrap().candidate.display = "x".repeat(maximum + 1);
+    assert!(project_surface(&request(), &candidates).is_err());
+
+    let exact_utf8 = format!("{}x", "e\u{301}".repeat(maximum / 3));
+    assert_eq!(exact_utf8.len(), maximum);
+    assert!(project_surface(&request(), &[ranked(1, &exact_utf8)]).is_ok());
+    assert!(
+        project_surface(&request(), &[ranked(1, &format!("{exact_utf8}x"))]).is_err()
+    );
 }

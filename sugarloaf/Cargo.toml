@@ -27,6 +27,10 @@ repository = "https://github.com/raphamorim/sugarloaf"
 [lib]
 crate-type = ["rlib"]
 
+[[bench]]
+name = "ui_text"
+harness = false
+
 [package.metadata.docs.rs]
 all-features = true
 rustdoc-args = ["--cfg", "docsrs"]
@@ -58,7 +62,8 @@ parking_lot = { workspace = true }
 dashmap = { workspace = true }
 approx = "0.5.1"
 smallvec = { workspace = true }
-skrifa = "0.44.0"
+# Match Swash's font parser generation instead of shipping two parser stacks.
+skrifa = "=0.44.0"
 halfbrown = "0.4.0"
 half = "2.6.0"
 num-traits = "0.2.19"
@@ -124,7 +129,11 @@ ash = "0.38.0"
 # higher-level `windows` crate isn't in Debian at all.
 
 [dev-dependencies]
-rio-window = { workspace = true }
+# Resolver v2 deliberately isolates this stand-alone test/example graph from
+# the application's default features. Request both supported Linux display
+# backends here so `cargo test -p sugarloaf` is a complete native graph by
+# itself instead of succeeding only after a workspace-wide feature union.
+rio-window = { workspace = true, features = ["x11", "wayland"] }
 png = "0.18.1"
 deflate = "1.0.0"
 criterion = { workspace = true }

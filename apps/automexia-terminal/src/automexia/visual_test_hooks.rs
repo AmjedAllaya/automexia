@@ -9,6 +9,8 @@ use super::builtins::devops::{CloudContext, DevOpsSnapshot, KubernetesContext};
 pub const FIXTURE_ENV: &str = "AUTOMEXIA_VISUAL_TEST_FIXTURE";
 pub const FIXTURE_ID: &str = "s1-standard-v1";
 pub const FROZEN_CLOCK: &str = "12:34";
+pub const FROZEN_COMMAND_DATETIME: &str = "2026-08-26 12:34:56";
+pub const FROZEN_COMMAND_DURATION_MS: u64 = 15;
 
 #[inline]
 pub fn fixture_active() -> bool {
@@ -18,6 +20,16 @@ pub fn fixture_active() -> bool {
 #[inline]
 pub fn frozen_clock_label() -> Option<&'static str> {
     fixture_active().then_some(FROZEN_CLOCK)
+}
+
+#[inline]
+pub fn frozen_command_datetime_label() -> Option<&'static str> {
+    fixture_active().then_some(FROZEN_COMMAND_DATETIME)
+}
+
+#[inline]
+pub fn frozen_command_duration_ms() -> Option<u64> {
+    fixture_active().then_some(FROZEN_COMMAND_DURATION_MS)
 }
 
 #[inline]
@@ -67,6 +79,8 @@ mod tests {
         // restores its prior value before releasing the lock.
         unsafe { std::env::set_var(FIXTURE_ENV, FIXTURE_ID) };
         assert_eq!(frozen_clock_label(), Some("12:34"));
+        assert_eq!(frozen_command_datetime_label(), Some("2026-08-26 12:34:56"));
+        assert_eq!(frozen_command_duration_ms(), Some(15));
         assert!(!animations_enabled());
         let snapshot = visual_test_snapshot().unwrap();
         assert_eq!(snapshot.environment.as_deref(), Some("demo"));
@@ -91,6 +105,8 @@ mod tests {
         // SAFETY: this test serializes and restores the process variable.
         unsafe { std::env::set_var(FIXTURE_ENV, "unreviewed") };
         assert_eq!(frozen_clock_label(), None);
+        assert_eq!(frozen_command_datetime_label(), None);
+        assert_eq!(frozen_command_duration_ms(), None);
         assert!(animations_enabled());
         assert_eq!(visual_test_snapshot(), None);
         match previous {

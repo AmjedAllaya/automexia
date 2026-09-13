@@ -1,75 +1,101 @@
 # Automexia brand
 
-## Product message and voice
+## Public product message
 
-Automexia's core promise is:
+Automexia's public promise is:
 
-> A flexible terminal that makes complex workflows faster, simpler, and easier to control.
+> A flexible open-source terminal for focused command-line work.
 
-Automexia is for anyone who turns ideas into action through commands. Public
-writing should explain the practical value first: less repeated setup, clearer
-organization, flexible workspaces, and visible user control. The
-[Product vision](PRODUCT-VISION.md) is the authority for the purpose, audience,
-values, and broader direction.
+Supporting language may describe current, verified terminal capabilities:
 
-Use a simple, confident, and natural voice:
+- windows, tabs, panes, and pane-local tabs;
+- familiar shells and direct commands;
+- search, selection, scrollback, and marked-command navigation;
+- images, themes, fonts, shortcuts, and configuration;
+- keyboard-first use and visible control;
+- explicit security and recovery behavior.
 
-- speak about people or users unless a passage is specifically for developers;
-- use concrete words such as commands, files, tasks, output, panes, and tools;
-- explain technical details when someone needs them to use, evaluate, build, or
-  trust the product;
-- keep what works today separate from implemented-but-gated, planned, and
-  research work;
-- describe future media, video, orchestration, and ecosystem ideas as planned or
-  research until their own delivery evidence exists;
-- describe Automexia as AI-capable but not AI-dependent when the optional LLM
-  Orchestration extension is relevant.
+## Voice
 
-Do not call Automexia an “AI terminal” or imply that a model, provider account,
-network connection, or paid API is required. Avoid inflated marketing claims,
-vague automation jargon, presenting future ideas as available, or suggesting
-that Automexia replaces the specialist tools a workflow depends on. When the
-optional orchestration proposal is discussed, say plainly that models propose
-reviewable plans while Automexia retains policy, approval, and execution control.
+Use a simple, precise, and natural voice:
+
+- explain current user value before implementation details;
+- say “users” or “people” unless the text is contributor-specific;
+- distinguish available, source-complete, release-gated, externally unverified,
+  and not implemented;
+- use concrete words such as terminal, shell, command, pane, tab, file, output,
+  shortcut, and configuration;
+- avoid universal claims about platforms, shells, tools, providers, or users;
+- state that external tools and credential owners retain their authority;
+- describe safety with exact behavior rather than superlatives.
+
+## Public confidentiality boundary
+
+Do not publish or hint at:
+
+- advanced unreleased features;
+- future specialist extensions or domain products;
+- commercial editions, pricing, packaging, revenue, or market strategy;
+- organization or hosted-service designs;
+- unreleased provider workflows;
+- private algorithms, schemas, state machines, resource limits, UX flows, or
+  implementation phases;
+- private plan names or links.
+
+Do not use teaser language such as “coming soon,” “planned premium feature,” or
+“future platform.” Public pages should simply describe current free
+terminal behavior and ordinary open-source maintenance.
+
+## Claims to avoid
+
+Avoid:
+
+- “AI terminal”;
+- “one terminal for every environment”;
+- “universal command center”;
+- “automatic safest route”;
+- “complete audit trail”;
+- “replaces your shell, provider, credential store, or specialist tool”;
+- “production ready” without exact release evidence;
+- any price, revenue, customer, compliance, or availability claim that lacks
+  published evidence.
+
+## Application chrome
+
+Automexia retains blue-black surfaces, cool readable text and its cyan, purple,
+blue, lime, amber and coral vector-icon vocabulary. Passive card borders are
+subdued; brighter cyan marks keyboard input and palette selection. Ordinary
+labels remain regular-weight, with bold reserved for headings and active titles.
+Palette key labels use 11 logical pixels and fit within a bounded trailing area.
+
+The palette, Connection Hub and quit confirmation share the renderer's existing
+surface tokens. Modal cards, controls and keycaps use a restrained rounded
+hierarchy; danger controls retain their distinct warning treatment. No blur,
+new motion, font download or terminal-colour override is introduced.
+See [visual language](LIQUID-HACKER-UX.md) for scope and validation limits.
+
+Command boundaries use a short, inset status-coloured accent. Continuous
+edge-to-edge rules remain structural pane/footer cues. Timestamp and status
+symbols retain their meaning, so the distinction does not rely on hue alone.
 
 ## Visual asset workflow
 
-Automexia packages one canonical application mark across Windows, macOS, and
-Linux. The repository snapshot of the supplied source is
-`assets/brand/automexia-terminal-source-512.png`; its origin and SHA-256 digest
-are recorded in `assets/brand/ASSET-MANIFEST.toml`.
+The canonical source image is
+`assets/brand/automexia-terminal-source-512.png`. Its provenance and digest are
+recorded in `assets/brand/ASSET-MANIFEST.toml`.
 
-## Regenerating platform assets
-
-On Windows with ImageMagick 7 installed, run:
+On Windows with ImageMagick 7 installed:
 
 ```powershell
 powershell -NoProfile -File tools/brand/generate-platform-assets.ps1
 ```
 
-The script validates that the source is a transparent 512x512 PNG and creates:
-
-- Linux PNGs at 16, 32, 48, 64, 128, 256, and 512 pixels;
-- a 1024-pixel derived PNG used by packaging metadata;
-- a Windows ICO containing 16 through 256-pixel entries;
-- a macOS ICNS containing standard 16 through 1024-pixel entries.
-
-Run `cargo ready` after regeneration. Its repository and package gates check the
-source checksum, PNG dimensions and alpha, ICO size directory, ICNS entries,
-package references, and platform runtime icon wiring.
+The generator produces the documented Linux PNG sizes, Windows ICO, and macOS
+ICNS assets. Run `cargo ready` afterward.
 
 ## Stable-release approval
 
-Raster derivatives are sufficient for development and nightly packages, but do
-not satisfy the stable release gate. Stable publication additionally requires:
-
-- editable SVG logo and standalone mark sources;
-- monochrome, light, and dark variants;
-- a native-quality 1024x1024 master and Linux SVG;
-- written redistribution-rights evidence;
-- named reviewer approval and an approval timestamp.
-
-After reviewing those inputs, a maintainer records them as `final` in
-`ASSET-MANIFEST.toml`, sets `rights_verified = true`, and only then sets
-`release.ready = true`. Generated files must never be marked final merely
-because they pass structural validation.
+Generated raster assets are development inputs, not automatic stable-release
+approval. Stable publication additionally requires the editable sources,
+platform variants, redistribution-rights evidence, named review, and the exact
+release state required by `ASSET-MANIFEST.toml`.

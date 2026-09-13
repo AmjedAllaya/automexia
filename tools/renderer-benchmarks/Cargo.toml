@@ -1,0 +1,33 @@
+[package]
+name = "automexia-renderer-benchmarks"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+publish = false
+autolib = false
+autobins = false
+autoexamples = false
+autotests = false
+autobenches = false
+build = false
+
+[dev-dependencies]
+criterion.workspace = true
+parking_lot.workspace = true
+rio-backend.workspace = true
+smallvec.workspace = true
+unicode-segmentation.workspace = true
+
+# Match the application renderer backend on these targets without depending on
+# the application binary or changing the release profile.
+[target.'cfg(any(windows, target_arch = "wasm32"))'.dev-dependencies.rio-backend]
+workspace = true
+features = ["wgpu"]
+
+[features]
+wgpu = ["rio-backend/wgpu"]
+
+[[bench]]
+name = "text_fit"
+harness = false

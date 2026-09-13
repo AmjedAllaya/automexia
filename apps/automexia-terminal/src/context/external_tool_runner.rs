@@ -266,6 +266,7 @@ struct ReceiptSeed {
     source_revision: String,
     approved_intent_digest: String,
     destination_kind: DirectOpenSshDestinationKind,
+    tunnel_count: usize,
     started_at_ms: u64,
 }
 
@@ -362,7 +363,14 @@ impl RunnerState {
             route_ownership_references: vec![OpaqueReference::new(format!(
                 "terminal-route-{route_id}"
             ))],
-            tunnel_ownership_references: Vec::new(),
+            tunnel_ownership_references: (1..=seed.tunnel_count)
+                .map(|index| {
+                    OpaqueReference::new(format!(
+                        "managed-tunnel-{}-{index}",
+                        active.lease.operation_id().get()
+                    ))
+                })
+                .collect(),
             started_at_ms: seed.started_at_ms,
             outcome,
         };
@@ -491,16 +499,21 @@ impl OpenSshReviewRuntime {
         }
     }
 
+    fn next_request_id(&self) -> Result<u64, RunnerError> {
+        self.next_request
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |next| {
+                (next != 0).then(|| next.checked_add(1)).flatten()
+            })
+            .map_err(|_| review_unavailable())
+    }
+
     fn submit(
         &self,
         preparation: automexia_connectivity::connections::DirectOpenSshPreparation,
         observed_at_ms: u64,
         wake: CompletionWake,
     ) -> Result<u64, RunnerError> {
-        let request_id = self.next_request.fetch_add(1, Ordering::Relaxed);
-        if request_id == 0 {
-            return Err(review_unavailable());
-        }
+        let request_id = self.next_request_id()?;
         let request = OpenSshReviewRequest {
             request_id,
             preparation,
@@ -779,6 +792,7 @@ impl ExternalToolRunner {
                     source_revision: intent.binding.source_revision().into(),
                     approved_intent_digest: intent.binding.review_fingerprint().into(),
                     destination_kind: intent.binding.destination_kind(),
+                    tunnel_count: intent.binding.tunnel_plan().descriptors().len(),
                     started_at_ms: intent.now_ms,
                 };
                 let mut state = self.lock();
@@ -1031,20 +1045,21 @@ impl ExternalToolRunner {
     pub(crate) fn bind_test_receipt_seed(
         &self,
         lease: OperationLease,
-        public_connection_id: &str,
-        source_revision: &str,
+        reconnect_identity: (&str, &str),
         approved_intent_digest: &str,
         destination_kind: DirectOpenSshDestinationKind,
+        tunnel_count: usize,
         started_at_ms: u64,
     ) {
         let mut state = self.lock();
         let active = state.active.get_mut(&lease.operation_id()).unwrap();
-        active.audit.public_connection_id = Some(public_connection_id.into());
+        active.audit.public_connection_id = Some(reconnect_identity.0.into());
         active.receipt_seed = Some(ReceiptSeed {
-            public_connection_id: public_connection_id.into(),
-            source_revision: source_revision.into(),
+            public_connection_id: reconnect_identity.0.into(),
+            source_revision: reconnect_identity.1.into(),
             approved_intent_digest: approved_intent_digest.into(),
             destination_kind,
+            tunnel_count,
             started_at_ms,
         });
     }
@@ -1288,6 +1303,52 @@ mod openssh_review_worker_tests {
         runner.cancel_openssh_review(77);
         assert_eq!(runner.reviews.latest_requested.load(Ordering::Acquire), 0);
         assert!(runner.take_openssh_review(77).is_none());
+    }
+
+    #[test]
+    fn review_request_ids_fail_closed_permanently_before_wraparound() {
+        let runner = ExternalToolRunner::pending_security_review();
+        runner
+            .reviews
+            .next_request
+            .store(u64::MAX, Ordering::Release);
+
+        for _ in 0..2 {
+            let error = runner
+                .reviews
+                .submit(preparation(), 1_700_000_000_000, Box::new(|| {}))
+                .unwrap_err();
+            assert_eq!(error.code, RunnerErrorCode::ReviewUnavailable);
+        }
+        assert_eq!(
+            runner.reviews.next_request.load(Ordering::Acquire),
+            u64::MAX
+        );
+        assert_eq!(runner.reviews.latest_requested.load(Ordering::Acquire), 0);
+        assert!(runner.reviews.completion.lock().unwrap().is_none());
+
+        runner
+            .reviews
+            .next_request
+            .store(u64::MAX - 1, Ordering::Release);
+        assert_eq!(runner.reviews.next_request_id().unwrap(), u64::MAX - 1);
+        for _ in 0..2 {
+            assert_eq!(
+                runner.reviews.next_request_id().unwrap_err().code,
+                RunnerErrorCode::ReviewUnavailable
+            );
+        }
+        assert_eq!(
+            runner.reviews.next_request.load(Ordering::Acquire),
+            u64::MAX
+        );
+
+        runner.reviews.next_request.store(0, Ordering::Release);
+        assert_eq!(
+            runner.reviews.next_request_id().unwrap_err().code,
+            RunnerErrorCode::ReviewUnavailable
+        );
+        assert_eq!(runner.reviews.next_request.load(Ordering::Acquire), 0);
     }
 }
 

@@ -1,0 +1,380 @@
+#!/usr/bin/env python3
+"""Validate the invariants of the GitHub-Free/private production CI contract."""
+from __future__ import annotations
+from pathlib import Path
+import json
+import re
+import sys
+import tomllib
+
+root = Path('.github')
+wf = root / 'workflows'
+errors: list[str] = []
+
+# Rustup's environment selector takes precedence over checkout and runner
+# defaults. Validate the selected compiler, not merely an installation command.
+compiler_pin = None
+minimum = None
+try:
+    pin_path = Path('rust-toolchain.toml')
+    if pin_path.is_symlink() or not pin_path.is_file():
+        raise ValueError
+    with pin_path.open('rb') as pin_file:
+        pin_bytes = pin_file.read(16 * 1024 + 1)
+    if len(pin_bytes) > 16 * 1024:
+        raise ValueError
+    toolchain = tomllib.loads(pin_bytes.decode('utf-8')).get('toolchain')
+    if not isinstance(toolchain, dict):
+        raise ValueError
+    channel = toolchain.get('channel')
+    if not isinstance(channel, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', channel):
+        raise ValueError
+    compiler_pin = channel
+except (OSError, ValueError):
+    errors.append('compiler authority must be a regular bounded rust-toolchain.toml with an exact version')
+if Path('rust-toolchain').exists() or Path('rust-toolchain').is_symlink():
+    errors.append('compiler authority must not be shadowed by legacy rust-toolchain')
+
+try:
+    manifest_path = Path('Cargo.toml')
+    if manifest_path.is_symlink() or not manifest_path.is_file():
+        raise ValueError
+    with manifest_path.open('rb') as manifest_file:
+        manifest_bytes = manifest_file.read(256 * 1024 + 1)
+    if len(manifest_bytes) > 256 * 1024:
+        raise ValueError
+    minimum = tomllib.loads(manifest_bytes.decode('utf-8'))['workspace']['package']['rust-version']
+    if not isinstance(minimum, str) or not re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', minimum):
+        raise ValueError
+except (OSError, ValueError, KeyError, TypeError):
+    minimum = None
+    errors.append('MSRV authority must be a regular bounded Cargo.toml with an exact version')
+
+compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml')
+for workflow_name in compiler_workflows:
+    workflow_text = (wf / workflow_name).read_text(encoding='utf-8')
+    selectors = re.findall(r'(?m)^[ \t]*RUSTUP_TOOLCHAIN:[^\n]*$', workflow_text)
+    expected_selectors = [f"  RUSTUP_TOOLCHAIN: '{compiler_pin}'"]
+    # The explicit MSRV and dated nightly lanes have separately verified pins.
+    # The semantic toolchain checker also verifies their exact step placement.
+    if workflow_name == 'ci.yml':
+        expected_selectors.append(f"          RUSTUP_TOOLCHAIN: '{minimum}'")
+    elif workflow_name == 'nightly.yml':
+        expected_selectors.extend(['      RUSTUP_TOOLCHAIN: nightly-2026-08-25'] * 3)
+    if compiler_pin is None or selectors != expected_selectors:
+        errors.append(f'{workflow_name} compiler selection must match the repository pin exactly once at workflow scope')
+    if 'AUTOMEXIA_RUST_TOOLCHAIN' in workflow_text or 'rustup default' in workflow_text:
+        errors.append(f'{workflow_name} compiler selection must use RUSTUP_TOOLCHAIN without changing runner defaults')
+
+compiler_cache_initializer = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RUSTUP_TOOLCHAIN" >> "$GITHUB_ENV"'''
+for workflow_name in ('ci.yml', 'linux-early-access.yml'):
+    cache_text = (wf / workflow_name).read_text(encoding='utf-8')
+    quality = re.search(r'(?ms)^  quality:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)', cache_text)
+    body = quality.group('body') if quality else ''
+    # A job-level env expression cannot refer to env. Initialize the runner
+    # environment before the cache action reads it, without clobbering the file.
+    cache_lines = [line for line in cache_text.splitlines() if 'SCCACHE_GHA_VERSION' in line]
+    setup = body.find(compiler_cache_initializer)
+    startup = body.find('- name: Install checksum-verified compiler cache')
+    if cache_lines != ['          ' + compiler_cache_initializer] or not 0 <= setup < startup:
+        errors.append(f'{workflow_name} compiler cache must initialize its selected-toolchain generation before startup')
+
+EXPECTED_WORKFLOWS = {
+    'ci.yml',
+    'f5-openssh-assurance.yml',
+    'linux-early-access.yml',
+    'nightly.yml',
+    'release.yml',
+    's1-assurance.yml',
+    's2-assurance.yml',
+}
+actual_workflows = {p.name for p in wf.iterdir() if p.is_file() and p.suffix in {'.yml', '.yaml'}}
+if actual_workflows != EXPECTED_WORKFLOWS:
+    errors.append(
+        'workflow inventory drift: expected ' + repr(sorted(EXPECTED_WORKFLOWS)) +
+        ', found ' + repr(sorted(actual_workflows))
+    )
+
+for forbidden in ('codeql.yml', 'codeql.yaml', 'release-drafter.yml', 'release-drafter.yaml', 'workflow-security.yml', 'workflow-security.yaml'):
+    if (wf / forbidden).exists():
+        errors.append(f'forbidden/stale workflow exists: .github/workflows/{forbidden}')
+
+all_text = '\n'.join(p.read_text(encoding='utf-8') for p in sorted([*wf.glob('*.yml'), *wf.glob('*.yaml')]))
+for needle, reason in [
+    ('actions/attest@', 'private GitHub artifact attestations are paid-only'),
+    ('actions/dependency-review-action@', 'private dependency review is paid-only'),
+]:
+    if needle in all_text:
+        errors.append(f'{reason}: found {needle!r}')
+if re.search(r'^\s*environment\s*:', all_text, re.MULTILINE):
+    errors.append('private GitHub environments are unavailable on the Free/private edition')
+
+release = (wf/'release.yml').read_text(encoding='utf-8')
+stable_selector = re.search(
+    r'(?ms)^  authorize:\n.*?^    if: >-\n(?P<condition>.*?)^    runs-on:', release
+)
+if stable_selector is None or (
+    "!startsWith(github.event.pull_request.head.ref, 'release/linux/') &&"
+    not in stable_selector.group('condition')
+):
+    errors.append('stable release must exclude Linux Early Access before authorization')
+required_release_fragments = [
+    'types:', '- closed', "startsWith(github.event.pull_request.head.ref, 'release/')",
+    'github.event.pull_request.head.repo.full_name == github.repository',
+    "github.event.pull_request.merged == true", 'contents: write',
+    'stable-release-${{ github.repository }}',
+]
+for fragment in required_release_fragments:
+    if fragment not in release:
+        errors.append(f'release workflow is missing required fragment: {fragment}')
+
+
+if 'run-name: "Release gate · PR #' not in release:
+    errors.append('release workflow must declare a deterministic human-readable run-name')
+if re.search(r'^    name:.*\$\{\{\s*matrix\.', release, re.MULTILINE):
+    errors.append('release job display names must not expose raw matrix expressions in skipped runs')
+if not re.search(
+    r"release-final-gate:\n(?:.*\n){0,18}?\s*- authorize\n(?:.*\n){0,18}?\s*if: \$\{\{ always\(\) && needs\.authorize\.result == 'success' \}\}",
+    release,
+    re.MULTILINE,
+):
+    errors.append('release-final-gate must depend on authorize and skip non-release PRs cleanly')
+
+if release.count('contents: write') != 1:
+    errors.append(f'release workflow must contain exactly one contents: write grant; found {release.count("contents: write")}')
+
+if not re.search(r'^  publish:\n(?:.*\n){0,15}?    - reproducibility-linux$', release, re.MULTILINE):
+    errors.append('release publication preparation must directly depend on reproducibility-linux')
+
+linux_early_access = (wf/'linux-early-access.yml').read_text(encoding='utf-8')
+for fragment in (
+    'workflow_dispatch:',
+    "needs.authorize.outputs.publish == 'false'",
+    "needs.authorize.outputs.publish == 'true'",
+    'REHEARSAL-NOT-A-PUBLIC-RELEASE.txt',
+    "startsWith(github.event.pull_request.head.ref, 'release/linux/')",
+    'github.event.pull_request.head.repo.full_name == github.repository',
+    'tools/ci/public_distribution.py check-policy',
+    'tools/ci/public_distribution.py authorize-release',
+    'permission-contents: write',
+    'permission-administration: read',
+    'repositories: automexia-releases',
+    '--stage draft',
+    '--stage published',
+    'X-GitHub-Api-Version: 2026-03-10',
+    'tools/ci/public_distribution.py verify-repository',
+    'Protect main',
+    'Protect release tags',
+    'gh release verify "$tag"',
+    'gh release verify-asset "$tag" "$asset"',
+):
+    if fragment not in linux_early_access:
+        errors.append(f'Linux Early Access workflow is missing free-plan fragment: {fragment}')
+
+ci = (wf/'ci.yml').read_text(encoding='utf-8')
+expected_ci_triggers = """on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+"""
+if ci.count(expected_ci_triggers) != 1:
+    errors.append(
+        'CI must remain the single automatic free hosted push/PR pipeline with '
+        'an explicit manual dispatch option'
+    )
+if re.search(r'^\s*schedule:\s*$', ci, re.MULTILINE):
+    errors.append('ordinary free hosted CI must not add a scheduled trigger')
+for fragment in (
+    'tools/ci/github_free_assurance.py check-policy',
+    'tools/ci/validate_repository.py',
+    "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
+    'PyYAML==6.0.3',
+    'semgrep==1.175.0',
+    "SHELLCHECK_VERSION: '0.11.0'",
+    "SHELLCHECK_SHA256: 'b7af85e41cc99489dcc21d66c6d5f3685138f06d34651e6d34b42ec6d54fe6f6'",
+    '"$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"',
+    'semgrep scan --config tools/ci/semgrep-rules.yml',
+    'cargo-vet@0.10.2',
+    'cargo vet --locked',
+    "GITLEAKS_VERSION: '8.30.1'",
+    "GITLEAKS_SHA256: '551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb'",
+    'gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz',
+    'Scan introduced commits and working tree for secrets',
+    'log_opts="${BASE_SHA}..${HEAD_SHA}"',
+    'gitleaks git --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml --log-opts="$log_opts"',
+    'gitleaks dir --redact --no-banner --timeout=900 --max-target-megabytes=16 --config .gitleaks.toml .',
+):
+    if fragment not in ci:
+        errors.append(f'CI is missing required GitHub-Free hosted assurance fragment: {fragment}')
+if '--log-opts=--all' in ci:
+    errors.append('ordinary CI must not rescan unresolved legacy history; use the explicit local history-audit command')
+dependency_job = re.search(
+    r'(?ms)^  dependency-security:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)',
+    ci,
+)
+if dependency_job is None or 'fetch-depth: 0' not in dependency_job.group('body'):
+    errors.append('dependency-security must fetch complete history for its validated introduced-commit range')
+quality_job = re.search(
+    r'(?ms)^  quality:\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)',
+    ci,
+)
+if quality_job is None or 'fetch-depth: 0' in quality_job.group('body'):
+    errors.append('quality must keep the economical shallow checkout')
+if quality_job is not None:
+    quality_body = quality_job.group('body')
+    required_resource_environment = {
+        'CARGO_BUILD_JOBS': "      CARGO_BUILD_JOBS: '1'",
+        'CARGO_PROFILE_DEV_DEBUG': "      CARGO_PROFILE_DEV_DEBUG: '0'",
+        'CARGO_PROFILE_TEST_DEBUG': "      CARGO_PROFILE_TEST_DEBUG: '0'",
+        'NEXTEST_TEST_THREADS': "      NEXTEST_TEST_THREADS: '1'",
+        'RUSTC_WRAPPER': '      RUSTC_WRAPPER: sccache',
+        'SCCACHE_GHA_ENABLED': "      SCCACHE_GHA_ENABLED: 'true'",
+    }
+    for name, expected_assignment in required_resource_environment.items():
+        assignments = re.findall(
+            rf'(?m)^[ \t]*{re.escape(name)}:[^\n]*$',
+            quality_body,
+        )
+        if assignments != [expected_assignment]:
+            errors.append(
+                'quality resource envelope must keep exactly one job-level '
+                f'{name} assignment'
+            )
+    compiler_cache_contract = {
+        'reviewed compiler-cache Action': (
+            'mozilla-actions/sccache-action@'
+            'fc920bf0ec8de6ee65d409111f7ec508035751ba'
+        ),
+        'pinned compiler-cache release': 'version: v0.16.0',
+        'compiler-cache step identity': 'id: sccache',
+        'compiler-cache statistics': 'run: sccache --show-stats',
+        'shared versioned Cargo source cache': (
+            "cargo-sources-v1-${{ runner.os }}-${{ hashFiles('Cargo.lock') }}"
+        ),
+    }
+    for label, token in compiler_cache_contract.items():
+        if quality_body.count(token) != 1:
+            errors.append(f'quality compiler cache must keep exactly one {label}')
+    if re.search(r'(?m)^\s+target(?:/.*)?\s*$', quality_body):
+        errors.append('quality compiler cache must not retain target build artifacts')
+    clippy_position = quality_body.find(
+        'run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings'
+    )
+    clean_position = quality_body.find('run: cargo clean')
+    nextest_position = quality_body.find(
+        'run: cargo nextest run --workspace --all-features --locked --profile ci'
+    )
+    cache_action_position = quality_body.find(
+        'mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba'
+    )
+    cache_stats_position = quality_body.find('run: sccache --show-stats')
+    clean_commands = re.findall(
+        r'(?m)^[ \t]*run:[ \t]*cargo clean[ \t]*$',
+        quality_body,
+    )
+    if not (
+        clippy_position >= 0
+        and cache_action_position >= 0
+        and cache_action_position < clippy_position
+        and clean_commands == ['        run: cargo clean']
+        and clean_position > clippy_position
+        and nextest_position > clean_position
+        and cache_stats_position > nextest_position
+    ):
+        errors.append(
+            'quality resource envelope must reclaim Clippy artifacts before '
+            'the all-feature Nextest build'
+        )
+
+# `cargo xtask test image-rendering` intentionally invokes Sugarloaf as a
+# stand-alone package. Resolver v2 must not borrow display-backend features from
+# the earlier workspace-wide build, so the test-only window dependency owns the
+# Linux features needed by that real command.
+sugarloaf_manifest_path = Path('sugarloaf/Cargo.toml')
+try:
+    sugarloaf_manifest = tomllib.loads(
+        sugarloaf_manifest_path.read_text(encoding='utf-8')
+    )
+except (OSError, tomllib.TOMLDecodeError) as error:
+    errors.append(f'image-rendering Linux platform contract is unreadable: {error}')
+else:
+    rio_window_dev = sugarloaf_manifest.get('dev-dependencies', {}).get('rio-window')
+    required_linux_backends = {'x11', 'wayland'}
+    configured_features = (
+        set(rio_window_dev.get('features', []))
+        if isinstance(rio_window_dev, dict)
+        else set()
+    )
+    if not (
+        isinstance(rio_window_dev, dict)
+        and rio_window_dev.get('workspace') is True
+        and required_linux_backends.issubset(configured_features)
+    ):
+        errors.append(
+            'image-rendering Linux platform contract requires Sugarloaf\'s '
+            'workspace rio-window dev-dependency with x11 and wayland features'
+        )
+
+# The same command later invokes rio-backend on its own. Its default feature
+# graph enables the optional rio-window bridge, so each native backend must be
+# forwarded to that dependency instead of only to rio-vt.
+rio_backend_manifest_path = Path('rio-backend/Cargo.toml')
+try:
+    rio_backend_manifest = tomllib.loads(
+        rio_backend_manifest_path.read_text(encoding='utf-8')
+    )
+except (OSError, tomllib.TOMLDecodeError) as error:
+    errors.append(f'image-rendering rio-backend contract is unreadable: {error}')
+else:
+    backend_features = rio_backend_manifest.get('features', {})
+    required_defaults = {'rio-window', 'x11', 'wayland'}
+    configured_defaults = set(backend_features.get('default', []))
+    required_forwarding = {
+        'x11': {'rio-vt/x11', 'rio-window?/x11'},
+        'wayland': {'rio-vt/wayland', 'rio-window?/wayland'},
+    }
+    if not required_defaults.issubset(configured_defaults):
+        errors.append(
+            'image-rendering rio-backend contract requires default rio-window, '
+            'x11, and wayland features'
+        )
+    for backend, required_edges in required_forwarding.items():
+        configured_edges = set(backend_features.get(backend, []))
+        if not required_edges.issubset(configured_edges):
+            errors.append(
+                'image-rendering rio-backend contract requires '
+                f'{backend} to forward into rio-vt and optional rio-window'
+            )
+# Ordinary PR CI stays on Linux. The sole standard-hosted Windows exception is
+# release-only coverage because the recorded non-regression baseline is MSVC.
+ci_jobs = {
+    match.group('name'): match.group('body')
+    for match in re.finditer(
+        r'(?ms)^  (?P<name>[A-Za-z0-9_-]+):\n(?P<body>.*?)(?=^  [A-Za-z0-9_-]+:\n|\Z)',
+        ci,
+    )
+}
+for job_name, body in ci_jobs.items():
+    runner = re.search(r'^    runs-on:\s*((?:windows|macos)-[^\s#]+)', body, re.MULTILINE)
+    if runner and not (job_name == 'release-candidate-coverage' and runner.group(1) == 'windows-2025'):
+        errors.append(
+            'only release-candidate-coverage may use the standard hosted Windows runner; '
+            f'{job_name} uses {runner.group(1)}'
+        )
+
+nightly = (wf/'nightly.yml').read_text(encoding='utf-8')
+if re.search(r'^\s*schedule:\s*$', nightly, re.MULTILINE):
+    errors.append('deep/nightly assurance must be manual-only on the Free/private edition')
+
+contract = json.loads((root/'repository-protection.json').read_text(encoding='utf-8'))
+if contract.get('mode') != 'github-free-private':
+    errors.append('repository-protection.json mode must be github-free-private')
+if contract.get('release', {}).get('trigger') != 'merged internal release/X.Y.Z pull request into main':
+    errors.append('repository-protection.json release trigger contract drifted')
+
+if errors:
+    print('\n'.join(f'ERROR: {e}' for e in errors), file=sys.stderr)
+    raise SystemExit(1)
+print('GitHub-Free/private CI contract passed.')

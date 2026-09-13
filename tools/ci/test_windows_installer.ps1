@@ -39,6 +39,8 @@ function Assert-SignedShellResources {
         'powershell\automexia.format.ps1xml',
         'powershell\automexia.ps1'
     )
+    # Check the fixed package contract rather than accepting whichever scripts an
+    # archive happens to contain.
     foreach ($relative in $required) {
         $path = Join-Path $Root $relative
         if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
@@ -54,9 +56,13 @@ function Assert-SignedShellResources {
 }
 
 New-Item -ItemType Directory -Force -Path $rioRoot | Out-Null
+# Sentinels are independent oracles for coexistence and user-data preservation;
+# the installer is never allowed to own or clean these files.
 Set-Content -LiteralPath $rioSentinel -Value 'must survive Automexia install and uninstall'
 
 try {
+    # Exercise both fresh install and upgrade/repair through the real MSI engine,
+    # then verify product identity, registrations, shortcuts, and signatures.
     $initialMsi = if ($null -ne $previousMsi) { $previousMsi } else { $msi }
     $install = Start-Process msiexec.exe -ArgumentList @('/i', $initialMsi, '/qn', '/norestart') -Wait -PassThru
     if ($install.ExitCode -ne 0) { throw "MSI install failed with $($install.ExitCode)" }
@@ -101,6 +107,8 @@ try {
     }
     Assert-SignedShellResources -Root (Join-Path $installRoot 'shell-integration')
 
+    # The portable package must expose the same version, publisher, timestamp, and
+    # signed shell assets without depending on the installed copy.
     Expand-Archive -LiteralPath $portableZip -DestinationPath $portableRoot
     $portableBinary = Get-ChildItem -LiteralPath $portableRoot -Recurse -File -Filter 'automexia.exe' |
         Select-Object -First 1
@@ -122,6 +130,8 @@ try {
     Assert-SignedShellResources -Root (Join-Path $portableRoot 'shell-integration')
 }
 finally {
+    # Always remove installed product state and temporary portable files, including
+    # when an assertion above fails midway through the native workflow.
     if ($installed) {
         $uninstall = Start-Process msiexec.exe -ArgumentList @('/x', $msi, '/qn', '/norestart') -Wait -PassThru
         if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
@@ -129,6 +139,7 @@ finally {
     Remove-Item -LiteralPath $portableRoot -Recurse -Force -ErrorAction SilentlyContinue
 }
 
+# Uninstall removes product-owned state while preserving the two external sentinels.
 if (Test-Path -LiteralPath $binary) { throw 'uninstall left the Automexia executable behind' }
 if (Test-Path 'Registry::HKEY_LOCAL_MACHINE\Software\Classes\automexia') { throw 'uninstall left the automexia:// registration behind' }
 if (Test-Path 'Registry::HKEY_LOCAL_MACHINE\Software\Classes\Directory\shell\AutomexiaTerminal') { throw 'uninstall left the directory context menu behind' }

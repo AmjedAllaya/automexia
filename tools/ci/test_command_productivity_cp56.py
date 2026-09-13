@@ -18,6 +18,8 @@ import check_command_productivity_cp56 as checker  # noqa: E402
 class Cp56ImplementationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        # Snapshot every authoritative file once. Each test mutates its own deep
+        # copy, so one failed guard cannot contaminate a later mutation case.
         cls.texts = {
             relative: (ROOT / relative).read_text(encoding="utf-8")
             for relative in checker.REQUIRED
@@ -100,6 +102,8 @@ class Cp56ImplementationTests(unittest.TestCase):
                 checker.validate_texts(changed)
 
     def test_authenticated_reply_and_route_exchange_cannot_be_removed(self) -> None:
+        # Remove one link at a time across model, app, native adapter, and shell
+        # boundaries; the checker must reject every incomplete end-to-end route.
         for path, marker in (
             (
                 "automexia-command-productivity/src/suggestions/reply.rs",
@@ -112,6 +116,14 @@ class Cp56ImplementationTests(unittest.TestCase):
             (
                 "apps/automexia-terminal/tests/suggestion_publication.rs",
                 "app_route_exchange_reads_submission_and_writes_exact_authenticated_reply",
+            ),
+            (
+                "apps/automexia-terminal/tests/suggestion_publication.rs",
+                "publication_from_submission",
+            ),
+            (
+                "apps/automexia-terminal/tests/suggestion_publication.rs",
+                "SUGGESTION_SERVICE_TEST_SLOT",
             ),
             (
                 "tools/ci/test_cp5_native_shell_adapters.py",
@@ -136,6 +148,8 @@ class Cp56ImplementationTests(unittest.TestCase):
                 checker.validate_texts(changed)
 
     def test_all_shells_keep_strict_utf8_control_and_bidi_guards(self) -> None:
+        # The byte markers are independent oracles for bidi and invalid UTF-8
+        # handling in shells that do not share one Unicode implementation.
         for path, marker in (
             (
                 "shell-integration/suggestions/powershell/automexia-suggestions.ps1",
@@ -167,6 +181,8 @@ class Cp56ImplementationTests(unittest.TestCase):
 
     def test_fish_fixed_handles_and_noninteractive_reply_path_are_enforced(self) -> None:
         path = "shell-integration/suggestions/fish/automexia-suggestions.fish"
+        # These mutations cover distinct Fish failure modes: descriptor drift,
+        # unbounded reads, subshell state loss, and an unauthorized repaint.
         for old, new in (
             ("</dev/fd/4", "<&4"),
             ("--nchars 2176", "--nchars 2200"),
@@ -183,6 +199,7 @@ class Cp56ImplementationTests(unittest.TestCase):
             changed[path] = changed[path].replace(old, new)
             with self.assertRaises(checker.Cp56Error):
                 checker.validate_texts(changed)
+
     def test_shell_scaffolding_cannot_be_mislabeled_complete(self) -> None:
         changed = deepcopy(self.texts)
         path = "shell-integration/suggestions/README.md"

@@ -19,6 +19,8 @@ class Cp32ContractTests(unittest.TestCase):
         cls.contract = json.loads(policy.bounded_text(policy.CONTRACT))
 
     def validate_mutation(self, mutate) -> None:
+        # Exercise the strict disk parser for every contract mutation so JSON
+        # decoding and schema validation remain part of the rejection oracle.
         document = copy.deepcopy(self.contract)
         mutate(document)
         with tempfile.TemporaryDirectory() as directory:
@@ -30,7 +32,7 @@ class Cp32ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         self.assertEqual(policy.validate_repository(), {
             "providers": 11, "actions": 33, "commands": 4,
-            "tests": 17, "documents": 8,
+            "tests": 17, "documents": 6,
         })
 
     def test_provider_inventory_and_counts_cannot_drift(self) -> None:
@@ -44,6 +46,8 @@ class Cp32ContractTests(unittest.TestCase):
         original = policy.bounded_text
 
         def stale_source_digest(path, maximum=policy.MAX_POLICY_BYTES):
+            # Change only the source-owned digest; the fixture remains canonical
+            # so this proves cross-owner drift is detected in either direction.
             source = original(path, maximum)
             if path.name == "packs.rs":
                 source = source.replace(policy.EXPECTED_REGISTRY_DIGEST, "0" * 64)

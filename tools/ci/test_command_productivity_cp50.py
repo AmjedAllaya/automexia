@@ -33,6 +33,7 @@ class Cp50PolicyTests(unittest.TestCase):
         self.assertEqual(counts["shells"], 7)
         self.assertEqual(counts["corpus_sizes"], 3)
         self.assertEqual(counts["dependency_decisions"], 4)
+
     def test_duplicate_contract_key_is_rejected(self) -> None:
         with self.assertRaisesRegex(POLICY.Cp50Error, "duplicate key"):
             POLICY.parse_contract('{"schema":1,"schema":1}')
@@ -87,6 +88,8 @@ class Cp50PolicyTests(unittest.TestCase):
             POLICY.build_insertion_request(snapshot, batch, 0)
 
     def test_non_utf8_boundary_span_is_rejected(self) -> None:
+        # Adding one byte to the encoded "f" position lands inside the two-byte
+        # final character, reproducing a span that is numeric but not editable.
         snapshot = POLICY.EditorSnapshot(
             buffer="echo café",
             cursor_byte=len("echo café".encode()),
@@ -126,9 +129,12 @@ class Cp50PolicyTests(unittest.TestCase):
             candidates=("deployments", "daemonsets"),
         )
         request = POLICY.build_insertion_request(snapshot, batch, 0)
+        # Insertion may replace editor bytes, but it must never manufacture the
+        # Enter/execute authority owned by the terminal input path.
         self.assertEqual(request.replacement, "deployments")
         self.assertEqual((request.start_byte, request.end_byte), (12, 15))
         self.assertFalse(request.execute)
+
     def test_unselected_unsafe_candidate_is_rejected(self) -> None:
         snapshot = POLICY.EditorSnapshot(
             buffer="git sta",
@@ -141,6 +147,8 @@ class Cp50PolicyTests(unittest.TestCase):
             generation=2,
             candidates=("status", "reset\x1b[31m"),
         )
+        # Validate the complete untrusted batch before indexing it. A hidden
+        # hostile candidate must not survive merely because index zero is safe.
         with self.assertRaisesRegex(POLICY.Cp50Error, "character"):
             POLICY.build_insertion_request(snapshot, batch, 0)
 
@@ -158,8 +166,6 @@ class Cp50PolicyTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(POLICY.Cp50Error, "unsafe character"):
             POLICY.build_insertion_request(snapshot, batch, 0)
-
-
 
 if __name__ == "__main__":
     unittest.main()

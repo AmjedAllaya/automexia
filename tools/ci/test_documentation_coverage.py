@@ -20,6 +20,23 @@ SPEC.loader.exec_module(COVERAGE)
 
 
 class DocumentationCoverageTests(unittest.TestCase):
+    def test_skipped_runtime_fields_are_not_advertised_as_input_settings(self) -> None:
+        source = '''
+#[serde(skip)]
+pub ui_shortcuts: Vec<String>,
+#[serde(default, skip_deserializing)]
+pub cache: String,
+#[serde(skip_serializing)]
+pub writable: String,
+#[serde(rename = "skip")]
+pub renamed: String,
+#[serde(skip_serializing_if = "Vec::is_empty")]
+pub entries: Vec<String>,
+'''
+        self.assertEqual(COVERAGE.serde_keys(source), {"writable", "skip", "entries"})
+        # Removing the attribute must restore documentation responsibility.
+        self.assertIn("ui_shortcuts", COVERAGE.serde_keys(source.replace("#[serde(skip)]", "")))
+
     def test_canonical_documentation_covers_source_registries(self) -> None:
         counts = COVERAGE.validate()
         self.assertGreaterEqual(counts["pages"], 13)
@@ -36,6 +53,50 @@ class DocumentationCoverageTests(unittest.TestCase):
             COVERAGE.require_tokens(
                 "configuration reference", {"scrollback-history-limit"}, "other"
             )
+
+    def test_grouped_assurance_usage_expands_to_documented_subcommands(self) -> None:
+        commands = COVERAGE.xtask_commands()
+        self.assertEqual(
+            {command for command in commands if command.startswith("assurance ")},
+            {
+                "assurance check-policy",
+                "assurance install-tools",
+                "assurance initialize-vet",
+                "assurance install-hook",
+                "assurance audit-history-secrets",
+                "assurance pre-push",
+                "assurance release-local",
+                "assurance deep-source",
+            },
+        )
+        self.assertNotIn("install-tools", commands)
+
+    def test_grouped_cache_usage_expands_to_documented_subcommands(self) -> None:
+        commands = COVERAGE.xtask_commands()
+        self.assertEqual(
+            {command for command in commands if command.startswith("cache ")},
+            {
+                "cache status [--warn-gib N]",
+                "cache gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]",
+            },
+        )
+        self.assertNotIn("cache", commands)
+
+    def test_usage_alternatives_do_not_split_option_value_registries(self) -> None:
+        self.assertEqual(
+            COVERAGE.split_usage_alternatives(
+                "status [--warn N]|generate <--one|--two>|gc [--scope automatic|tools|all] [--apply]"
+            ),
+            [
+                "status [--warn N]",
+                "generate <--one|--two>",
+                "gc [--scope automatic|tools|all] [--apply]",
+            ],
+        )
+        with self.assertRaisesRegex(
+            COVERAGE.DocumentationCoverageError, "unmatched"
+        ):
+            COVERAGE.split_usage_alternatives("gc [--scope all")
 
     def test_missing_binding_action_is_rejected(self) -> None:
         with self.assertRaisesRegex(

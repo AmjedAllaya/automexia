@@ -126,6 +126,31 @@ pub fn project_status(
 }
 
 pub fn immediate_session_segments(session: &SessionFacts) -> Vec<Segment> {
+    let mut segments = immediate_os_segments(session);
+    if let Some(user) = session.shell_user.as_deref().filter(|user| {
+        session.shell_integration
+            && user.len() <= 384
+            && !user.trim().is_empty()
+            && !user.chars().any(|ch| {
+                ch.is_control()
+                    || matches!(ch, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+            })
+    }) {
+        segments.push(Segment {
+            value: compact_label(user, 16),
+            accessibility_label: format!("User {}", user.trim()),
+            role: SegmentRole::User,
+            icon: IconKind::User,
+            priority: 90,
+            freshness: Freshness::Current,
+            observed_at_ms: 0,
+            details_action: None,
+        });
+    }
+    segments
+}
+
+fn immediate_os_segments(session: &SessionFacts) -> Vec<Segment> {
     if let Some(distro) = immediate_wsl_value(session) {
         return vec![Segment {
             value: compact_label(&distro, MAX_OS_CHARS),
@@ -367,7 +392,7 @@ pub fn icon_optics(icon: IconKind) -> IconOptics {
             y_shift: -0.5,
         },
         IconKind::Kubernetes => IconOptics {
-            scale: 0.94,
+            scale: 1.30,
             y_shift: 0.0,
         },
         IconKind::Cloud => IconOptics {
@@ -403,7 +428,9 @@ fn immediate_wsl_value(session: &SessionFacts) -> Option<String> {
         .as_ref()
         .filter(|value| !value.trim().is_empty())?;
     let shell_is_unix = session.shell_name.as_deref().is_some_and(|shell| {
-        shell.eq_ignore_ascii_case("bash") || shell.eq_ignore_ascii_case("zsh")
+        ["bash", "zsh", "fish", "sh", "dash", "ksh"]
+            .iter()
+            .any(|name| shell.eq_ignore_ascii_case(name))
     });
     let title_has_unix_path =
         parse_shell_title(&session.title).is_some_and(|(_, path)| path.starts_with('/'));
@@ -424,6 +451,12 @@ fn shell_label(session: &SessionFacts) -> &'static str {
         }
         if name.eq_ignore_ascii_case("zsh") {
             return "zsh";
+        }
+        if ["fish", "sh", "dash", "ksh"]
+            .iter()
+            .any(|shell| name.eq_ignore_ascii_case(shell))
+        {
+            return "Unix shell";
         }
     }
     #[cfg(target_os = "windows")]
@@ -541,10 +574,11 @@ mod tests {
             distro: None,
             os_version: None,
             shell_name: Some("PowerShell".to_string()),
-            shell_user: Some("amjed".to_string()),
+            shell_user: Some("alice".to_string()),
             shell_path: Some("pwsh.exe".to_string()),
             shell_integration: true,
             shell_pid: 42,
+            environment: Default::default(),
         }
     }
 
@@ -646,6 +680,65 @@ mod tests {
         // Very tall/custom line heights keep the existing centered breathing
         // room when it already exceeds the minimum 1.22 rhythm.
         assert_eq!(prompt_context_top_inset(48.0, 18.0, true), Some(15.0));
+    }
+
+    #[test]
+    fn integrated_user_is_available_before_background_discovery() {
+        for shell in ["bash", "zsh", "fish", "PowerShell"] {
+            let mut facts = session();
+            facts.shell_name = Some(shell.into());
+            let segments = immediate_session_segments(&facts);
+            let user = segments
+                .iter()
+                .find(|segment| segment.role == SegmentRole::User);
+            assert_eq!(user.map(|segment| segment.value.as_str()), Some("alice"));
+            facts.shell_integration = false;
+            assert!(!immediate_session_segments(&facts)
+                .iter()
+                .any(|segment| segment.role == SegmentRole::User));
+        }
+    }
+
+    #[test]
+    fn immediate_user_rejects_hostile_metadata_and_preserves_full_accessible_text() {
+        let mut facts = session();
+        for value in [
+            "",
+            "  ",
+            "alice\nadmin",
+            "alice\u{202e}admin",
+            "alice\u{2066}admin",
+        ] {
+            facts.shell_user = Some(value.into());
+            assert!(!immediate_session_segments(&facts)
+                .iter()
+                .any(|s| s.role == SegmentRole::User));
+        }
+        facts.shell_user = Some("x".repeat(385));
+        assert!(!immediate_session_segments(&facts)
+            .iter()
+            .any(|s| s.role == SegmentRole::User));
+        facts.shell_user = Some("a-long-fictional-user".into());
+        let segments = project_status(
+            &facts,
+            &contribution(vec![StatusSegment::new(
+                "user",
+                "old",
+                "User old",
+                SegmentRole::User,
+                IconKind::User,
+                90,
+                Freshness::Current,
+            )
+            .unwrap()]),
+        );
+        let users: Vec<_> = segments
+            .iter()
+            .filter(|s| s.role == SegmentRole::User)
+            .collect();
+        assert_eq!(users.len(), 1);
+        assert_eq!(users[0].value, "a-long-fictiona…");
+        assert_eq!(users[0].accessibility_label, "User a-long-fictional-user");
     }
 
     #[test]
@@ -769,6 +862,7 @@ mod tests {
 
     #[test]
     fn icon_optics_keep_docker_compensated_and_all_glyphs_present() {
+        assert_eq!(icon_optics(IconKind::Kubernetes).scale, 1.30);
         assert!(
             icon_optics(IconKind::Docker).scale > icon_optics(IconKind::Windows).scale
         );

@@ -125,6 +125,14 @@ pub enum TerminalDamage {
     CursorOnly,
 }
 
+/// Application-level font preference request. The core carries the typed
+/// request but never performs filesystem work or chooses persistence policy.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum FontSizeRequest {
+    Set(f32),
+    Reset,
+}
+
 #[derive(Clone)]
 pub enum RioEvent {
     PrepareRender(u64),
@@ -167,7 +175,10 @@ pub enum RioEvent {
     },
     Paste,
     Copy(String),
-    UpdateFontSize(u8),
+    UpdateFontSize(FontSizeRequest),
+    /// Notification only: the application retains the bounded edit request.
+    ApplyShortcutEdit,
+    PreferencesWritten,
     Scroll(Scroll),
     ToggleFullScreen,
     ToggleAppearanceTheme,
@@ -372,6 +383,8 @@ impl Debug for RioEvent {
             }
             RioEvent::SelectionScrollTick => write!(f, "SelectionScrollTick"),
             RioEvent::UpdateTitles => write!(f, "UpdateTitles"),
+            RioEvent::ApplyShortcutEdit => write!(f, "ApplyShortcutEdit"),
+            RioEvent::PreferencesWritten => write!(f, "PreferencesWritten"),
             RioEvent::Noop => write!(f, "Noop"),
             RioEvent::Copy(_) => write!(f, "Copy"),
             RioEvent::Paste => write!(f, "Paste"),

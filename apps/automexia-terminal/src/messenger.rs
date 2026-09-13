@@ -1,14 +1,17 @@
 use crate::event::Msg;
 use rio_backend::event::WindowSize;
+use rio_backend::performer::PtySender;
 use std::borrow::Cow;
 
 pub struct Messenger {
-    pub channel: corcovado::channel::Sender<Msg>,
+    pub channel: PtySender,
 }
 
 impl Messenger {
-    pub fn new(channel: corcovado::channel::Sender<Msg>) -> Messenger {
-        Messenger { channel }
+    pub fn new(channel: impl Into<PtySender>) -> Messenger {
+        Messenger {
+            channel: channel.into(),
+        }
     }
 
     #[inline]

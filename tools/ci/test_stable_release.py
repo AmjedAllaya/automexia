@@ -3,16 +3,20 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 import stable_release
 
 
 class StableReleaseTests(unittest.TestCase):
     def git(self, root: Path, *args: str) -> str:
+        # Keep Git invocation typed and shell-free; these tests also exercise the
+        # production gate's process and redaction boundary.
         completed = subprocess.run(
             ["git", *args],
             cwd=root,
@@ -24,6 +28,8 @@ class StableReleaseTests(unittest.TestCase):
         return completed.stdout.strip()
 
     def fixture(self) -> tuple[tempfile.TemporaryDirectory[str], Path, str]:
+        # A local bare origin makes remote-head/tag checks real and deterministic,
+        # without network access or mutation of the contributor's repository.
         temporary = tempfile.TemporaryDirectory()
         outer = Path(temporary.name)
         remote = outer / "origin.git"
@@ -86,16 +92,72 @@ class StableReleaseTests(unittest.TestCase):
 
     def test_failed_git_command_returns_redacted_release_error(self) -> None:
         with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            # Establish a repository boundary with no HEAD. Temporary roots may
+            # deliberately live under the checkout, where Git would otherwise
+            # walk upward and make this failure-path test pass accidentally.
+            self.git(root, "init", "--quiet")
             with self.assertRaisesRegex(
-                stable_release.ReleaseError, 'git rev-parse operation failed'
+                stable_release.ReleaseError, "git rev-parse operation failed"
             ):
-                stable_release._run_git(Path(temporary), 'rev-parse', 'HEAD')
+                stable_release._run_git(root, "rev-parse", "HEAD")
 
     def test_external_prerequisite_identity_cannot_be_substituted(self) -> None:
         policy = stable_release.load_policy()
         policy["external_prerequisites"][0]["id"] = "substituted-blocker"
         with self.assertRaisesRegex(stable_release.ReleaseError, "identities drifted"):
             stable_release.validate_policy(policy)
+
+    def test_policy_rejects_unknown_fields_and_weakened_tag_grammar(self) -> None:
+        policy = stable_release.load_policy()
+        policy["release_source"]["allow_lightweight_tag"] = True
+        with self.assertRaisesRegex(stable_release.ReleaseError, "keys drifted"):
+            stable_release.validate_policy(policy)
+
+        policy = stable_release.load_policy()
+        policy["release_source"]["tag_pattern"] = ".*"
+        with self.assertRaisesRegex(stable_release.ReleaseError, "tag pattern drifted"):
+            stable_release.validate_policy(policy)
+
+        policy = stable_release.load_policy()
+        policy["hosted_repository"]["github_free_private_manual_governance"] = False
+        with self.assertRaisesRegex(
+            stable_release.ReleaseError, "github_free_private_manual_governance"
+        ):
+            stable_release.validate_policy(policy)
+
+    def test_external_prerequisite_owner_and_evidence_cannot_be_redirected(self) -> None:
+        policy = stable_release.load_policy()
+        policy["external_prerequisites"][0]["owner"] = "different-owner"
+        with self.assertRaisesRegex(stable_release.ReleaseError, "contract drifted"):
+            stable_release.validate_policy(policy)
+
+        policy = stable_release.load_policy()
+        policy["external_prerequisites"][0]["evidence"] = "Cargo.toml"
+        with self.assertRaisesRegex(stable_release.ReleaseError, "contract drifted"):
+            stable_release.validate_policy(policy)
+
+    def test_dco_history_is_read_once_with_a_bounded_batch(self) -> None:
+        first = "1" * 40
+        second = "2" * 40
+        output = (
+            f"{first}\0release@example.invalid\0"
+            "feat: first\n\nSigned-off-by: Release Tester <release@example.invalid>\0"
+            f"{second}\0release@example.invalid\0"
+            "fix: second\n\nSigned-off-by: Release Tester <release@example.invalid>\0"
+        )
+        # Mock only process execution here; the assertion below independently
+        # freezes the exact bounded format and revision range passed to Git.
+        with mock.patch.object(stable_release, "_run_git", return_value=output) as run:
+            stable_release._validate_dco(Path("."), "0" * 40, second)
+        run.assert_called_once_with(
+            Path("."),
+            "log",
+            "-z",
+            "--reverse",
+            "--format=%H%x00%ae%x00%B",
+            f"{'0' * 40}..{second}",
+        )
     def test_valid_annotated_exact_main_release_passes(self) -> None:
         temporary, work, base = self.fixture()
         self.addCleanup(temporary.cleanup)
@@ -247,6 +309,22 @@ class StableReleaseTests(unittest.TestCase):
             path = Path(temporary) / "release.yml"
             path.write_text(workflow, encoding="utf-8")
             with self.assertRaisesRegex(stable_release.ReleaseError, "repository audit"):
+                stable_release.validate_release_workflow(policy, path)
+
+    def test_workflow_cannot_restore_private_environment_dependency(self) -> None:
+        policy = stable_release.load_policy()
+        workflow = stable_release.RELEASE_WORKFLOW.read_text(encoding="utf-8")
+        workflow = workflow.replace(
+            "  preflight:\n",
+            "  preflight:\n    environment: stable-release\n",
+            1,
+        )
+        with tempfile.TemporaryDirectory() as temporary:
+            path = Path(temporary) / "release.yml"
+            path.write_text(workflow, encoding="utf-8")
+            with self.assertRaisesRegex(
+                stable_release.ReleaseError, "private GitHub environments"
+            ):
                 stable_release.validate_release_workflow(policy, path)
 
 

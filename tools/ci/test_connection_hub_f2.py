@@ -122,6 +122,42 @@ class F2ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(policy.F2ContractError, "missing F2 tests"):
                 policy.validate_sources(self.contract)
 
+    def test_document_phase_marker_removal_is_rejected(self) -> None:
+        original = policy.bounded_text
+        for target in ("CONNECTION-HUB.md", "SSH-CONNECTION-AUTOMATION.md"):
+            with self.subTest(target=target):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    if path.name == target:
+                        source = source.replace("F2/D5.0", "phase marker removed")
+                    return source
+
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaisesRegex(
+                        policy.F2ContractError, "identify F2/D5.0"
+                    ):
+                        policy.validate_sources(self.contract)
+
+    def test_public_summary_hub_boundary_removal_is_rejected(self) -> None:
+        original = policy.bounded_text
+        targets = {
+            "PHASE-IMPLEMENTATION-AUDIT.md",
+            "CONNECTIVITY-COMMAND-PRODUCTIVITY-ROADMAP.md",
+        }
+        for target in targets:
+            with self.subTest(target=target):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    if path.name == target:
+                        source = source.replace("Connection Hub", "connection surface")
+                    return source
+
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaisesRegex(
+                        policy.F2ContractError, "Connection Hub boundary"
+                    ):
+                        policy.validate_sources(self.contract)
+
     def test_duplicate_contract_key_and_linked_contract_are_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)

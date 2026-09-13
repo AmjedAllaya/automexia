@@ -5,6 +5,11 @@ Portable Rust tests are necessary but not sufficient: an OS-specific adapter is
 accepted on the native host that owns its window server, PTY, shell, graphics,
 packaging, and accessibility APIs.
 
+Current public binaries: [v0.4.0 Linux Early Access](https://github.com/AmjedAllaya/automexia-releases/releases/tag/v0.4.0)
+for x64 and Arm64, in DEB, RPM and portable formats. Windows and macOS stable
+installers are not published. The matrix below describes implementation and
+release-gate ownership, not a claim that every listed package is available.
+
 ## Support matrix
 
 | Surface | Windows | Linux | macOS |
@@ -16,10 +21,12 @@ packaging, and accessibility APIs.
 | Package | Signed MSI and ZIP | DEB, RPM, tar.gz | Signed/notarized universal app in DMG |
 | Native deep evidence | ConPTY/resize/clone/image/AppVerifier/WPR controlled gates | controlled X11/Wayland GPU/PTY and package containers | controlled Metal/GPU/PTY, VoiceOver, Gatekeeper/notarization |
 
-All three hosts run locked all-feature Clippy, Nextest, and doctests on pull
-requests. Workflow coverage is itself mutation-tested, so removing a required
-native, shell, display-feature, architecture, package, or release job fails the
-policy gate.
+Ordinary pull requests run the locked all-feature Rust quality gate on the
+GitHub-Free Ubuntu runner. Windows and macOS native, package, graphics, shell,
+and accessibility evidence is collected by controlled release and assurance
+jobs; it is never inferred from the Linux result. Workflow coverage is itself
+mutation-tested, so removing a required runner, read-only permission, quality
+command, package, or release job fails the policy gate.
 
 ## Windows and WSL
 
@@ -55,7 +62,7 @@ ownership, shell tests, and release policy rather than an inferred Linux pass.
 
 ## Evidence levels
 
-- **PR:** deterministic checks on hosted native runners.
+- **PR:** deterministic GitHub-Free Ubuntu checks.
 - **Nightly:** longer fuzz, sanitizer, benchmark, and unsigned package work.
 - **Controlled:** real display/hardware, elevated instrumentation, credentials,
   or manual assistive-technology evidence.
@@ -63,5 +70,5 @@ ownership, shell tests, and release policy rather than an inferred Linux pass.
   not observe. External never means passed.
 
 The exact jobs and outstanding controlled evidence are maintained in
-[Testing and verification](TESTING.md#native-platform-ownership) and the
+[Testing and verification](TESTING.md#pty-and-process-lifecycle) and the
 [feature assurance ledger](../tests/assurance/feature-matrix.json).

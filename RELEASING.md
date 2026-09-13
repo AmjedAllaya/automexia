@@ -1,5 +1,44 @@
 # Releasing Automexia Terminal
 
+Linux Early Access has a separate zero-cost public binary lane. An internal
+`release/linux/X.Y.Z` pull request activates `.github/workflows/linux-early-access.yml`
+after merge. It publishes only the exact six Linux packages and public evidence
+to `AmjedAllaya/automexia-releases`; it does not create a stable multi-platform
+release or enable the website. The complete contract, App permissions,
+activation handoff, and rollback procedure are in
+[`docs/PUBLIC-RELEASE-DISTRIBUTION.md`](docs/PUBLIC-RELEASE-DISTRIBUTION.md) and
+[ADR 0037](docs/adr/0037-public-binary-release-distribution.md).
+
+For this Linux lane, [ADR 0040](docs/adr/0040-owner-authorized-linux-releases.md)
+authorizes `AmjedAllaya` alone to author and merge the release PR. No second
+reviewer is required. The workflow checks both original and rerun actors,
+the merged event, repository boundaries and exact current-main commit before
+enabling publication; the signing and native quality gates remain mandatory.
+
+The owner also approved solo-maintainer PRs in the public metadata archive under
+ADR 0040. Its validator still requires signed linear squash history, resolved
+discussions, no rule bypasses, and protected immutable release tags/assets.
+Before changing public guides, run the bounded offline metadata checker described
+in [public distribution](docs/PUBLIC-RELEASE-DISTRIBUTION.md), verify anonymous
+links and rendered pages, and preserve the existing package identities.
+
+The current Linux assembler keeps full scanner SBOMs private, including after
+bounded semantic/privacy validation. Reviewed copies remain private workflow
+evidence for seven days; neither format enters the public upload bundle.
+Public schema 2 contains six packages and eight verification/user-document
+assets. Exact document review hashes and privacy checks precede signing.
+Run `python tools/ci/test_public_distribution.py` and
+`python tools/ci/test_release_trust.py` after changing this boundary. This
+correction is source-verified, not a replacement of the immutable first release;
+see the [SBOM privacy contract](docs/PUBLIC-RELEASE-DISTRIBUTION.md#sbom-privacy-boundary-in-current-source).
+
+Before release credentials exist, manually dispatch the Linux workflow from an
+exact candidate ref with the Cargo version to obtain the private, unsigned
+native-package rehearsal. The rehearsal is visibly marked as not distributable
+and cannot sign, publish, tag, or activate the website. A real publication also
+requires GitHub release-level and per-asset attestation verification after
+immutable publication and before the activation handoff.
+
 Stable releases are tag-driven from protected `main`. Run:
 
 ```text
@@ -42,8 +81,11 @@ and tar.gz artifacts with X11 and Wayland support. Windows x86_64 uses
 cargo-packager 0.11.x WiX 3 backend cannot create ARM64 MSI databases. The
 Windows runner therefore needs the .NET SDK, and xtask restores the exact WiX
 5.0.2 tool from `.config/dotnet-tools.json`. The workflow also produces
-SHA-256 checksums, semantic CycloneDX/SPDX SBOMs, and GitHub provenance/SBOM
-attestations. The SBOM input combines final signed packages with the tagged
+SHA-256 checksums, semantic CycloneDX/SPDX SBOMs, and a signed
+repository-owned release manifest. On the current GitHub-Free/private plan,
+GitHub artifact attestations remain an external Enterprise entitlement and are
+not claimed by this release process. The SBOM input combines final signed
+packages with the tagged
 `Cargo.lock`; validation rejects empty documents and version/component drift.
 The workflow signs every Windows PowerShell/format resource before packaging,
 and both portable ZIPs plus the ARM64 MSI include the complete resource tree.
@@ -84,17 +126,20 @@ owns collection, recovery, activation, and rollback.
 
 The fourth gate is S1. `AUTOMEXIA_S1_ASSURANCE_RUNNER=1` selects the controlled
 `automexia-assurance` runner and `AUTOMEXIA_S1_ASSURANCE_EVIDENCE` names its
-private redacted manifest. The job requires all 24 current-commit native,
+private redacted manifest. The job requires all 28 current-commit native,
 resource, visual, and accessibility suites plus independent review before
 preflight. Missing runner configuration, missing/stale/synthetic evidence,
 review gaps, or commit drift fail closed. Only the bounded summary is uploaded.
+Five visual suites each require 8,352 exact dark/light/high-contrast,
+100–400%-scale, viewport, surface, and enabled/reduced-motion captures.
 The full contract is in
 `docs/research/S1-NATIVE-VISUAL-RESOURCE-ACCESSIBILITY-AUDIT.md`.
 Managed OpenSSH remains a separate feature-activation gate. Before any release
 advertises or enables D5.2/F5, configure `f5-openssh-release` as a protected
 environment with required independent reviewers and no self-review. Set the
 repository operator switch `AUTOMEXIA_F5_OPENSSH_RUNNER=1`; define the private
-manifest, application binary, and package paths as environment variables; and
+manifest, application binary, package, OpenSSH advisory review, and OpenSSH
+package-provenance paths as protected environment secrets; and
 provision one ephemeral JIT runner per job in the restricted
 `automexia-openssh` group. Runner labels must match the dispatched native
 platform and architecture. The host must contain the fixed system `ssh`,
@@ -103,9 +148,11 @@ a private loopback-only fixture, and no ambient credentials.
 
 Dispatch `F5 controlled native OpenSSH assurance` manually with the exact
 already reviewed source commit. It checks out that digest without persisted
-credentials, runs the mutation suite, and validates that the private real
-manifest matches the executing OS/architecture, clean commit, fixed OpenSSH
-versions, and freshly hashed binary/package/client. It uploads only the bounded
+credentials, runs the D0 checker and both mutation suites, and validates that
+the private real schema-2 manifest matches the executing OS/architecture, clean
+commit, exact application version/binary/package, fixed OpenSSH versions and
+all four tool hashes, the OpenSSH 10.5 controls, advisory review, and package
+provenance. It uploads only the bounded
 path-free summary for 90 days. Never upload the private manifest, fixture,
 configuration, paths, usernames, destinations, agent data, or terminal output.
 A missing runner/environment, synthetic manifest, version/hash drift, linked or

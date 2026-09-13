@@ -17,6 +17,7 @@ use automexia_connectivity::connections::{
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
+use super::persistence_support::BoundedWriter;
 use crate::automexia::private_fs::{
     self as secure_fs, PrivateFsError, PrivateFsErrorCode,
 };
@@ -397,34 +398,19 @@ fn valid_public_identifier(value: &str) -> bool {
         })
 }
 
-struct BoundedWriter {
-    bytes: Vec<u8>,
-}
-
-impl Write for BoundedWriter {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if bytes.len() > MAX_MANAGED_RECEIPT_BYTES.saturating_sub(self.bytes.len()) {
-            return Err(std::io::Error::other("managed receipt size limit"));
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 fn serialize_document(
     document: &ManagedReceiptDocument,
 ) -> Result<Vec<u8>, ManagedReceiptError> {
     validate_document(document)?;
-    let mut writer = BoundedWriter {
-        bytes: Vec::with_capacity(32 * 1024),
-    };
+    let mut writer = BoundedWriter::new(
+        MAX_MANAGED_RECEIPT_BYTES,
+        32 * 1024,
+        "managed receipt size limit",
+    )
+    .map_err(|_| ManagedReceiptError::new(ManagedReceiptErrorCode::TooLarge))?;
     serde_json::to_writer_pretty(&mut writer, document)
         .map_err(|_| ManagedReceiptError::new(ManagedReceiptErrorCode::TooLarge))?;
-    Ok(writer.bytes)
+    Ok(writer.into_bytes())
 }
 
 fn read_optional(
@@ -521,6 +507,47 @@ mod tests {
         let store =
             ManagedReceiptStore::open(temporary.path().join("connections")).unwrap();
         (temporary, store)
+    }
+
+    #[test]
+    fn bounded_receipt_serialization_preserves_bytes_and_validation_order() {
+        assert_eq!(
+            serialize_document(&ManagedReceiptDocument::default()).unwrap(),
+            b"{\n  \"schema_version\": 1,\n  \"revision\": 0,\n  \"records\": []\n}"
+        );
+        let invalid = ManagedReceiptDocument {
+            schema_version: 0,
+            ..ManagedReceiptDocument::default()
+        };
+        assert_eq!(
+            serialize_document(&invalid).unwrap_err().code(),
+            ManagedReceiptErrorCode::ModelRejected
+        );
+    }
+
+    #[test]
+    fn bounded_receipt_writer_preserves_all_or_nothing_and_flush() {
+        let mut writer = BoundedWriter::new(
+            MAX_MANAGED_RECEIPT_BYTES,
+            32 * 1024,
+            "managed receipt size limit",
+        )
+        .unwrap();
+        assert_eq!(writer.write(&[]).unwrap(), 0);
+        writer.write_all("é".as_bytes()).unwrap();
+        writer.flush().unwrap();
+        let rejected = vec![b'x'; MAX_MANAGED_RECEIPT_BYTES - 1];
+        let error = writer.write(&rejected).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(error.to_string(), "managed receipt size limit");
+        writer.write_all(&rejected[..rejected.len() - 1]).unwrap();
+        assert!(writer.write(b"x").is_err());
+        writer.flush().unwrap();
+        let bytes = writer.into_bytes();
+        assert_eq!(bytes.len(), MAX_MANAGED_RECEIPT_BYTES);
+        assert_eq!(&bytes[..2], "é".as_bytes());
+        assert!(bytes[2..].iter().all(|byte| *byte == b'x'));
+        assert!(bytes.capacity() <= MAX_MANAGED_RECEIPT_BYTES);
     }
 
     #[test]

@@ -93,9 +93,6 @@ EXPECTED_DOCUMENTS = [
     "docs/COMMAND-PRODUCTIVITY.md",
     "docs/DEVOPS-ALIASES.md",
     "docs/FEATURES.md",
-    "docs/PHASE-IMPLEMENTATION-AUDIT.md",
-    "docs/ROADMAP.md",
-    "docs/STABILIZATION-ROADMAP.md",
     "docs/TESTING.md",
     "docs/index.md",
 ]

@@ -349,7 +349,7 @@ fn apply_private_permissions(
     path: &Path,
     _directory: bool,
 ) -> Result<(), PrivateFsError> {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt as _, ptr};
+    use std::ptr;
     use windows_sys::Win32::{
         Foundation::{CloseHandle, LocalFree, GENERIC_ALL},
         Security::{
@@ -432,10 +432,7 @@ fn apply_private_permissions(
         return Err(PrivateFsError::new(PrivateFsErrorCode::PrivatePermissions));
     }
     let acl = LocalAcl(raw_acl);
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let result = unsafe {
         SetNamedSecurityInfoW(
             wide.as_ptr(),
@@ -451,6 +448,48 @@ fn apply_private_permissions(
         return Err(PrivateFsError::new(PrivateFsErrorCode::PrivatePermissions));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, PrivateFsError> {
+    use std::{
+        os::windows::ffi::OsStrExt as _,
+        path::{Component, Prefix},
+    };
+
+    let prefix = match path.components().next() {
+        Some(Component::Prefix(prefix)) if path.is_absolute() => prefix.kind(),
+        _ => return Err(PrivateFsError::new(PrivateFsErrorCode::InvalidRoot)),
+    };
+    let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.contains(&0) {
+        return Err(PrivateFsError::new(PrivateFsErrorCode::InvalidRoot));
+    }
+    // Normalize before adding the verbatim prefix, which deliberately performs
+    // neither separator nor dot-segment normalization.
+    for unit in &mut wide {
+        if *unit == b'/' as u16 {
+            *unit = b'\\' as u16;
+        }
+    }
+    if wide
+        .split(|unit| *unit == b'\\' as u16)
+        .any(|segment| segment == [b'.' as u16] || segment == [b'.' as u16, b'.' as u16])
+    {
+        return Err(PrivateFsError::new(PrivateFsErrorCode::InvalidRoot));
+    }
+    match prefix {
+        Prefix::Disk(_) => {
+            wide.splice(
+                0..0,
+                [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16],
+            );
+        }
+        Prefix::VerbatimDisk(_) => {}
+        _ => return Err(PrivateFsError::new(PrivateFsErrorCode::InvalidRoot)),
+    };
+    wide.push(0);
+    Ok(wide)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -475,7 +514,7 @@ fn private_permissions_are_safe(
     path: &Path,
     _metadata: &Metadata,
 ) -> Result<bool, PrivateFsError> {
-    use std::{ffi::OsStr, mem, os::windows::ffi::OsStrExt as _, ptr};
+    use std::{mem, ptr};
     use windows_sys::Win32::{
         Foundation::LocalFree,
         Security::{
@@ -496,10 +535,7 @@ fn private_permissions_are_safe(
         }
     }
 
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let mut acl = ptr::null_mut();
     let mut descriptor = ptr::null_mut();
     // SAFETY: path is NUL-terminated and all requested output pointers are valid.
@@ -622,5 +658,40 @@ mod tests {
             let metadata = fs::symlink_metadata(path).unwrap();
             assert!(private_permissions_are_safe(path, &metadata).unwrap());
         }
+    }
+
+    #[test]
+    fn long_local_connection_paths_pass_native_acl_revalidation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let long_parent = temporary.path().join("p".repeat(180));
+        fs::create_dir(&long_parent).unwrap();
+        let connections = long_parent.join("connections");
+        ensure_private_child_directory(&connections).unwrap();
+        let receipt = connections.join("managed-receipts.v1.json");
+        fs::write(&receipt, b"{}").unwrap();
+        apply_private_file_permissions(&receipt).unwrap();
+
+        assert!(receipt.to_string_lossy().encode_utf16().count() > 260);
+        inspect_private_file(&receipt).unwrap();
+        validate_private_child_directory(&connections).unwrap();
+    }
+
+    #[test]
+    fn native_acl_path_conversion_rejects_relative_remote_and_dot_segments() {
+        for path in [
+            Path::new("relative"),
+            Path::new(r"\\server\share\connections"),
+            Path::new(r"D:\connections\..\escape"),
+            Path::new(r"D:\connections\.\local"),
+        ] {
+            assert_eq!(
+                windows_local_wide_path(path).unwrap_err().code(),
+                PrivateFsErrorCode::InvalidRoot
+            );
+        }
+        let mixed = Path::new(r"D:\connections").join("provider/transient");
+        assert!(!windows_local_wide_path(&mixed)
+            .unwrap()
+            .contains(&(b'/' as u16)));
     }
 }

@@ -21,6 +21,24 @@ pub enum SemanticPrompt {
     PromptContinuation,
 }
 
+/// Terminal-owned local wall-clock value captured once when a command
+/// completion is accepted.
+///
+/// The numeric epoch preserves an unambiguous identity while the broken-down
+/// local fields preserve what the user saw at execution time even if the
+/// machine's timezone changes later in the session. No shell-provided text is
+/// stored or trusted.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticCommandTimestamp {
+    pub unix_ms: u64,
+    pub year: u16,
+    pub month: u8,
+    pub day: u8,
+    pub hour: u8,
+    pub minute: u8,
+    pub second: u8,
+}
+
 /// Completed shell command metadata attached to its semantic prompt row.
 ///
 /// The data is renderer-neutral and travels with the row through scrollback
@@ -37,6 +55,10 @@ pub struct SemanticCommandResult {
     /// Terminal-measured execution time. This is absent when a shell can prove
     /// only the output boundary (for example stock Command Prompt).
     pub elapsed_ms: Option<u64>,
+    /// Local completion date and time captured by the terminal. This remains
+    /// available for boundary-only shells and is absent only when the platform
+    /// clock cannot produce a valid bounded value.
+    pub completed_at: Option<SemanticCommandTimestamp>,
 }
 
 /// Completed output boundary attached to the following semantic prompt.

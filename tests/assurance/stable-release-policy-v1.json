@@ -1,5 +1,5 @@
 {
-  "schema": 1,
+  "schema": 2,
   "repository": "AmjedAllaya/automexia-terminal",
   "default_branch": "main",
   "fork_provenance": {
@@ -23,7 +23,7 @@
     "require_authenticated_audit": true,
     "required_result": "pass",
     "audit_secret": "AUTOMEXIA_REPOSITORY_AUDIT_TOKEN",
-    "protected_environment": "stable-release"
+    "github_free_private_manual_governance": true
   },
   "external_prerequisites": [
     {
@@ -47,7 +47,7 @@
       "evidence": "docs/RELEASE-TRUST.md"
     },
     {
-      "id": "github-plan-or-public-visibility",
+      "id": "github-free-private-manual-governance",
       "owner": "repository-owner",
       "evidence": ".github/BRANCH-PROTECTION.md"
     },

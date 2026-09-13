@@ -490,7 +490,7 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
         self.push_tab_core(context);
     }
 
-    fn push_tab_core(&mut self, context: Context<T>) {
+    pub(crate) fn push_tab_core(&mut self, context: Context<T>) {
         let previous = std::mem::replace(&mut self.val, context);
         self.tabs_before.push(previous);
     }
@@ -594,8 +594,25 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
     /// Remove a PTY that exited. The active tab is replaced by its nearest
     /// sibling; an inactive tab is removed without disturbing pane focus.
     pub fn remove_route(&mut self, route_id: usize, sugarloaf: &mut Sugarloaf) -> bool {
+        if self.val.route_id == route_id && self.tab_count() <= 1 {
+            return false;
+        }
+        let Some(rich_text_id) = self
+            .contexts()
+            .find(|context| context.route_id == route_id)
+            .map(|context| context.rich_text_id)
+        else {
+            return false;
+        };
+        sugarloaf.clear_image_overlays_for(rich_text_id);
+        self.remove_route_core(route_id).is_some()
+    }
+
+    fn remove_route_core(&mut self, route_id: usize) -> Option<usize> {
         if self.val.route_id == route_id {
-            return self.close_active_tab(sugarloaf).is_some();
+            let rich_text_id = self.val.rich_text_id;
+            self.close_active_tab_core()?;
+            return Some(rich_text_id);
         }
         if let Some(index) = self
             .tabs_before
@@ -603,8 +620,7 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
             .position(|context| context.route_id == route_id)
         {
             let context = self.tabs_before.remove(index);
-            sugarloaf.clear_image_overlays_for(context.rich_text_id);
-            return true;
+            return Some(context.rich_text_id);
         }
         if let Some(index) = self
             .tabs_after
@@ -612,10 +628,9 @@ impl<T: rio_backend::event::EventListener> ContextGridItem<T> {
             .position(|context| context.route_id == route_id)
         {
             let context = self.tabs_after.remove(index);
-            sugarloaf.clear_image_overlays_for(context.rich_text_id);
-            return true;
+            return Some(context.rich_text_id);
         }
-        false
+        None
     }
 
     /// Previously stashed panel position into the rich-text object's
@@ -737,6 +752,47 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn parked_restore_keeps_zoom_and_unzoom_at_the_new_viewport() {
+        let mut grid = two_panel_grid();
+        let routes = grid.route_ids();
+        assert!(grid.begin_split_zoom());
+        assert!(grid.prepare_restore(1400.0, 900.0, 3.0, Margin::all(12.0)));
+        assert!(grid.is_zoomed());
+        assert_eq!(grid.current().route_id, 22);
+        assert!(grid.restore_zoom_styles());
+        grid.compute_layout().unwrap();
+        // The saved zoom styles must not restore the pre-park size or DPI.
+        let root = grid.tree.style(grid.root_node).unwrap();
+        assert_eq!(root.size.width, length(1376.0));
+        assert_eq!(root.size.height, length(876.0));
+        for node in grid.inner.keys() {
+            let style = grid.tree.style(*node).unwrap();
+            assert_eq!(style.display, Display::Flex);
+            assert_eq!(style.margin.left, length(6.0));
+            assert_eq!(style.margin.right, length(6.0));
+        }
+        assert_eq!(grid.route_ids(), routes);
+    }
+
+    #[test]
+    fn shutdown_broadcast_targets_every_split_and_pane_tab_once() {
+        let mut grid = two_panel_grid();
+        let first = grid
+            .inner
+            .values_mut()
+            .find(|item| item.val.route_id == 11)
+            .expect("first pane");
+        first.push_tab_core(dead(33));
+        first.push_tab_core(dead(44));
+
+        // The first call covers both panes and both inactive local tabs. The
+        // atomic guard makes a second broadcast a no-op instead of extending
+        // shutdown or publishing duplicate worker messages.
+        assert_eq!(grid.request_pty_shutdown(), 4);
+        assert_eq!(grid.request_pty_shutdown(), 0);
+    }
+
+    #[test]
     fn pointer_wheel_target_selects_only_the_exact_pane_under_the_cursor() {
         let mut grid = two_panel_grid();
         for item in grid.inner.values_mut() {
@@ -748,11 +804,9 @@ mod pane_tab_tests {
         }
         assert_eq!(grid.current().route_id, 22);
 
-        let mut mouse = Mouse {
-            x: 50.0,
-            y: 50.0,
-            ..Default::default()
-        };
+        let mut mouse = Mouse::default();
+        mouse.x = 50.0;
+        mouse.y = 50.0;
         assert!(grid.select_current_based_on_pointer(&mouse));
         assert_eq!(grid.current().route_id, 11);
         assert!(!grid.select_current_based_on_pointer(&mouse));
@@ -764,6 +818,48 @@ mod pane_tab_tests {
         mouse.x = 150.0;
         assert!(grid.select_current_based_on_pointer(&mouse));
         assert_eq!(grid.current().route_id, 22);
+    }
+
+    #[test]
+    fn clipboard_hit_test_rejects_pane_chrome_margins_and_nonfinite_positions() {
+        let mut grid = two_panel_grid();
+        grid.scaled_margin = Margin::new(10.0, 0.0, 0.0, 20.0);
+        grid.scale = 1.0;
+        for item in grid.inner.values_mut() {
+            item.layout_rect = if item.val.route_id == 11 {
+                [0.0, 0.0, 100.0, 200.0]
+            } else {
+                [100.0, 0.0, 100.0, 200.0]
+            };
+        }
+        let first = grid
+            .inner
+            .values_mut()
+            .find(|item| item.val.route_id == 11)
+            .unwrap();
+        first.push_tab_core(dead(33));
+        for (x, y, expected) in [
+            (50.0, 80.0, Some(33)),
+            (150.0, 80.0, Some(22)),
+            (50.0, 20.0, None),
+            (50.0, 190.0, None),
+            (150.0, 190.0, None),
+            (19.0, 80.0, None),
+            (220.0, 80.0, None),
+            (50.0, 9.0, None),
+            (f32::NAN, 80.0, None),
+            (50.0, f32::INFINITY, None),
+        ] {
+            let route = grid
+                .find_terminal_at_position(x, y)
+                .map(|key| grid.inner[&key].val.route_id);
+            assert_eq!(route, expected, "terminal hit region");
+        }
+        assert_eq!(
+            grid.current().route_id,
+            22,
+            "hit testing does not change focus"
+        );
     }
 
     #[test]
@@ -1121,6 +1217,17 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             }
         }
         None
+    }
+
+    /// Clipboard gestures target terminal content, never pane rails or footers.
+    pub fn find_terminal_at_position(&self, x: f32, y: f32) -> Option<NodeId> {
+        let node = self.find_context_at_position(x, y)?;
+        let item = self.inner.get(&node)?;
+        let [left, top, width, height] =
+            pane_terminal_rect(item.layout_rect, self.scale, item.tab_count());
+        let x = x - self.scaled_margin.left;
+        let y = y - self.scaled_margin.top;
+        (x >= left && x < left + width && y >= top && y < top + height).then_some(node)
     }
 
     /// Find a draggable border near the given mouse position (physical pixels).
@@ -2227,6 +2334,46 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         }
     }
 
+    /// Reconcile a parked model with its still-visible window before restoring
+    /// it. No terminal cells, input or PTY dimensions are published here.
+    pub(crate) fn prepare_restore(
+        &mut self,
+        width: f32,
+        height: f32,
+        scale: f32,
+        margin: Margin,
+    ) -> bool {
+        if !width.is_finite()
+            || width < 0.0
+            || !height.is_finite()
+            || height < 0.0
+            || !scale.is_finite()
+            || scale <= 0.0
+        {
+            return false;
+        }
+        // Rebuild the saved unzoom styles at the new extent and DPI too;
+        // otherwise unzoom would restore the pre-park root size and margins.
+        let was_zoomed = self.restore_zoom_styles();
+        self.width = width;
+        self.height = height;
+        self.update_scaled_margin(margin);
+        self.update_scale(scale);
+        for item in self.inner.values_mut() {
+            for context in item.contexts_mut() {
+                context.dimension.update_scale(scale);
+                context
+                    .renderable_content
+                    .pending_update
+                    .set_terminal_damage(rio_backend::event::TerminalDamage::Full);
+            }
+        }
+        if was_zoomed && !self.begin_split_zoom() {
+            return false;
+        }
+        self.compute_layout().is_ok()
+    }
+
     pub fn update_dimensions(&mut self, sugarloaf: &mut Sugarloaf) {
         // Per-panel cell metrics are recomputed locally now — sugarloaf
         // is consulted only for the font library it owns. Each panel's
@@ -2284,23 +2431,33 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     pub fn remove_current(&mut self, sugarloaf: &mut Sugarloaf) {
+        let Some(rich_text_ids) = self.remove_current_core() else {
+            return;
+        };
+        for id in rich_text_ids {
+            sugarloaf.clear_image_overlays_for(id);
+        }
+        self.apply_taffy_layout(sugarloaf);
+    }
+
+    fn remove_current_core(&mut self) -> Option<Vec<usize>> {
         self.restore_zoom_styles();
         if self.inner.is_empty() {
             tracing::error!("Attempted to remove from empty grid");
-            return;
+            return None;
         }
 
         // Can't remove the last panel
         if self.inner.len() == 1 {
             tracing::warn!("Cannot remove the last remaining context");
-            return;
+            return None;
         }
 
         let to_remove = self.current;
 
         if !self.inner.contains_key(&to_remove) {
             tracing::error!("Current key {:?} not found in grid", to_remove);
-            return;
+            return None;
         }
 
         // Get rich text ID before removing
@@ -2345,12 +2502,6 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         // Remove from inner map
         self.inner.remove(&to_remove);
 
-        // Drop image overlays for the removed panel — sugarloaf has
-        // no other panel state to clean up post-Content removal.
-        for id in rich_text_ids {
-            sugarloaf.clear_image_overlays_for(id);
-        }
-
         // Update root if necessary
         if Some(to_remove) == self.root {
             self.root = self.inner.keys().next().copied();
@@ -2362,14 +2513,12 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         // Collapse single-child containers left behind by removal
         self.collapse_single_child_containers();
 
-        // Recompute layout
-        if self.panel_count() > 0 {
-            // When back to a single panel, reset to flexible so it fills the window
-            if self.panel_count() == 1 {
-                self.reset_panel_styles_to_flexible();
-            }
-            self.apply_taffy_layout(sugarloaf);
+        // A parked grid must not publish geometry or resize healthy PTYs.
+        // Its restore path will apply the current window's actual dimensions.
+        if self.panel_count() == 1 {
+            self.reset_panel_styles_to_flexible();
         }
+        Some(rich_text_ids)
     }
 
     /// Remove the pane containing `route_id`. Used when that pane's final PTY
@@ -2379,23 +2528,48 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
         route_id: usize,
         sugarloaf: &mut Sugarloaf,
     ) -> bool {
-        let Some(node) = self
-            .inner
-            .iter()
-            .find_map(|(node, item)| item.contains_route(route_id).then_some(*node))
-        else {
+        let Some(rich_text_ids) = self.remove_pane_by_route_core(route_id) else {
             return false;
         };
+        for id in rich_text_ids {
+            sugarloaf.clear_image_overlays_for(id);
+        }
+        self.apply_taffy_layout(sugarloaf);
+        true
+    }
+
+    fn remove_pane_by_route_core(&mut self, route_id: usize) -> Option<Vec<usize>> {
+        let node = self
+            .inner
+            .iter()
+            .find_map(|(node, item)| item.contains_route(route_id).then_some(*node))?;
         if self.inner.len() <= 1 {
-            return false;
+            return None;
         }
         let previously_selected = self.current;
         self.current = node;
-        self.remove_current(sugarloaf);
+        let removed = self.remove_current_core();
         if previously_selected != node && self.inner.contains_key(&previously_selected) {
             self.current = previously_selected;
         }
-        true
+        removed
+    }
+
+    /// Parked overlays were cleared when the grid left the visible topology.
+    /// Reuse model removal only: no renderer access or sibling PTY resize.
+    pub(crate) fn remove_parked_route(&mut self, route_id: usize) -> bool {
+        if self
+            .tab_count_for_route(route_id)
+            .is_some_and(|count| count > 1)
+        {
+            return self
+                .inner
+                .values_mut()
+                .find(|item| item.contains_route(route_id))
+                .and_then(|item| item.remove_route_core(route_id))
+                .is_some();
+        }
+        self.remove_pane_by_route_core(route_id).is_some()
     }
 
     pub fn remove_local_route(
@@ -2423,19 +2597,36 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
             .collect()
     }
 
+    /// Broadcast shutdown to every PTY owned by this top-level grid before any
+    /// context is dropped and starts waiting for its individual worker.
+    pub fn request_pty_shutdown(&self) -> usize {
+        self.inner
+            .values()
+            .flat_map(ContextGridItem::contexts)
+            .filter(|context| context.request_pty_shutdown())
+            .count()
+    }
+
     pub fn split_right(&mut self, context: Context<T>, sugarloaf: &mut Sugarloaf) {
+        if self.split_right_core(context) {
+            self.apply_taffy_layout(sugarloaf);
+        }
+    }
+
+    pub(crate) fn split_right_core(&mut self, context: Context<T>) -> bool {
         self.restore_zoom_styles();
         if !self.inner.contains_key(&self.current) {
-            return;
+            return false;
         }
 
         // Create taffy node first, then item
         if let Ok(new_node) = self.try_split_right() {
             let new_context = ContextGridItem::new(context);
             self.inner.insert(new_node, new_context);
-            self.apply_taffy_layout(sugarloaf);
             self.current = new_node;
+            return true;
         }
+        false
     }
 
     /// Split down - create new panel below using Taffy
@@ -2781,16 +2972,6 @@ impl ContextDimension {
         self.update();
     }
 
-    #[inline]
-    pub fn update_font_size(&mut self, font_size: f32) {
-        self.font_size = font_size;
-        self.scaled_font_size = font_size * self.dimension.scale;
-        // Caller is responsible for re-running `compute_cell_metrics`
-        // and feeding the result back via `update_dimensions` —
-        // `font_size` alone doesn't change the cell stride, the
-        // recomputed metrics do.
-    }
-
     /// Update only the stored scale factor. Caller must follow with
     /// `compute_cell_metrics` + `update_dimensions` so width/height
     /// and canonical cell stride are recomputed for the new DPI.
@@ -2801,48 +2982,13 @@ impl ContextDimension {
     }
 
     /// Re-baseline the font size — both current and "original".
-    /// Called from `update_config` so a config edit becomes the new
-    /// reset target. Per-panel zoom (`change_font_size`) uses
-    /// `update_font_size` instead so the original stays put.
+    /// Called from `update_config` so a config edit or saved runtime
+    /// preference becomes the new reset target for every panel.
     #[inline]
     pub fn rebaseline_font_size(&mut self, font_size: f32) {
         self.font_size = font_size;
         self.original_font_size = font_size;
         self.scaled_font_size = font_size * self.dimension.scale;
-    }
-
-    /// Increment the panel's font size by 1 logical point. Returns
-    /// `true` if the size changed (i.e. wasn't already at the upper
-    /// clamp). Caller must follow with `compute_cell_metrics` +
-    /// `update_dimensions` to refresh the cell stride.
-    #[inline]
-    pub fn increase_font_size(&mut self) -> bool {
-        if self.font_size < 100.0 {
-            self.update_font_size(self.font_size + 1.0);
-            true
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    pub fn decrease_font_size(&mut self) -> bool {
-        if self.font_size > 6.0 {
-            self.update_font_size(self.font_size - 1.0);
-            true
-        } else {
-            false
-        }
-    }
-
-    #[inline]
-    pub fn reset_font_size(&mut self) -> bool {
-        if (self.font_size - self.original_font_size).abs() > f32::EPSILON {
-            self.update_font_size(self.original_font_size);
-            true
-        } else {
-            false
-        }
     }
 
     #[inline]

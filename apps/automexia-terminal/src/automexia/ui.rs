@@ -56,9 +56,18 @@ pub struct CommandResultAnchor {
     pub exit_code: Option<i32>,
     /// Terminal-measured execution duration, absent for boundary-only shells.
     pub elapsed_ms: Option<u64>,
+    /// Terminal-owned local completion date and time. This is captured once,
+    /// remains stable through scrollback/reflow, and contains no shell text.
+    pub completed_at:
+        Option<rio_backend::crosswords::grid::row::SemanticCommandTimestamp>,
 }
 
 /// Bound historical per-prompt extension UI state. This is intentionally small:
 /// it only covers recent scrollback context rows and prevents an unbounded cache
 /// when a terminal is left open for days.
 pub const MAX_PROMPT_CONTEXT_HISTORY: usize = 256;
+
+/// Logical width reserved at the right of every prompt row for core command
+/// completion metadata. Optional prompt-context contributions must stop before
+/// this region, and the core label must fit inside it with an internal gap.
+pub const COMMAND_RESULT_PROMPT_RESERVE: f32 = 288.0;

@@ -1,241 +1,207 @@
 # Commands and shell workflows
 
-Automexia organizes command-driven work across software, operations,
-automation, data, media, and other toolchains without replacing the shell. The
-most important command rule is simple: **normal commands belong to your real
-shell; Automexia commands control the workspace around it.**
+Normal commands belong to the real shell. Automexia commands control the
+terminal around it.
 
-## Understand the command layers
+## Command ownership
 
-| Layer | Who owns parsing/behavior? | Use it for |
+| Layer | Owner | Use it for |
 |---|---|---|
-| Shell command line | PowerShell, CMD, Bash, Zsh, Fish, etc. | `git`, `cargo`, `ssh`, scripts, pipes, redirection, environment expansion |
-| Automexia application CLI | Automexia | Launch directory/shell, starter config, logging, shell-integration maintenance |
-| Command palette | Automexia UI | Discoverable terminal/window actions |
-| Quick Actions | Automexia typed action model | Reviewed templates that are inserted/copied rather than silently executed |
-| Persistent aliases | Shell-native generated files | Frequent reviewed actions you intentionally want as short shell names |
-| Cargo/xtask | Automexia repository | Building, testing, and running Automexia from source |
+| Shell command line | PowerShell, CMD, Bash, Zsh, Fish, or another shell | Programs, scripts, pipes, redirects, aliases, environment expansion |
+| Automexia CLI | Automexia | Launch directory, shell choice, logging, and shell-integration maintenance |
+| Command palette | Automexia | Discoverable terminal, window, tab, pane, search, and appearance actions |
+| Repository commands | Cargo and repository tools | Building, testing, packaging, and contributing to Automexia |
 
-## 1. Use your shell for normal work
+Automexia does not reconstruct shell commands from rendered cells. The shell
+owns quoting, history, cursor movement, expansion, pipelines, completion, and
+execution.
 
-Inside an Automexia pane, run third-party tools exactly as you normally would in that shell:
+Opening or closing a split must leave editable text beside its prompt. On
+Windows, the first input immediately after a pane/window size change may wait
+up to 50 ms for the native editor to settle; normal typing is not delayed.
+No refresh key or command is sent to the shell, and your shell profile is not
+modified. Linux/macOS keep their native PTY resize behavior.
+
+## Run ordinary commands
+
+Inside a pane, use tools exactly as in that shell:
 
 ```text
 git status
-```
-
-```text
 cargo test
+ssh example-host
 ```
 
-```text
-ssh my-server
-```
+The same rule applies to Python, FFmpeg, database clients, build tools, and
+project scripts. If an expression uses pipes, redirects, globs, command
+substitution, functions, or environment expansion, enter it in the shell.
 
-The same rule applies to tools such as Python, FFmpeg, database clients,
-data-processing commands, build tools, and project scripts: use their normal
-syntax in the shell.
+## Launch-time CLI
 
-Automexia does not reparse these commands from rendered terminal cells. PowerShell/PSReadLine, Bash/Readline, Zsh/ZLE, Fish, and other tools continue to own quoting, history, cursor movement, environment expansion, pipelines, and normal completion.
-
-### Why this matters
-
-If a command uses shell syntax such as a pipeline, redirect, glob, shell function, alias, command substitution, or environment expansion, type it in the shell. Do not try to express a complex shell language expression through Automexia's launch-time `-e` option.
-
-## 2. Use the Automexia CLI for launch-time behavior
-
-The installed application syntax is:
+The installed syntax is:
 
 ```text
 automexia [OPTIONS] [COMMAND]
 ```
 
-The user-facing launch options are:
+Use documented options to choose a working directory, shell, configuration, or
+logging behavior. Arguments after an explicit executable belong to that
+executable, not to Automexia. Prefer typed program plus argument arrays in
+shortcuts and automation.
 
-| Option | Use it when… |
-|---|---|
-| `-w, --working-dir <PATH>` | The new session should start in a known directory. |
-| `-e, --command <PROGRAM> [ARGS...]` | You want a specific shell/program instead of the configured default. Keep it last. |
-| `--write-config [PATH]` | You need a non-overwriting starter config. |
-| `--enable-log-file` | You are diagnosing a launch/runtime problem. |
-| `--title-placeholder <TEXT>` | You need a different initial title before live title metadata takes over. |
-| `--app-id <ID>` | You need to override Wayland `app_id` / X11 `WM_CLASS` on Linux/BSD. |
-| `-h, --help` | You need the exact syntax supported by the current binary. |
-| `-V, --version` | You need the current binary version. |
+## Command palette
 
-Example:
+Open the palette with the documented platform shortcut. Use it when an action is
+infrequent, its shortcut is unknown, or compact layout hides a control.
 
-```text
-automexia --working-dir D:\work -e pwsh -NoLogo
-```
+Choose a category with the arrows and Enter, or click it. The first command is
+selected; the Back row is one Up away. The fixed header Back button stays
+available while scrolling or searching. Alt+Left also returns to the category list.
+Type any command or category name to search globally without drilling down.
+Clear the query to resume browsing. Esc closes the palette. See
+[palette controls](../KEYBOARD.md#command-palette) for paging and mouse scrolling.
 
-Remember that everything after `-e <PROGRAM>` is a program argument, not another Automexia option.
+The palette and shortcuts invoke the same application action. While the palette
+is open, its keystrokes do not reach the PTY. Closing it restores the prior
+focus target.
 
-## 3. Use the command palette for UI actions
+## Session-only shell integration
 
-Open the palette with `Ctrl+Shift+P` on Windows/Linux/BSD or `Cmd+Shift+P` on macOS.
+Automexia can provide bounded prompt lifecycle metadata, path/status
+presentation, command-boundary navigation, and object-preserving enhanced
+listings while hosting the real shell.
 
-The palette is ideal when:
+Normal launch uses session-only integration. Persistent profile changes are not
+required for ordinary Automexia sessions.
 
-- you know the operation but not the shortcut;
-- an action is used too rarely to justify a custom binding;
-- a pane/tab rail is hidden because the layout is compact;
-- you want a keyboard-driven way to invoke a registered terminal action without editing configuration.
+Use the documented maintenance commands to inspect, preview, install, repair, or
+remove only Automexia-owned persistent integration. Automexia does not bypass
+PowerShell execution policy or other operating-system policy.
 
-Use shortcuts for frequent muscle-memory operations and the palette for discoverability. They invoke the same product action model rather than creating two competing behaviors.
+Choose persistent installation only for an explicit need such as nested shells
+outside normal Automexia launch. Session-only behavior is the preferred default.
 
-## 4. Understand session-only shell integration
+## Jump between completed commands
 
-**Available now.** Automexia can provide prompt lifecycle metadata, context/path presentation, icon-aware listings, and related shell-aware behavior while still hosting the real shell.
+Use the documented previous/next-command shortcuts or palette actions to move
+the selected pane between retained semantic command boundaries.
 
-Normal application launch is session-only by default. It does not need to rewrite your shell profile just to make the Automexia child session work.
+This is viewport navigation, not shell history. It does not alter the editable
+line, submit input, rerun a command, or move another pane. A shell that emits no
+supported prompt markers remains unchanged rather than being parsed
+heuristically.
 
-Check persistent/integration health with:
+## Readable output rows
 
-```text
-automexia shell-integration doctor
-```
+Completed command highlights use small gaps between row bands instead of one
+solid coloured block. This applies to Kubernetes, container and other tabular
+output, as well as ordinary multi-line results. The existing success/failure
+colours and completion pulse are retained; reduced motion keeps the bands static.
 
-This command is read-only.
+These are visual gaps, not extra blank lines. Column positions, wrapped text,
+selection, copy, search and shell cursor movement still use the original terminal
+grid. The gap scales with cell height (normally 2–3 logical pixels, capped at 4), and the
+larger gap before the next prompt is unchanged. Output without supported command
+boundaries and full-screen applications keep their normal terminal behavior.
+For more space between the text itself, the existing `line-height` setting applies
+uniformly to the terminal; see [configuration](../reference/configuration.md).
 
-Only use persistent installation when you intentionally need Automexia integration in nested/other shells outside the normal session-only launch path:
+## Command boundaries and pane borders
 
-```text
-automexia shell-integration install
-```
+After a marked command completes, a short inset accent separates its output
+from the next prompt. The accent is at most 48 logical pixels and shrinks in
+narrow panes; it is not a draggable pane border. Continuous pane dividers remain
+unchanged. The timestamp, duration and status symbol stay on their existing row.
+Output shading, row gaps and the single completion pulse are unchanged, including
+reduced-motion behavior. No empty terminal rows are inserted and copying output
+does not include this decoration. Very small or invalid geometry omits the accent.
 
-Repair an Automexia-owned installation explicitly with:
+## Operational status colours
 
-```text
-automexia shell-integration install --force
-```
+When Automexia DevOps is enabled, supported plain-text status rows use the
+active terminal palette. The original words and columns are not rewritten.
 
-Remove only the Automexia-owned persistent integration with:
+| Colour | Meaning | Examples |
+|---|---|---|
+| Cyan | Finished, stopped cleanly, informational or running without known health | `0/1 Completed`, `Succeeded`, `Exited (0)`, `Up 2 minutes` without a health result |
+| Green | Known full readiness/health or a successful command summary | `1/1 Running`, `(healthy)`, `Ready True`, `Apply complete!` |
+| Amber | Partial/unknown readiness, waiting, paused or transitional | `0/1 Running`, `Pending`, `Terminating`, `NotReady`, `(Paused)`, `(health: starting)` |
+| Red | Explicit failure or adverse condition | `CrashLoopBackOff`, `Init:Error`, `OOMKilled`, `Exited (137)`, `DiskPressure True` |
+| Blue | Verbose diagnostics, not a health result | Declared `DEBUG` or `TRACE` log levels |
 
-```text
-automexia shell-integration uninstall
-```
+`0/1 Completed` can be normal for a job that finished successfully; it is not a
+ready running service. Read the status text as well as its colour. The command
+completion backdrop still describes the command's exit code: a successful
+`kubectl get` does not mean every returned resource is healthy.
 
-On Windows, these commands respect the effective PowerShell execution policy. Automexia does not bypass enterprise policy.
+The recognizer covers Kubernetes/oc pod rows (including `pod/name` kind prefixes),
+common container-list statuses, condition booleans, log levels and existing
+build/error summaries.
+Unknown/custom or wrapped fragments may remain unclassified. Applications with
+explicit colours keep them; Automexia does not override `kubecolor` or a tool's
+own ANSI palette. Bare zero-error counts are not treated as log-level prefixes.
+Disabling the DevOps extension leaves the original output.
+See the [colour decision](../adr/0052-truthful-operational-status-colours.md).
 
-### Which approach should I choose?
+## Search, selection, and clipboard
 
-| Need | Approach |
-|---|---|
-| Normal Automexia sessions | **Session-only integration** — do nothing extra |
-| Diagnose missing context/listing integration | `shell-integration doctor` |
-| Nested shells outside normal Automexia launch need integration | Explicit persistent `install` |
-| Persistent integration looks damaged/stale | Preview/diagnose, then `install --force` |
-| You no longer want persistent profile hooks | `uninstall` |
+Search operates on the selected pane or documented visible-workspace scope.
+Selection and copy are explicit. Paste never adds Enter. Clipboard operations
+and overlays remain bound to the focused route.
 
-Do not install persistent integration simply because it exists; session-only behavior is the preferred default boundary.
+See [Keyboard](../KEYBOARD.md) and
+[Productivity](productivity.md).
 
-## 5. Use Quick Actions for reviewed repeatable commands
+## Aliases
 
-**Implemented locally / release-gated.** A Quick Action is a typed command template with explicit placeholders, scope, risk metadata, and revision information. The intended user flow is:
+Use native shell aliases for short, stable commands. Existing user aliases and
+profiles remain user-owned.
 
-1. Search for the action.
-2. Review the exact command tokens, placeholders, context requirements, collision state, and risk.
-3. Fill placeholders.
-4. Choose **Insert** or **Copy**.
-5. Review/edit the command in the shell before running it.
+If Automexia generates a supported alias file, preview the exact content and
+destination first. Activation, collision decisions, rollback, disable, and
+removal are explicit. The generated file remains inert until the user invokes
+an alias in the native shell.
 
-The action itself does not silently press Enter or gain arbitrary process authority merely because it was saved.
+See [Shell aliases](../DEVOPS-ALIASES.md).
 
-Use a Quick Action when a command is worth remembering as a named workflow but still deserves review before execution. Use a normal shell command for one-off work, and use an alias only after the action is stable enough that a short persistent shell name is genuinely helpful.
+## Contributor commands
 
-See [Command productivity](productivity.md) for the management workflow.
-
-### Provider-aware Quick Actions
-
-**Product-integrated / provider refresh not activated.** A validated cached
-SSH or provider product is synchronized to the selected pane when you open
-the same Quick Actions surface with
-`Ctrl+Shift+O` on Windows/Linux/BSD or `Cmd+Shift+O` on macOS. No account is
-queried and no provider command runs when the surface opens or while you type.
-The retained capsule must exactly match the pane session and revision; otherwise
-the old rows are cleared. Until an approved provider refresh/capsule producer
-publishes that validated product, contextual rows do not appear.
-
-A contextual row uses the connection icon and a concise label such as
-`AWS · Account 123456789012 · Current · Production`. Review repeats the exact
-public target, provider state, and environment risk in text and in its accessible
-name. Current read-only observations may be inserted into the shell without
-Enter. Production requires a second confirmation. Actions that need the D3
-broker or private provider environment show **Broker required** and cannot be
-copied or inserted through ambient CLI state.
-
-If a row says **Refreshing**, **Stale**, **Expired**, **Offline**,
-**Unavailable**, **Error**, or **Context changed**, refresh the owning provider
-outside the Quick Actions surface and review the newly published row. The old
-row is rejected immediately before copy or insertion even if it was already
-open. Closing the pane or disabling/uninstalling the provider removes the
-in-memory contextual snapshot; it does not alter persisted Quick Actions,
-provider configuration, credentials, shell profiles, or cloud state.
-
-OpenBao is not included in this source slice. Real-provider activation, native
-provider/account testing, and controlled screen-reader/release evidence remain
-release gates; this section does not claim those workflows are available in the
-v0.4 product.
-
-## 6. Use persistent aliases for high-frequency reviewed actions
-
-**Implemented locally / release-gated.** Persistent aliases are generated from canonical typed actions. They are projections, not the source of truth.
-
-This is a good fit when:
-
-- the action is used frequently;
-- the alias name is memorable and collision-free;
-- you understand the action's risk;
-- native shell ownership can be preserved;
-- you want the alias only in explicitly selected shells.
-
-It is a poor fit when the command changes every day, contains secrets, should be project-local, or collides with an existing native alias/function.
-
-Alias management is dry-run first. For example:
-
-```text
-automexia aliases list
-```
-
-```text
-automexia aliases preview --shell powershell
-```
-
-```text
-automexia aliases test --shell powershell
-```
-
-An `enable`, `disable`, `rename`, `regenerate`, or `disable-all` operation previews by default. Applying a source-changing operation requires the expected revision and generation returned by the reviewed preview. This prevents a stale review from mutating newer state.
-
-See [Command productivity](productivity.md) for the full practical flow and [CLI reference](../reference/cli.md) for exact flags.
-
-## 7. Use Cargo/xtask only when working on Automexia itself
-
-These commands are for the source repository, not general terminal use:
+Repository commands are for developing Automexia, not for ordinary terminal
+work:
 
 | Command | Purpose |
 |---|---|
-| `cargo dev` | Full contributor gate, build, smoke, then launch |
-| `cargo automexia` | Incremental build/smoke/launch after the full gate has passed |
-| `cargo ready` | Full gate without launching |
-| `cargo ci` | Full non-launching CI gate alias |
-| `cargo qa` | Deeper Phase 0 evidence profile |
-| `cargo storage` | Inspect Automexia build-storage use |
-| `cargo purge` | Remove workspace build artifacts after Automexia windows close |
-| `cargo xtask doctor` | Check Rust/tools/host shell/packaging/storage/WSL placement |
+| `cargo ready` | Run the contributor gate without launching |
+| `cargo ci` | Run the repository CI alias |
+| `cargo qa` | Run deeper assurance checks |
+| `cargo storage` | Inspect repository build storage |
+| `cargo purge` | Remove verified repository build artifacts |
+| `cargo xtask doctor` | Inspect contributor prerequisites |
 
-For ordinary work inside Automexia, use the commands owned by your project or chosen tool. `cargo dev` here specifically means “develop Automexia Terminal.”
+Use the current [Contributor CLI](../CLI-REFERENCE.md) as the authority for exact
+commands and platform limitations.
 
-## 8. A simple decision tree
+## Decision guide
 
-Use this order when deciding how to perform a task:
+1. For a normal tool or shell command, type it in the shell.
+2. For a window, tab, pane, search, or appearance action, use a shortcut or the
+   command palette.
+3. For launch-time behavior, invoke the Automexia CLI from the calling shell or
+   shortcut.
+4. For a frequent stable shell command, use a native alias.
+5. For Automexia development, use the repository contributor commands.
 
-1. **Is it a normal tool/shell command?** Type it in the shell.
-2. **Is it an Automexia window/session action?** Use a shortcut or the command palette.
-3. **Does Automexia need a launch-time option?** Use `automexia ...` from the invoking shell/shortcut.
-4. **Is it a repeatable command that should stay reviewable?** Use a Quick Action if your build exposes that release-gated feature.
-5. **Is that reviewed action frequent and stable enough to deserve a shell name?** Publish an explicit alias.
-6. **Are you building/testing Automexia itself?** Use the Cargo/xtask layer.
+Advanced unreleased command products, integrations, and commercial workflows
+are private and are not described by this guide.
 
-This separation keeps normal shell semantics intact while still giving Automexia useful workflow controls around them.
+## Assurance evidence anchor compatibility
+
+These headings preserve source-owned feature-matrix references after the
+public documentation consolidation. They do not expand shipped behavior,
+reintroduce private plans, or replace the current status stated above.
+
+### Provider Aware Quick Actions
+
+This compatibility anchor retains traceability to the current public
+source, test, and evidence owner. Detailed future or commercial planning
+remains private, and unavailable native evidence remains an explicit gate.

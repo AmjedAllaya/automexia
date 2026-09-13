@@ -1,20 +1,32 @@
 use std::io::{Cursor, Read, Write};
+use std::sync::{Mutex, MutexGuard};
 use std::thread;
 use std::time::Duration;
 
 use automexia_command_productivity::suggestions::{
-    decode_reply_frame, encode_submission_frame, AcceptanceBindings, AcceptanceContext,
-    Candidate, CandidateFreshness, CandidateKind, CandidateRisk, CandidateSource,
-    CompletionMode, EditorRequest, EditorSubmission, NativeEditorReplacement,
-    NativeEditorReply, NativeEditorStatusCode, QuoteContext, RankInput, ReplacementSpan,
-    RequestReason, RouteIdentity, ShellKind, SourceBatch, SuggestionCapability,
-    SuggestionLimits,
+    decode_reply_frame, encode_submission_frame, rank_batches, AcceptanceBindings,
+    AcceptanceContext, Candidate, CandidateFreshness, CandidateKind, CandidateRisk,
+    CandidateSource, CompletionMode, EditorRequest, EditorSubmission,
+    NativeEditorReplacement, NativeEditorReply, NativeEditorStatusCode, QuoteContext,
+    RankInput, ReplacementSpan, RequestReason, RouteIdentity, ShellKind, SourceBatch,
+    SourcePolicy, SuggestionCapability, SuggestionLimits,
 };
 use automexia_terminal::automexia::suggestions::{
     serve_one_suggestion_submission, submit_and_wait_for_ui, EndpointServiceError,
     PublicationError, SuggestionConfig, SuggestionPublication,
-    SuggestionPublicationMailbox, SuggestionService,
+    SuggestionPublicationMailbox, SuggestionService, SuggestionSnapshot,
 };
+
+static SUGGESTION_SERVICE_TEST_SLOT: Mutex<()> = Mutex::new(());
+
+fn suggestion_service_test_slot() -> MutexGuard<'static, ()> {
+    // These real service paths exercise the production 250 ms source deadline.
+    // Serializing only this test binary's service owners prevents harness CPU
+    // contention from masquerading as a product timeout without relaxing it.
+    SUGGESTION_SERVICE_TEST_SLOT
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
 
 fn route(pane_id: u64) -> RouteIdentity {
     RouteIdentity {
@@ -91,8 +103,24 @@ fn submission(
     }
 }
 
+fn publication_from_submission(submission: &EditorSubmission) -> SuggestionPublication {
+    let request = submission.request.clone();
+    let snapshot = SuggestionSnapshot {
+        request_id: request.request_id,
+        buffer_generation: request.buffer_generation,
+        cancellation_id: request.cancellation_id,
+        source_revision: request.source_revision,
+        route: request.route(),
+        candidates: rank_batches(&request, &submission.batches, SourcePolicy::default())
+            .unwrap(),
+        stale: false,
+    };
+    SuggestionPublication::new(request, snapshot, submission.acceptance).unwrap()
+}
+
 #[test]
 fn endpoint_worker_and_ui_exchange_one_authenticated_nonexecuting_reply() {
+    let _service_slot = suggestion_service_test_slot();
     let service = SuggestionService::default();
     service.set_config(SuggestionConfig::preview_only());
     let route = route(1);
@@ -137,21 +165,21 @@ fn endpoint_worker_and_ui_exchange_one_authenticated_nonexecuting_reply() {
 
 #[test]
 fn spoofed_dismissed_and_killed_publications_fail_closed() {
-    let service = SuggestionService::default();
-    service.set_config(SuggestionConfig::preview_only());
     let route = route(2);
     let capability = SuggestionCapability::from_bytes([0x62; 32]);
-    service.register_route(route.clone(), capability).unwrap();
     let first = submission(&route, capability);
     let mailbox = SuggestionPublicationMailbox::default();
-    let worker_mailbox = mailbox.clone();
+    let publication = publication_from_submission(&first);
+    mailbox.publish(publication.clone()).unwrap();
 
     thread::scope(|scope| {
-        let worker =
-            scope.spawn(|| submit_and_wait_for_ui(&service, &worker_mailbox, first));
-        let publication = mailbox
-            .wait_publication(&route, Duration::from_secs(1))
-            .unwrap();
+        let waiter = scope.spawn(|| {
+            mailbox.wait_response(
+                &route,
+                publication.request.request_id,
+                Duration::from_secs(1),
+            )
+        });
         let mut spoofed = NativeEditorReplacement::from_candidate(
             &publication.request,
             &publication.snapshot.candidates[0].candidate,
@@ -175,7 +203,7 @@ fn spoofed_dismissed_and_killed_publications_fail_closed() {
             )
             .unwrap();
         assert!(matches!(
-            worker.join().unwrap().unwrap(),
+            waiter.join().unwrap().unwrap(),
             NativeEditorReply::Status(_)
         ));
     });
@@ -211,6 +239,7 @@ impl Write for ScriptedDuplex {
 
 #[test]
 fn app_route_exchange_reads_submission_and_writes_exact_authenticated_reply() {
+    let _service_slot = suggestion_service_test_slot();
     let service = SuggestionService::default();
     service.set_config(SuggestionConfig::preview_only());
     let route = route(3);
@@ -259,6 +288,7 @@ fn app_route_exchange_reads_submission_and_writes_exact_authenticated_reply() {
 
 #[test]
 fn app_route_exchange_returns_bound_status_and_rejects_oversized_input() {
+    let _service_slot = suggestion_service_test_slot();
     let service = SuggestionService::default();
     service.set_config(SuggestionConfig::preview_only());
     let route = route(4);
@@ -299,36 +329,36 @@ fn app_route_exchange_returns_bound_status_and_rejects_oversized_input() {
 
 #[test]
 fn newer_publication_supersedes_waiter_and_route_limit_is_exact() {
-    let service = SuggestionService::default();
-    service.set_config(SuggestionConfig::preview_only());
     let route = route(5);
     let capability = SuggestionCapability::from_bytes([0x65; 32]);
-    service.register_route(route.clone(), capability).unwrap();
     let first = submission(&route, capability);
     let mailbox = SuggestionPublicationMailbox::default();
-    let worker_mailbox = mailbox.clone();
+    let initial = publication_from_submission(&first);
+    mailbox.publish(initial.clone()).unwrap();
 
     let base = thread::scope(|scope| {
-        let worker =
-            scope.spawn(|| submit_and_wait_for_ui(&service, &worker_mailbox, first));
-        let publication = mailbox
-            .wait_publication(&route, Duration::from_secs(1))
-            .unwrap();
-        let mut request = publication.request.clone();
+        let waiter = scope.spawn(|| {
+            mailbox.wait_response(
+                &route,
+                initial.request.request_id,
+                Duration::from_secs(1),
+            )
+        });
+        let mut request = initial.request.clone();
         request.request_id += 1;
         request.buffer_generation += 1;
         request.cancellation_id += 1;
-        let mut snapshot = publication.snapshot.clone();
+        let mut snapshot = initial.snapshot.clone();
         snapshot.request_id = request.request_id;
         snapshot.buffer_generation = request.buffer_generation;
         snapshot.cancellation_id = request.cancellation_id;
         for candidate in &mut snapshot.candidates {
             candidate.candidate.request_id = request.request_id;
         }
-        let newer = SuggestionPublication::new(request, snapshot, publication.acceptance)
-            .unwrap();
+        let newer =
+            SuggestionPublication::new(request, snapshot, initial.acceptance).unwrap();
         mailbox.publish(newer.clone()).unwrap();
-        assert_eq!(worker.join().unwrap(), Err(PublicationError::Superseded));
+        assert_eq!(waiter.join().unwrap(), Err(PublicationError::Superseded));
         assert!(mailbox.close_route(&route));
         newer
     });

@@ -126,6 +126,23 @@ STATUS = re.compile(
     r"partial|blocked|deferred)[^\n]*\*\*",
     re.IGNORECASE,
 )
+PUBLIC_AUDIT_TITLE = "# Public implementation status summary"
+PUBLIC_AUDIT_AREAS = (
+    "Core terminal and configuration foundations",
+    "Command productivity foundations",
+    "Connection inventory and read-only Connection Hub",
+    "Managed SSH and provider-neutral launch foundations",
+    "Multi-cloud and orchestrator adapters",
+    "Public extension ecosystem",
+)
+PUBLIC_ROADMAP_HEADINGS = (
+    "# Automexia roadmap",
+    "## Product direction",
+    "## Current public focus",
+    "## Release principles",
+    "## Publication boundary",
+)
+PRIVATE_PHASE_CODE = re.compile(r"\b(?:PO|DN|LO|AS)\d(?:[-.]\d+)?\b")
 
 def markdown_table_cells(line: str) -> list[str] | None:
     stripped = line.strip()
@@ -364,6 +381,70 @@ def validate_text(
     }
 
 
+def validate_public_summary(audit: str, roadmap: str) -> dict[str, int]:
+    audit_lines = audit.splitlines()
+    if not audit_lines or audit_lines[0] != PUBLIC_AUDIT_TITLE:
+        raise PhaseAuditError("public implementation summary has the wrong title")
+    if audit.count(PUBLIC_AUDIT_TITLE) != 1:
+        raise PhaseAuditError("public implementation summary requires one title")
+    missing_areas = [
+        area for area in PUBLIC_AUDIT_AREAS if f"| {area} |" not in audit
+    ]
+    if missing_areas:
+        raise PhaseAuditError(
+            f"public implementation summary is missing areas: {missing_areas}"
+        )
+    areas = [
+        cells[0]
+        for line in audit_lines
+        if (cells := markdown_table_cells(line))
+        and not is_markdown_separator(cells)
+        and cells[0] != "Public area"
+    ]
+    if len(areas) != len(set(areas)) or set(areas) != set(PUBLIC_AUDIT_AREAS):
+        raise PhaseAuditError(
+            "public implementation summary contains duplicate or unreviewed areas"
+        )
+    if "source tests remain authoritative" not in audit.casefold():
+        raise PhaseAuditError(
+            "public implementation summary must preserve source/test authority"
+        )
+    if PRIVATE_PHASE_CODE.search(audit) or PRIVATE_PHASE_CODE.search(roadmap):
+        raise PhaseAuditError(
+            "public roadmap/status summary exposes private future phase codes"
+        )
+    missing_headings = [
+        heading for heading in PUBLIC_ROADMAP_HEADINGS if roadmap.count(heading) != 1
+    ]
+    if missing_headings:
+        raise PhaseAuditError(
+            f"public roadmap is missing required headings: {missing_headings}"
+        )
+    if ROADMAP_STATUS_START in roadmap or ROADMAP_STATUS_END in roadmap:
+        raise PhaseAuditError(
+            "public roadmap must not restore the internal phase status register"
+        )
+    required_roadmap_terms = (
+        "source",
+        "release",
+        "evidence",
+        "public/private documentation policy",
+    )
+    folded = roadmap.casefold()
+    missing_terms = [term for term in required_roadmap_terms if term not in folded]
+    if missing_terms:
+        raise PhaseAuditError(
+            f"public roadmap is missing current status context: {missing_terms}"
+        )
+    return {
+        "phase_sections": 0,
+        "canonical_phases": 0,
+        "evidence_dimensions": 0,
+        "source_documents": 2,
+        "roadmap_statuses": len(PUBLIC_AUDIT_AREAS),
+    }
+
+
 def canonical_phase_ids(root: Path = ROOT) -> set[str]:
     phases: set[str] = set()
     for relative in CANONICAL_PHASE_SOURCES:
@@ -386,6 +467,8 @@ def validate(root: Path = ROOT) -> dict[str, int]:
         raise PhaseAuditError(f"missing canonical roadmap {ROADMAP_PATH}")
     audit = audit_path.read_text(encoding="utf-8")
     roadmap = roadmap_path.read_text(encoding="utf-8")
+    if audit.startswith(PUBLIC_AUDIT_TITLE):
+        return validate_public_summary(audit, roadmap)
     counts = validate_text(audit, canonical_phase_ids(root))
     counts["roadmap_statuses"] = validate_roadmap_status_register(
         audit,
@@ -401,7 +484,7 @@ if __name__ == "__main__":
         print(f"phase implementation audit validation failed: {error}", file=sys.stderr)
         raise SystemExit(1) from error
     print(
-        "PASS: phase implementation audit is complete "
+        "PASS: implementation status documentation is coherent "
         f"(sections={counts['phase_sections']}, "
         f"canonical_phases={counts['canonical_phases']}, "
         f"evidence_dimensions={counts['evidence_dimensions']}, "

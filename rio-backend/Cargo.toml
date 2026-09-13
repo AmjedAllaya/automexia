@@ -48,8 +48,11 @@ graphics = ["rio-vt/graphics"]
 # Rio's window layer (rio-window, a winit fork). Pulls in the window types
 # and bridges the core's WindowId to rio-window at the frontend boundary.
 rio-window = ["dep:rio-window", "rio-vt/rio-window"]
-x11 = ["rio-vt/x11"]
-wayland = ["rio-vt/wayland"]
+# Keep the optional window dependency's native backend aligned whenever the
+# window bridge is active. The `?` preserves lean/headless consumers that use
+# the rio-vt platform feature without enabling rio-window itself.
+x11 = ["rio-vt/x11", "rio-window?/x11"]
+wayland = ["rio-vt/wayland", "rio-window?/wayland"]
 # Enable the wgpu backend in sugarloaf (needed on Windows where the
 # native Vulkan/Metal backends aren't available, and as an opt-in for
 # librashader CRT/scanline filters on Linux/macOS). Implies `renderer`.

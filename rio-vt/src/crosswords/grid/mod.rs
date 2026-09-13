@@ -598,7 +598,10 @@ impl Grid<Square> {
             .and_then(|id| self.extras_table.get(id))
             .map(|extras| extras.zerowidth.as_slice())
             .unwrap_or(&[]);
-        std::iter::once(square.c()).chain(marks.iter().copied())
+        (!square.contains_cell_flag(crate::crosswords::square::CellFlags::REFLOW_PADDING))
+            .then_some(square.c())
+            .into_iter()
+            .chain(marks.iter().copied())
     }
 
     /// Free extras slots no longer referenced by any cell.

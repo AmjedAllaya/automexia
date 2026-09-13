@@ -560,19 +560,15 @@ impl Screen<'_> {
                 ActionOutcome::performed(true, terminal_damage)
             }
             "paste_from_clipboard" => {
-                let content = clipboard.get(ClipboardType::Clipboard);
-                if content.is_empty() {
-                    return unavailable(false, "clipboard_empty");
+                if !self.paste_from_clipboard(clipboard, ClipboardType::Clipboard) {
+                    return unavailable(false, "clipboard_empty_or_cancelled");
                 }
-                self.paste(&content, true);
                 ActionOutcome::performed(true, terminal_damage)
             }
             "paste_from_selection" => {
-                let content = clipboard.get(ClipboardType::Selection);
-                if content.is_empty() {
-                    return unavailable(false, "selection_clipboard_empty");
+                if !self.paste_from_clipboard(clipboard, ClipboardType::Selection) {
+                    return unavailable(false, "selection_clipboard_empty_or_cancelled");
                 }
-                self.paste(&content, true);
                 ActionOutcome::performed(true, terminal_damage)
             }
             "increase_font_size" => {
@@ -764,10 +760,15 @@ impl Screen<'_> {
                     .and_then(|value| value.parse::<i32>().ok())
                     .unwrap_or(1)
                     > 0;
-                let mut terminal = self.context_manager.current_mut().terminal.lock();
-                terminal.scroll_to_prompt(forward);
-                drop(terminal);
-                ActionOutcome::performed(true, terminal_damage)
+                let moved = self.scroll_to_command(forward);
+                ActionOutcome::performed(
+                    true,
+                    if moved {
+                        terminal_damage
+                    } else {
+                        ActionDamage::default()
+                    },
+                )
             }
             "write_screen_file" => {
                 self.compatibility_export(ExportScope::Visible, parameter, clipboard)
@@ -1179,15 +1180,13 @@ impl Screen<'_> {
     }
 
     fn set_compatibility_font_size(&mut self, points: f32) {
-        let dim = &mut self.context_manager.current_mut().dimension;
-        if (points - dim.font_size).abs() <= f32::EPSILON {
+        if (points - self.context_manager.current().dimension.font_size).abs()
+            <= f32::EPSILON
+        {
             return;
         }
-        dim.update_font_size(points);
         self.context_manager
-            .current_grid_mut()
-            .update_dimensions(&mut self.sugarloaf);
-        self.resize_all_contexts();
+            .update_font_size(rio_backend::event::FontSizeRequest::Set(points));
     }
 }
 

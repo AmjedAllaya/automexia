@@ -172,6 +172,22 @@ impl Selection {
         self.region.end
     }
 
+    pub(crate) fn reflow_points(&self) -> [Option<Pos>; 2] {
+        if self.ty == SelectionType::Block {
+            // A rectangle is defined by physical columns, not a contiguous
+            // text stream. Do not silently turn it into a different selection.
+            [None; 2]
+        } else {
+            [Some(self.region.start.point), Some(self.region.end.point)]
+        }
+    }
+
+    pub(crate) fn remap_reflow(mut self, points: [Option<Pos>; 2]) -> Option<Self> {
+        self.region.start.point = points[0]?;
+        self.region.end.point = points[1]?;
+        Some(self)
+    }
+
     pub fn rotate<D: Dimensions>(
         mut self,
         dimensions: &D,

@@ -1,26 +1,63 @@
+mod chrome_contract;
 mod completion;
 mod keybindings;
+mod renderer_benchmarks;
 mod visual_diff;
 
+use process_wrap::std::CommandWrap;
+#[cfg(windows)]
+use process_wrap::std::JobObject;
+#[cfg(unix)]
+use process_wrap::std::ProcessGroup;
 use serde_json::Value;
 use std::collections::{BTreeMap, BTreeSet};
 use std::env;
 use std::ffi::OsStr;
 use std::fs;
 use std::fs::File;
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::process::{Command, ExitStatus, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
+use std::thread;
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 type TaskResult<T = ()> = Result<T, String>;
 
 const RIO_BASE_SHA: &str = "7d595af583f6ef1ea6036a66b367ba1e5a84d4a2";
 const GIB: u64 = 1024 * 1024 * 1024;
 const VERIFICATION_TARGET_PREFIX: &str = "automexia-verification-v1-";
+const ACTIVE_CACHE_MARKER: &str = ".automexia-active";
+const ISOLATED_TARGET_LOG_LABEL: &str = "<isolated-verification-target>";
+const PERSISTENT_DEBUG_BINARY_LOG_LABEL: &str = "<persistent-debug-binary>";
 const RUNTIME_TARGET_NAME: &str = "automexia-runtime";
 const DEFAULT_VERIFY_MIN_FREE_GIB: u64 = 12;
 const DEFAULT_BUILD_MIN_FREE_GIB: u64 = 4;
 const DEFAULT_TARGET_WARN_GIB: u64 = 12;
+const WORKSPACE_TEST_TIMEOUT: Duration = Duration::from_secs(30 * 60);
+const SUMMARIZED_CARGO_STDOUT_LIMIT: usize = 16 * 1024 * 1024;
+const PROCESS_POLL_INTERVAL: Duration = Duration::from_millis(25);
+const WORKSPACE_CHECK_ARGS: &[&str] = &[
+    "check",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+];
+const WORKSPACE_CLIPPY_ARGS: &[&str] = &[
+    "clippy",
+    "--workspace",
+    "--all-targets",
+    "--all-features",
+    "--locked",
+    "--",
+    "-D",
+    "warnings",
+];
+const WORKSPACE_TEST_ARGS: &[&str] =
+    &["test", "--workspace", "--all-features", "--locked"];
+const LOCAL_CI_CARGO_PHASES: [&[&str]; 2] = [WORKSPACE_CLIPPY_ARGS, WORKSPACE_TEST_ARGS];
 
 #[derive(Debug)]
 struct ProductIdentity {
@@ -90,11 +127,17 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             completion::dispatch(completion_args)
         }
         [command] if command == "storage" => storage_report(),
+        [command, cache_args @ ..] if command == "cache" => cache(cache_args),
         [command, visual_diff_args @ ..] if command == "visual-diff" => {
             visual_diff::dispatch(visual_diff_args)
         }
         [command] if command == "check" => check(),
         [command] if command == "ci" => ci(),
+        [command, scope]
+            if command == "assurance" && assurance_scope_supported(scope) =>
+        {
+            assurance(scope)
+        }
         [command, flag] if command == "qa" && flag == "--full" => qa(false),
         [command, first, second]
             if command == "qa" && first == "--full" && second == "--bundle" =>
@@ -184,7 +227,67 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|cache <status [--warn-gib N]|gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]>|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+}
+
+fn cache(arguments: &[String]) -> TaskResult {
+    let program = python_program().ok_or("Python 3 is required for cache management")?;
+    println!("+ {program} tools/ci/dev_cache.py {}", arguments.join(" "));
+    let mut command = Command::new(program);
+    command
+        .arg("tools/ci/dev_cache.py")
+        .args(arguments)
+        .current_dir(root());
+    run_command(command, "Automexia development-cache manager")
+}
+
+fn automatic_cache_gc() -> TaskResult {
+    cache(&[
+        "gc".into(),
+        "--scope".into(),
+        "automatic".into(),
+        "--apply".into(),
+    ])
+}
+
+fn assurance_scope_supported(scope: &str) -> bool {
+    matches!(
+        scope,
+        "check-policy"
+            | "install-tools"
+            | "initialize-vet"
+            | "install-hook"
+            | "audit-history-secrets"
+            | "pre-push"
+            | "release-local"
+            | "deep-source"
+    )
+}
+
+fn assurance_owns_readiness(scope: &str) -> bool {
+    matches!(scope, "pre-push" | "release-local" | "deep-source")
+}
+
+fn assurance(scope: &str) -> TaskResult {
+    let readiness_owned_here = assurance_owns_readiness(scope);
+    if readiness_owned_here {
+        // `cargo xtask assurance` is already running from target/debug/xtask.
+        // Starting the `cargo ready` alias here would try to rebuild and replace
+        // that executable on Windows. Keep readiness owned by this process and
+        // pass only a narrow completion receipt to the policy runner.
+        ready()?;
+    }
+    let program =
+        python_program().ok_or("Python 3 is required for GitHub-Free local assurance")?;
+    println!("+ {program} tools/ci/github_free_assurance.py {scope}");
+    let mut command = Command::new(program);
+    command
+        .args(["tools/ci/github_free_assurance.py", scope])
+        .current_dir(root());
+    if readiness_owned_here {
+        command.env("AUTOMEXIA_ASSURANCE_READY_DONE", "1");
+    }
+    run_command(command, "GitHub-Free local assurance policy")
 }
 
 fn root() -> PathBuf {
@@ -598,12 +701,7 @@ fn storage_health_summary() -> TaskResult {
     })?;
     let warn =
         configured_gib("AUTOMEXIA_TARGET_WARN_GIB", DEFAULT_TARGET_WARN_GIB)? * GIB;
-    println!(
-        "storage            {} used, {} free ({})",
-        format_bytes(used),
-        format_bytes(available),
-        target.display()
-    );
+    println!("{}", storage_health_line(used, available));
     if used >= warn {
         println!(
             "storage warning    persistent target exceeds {}; close Automexia and run `cargo purge`",
@@ -669,6 +767,14 @@ fn format_bytes(bytes: u64) -> String {
     }
 }
 
+fn storage_health_line(used: u64, available: u64) -> String {
+    format!(
+        "storage            {} used, {} free (persistent Cargo target)",
+        format_bytes(used),
+        format_bytes(available)
+    )
+}
+
 fn configured_gib(variable: &str, default: u64) -> TaskResult<u64> {
     match env::var(variable) {
         Ok(value) => value.parse::<u64>().map_err(|_| {
@@ -730,8 +836,13 @@ impl VerificationTarget {
                 path.display()
             )
         })?;
+        fs::write(
+            path.join(ACTIVE_CACHE_MARKER),
+            std::process::id().to_string(),
+        )
+        .map_err(|error| format!("could not create verification cache lease: {error}"))?;
         let keep = environment_truthy("AUTOMEXIA_KEEP_VERIFY_TARGET");
-        println!("verification target {}", path.display());
+        println!("verification target {ISOLATED_TARGET_LOG_LABEL}");
         println!("incremental         disabled for verification artifacts");
         Ok(Self {
             parent,
@@ -744,9 +855,16 @@ impl VerificationTarget {
     fn finish(&mut self) -> TaskResult {
         let used = directory_size(&self.path)?;
         if self.keep {
+            fs::remove_file(self.path.join(ACTIVE_CACHE_MARKER)).map_err(|error| {
+                format!("could not release verification cache marker: {error}")
+            })?;
+            let name = self
+                .path
+                .file_name()
+                .and_then(OsStr::to_str)
+                .unwrap_or(ISOLATED_TARGET_LOG_LABEL);
             println!(
-                "verification target retained at {} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
-                self.path.display(),
+                "verification target retained under the persistent Cargo target as {name} ({}) because AUTOMEXIA_KEEP_VERIFY_TARGET is set",
                 format_bytes(used)
             );
             self.finished = true;
@@ -1127,13 +1245,15 @@ fn smoke_debug_app() -> TaskResult {
     let binary = debug_binary(&identity);
     require(
         binary.is_file(),
-        &format!("debug executable is missing: {}", binary.display()),
+        "debug executable is missing from the persistent Cargo target",
     )?;
-    println!("+ {} --version", binary.display());
+    println!("+ {PERSISTENT_DEBUG_BINARY_LOG_LABEL} --version");
     let output = Command::new(&binary)
         .arg("--version")
         .output()
-        .map_err(|error| format!("could not smoke {}: {error}", binary.display()))?;
+        .map_err(|error| {
+            format!("could not run the persistent debug executable: {error}")
+        })?;
     require(
         output.status.success(),
         &format!(
@@ -1203,13 +1323,14 @@ fn check() -> TaskResult {
 }
 
 fn check_in(target: &Path) -> TaskResult {
+    pre_compile_checks()?;
+    run_cargo_in(target, WORKSPACE_CHECK_ARGS)
+}
+
+fn pre_compile_checks() -> TaskResult {
     verify_all()?;
     run("cargo", &["fmt", "--all", "--", "--check"])?;
-    run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])?;
-    run_cargo_in(
-        target,
-        &["check", "--workspace", "--all-targets", "--locked"],
-    )
+    run_quiet("cargo", &["metadata", "--locked", "--format-version", "1"])
 }
 
 fn verify_all() -> TaskResult {
@@ -1232,6 +1353,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     )?;
 
     let qa = read(&root().join("tools/ci/qa.py"))?;
+    let qa_process = read(&root().join("tools/ci/qa_process.py"))?;
     require(
         qa.contains("MAX_LOG_BYTES = 2 * 1024 * 1024")
             && qa.contains("MAX_BUNDLE_BYTES = 64 * 1024 * 1024")
@@ -1239,13 +1361,41 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && qa.contains("environment_dumped\": False")
             && qa.contains("{\".etl\", \".png\", \".info\"}")
             && qa.contains("timeout_seconds")
-            && qa.contains("[\"taskkill\", \"/PID\"")
-            && qa.contains("os.killpg(process.pid")
+            && qa.contains("qa_process.run(")
+            && qa_process.contains("os.killpg(process.pid")
+            && qa_process.contains("AssignProcessToJobObject")
+            && root().join("tools/ci/test_qa_process.py").is_file()
             && qa.contains("collect_host_manifest()")
             && qa.contains("AUTOMEXIA_NATIVE_RESOURCE_REPORT")
             && qa.contains("JUnit report exceeds the 8 MiB artifact ceiling")
+            && qa.contains("def run_benchmark_matrix(")
+            && qa.contains("shutil.rmtree(benchmark_target)")
             && root().join("tools/ci/test_qa.py").is_file(),
         "Phase 0 QA evidence lacks bounds, deadlines, host identity, self-tests, or private-artifact safety",
+    )?;
+
+    let cache = read(&root().join("tools/ci/dev_cache.py"))?;
+    let assurance = read(&root().join("tools/ci/github_free_assurance.py"))?;
+    let cargo_config = read(&root().join(".cargo/config.toml"))?;
+    let workspace_manifest = read(&root().join("Cargo.toml"))?;
+    require(
+        cache.contains("SCOPES = (\"automatic\", \"tools\", \"worktrees\", \"all\")")
+            && cache.contains("DEFAULT_GRACE_HOURS = 72")
+            && cache.contains("def cache_lease(")
+            && cache.contains("def process_is_active(")
+            && cache.contains("refusing to remove a path outside the cache contract")
+            && cache.contains("if candidate.current or candidate.leased or candidate.current_toolset")
+            && assurance.contains("TOOL_CACHE_CONTRACT = \"shared-content-addressed-v1\"")
+            && assurance.contains("def toolset_is_valid(")
+            && assurance.contains("def quarantine_invalid_toolset(")
+            && assurance.contains("# cargo xtask assurance pre-push")
+            && assurance.contains("\"exit 0\\n\"")
+            && cargo_config.contains("build-dir = \"{workspace-root}/target/build\"")
+            && cargo_config.contains("auto-clean-frequency = \"1 day\"")
+            && workspace_manifest.contains("[profile.debugging]")
+            && workspace_manifest.contains("debug = \"line-tables-only\"")
+            && root().join("tools/ci/test_dev_cache.py").is_file(),
+        "Development cache ownership, integrity, cleanup, non-blocking push, or debug-profile policy is missing",
     )?;
 
     let ci = read(&root().join(".github/workflows/ci.yml"))?;
@@ -1259,7 +1409,9 @@ fn verify_phase_zero_assurance() -> TaskResult {
             )
             && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
-            && ci.contains("python tools/ci/test_qa.py")
+            && ci.contains("RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
+            && qa.contains("python-contract-mutations")
             && ci.contains("glslang-tools")
             && release_workflow.contains("glslang-tools")
             && nightly_workflow.contains("glslang-tools"),
@@ -1270,7 +1422,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
     require(
         qa.contains("feature-test-reinforcement-mutations")
             && ci.contains("python tools/ci/check_feature_test_reinforcement.py")
-            && ci.contains("python tools/ci/test_feature_test_reinforcement.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && repository_validator.contains("validate_feature_test_reinforcement")
             && root()
                 .join("tests/assurance/feature-test-reinforcement-v1.json")
@@ -1314,7 +1466,7 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && performance_baseline.contains("\"status\": \"collecting\"")
             && qa.contains("performance-assurance-mutations")
             && qa.contains("run_dir / \"benchmark-target\"")
-            && ci.contains("python tools/ci/test_performance_assurance.py")
+            && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && nightly_workflow.contains("performance-controlled-windows")
             && nightly_workflow.contains("retention-days: 90")
             && nightly_workflow.contains("--operator")
@@ -1324,7 +1476,6 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && release_workflow.contains("--expected-commit")
             && release_workflow.contains("--require-active")
             && s2_workflow.contains("name: S2 controlled activation")
-            && s2_workflow.contains("environment: stable-release")
             && s2_workflow.contains("validate-baseline")
             && s2_workflow.contains("--expected-source-commit")
             && s2_workflow.contains("retention-days: 90")
@@ -1337,21 +1488,27 @@ fn verify_phase_zero_assurance() -> TaskResult {
         "S1/S2 visual, benchmark, source binding, baseline review, waiver, nightly, activation, or fail-closed release assurance drifted",
     )?;
 
-    let codeql_workflow = read(&root().join(".github/workflows/codeql.yml"))?;
+    let free_plan_contract =
+        read(&root().join(".github/scripts/check_free_plan_contract.py"))?;
     require(
-        codeql_workflow.contains("workflow_dispatch:")
-            && codeql_workflow.contains("actions: read")
-            && codeql_workflow.contains("github/codeql-action/init@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8")
-            && codeql_workflow.contains("github/codeql-action/analyze@db488ddef3bf6cb639b32c2e9a7c0a7ea8271d28 # v4.37.8")
-            && codeql_workflow.contains("github.event.repository.private && 'never' || 'always'")
-            && codeql_workflow.contains("codeql-results/**/*.sarif")
-            && codeql_workflow.contains("if-no-files-found: error"),
-        "CodeQL must be dispatchable, pinned to v4, upload findings when entitled, and retain private-repository SARIF without requiring GitHub Code Security",
+        !root().join(".github/workflows/codeql.yml").exists()
+            && free_plan_contract.contains("EXPECTED_WORKFLOWS")
+            && free_plan_contract.contains("private GitHub environments are unavailable")
+            && free_plan_contract.contains("forbidden/stale workflow exists")
+            && ci.contains("check_free_plan_contract.py")
+            && ci.contains("SHELLCHECK_VERSION: '0.11.0'")
+            && ci.contains(
+                "\"$RUNNER_TEMP/actionlint\" -color -shellcheck \"$RUNNER_TEMP/shellcheck\"",
+            )
+            && ci.contains("zizmor"),
+        "GitHub-Free/private static-analysis policy must reject paid-only CodeQL and environment workflows while retaining pinned actionlint, ShellCheck, and offline zizmor checks",
     )?;
     require(
-        nightly_workflow.contains("cargo +nightly fuzz run")
+        nightly_workflow.contains("cargo +nightly-2026-08-25 fuzz run")
             && nightly_workflow.contains("--component rust-src")
-            && nightly_workflow.contains("sanitizer: [address, thread]")
+            && nightly_workflow.contains("sanitizer:")
+            && nightly_workflow.contains("- address")
+            && nightly_workflow.contains("- thread")
             && nightly_workflow.contains("MIRIFLAGS: -Zmiri-disable-isolation")
             && nightly_workflow.contains("timeout-minutes: 30")
             && nightly_workflow.contains("--locked simd_utf8::tests")
@@ -1359,16 +1516,15 @@ fn verify_phase_zero_assurance() -> TaskResult {
             && nightly_workflow.contains("--locked performer::parser::tests")
             && nightly_workflow.contains("test_temp_file_transmission_medium")
             && nightly_workflow.contains("--target x86_64-unknown-linux-gnu")
-            && nightly_workflow.contains("tool: cross@0.2.5")
             && nightly_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
             && nightly_workflow.contains("$(go env GOPATH)/bin")
             && release_workflow.contains("go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4")
             && release_workflow.contains("$(go env GOPATH)/bin"),
-        "Nightly/release workflows must use nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer jobs, and expose the pinned Go-based nFPM tool",
+        "Nightly/release workflows must use the pinned nightly GNU-target libFuzzer, install sanitizer std sources, enforce the bounded Miri suite and timeout, preserve both sanitizer configurations, and expose the pinned Go-based nFPM tool",
     )?;
     require(
         nightly_workflow.contains(
-            "cargo +nightly test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
+            "cargo +nightly-2026-08-25 test -p automexia-extension-runtime --lib --locked -Zbuild-std --target x86_64-unknown-linux-gnu -- --skip loom_models",
         ),
         "ASan/TSan must exercise bounded extension worker lifecycle tests without running Loom's scheduler model",
     )?;
@@ -1550,6 +1706,7 @@ fn ci() -> TaskResult {
 }
 
 fn qa(bundle: bool) -> TaskResult {
+    automatic_cache_gc()?;
     require_native_wsl_workspace("the Phase 0 QA evidence gate")?;
     let program =
         python_program().ok_or("Python 3 is required for the QA evidence runner")?;
@@ -1561,10 +1718,15 @@ fn qa(bundle: bool) -> TaskResult {
     if bundle {
         command.arg("--bundle");
     }
-    run_command(command, "Phase 0 QA evidence runner")
+    let result = run_command(command, "Phase 0 QA evidence runner");
+    if result.is_ok() {
+        automatic_cache_gc()?;
+    }
+    result
 }
 
 fn complete_ci_gate() -> TaskResult {
+    automatic_cache_gc()?;
     doctor()?;
     run_python("tools/ci/validate_repository.py")?;
     validate_shell_integrations()?;
@@ -1572,7 +1734,8 @@ fn complete_ci_gate() -> TaskResult {
     run_command(
         cargo_deny_command(),
         "cargo deny --locked --color never check --hide-inclusion-graph",
-    )
+    )?;
+    automatic_cache_gc()
 }
 
 fn cargo_deny_command() -> Command {
@@ -1617,27 +1780,16 @@ fn validate_shell_integrations() -> TaskResult {
 }
 
 fn ci_in(target: &Path) -> TaskResult {
-    println!("==> verification phase 1/3: workspace checks");
-    check_in(target)?;
-    println!("==> verification phase 2/3: warning-denied Clippy");
-    run_cargo_in(
-        target,
-        &[
-            "clippy",
-            "--workspace",
-            "--all-targets",
-            "--locked",
-            "--",
-            "-D",
-            "warnings",
-        ],
-    )?;
+    println!("==> verification phase 1/3: policy, metadata, and formatting checks");
+    pre_compile_checks()?;
+    println!("==> verification phase 2/3: warning-denied all-target Clippy");
+    run_cargo_in(target, LOCAL_CI_CARGO_PHASES[0])?;
     println!(
         "==> verification phase 3/3: workspace tests (a cold isolated target can compile for several minutes)"
     );
     run_cargo_summarized_in(
         target,
-        &["test", "--workspace", "--locked"],
+        LOCAL_CI_CARGO_PHASES[1],
         "workspace unit, integration, and documentation tests passed",
     )
 }
@@ -1866,20 +2018,39 @@ fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
     run_command(fuzz, "nightly image-decoder fuzz campaign")
 }
 
+fn run_resize_regressions(
+    mut run_suite: impl FnMut(&[&str]) -> TaskResult,
+) -> TaskResult {
+    run_suite(&[
+        "test",
+        "-p",
+        "rio-vt",
+        "--lib",
+        "--locked",
+        "resize_stress",
+        "--",
+        "--nocapture",
+    ])?;
+    // Integration tests are separate binaries: the library name filter cannot
+    // exercise a live shell or the captured repaint that originally escaped it.
+    run_suite(&[
+        "test",
+        "-p",
+        "rio-vt",
+        "--locked",
+        "--test",
+        "resize_repaint",
+        "--test",
+        "live_resize",
+        "--test",
+        "pane_editor_resize",
+        "--",
+        "--nocapture",
+    ])
+}
+
 fn test_resize_stress(native_gui: bool) -> TaskResult {
-    run(
-        "cargo",
-        &[
-            "test",
-            "-p",
-            "rio-vt",
-            "--lib",
-            "--locked",
-            "resize_stress",
-            "--",
-            "--nocapture",
-        ],
-    )?;
+    run_resize_regressions(|args| run("cargo", args))?;
 
     if !native_gui {
         return Ok(());
@@ -2191,11 +2362,7 @@ fn cargo_command(target: &Path, args: &[&str]) -> Command {
 }
 
 fn run_cargo_in(target: &Path, args: &[&str]) -> TaskResult {
-    println!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
-        target.display(),
-        args.join(" ")
-    );
+    println!("{}", isolated_cargo_invocation(args));
     let status = cargo_command(target, args)
         .status()
         .map_err(|error| format!("could not start cargo: {error}"))?;
@@ -2211,19 +2378,27 @@ fn run_cargo_summarized_in(
     args: &[&str],
     success_message: &str,
 ) -> TaskResult {
-    println!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={} cargo {}",
-        target.display(),
-        args.join(" ")
-    );
-    let output = cargo_command(target, args)
-        // Cargo writes compiler/build-script progress and diagnostics to
-        // stderr. Keep that stream attached to the contributor's terminal so
-        // a cold native dependency build never looks frozen. Test-harness
-        // stdout remains captured and summarized on success below.
-        .stderr(Stdio::inherit())
-        .output()
-        .map_err(|error| format!("could not start cargo: {error}"))?;
+    println!("{}", isolated_cargo_invocation(args));
+    let mut command = cargo_command(target, args);
+    // Cargo writes compiler/build-script progress and diagnostics to stderr.
+    // Keep that stream attached to the contributor's terminal so a cold native
+    // dependency build never looks frozen. Test-harness stdout is captured up
+    // to a strict ceiling and summarized only after the owned process group
+    // exits.
+    command.stderr(Stdio::inherit());
+    let output = match run_bounded_capture(
+        command,
+        WORKSPACE_TEST_TIMEOUT,
+        SUMMARIZED_CARGO_STDOUT_LIMIT,
+    ) {
+        Ok(output) => output,
+        Err(failure) => {
+            if !failure.stdout.is_empty() {
+                print!("{}", String::from_utf8_lossy(&failure.stdout));
+            }
+            return Err(failure.message);
+        }
+    };
     if output.status.success() {
         println!("PASS: {success_message}");
         return Ok(());
@@ -2233,6 +2408,152 @@ fn run_cargo_summarized_in(
     // the complete harness and compiler diagnostics needed for investigation.
     print!("{}", String::from_utf8_lossy(&output.stdout));
     Err(format!("cargo exited with {}", output.status))
+}
+
+#[derive(Debug)]
+struct BoundedCommandOutput {
+    status: ExitStatus,
+    stdout: Vec<u8>,
+}
+
+#[derive(Debug)]
+struct BoundedCommandFailure {
+    message: String,
+    stdout: Vec<u8>,
+}
+
+fn read_bounded_output(
+    mut reader: impl Read,
+    limit: usize,
+    overflow: Arc<AtomicBool>,
+) -> std::io::Result<Vec<u8>> {
+    let mut output = Vec::with_capacity(limit.min(64 * 1024));
+    let mut buffer = [0_u8; 8192];
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            return Ok(output);
+        }
+        if overflow.load(Ordering::Acquire) {
+            continue;
+        }
+        if output.len().saturating_add(read) > limit {
+            let remaining = limit.saturating_sub(output.len());
+            output.extend_from_slice(&buffer[..remaining]);
+            overflow.store(true, Ordering::Release);
+            continue;
+        }
+        output.extend_from_slice(&buffer[..read]);
+    }
+}
+
+fn run_bounded_capture(
+    mut command: Command,
+    deadline: Duration,
+    stdout_limit: usize,
+) -> Result<BoundedCommandOutput, BoundedCommandFailure> {
+    if deadline.is_zero() || stdout_limit == 0 {
+        return Err(BoundedCommandFailure {
+            message: "bounded command requires a positive deadline and output ceiling"
+                .into(),
+            stdout: Vec::new(),
+        });
+    }
+    command.stdin(Stdio::null()).stdout(Stdio::piped());
+    let mut command = CommandWrap::from(command);
+    #[cfg(unix)]
+    command.wrap(ProcessGroup::leader());
+    #[cfg(windows)]
+    command.wrap(JobObject);
+    let mut child = command.spawn().map_err(|error| BoundedCommandFailure {
+        message: format!("could not start bounded command: {error}"),
+        stdout: Vec::new(),
+    })?;
+    let stdout = child.stdout().take().ok_or_else(|| BoundedCommandFailure {
+        message: "bounded command stdout pipe is unavailable".to_owned(),
+        stdout: Vec::new(),
+    })?;
+    let overflow = Arc::new(AtomicBool::new(false));
+    let reader_overflow = Arc::clone(&overflow);
+    let reader =
+        thread::spawn(move || read_bounded_output(stdout, stdout_limit, reader_overflow));
+    let started = Instant::now();
+
+    let status = loop {
+        if overflow.load(Ordering::Acquire) {
+            let _ = child.kill();
+            return Err(bounded_failure_after_cleanup(
+                format!(
+                    "bounded command output exceeded its {stdout_limit}-byte ceiling and was terminated"
+                ),
+                reader,
+            ));
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                // The leader may exit while a descendant still owns stdout.
+                // Close the complete process group/Job Object before joining
+                // the reader so a stale helper cannot block readiness forever.
+                let _ = child.start_kill();
+                break status;
+            }
+            Ok(None) if started.elapsed() < deadline => {
+                thread::sleep(PROCESS_POLL_INTERVAL)
+            }
+            Ok(None) => {
+                let _ = child.kill();
+                return Err(bounded_failure_after_cleanup(
+                    format!(
+                        "bounded command exceeded its {}-second deadline and was terminated",
+                        deadline.as_secs()
+                    ),
+                    reader,
+                ));
+            }
+            Err(error) => {
+                let _ = child.kill();
+                return Err(bounded_failure_after_cleanup(
+                    format!("could not poll bounded command: {error}"),
+                    reader,
+                ));
+            }
+        }
+    };
+    let stdout = reader
+        .join()
+        .map_err(|_| BoundedCommandFailure {
+            message: "bounded command stdout reader panicked".to_owned(),
+            stdout: Vec::new(),
+        })?
+        .map_err(|error| BoundedCommandFailure {
+            message: format!("could not read bounded command stdout: {error}"),
+            stdout: Vec::new(),
+        })?;
+    Ok(BoundedCommandOutput { status, stdout })
+}
+
+fn bounded_failure_after_cleanup(
+    message: String,
+    reader: thread::JoinHandle<std::io::Result<Vec<u8>>>,
+) -> BoundedCommandFailure {
+    match reader.join() {
+        Ok(Ok(stdout)) => BoundedCommandFailure { message, stdout },
+        Ok(Err(error)) => BoundedCommandFailure {
+            message: format!("{message}; could not read bounded command stdout: {error}"),
+            stdout: Vec::new(),
+        },
+        Err(_) => BoundedCommandFailure {
+            message: format!("{message}; bounded command stdout reader panicked"),
+            stdout: Vec::new(),
+        },
+    }
+}
+
+fn isolated_cargo_invocation(args: &[&str]) -> String {
+    format!(
+        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={ISOLATED_TARGET_LOG_LABEL} cargo {}",
+        args.join(" ")
+    )
 }
 
 fn metadata() -> TaskResult<Value> {
@@ -2289,7 +2610,61 @@ fn product_identity() -> TaskResult<ProductIdentity> {
     })
 }
 
+const POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS: &[&str] = &[
+    "$integrationScript = Join-Path $PSScriptRoot 'test_shell_integration.ps1'",
+    "$integrationLifecycle = & powershell.exe -NoLogo -NoProfile -NonInteractive",
+    "-File $integrationScript 2>&1 | Out-String",
+    "if ($LASTEXITCODE -ne 0)",
+    "captured child process",
+    "SetUserVar=automexia_shell_user=",
+    "SetUserVar=automexia_shell_path=",
+    "$integrationLifecycle = $null",
+];
+
+const POWERSHELL_IDENTITY_FIXTURE_MARKERS: &[&str] = &[
+    "$fixtureUser = 'alice'",
+    "$fixtureShellPath = 'C:\\AutomexiaFixtures\\cmd.exe'",
+    "GetBytes($fixtureUser)",
+    "GetBytes($fixtureShellPath)",
+];
+
+fn powershell_test_output_is_redacted(source: &str) -> bool {
+    POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+}
+
+fn powershell_identity_fixture_is_fictional(source: &str) -> bool {
+    POWERSHELL_IDENTITY_FIXTURE_MARKERS
+        .iter()
+        .all(|marker| source.contains(marker))
+        && source.matches("GetBytes($fixtureUser)").count() >= 2
+        && source.matches("GetBytes($fixtureShellPath)").count() >= 2
+        && !source.contains("[Environment]::UserName")
+        && !source.contains("GetBytes($env:ComSpec)")
+}
+
+fn verify_text_benchmark_dependency(dependency: &serde_json::Value) -> TaskResult {
+    require(
+        dependency["name"].as_str() != Some("criterion")
+            || dependency["kind"].as_str() == Some("dev"),
+        "extension-api Criterion dependency must remain development-only",
+    )
+}
+
+fn verify_devops_test_dependency(dependency: &serde_json::Value) -> TaskResult {
+    require(
+        !matches!(dependency["name"].as_str(), Some("criterion" | "tempfile"))
+            || dependency["kind"].as_str() == Some("dev"),
+        "DevOps fixture and benchmark dependencies must remain development-only",
+    )
+}
+
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_prompt_discovery.py")?;
+    run_python("tools/ci/test_prompt_discovery.py")?;
+    run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
+    run_python("tools/ci/test_github_free_assurance.py")?;
     run_python("tools/ci/check_feature_ownership.py")?;
     run_python("tools/ci/test_feature_ownership.py")?;
     run_python("tools/ci/check_command_productivity.py")?;
@@ -2309,6 +2684,7 @@ fn verify_architecture() -> TaskResult {
     let packages = metadata["packages"]
         .as_array()
         .ok_or("cargo metadata omitted packages")?;
+    renderer_benchmarks::verify(packages)?;
     let frontend = packages
         .iter()
         .find(|package| package["name"].as_str() == Some(identity.package_name.as_str()))
@@ -2329,7 +2705,7 @@ fn verify_architecture() -> TaskResult {
         ),
         (
             "automexia-extension-api",
-            &["serde", "serde_json", "unicode-segmentation"],
+            &["criterion", "serde", "serde_json", "unicode-segmentation"],
         ),
         (
             "automexia-extension-runtime",
@@ -2363,7 +2739,16 @@ fn verify_architecture() -> TaskResult {
         ),
         (
             "automexia-devops",
-            &["automexia-extension-api", "dirs", "proptest", "serde_json"],
+            &[
+                "automexia-extension-api",
+                "dirs",
+                "serde",
+                "serde_json",
+                "serde-saphyr",
+                "criterion",
+                "proptest",
+                "tempfile",
+            ],
         ),
         (
             "automexia-devops-ssh",
@@ -2387,6 +2772,7 @@ fn verify_architecture() -> TaskResult {
                 "automexia-connectivity",
                 "automexia-extension-api",
                 "configparser",
+                "criterion",
                 "serde",
                 "serde_json",
             ],
@@ -2515,6 +2901,12 @@ fn verify_architecture() -> TaskResult {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
+            if name == "automexia-extension-api" {
+                verify_text_benchmark_dependency(dependency)?;
+            }
+            if name == "automexia-devops" {
+                verify_devops_test_dependency(dependency)?;
+            }
             require(
                 allowed_dependencies.contains(&dependency_name),
                 &format!(
@@ -2618,23 +3010,16 @@ fn verify_architecture() -> TaskResult {
     let bindings = read(&app.join("src/bindings/mod.rs"))?;
     let palette = read(&app.join("src/renderer/command_palette.rs"))?;
     require(
-        bindings.contains(
-            r#""r", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
-        ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
-        ) && bindings.contains(
-            r#""r", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x12".into())"#,
-        ) && bindings.contains(
-            r#""d", ModifiersState::CONTROL | ModifiersState::ALT, ~BindingMode::SEARCH, ~BindingMode::VI; Action::Esc("\x04".into())"#,
-        ) && palette.contains("Clone Active Session Right")
+        !bindings.contains("fn clone_split_key_bindings")
+            && bindings.contains("fn platform_defaults_preserve_shell_history_and_eof_input")
+            && bindings.contains("fn explicit_clone_bindings_survive_default_and_reset_changes")
+            && bindings.contains("fn pane_creation_defaults_are_directional_and_leave_shell_controls_alone")
+            && pane_shortcut_defaults_present(&bindings)
+            && palette.contains("Clone Active Session Right")
             && palette.contains("Clone Active Session Down")
             && palette.contains("shortcut: SHORTCUT_CLONE_RIGHT")
             && palette.contains("shortcut: SHORTCUT_CLONE_DOWN"),
-        "Automexia classic fresh-split, clone, and explicit shell-control shortcuts are not distinct",
+        "shell-owned defaults, explicit clone overrides, and fresh-split discovery are not preserved",
     )?;
     let layout_source = read(&app.join("src/layout/mod.rs"))?;
     require(
@@ -2913,6 +3298,17 @@ fn verify_architecture() -> TaskResult {
     )?;
     let powershell_view =
         read(&root().join("shell-integration/powershell/automexia.format.ps1xml"))?;
+    let powershell_test = read(&root().join("tools/ci/test_powershell.ps1"))?;
+    let powershell_integration =
+        read(&root().join("tools/ci/test_shell_integration.ps1"))?;
+    require(
+        powershell_test_output_is_redacted(&powershell_test),
+        "PowerShell integration assurance can publish live shell identity bytes into CI logs",
+    )?;
+    require(
+        powershell_identity_fixture_is_fictional(&powershell_integration),
+        "PowerShell integration assurance can derive a persistent fixture from live shell identity",
+    )?;
     require(
         powershell_view.contains("<Label>Mode</Label>")
             && powershell_view.contains("<Label>Last Modified</Label>")
@@ -2988,6 +3384,7 @@ fn verify_architecture() -> TaskResult {
     )?;
     let application = read(&app.join("src/application.rs"))?;
     let confirm_quit = read(&app.join("src/renderer/confirm_quit.rs"))?;
+    let chrome_theme = read(&app.join("src/renderer/ui_theme.rs"))?;
     let modal_renderer = read(&root().join("sugarloaf/src/renderer/mod.rs"))?;
     let modal_sugarloaf = read(&root().join("sugarloaf/src/sugarloaf.rs"))?;
     let modal_text = read(&root().join("sugarloaf/src/text.rs"))?;
@@ -2995,7 +3392,7 @@ fn verify_architecture() -> TaskResult {
         palette.contains("sugarloaf.begin_modal_layer()")
             && palette.contains("sugarloaf.end_modal_layer()")
             && !palette.contains("text_mut().clear()")
-            && confirm_quit.contains("const SCRIM:")
+            && chrome_contract::shared_modal_tokens(&palette, &confirm_quit, &chrome_theme)
             && confirm_quit.contains("ConfirmQuitAction")
             && confirm_quit.contains("hit_test_requires_an_active_explicit_button")
             && confirm_quit.contains("layout_stays_inside_extreme_viewports")
@@ -3104,10 +3501,10 @@ fn verify_architecture() -> TaskResult {
             && read(&root().join("automexia-image/src/lib.rs"))?
                 .contains("bytes.len() as u64 > MAX_FILE_BYTES")
             && nightly.contains("image_decoder")
-            && nightly.contains("rustup toolchain install nightly --profile minimal")
-            && nightly.contains("cargo +nightly fuzz run")
+            && nightly.contains("rustup toolchain install nightly-2026-08-25 --profile minimal")
+            && nightly.contains("cargo +nightly-2026-08-25 fuzz run")
             && nightly.contains("-rss_limit_mb=768 -timeout=15")
-            && nightly.contains("cargo +nightly test -p automexia-image --lib")
+            && nightly.contains("cargo +nightly-2026-08-25 test -p automexia-image --lib")
             && xtask_source.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX")
             && xtask_source.contains("fuzz_workspace/corpus")
             && xtask_source.contains("source_root=$1")
@@ -3351,6 +3748,22 @@ fn verify_architecture() -> TaskResult {
     }
     println!("PASS: dependency graph and render/PTY/extension boundaries verified");
     Ok(())
+}
+
+fn pane_shortcut_defaults_present(bindings: &str) -> bool {
+    // Windows and Unix own separate platform tables. Both must retain all four
+    // approved chords and all three terminal-mode exclusions.
+    [
+        r#""r", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitRight"#,
+        r#""d", ModifiersState::ALT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::CloneSplitDown"#,
+        r#""r", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitRight"#,
+        r#""d", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::SplitDown"#,
+    ]
+    .iter()
+    .all(|fragment| bindings.matches(fragment).count() == 2)
+        && ["+", "=", "-", "_"].iter().all(|key| {
+            !bindings.contains(&format!(r#""{key}", ModifiersState::ALT | ModifiersState::SHIFT,"#))
+        })
 }
 
 /// Recognize both direct assignment and allocation-preserving `clone_from`
@@ -4416,9 +4829,16 @@ fn assemble_changelog(version: &str) -> TaskResult<bool> {
 }
 
 fn run_python(script: &str) -> TaskResult {
+    run_python_args(script, &[])
+}
+
+fn run_python_args(script: &str, args: &[&str]) -> TaskResult {
     let program =
         python_program().ok_or("Python 3 is required for repository policy checks")?;
-    run(program, &[script])
+    let mut command = Vec::with_capacity(args.len() + 1);
+    command.push(script);
+    command.extend_from_slice(args);
+    run(program, &command)
 }
 
 fn files_under(root: &Path) -> TaskResult<Vec<PathBuf>> {
@@ -4487,14 +4907,65 @@ fn display_relative_or_absolute(path: &Path) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pane_shortcut_contract_rejects_missing_chords_modes_and_retired_aliases() {
+        let source = super::read(
+            &super::root().join("apps/automexia-terminal/src/bindings/mod.rs"),
+        )
+        .unwrap();
+        assert!(super::pane_shortcut_defaults_present(&source));
+        for (key, modifiers, action) in [
+            ("r", "ModifiersState::ALT", "CloneSplitRight"),
+            ("d", "ModifiersState::ALT", "CloneSplitDown"),
+            (
+                "r",
+                "ModifiersState::ALT | ModifiersState::SHIFT",
+                "SplitRight",
+            ),
+            (
+                "d",
+                "ModifiersState::ALT | ModifiersState::SHIFT",
+                "SplitDown",
+            ),
+        ] {
+            let fragment = format!(
+                r#""{key}", {modifiers}, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::{action}"#
+            );
+            for replacement in [
+                String::new(),
+                fragment.replace("~BindingMode::ALT_SCREEN, ", ""),
+            ] {
+                assert!(!super::pane_shortcut_defaults_present(&source.replacen(
+                    &fragment,
+                    &replacement,
+                    1
+                )));
+                let (prefix, suffix) = source.rsplit_once(&fragment).unwrap();
+                assert!(!super::pane_shortcut_defaults_present(&format!(
+                    "{prefix}{replacement}{suffix}"
+                )));
+            }
+        }
+        for key in ["+", "=", "-", "_"] {
+            let restored = format!(
+                r#"{source}
+                "{key}", ModifiersState::ALT | ModifiersState::SHIFT, ~BindingMode::SEARCH; Action::SplitRight;"#
+            );
+            assert!(!super::pane_shortcut_defaults_present(&restored));
+        }
+    }
+
     use super::*;
 
     #[test]
     fn command_surface_is_stable() {
         assert!(usage().contains("dev [-- APP_ARGS...]"));
         assert!(usage().contains("ready"));
+        assert!(usage().contains("assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>"));
         assert!(usage().contains("run [-- APP_ARGS...]"));
         assert!(usage().contains("storage"));
+        assert!(usage().contains("cache <status"));
+        assert!(usage().contains("gc [--scope automatic|tools|worktrees|all]"));
         assert!(usage().contains("verify architecture"));
         assert!(usage().contains("test conformance"));
         assert!(usage().contains("test resize-stress [--native-gui]"));
@@ -4503,6 +4974,117 @@ mod tests {
         assert!(usage().contains("test session-clone [--native-windows|--native-wsl]"));
         assert!(usage().contains("release --version"));
         assert!(usage().contains("verify all"));
+    }
+
+    #[test]
+    fn resize_stress_runs_native_regressions_without_the_gui_flag() {
+        let mut calls = Vec::new();
+        run_resize_regressions(|args| {
+            calls.push(args.iter().map(|arg| (*arg).to_owned()).collect::<Vec<_>>());
+            Ok(())
+        })
+        .unwrap();
+        // Literal argument vectors reject filters, ignored-native substitutions,
+        // reordered suites and accidental library-only coverage.
+        assert_eq!(
+            calls,
+            [
+                vec![
+                    "test",
+                    "-p",
+                    "rio-vt",
+                    "--lib",
+                    "--locked",
+                    "resize_stress",
+                    "--",
+                    "--nocapture"
+                ],
+                vec![
+                    "test",
+                    "-p",
+                    "rio-vt",
+                    "--locked",
+                    "--test",
+                    "resize_repaint",
+                    "--test",
+                    "live_resize",
+                    "--test",
+                    "pane_editor_resize",
+                    "--",
+                    "--nocapture"
+                ],
+            ]
+        );
+        for fail_at in 1..=2 {
+            let mut called = 0;
+            let result = run_resize_regressions(|_| {
+                called += 1;
+                if called == fail_at {
+                    Err("fixture failure".into())
+                } else {
+                    Ok(())
+                }
+            });
+            assert_eq!(result, Err("fixture failure".into()));
+            assert_eq!(called, fail_at, "a failed stage stops the ladder");
+        }
+    }
+
+    #[test]
+    fn assurance_readiness_scopes_are_explicit() {
+        let readiness_scopes = ["pre-push", "release-local", "deep-source"];
+        let non_readiness_scopes = [
+            "check-policy",
+            "install-tools",
+            "initialize-vet",
+            "install-hook",
+            "audit-history-secrets",
+        ];
+        for scope in readiness_scopes {
+            assert!(assurance_scope_supported(scope));
+            assert!(assurance_owns_readiness(scope));
+        }
+        for scope in non_readiness_scopes {
+            assert!(assurance_scope_supported(scope));
+            assert!(!assurance_owns_readiness(scope));
+        }
+        assert!(!assurance_scope_supported("unknown"));
+    }
+
+    #[test]
+    fn local_workspace_gate_covers_every_feature_like_hosted_ci() {
+        assert_eq!(
+            WORKSPACE_CHECK_ARGS,
+            &[
+                "check",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_CLIPPY_ARGS,
+            &[
+                "clippy",
+                "--workspace",
+                "--all-targets",
+                "--all-features",
+                "--locked",
+                "--",
+                "-D",
+                "warnings",
+            ]
+        );
+        assert_eq!(
+            WORKSPACE_TEST_ARGS,
+            &["test", "--workspace", "--all-features", "--locked"]
+        );
+        assert_eq!(
+            LOCAL_CI_CARGO_PHASES,
+            [WORKSPACE_CLIPPY_ARGS, WORKSPACE_TEST_ARGS]
+        );
+        assert!(!LOCAL_CI_CARGO_PHASES.contains(&WORKSPACE_CHECK_ARGS));
     }
 
     #[test]
@@ -4562,6 +5144,92 @@ mod tests {
     #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
+    }
+
+    #[test]
+    fn devops_fixture_dependencies_cannot_gain_runtime_or_build_authority() {
+        for name in ["criterion", "tempfile"] {
+            for kind in [
+                serde_json::Value::Null,
+                serde_json::json!("build"),
+                serde_json::json!("normal"),
+            ] {
+                let mut dependency = serde_json::json!({"name": name, "kind": kind, "rename": "fixture", "target": "cfg(unix)"});
+                assert!(verify_devops_test_dependency(&dependency).is_err());
+                dependency["kind"] = serde_json::json!("dev");
+                assert!(verify_devops_test_dependency(&dependency).is_ok());
+                dependency.as_object_mut().unwrap().remove("kind");
+                assert!(verify_devops_test_dependency(&dependency).is_err());
+            }
+        }
+        assert!(verify_devops_test_dependency(
+            &serde_json::json!({"name": "serde-saphyr", "kind": null})
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn text_benchmark_dependency_rejects_runtime_build_and_renamed_mutations() {
+        for kind in [
+            serde_json::Value::Null,
+            serde_json::json!("build"),
+            serde_json::json!("normal"),
+            serde_json::json!("DEV"),
+        ] {
+            for renamed in [serde_json::Value::Null, serde_json::json!("metrics")] {
+                let mut dependency = serde_json::json!({
+                    "name": "criterion", "kind": kind, "rename": renamed,
+                    "target": "cfg(unix)"
+                });
+                assert!(verify_text_benchmark_dependency(&dependency).is_err());
+                dependency["kind"] = serde_json::json!("dev");
+                assert!(verify_text_benchmark_dependency(&dependency).is_ok());
+                dependency.as_object_mut().unwrap().remove("kind");
+                assert!(verify_text_benchmark_dependency(&dependency).is_err());
+            }
+        }
+        assert!(verify_text_benchmark_dependency(
+            &serde_json::json!({"name": "serde", "kind": null})
+        )
+        .is_ok());
+    }
+
+    #[test]
+    fn powershell_test_output_redaction_markers_are_independently_required() {
+        let source = read(&root().join("tools/ci/test_powershell.ps1")).unwrap();
+        assert!(powershell_test_output_is_redacted(&source));
+        for marker in POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_test_output_is_redacted(&weakened),
+                "removing {marker:?} must fail the redaction contract"
+            );
+        }
+    }
+
+    #[test]
+    fn powershell_identity_fixture_cannot_use_live_values() {
+        let source = read(&root().join("tools/ci/test_shell_integration.ps1")).unwrap();
+        assert!(powershell_identity_fixture_is_fictional(&source));
+        for marker in POWERSHELL_IDENTITY_FIXTURE_MARKERS {
+            let weakened = source.replacen(marker, "", 1);
+            assert!(
+                !powershell_identity_fixture_is_fictional(&weakened),
+                "removing {marker:?} must fail the fictional-fixture contract"
+            );
+        }
+        assert!(!powershell_identity_fixture_is_fictional(
+            &source.replace("$fixtureUser", "[Environment]::UserName")
+        ));
+        assert!(!powershell_identity_fixture_is_fictional(&source.replace(
+            "GetBytes($fixtureShellPath)",
+            "GetBytes($env:ComSpec)"
+        )));
+    }
+
+    #[test]
+    fn phase_zero_assurance_contract_self_verifies() {
+        verify_phase_zero_assurance().unwrap();
     }
 
     #[cfg(target_os = "windows")]
@@ -4751,6 +5419,27 @@ mod tests {
     }
 
     #[test]
+    fn retained_verification_target_releases_its_activity_marker() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join(verification_target_name(42, 1234));
+        fs::create_dir(&path).unwrap();
+        fs::write(path.join(ACTIVE_CACHE_MARKER), b"42").unwrap();
+        fs::write(path.join("artifact"), b"generated").unwrap();
+        let mut target = VerificationTarget {
+            parent: temporary.path().to_path_buf(),
+            path: path.clone(),
+            keep: true,
+            finished: false,
+        };
+
+        target.finish().unwrap();
+
+        assert!(path.is_dir());
+        assert!(!path.join(ACTIVE_CACHE_MARKER).exists());
+        assert!(target.finished);
+    }
+
+    #[test]
     fn runtime_binary_names_are_unique_and_platform_correct() {
         assert_eq!(
             generation_binary_name("automexia", 42, 1234, true),
@@ -4768,6 +5457,126 @@ mod tests {
         assert_eq!(format_bytes(1024), "1.00 KiB");
         assert_eq!(format_bytes(1024 * 1024), "1.00 MiB");
         assert_eq!(format_bytes(GIB), "1.00 GiB");
+    }
+
+    #[test]
+    fn summarized_command_returns_bounded_success_output() {
+        let mut command =
+            Command::new(env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "tests::bounded_runner_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AUTOMEXIA_XTASK_TEST_CHILD_MODE", "success");
+
+        let output = run_bounded_capture(command, Duration::from_secs(5), 4096)
+            .expect("fixture child should finish before the deadline");
+        assert!(output.status.success());
+        assert!(String::from_utf8_lossy(&output.stdout).contains("bounded-child-success"));
+    }
+
+    #[test]
+    fn summarized_command_rejects_zero_bounds_before_spawn() {
+        let deadline_error = run_bounded_capture(
+            Command::new(env::current_exe().expect("current test executable")),
+            Duration::ZERO,
+            1,
+        )
+        .expect_err("a zero deadline must fail before starting the child");
+        assert!(deadline_error.message.contains("positive"));
+        assert!(deadline_error.stdout.is_empty());
+
+        let output_error = run_bounded_capture(
+            Command::new(env::current_exe().expect("current test executable")),
+            Duration::from_secs(1),
+            0,
+        )
+        .expect_err("a zero output ceiling must fail before starting the child");
+        assert!(output_error.message.contains("positive"));
+        assert!(output_error.stdout.is_empty());
+    }
+
+    #[test]
+    fn summarized_command_deadline_terminates_the_owned_child() {
+        let mut command =
+            Command::new(env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "tests::bounded_runner_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AUTOMEXIA_XTASK_TEST_CHILD_MODE", "wait");
+        let started = Instant::now();
+
+        let error = run_bounded_capture(command, Duration::from_millis(100), 4096)
+            .expect_err("waiting fixture must be terminated at the deadline");
+        assert!(error.message.contains("deadline"));
+        assert!(String::from_utf8_lossy(&error.stdout).contains("bounded-child-waiting"));
+        assert!(started.elapsed() < Duration::from_secs(5));
+    }
+
+    #[test]
+    fn summarized_command_output_limit_fails_closed() {
+        let mut command =
+            Command::new(env::current_exe().expect("current test executable"));
+        command
+            .args([
+                "--exact",
+                "tests::bounded_runner_child",
+                "--ignored",
+                "--nocapture",
+            ])
+            .env("AUTOMEXIA_XTASK_TEST_CHILD_MODE", "overflow");
+
+        let error = run_bounded_capture(command, Duration::from_secs(5), 512)
+            .expect_err("oversized captured output must terminate the child");
+        assert!(error.message.contains("output"));
+        assert!(error.message.contains("ceiling"));
+        assert_eq!(error.stdout.len(), 512);
+        assert!(String::from_utf8_lossy(&error.stdout).contains("bounded-child-overflow"));
+    }
+
+    #[test]
+    #[ignore = "spawned only by bounded process ownership tests"]
+    fn bounded_runner_child() {
+        match env::var("AUTOMEXIA_XTASK_TEST_CHILD_MODE").as_deref() {
+            Ok("success") => println!("bounded-child-success"),
+            Ok("overflow") => println!("bounded-child-overflow\n{}", "x".repeat(4096)),
+            Ok("wait") => {
+                println!("bounded-child-waiting");
+                use std::io::Write as _;
+                std::io::stdout()
+                    .flush()
+                    .expect("deadline fixture marker must be visible");
+                thread::sleep(Duration::from_secs(30));
+            }
+            _ => panic!("bounded child mode is required"),
+        }
+    }
+
+    #[test]
+    fn successful_readiness_diagnostics_use_logical_target_labels() {
+        let invocation = isolated_cargo_invocation(&["check", "--workspace"]);
+        assert_eq!(
+            invocation,
+            "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<isolated-verification-target> cargo check --workspace"
+        );
+        assert!(!invocation.contains(r"C:\Users\alice\private-checkout"));
+        assert_eq!(
+            storage_health_line(GIB, 2 * GIB),
+            "storage            1.00 GiB used, 2.00 GiB free (persistent Cargo target)"
+        );
+        assert!(!storage_health_line(GIB, 2 * GIB).contains(['\\', '/']));
+        assert_eq!(
+            PERSISTENT_DEBUG_BINARY_LOG_LABEL,
+            "<persistent-debug-binary>"
+        );
+        assert!(!PERSISTENT_DEBUG_BINARY_LOG_LABEL.contains(['\\', '/']));
     }
 
     #[cfg(target_os = "windows")]

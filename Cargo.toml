@@ -31,6 +31,7 @@ members = [
     "librio",
     "librio-wasm",
     "tools/xtask",
+    "tools/renderer-benchmarks",
 ]
 resolver = "2"
 
@@ -125,7 +126,7 @@ onig = { version = "6.5.3", default-features = false }
 bytemuck = { version = "1.25.2", features = ["derive"] }
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.145"
-serde-saphyr = { version = "=1.1.0", default-features = false, features = ["deserialize"] }
+serde-saphyr = { version = "=1.2.0", default-features = false, features = ["deserialize"] }
 sha2 = "0.11.0"
 tempfile = "3.23.0"
 glob = "0.3.4"
@@ -151,12 +152,14 @@ insta = { version = "1.48.0", features = ["json", "redactions"] }
 loom = "0.7.2"
 proptest = "1.11.0"
 dashmap = "6.2.1"
-flate2 = "1.1.9"
+# Keep PNG's miniz_oxide 0.8 family; 1.1.10 adds a second compression engine.
+flate2 = "=1.1.9"
 configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
 wasmtime = { version = "48.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+# Keep the tools on the reviewed Wasmtime parser generation (D7/CP6).
 wit-parser = "=0.254.0"
 wat = "=1.254.0"
 
@@ -179,10 +182,13 @@ lto = false
 split-debuginfo = "unpacked"
 # Preserve source-level backtraces without the very large full-debug Windows
 # link that made the first everyday Automexia launch take several minutes.
-debug = 1
+debug = "line-tables-only"
 lto = false
 opt-level = 0
 incremental = true
+
+[profile.dev.package."*"]
+debug = false
 
 # Shell line editors can repaint the active prompt several times for one
 # history-navigation key. Keep the VT parser/reflow hot path representative of
@@ -191,8 +197,18 @@ incremental = true
 opt-level = 2
 
 [profile.test]
-debug = 1
+debug = "line-tables-only"
 # Test and all-target verification artifacts are short-lived. Incremental test
 # graphs multiply storage across check, Clippy, examples, and harness binaries
 # without helping the persistent everyday Automexia application build.
 incremental = false
+
+[profile.test.package."*"]
+debug = false
+
+[profile.debugging]
+inherits = "dev"
+debug = "full"
+
+[profile.debugging.package."*"]
+debug = "full"

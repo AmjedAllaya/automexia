@@ -24,6 +24,8 @@ use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use serde::{Deserialize, Serialize};
 use tempfile::NamedTempFile;
 
+use super::persistence_support::BoundedWriter;
+
 use crate::automexia::private_fs::{
     self as secure_fs, PrivateFsError, PrivateFsErrorCode,
 };
@@ -858,32 +860,6 @@ fn fresh_id(
     }
     Err(LibraryError::new(LibraryErrorCode::TransferRejected))
 }
-struct BoundedWriter {
-    bytes: Vec<u8>,
-}
-
-impl BoundedWriter {
-    fn new() -> Self {
-        Self {
-            bytes: Vec::with_capacity(64 * 1024),
-        }
-    }
-}
-
-impl Write for BoundedWriter {
-    fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
-        if bytes.len() > MAX_CONNECTION_LIBRARY_BYTES.saturating_sub(self.bytes.len()) {
-            return Err(std::io::Error::other("connection library size limit"));
-        }
-        self.bytes.extend_from_slice(bytes);
-        Ok(bytes.len())
-    }
-
-    fn flush(&mut self) -> std::io::Result<()> {
-        Ok(())
-    }
-}
-
 fn serialize_document(
     document: &ConnectionLibraryDocument,
 ) -> Result<Vec<u8>, LibraryError> {
@@ -892,10 +868,15 @@ fn serialize_document(
 }
 
 fn serialize_bounded(value: &impl Serialize) -> Result<Vec<u8>, LibraryError> {
-    let mut writer = BoundedWriter::new();
+    let mut writer = BoundedWriter::new(
+        MAX_CONNECTION_LIBRARY_BYTES,
+        64 * 1024,
+        "connection library size limit",
+    )
+    .map_err(|_| LibraryError::new(LibraryErrorCode::TooLarge))?;
     serde_json::to_writer_pretty(&mut writer, value)
         .map_err(|_| LibraryError::new(LibraryErrorCode::TooLarge))?;
-    Ok(writer.bytes)
+    Ok(writer.into_bytes())
 }
 
 fn read_optional(
@@ -1352,6 +1333,59 @@ fn build_import_preview(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn bounded_serialization_preserves_pretty_json_bytes_and_validation_order() {
+        let encoded = serialize_bounded(&["é", "line\n", "界"]).unwrap();
+        assert_eq!(
+            encoded,
+            "[\n  \"é\",\n  \"line\\n\",\n  \"界\"\n]".as_bytes()
+        );
+        let transfer = LibraryTransferDocument {
+            schema_version: 1,
+            redacted: true,
+            profiles: Vec::new(),
+            recipes: Vec::new(),
+            workspaces: Vec::new(),
+        };
+        assert_eq!(
+            serialize_bounded(&transfer).unwrap(),
+            b"{\n  \"schema_version\": 1,\n  \"redacted\": true,\n  \"profiles\": [],\n  \"recipes\": [],\n  \"workspaces\": []\n}"
+        );
+        let invalid = ConnectionLibraryDocument {
+            schema_version: 0,
+            ..ConnectionLibraryDocument::default()
+        };
+        assert_eq!(
+            serialize_document(&invalid).unwrap_err().code(),
+            LibraryErrorCode::ModelRejected
+        );
+    }
+
+    #[test]
+    fn bounded_serialization_rejects_over_limit_without_changing_error_contract() {
+        let oversized = "x".repeat(MAX_CONNECTION_LIBRARY_BYTES);
+        // JSON quotes count toward the byte ceiling, not just the input string.
+        assert_eq!(
+            serialize_bounded(&oversized).unwrap_err().code(),
+            LibraryErrorCode::TooLarge
+        );
+    }
+
+    #[test]
+    fn bounded_serialization_capacity_cannot_double_past_the_document_ceiling() {
+        // Serde writes a large string, then its closing quote. Ordinary Vec
+        // doubling can reserve more than the limit on that final tiny write.
+        let input = "x".repeat(MAX_CONNECTION_LIBRARY_BYTES / 2 + 1);
+        let encoded = serialize_bounded(&input).unwrap();
+        assert_eq!(encoded.len(), input.len() + 2);
+        assert_eq!(encoded.first(), Some(&b'"'));
+        assert_eq!(encoded.last(), Some(&b'"'));
+        assert!(encoded[1..encoded.len() - 1]
+            .iter()
+            .all(|byte| *byte == b'x'));
+        assert!(encoded.capacity() <= MAX_CONNECTION_LIBRARY_BYTES);
+    }
 
     #[test]
     fn injected_read_only_and_disk_full_fail_before_replacing_primary() {

@@ -26,7 +26,7 @@ __automexia_suggestion_u64() {
 }
 
 __automexia_suggestion_decode_hex() {
-  local hex=$1 pair output= byte chunk
+  local hex=$1 pair output="" byte chunk
   local b0 b1 b2 b3 width offset
   [[ -n $hex && ${#hex} -le 2048 && $((${#hex} % 2)) -eq 0 && $hex != *[!0-9A-F]* ]] || return 1
   while [[ -n $hex ]]; do
@@ -183,8 +183,8 @@ automexia_suggestions_enable() {
     __automexia_suggestion_reason=preview-disabled
     return 1
   fi
-  if ! : >&"$AUTOMEXIA_SUGGESTION_REQUEST_FD" 2>/dev/null ||
-     ! : <&"$AUTOMEXIA_SUGGESTION_RESPONSE_FD" 2>/dev/null; then
+  if ! { : >&"$AUTOMEXIA_SUGGESTION_REQUEST_FD"; } 2>/dev/null ||
+     ! { : <&"$AUTOMEXIA_SUGGESTION_RESPONSE_FD"; } 2>/dev/null; then
     __automexia_suggestion_reason=helper-unavailable
     return 1
   fi
@@ -193,12 +193,12 @@ automexia_suggestions_enable() {
   [[ -n $chord ]] || return 0
   while IFS= read -r existing; do
     if [[ $existing == *"\"$chord\""* ]]; then
-      __automexia_suggestion_reason=binding-collision
+      __automexia_suggestion_reason="binding-collision"
       return 1
     fi
   done < <(bind -P; bind -X; bind -S)
   bind -x "\"$chord\":__automexia_suggestions_request" || {
-    __automexia_suggestion_reason=binding-failed
+    __automexia_suggestion_reason="binding-failed"
     return 1
   }
   __automexia_suggestion_chord=$chord

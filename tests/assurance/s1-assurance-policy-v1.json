@@ -46,6 +46,7 @@
     {"id": "windows-rdp-cpu", "platform": "windows", "architecture": "x86_64", "display_server": "rdp", "renderer_backend": "cpu", "gpu_vendor": "software"},
     {"id": "linux-x11", "platform": "linux", "architecture": "x86_64", "display_server": "x11", "renderer_backend": "wgpu", "gpu_vendor": "intel"},
     {"id": "linux-wayland", "platform": "linux", "architecture": "x86_64", "display_server": "wayland", "renderer_backend": "wgpu", "gpu_vendor": "amd"},
+    {"id": "linux-nvidia-wgpu", "platform": "linux", "architecture": "x86_64", "display_server": "x11", "renderer_backend": "wgpu", "gpu_vendor": "nvidia"},
     {"id": "macos-intel", "platform": "macos", "architecture": "x86_64", "display_server": "quartz", "renderer_backend": "metal", "gpu_vendor": "intel"},
     {"id": "macos-apple-silicon", "platform": "macos", "architecture": "aarch64", "display_server": "quartz", "renderer_backend": "metal", "gpu_vendor": "apple"}
   ],
@@ -56,7 +57,7 @@
       "environment_id": "windows-intel-wgpu",
       "tool": "native-gui",
       "artifact_kind": "native-state-bundle",
-      "coverage": {"scenarios": ["startup-prompt", "platform-shell-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer"]}
+      "coverage": {"scenarios": ["startup-prompt", "platform-shell-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer", "compact-window-chrome", "command-palette-scroll", "connection-hub-direct-entry", "command-result-datetime", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review"]}
     },
     {
       "id": "native-windows-cpu-fallback",
@@ -64,7 +65,7 @@
       "environment_id": "windows-rdp-cpu",
       "tool": "native-gui",
       "artifact_kind": "native-state-bundle",
-      "coverage": {"scenarios": ["startup-prompt", "platform-shell-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer"]}
+      "coverage": {"scenarios": ["startup-prompt", "platform-shell-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer", "compact-window-chrome", "command-palette-scroll", "connection-hub-direct-entry", "command-result-datetime", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review"]}
     },
     {
       "id": "native-linux-x11",
@@ -72,7 +73,7 @@
       "environment_id": "linux-x11",
       "tool": "native-gui",
       "artifact_kind": "native-state-bundle",
-      "coverage": {"scenarios": ["startup-prompt", "bash-zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer"]}
+      "coverage": {"scenarios": ["startup-prompt", "bash-zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer", "compact-window-chrome", "command-palette-scroll", "connection-hub-direct-entry", "command-result-datetime", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review"]}
     },
     {
       "id": "native-linux-wayland",
@@ -80,7 +81,7 @@
       "environment_id": "linux-wayland",
       "tool": "native-gui",
       "artifact_kind": "native-state-bundle",
-      "coverage": {"scenarios": ["startup-prompt", "bash-zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer"]}
+      "coverage": {"scenarios": ["startup-prompt", "bash-zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer", "compact-window-chrome", "command-palette-scroll", "connection-hub-direct-entry", "command-result-datetime", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review"]}
     },
     {
       "id": "native-macos-intel",
@@ -88,7 +89,7 @@
       "environment_id": "macos-intel",
       "tool": "native-gui",
       "artifact_kind": "native-state-bundle",
-      "coverage": {"scenarios": ["startup-prompt", "zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer"]}
+      "coverage": {"scenarios": ["startup-prompt", "zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer", "compact-window-chrome", "command-palette-scroll", "connection-hub-direct-entry", "command-result-datetime", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review"]}
     },
     {
       "id": "native-macos-apple-silicon",
@@ -96,7 +97,7 @@
       "environment_id": "macos-apple-silicon",
       "tool": "native-gui",
       "artifact_kind": "native-state-bundle",
-      "coverage": {"scenarios": ["startup-prompt", "zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer"]}
+      "coverage": {"scenarios": ["startup-prompt", "zsh-editing", "multiple-panes-tabs", "unicode-path", "output-burst", "history-navigation", "minimize-restore", "scale-change", "tiny-viewport", "large-viewport", "final-grid-invariants", "route-recovery", "command-shape-matrix", "command-result-height-boundaries", "command-result-viewport-overflow", "modal-interaction-matrix", "clipboard-ime-pointer", "compact-window-chrome", "command-palette-scroll", "connection-hub-direct-entry", "command-result-datetime", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review"]}
     },
     {
       "id": "resource-windows-intel",
@@ -104,7 +105,7 @@
       "environment_id": "windows-intel-wgpu",
       "tool": "native-resource",
       "artifact_kind": "resource-report",
-      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm"]}
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
     },
     {
       "id": "resource-windows-amd",
@@ -112,7 +113,7 @@
       "environment_id": "windows-amd-wgpu",
       "tool": "native-resource",
       "artifact_kind": "resource-report",
-      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm"]}
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
     },
     {
       "id": "resource-windows-nvidia",
@@ -120,7 +121,7 @@
       "environment_id": "windows-nvidia-wgpu",
       "tool": "native-resource",
       "artifact_kind": "resource-report",
-      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm"]}
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
     },
     {
       "id": "resource-windows-rdp-software",
@@ -128,7 +129,7 @@
       "environment_id": "windows-rdp-cpu",
       "tool": "native-resource",
       "artifact_kind": "resource-report",
-      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm"]}
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
     },
     {
       "id": "resource-linux-x11",
@@ -136,7 +137,7 @@
       "environment_id": "linux-x11",
       "tool": "native-resource",
       "artifact_kind": "resource-report",
-      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm"]}
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
     },
     {
       "id": "resource-linux-wayland",
@@ -144,7 +145,31 @@
       "environment_id": "linux-wayland",
       "tool": "native-resource",
       "artifact_kind": "resource-report",
-      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm"]}
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
+    },
+    {
+      "id": "resource-linux-nvidia",
+      "domain": "resource",
+      "environment_id": "linux-nvidia-wgpu",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
+    },
+    {
+      "id": "resource-macos-intel",
+      "domain": "resource",
+      "environment_id": "macos-intel",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
+    },
+    {
+      "id": "resource-macos-apple-silicon",
+      "domain": "resource",
+      "environment_id": "macos-apple-silicon",
+      "tool": "native-resource",
+      "artifact_kind": "resource-report",
+      "coverage": {"scenarios": ["tab-split-clone-close", "resize-storm", "process-tree-cleanup", "handle-thread-stability", "private-working-set-stability", "pty-route-snapshot-gpu-release", "scoped-search-switching", "connection-hub-open-close", "quick-actions-cancel", "image-preview-lifecycle", "long-output-storm", "command-palette-scroll-storm", "connection-hub-direct-entry", "user-preference-restart", "command-boundary-navigation", "connection-hub-workspaces-replacement", "connection-hub-providers-replacement"]}
     },
     {
       "id": "appverifier-basics",
@@ -176,7 +201,7 @@
       "environment_id": "windows-intel-wgpu",
       "tool": "visual-diff",
       "artifact_kind": "visual-matrix-manifest",
-      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 1600}
+      "coverage": {"themes": ["dark", "light", "high-contrast"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0", "4.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "connection-hub-workspaces-catalog", "connection-hub-workspace-restore", "connection-hub-workspace-broadcast", "connection-hub-providers-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane", "compact-top-shelf", "diagnostic-assistant", "tab-appearance-picker", "command-palette-overflow", "connection-hub-setup", "connection-hub-direct-entry", "command-result-datetime", "scrollbar", "saved-preferences-restart"], "cross_product_complete": true, "capture_count": 9504, "motion_profiles": ["enabled", "reduced"]}
     },
     {
       "id": "visual-linux-x11",
@@ -184,7 +209,7 @@
       "environment_id": "linux-x11",
       "tool": "visual-diff",
       "artifact_kind": "visual-matrix-manifest",
-      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 1600}
+      "coverage": {"themes": ["dark", "light", "high-contrast"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0", "4.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "connection-hub-workspaces-catalog", "connection-hub-workspace-restore", "connection-hub-workspace-broadcast", "connection-hub-providers-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane", "compact-top-shelf", "diagnostic-assistant", "tab-appearance-picker", "command-palette-overflow", "connection-hub-setup", "connection-hub-direct-entry", "command-result-datetime", "scrollbar", "saved-preferences-restart"], "cross_product_complete": true, "capture_count": 9504, "motion_profiles": ["enabled", "reduced"]}
     },
     {
       "id": "visual-linux-wayland",
@@ -192,7 +217,15 @@
       "environment_id": "linux-wayland",
       "tool": "visual-diff",
       "artifact_kind": "visual-matrix-manifest",
-      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 1600}
+      "coverage": {"themes": ["dark", "light", "high-contrast"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0", "4.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "connection-hub-workspaces-catalog", "connection-hub-workspace-restore", "connection-hub-workspace-broadcast", "connection-hub-providers-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane", "compact-top-shelf", "diagnostic-assistant", "tab-appearance-picker", "command-palette-overflow", "connection-hub-setup", "connection-hub-direct-entry", "command-result-datetime", "scrollbar", "saved-preferences-restart"], "cross_product_complete": true, "capture_count": 9504, "motion_profiles": ["enabled", "reduced"]}
+    },
+    {
+      "id": "visual-macos-intel",
+      "domain": "visual",
+      "environment_id": "macos-intel",
+      "tool": "visual-diff",
+      "artifact_kind": "visual-matrix-manifest",
+      "coverage": {"themes": ["dark", "light", "high-contrast"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0", "4.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "connection-hub-workspaces-catalog", "connection-hub-workspace-restore", "connection-hub-workspace-broadcast", "connection-hub-providers-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane", "compact-top-shelf", "diagnostic-assistant", "tab-appearance-picker", "command-palette-overflow", "connection-hub-setup", "connection-hub-direct-entry", "command-result-datetime", "scrollbar", "saved-preferences-restart"], "cross_product_complete": true, "capture_count": 9504, "motion_profiles": ["enabled", "reduced"]}
     },
     {
       "id": "visual-macos",
@@ -200,7 +233,7 @@
       "environment_id": "macos-apple-silicon",
       "tool": "visual-diff",
       "artifact_kind": "visual-matrix-manifest",
-      "coverage": {"themes": ["dark", "light"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane"], "cross_product_complete": true, "capture_count": 1600}
+      "coverage": {"themes": ["dark", "light", "high-contrast"], "scales": ["1.0", "1.25", "1.5", "2.0", "3.0", "4.0"], "viewports": ["300x200", "compact", "normal", "portrait", "ultrawide", "split", "4k", "8k"], "surfaces": ["startup-welcome", "tabs-and-panes", "window-controls", "command-palette", "scoped-search-local", "scoped-search-global", "connection-hub-catalog", "connection-hub-review", "connection-hub-workspaces-catalog", "connection-hub-workspace-restore", "connection-hub-workspace-broadcast", "connection-hub-providers-review", "quick-actions", "compatibility-inspector", "confirmation-dialogs", "file-listing", "command-result-short", "command-result-multiline", "command-result-viewport-overflow", "image-preview", "context-identity", "path", "footer", "smallest-pane", "compact-top-shelf", "diagnostic-assistant", "tab-appearance-picker", "command-palette-overflow", "connection-hub-setup", "connection-hub-direct-entry", "command-result-datetime", "scrollbar", "saved-preferences-restart"], "cross_product_complete": true, "capture_count": 9504, "motion_profiles": ["enabled", "reduced"]}
     },
     {
       "id": "accessibility-windows-narrator",
@@ -208,7 +241,7 @@
       "environment_id": "windows-intel-wgpu",
       "tool": "narrator",
       "artifact_kind": "accessibility-redacted-checklist",
-      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast"]}
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast", "compact-window-chrome", "diagnostic-assistant-actions", "compatibility-inspector-redaction", "tab-appearance-picker", "quit-confirmation", "command-palette-scroll-position", "image-preview-open-close", "connection-hub-direct-entry", "command-result-datetime", "saved-preferences-restart", "command-boundary-navigation", "scrollbar-position"]}
     },
     {
       "id": "accessibility-windows-nvda",
@@ -216,7 +249,7 @@
       "environment_id": "windows-intel-wgpu",
       "tool": "nvda",
       "artifact_kind": "accessibility-redacted-checklist",
-      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast"]}
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast", "compact-window-chrome", "diagnostic-assistant-actions", "compatibility-inspector-redaction", "tab-appearance-picker", "quit-confirmation", "command-palette-scroll-position", "image-preview-open-close", "connection-hub-direct-entry", "command-result-datetime", "saved-preferences-restart", "command-boundary-navigation", "scrollbar-position"]}
     },
     {
       "id": "accessibility-macos-voiceover",
@@ -224,7 +257,7 @@
       "environment_id": "macos-apple-silicon",
       "tool": "voiceover",
       "artifact_kind": "accessibility-redacted-checklist",
-      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast"]}
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast", "compact-window-chrome", "diagnostic-assistant-actions", "compatibility-inspector-redaction", "tab-appearance-picker", "quit-confirmation", "command-palette-scroll-position", "image-preview-open-close", "connection-hub-direct-entry", "command-result-datetime", "saved-preferences-restart", "command-boundary-navigation", "scrollbar-position"]}
     },
     {
       "id": "accessibility-linux-x11-orca",
@@ -232,7 +265,7 @@
       "environment_id": "linux-x11",
       "tool": "orca-x11",
       "artifact_kind": "accessibility-redacted-checklist",
-      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast"]}
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast", "compact-window-chrome", "diagnostic-assistant-actions", "compatibility-inspector-redaction", "tab-appearance-picker", "quit-confirmation", "command-palette-scroll-position", "image-preview-open-close", "connection-hub-direct-entry", "command-result-datetime", "saved-preferences-restart", "command-boundary-navigation", "scrollbar-position"]}
     },
     {
       "id": "accessibility-linux-wayland-orca",
@@ -240,7 +273,7 @@
       "environment_id": "linux-wayland",
       "tool": "orca-wayland",
       "artifact_kind": "accessibility-redacted-checklist",
-      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast"]}
+      "coverage": {"tasks": ["launch", "identify-tabs-active-pane", "open-filter-activate-dismiss-palette", "split-select-close", "keyboard-only", "focus-order-restoration", "200-percent-scale", "known-limitations-confirmed", "switch-scoped-search", "connection-hub-navigation", "connection-hub-workspaces-review", "connection-hub-providers-review", "quick-actions-navigation", "modal-stack-focus", "window-controls", "command-result-announcement", "reduced-motion-high-contrast", "compact-window-chrome", "diagnostic-assistant-actions", "compatibility-inspector-redaction", "tab-appearance-picker", "quit-confirmation", "command-palette-scroll-position", "image-preview-open-close", "connection-hub-direct-entry", "command-result-datetime", "saved-preferences-restart", "command-boundary-navigation", "scrollbar-position"]}
     }
   ]
 }

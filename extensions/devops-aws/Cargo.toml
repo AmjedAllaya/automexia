@@ -16,3 +16,10 @@ automexia-extension-api = { workspace = true }
 configparser = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+criterion = { workspace = true }
+
+[[bench]]
+name = "provider"
+harness = false

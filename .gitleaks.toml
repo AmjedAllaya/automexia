@@ -1,0 +1,16 @@
+title = "Automexia repository secret-scanning policy"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "A single harmless canary proves allowlist matching is narrow."
+paths = [
+  '''(?i)(^|/)__pycache__/''',
+  '''(^|[\\/])\.automexia-tools([\\/]|$)''',
+  '''(^|[\\/])\.automexia-private([\\/]|$)''',
+  '''(^|[\\/])target([\\/]|$)''',
+  '''(^|[\\/])artifacts([\\/]|$)''',
+  '''(^|[\\/])\.git([\\/]|$)''',
+  '''tests/fixtures/free-assurance/gitleaks/allowed-example\.txt''',
+]

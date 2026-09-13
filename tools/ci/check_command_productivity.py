@@ -218,6 +218,9 @@ D7_ACTION_PACK_SOURCE_FILES = {
     "apps/automexia-terminal/src/automexia/ecosystem.rs",
 }
 PURE_ACTION_FILES = CP2_PURE_ACTION_FILES | CP4_PURE_ACTION_FILES
+# ADR 0054 shares existing catalog identity with preference validation. This is
+# not Quick Action activation wiring; enforce its capability-free boundary.
+SHORTCUT_IDENTITY_FILE = "apps/automexia-terminal/src/automexia/shortcut_preferences.rs"
 CP2_PERSISTENCE_FILES = {
     "apps/automexia-terminal/src/automexia/quick_actions/cli.rs",
     "apps/automexia-terminal/src/automexia/quick_actions/mod.rs",
@@ -783,6 +786,50 @@ def source_files(root: Path, relative: str) -> list[Path]:
     return sorted(files)
 
 
+def renderer_benchmark_source_root(root: Path) -> Path:
+    """Scan the exact non-runtime harness; a missing src is not a general exemption."""
+    member = root / "tools/renderer-benchmarks"
+    manifest = member / "Cargo.toml"
+    if any(path.is_symlink() for path in (root / "tools", member, manifest)):
+        raise CommandProductivityError("benchmark-only source must not use a symbolic link")
+    try:
+        if not manifest.is_file():
+            raise CommandProductivityError("benchmark-only manifest must be a regular file")
+        document = tomllib.loads(bounded_read_text(
+            manifest, POLICY_DOCUMENT_MAX_BYTES, "benchmark-only manifest"
+        ))
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError, CommandProductivityError):
+        raise CommandProductivityError(
+            "benchmark-only manifest is missing, malformed, linked or outside policy bounds"
+        ) from None
+    package = document.get("package")
+    benchmarks = document.get("bench")
+    valid_benchmark = (
+        isinstance(benchmarks, list) and len(benchmarks) == 1
+        and isinstance(benchmarks[0], dict)
+        and set(benchmarks[0]) == {"name", "harness"}
+        and benchmarks[0]["name"] == "text_fit"
+        and benchmarks[0]["harness"] is False
+    )
+    disabled = ("autolib", "autobins", "autoexamples", "autotests", "autobenches", "build")
+    if (
+        not isinstance(package, dict)
+        or package.get("name") != "automexia-renderer-benchmarks"
+        or package.get("publish") is not False
+        or any(package.get(key) is not False for key in disabled)
+        or any(key in document for key in ("lib", "bin", "example", "test"))
+        or not valid_benchmark
+        or any(path.exists() or path.is_symlink() for path in (member / "src", member / "build.rs"))
+    ):
+        raise CommandProductivityError("renderer package no longer has the reviewed benchmark-only contract")
+    source = member / "benches/text_fit.rs"
+    if source.is_symlink() or (member / "benches").is_symlink():
+        raise CommandProductivityError("benchmark-only source must not use a symbolic link")
+    if not source.is_file():
+        raise CommandProductivityError("benchmark-only text_fit source is missing")
+    return member / "benches"
+
+
 def workspace_runtime_files(root: Path) -> list[Path]:
     manifest = root / "Cargo.toml"
     with manifest.open("rb") as source:
@@ -805,14 +852,16 @@ def workspace_runtime_files(root: Path) -> list[Path]:
         if member == "tools/xtask":
             continue
         member_root = root / member
-        source_root = member_root / "src"
+        source_root = (renderer_benchmark_source_root(root)
+                       if member == "tools/renderer-benchmarks" else member_root / "src")
+        source_relative = source_root.relative_to(root).as_posix()
         if not source_root.is_dir():
             raise CommandProductivityError(
-                f"workspace runtime source directory is missing: {member}/src"
+                f"workspace runtime source directory is missing: {source_relative}"
             )
         if member_root.is_symlink() or source_root.is_symlink():
             raise CommandProductivityError(
-                f"workspace runtime source must not be a symbolic link: {member}/src"
+                f"workspace runtime source must not be a symbolic link: {source_relative}"
             )
         for path in source_root.rglob("*"):
             entry_count += 1
@@ -830,6 +879,19 @@ def workspace_runtime_files(root: Path) -> list[Path]:
         if build_script.is_file():
             files.append(build_script)
     return sorted(files)
+
+
+def validate_shortcut_identity_source(root: Path, runtime_files: list[Path]) -> set[str]:
+    present = {path.relative_to(root).as_posix() for path in runtime_files}
+    if SHORTCUT_IDENTITY_FILE not in present:
+        return set()
+    content = re.sub(r"//[^\n]*", "", read_lower(root / SHORTCUT_IDENTITY_FILE))
+    marker = next((value for value in sorted(CP2_PURE_FORBIDDEN_MARKERS) if value in content), None)
+    if marker is not None:
+        raise CommandProductivityError(f"shortcut identity crosses its capability-free boundary: {marker!r}")
+    if "pub enum paletteaction" not in content or "pub fn validate_records" not in content:
+        raise CommandProductivityError("shortcut identity lost its reviewed enum/validation owner")
+    return {SHORTCUT_IDENTITY_FILE}
 
 
 def validate_pure_action_sources(root: Path, runtime_files: list[Path]) -> set[str]:
@@ -991,6 +1053,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     persistence_files = validate_persistence_sources(root, runtime_files)
     allowed_runtime_files = (
         pure_action_files
+        | validate_shortcut_identity_source(root, runtime_files)
         | persistence_files
         | CP2_PERSISTENCE_WIRING_FILES
         | CP2_ACTIVATION_WIRING_FILES
@@ -1093,10 +1156,9 @@ def validate_documents(root: Path = ROOT) -> dict[str, int]:
     require_text(
         root / "docs/STABILIZATION-ROADMAP.md",
         {
-            "### CP0 implementation ledger",
-            "CP0 result: satisfied",
-            "14 hard ceilings",
-            "11-case hostile corpus",
+            "## Command productivity delivery track",
+            "[Command Productivity](COMMAND-PRODUCTIVITY.md)",
+            "current implemented contract and release limitations",
         },
     )
     return {"documents": 5}
@@ -1112,7 +1174,7 @@ def validate_wiring(root: Path = ROOT) -> dict[str, int]:
             'run_python("tools/ci/check_command_productivity.py")?',
         },
         ".github/workflows/ci.yml": {
-            "python tools/ci/test_command_productivity.py",
+            "python3 -m unittest discover -s tools/ci -p 'test_*.py'",
         },
         "tools/ci/test_command_productivity.py": {
             "cp0-hostile-mutations-v1.json",

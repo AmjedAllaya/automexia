@@ -1,0 +1,11 @@
+# Reviewed historical false positives only: commit:path:rule:line.
+# Never add path-, rule-, value- or whole-commit exclusions here.
+# Ordinary assurance prose, duplicated by historical integration:
+74c6f527408151b455545b218cbe828ed089556e:AGENTS.md:generic-api-key:334
+893faf83e0d315fe64584117f7c8fdbbc39d5479:AGENTS.md:generic-api-key:334
+# Literal non-credential Kubernetes fixture field:
+5e17ff095cf7066a2b5caad21e0defeadefb8c33:extensions/devops-kubernetes/tests/contracts.rs:generic-api-key:38
+265c1ddf76fe6c8c205b48f5bf75542a89ceed1f:extensions/devops-kubernetes/tests/contracts.rs:generic-api-key:38
+# Inherited upstream Docusaurus key explicitly documented as public search data:
+0a819fe695e0ad041a547ef9271d4739987a2081:docs/docusaurus.config.js:generic-api-key:196
+93ebb9b5376e7cea91583e05d35acfedba2bf0e8:docs/docusaurus.config.js:generic-api-key:196

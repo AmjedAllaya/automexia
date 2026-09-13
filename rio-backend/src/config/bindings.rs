@@ -20,8 +20,18 @@ pub struct KeyBinding {
 
 pub type KeyBindings = Vec<KeyBinding>;
 
+/// Validated application-owned UI overrides, never deserialized from config.toml.
+#[derive(Debug, PartialEq, Eq, Clone, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct UiShortcut {
+    pub action: String,
+    pub trigger: automexia_keybindings::Trigger,
+}
+
 #[derive(Default, Debug, PartialEq, Clone, Serialize, Deserialize)]
 pub struct Bindings {
+    #[serde(skip)]
+    pub ui_shortcuts: Vec<UiShortcut>,
     #[serde(default)]
     pub keys: KeyBindings,
 
@@ -60,6 +70,14 @@ mod tests {
     struct Root {
         #[serde(default = "Bindings::default")]
         bindings: Bindings,
+    }
+
+    #[test]
+    fn ui_shortcut_state_cannot_be_injected_through_config_deserialization() {
+        let root: Root =
+            toml::from_str("[bindings]\nui_shortcuts = 'not a valid overlay'\n").unwrap();
+        assert!(root.bindings.ui_shortcuts.is_empty());
+        assert!(!toml::to_string(&root).unwrap().contains("ui_shortcuts"));
     }
 
     #[test]

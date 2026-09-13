@@ -14,13 +14,34 @@ import check_session_launch_d0 as policy
 
 
 class SessionLaunchD0ContractTests(unittest.TestCase):
+    def test_nonblocking_worker_retirement_contract_cannot_regress(self) -> None:
+        original = policy.bounded_text
+        mutations = [
+            ("workers.rs", "reaper.jobs.try_send", "reaper.jobs.send"),
+            ("workers.rs", "const MAX_WORKERS: usize = 256", "const MAX_WORKERS: usize = 999999"),
+            ("tests.rs", "retirement_and_shutdown_deadline_do_not_wait_for_native_tls_destructors", "removed_destructor_case"),
+            ("mod.rs", "drop(self._io_thread.take());", "drop(self._io_thread.take()); worker.join_timeout(timeout);"),
+        ]
+        for filename, before, after in mutations:
+            with self.subTest(filename=filename, mutation=before):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    return source.replace(before, after) if path.name == filename else source
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaises(policy.SessionLaunchD0Error):
+                        policy.validate_sources(self.contract)
+
     @classmethod
     def setUpClass(cls) -> None:
+        # Load the canonical contract once; every mutation starts from an isolated
+        # deep copy so cases cannot weaken one another.
         cls.contract = json.loads(policy.bounded_text(policy.CONTRACT))
 
     def validate_mutation(self, mutate) -> None:
         document = copy.deepcopy(self.contract)
         mutate(document)
+        # Re-enter the bounded file parser instead of validating an in-memory
+        # object, preserving decoding, duplicate-key, and schema coverage.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "contract.json"
             path.write_text(json.dumps(document), encoding="utf-8")
@@ -31,11 +52,11 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "schema": 6,
+                "schema": 7,
                 "scenarios": 23,
                 "boundaries": 9,
                 "sources": 17,
-                "documents": 11,
+                "documents": 6,
                 "production_enabled": 0,
                 "native_platforms": 3,
             },
@@ -125,6 +146,12 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
                 "source_binding", "manifest-claims-only"
             ),
             lambda d: d["native_release_evidence"]["security_checks"].pop(),
+            lambda d: d["managed_session"].__setitem__(
+                "review_request_ids", "wrapping"
+            ),
+            lambda d: d["managed_session"].__setitem__(
+                "tunnel_receipts", "empty"
+            ),
             lambda d: d["native_release_evidence"].pop("controlled_binding"),
             lambda d: d["native_release_evidence"].__setitem__(
                 "controlled_workflow", "unprotected.yml"
@@ -241,12 +268,76 @@ class SessionLaunchD0ContractTests(unittest.TestCase):
         )
         validate(
             lambda path, source: source.replace(
+                "fetch_update(Ordering::AcqRel, Ordering::Acquire",
+                "fetch_add(Ordering::Relaxed",
+            )
+            if path.name == "external_tool_runner.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "managed-tunnel-{}-{index}", "removed-tunnel-ownership"
+            )
+            if path.name == "external_tool_runner.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "application_runner_records_maximum_opaque_tunnel_ownership_without_endpoint_data",
+                "removed-maximum-tunnel-receipt-regression",
+            )
+            if path.name == "launch_broker.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "OpenSSH-10.5-2026-08-11", "removed-upstream-baseline"
+            )
+            if path.name == "native_openssh_evidence.py"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "secrets.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
+                "vars.AUTOMEXIA_QA_NATIVE_OPENSSH_EVIDENCE",
+            )
+            if path.name == "f5-openssh-assurance.yml"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
                 "pub enum ManagedPtyShutdown",
                 "removed ManagedPtyShutdown",
             )
             if path.name == "lib.rs"
             and path.parent.name == "src"
             and path.parent.parent.name == "teletypewriter"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "error.raw_os_error() == Some(libc::EIO)",
+                "error.kind() == std::io::ErrorKind::Other",
+            )
+            if path.name == "lib.rs"
+            and path.parent.name == "src"
+            and path.parent.parent.name == "teletypewriter"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "linux_pty_eio_is_classified_as_end_of_stream",
+                "removed_linux_pty_eio_regression",
+            )
+            if path.name == "pty_lifecycle.rs"
+            else source
+        )
+        validate(
+            lambda path, source: source.replace(
+                "teletypewriter::is_pty_eof_error(&err)",
+                "false",
+            )
+            if path.name == "mod.rs" and path.parent.name == "performer"
             else source
         )
         validate(

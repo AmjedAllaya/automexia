@@ -5,11 +5,14 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from pathlib import Path
 import re
 import sys
 import tomllib
 from typing import Any
+
+from markdown_anchors import markdown_anchors
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -33,10 +36,35 @@ REQUIRED_SURFACES = {
     "shell-integration",
     "tools/xtask",
 }
+EXCLUDED_TREE_PARTS = {".git", ".automexia-private", ".automexia-tools", "target"}
 
 
 class AssuranceError(ValueError):
     """The assurance matrix violates its contract."""
+
+
+def benchmark_targets(root: Path) -> set[str]:
+    """Return product benchmark owners without scanning generated/private copies."""
+    def unreadable_source(error: OSError) -> None:
+        raise AssuranceError("benchmark inventory cannot read a source directory") from error
+
+    targets: set[str] = set()
+    for directory, children, filenames in os.walk(root, topdown=True, followlinks=False, onerror=unreadable_source):
+        base = Path(directory)
+        # Prune before descent: filtering glob results still scans every cached
+        # build and tool installation, and glob can suppress source-read errors.
+        children[:] = [
+            name for name in children
+            if name not in EXCLUDED_TREE_PARTS
+            and not (base / name).is_symlink()
+            and not getattr(base / name, "is_junction", lambda: False)()
+        ]
+        if base.name == "benches":
+            targets.update(
+                (base / name).relative_to(root).as_posix()
+                for name in filenames if name.endswith(".rs")
+            )
+    return targets
 
 
 def workspace_members(root: Path) -> set[str]:
@@ -53,22 +81,6 @@ def evidence_path(root: Path, reference: str) -> Path:
     except ValueError as error:
         raise AssuranceError(f"evidence escapes the repository: {reference}") from error
     return path
-
-
-def markdown_anchors(path: Path) -> set[str]:
-    anchors: set[str] = set()
-    occurrences: dict[str, int] = {}
-    for line in path.read_text(encoding="utf-8").splitlines():
-        match = re.match(r"^#{1,6}\s+(.+?)\s*#*\s*$", line)
-        if not match:
-            continue
-        heading = re.sub(r"<[^>]+>", "", match.group(1)).strip().lower()
-        slug = re.sub(r"[^\w\- ]", "", heading, flags=re.UNICODE)
-        slug = re.sub(r"[\s-]+", "-", slug).strip("-")
-        duplicate = occurrences.get(slug, 0)
-        occurrences[slug] = duplicate + 1
-        anchors.add(slug if duplicate == 0 else f"{slug}-{duplicate}")
-    return anchors
 
 
 def validate_fragment(path: Path, reference: str) -> None:
@@ -231,12 +243,8 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
     if missing_surfaces:
         raise AssuranceError(f"repository surfaces missing from feature assurance: {sorted(missing_surfaces)}")
 
-    benchmark_targets = {
-        path.relative_to(root).as_posix()
-        for path in root.glob("**/benches/*.rs")
-        if "target" not in path.parts
-    }
-    missing_benchmarks = benchmark_targets - performance_evidence
+    discovered_benchmarks = benchmark_targets(root)
+    missing_benchmarks = discovered_benchmarks - performance_evidence
     if missing_benchmarks:
         raise AssuranceError(f"benchmark targets missing from performance evidence: {sorted(missing_benchmarks)}")
     fuzz_targets = {
@@ -251,7 +259,7 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
         "features": len(features),
         "components": len(claimed_components),
         "evidence": evidence_count,
-        "benchmarks": len(benchmark_targets),
+        "benchmarks": len(discovered_benchmarks),
         "fuzz_targets": len(fuzz_targets),
         "documentation": documentation_count,
     }

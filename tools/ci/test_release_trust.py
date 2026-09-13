@@ -27,8 +27,8 @@ VALID_NAMES = (
     "automexia-terminal-0.4.0-x86_64-pc-windows-msvc.zip",
     "automexia-terminal-0.4.0-aarch64-pc-windows-msvc.zip",
     "automexia-terminal-0.4.0-universal.dmg",
-    "automexia-terminal_0.4.0_amd64.deb",
-    "automexia-terminal_0.4.0_arm64.deb",
+    "automexia-terminal_0.4.0-1_amd64.deb",
+    "automexia-terminal_0.4.0-1_arm64.deb",
     "automexia-terminal-0.4.0-1.x86_64.rpm",
     "automexia-terminal-0.4.0-1.aarch64.rpm",
     "automexia-terminal-0.4.0-x86_64-unknown-linux-gnu.tar.gz",
@@ -38,6 +38,8 @@ VALID_NAMES = (
 
 class ReleaseTrustTests(unittest.TestCase):
     def setUp(self) -> None:
+        # Use small, distinct artifact bytes: inventory digests can then prove
+        # package identity without expensive release-sized fixture archives.
         self.temporary = tempfile.TemporaryDirectory()
         self.root = Path(self.temporary.name)
         self.packages = self.root / "packages"
@@ -58,6 +60,8 @@ class ReleaseTrustTests(unittest.TestCase):
         (final / "SHA256SUMS").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     def prepare_final(self, name: str = "final") -> Path:
+        # Assemble the same final-directory boundary consumed by publication;
+        # validation must not rely on intermediate build directories.
         final = self.root / name
         final.mkdir()
         for source in self.packages.iterdir():
@@ -69,6 +73,8 @@ class ReleaseTrustTests(unittest.TestCase):
             final / "release-trust-benchmark.json",
             self.policy,
         )
+        # Both SBOM formats describe the same minimum viable component graph so
+        # semantic validation, rather than file presence, is the oracle.
         components = [
             ("automexia-terminal", "0.4.0"),
             *[(f"dependency-{index}", f"1.0.{index}") for index in range(1, 10)],
@@ -306,6 +312,32 @@ class ReleaseTrustTests(unittest.TestCase):
                 self.write_checksums(final)
                 with self.assertRaisesRegex(TRUST.ReleaseTrustError, message):
                     TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+    def test_syft_versionless_files_and_directory_root_preserve_package_requirements(self) -> None:
+        final = self.prepare_final()
+        spdx_path = final / "automexia-terminal.spdx.json"
+        cdx_path = final / "automexia-terminal.cdx.json"
+        spdx = json.loads(spdx_path.read_text(encoding="utf-8"))
+        cdx = json.loads(cdx_path.read_text(encoding="utf-8"))
+        spdx["packages"].append({"name": "sbom-input", "SPDXID": "SPDXRef-DocumentRoot-fixture",
+                                  "primaryPackagePurpose": "FILE", "filesAnalyzed": False})
+        file = {"type": "file", "name": "Cargo.lock", "bom-ref": "file-lock",
+                "hashes": [{"alg": "SHA-1", "content": "a" * 40}, {"alg": "SHA-256", "content": "b" * 64}]}
+        cdx["components"].append(file)
+        spdx_path.write_text(json.dumps(spdx), encoding="utf-8")
+        cdx_path.write_text(json.dumps(cdx), encoding="utf-8")
+        self.write_checksums(final)
+        TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+        for bad_file in (dict(file, hashes=[]), dict(file, hashes=file["hashes"][:1]),
+                         dict(file, hashes=[{"alg": "SHA-256", "content": "invalid"}]),
+                         dict(file, **{"bom-ref": ""})):
+            cdx["components"][-1] = bad_file
+            with self.assertRaisesRegex(TRUST.ReleaseTrustError, "file identity"):
+                TRUST.validate_sboms(spdx, cdx, "0.4.0", self.policy)
+        # File counts cannot replace the required cross-format dependency graph.
+        cdx["components"] = [cdx["components"][0], *[file] * 20]
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "must agree"):
+            TRUST.validate_sboms(spdx, cdx, "0.4.0", self.policy)
 
     def test_sboms_must_identify_the_exact_product_version(self) -> None:
         final = self.prepare_final("wrong-sbom-product-version")

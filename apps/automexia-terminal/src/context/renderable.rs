@@ -114,6 +114,7 @@ pub struct RenderableContent {
     /// Explicit shell identity used by independent session cloning.
     pub shell_user: Option<String>,
     pub shell_path: Option<String>,
+    pub shell_environment: std::collections::BTreeMap<String, String>,
     /// Strictly equivalent source metadata retained only until a cloned PTY
     /// publishes its own integration marker.
     pub seeded_session_metadata: bool,
@@ -183,6 +184,7 @@ impl RenderableContent {
             shell_name: None,
             shell_user: None,
             shell_path: None,
+            shell_environment: Default::default(),
             seeded_session_metadata: false,
             shell_integration: false,
             shell_prompt_active: false,

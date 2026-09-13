@@ -21,6 +21,8 @@ if SPEC is None or SPEC.loader is None:
 S1 = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(S1)
 
+FIXTURE_CHECK_TIME = dt.datetime(2026, 8, 25, tzinfo=dt.timezone.utc)
+
 
 def digest(value: bytes = b"fixture") -> str:
     return hashlib.sha256(value).hexdigest()
@@ -79,6 +81,15 @@ def valid_manifest() -> dict[str, object]:
             shell_versions=["bash-5.2", "zsh-5.9"],
             os_build="Fedora-42",
         ),
+        "linux-nvidia-wgpu": environment(
+            "linux-nvidia-wgpu",
+            platform="linux",
+            display_server="x11",
+            renderer_backend="wgpu",
+            gpu_vendor="nvidia",
+            shell_versions=["bash-5.2", "zsh-5.9"],
+            os_build="Ubuntu-24.04",
+        ),
         "macos-intel": environment(
             "macos-intel",
             platform="macos",
@@ -101,6 +112,8 @@ def valid_manifest() -> dict[str, object]:
         ),
     }
 
+    # Build the complete synthetic matrix from policy rather than duplicating its
+    # suite list; mutations therefore detect policy/evidence drift in either owner.
     suites = []
     for suite in policy["required_suites"]:
         coverage = suite["coverage"]
@@ -127,6 +140,8 @@ def valid_manifest() -> dict[str, object]:
             }
         )
 
+    # Human review applies only to visible and assistive-technology evidence;
+    # native resource and resilience suites remain machine-verifiable.
     manual_suite_ids = [
         suite["id"]
         for suite in policy["required_suites"]
@@ -165,18 +180,72 @@ def valid_manifest() -> dict[str, object]:
 
 
 class S1AssuranceTests(unittest.TestCase):
+    def test_synthetic_fixture_validation_never_reads_the_live_clock(self) -> None:
+        class UnavailableClock(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                raise AssertionError("fixed evidence must use the fixture clock")
+
+        # Calendar aging previously broke positive fixtures and could make
+        # unrelated negative mutations pass for the wrong (staleness) reason.
+        with mock.patch.object(S1.dt, "datetime", UnavailableClock):
+            self.assertEqual(self.validate(valid_manifest())["status"], "pass")
+
     def validate(self, document: dict[str, object], **kwargs: object):
+        # Re-enter the bounded evidence-file parser for every mutation so schema,
+        # duplicate-key, file identity, and semantic checks stay in the test path.
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "evidence.json"
             path.write_text(json.dumps(document), encoding="utf-8")
             kwargs.setdefault("allow_synthetic", True)
+            kwargs.setdefault("now", FIXTURE_CHECK_TIME)
             return S1.validate_manifest(path, **kwargs)
 
     def reject(self, mutate) -> None:
         document = valid_manifest()
+        self.assertEqual(self.validate(document)["status"], "pass")
         mutate(document)
         with self.assertRaises(S1.S1AssuranceError):
             self.validate(document)
+
+    def test_suite_and_review_freshness_edges_keep_the_production_limits(self) -> None:
+        oldest = FIXTURE_CHECK_TIME - dt.timedelta(days=14)
+        newest = FIXTURE_CHECK_TIME + dt.timedelta(minutes=5)
+        tick = dt.timedelta(microseconds=1)
+        cases = [(oldest - tick, False), (oldest, True), (oldest + tick, True),
+                 (newest - tick, True), (newest, True), (newest + tick, False)]
+        for owner in ("suite", "review"):
+            for timestamp, accepted in cases:
+                with self.subTest(owner=owner, timestamp=timestamp, accepted=accepted):
+                    document = valid_manifest()
+                    # Keep review ordering valid, so only the selected clock
+                    # boundary can decide the outcome; pin limits independently.
+                    started = timestamp if owner == "suite" else oldest
+                    reviewed = max(timestamp, FIXTURE_CHECK_TIME) if owner == "suite" else timestamp
+                    for suite in document["suites"]:
+                        suite["started_at_utc"] = started.isoformat().replace("+00:00", "Z")
+                    for review in document["reviews"]:
+                        review["reviewed_at_utc"] = reviewed.isoformat().replace("+00:00", "Z")
+                    if accepted:
+                        self.assertEqual(self.validate(document)["status"], "pass")
+                    else:
+                        # An older review must already fail the ordering check
+                        # when its evidence is at the oldest accepted instant.
+                        reason = ("S1 review predates reviewed evidence"
+                                  if owner == "review" and timestamp < oldest
+                                  else f"S1 {owner} .*stale or future")
+                        with self.assertRaisesRegex(S1.S1AssuranceError, reason):
+                            self.validate(document)
+
+    def test_explicit_live_clock_still_rejects_expired_evidence(self) -> None:
+        class LaterClock(dt.datetime):
+            @classmethod
+            def now(cls, tz=None):
+                return FIXTURE_CHECK_TIME + dt.timedelta(days=365)
+
+        with mock.patch.object(S1.dt, "datetime", LaterClock):
+            with self.assertRaisesRegex(S1.S1AssuranceError, "stale or future"):
+                self.validate(valid_manifest(), now=None)
 
     def reject_policy(self, mutate) -> None:
         policy = copy.deepcopy(S1.load_policy())
@@ -388,6 +457,108 @@ class S1AssuranceTests(unittest.TestCase):
         self.assertIn("MaximumVerifierLogBytes", verifier)
         self.assertIn("Severity", verifier)
         self.assertIn("StopCode", verifier)
+
+    def test_recent_u10_surfaces_and_interactions_are_release_evidence(self) -> None:
+        policy = S1.load_policy()
+        expected_surfaces = {
+            "compact-top-shelf",
+            "diagnostic-assistant",
+            "tab-appearance-picker",
+            "command-palette-overflow",
+            "connection-hub-setup",
+            "connection-hub-direct-entry",
+            "command-result-datetime",
+            "scrollbar",
+            "saved-preferences-restart",
+        }
+        expected_tasks = {
+            "compact-window-chrome",
+            "diagnostic-assistant-actions",
+            "compatibility-inspector-redaction",
+            "tab-appearance-picker",
+            "quit-confirmation",
+            "command-palette-scroll-position",
+            "image-preview-open-close",
+            "connection-hub-direct-entry",
+            "command-result-datetime",
+            "saved-preferences-restart",
+            "command-boundary-navigation",
+            "scrollbar-position",
+        }
+        for suite in policy["required_suites"]:
+            if suite["domain"] == "visual":
+                self.assertTrue(
+                    expected_surfaces.issubset(suite["coverage"]["surfaces"]),
+                    suite["id"],
+                )
+            if suite["domain"] == "accessibility":
+                self.assertTrue(
+                    expected_tasks.issubset(suite["coverage"]["tasks"]),
+                    suite["id"],
+                )
+
+    def test_visual_matrix_includes_high_contrast_400_percent_and_reduced_motion(self) -> None:
+        policy = S1.load_policy()
+        for suite in policy["required_suites"]:
+            if suite["domain"] != "visual":
+                continue
+            coverage = suite["coverage"]
+            self.assertIn("high-contrast", coverage["themes"], suite["id"])
+            self.assertIn("4.0", coverage["scales"], suite["id"])
+            self.assertEqual(coverage["motion_profiles"], ["enabled", "reduced"])
+            expected = (
+                len(coverage["themes"])
+                * len(coverage["scales"])
+                * len(coverage["viewports"])
+                * len(coverage["surfaces"])
+                * len(coverage["motion_profiles"])
+            )
+            self.assertEqual(coverage["capture_count"], expected, suite["id"])
+
+    def test_m8_m12_providers_have_native_resource_visual_and_accessibility_evidence(self) -> None:
+        policy = S1.load_policy()
+        for suite in policy["required_suites"]:
+            domain = suite["domain"]
+            coverage = suite["coverage"]
+            if domain == "native":
+                self.assertIn(
+                    "connection-hub-providers-review",
+                    coverage["scenarios"],
+                    suite["id"],
+                )
+            elif suite["tool"] == "native-resource":
+                self.assertIn(
+                    "connection-hub-providers-replacement",
+                    coverage["scenarios"],
+                    suite["id"],
+                )
+            elif domain == "visual":
+                self.assertIn(
+                    "connection-hub-providers-review",
+                    coverage["surfaces"],
+                    suite["id"],
+                )
+            elif domain == "accessibility":
+                self.assertIn(
+                    "connection-hub-providers-review",
+                    coverage["tasks"],
+                    suite["id"],
+                )
+
+    def test_resource_and_visual_matrix_covers_all_claimed_macos_and_linux_gpu_variants(self) -> None:
+        policy = S1.load_policy()
+        suites = {
+            (suite["domain"], suite["environment_id"])
+            for suite in policy["required_suites"]
+        }
+        for required in {
+            ("resource", "linux-nvidia-wgpu"),
+            ("resource", "macos-intel"),
+            ("resource", "macos-apple-silicon"),
+            ("visual", "macos-intel"),
+            ("visual", "macos-apple-silicon"),
+        }:
+            self.assertIn(required, suites)
 
 
 if __name__ == "__main__":

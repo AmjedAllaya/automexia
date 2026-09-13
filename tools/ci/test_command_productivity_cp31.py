@@ -30,7 +30,7 @@ class Cp31ContractTests(unittest.TestCase):
     def test_canonical_repository_contract_and_sources_pass(self) -> None:
         self.assertEqual(
             policy.validate_repository(),
-            {"shells": 5, "commands": 11, "tests": 21, "native_files": 6, "documents": 7},
+            {"shells": 5, "commands": 11, "tests": 21, "native_files": 6, "documents": 5},
         )
 
     def test_limits_and_transaction_order_cannot_weaken(self) -> None:

@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
+trap 'printf "FAIL: shell-source gate at line %s\n" "$LINENO" >&2' ERR
 
 root=$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)
 cd "$root"
 
-find "$root" \
-  \( -path "$root/.git" -o -path "$root/target" -o -path "$root/.cargo-packager" \) \
-  -prune -o -type f \( -name '*.sh' -o -name '*.bash' \) -print0 |
+# Limit this gate to repository-governed sources. Ignored caches and private
+# archival worktrees can contain intentionally stale copies and must never
+# influence the current checkout's assurance result.
+git ls-files -co --exclude-standard -z -- '*.sh' '*.bash' |
   while IFS= read -r -d '' source; do
     # Git guarantees LF in committed sources, but an older Windows checkout
     # can retain CRLF in its existing working tree after .gitattributes changes.
@@ -24,7 +26,7 @@ find "$root" \
   done
 
 if command -v fish >/dev/null 2>&1; then
-  find "$root/shell-integration" -type f -name '*.fish' -print0 |
+  git ls-files -co --exclude-standard -z -- '*.fish' |
     while IFS= read -r -d '' source; do
       fish --no-execute "$source"
     done
@@ -32,9 +34,7 @@ else
   printf '%s\n' 'EXTERNAL: Fish syntax/runtime validation requires the native CI Fish package.'
 fi
 
-find "$root" \
-  \( -path "$root/.git" -o -path "$root/target" -o -path "$root/.cargo-packager" \) \
-  -prune -o -type f -name '*.zsh' -print0 |
+git ls-files -co --exclude-standard -z -- '*.zsh' |
   while IFS= read -r -d '' source; do
     sed 's/\r$//' "$source" | zsh -n
   done
@@ -99,6 +99,7 @@ cmp -s \
 
 bash tools/ci/test_shell_integration.sh
 zsh tools/ci/test_zsh_integration.zsh
+python3 tools/ci/test_shell_location_hints.py
 if command -v fish >/dev/null 2>&1; then
   fish tools/ci/test_fish_integration.fish
 fi

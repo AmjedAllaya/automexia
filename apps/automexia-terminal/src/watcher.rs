@@ -161,6 +161,8 @@ mod tests {
                 .join("aliases")
                 .join("powershell.ps1"),
             root.join("extensions").join("state.json"),
+            root.join("state").join("user-preferences-v1.toml"),
+            root.join("state").join("user-preferences-v1.previous.toml"),
         ] {
             let event = Event::new(EventKind::Modify(ModifyKind::Any)).add_path(path);
             assert!(!event_affects_configuration(&root, &event));

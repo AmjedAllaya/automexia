@@ -1,6 +1,6 @@
 # ADR 0013: Renderer-independent accessibility model
 
-- Status: Accepted for v0.5 implementation
+- Status: Accepted boundary; implementation partial; native evidence external
 - Date: 2026-08-14
 - Owners: frontend, platform, and accessibility maintainers
 
@@ -15,28 +15,18 @@ couple platform semantics to rendering and make headless verification weak.
 
 ## Decision
 
-v0.5 will introduce a bounded renderer-independent accessibility model in the
-Automexia-owned UI layer. Platform adapters will translate that model through
-AccessKit (or the platform API behind its adapter) while the renderer consumes
-the same stable node identities and geometry.
+The accepted boundary keeps renderer-neutral public semantics separate from
+GPU drawing and privileged terminal/provider work. Current source contains
+bounded UI semantics, including the nodes in
+`automexia-ui-model/src/connection_hub.rs`.
 
-The model will contain only public UI semantics:
+This is partial implementation, not a complete native accessibility tree.
+The workspace does not currently integrate AccessKit. Native screen-reader
+coverage and complete platform adapter evidence remain unverified; this
+document does not announce an implementation date or a future design.
 
-- stable window, tab, pane, command, status, text-range, selection, and cursor
-  node identities;
-- role, label, selected/active/disabled state, parent/child order, bounds, and
-  supported actions;
-- generation identifiers so stale renderer or worker updates cannot mutate a
-  newer tree;
-- bounded terminal text ranges scoped to the visible/explicitly requested
-  region, with password/secret modes excluded;
-- provider-neutral freshness and error labels without credentials or raw
-  environment values.
-
-PTY parsing, shell integration, provider discovery, GPU painting, and extension
-workers do not call platform accessibility APIs. They publish bounded model
-updates through existing route/session ownership. Each OS adapter owns native
-thread affinity, event coalescing, focus handoff, and teardown.
+The verification requirements below remain mandatory. Model tests and visual
+appearance do not substitute for native accessibility evidence.
 
 ## Verification
 

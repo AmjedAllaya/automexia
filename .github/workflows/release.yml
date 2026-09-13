@@ -1,283 +1,859 @@
 name: Stable release
-
+run-name: "Release gate · PR #${{ github.event.pull_request.number }} · ${{ github.event.pull_request.head.ref }} → main"
 on:
-  push:
-    tags: ['v*']
-
+  pull_request:
+    branches:
+    - main
+    types:
+    - closed
 permissions:
   contents: read
-
+  pull-requests: read
 env:
   CARGO_TERM_COLOR: always
   CARGO_INCREMENTAL: 0
-
+  AUTOMEXIA_LINUX_GLIBC_MAX: '2.35'
+  AUTOMEXIA_RELEASE_MIN_APPROVALS: ${{ vars.AUTOMEXIA_RELEASE_MIN_APPROVALS || '1' }}
+  AUTOMEXIA_RELEASE_COMMIT: ${{ github.sha }}
+  RUSTUP_TOOLCHAIN: '1.96.1'
 jobs:
+  authorize:
+    name: Authorize merged release PR
+    if: >-
+      github.event.pull_request.merged == true &&
+      github.event.pull_request.base.ref == 'main' &&
+      startsWith(github.event.pull_request.head.ref, 'release/') &&
+      !startsWith(github.event.pull_request.head.ref, 'release/linux/') &&
+      github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      pull-requests: read
+    outputs:
+      version: ${{ steps.auth.outputs.version }}
+      commit: ${{ steps.auth.outputs.commit }}
+    steps:
+    - name: Validate release authorization event
+      id: auth
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        PR_BRANCH: ${{ github.event.pull_request.head.ref }}
+        PR_REPO: ${{ github.event.pull_request.head.repo.full_name }}
+        PR_BASE: ${{ github.event.pull_request.base.ref }}
+        PR_MERGED: ${{ github.event.pull_request.merged }}
+        RELEASE_COMMIT: ${{ github.sha }}
+        MIN_APPROVALS: ${{ vars.AUTOMEXIA_RELEASE_MIN_APPROVALS || '1' }}
+        PR_AUTHOR: ${{ github.event.pull_request.user.login }}
+        PR_HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        MERGED_BY: ${{ github.event.pull_request.merged_by.login }}
+        REQUIRE_DISTINCT_MERGER: ${{ vars.AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER || '1' }}
+      run: |
+        set -euo pipefail
+        [[ "$PR_MERGED" == "true" ]]
+        [[ "$PR_BASE" == "main" ]]
+        [[ "$PR_REPO" == "$GITHUB_REPOSITORY" ]]
+        [[ "$PR_BRANCH" =~ ^release/([0-9]+)\.([0-9]+)\.([0-9]+)$ ]] || {
+          echo "Release branch must be exactly release/X.Y.Z" >&2
+          exit 1
+        }
+        version="${PR_BRANCH#release/}"
+        [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing merged commit SHA' >&2; exit 1; }
+        [[ "$PR_HEAD_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Missing pull-request head SHA' >&2; exit 1; }
+        min="${MIN_APPROVALS:-0}"
+        [[ "$min" =~ ^[0-9]+$ ]] || { echo 'AUTOMEXIA_RELEASE_MIN_APPROVALS must be an integer' >&2; exit 1; }
+        [[ "${REQUIRE_DISTINCT_MERGER:-0}" =~ ^[01]$ ]] || { echo 'AUTOMEXIA_RELEASE_REQUIRE_DISTINCT_MERGER must be 0 or 1' >&2; exit 1; }
+        if [[ "${REQUIRE_DISTINCT_MERGER:-0}" == "1" && "$MERGED_BY" == "$PR_AUTHOR" ]]; then
+          echo 'Release policy requires a merger distinct from the PR author.' >&2
+          exit 1
+        fi
+        if (( min > 0 )); then
+          approvals="$(
+            gh api --paginate --slurp "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/reviews" |
+              python3 tools/ci/check_pr_policy.py --count-approvals "$PR_AUTHOR" "$PR_HEAD_SHA"
+          )"
+          (( approvals >= min )) || { echo "Release needs $min current human approvals; found $approvals" >&2; exit 1; }
+        fi
+        echo "version=$version" >> "$GITHUB_OUTPUT"
+        echo "commit=$RELEASE_COMMIT" >> "$GITHUB_OUTPUT"
+  signing-readiness:
+    name: Release signing readiness
+    needs: authorize
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - name: Validate production signing configuration without checking out source
+      shell: bash
+      env:
+        WINDOWS_BACKEND: ${{ vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND }}
+        WINDOWS_PUBLISHER: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
+        WINDOWS_PFX: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE }}
+        WINDOWS_PFX_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
+        AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
+        AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
+        AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+        AZURE_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+        AZURE_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+        AZURE_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        RELEASE_MINISIGN_SECRET_KEY: ${{ secrets.AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY }}
+        RELEASE_MINISIGN_PUBLIC_KEY: ${{ vars.AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY }}
+      run: |
+        set -euo pipefail
+        [[ -n "$WINDOWS_PUBLISHER" ]] || { echo 'AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT is required.' >&2; exit 1; }
+        case "$WINDOWS_BACKEND" in
+          pfx)
+            [[ -n "$WINDOWS_PFX" && -n "$WINDOWS_PFX_PASSWORD" ]] || { echo 'PFX signing selected but Windows PFX secrets are missing.' >&2; exit 1; }
+            ;;
+          azure-artifact-signing)
+            for name in AZURE_CLIENT_ID AZURE_TENANT_ID AZURE_SUBSCRIPTION_ID AZURE_ENDPOINT AZURE_ACCOUNT AZURE_PROFILE; do
+              [[ -n "${!name}" ]] || { echo "$name is required for Azure Artifact Signing." >&2; exit 1; }
+            done
+            ;;
+          *) echo 'Set AUTOMEXIA_WINDOWS_SIGNING_BACKEND to pfx or azure-artifact-signing.' >&2; exit 1 ;;
+        esac
+        for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID APPLE_SIGNING_IDENTITY; do
+          [[ -n "${!name}" ]] || { echo "$name is required for production macOS signing/notarization." >&2; exit 1; }
+        done
+        [[ -n "$RELEASE_MINISIGN_SECRET_KEY" ]] || { echo 'AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY is required for the release checksum signature.' >&2; exit 1; }
+        [[ "$RELEASE_MINISIGN_PUBLIC_KEY" =~ ^RW[A-Za-z0-9+/=]+$ ]] || { echo 'AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY must be the minisign public-key base64 line (RW...).'; exit 1; }
+        echo 'Production signing configuration is present.'
   native-gui-resilience:
     name: Release Windows GUI resize and clone resilience
     if: vars.AUTOMEXIA_NATIVE_GUI_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-gpu]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-gpu
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Exercise prompt history, independent clones, ConPTY, and resize storms
-        shell: pwsh
-        run: cargo xtask test session-clone --native-windows
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+    - name: Exercise prompt history, independent clones, ConPTY, and resize storms
+      shell: pwsh
+      run: cargo xtask test session-clone --native-windows
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    needs: authorize
   native-wsl-resilience:
     name: Release WSL clone identity and resize resilience
     if: vars.AUTOMEXIA_WSL_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-wsl]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-wsl
     env:
       AUTOMEXIA_TEST_WSL_DISTRO: ${{ vars.AUTOMEXIA_TEST_WSL_DISTRO }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Preserve distro, user, shell, directory, and independent PTY state
-        shell: pwsh
-        run: cargo xtask test session-clone --native-wsl
-      - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
-        shell: pwsh
-        run: |
-          if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {
-            throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'
-          }
-          $workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()
-          if ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {
-            throw 'could not resolve the checked-out workspace inside WSL'
-          }
-          & wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- "$1"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace
-          if ($LASTEXITCODE -ne 0) {
-            throw 'CP3.1 WSL shell lifecycle validation failed'
-          }
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+    - name: Preserve distro, user, shell, directory, and independent PTY state
+      shell: pwsh
+      run: cargo xtask test session-clone --native-wsl
+    - name: Verify CP3.1 native shell lifecycle in the configured WSL distro
+      shell: pwsh
+      run: "if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_TEST_WSL_DISTRO)) {\n  throw 'AUTOMEXIA_TEST_WSL_DISTRO is required'\n}\n$workspace = (& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO --cd $env:GITHUB_WORKSPACE -- pwd -P).Trim()\nif ($LASTEXITCODE -ne 0 -or -not $workspace.StartsWith('/')) {\n  throw 'could not resolve the checked-out workspace inside WSL'\n}\n& wsl.exe -d $env:AUTOMEXIA_TEST_WSL_DISTRO -- bash -lc 'set -euo pipefail; cd -- \"$1\"; command -v python3 shellcheck zsh fish >/dev/null; bash tools/ci/test_shell_sources.sh' automexia-wsl $workspace\nif ($LASTEXITCODE -ne 0) {\n  throw 'CP3.1 WSL shell lifecycle validation failed'\n}\n"
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    needs: authorize
   performance-assurance:
     name: Enforce the active S2 latency and memory ratchet
     if: vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER == '1'
-    runs-on: [self-hosted, Windows, X64, automexia-gpu, automexia-benchmark]
+    runs-on:
+    - self-hosted
+    - Windows
+    - X64
+    - automexia-gpu
+    - automexia-benchmark
     timeout-minutes: 240
     env:
       AUTOMEXIA_QA_BENCHMARKS: '1'
       AUTOMEXIA_QA_RUN_LABEL: s2-release-${{ github.run_id }}-${{ github.run_attempt }}
       AUTOMEXIA_NATIVE_RESOURCE_REPORT: ${{ github.workspace }}\target\performance\native-resource.json
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: taiki-e/install-action@7f4eb899022d8fe70b20c4f3de697aa85c309026 # v2
-        with:
-          tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
-      - name: Execute the exact native and benchmark release workload
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force -Path target/performance | Out-Null
-          cargo xtask test resize-stress --native-gui
-          if ($LASTEXITCODE -ne 0) { throw 'native resource assurance failed' }
-          cargo xtask qa --full --bundle
-          if ($LASTEXITCODE -ne 0) { throw 'controlled benchmark assurance failed' }
-      - name: Enforce the reviewed 30-day baseline
-        shell: pwsh
-        run: |
-          $measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')
-          $toolchain = (& rustc --version).Trim()
-          $runner = @(
-            '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',
-            '--os', 'windows',
-            '--arch', 'x86_64',
-            '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',
-            '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',
-            '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',
-            '--toolchain', $toolchain,
-            '--profile', 'criterion-release-native-gui'
-          )
-          & python tools/ci/performance_assurance.py collect-native-resource `
-            --report target/performance/native-resource.json `
-            --output target/performance/native-memory.json `
-            --commit $env:GITHUB_SHA `
-            --operator $env:GITHUB_ACTOR `
-            --measured-at-utc $measuredAt @runner
-          if ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }
-          & python tools/ci/performance_assurance.py collect-criterion `
-            --criterion-root "target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion" `
-            --supplemental target/performance/native-memory.json `
-            --output target/performance/candidate.json `
-            --commit $env:GITHUB_SHA `
-            --operator $env:GITHUB_ACTOR `
-            --measured-at-utc $measuredAt `
-            --require-classified @runner
-          if ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }
-          & python tools/ci/performance_assurance.py evaluate `
-            --candidate target/performance/candidate.json `
-            --expected-commit $env:GITHUB_SHA `
-            --output target/performance/comparison.json `
-            --require-active
-          if ($LASTEXITCODE -ne 0) { throw 'active S2 ratchet rejected this release' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        if: always()
-        with:
-          name: release-evidence-performance-assurance
-          path: |
-            target/performance/*.json
-            target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
-          if-no-files-found: error
-          retention-days: 90
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.authorize.outputs.commit }}
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Verify effective Rust compiler and Cargo
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+      with:
+        tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
+    - name: Execute the exact native and benchmark release workload
+      shell: pwsh
+      run: 'New-Item -ItemType Directory -Force -Path target/performance | Out-Null
 
+        cargo xtask test resize-stress --native-gui
+
+        if ($LASTEXITCODE -ne 0) { throw ''native resource assurance failed'' }
+
+        cargo xtask qa --full --bundle
+
+        if ($LASTEXITCODE -ne 0) { throw ''controlled benchmark assurance failed'' }
+
+        '
+    - name: Enforce the reviewed 30-day baseline
+      shell: pwsh
+      run: "$measuredAt = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ')\n$toolchain = (& rustc --version).Trim()\n$runner = @(\n  '--runner-class', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_RUNNER_CLASS }}',\n  '--os', 'windows',\n  '--arch', 'x86_64',\n  '--cpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_CPU }}',\n  '--gpu', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_GPU }}',\n  '--power-mode', '${{ vars.AUTOMEXIA_WINDOWS_PERFORMANCE_POWER_MODE }}',\n  '--toolchain', $toolchain,\n  '--profile', 'criterion-release-native-gui'\n)\n& python tools/ci/performance_assurance.py collect-native-resource `\n  --report target/performance/native-resource.json `\n  --output target/performance/native-memory.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt @runner\nif ($LASTEXITCODE -ne 0) { throw 'native memory normalization failed' }\n& python tools/ci/performance_assurance.py collect-criterion `\n  --criterion-root \"target/qa/$env:AUTOMEXIA_QA_RUN_LABEL/benchmark-target/criterion\" `\n  --supplemental target/performance/native-memory.json `\n  --output target/performance/candidate.json `\n  --commit $env:GITHUB_SHA `\n  --operator $env:GITHUB_ACTOR `\n  --measured-at-utc $measuredAt `\n  --require-classified @runner\nif ($LASTEXITCODE -ne 0) { throw 'performance evidence composition failed' }\n& python tools/ci/performance_assurance.py evaluate `\n  --candidate target/performance/candidate.json `\n  --expected-commit $env:GITHUB_SHA `\n  --output target/performance/comparison.json `\n  --require-active\nif ($LASTEXITCODE -ne 0) { throw 'active S2 ratchet rejected this release' }\n"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      if: always()
+      with:
+        name: release-evidence-performance-assurance
+        path: 'target/performance/*.json
+
+          target/qa/${{ env.AUTOMEXIA_QA_RUN_LABEL }}.zip
+
+          '
+        if-no-files-found: error
+        retention-days: 90
+    permissions:
+      contents: read
+    needs: authorize
   s1-assurance:
     name: Enforce complete S1 native, visual, resource, and accessibility evidence
     if: vars.AUTOMEXIA_S1_ASSURANCE_RUNNER == '1'
-    runs-on: [self-hosted, automexia-assurance]
+    runs-on:
+    - self-hosted
+    - automexia-assurance
     timeout-minutes: 30
     env:
       AUTOMEXIA_S1_ASSURANCE_EVIDENCE: ${{ vars.AUTOMEXIA_S1_ASSURANCE_EVIDENCE }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Validate exact, current, complete S1 evidence
-        shell: pwsh
-        run: |
-          python tools/ci/s1_assurance.py check-policy
-          if ($LASTEXITCODE -ne 0) { throw 'S1 policy validation failed' }
-          python tools/ci/test_s1_assurance.py
-          if ($LASTEXITCODE -ne 0) { throw 'S1 mutation tests failed' }
-          python tools/ci/s1_assurance.py validate --manifest $env:AUTOMEXIA_S1_ASSURANCE_EVIDENCE --expected-commit $env:GITHUB_SHA --require-complete --output target/s1-assurance/summary.json
-          if ($LASTEXITCODE -ne 0) { throw 'S1 assurance rejected the release evidence' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-evidence-s1-assurance
-          path: target/s1-assurance/summary.json
-          if-no-files-found: error
-          retention-days: 90
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.authorize.outputs.commit }}
+    - name: Validate exact, current, complete S1 evidence
+      shell: pwsh
+      run: 'python tools/ci/s1_assurance.py check-policy
 
+        if ($LASTEXITCODE -ne 0) { throw ''S1 policy validation failed'' }
+
+        python tools/ci/test_s1_assurance.py
+
+        if ($LASTEXITCODE -ne 0) { throw ''S1 mutation tests failed'' }
+
+        python tools/ci/s1_assurance.py validate --manifest $env:AUTOMEXIA_S1_ASSURANCE_EVIDENCE --expected-commit $env:GITHUB_SHA --require-complete --output target/s1-assurance/summary.json
+
+        if ($LASTEXITCODE -ne 0) { throw ''S1 assurance rejected the release evidence'' }
+
+        '
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-evidence-s1-assurance
+        path: target/s1-assurance/summary.json
+        if-no-files-found: error
+        retention-days: 90
+    permissions:
+      contents: read
+    needs: authorize
   preflight:
-    needs: [native-gui-resilience, native-wsl-resilience, performance-assurance, s1-assurance]
-    if: needs.native-gui-resilience.result == 'success' && needs.native-wsl-resilience.result == 'success' && needs.performance-assurance.result == 'success' && needs.s1-assurance.result == 'success'
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    environment: stable-release
-    env:
-      GH_TOKEN: ${{ secrets.AUTOMEXIA_REPOSITORY_AUDIT_TOKEN }}
-      AUTOMEXIA_WINDOWS_SIGNING_BACKEND: ${{ vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND }}
-      AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
-      AUTOMEXIA_WINDOWS_CERTIFICATE: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE != '' && 'configured' || '' }}
-      AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD != '' && 'configured' || '' }}
-      AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID != '' && 'configured' || '' }}
-      AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID != '' && 'configured' || '' }}
-      AZURE_SUBSCRIPTION_ID: ${{ secrets.AZURE_SUBSCRIPTION_ID != '' && 'configured' || '' }}
-      AZURE_ARTIFACT_SIGNING_ENDPOINT: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-      AZURE_ARTIFACT_SIGNING_ACCOUNT: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-      AZURE_ARTIFACT_SIGNING_PROFILE: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-      APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE != '' && 'configured' || '' }}
-      APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD != '' && 'configured' || '' }}
-      APPLE_ID: ${{ secrets.APPLE_ID != '' && 'configured' || '' }}
-      APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD != '' && 'configured' || '' }}
-      APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID != '' && 'configured' || '' }}
-      APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY != '' && 'configured' || '' }}
+    name: Release preflight and source provenance
+    needs:
+    - authorize
+    - signing-readiness
+    - native-gui-resilience
+    - native-wsl-resilience
+    - performance-assurance
+    - s1-assurance
+    if: >-
+      always() && needs.authorize.result == 'success' &&
+      needs.signing-readiness.result == 'success' &&
+      (needs.native-gui-resilience.result == 'success' || needs.native-gui-resilience.result
+      == 'skipped') &&
+      (needs.native-wsl-resilience.result == 'success' || needs.native-wsl-resilience.result
+      == 'skipped') &&
+      (needs.performance-assurance.result == 'success' || needs.performance-assurance.result
+      == 'skipped') &&
+      (needs.s1-assurance.result == 'success' || needs.s1-assurance.result == 'skipped')
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      pull-requests: read
     outputs:
-      version: ${{ steps.version.outputs.version }}
+      version: ${{ needs.authorize.outputs.version }}
+      commit: ${{ needs.authorize.outputs.commit }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Install Linux build dependencies
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev python3-yaml shellcheck zsh
-      - name: Enforce exact source provenance and protected repository state
-        run: |
-          test -n "$GH_TOKEN"
-          python tools/ci/stable_release.py check-policy
-          python tools/ci/test_stable_release.py
-          python tools/ci/stable_release.py validate-source --expected-commit "$GITHUB_SHA" --release-tag "$GITHUB_REF_NAME"
-          python tools/ci/repository_protection.py audit --json
-      - name: Protected-main and tag preconditions
-        id: version
-        run: |
-          version="${GITHUB_REF_NAME#v}"
-          test -n "$version"
-          test "$(cargo metadata --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version')" = "$version"
-          cargo xtask release --version "$version"
-          echo "version=$version" >> "$GITHUB_OUTPUT"
-
-  build:
+    - name: Check out exact merged release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.authorize.outputs.commit }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Verify merged source, Cargo version, protected paths, and release uniqueness
+      shell: bash
+      env:
+        VERSION: ${{ needs.authorize.outputs.version }}
+        RELEASE_COMMIT: ${{ needs.authorize.outputs.commit }}
+        PR_NUMBER: ${{ github.event.pull_request.number }}
+        GH_TOKEN: ${{ secrets.AUTOMEXIA_REPOSITORY_AUDIT_TOKEN }}
+      run: |
+        set -euo pipefail
+        git fetch --no-tags origin main
+        main_commit="$(git rev-parse origin/main)"
+        [[ "$main_commit" == "$RELEASE_COMMIT" ]] || {
+          echo "A newer main commit exists ($main_commit); refusing stale release $RELEASE_COMMIT" >&2
+          exit 1
+        }
+        actual="$(cargo metadata --locked --no-deps --format-version 1 | jq -r '.packages[] | select(.name == "automexia-terminal") | .version' | head -1)"
+        [[ -n "$actual" && "$actual" == "$VERSION" ]] || {
+          echo "release/$VERSION does not match automexia-terminal Cargo version '$actual'" >&2
+          exit 1
+        }
+        gh api --paginate "repos/$GITHUB_REPOSITORY/pulls/$PR_NUMBER/files" --jq '.[].filename' > "$RUNNER_TEMP/release-files.txt"
+        if grep -Eq '^(\.github/|tools/ci/|tools/xtask/|packaging/|shell-integration/)' "$RUNNER_TEMP/release-files.txt"; then
+          echo 'A release PR may not modify .github/, tools/ci/, tools/xtask/, packaging/, or shell-integration/. Merge trust/packaging implementation changes separately first.' >&2
+          cat "$RUNNER_TEMP/release-files.txt" >&2
+          exit 1
+        fi
+        if gh release view "v$VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "Release v$VERSION already exists" >&2; exit 1
+        fi
+        if git ls-remote --exit-code --tags origin "refs/tags/v$VERSION" >/dev/null 2>&1; then
+          echo "Tag v$VERSION already exists" >&2; exit 1
+        fi
+        python tools/ci/stable_release.py check-policy
+        python tools/ci/test_stable_release.py
+        python tools/ci/repository_protection.py audit --json
+        python3 .github/scripts/check_action_pins.py
+        python3 .github/scripts/check_free_plan_contract.py
+        python3 tools/ci/test_free_plan_contract.py
+  release-quality:
+    name: Release quality and dependency gate
     needs: preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal --component rustfmt --component clippy
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Install native Linux build dependencies
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
+    - name: Install pinned release quality tools
+      uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+      with:
+        tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
+    - name: Formatting
+      run: cargo fmt --all -- --check
+    - name: Clippy
+      run: cargo clippy --workspace --all-targets --all-features --locked -- -D warnings
+    - name: Full workspace tests
+      run: cargo nextest run --workspace --all-features --locked --profile ci
+    - name: Documentation tests
+      run: cargo test --workspace --all-features --doc --locked
+    - name: RustSec audit
+      run: cargo audit --deny warnings
+    - name: Dependency/license/source policy
+      run: cargo deny --locked --color never check --hide-inclusion-graph
+    - name: Shell integration contracts
+      run: bash tools/ci/test_shell_sources.sh
+  build:
+    name: Build native release binaries
+    needs:
+    - preflight
+    - release-quality
     strategy:
       fail-fast: false
       matrix:
         include:
-          - os: windows-latest
-            target: x86_64-pc-windows-msvc
-            artifact: windows-x86_64
-          - os: windows-latest
-            target: aarch64-pc-windows-msvc
-            artifact: windows-arm64
-          - os: macos-latest
-            target: x86_64-apple-darwin
-            artifact: macos-x86_64
-          - os: macos-latest
-            target: aarch64-apple-darwin
-            artifact: macos-arm64
-          - os: ubuntu-latest
-            target: x86_64-unknown-linux-gnu
-            artifact: linux-x86_64
-          - os: ubuntu-latest
-            target: aarch64-unknown-linux-gnu
-            artifact: linux-arm64
+        - os: windows-2025
+          expected_runner_arch: X64
+          target: x86_64-pc-windows-msvc
+          artifact: windows-x86_64
+        - os: windows-11-arm
+          expected_runner_arch: ARM64
+          target: aarch64-pc-windows-msvc
+          artifact: windows-arm64
+        - os: macos-26-intel
+          expected_runner_arch: X64
+          target: x86_64-apple-darwin
+          artifact: macos-x86_64
+        - os: macos-26
+          expected_runner_arch: ARM64
+          target: aarch64-apple-darwin
+          artifact: macos-arm64
+        - os: ubuntu-22.04
+          expected_runner_arch: X64
+          target: x86_64-unknown-linux-gnu
+          artifact: linux-x86_64
+        - os: ubuntu-22.04-arm
+          expected_runner_arch: ARM64
+          target: aarch64-unknown-linux-gnu
+          artifact: linux-arm64
     runs-on: ${{ matrix.os }}
     env:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Install Linux build dependencies
-        if: runner.os == 'Linux'
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
-      - run: rustup target add ${{ matrix.target }}
-      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
-        with:
-          tool: cross@0.2.5
-        if: runner.os == 'Linux' && matrix.target == 'aarch64-unknown-linux-gnu'
-      - name: Build native/cross artifact
-        shell: bash
-        run: |
-          if [[ "${{ runner.os }}-${{ matrix.target }}" == "Linux-aarch64-unknown-linux-gnu" ]]; then
-            cross build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
-          else
-            cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
-          fi
-      - name: Version smoke
-        if: matrix.target == 'x86_64-pc-windows-msvc' || matrix.target == 'x86_64-unknown-linux-gnu' || (runner.os == 'macOS' && runner.arch == 'ARM64' && matrix.target == 'aarch64-apple-darwin')
-        shell: bash
-        run: |
-          binary="target/${{ matrix.target }}/release/automexia"
-          [[ "${{ runner.os }}" == "Windows" ]] && binary="${binary}.exe"
-          "$binary" --version
-      - name: Stage portable artifact
-        shell: bash
-        run: |
-          mkdir -p "dist/${{ matrix.artifact }}"
-          binary="target/${{ matrix.target }}/release/automexia"
-          [[ "${{ runner.os }}" == "Windows" ]] && binary="${binary}.exe"
-          cp "$binary" "dist/${{ matrix.artifact }}/"
-          cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: ${{ matrix.artifact }}
-          path: dist
-          if-no-files-found: error
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Install Linux build dependencies
+      if: runner.os == 'Linux'
+      run: sudo apt-get update && sudo apt-get install -y binutils glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
+    - name: Require the intended native architecture
+      shell: bash
+      run: 'set -euo pipefail
 
+        test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
+
+        '
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
+    - run: rustup target add ${{ matrix.target }}
+    - name: Build native release artifact
+      shell: bash
+      run: cargo build --release --locked -p automexia-terminal --target "${{ matrix.target }}"
+    - name: Native version smoke
+      shell: bash
+      run: 'set -euo pipefail
+
+        binary="target/${{ matrix.target }}/release/automexia"
+
+        [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+
+        "$binary" --version | grep -F "$AUTOMEXIA_VERSION"
+
+        '
+    - name: Enforce GNU/Linux glibc compatibility contract
+      if: runner.os == 'Linux'
+      shell: bash
+      run: "set -euo pipefail\nbinary=\"target/${{ matrix.target }}/release/automexia\"\nmkdir -p \"dist/${{ matrix.artifact }}\"\nreport=\"dist/${{ matrix.artifact }}/GLIBC_COMPATIBILITY.txt\"\nrequired=$(readelf --version-info \"$binary\" | grep -oE 'GLIBC_[0-9]+(\\.[0-9]+)+' | sed 's/^GLIBC_//' | sort -Vu | tail -n 1 || true)\nif [[ -z \"$required\" ]]; then\n  echo 'Could not determine required GLIBC symbol version.' >&2\n  exit 1\nfi\nldd_output=$(ldd \"$binary\" 2>&1 || true)\n{\n  echo \"target=${{ matrix.target }}\"\n  echo \"runner=${{ matrix.os }}\"\n  echo \"maximum_allowed_glibc=$AUTOMEXIA_LINUX_GLIBC_MAX\"\n  echo \"maximum_required_glibc=$required\"\n  echo\n  echo 'ELF dynamic dependencies:'\n  readelf -d \"$binary\" | grep NEEDED || true\n  echo\n  echo 'Runtime dependency resolution on the native build runner:'\n  printf '%s\\n' \"$ldd_output\"\n} | tee \"$report\"\nnewest=$(printf '%s\\n%s\\n' \"$required\" \"$AUTOMEXIA_LINUX_GLIBC_MAX\" | sort -V | tail -n 1)\nif [[ \"$newest\" != \"$AUTOMEXIA_LINUX_GLIBC_MAX\" ]]; then\n  echo \"Linux artifact requires GLIBC_$required, newer than the supported GLIBC_$AUTOMEXIA_LINUX_GLIBC_MAX ceiling.\" >&2\n  exit 1\nfi\nif grep -q 'not found' <<<\"$ldd_output\"; then\n  echo 'Native Linux artifact has unresolved shared-library dependencies.' >&2\n  exit 1\nfi\n"
+    - name: Stage portable artifact
+      shell: bash
+      run: 'set -euo pipefail
+
+        mkdir -p "dist/${{ matrix.artifact }}"
+
+        binary="target/${{ matrix.target }}/release/automexia"
+
+        [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+
+        cp "$binary" "dist/${{ matrix.artifact }}/"
+
+        cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
+
+        '
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: ${{ matrix.artifact }}
+        path: dist
+        if-no-files-found: error
+    timeout-minutes: 90
+    permissions:
+      contents: read
   reproducibility-linux:
-    name: Reproducible Linux x64 release binary
-    needs: preflight
-    runs-on: ubuntu-latest
+    name: Verify Linux release reproducibility
+    needs:
+    - preflight
+    - release-quality
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: ubuntu-22.04
+          arch: x86_64
+          runner_arch: X64
+          target: x86_64-unknown-linux-gnu
+        - runner: ubuntu-22.04-arm
+          arch: aarch64
+          runner_arch: ARM64
+          target: aarch64-unknown-linux-gnu
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-        with:
-          fetch-depth: 0
-      - name: Install native build dependencies
-        run: sudo apt-get update && sudo apt-get install -y glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev
-      - name: Compare two independent cold release builds
-        run: bash tools/ci/check_reproducible_build.sh reproducibility/release-reproducibility-linux-x64.json
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-evidence-reproducibility
-          path: reproducibility/release-reproducibility-linux-x64.json
-          if-no-files-found: error
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Require native runner architecture
+      shell: bash
+      run: test "$RUNNER_ARCH" = "${{ matrix.runner_arch }}"
+    - name: Install native build dependencies
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev binutils
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        rustup target add "${{ matrix.target }}" --toolchain "$RUSTUP_TOOLCHAIN"
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Verify two independent cold source builds
+      shell: bash
+      run: |
+        set -euo pipefail
+        tools/ci/check_reproducible_build.sh \
+          "trust/evidence/reproducibility-${{ matrix.arch }}.json"
+    - name: Upload cold-build reproducibility evidence
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-reproducibility-${{ matrix.arch }}
+        path: trust/evidence/reproducibility-${{ matrix.arch }}.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+  prepare-windows-package-inputs:
+    name: Prepare Windows signing inputs
+    needs:
+    - preflight
+    - release-quality
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        persist-credentials: false
+    - name: Archive only the PowerShell integration files that will be signed
+      shell: bash
+      run: |
+        set -euo pipefail
+        test -d shell-integration
+        if find shell-integration -type l -print -quit | grep -q .; then
+          echo 'shell-integration may not contain symbolic links in a production release.' >&2
+          exit 1
+        fi
+        if find shell-integration -type f -print0 | python3 -c 'import os,sys; data=sys.stdin.buffer.read().split(b"\0"); raise SystemExit(any(b"\n" in p or b"\r" in p for p in data if p))'; then
+          :
+        else
+          echo 'shell-integration contains an unsafe filename.' >&2
+          exit 1
+        fi
+        tar -czf "$RUNNER_TEMP/windows-package-inputs.tar.gz" shell-integration
+    - name: Upload minimal unsigned Windows package inputs
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: windows-package-source-inputs
+        path: ${{ runner.temp }}/windows-package-inputs.tar.gz
+        if-no-files-found: error
+        retention-days: 2
+        compression-level: 0
+
+  sign-windows-runtime:
+    name: Sign Windows runtime binaries
+    needs:
+    - preflight
+    - build
+    - prepare-windows-package-inputs
+    runs-on: windows-2025
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      id-token: write
+    env:
+      AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - artifact: windows-x86_64
+          target: x86_64-pc-windows-msvc
+        - artifact: windows-arm64
+          target: aarch64-pc-windows-msvc
+    steps:
+    - name: Download unsigned release binary
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: staged-binary
+    - name: Download minimal package source inputs
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: windows-package-source-inputs
+        path: staged-source
+    - name: Prepare isolated files for signing
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        New-Item -ItemType Directory -Force signing-input | Out-Null
+        tar -xzf staged-source/windows-package-inputs.tar.gz -C signing-input
+        if ($LASTEXITCODE -ne 0) { throw 'could not restore Windows package inputs' }
+        $binary = @(Get-ChildItem staged-binary -Recurse -File -Filter automexia.exe)
+        if ($binary.Count -ne 1) { throw "expected one unsigned automexia.exe, found $($binary.Count)" }
+        Copy-Item -LiteralPath $binary[0].FullName -Destination signing-input/automexia.exe
+        $scripts = @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
+        if ($scripts.Count -eq 0) { throw 'no PowerShell integration files were provided for signing' }
+    - name: Authenticate to Azure Artifact Signing
+      if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
+      uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    - name: Sign runtime inputs with Azure Artifact Signing
+      if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
+      uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82
+      with:
+        endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+        signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        files-folder: signing-input
+        files-folder-filter: exe,ps1,ps1xml
+        files-folder-recurse: true
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+        description: Automexia Terminal
+        description-url: https://github.com/AmjedAllaya/automexia-terminal
+    - name: Sign runtime inputs with fallback PFX
+      if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
+      shell: pwsh
+      env:
+        CERTIFICATE_BASE64: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE }}
+        CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $pfxPath = Join-Path $env:RUNNER_TEMP 'automexia-runtime-signing.pfx'
+        try {
+          [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
+          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD signing-input/automexia.exe
+          if ($LASTEXITCODE -ne 0) { throw 'executable Authenticode signing failed' }
+          $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
+          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, $env:CERTIFICATE_PASSWORD, $flags)
+          try {
+            $scripts = @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
+            foreach ($script in $scripts) {
+              $result = Set-AuthenticodeSignature -LiteralPath $script.FullName -Certificate $certificate -HashAlgorithm SHA256 -TimestampServer http://timestamp.digicert.com
+              if ($result.Status -ne 'Valid') { throw "PowerShell signing failed for $($script.FullName): $($result.Status)" }
+            }
+          } finally {
+            $certificate.Dispose()
+          }
+        } finally {
+          Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+        }
+    - name: Verify every signed runtime input without executing it
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $files = @((Get-Item signing-input/automexia.exe)) + @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
+        foreach ($file in $files) {
+          $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
+          if ($signature.Status -ne 'Valid') { throw "signature is $($signature.Status): $($file.FullName)" }
+          if ($signature.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected publisher: $($signature.SignerCertificate.Subject)" }
+          if ($null -eq $signature.TimeStamperCertificate) { throw "missing trusted timestamp: $($file.FullName)" }
+        }
+    - name: Upload signed runtime inputs
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: signed-inputs-${{ matrix.artifact }}
+        path: |
+          signing-input/automexia.exe
+          signing-input/shell-integration/**
+        if-no-files-found: error
+        retention-days: 2
+        compression-level: 0
+
+  package-windows-unsigned:
+    name: Package Windows installers without signing credentials
+    needs:
+    - preflight
+    - sign-windows-runtime
+    runs-on: windows-2025
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
+      AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - artifact: windows-x86_64
+          target: x86_64-pc-windows-msvc
+        - artifact: windows-arm64
+          target: aarch64-pc-windows-msvc
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Download signed runtime inputs
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: signed-inputs-${{ matrix.artifact }}
+        path: signed-inputs
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust and packager toolchain
+      shell: pwsh
+      run: |
+        rustup toolchain install $env:RUSTUP_TOOLCHAIN --profile minimal
+        if ($LASTEXITCODE -ne 0) { throw 'rustup toolchain install failed' }
+        python tools/ci/rust_toolchain.py verify --kind development
+        if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
+    - name: Install pinned cargo-packager
+      uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+      with:
+        tool: cargo-packager@0.11.8
+    - name: Restore signed inputs into packaging workspace
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $exe = Get-Item signed-inputs/automexia.exe
+        $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+        if ($exeSig.Status -ne 'Valid' -or $exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw 'signed executable input failed publisher verification' }
+        $targetDir = "target/${{ matrix.target }}/release"
+        New-Item -ItemType Directory -Force $targetDir | Out-Null
+        Copy-Item -LiteralPath $exe.FullName -Destination "$targetDir/automexia.exe"
+        Remove-Item shell-integration -Recurse -Force
+        Copy-Item signed-inputs/shell-integration -Destination shell-integration -Recurse
+        $scripts = @(Get-ChildItem shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
+        if ($scripts.Count -eq 0) { throw 'no signed shell integration assets restored' }
+        foreach ($script in $scripts) {
+          $sig = Get-AuthenticodeSignature -LiteralPath $script.FullName
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "invalid signed shell integration input: $($script.FullName)" }
+        }
+    - name: Build MSI and portable ZIP with no signing credentials present
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
+        cargo xtask package --target ${{ matrix.target }}
+        if ($LASTEXITCODE -ne 0) { throw 'cargo xtask package failed' }
+        $packageDir = "target/package/${{ matrix.target }}"
+        $msi = @(Get-ChildItem $packageDir -File -Filter *.msi)
+        $zip = @(Get-ChildItem $packageDir -File -Filter *.zip)
+        if ($msi.Count -ne 1) { throw "expected one MSI, found $($msi.Count)" }
+        if ($zip.Count -ne 1) { throw "expected one ZIP, found $($zip.Count)" }
+        New-Item -ItemType Directory -Force unsigned | Out-Null
+        Copy-Item $msi[0].FullName "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.msi"
+        Copy-Item $zip[0].FullName "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip"
+    - name: Verify signed contents of portable ZIP before MSI signing
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $zip = Get-Item "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip"
+        $dest = Join-Path $env:RUNNER_TEMP 'portable-check'
+        Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
+        Expand-Archive -LiteralPath $zip.FullName -DestinationPath $dest -Force
+        $exe = @(Get-ChildItem $dest -Recurse -File -Filter automexia.exe)
+        if ($exe.Count -ne 1) { throw "portable ZIP must contain exactly one automexia.exe; found $($exe.Count)" }
+        $sig = Get-AuthenticodeSignature -LiteralPath $exe[0].FullName
+        if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw 'portable executable signature/publisher verification failed' }
+        $scripts = @(Get-ChildItem $dest -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
+        if ($scripts.Count -eq 0) { throw 'portable ZIP contains no signed PowerShell integration assets' }
+        foreach ($script in $scripts) {
+          $scriptSig = Get-AuthenticodeSignature -LiteralPath $script.FullName
+          if ($scriptSig.Status -ne 'Valid' -or $scriptSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "portable PowerShell signature verification failed: $($script.FullName)" }
+        }
+        if ('${{ matrix.target }}' -eq 'x86_64-pc-windows-msvc') {
+          & $exe[0].FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 'x64 portable executable smoke failed' }
+        }
+    - name: Upload unsigned MSI and signed-content ZIP
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: unsigned-packages-${{ matrix.artifact }}
+        path: |
+          unsigned/*.msi
+          unsigned/*.zip
+        if-no-files-found: error
+        retention-days: 2
+        compression-level: 0
 
   package-windows:
-    needs: [preflight, build]
-    runs-on: windows-latest
-    environment: stable-release
+    name: Sign final Windows installers
+    needs:
+    - preflight
+    - package-windows-unsigned
+    runs-on: windows-2025
+    timeout-minutes: 45
     permissions:
       contents: read
       id-token: write
@@ -285,516 +861,861 @@ jobs:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
       AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - artifact: windows-x86_64
-            target: x86_64-pc-windows-msvc
-          - artifact: windows-arm64
-            target: aarch64-pc-windows-msvc
+        - artifact: windows-x86_64
+          target: x86_64-pc-windows-msvc
+        - artifact: windows-arm64
+          target: aarch64-pc-windows-msvc
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ${{ matrix.artifact }}
-          path: staged
-      - uses: taiki-e/install-action@ba47c86ac325773530516bb756137ac718732518 # v2
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        with:
-          tool: cargo-packager@0.11.8
-      - name: Prepare Windows signing inputs
-        shell: pwsh
-        run: |
-          New-Item -ItemType Directory -Force signed | Out-Null
-          New-Item -ItemType Directory -Force signing-input | Out-Null
-          $binary = Get-ChildItem staged -Recurse -File -Filter automexia.exe
-          if (@($binary).Count -ne 1) { throw "expected one staged automexia.exe, found $(@($binary).Count)" }
-          Copy-Item -LiteralPath $binary.FullName -Destination signing-input\automexia.exe
-      - name: Authenticate to Azure Artifact Signing
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
-        uses: azure/login@f5d393ae46f8fde4be8b75f32e3fc50e654ad0ca # v3.0.1
-        with:
-          client-id: ${{ secrets.AZURE_CLIENT_ID }}
-          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
-          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-      - name: Sign executable with Azure Artifact Signing
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: signing-input
-          files-folder-filter: exe
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Automexia Terminal
-          description-url: https://github.com/AmjedAllaya/automexia-terminal
-      - name: Import fallback PFX
-        id: pfx
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
-        shell: pwsh
-        env:
-          CERTIFICATE_BASE64: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE }}
-        run: |
-          $pfxPath = Join-Path $env:RUNNER_TEMP 'automexia-signing.pfx'
+    - name: Download package produced without signing credentials
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: unsigned-packages-${{ matrix.artifact }}
+        path: unsigned
+    - name: Validate final signing inputs
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ('${{ vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND }}' -notin @('pfx','azure-artifact-signing')) { throw 'invalid Windows signing backend' }
+        if ([string]::IsNullOrWhiteSpace($env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT)) { throw 'publisher subject is missing' }
+        $msi = @(Get-ChildItem unsigned -File -Filter *.msi)
+        $zip = @(Get-ChildItem unsigned -File -Filter *.zip)
+        if ($msi.Count -ne 1 -or $zip.Count -ne 1) { throw 'expected exactly one MSI and one ZIP to finalize' }
+    - name: Authenticate to Azure Artifact Signing
+      if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
+      uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+    - name: Sign MSI with Azure Artifact Signing
+      if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
+      uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82
+      with:
+        endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
+        signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
+        files-folder: unsigned
+        files-folder-filter: msi
+        file-digest: SHA256
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+        description: Automexia Terminal
+        description-url: https://github.com/AmjedAllaya/automexia-terminal
+    - name: Sign MSI with fallback PFX
+      if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
+      shell: pwsh
+      env:
+        CERTIFICATE_BASE64: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE }}
+        CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $pfxPath = Join-Path $env:RUNNER_TEMP 'automexia-msi-signing.pfx'
+        try {
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
-          "path=$pfxPath" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
-      - name: Sign executable with fallback PFX
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
-        shell: pwsh
-        env:
-          CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $binary = Get-Item signing-input\automexia.exe
-          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f "${{ steps.pfx.outputs.path }}" /p $env:CERTIFICATE_PASSWORD $binary.FullName
-      - name: Verify publisher and stage signed executable
-        shell: pwsh
-        run: |
-          $binary = Get-Item signing-input\automexia.exe
-          signtool verify /pa /all /v /tw $binary.FullName
-          $signature = Get-AuthenticodeSignature -LiteralPath $binary.FullName
-          if ($signature.Status -ne 'Valid') { throw "executable signature is $($signature.Status)" }
-          if ($signature.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) {
-            throw "unexpected executable publisher: $($signature.SignerCertificate.Subject)"
-          }
-          if ($null -eq $signature.TimeStamperCertificate) { throw 'executable has no trusted timestamp' }
-          $targetDir = "target\${{ matrix.target }}\release"
-          New-Item -ItemType Directory -Force $targetDir | Out-Null
-          Copy-Item $binary.FullName "$targetDir\automexia.exe"
-      - name: Sign PowerShell assets with Azure Artifact Signing
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: shell-integration
-          files-folder-filter: ps1,ps1xml
-          files-folder-recurse: true
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Automexia Terminal shell integration
-          description-url: https://github.com/AmjedAllaya/automexia-terminal
-      - name: Sign PowerShell assets with fallback PFX
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
-        shell: pwsh
-        env:
-          CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
-          $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new(
-            "${{ steps.pfx.outputs.path }}",
-            $env:CERTIFICATE_PASSWORD,
-            $flags
-          )
-          try {
-            $scripts = @(Get-ChildItem shell-integration -Recurse -File |
-              Where-Object Extension -in @('.ps1', '.ps1xml'))
-            if ($scripts.Count -eq 0) { throw 'no PowerShell assets were found to sign' }
-            foreach ($script in $scripts) {
-              $result = Set-AuthenticodeSignature -LiteralPath $script.FullName `
-                -Certificate $certificate -HashAlgorithm SHA256 `
-                -TimestampServer http://timestamp.digicert.com
-              if ($result.Status -ne 'Valid') {
-                throw "PowerShell asset signature failed for $($script.FullName): $($result.Status)"
-              }
-            }
-          } finally {
-            $certificate.Dispose()
-          }
-      - name: Verify signed PowerShell assets
-        shell: pwsh
-        run: |
-          $scripts = @(Get-ChildItem shell-integration -Recurse -File |
-            Where-Object Extension -in @('.ps1', '.ps1xml'))
-          if ($scripts.Count -eq 0) { throw 'no PowerShell assets were found to verify' }
-          foreach ($script in $scripts) {
-            $signature = Get-AuthenticodeSignature -LiteralPath $script.FullName
-            if ($signature.Status -ne 'Valid') {
-              throw "PowerShell asset signature is $($signature.Status): $($script.FullName)"
-            }
-            if ($signature.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) {
-              throw "unexpected PowerShell asset publisher: $($signature.SignerCertificate.Subject)"
-            }
-            if ($null -eq $signature.TimeStamperCertificate) {
-              throw "PowerShell asset has no trusted timestamp: $($script.FullName)"
-            }
-          }
-      - name: Build MSI and signed portable ZIP
-        shell: pwsh
-        run: |
-          $env:AUTOMEXIA_PACKAGE_SKIP_BUILD = '1'
-          cargo xtask package --target ${{ matrix.target }}
-          $packageDir = "target\package\${{ matrix.target }}"
-          $msi = Get-ChildItem $packageDir -Filter *.msi | Select-Object -First 1
-          if (-not $msi) { throw 'cargo-packager did not produce an MSI' }
-      - name: Sign MSI with Azure Artifact Signing
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
-        uses: azure/artifact-signing-action@c7ab2a863ab5f9a846ddb8265964877ef296ee82 # v2.0.0
-        with:
-          endpoint: ${{ vars.AZURE_ARTIFACT_SIGNING_ENDPOINT }}
-          signing-account-name: ${{ vars.AZURE_ARTIFACT_SIGNING_ACCOUNT }}
-          certificate-profile-name: ${{ vars.AZURE_ARTIFACT_SIGNING_PROFILE }}
-          files-folder: target\package\${{ matrix.target }}
-          files-folder-filter: msi
-          file-digest: SHA256
-          timestamp-rfc3161: http://timestamp.acs.microsoft.com
-          timestamp-digest: SHA256
-          description: Automexia Terminal
-          description-url: https://github.com/AmjedAllaya/automexia-terminal
-      - name: Sign MSI with fallback PFX
-        if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
-        shell: pwsh
-        env:
-          CERTIFICATE_PASSWORD: ${{ secrets.AUTOMEXIA_WINDOWS_CERTIFICATE_PASSWORD }}
-        run: |
-          $msi = Get-ChildItem "target\package\${{ matrix.target }}" -Filter *.msi | Select-Object -First 1
-          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f "${{ steps.pfx.outputs.path }}" /p $env:CERTIFICATE_PASSWORD $msi.FullName
-      - name: Verify publisher and stage final Windows packages
-        shell: pwsh
-        run: |
-          $packageDir = "target\package\${{ matrix.target }}"
-          $msi = Get-ChildItem $packageDir -Filter *.msi | Select-Object -First 1
-          signtool verify /pa /all /v /tw $msi.FullName
-          $signature = Get-AuthenticodeSignature -LiteralPath $msi.FullName
-          if ($signature.Status -ne 'Valid') { throw "MSI signature is $($signature.Status)" }
-          if ($signature.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) {
-            throw "unexpected MSI publisher: $($signature.SignerCertificate.Subject)"
-          }
-          if ($null -eq $signature.TimeStamperCertificate) { throw 'MSI has no trusted timestamp' }
-          Copy-Item $msi.FullName "signed\automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.msi"
-          Copy-Item "$packageDir\automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip" signed
-      - name: Remove fallback certificate material
-        if: always() && vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'pfx'
-        shell: pwsh
-        run: Remove-Item -LiteralPath "${{ steps.pfx.outputs.path }}" -Force -ErrorAction SilentlyContinue
-      - name: Clean install, identity, and uninstall smoke
-        if: matrix.target == 'x86_64-pc-windows-msvc'
-        shell: pwsh
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          $previous = $null
-          $previousTag = gh release list --exclude-drafts --exclude-pre-releases --limit 20 --json tagName --jq '.[].tagName' |
-            Where-Object { $_ -ne $env:GITHUB_REF_NAME } | Select-Object -First 1
-          if ($previousTag) {
-            New-Item -ItemType Directory -Force previous | Out-Null
-            gh release download $previousTag --pattern '*x86_64-pc-windows-msvc.msi' --dir previous
-            if ($LASTEXITCODE -eq 0) {
-              $previous = (Get-ChildItem previous -Filter *.msi | Select-Object -First 1).FullName
-            }
-          }
-          $arguments = @{
-            MsiPath = (Get-ChildItem signed -Filter *.msi | Select-Object -First 1).FullName
-            PortableZipPath = (Get-ChildItem signed -Filter *.zip | Select-Object -First 1).FullName
-            Version = $env:AUTOMEXIA_VERSION
-            ExpectedPublisher = $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT
-          }
-          if ($previous) { $arguments.PreviousMsiPath = $previous }
-          tools/ci/test_windows_installer.ps1 @arguments
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: packages-${{ matrix.artifact }}
-          path: |
-            signed/*.msi
-            signed/*.zip
-          if-no-files-found: error
-
-  package-macos:
-    needs: [preflight, build]
-    runs-on: macos-latest
-    environment: stable-release
+          $msi = Get-Item unsigned/*.msi
+          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD $msi.FullName
+          if ($LASTEXITCODE -ne 0) { throw 'MSI Authenticode signing failed' }
+        } finally {
+          Remove-Item -LiteralPath $pfxPath -Force -ErrorAction SilentlyContinue
+        }
+    - name: Verify final MSI publisher and timestamp
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        $msi = Get-Item unsigned/*.msi
+        signtool verify /pa /all /v /tw $msi.FullName
+        if ($LASTEXITCODE -ne 0) { throw 'signtool verification failed' }
+        $signature = Get-AuthenticodeSignature -LiteralPath $msi.FullName
+        if ($signature.Status -ne 'Valid') { throw "MSI signature is $($signature.Status)" }
+        if ($signature.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected MSI publisher: $($signature.SignerCertificate.Subject)" }
+        if ($null -eq $signature.TimeStamperCertificate) { throw 'MSI has no trusted timestamp' }
+        if (-not (Test-Path "unsigned/automexia-terminal-$env:AUTOMEXIA_VERSION-${{ matrix.target }}.zip")) { throw 'final portable ZIP is missing' }
+    - name: Upload final signed Windows packages
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: packages-${{ matrix.artifact }}
+        path: |
+          unsigned/*.msi
+          unsigned/*.zip
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+  assemble-macos:
+    name: Assemble unsigned macOS universal app
+    needs:
+    - preflight
+    - build
+    runs-on: macos-26
+    timeout-minutes: 45
+    permissions:
+      contents: read
     env:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: macos-x86_64
-          path: staged/x86_64
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: macos-arm64
-          path: staged/arm64
-      - name: Assemble, sign, notarize, and staple universal DMG
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-        run: |
-          set -euo pipefail
-          keychain="$RUNNER_TEMP/automexia-signing.keychain-db"
-          keychain_password=$(openssl rand -hex 32)
-          certificate="$RUNNER_TEMP/automexia-signing.p12"
-          original_keychain=$(security default-keychain -d user | tr -d '"')
-          mount=''
-          cleanup() {
-            if [[ -n "$mount" ]]; then hdiutil detach "$mount" >/dev/null 2>&1 || true; fi
-            if [[ -n "$original_keychain" ]]; then security default-keychain -d user -s "$original_keychain" >/dev/null 2>&1 || true; fi
-            security delete-keychain "$keychain" >/dev/null 2>&1 || true
-            rm -f "$certificate"
-          }
-          trap cleanup EXIT
-          x64=$(find staged/x86_64 -type f -name automexia | head -1)
-          arm=$(find staged/arm64 -type f -name automexia | head -1)
-          app='dist/Automexia Terminal.app'
-          mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-          lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/automexia"
-          sed "s/@AUTOMEXIA_VERSION@/$AUTOMEXIA_VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
-          cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
-          cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
-          "$app/Contents/MacOS/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
-          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate"
-          security create-keychain -p "$keychain_password" "$keychain"
-          security set-keychain-settings -lut 21600 "$keychain"
-          security unlock-keychain -p "$keychain_password" "$keychain"
-          security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
-          security default-keychain -s "$keychain"
-          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app/Contents/MacOS/automexia"
-          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app"
-          codesign --verify --deep --strict --verbose=2 "$app"
-          codesign -d --verbose=4 "$app" 2>&1 | grep -q 'flags=.*runtime'
-          entitlements=$(codesign -d --entitlements :- "$app" 2>/dev/null || true)
-          if grep -q '<key>com.apple.security.get-task-allow</key>' <<<"$entitlements"; then
-            echo 'release app must not contain com.apple.security.get-task-allow' >&2
-            exit 1
-          fi
-          dmg="dist/automexia-terminal-$AUTOMEXIA_VERSION-universal.dmg"
-          hdiutil create -volname 'Automexia Terminal' -srcfolder "$app" -ov -format UDZO "$dmg"
-          codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
-          xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json | tee "$RUNNER_TEMP/automexia-notary-result.json"
-          jq -e '.status == "Accepted"' "$RUNNER_TEMP/automexia-notary-result.json"
-          xcrun stapler staple "$dmg"
-          xcrun stapler validate "$dmg"
-          spctl --assess --type open --context context:primary-signature -v "$dmg"
-          mount=$(hdiutil attach -nobrowse -readonly "$dmg" | sed -n 's#^.*\(/Volumes/.*\)$#\1#p' | tail -1)
-          test -x "$mount/Automexia Terminal.app/Contents/MacOS/automexia"
-          codesign --verify --deep --strict --verbose=2 "$mount/Automexia Terminal.app"
-          spctl --assess --type execute -v "$mount/Automexia Terminal.app"
-          hdiutil detach "$mount"
-          mount=''
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: packages-macos-universal
-          path: dist/automexia-terminal-${{ needs.preflight.outputs.version }}-universal.dmg
-          if-no-files-found: error
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Download Intel slice
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: macos-x86_64
+        path: staged/x86_64
+    - name: Download Apple Silicon slice
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: macos-arm64
+        path: staged/arm64
+    - name: Assemble and smoke-test unsigned universal app
+      shell: bash
+      run: |
+        set -euo pipefail
+        x64=$(find staged/x86_64 -type f -name automexia -print -quit)
+        arm=$(find staged/arm64 -type f -name automexia -print -quit)
+        test -n "$x64" && test -n "$arm"
+        app='dist/Automexia Terminal.app'
+        mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+        lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/automexia"
+        chmod 0755 "$app/Contents/MacOS/automexia"
+        lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/automexia"
+        file "$app/Contents/MacOS/automexia" | grep -F 'universal binary'
+        sed "s/@AUTOMEXIA_VERSION@/$AUTOMEXIA_VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
+        cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
+        cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+        "$app/Contents/MacOS/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
+        tar -C dist -czf "$RUNNER_TEMP/unsigned-macos-app.tar.gz" 'Automexia Terminal.app'
+    - name: Upload unsigned app for isolated signing
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: unsigned-macos-universal-app
+        path: ${{ runner.temp }}/unsigned-macos-app.tar.gz
+        if-no-files-found: error
+        retention-days: 2
+        compression-level: 0
 
+  package-macos:
+    name: Sign, notarize, and package macOS universal DMG
+    needs:
+    - preflight
+    - assemble-macos
+    runs-on: macos-26
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    env:
+      AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
+    steps:
+    - name: Download unsigned app only
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: unsigned-macos-universal-app
+        path: staged
+    - name: Restore unsigned app without checking out repository source
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p dist
+        tar -xzf staged/unsigned-macos-app.tar.gz -C dist
+        test -x 'dist/Automexia Terminal.app/Contents/MacOS/automexia'
+        lipo -verify_arch x86_64 arm64 'dist/Automexia Terminal.app/Contents/MacOS/automexia'
+    - name: Require Apple production signing credentials
+      shell: bash
+      env:
+        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      run: |
+        set -euo pipefail
+        for name in APPLE_CERTIFICATE APPLE_CERTIFICATE_PASSWORD APPLE_ID APPLE_PASSWORD APPLE_TEAM_ID APPLE_SIGNING_IDENTITY; do
+          [[ -n "${!name}" ]] || { echo "$name is required for production macOS release signing/notarization" >&2; exit 1; }
+        done
+    - name: Sign, notarize, and staple universal DMG
+      shell: bash
+      env:
+        APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+        APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+        APPLE_ID: ${{ secrets.APPLE_ID }}
+        APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+        APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+      run: |
+        set -euo pipefail
+        keychain="$RUNNER_TEMP/automexia-signing.keychain-db"
+        keychain_password=$(openssl rand -hex 32)
+        certificate="$RUNNER_TEMP/automexia-signing.p12"
+        original_keychain=$(security default-keychain -d user | tr -d '"')
+        mount=''
+        cleanup() {
+          if [[ -n "$mount" ]]; then hdiutil detach "$mount" >/dev/null 2>&1 || true; fi
+          if [[ -n "$original_keychain" ]]; then security default-keychain -d user -s "$original_keychain" >/dev/null 2>&1 || true; fi
+          security delete-keychain "$keychain" >/dev/null 2>&1 || true
+          rm -f "$certificate"
+        }
+        trap cleanup EXIT
+        app='dist/Automexia Terminal.app'
+        test -x "$app/Contents/MacOS/automexia"
+        printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate"
+        security create-keychain -p "$keychain_password" "$keychain"
+        security set-keychain-settings -lut 21600 "$keychain"
+        security unlock-keychain -p "$keychain_password" "$keychain"
+        security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
+        security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
+        security default-keychain -s "$keychain"
+        codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app/Contents/MacOS/automexia"
+        codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app"
+        codesign --verify --deep --strict --verbose=2 "$app"
+        codesign -d --verbose=4 "$app" 2>&1 | grep -q 'flags=.*runtime'
+        entitlements=$(codesign -d --entitlements :- "$app" 2>/dev/null || true)
+        if grep -q '<key>com.apple.security.get-task-allow</key>' <<<"$entitlements"; then
+          echo 'release app must not contain com.apple.security.get-task-allow' >&2
+          exit 1
+        fi
+        dmg_root='dist/dmg-root'
+        rm -rf "$dmg_root"
+        mkdir -p "$dmg_root"
+        cp -R "$app" "$dmg_root/Automexia Terminal.app"
+        ln -s /Applications "$dmg_root/Applications"
+        dmg="dist/automexia-terminal-$AUTOMEXIA_VERSION-universal.dmg"
+        hdiutil create -volname 'Automexia Terminal' -srcfolder "$dmg_root" -ov -format UDZO "$dmg"
+        codesign --force --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$dmg"
+        xcrun notarytool submit "$dmg" --apple-id "$APPLE_ID" --password "$APPLE_PASSWORD" --team-id "$APPLE_TEAM_ID" --wait --output-format json | tee "$RUNNER_TEMP/automexia-notary-result.json"
+        jq -e '.status == "Accepted"' "$RUNNER_TEMP/automexia-notary-result.json"
+        xcrun stapler staple "$dmg"
+        xcrun stapler validate "$dmg"
+        spctl --assess --type open --context context:primary-signature -v "$dmg"
+        mount=$(hdiutil attach -nobrowse -readonly "$dmg" | sed -n 's#^.*\(/Volumes/.*\)$#\1#p' | tail -1)
+        test -x "$mount/Automexia Terminal.app/Contents/MacOS/automexia"
+        codesign --verify --deep --strict --verbose=2 "$mount/Automexia Terminal.app"
+        spctl --assess --type execute -v "$mount/Automexia Terminal.app"
+        hdiutil detach "$mount"
+        mount=''
+    - name: Upload notarized DMG
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: packages-macos-universal
+        path: dist/automexia-terminal-${{ needs.preflight.outputs.version }}-universal.dmg
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
   package-linux:
-    needs: [preflight, build]
-    runs-on: ubuntu-latest
+    name: Package Linux release artifacts
+    needs:
+    - preflight
+    - build
+    runs-on: ${{ matrix.os }}
     env:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
     strategy:
+      fail-fast: false
       matrix:
         include:
-          - artifact: linux-x86_64
-            arch: amd64
-            target: x86_64-unknown-linux-gnu
-          - artifact: linux-arm64
-            arch: arm64
-            target: aarch64-unknown-linux-gnu
+        - artifact: linux-x86_64
+          os: ubuntu-22.04
+          expected_runner_arch: X64
+          arch: amd64
+          target: x86_64-unknown-linux-gnu
+        - artifact: linux-arm64
+          os: ubuntu-22.04-arm
+          expected_runner_arch: ARM64
+          arch: arm64
+          target: aarch64-unknown-linux-gnu
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: ${{ matrix.artifact }}
-          path: staged
-      - name: Install Linux package validators
-        run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin rpm scdoc
-      - name: Install pinned nFPM
-        run: |
-          go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
-          echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
-      - name: Build DEB, RPM, and portable archive
-        run: |
-          set -euo pipefail
-          binary=$(find staged -type f -name automexia | head -1)
-          chmod +x "$binary"
-          target_dir="target/${{ matrix.target }}/release"
-          mkdir -p "$target_dir"
-          cp "$binary" "$target_dir/automexia"
-          export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
-          cargo xtask package --target "${{ matrix.target }}"
-          package_dir="target/package/${{ matrix.target }}"
-          desktop-file-validate packaging/linux/automexia-terminal.desktop
-          appstreamcli validate --no-net packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
-          lintian "$package_dir"/*.deb
-          "$binary" --version | grep -F "$AUTOMEXIA_VERSION" || [[ "${{ matrix.arch }}" == "arm64" ]]
-      - name: Clean install, metadata, and uninstall smoke
-        if: matrix.arch == 'amd64'
-        run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: packages-${{ matrix.artifact }}
-          path: |
-            target/package/${{ matrix.target }}/*.deb
-            target/package/${{ matrix.target }}/*.rpm
-            target/package/${{ matrix.target }}/*.tar.gz
-          if-no-files-found: error
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: staged
+    - name: Select Python for compiler-policy bootstrap
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      with:
+        python-version: '3.12'
+    - name: Install pinned Rust toolchain
+      shell: bash
+      run: |
+        set -euo pipefail
+        rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
+        python tools/ci/rust_toolchain.py verify --kind development
+    - name: Require the intended native architecture
+      shell: bash
+      run: 'set -euo pipefail
 
+        test "$RUNNER_ARCH" = "${{ matrix.expected_runner_arch }}"
+
+        '
+    - name: Install Linux package validators
+      run: sudo apt-get update && sudo apt-get install -y appstream cpio desktop-file-utils lintian ncurses-bin rpm scdoc
+    - name: Install pinned nFPM
+      run: 'go install github.com/goreleaser/nfpm/v2/cmd/nfpm@v2.43.4
+
+        echo "$(go env GOPATH)/bin" >> "$GITHUB_PATH"
+
+        '
+    - name: Build DEB, RPM, and portable archive
+      run: 'set -euo pipefail
+
+        binary=$(find staged -type f -name automexia | head -1)
+
+        chmod +x "$binary"
+
+        "$binary" --version | grep -F "$AUTOMEXIA_VERSION"
+
+        target_dir="target/${{ matrix.target }}/release"
+
+        mkdir -p "$target_dir"
+
+        cp "$binary" "$target_dir/automexia"
+
+        export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
+
+        cargo xtask package --target "${{ matrix.target }}"
+
+        package_dir="target/package/${{ matrix.target }}"
+
+        desktop-file-validate packaging/linux/automexia-terminal.desktop
+
+        appstreamcli validate --no-net packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
+
+        lintian "$package_dir"/*.deb
+
+        '
+    - name: Clean install, metadata, and uninstall smoke
+      run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: packages-${{ matrix.artifact }}
+        path: 'target/package/${{ matrix.target }}/*.deb
+
+          target/package/${{ matrix.target }}/*.rpm
+
+          target/package/${{ matrix.target }}/*.tar.gz
+
+          '
+        if-no-files-found: error
+    timeout-minutes: 90
+    permissions:
+      contents: read
   hardware-smoke:
     name: Controlled GPU, PTY, WSL, signatures, and Defender
-    needs: [preflight, package-windows, package-linux]
-    runs-on: [self-hosted, windows, x64, automexia-release, gpu, wsl, defender]
-    environment: stable-release
+    needs:
+    - preflight
+    - package-windows
+    - package-linux
+    runs-on:
+    - self-hosted
+    - windows
+    - x64
+    - automexia-release
+    - gpu
+    - wsl
+    - defender
     env:
       AUTOMEXIA_VERSION: ${{ needs.preflight.outputs.version }}
       AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: packages-windows-x86_64
-          path: trust/windows
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: packages-windows-arm64
-          path: trust/windows
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: packages-linux-x86_64
-          path: trust/linux
-      - name: Verify signed packages and scan with current Defender intelligence
-        shell: pwsh
-        run: |
-          tools/ci/test_release_trust_windows.ps1 `
-            -ArtifactDirectory trust/windows `
-            -ExpectedPublisher $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT `
-            -Version $env:AUTOMEXIA_VERSION `
-            -EvidencePath trust/evidence/release-trust-windows.json
-      - name: Native GPU/PTY launch and WSL portable smoke
-        shell: pwsh
-        run: |
-          $windowsArchive = Get-Item "trust/windows/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-pc-windows-msvc.zip"
-          New-Item -ItemType Directory -Force smoke/windows-final | Out-Null
-          Expand-Archive -LiteralPath $windowsArchive.FullName -DestinationPath smoke/windows-final
-          $windows = Get-Item smoke/windows-final/automexia.exe
-          & $windows.FullName --version
-          if ($LASTEXITCODE -ne 0) { throw 'signed Windows portable smoke failed' }
-          $process = Start-Process -FilePath $windows.FullName -PassThru
-          try {
-            Start-Sleep -Seconds 8
-            if ($process.HasExited) { throw "Automexia exited during the controlled GPU/PTY smoke" }
-          }
-          finally {
-            if (-not $process.HasExited) {
-              Stop-Process -Id $process.Id -Force
-              Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue
-            }
-          }
-          $linuxArchive = Get-Item "trust/linux/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-unknown-linux-gnu.tar.gz"
-          New-Item -ItemType Directory -Force smoke/linux-final | Out-Null
-          tar -xzf $linuxArchive.FullName -C smoke/linux-final
-          if ($LASTEXITCODE -ne 0) { throw 'could not extract final Linux portable archive' }
-          $linux = Get-Item smoke/linux-final/automexia
-          $wslPath = (& wsl.exe wslpath -u $linux.FullName).Trim()
-          & wsl.exe chmod +x $wslPath
-          if ($LASTEXITCODE -ne 0) { throw 'WSL could not prepare the Linux artifact' }
-          & wsl.exe $wslPath --version
-          if ($LASTEXITCODE -ne 0) { throw 'WSL portable smoke failed' }
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: release-evidence-windows
-          path: trust/evidence/release-trust-windows.json
-          if-no-files-found: error
-
+    - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: packages-windows-x86_64
+        path: trust/windows
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: packages-windows-arm64
+        path: trust/windows
+    - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: packages-linux-x86_64
+        path: trust/linux
+    - name: Verify signed packages and scan with current Defender intelligence
+      shell: pwsh
+      run: "tools/ci/test_release_trust_windows.ps1 `\n  -ArtifactDirectory trust/windows `\n  -ExpectedPublisher $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT `\n  -Version $env:AUTOMEXIA_VERSION `\n  -EvidencePath trust/evidence/release-trust-windows.json\n"
+    - name: Native GPU/PTY launch and WSL portable smoke
+      shell: pwsh
+      run: "$windowsArchive = Get-Item \"trust/windows/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-pc-windows-msvc.zip\"\nNew-Item -ItemType Directory -Force smoke/windows-final | Out-Null\nExpand-Archive -LiteralPath $windowsArchive.FullName -DestinationPath smoke/windows-final\n$windows = Get-Item smoke/windows-final/automexia.exe\n& $windows.FullName --version\nif ($LASTEXITCODE -ne 0) { throw 'signed Windows portable smoke failed' }\n$process = Start-Process -FilePath $windows.FullName -PassThru\ntry {\n  Start-Sleep -Seconds 8\n  if ($process.HasExited) { throw \"Automexia exited during the controlled GPU/PTY smoke\" }\n}\nfinally {\n  if (-not $process.HasExited) {\n    Stop-Process -Id $process.Id -Force\n    Wait-Process -Id $process.Id -Timeout 30 -ErrorAction SilentlyContinue\n  }\n}\n$linuxArchive = Get-Item \"trust/linux/automexia-terminal-$env:AUTOMEXIA_VERSION-x86_64-unknown-linux-gnu.tar.gz\"\nNew-Item -ItemType Directory -Force smoke/linux-final | Out-Null\ntar -xzf $linuxArchive.FullName -C smoke/linux-final\nif ($LASTEXITCODE -ne 0) { throw 'could not extract final Linux portable archive' }\n$linux = Get-Item smoke/linux-final/automexia\n$wslPath = (& wsl.exe wslpath -u $linux.FullName).Trim()\n& wsl.exe chmod +x $wslPath\nif ($LASTEXITCODE -ne 0) { throw 'WSL could not prepare the Linux artifact' }\n& wsl.exe $wslPath --version\nif ($LASTEXITCODE -ne 0) { throw 'WSL portable smoke failed' }\n"
+    - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-evidence-windows
+        path: trust/evidence/release-trust-windows.json
+        if-no-files-found: error
+    timeout-minutes: 90
+    permissions:
+      contents: read
+    if: ${{ vars.AUTOMEXIA_HARDWARE_RELEASE_RUNNER == '1' }}
   publish:
-    needs: [preflight, reproducibility-linux, package-windows, package-macos, package-linux, hardware-smoke]
-    runs-on: ubuntu-latest
-    timeout-minutes: 180
-    environment: stable-release
+    needs:
+    - preflight
+    - package-windows
+    - package-macos
+    - package-linux
+    - release-final-gate
+    - reproducibility-linux
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    steps:
+    - name: Check out exact release source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
+    - name: Download final package artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        pattern: packages-*
+        path: packages
+        merge-multiple: false
+    - name: Copy and validate exact package allowlist
+      shell: bash
+      run: |
+        set -euo pipefail
+        mkdir -p release-assets sbom-input/packages
+        python3 .github/scripts/build_release_manifest.py \
+          --source packages \
+          --output release-assets \
+          --version "${{ needs.preflight.outputs.version }}" \
+          --commit "${{ needs.preflight.outputs.commit }}" \
+          --copy-packages
+        find release-assets -maxdepth 1 -type f \( -name '*.msi' -o -name '*.zip' -o -name '*.dmg' -o -name '*.deb' -o -name '*.rpm' -o -name '*.tar.gz' -o -name '*.tgz' \) -exec cp {} sbom-input/packages/ \;
+        cp Cargo.lock sbom-input/Cargo.lock
+    - name: Generate SPDX SBOM
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      with:
+        path: sbom-input
+        format: spdx-json
+        output-file: release-assets/automexia-terminal.spdx.json
+        upload-artifact: false
+    - name: Generate CycloneDX SBOM
+      uses: anchore/sbom-action@3ad7283483fc7af8ff2b4ea19663c2d5ca935e26
+      with:
+        path: sbom-input
+        format: cyclonedx-json
+        output-file: release-assets/automexia-terminal.cdx.json
+        upload-artifact: false
+    - name: Finalize release manifest and SHA-256 checksums
+      shell: bash
+      run: |
+        set -euo pipefail
+        python3 .github/scripts/build_release_manifest.py \
+          --source release-assets \
+          --output release-assets \
+          --version "${{ needs.preflight.outputs.version }}" \
+          --commit "${{ needs.preflight.outputs.commit }}" \
+          --include-sbom
+        checksum_manifest="$(mktemp "$RUNNER_TEMP/automexia-sha256.XXXXXX")"
+        trap 'rm -f -- "$checksum_manifest"' EXIT
+        (
+          cd release-assets
+          find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > "$checksum_manifest"
+          sha256sum -c "$checksum_manifest"
+          mv "$checksum_manifest" SHA256SUMS
+        )
+        trap - EXIT
+    - name: Upload immutable publication bundle
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-publish-bundle
+        path: |
+          release-assets/*.msi
+          release-assets/*.zip
+          release-assets/*.dmg
+          release-assets/*.deb
+          release-assets/*.rpm
+          release-assets/*.tar.gz
+          release-assets/*.tgz
+          release-assets/*.spdx.json
+          release-assets/*.cdx.json
+          release-assets/SHA256SUMS
+          release-assets/release-manifest.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+    if: ${{ always() && needs.release-final-gate.result == 'success' && needs.preflight.result == 'success' && needs.reproducibility-linux.result == 'success' && needs.package-windows.result == 'success' && needs.package-macos.result == 'success' && needs.package-linux.result == 'success' }}
+    name: Prepare verified release assets and SBOMs
+  sign-release-bundle:
+    name: Sign release checksum manifest
+    needs:
+    - publish
+    - preflight
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - name: Download verified publication bundle
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: release-publish-bundle
+        path: bundle
+    - name: Verify bundle and install distro-trusted minisign
+      shell: bash
+      run: |
+        set -euo pipefail
+        cd bundle
+        sha256sum -c SHA256SUMS
+        cd ..
+        sudo apt-get update
+        sudo apt-get install -y --no-install-recommends minisign
+        minisign -v
+    - name: Sign SHA256SUMS with isolated release key
+      shell: bash
+      env:
+        RELEASE_MINISIGN_SECRET_KEY: ${{ secrets.AUTOMEXIA_RELEASE_MINISIGN_SECRET_KEY }}
+        RELEASE_MINISIGN_PUBLIC_KEY: ${{ vars.AUTOMEXIA_RELEASE_MINISIGN_PUBLIC_KEY }}
+        VERSION: ${{ needs.preflight.outputs.version }}
+        RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+      run: |
+        set -euo pipefail
+        key="$RUNNER_TEMP/automexia-release.minisign.key"
+        cleanup() { rm -f "$key"; }
+        trap cleanup EXIT
+        umask 077
+        printf '%s' "$RELEASE_MINISIGN_SECRET_KEY" | base64 --decode > "$key"
+        test -s "$key"
+        minisign -S -W -s "$key" \
+          -m bundle/SHA256SUMS \
+          -x bundle/SHA256SUMS.minisig \
+          -t "Automexia Terminal v$VERSION source $RELEASE_COMMIT"
+        minisign -V -P "$RELEASE_MINISIGN_PUBLIC_KEY" \
+          -m bundle/SHA256SUMS \
+          -x bundle/SHA256SUMS.minisig
+    - name: Upload signed immutable publication bundle
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+      with:
+        name: release-signed-bundle
+        path: |
+          bundle/*.msi
+          bundle/*.zip
+          bundle/*.dmg
+          bundle/*.deb
+          bundle/*.rpm
+          bundle/*.tar.gz
+          bundle/*.tgz
+          bundle/*.spdx.json
+          bundle/*.cdx.json
+          bundle/SHA256SUMS
+          bundle/SHA256SUMS.minisig
+          bundle/release-manifest.json
+        if-no-files-found: error
+        retention-days: 7
+        compression-level: 0
+  verify-windows-final:
+    name: Verify final Windows MSI and ZIP
+    needs:
+    - package-windows
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: windows-2025
+          runner_arch: X64
+          arch: x86_64
+          artifact: packages-windows-x86_64
+        - runner: windows-11-arm
+          runner_arch: ARM64
+          arch: aarch64
+          artifact: packages-windows-arm64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 60
+    permissions:
+      contents: read
+    env:
+      AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
+    steps:
+    - name: Download exact final Windows package
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: ${{ matrix.artifact }}
+        path: artifacts
+    - name: Verify, execute, install, and uninstall exact final package
+      shell: pwsh
+      run: |
+        $ErrorActionPreference = 'Stop'
+        if ($env:RUNNER_ARCH -ne '${{ matrix.runner_arch }}') { throw "wrong runner architecture: $env:RUNNER_ARCH" }
+        $work = Join-Path $env:RUNNER_TEMP 'automexia-final-windows'
+        Remove-Item $work -Recurse -Force -ErrorAction SilentlyContinue
+        New-Item -ItemType Directory -Path $work | Out-Null
+        $zip = @(Get-ChildItem artifacts -File -Filter *.zip)
+        $msi = @(Get-ChildItem artifacts -File -Filter *.msi)
+        if ($zip.Count -ne 1 -or $msi.Count -ne 1) { throw 'expected exactly one final MSI and ZIP' }
+
+        $msiSig = Get-AuthenticodeSignature -LiteralPath $msi[0].FullName
+        if ($msiSig.Status -ne 'Valid') { throw "MSI signature is $($msiSig.Status)" }
+        if ($msiSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected MSI publisher: $($msiSig.SignerCertificate.Subject)" }
+        if ($null -eq $msiSig.TimeStamperCertificate) { throw 'MSI has no trusted timestamp' }
+
+        $portable = Join-Path $work 'portable'
+        Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath $portable -Force
+        $exe = @(Get-ChildItem $portable -Recurse -File -Filter automexia.exe)
+        if ($exe.Count -ne 1) { throw "portable ZIP must contain exactly one automexia.exe; found $($exe.Count)" }
+        $exeSig = Get-AuthenticodeSignature -LiteralPath $exe[0].FullName
+        if ($exeSig.Status -ne 'Valid') { throw "portable executable signature is $($exeSig.Status)" }
+        if ($exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected portable executable publisher: $($exeSig.SignerCertificate.Subject)" }
+        if ($null -eq $exeSig.TimeStamperCertificate) { throw 'portable executable has no trusted timestamp' }
+        & $exe[0].FullName --version
+        if ($LASTEXITCODE -ne 0) { throw 'final portable executable smoke failed' }
+
+        $log = Join-Path $work 'msi-install.log'
+        $install = Start-Process msiexec.exe -ArgumentList @('/i', "`"$($msi[0].FullName)`"", '/qn', '/norestart', '/l*v', "`"$log`"") -Wait -PassThru
+        if ($install.ExitCode -notin 0, 3010) { throw "MSI install failed with $($install.ExitCode); see $log" }
+        try {
+          $roots = @($env:ProgramFiles, [Environment]::GetFolderPath('ProgramFilesX86'), $env:LOCALAPPDATA) | Where-Object { $_ -and (Test-Path $_) }
+          $installed = @(foreach ($root in $roots) {
+            Get-ChildItem $root -Recurse -File -Filter automexia.exe -ErrorAction SilentlyContinue
+          }) | Select-Object -First 1
+          if (-not $installed) { throw 'installed Automexia executable not found' }
+          $installedSig = Get-AuthenticodeSignature -LiteralPath $installed.FullName
+          if ($installedSig.Status -ne 'Valid') { throw "installed executable signature is $($installedSig.Status)" }
+          if ($installedSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected installed publisher: $($installedSig.SignerCertificate.Subject)" }
+          & $installed.FullName --version
+          if ($LASTEXITCODE -ne 0) { throw 'installed executable smoke failed' }
+        } finally {
+          $uninstall = Start-Process msiexec.exe -ArgumentList @('/x', "`"$($msi[0].FullName)`"", '/qn', '/norestart') -Wait -PassThru
+          if ($uninstall.ExitCode -notin 0, 1605, 3010) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
+        }
+  verify-macos-final:
+    name: Verify final notarized macOS DMG
+    needs:
+    - package-macos
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: macos-26
+          arch: arm64
+        - runner: macos-26-intel
+          arch: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+    - name: Download release artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        path: artifacts
+        merge-multiple: false
+    - name: Verify, mount and execute exact notarized DMG
+      shell: bash
+      run: |
+        set -euo pipefail
+        dmg="$(find artifacts -type f -name '*.dmg' -print -quit)"
+        test -n "$dmg"
+        xcrun stapler validate "$dmg"
+        spctl --assess --verbose=4 --type open --context context:primary-signature "$dmg"
+        mount_dir="$(mktemp -d)"
+        cleanup() { hdiutil detach "$mount_dir" -quiet >/dev/null 2>&1 || true; rmdir "$mount_dir" >/dev/null 2>&1 || true; }
+        trap cleanup EXIT
+        hdiutil attach "$dmg" -nobrowse -readonly -mountpoint "$mount_dir"
+        app="$(find "$mount_dir" -maxdepth 2 -type d -name '*.app' -print -quit)"
+        test -n "$app"
+        codesign --verify --deep --strict --verbose=4 "$app"
+        spctl --assess --verbose=4 --type execute "$app"
+        bin="$(find "$app/Contents/MacOS" -type f -perm -111 -print -quit)"
+        test -n "$bin"
+        archs="$(lipo -archs "$bin")"
+        grep -qw arm64 <<<"$archs"
+        grep -qw x86_64 <<<"$archs"
+        "$bin" --version
+  verify-linux-final:
+    name: Verify final Linux packages
+    needs:
+    - package-linux
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+        - runner: ubuntu-24.04
+          arch: x86_64
+          needle_regex: (x86_64|amd64)
+        - runner: ubuntu-24.04-arm
+          arch: aarch64
+          needle_regex: (aarch64|arm64)
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+    - name: Download release artifacts
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        path: artifacts
+        merge-multiple: false
+    - name: Install package inspection tools
+      run: sudo apt-get update && sudo apt-get install -y --no-install-recommends binutils rpm cpio
+    - name: Verify tar, DEB and RPM assets
+      shell: bash
+      env:
+        TARGET_REGEX: ${{ matrix.needle_regex }}
+      run: |
+        set -euo pipefail
+        mapfile -t tars < <(find artifacts -type f \( -name '*.tar.gz' -o -name '*.tgz' \) | grep -Ei "$TARGET_REGEX")
+        mapfile -t debs < <(find artifacts -type f -name '*.deb' | grep -Ei "$TARGET_REGEX")
+        mapfile -t rpms < <(find artifacts -type f -name '*.rpm' | grep -Ei "$TARGET_REGEX")
+        (( ${#tars[@]} >= 1 )) || { echo 'No target tarball found' >&2; exit 1; }
+        (( ${#debs[@]} >= 1 )) || { echo 'No target DEB found' >&2; exit 1; }
+        (( ${#rpms[@]} >= 1 )) || { echo 'No target RPM found' >&2; exit 1; }
+
+        work="$(mktemp -d)"
+        trap 'rm -rf "$work"' EXIT
+        tar -xzf "${tars[0]}" -C "$work"
+        bin="$(find "$work" -type f -perm -111 -name 'automexia*' -print -quit)"
+        test -n "$bin"
+        file "$bin"
+        "$bin" --version
+        max_glibc="$(readelf --version-info "$bin" | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1 || true)"
+        python3 - "$max_glibc" <<'PY2'
+        import re, sys
+        v=sys.argv[1]
+        if v:
+            major, minor = map(int, re.search(r'(\d+)\.(\d+)', v).groups())
+            if (major, minor) > (2, 35):
+                raise SystemExit(f'ELF requires {v}; supported baseline ceiling is GLIBC_2.35')
+        PY2
+
+        dpkg-deb --info "${debs[0]}" >/dev/null
+        rpm -qpl "${rpms[0]}" >/dev/null
+        sudo apt-get install -y "${debs[0]}"
+        installed="$(command -v automexia || command -v automexia-terminal || true)"
+        if [[ -z "$installed" ]]; then
+          installed="$(find /usr/bin /usr/local/bin -maxdepth 1 -type f -name 'automexia*' -print -quit)"
+        fi
+        test -n "$installed"
+        "$installed" --version
+  release-final-gate:
+    name: Release final artifact gate
+    needs:
+    - authorize
+    - verify-windows-final
+    - verify-macos-final
+    - verify-linux-final
+    - reproducibility-linux
+    - hardware-smoke
+    if: ${{ always() && needs.authorize.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+    - name: Require every final artifact verification
+      shell: bash
+      env:
+        NEEDS_JSON: ${{ toJSON(needs) }}
+        REQUIRE_HARDWARE: ${{ vars.AUTOMEXIA_HARDWARE_RELEASE_RUNNER == '1' && '1' || '0' }}
+      run: "set -euo pipefail\npython3 - <<'PY2'\nimport json, os\nneeds=json.loads(os.environ['NEEDS_JSON'])\nrequire_hw=os.environ.get('REQUIRE_HARDWARE') == '1'\nfailed={}\nfor name,data in needs.items():\n    result=data.get('result')\n    if name == 'hardware-smoke' and not require_hw and result == 'skipped':\n        continue\n    if result != 'success':\n        failed[name]=result\nif failed:\n    raise SystemExit(f'Final artifact gate failed: {failed}')\nprint('All required final artifact checks passed.')\nPY2\n"
+  publish-release:
+    name: Publish immutable GitHub Release
+    needs:
+    - sign-release-bundle
+    - preflight
+    if: ${{ needs.sign-release-bundle.result == 'success' && needs.preflight.result == 'success' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
     permissions:
       contents: write
-      id-token: write
-      attestations: write
-      artifact-metadata: write
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          pattern: packages-*
-          path: packages
-          merge-multiple: true
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
-        with:
-          name: release-evidence-windows
-          path: release-evidence
-      - name: Require immutable GitHub releases
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          test "$(gh api "repos/$GITHUB_REPOSITORY/immutable-releases" --jq '.enabled')" = "true"
-      - name: Enforce final package allowlist and measure hashing overhead
-        run: |
-          mkdir release-assets
-          mkdir -p sbom-input/packages
-          python tools/ci/release_trust.py \
-            --artifacts packages \
-            --version "${{ needs.preflight.outputs.version }}" \
-            --manifest release-assets/release-manifest.json \
-            --benchmark release-assets/release-trust-benchmark.json
-          cp packages/* release-assets/
-          cp packages/* sbom-input/packages/
-          cp Cargo.lock sbom-input/Cargo.lock
-          cp release-evidence/release-trust-windows.json release-assets/
-      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
-        with:
-          path: sbom-input
-          format: spdx-json
-          output-file: release-assets/automexia-terminal.spdx.json
-          upload-artifact: false
-      - uses: anchore/sbom-action@e22c389904149dbc22b58101806040fa8d37a610 # v0
-        with:
-          path: sbom-input
-          format: cyclonedx-json
-          output-file: release-assets/automexia-terminal.cdx.json
-          upload-artifact: false
-      - name: Generate complete checksums
-        run: |
-          (cd release-assets && find . -maxdepth 1 -type f ! -name SHA256SUMS -printf '%f\0' | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          python tools/ci/release_trust.py \
-            --verify-final release-assets \
-            --version "${{ needs.preflight.outputs.version }}" \
-            --expected-windows-publisher "${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}"
-      - name: Attest final package provenance
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: |
-            release-assets/*.msi
-            release-assets/*.zip
-            release-assets/*.dmg
-            release-assets/*.deb
-            release-assets/*.rpm
-            release-assets/*.tar.gz
-          create-storage-record: false
-      - name: Attest final package SBOM
-        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
-        with:
-          subject-path: |
-            release-assets/*.msi
-            release-assets/*.zip
-            release-assets/*.dmg
-            release-assets/*.deb
-            release-assets/*.rpm
-            release-assets/*.tar.gz
-          sbom-path: release-assets/automexia-terminal.spdx.json
-          create-storage-record: false
-      - name: Publish protected-tag assets
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          set -euo pipefail
-          if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            echo "Refusing to modify an existing release: $GITHUB_REF_NAME" >&2
-            exit 1
+    - name: Check out exact source with complete history for provenance validation
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        ref: ${{ needs.preflight.outputs.commit }}
+        fetch-depth: 0
+        persist-credentials: false
+    - name: Download verified publication bundle
+      uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
+      with:
+        name: release-signed-bundle
+        path: bundle
+    - name: Create immutable version tag and publish verified release
+      shell: bash
+      env:
+        GH_TOKEN: ${{ github.token }}
+        VERSION: ${{ needs.preflight.outputs.version }}
+        RELEASE_COMMIT: ${{ needs.preflight.outputs.commit }}
+      run: |
+        set -euo pipefail
+        tag="v$VERSION"
+        [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+        [[ "$RELEASE_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+
+        mkdir publish
+        while IFS= read -r -d '' file; do
+          base="$(basename "$file")"
+          case "$base" in
+            *.msi|*.zip|*.dmg|*.deb|*.rpm|*.tar.gz|*.tgz|*.spdx.json|*.cdx.json|SHA256SUMS|SHA256SUMS.minisig|release-manifest.json|*.sig|*.minisig) ;;
+            *) continue ;;
+          esac
+          [[ "$base" != *$'\n'* && "$base" != *$'\r'* ]]
+          if [[ -e "publish/$base" ]]; then
+            cmp --silent "$file" "publish/$base" || { echo "Conflicting duplicate asset: $base" >&2; exit 1; }
+          else
+            cp --no-preserve=mode,ownership "$file" "publish/$base"
           fi
-          gh release create "$GITHUB_REF_NAME" --verify-tag --draft --generate-notes --title "Automexia Terminal ${{ needs.preflight.outputs.version }}"
-          find release-assets -maxdepth 1 -type f -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME"
-          gh release edit "$GITHUB_REF_NAME" --draft=false --latest
+        done < <(find bundle -type f -print0)
+
+        test -f publish/SHA256SUMS
+        test -f publish/SHA256SUMS.minisig
+        test -f publish/release-manifest.json
+        (cd publish && sha256sum -c SHA256SUMS)
+        python3 - "$VERSION" "$RELEASE_COMMIT" <<'PY2'
+        import json, sys
+        m=json.load(open('publish/release-manifest.json', encoding='utf-8'))
+        if m.get('version') != sys.argv[1]:
+            raise SystemExit('release-manifest version mismatch')
+        if m.get('source_commit') != sys.argv[2]:
+            raise SystemExit('release-manifest source_commit mismatch')
+        if m.get('tag') != 'v' + sys.argv[1]:
+            raise SystemExit('release-manifest tag mismatch')
+        if not m.get('artifacts'):
+            raise SystemExit('release-manifest has no artifacts')
+        PY2
+
+        # Never modify an already-created GitHub Release.
+        if gh release view "$tag" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+          echo "Release $tag already exists; refusing mutation" >&2
+          exit 1
+        fi
+
+        # A rerun may safely recover from a previous network failure that created the
+        # exact annotated tag but failed before creating the GitHub Release.
+        if ref_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/ref/tags/$tag" --jq '.object.sha' 2>/dev/null)"; then
+          target_sha="$(gh api "repos/$GITHUB_REPOSITORY/git/tags/$ref_sha" --jq '.object.sha' 2>/dev/null || printf '%s' "$ref_sha")"
+          [[ "$target_sha" == "$RELEASE_COMMIT" ]] || {
+            echo "Existing tag $tag does not point to the validated release commit" >&2
+            exit 1
+          }
+          echo "Reusing existing exact tag $tag after a partial prior publication attempt."
+        else
+          tag_object="$(gh api --method POST "repos/$GITHUB_REPOSITORY/git/tags" \
+            -f tag="$tag" \
+            -f message="Automexia Terminal $VERSION" \
+            -f object="$RELEASE_COMMIT" \
+            -f type=commit \
+            --jq .sha)"
+          gh api --method POST "repos/$GITHUB_REPOSITORY/git/refs" \
+            -f ref="refs/tags/$tag" \
+            -f sha="$tag_object" >/dev/null
+        fi
+        python tools/ci/stable_release.py validate-source \
+          --expected-commit "$RELEASE_COMMIT" \
+          --release-tag "$tag"
+
+        gh release create "$tag" --repo "$GITHUB_REPOSITORY" --verify-tag --draft --generate-notes --title "Automexia Terminal $VERSION"
+        mapfile -d '' assets < <(find publish -maxdepth 1 -type f -print0 | sort -z)
+        (( ${#assets[@]} > 0 ))
+        gh release upload "$tag" --repo "$GITHUB_REPOSITORY" "${assets[@]}"
+        gh release edit "$tag" --repo "$GITHUB_REPOSITORY" --draft=false --latest
+concurrency:
+  group: stable-release-${{ github.repository }}
+  cancel-in-progress: false

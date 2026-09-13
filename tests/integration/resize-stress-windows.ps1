@@ -2,11 +2,14 @@ param(
     [string]$Binary,
     [ValidateRange(100, 10000)]
     [int]$PowerShellHistoryBudgetMilliseconds = 1500,
+    [ValidateRange(1000, 30000)]
+    [int]$MaximumOwnedShutdownMilliseconds = 6000,
     [string]$ResourceReport,
     [string]$FrameCapture,
     [string]$TypographyCapture,
     [string]$SearchCapture,
     [string]$ResultCapture,
+    [string]$ResultNavigationCapture,
     [string]$ModalCaptureDirectory,
     [ValidateRange(32, 4096)]
     [int64]$MaximumHandleGrowth = 384,
@@ -26,6 +29,7 @@ param(
     [int64]$MaximumImageThreadGrowth = 2,
     [ValidateRange(8388608, 1073741824)]
     [int64]$MaximumImageMemoryGrowth = 134217728,
+    [switch]$ConnectionHubOnly,
     [switch]$UseCpuRenderer
 )
 
@@ -73,6 +77,113 @@ public static class AutomexiaResizeDriver {
                    hWnd, 0x0101, new IntPtr(virtualKey), new IntPtr(up));
     }
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetForegroundWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern uint GetWindowThreadProcessId(
+        IntPtr hWnd, IntPtr processId);
+
+    [DllImport("kernel32.dll")]
+    private static extern uint GetCurrentThreadId();
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool AttachThreadInput(
+        uint attachThread, uint attachToThread, bool attach);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool BringWindowToTop(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetForegroundWindow();
+
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetWindow(IntPtr hWnd, uint command);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool IsIconic(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(
+        IntPtr hWnd, System.Text.StringBuilder className, int maximum);
+
+    [DllImport("user32.dll")]
+    private static extern void keybd_event(
+        byte virtualKey, byte scanCode, uint flags, UIntPtr extraInfo);
+
+    private static void SendKeyChange(
+        uint virtualKey, bool extended, bool pressed) {
+        const uint Extended = 0x0001;
+        const uint KeyUp = 0x0002;
+        uint flags = (extended ? Extended : 0) | (pressed ? 0 : KeyUp);
+        keybd_event(
+            (byte)virtualKey,
+            (byte)MapVirtualKey(virtualKey, 0),
+            flags,
+            UIntPtr.Zero);
+    }
+
+    public static bool SendModifiedKeyTap(
+        IntPtr hWnd, uint virtualKey, bool extended,
+        bool control, bool shift) {
+        // PostMessage does not update Windows' keyboard state, so winit cannot
+        // observe modifiers from synthetic WM_KEYDOWN messages. This helper
+        // drives the real foreground input path used by a physical keyboard.
+        if (!ActivateWindow(hWnd)) {
+            return false;
+        }
+        if (control) {
+            SendKeyChange(0x11, false, true);
+        }
+        if (shift) {
+            SendKeyChange(0x10, false, true);
+        }
+        SendKeyChange(virtualKey, extended, true);
+        SendKeyChange(virtualKey, extended, false);
+        if (shift) {
+            SendKeyChange(0x10, false, false);
+        }
+        if (control) {
+            SendKeyChange(0x11, false, false);
+        }
+        return GetForegroundWindow() == hWnd;
+    }
+
+    public static bool ActivateWindow(IntPtr hWnd) {
+        DateTime deadline = DateTime.UtcNow.AddSeconds(2);
+        do {
+            IntPtr foreground = GetForegroundWindow();
+            uint currentThread = GetCurrentThreadId();
+            uint foregroundThread = foreground == IntPtr.Zero
+                ? 0
+                : GetWindowThreadProcessId(foreground, IntPtr.Zero);
+            bool attached = foregroundThread != 0 &&
+                foregroundThread != currentThread &&
+                AttachThreadInput(currentThread, foregroundThread, true);
+            try {
+                BringWindowToTop(hWnd);
+                SetForegroundWindow(hWnd);
+            } finally {
+                if (attached) {
+                    AttachThreadInput(currentThread, foregroundThread, false);
+                }
+            }
+            if (GetForegroundWindow() == hWnd) {
+                return true;
+            }
+            System.Threading.Thread.Sleep(10);
+        } while (DateTime.UtcNow < deadline);
+        return false;
+    }
+
 
     [StructLayout(LayoutKind.Sequential)]
     public struct Rect {
@@ -88,6 +199,10 @@ public static class AutomexiaResizeDriver {
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetClientRect(IntPtr hWnd, out Rect rect);
 
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetWindowRect(IntPtr hWnd, out Rect rect);
+
     [StructLayout(LayoutKind.Sequential)]
     private struct Point {
         public int X;
@@ -98,6 +213,57 @@ public static class AutomexiaResizeDriver {
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ClientToScreen(IntPtr hWnd, ref Point point);
 
+    private static void RequireExclusiveCaptureOwnership(IntPtr hWnd) {
+        if (!ActivateWindow(hWnd)) {
+            throw new InvalidOperationException(
+                "Automexia could not own foreground focus for native capture");
+        }
+
+        Rect client;
+        if (!GetClientRect(hWnd, out client)) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        Point origin = new Point { X = 0, Y = 0 };
+        if (!ClientToScreen(hWnd, ref origin)) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        client.Left += origin.X;
+        client.Right += origin.X;
+        client.Top += origin.Y;
+        client.Bottom += origin.Y;
+
+        const uint PreviousWindow = 3;
+        for (IntPtr other = GetWindow(hWnd, PreviousWindow);
+             other != IntPtr.Zero;
+             other = GetWindow(other, PreviousWindow)) {
+            if (!IsWindowVisible(other) || IsIconic(other)) {
+                continue;
+            }
+            var className = new System.Text.StringBuilder(128);
+            GetClassName(other, className, className.Capacity);
+            // Electron, IME, and shell infrastructure can expose visible
+            // helper HWNDs above a foreground application without painting
+            // into the captured region. The escaped PowerShell application
+            // error is a standard native dialog (#32770), so reject that
+            // enforceable class while foreground ownership covers normal
+            // application windows.
+            if (className.ToString() != "#32770") {
+                continue;
+            }
+            Rect bounds;
+            if (!GetWindowRect(other, out bounds)) {
+                continue;
+            }
+            bool overlaps = client.Left < bounds.Right && bounds.Left < client.Right &&
+                client.Top < bounds.Bottom && bounds.Top < client.Bottom;
+            if (overlaps) {
+                throw new InvalidOperationException(
+                    "An unowned top-level window class " + className.ToString() +
+                    " obscures the Automexia capture area");
+            }
+        }
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool SetCursorPos(int x, int y);
@@ -105,6 +271,34 @@ public static class AutomexiaResizeDriver {
     public static bool MovePointerToClient(IntPtr hWnd, int x, int y) {
         Point point = new Point { X = x, Y = y };
         return ClientToScreen(hWnd, ref point) && SetCursorPos(point.X, point.Y);
+    }
+
+    public static bool MovePhysicalPointerToClient(IntPtr hWnd, int x, int y) {
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) {
+            return false;
+        }
+        try {
+        return MovePointerToClient(hWnd, x, y);
+        } finally {
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
+
+    public static bool PostMouseWheel(
+        IntPtr hWnd, int clientX, int clientY, int delta) {
+        Point point = new Point { X = clientX, Y = clientY };
+        if (!ClientToScreen(hWnd, ref point)) {
+            return false;
+        }
+        uint wheel = ((uint)(ushort)(short)delta) << 16;
+        uint coordinates = (uint)(ushort)(short)point.X |
+            ((uint)(ushort)(short)point.Y << 16);
+        return PostMessage(
+            hWnd,
+            0x020A,
+            new IntPtr(unchecked((int)wheel)),
+            new IntPtr(unchecked((int)coordinates)));
     }
 
     public static void WritePreviewFixture(
@@ -176,6 +370,8 @@ public static class AutomexiaResizeDriver {
         public int MeanGreen;
         public int MeanBlue;
         public int BrightSampleCount;
+        public long NonOpaquePixelCount;
+        public string PixelDigest;
     }
 
     public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath) {
@@ -192,7 +388,23 @@ public static class AutomexiaResizeDriver {
                     "Could not enter per-monitor DPI awareness for retained capture");
             }
             try {
-                return CaptureClientFrameCore(hWnd, outputPath);
+                DateTime deadline = DateTime.UtcNow.AddSeconds(3);
+                FrameStats previousFrame = CaptureClientFrameCore(hWnd, null);
+                do {
+                    System.Threading.Thread.Sleep(25);
+                    FrameStats current = CaptureClientFrameCore(hWnd, outputPath);
+                    if (previousFrame.NonOpaquePixelCount == 0 &&
+                        current.NonOpaquePixelCount == 0 &&
+                        String.Equals(
+                        previousFrame.PixelDigest,
+                        current.PixelDigest,
+                        StringComparison.Ordinal)) {
+                        return current;
+                    }
+                    previousFrame = current;
+                } while (DateTime.UtcNow < deadline);
+                throw new InvalidOperationException(
+                    "Automexia client frame did not reach two identical full-pixel captures");
             } finally {
                 SetThreadDpiAwarenessContext(previous);
             }
@@ -201,6 +413,7 @@ public static class AutomexiaResizeDriver {
     }
 
     private static FrameStats CaptureClientFrameCore(IntPtr hWnd, string outputPath) {
+        RequireExclusiveCaptureOwnership(hWnd);
         Rect rect;
         if (!GetClientRect(hWnd, out rect)) {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -264,12 +477,48 @@ public static class AutomexiaResizeDriver {
                     samples++;
                 }
             }
+            long nonOpaquePixels = 0;
+            string pixelDigest;
+            using (var hasher = System.Security.Cryptography.SHA256.Create()) {
+                byte[] dimensions = new byte[8];
+                Buffer.BlockCopy(BitConverter.GetBytes(width), 0, dimensions, 0, 4);
+                Buffer.BlockCopy(BitConverter.GetBytes(height), 0, dimensions, 4, 4);
+                hasher.TransformBlock(dimensions, 0, dimensions.Length, null, 0);
+                var bounds = new Rectangle(0, 0, width, height);
+                BitmapData data = bitmap.LockBits(
+                    bounds, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+                try {
+                    byte[] row = new byte[checked(width * 4)];
+                    for (int y = 0; y < height; y++) {
+                        Marshal.Copy(
+                            IntPtr.Add(data.Scan0, checked(y * data.Stride)),
+                            row,
+                            0,
+                            row.Length);
+                        for (int alpha = 3; alpha < row.Length; alpha += 4) {
+                            if (row[alpha] != 255) {
+                                nonOpaquePixels++;
+                            }
+                        }
+                        hasher.TransformBlock(row, 0, row.Length, null, 0);
+                    }
+                } finally {
+                    bitmap.UnlockBits(data);
+                }
+                hasher.TransformFinalBlock(new byte[0], 0, 0);
+                pixelDigest = BitConverter.ToString(hasher.Hash).Replace("-", "");
+            }
+            byte[] encoded;
+            using (var stream = new MemoryStream()) {
+                bitmap.Save(stream, ImageFormat.Png);
+                encoded = stream.ToArray();
+            }
             if (!String.IsNullOrWhiteSpace(outputPath)) {
                 string directory = Path.GetDirectoryName(Path.GetFullPath(outputPath));
                 if (!String.IsNullOrWhiteSpace(directory)) {
                     Directory.CreateDirectory(directory);
                 }
-                bitmap.Save(outputPath, ImageFormat.Png);
+                File.WriteAllBytes(outputPath, encoded);
             }
             return new FrameStats {
                 Width = width,
@@ -278,6 +527,8 @@ public static class AutomexiaResizeDriver {
                 DistinctColorBuckets = buckets.Count,
                 DominantColorBucket = dominantColorBucket,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
+                NonOpaquePixelCount = nonOpaquePixels,
+                PixelDigest = pixelDigest,
             };
         }
     }
@@ -299,6 +550,7 @@ public static class AutomexiaResizeDriver {
 
     public static FrameStats CaptureClientRegionStats(
         IntPtr hWnd, int x, int y, int width, int height) {
+        RequireExclusiveCaptureOwnership(hWnd);
         Rect rect;
         if (!GetClientRect(hWnd, out rect)) {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
@@ -402,6 +654,16 @@ public static class AutomexiaResizeDriver {
             NoMove | NoSize | NoActivate | ShowWindow);
     }
 
+    public static bool MoveWindowTo(IntPtr hWnd, int x, int y) {
+        const uint NoSize = 0x0001;
+        const uint NoZOrder = 0x0004;
+        const uint NoActivate = 0x0010;
+        const uint ShowWindow = 0x0040;
+        return SetWindowPos(
+            hWnd, IntPtr.Zero, x, y, 0, 0,
+            NoSize | NoZOrder | NoActivate | ShowWindow);
+    }
+
     public static int PrimaryWidth() {
         return GetSystemMetrics(0);
     }
@@ -437,7 +699,86 @@ function Test-AllAutomexiaPaneContexts {
     return $true
 }
 
-function Get-AutomexiaDescendantCount {
+function Assert-AutomexiaCommandResultPaintIsolation {
+    param(
+        [object]$Snapshot,
+        [string]$Stage,
+        [int]$MinimumPaints = 1
+    )
+
+    $paints = @($Snapshot.command_result_paints)
+    if ($paints.Count -lt $MinimumPaints) {
+        throw "$Stage published $($paints.Count) command-result paints; expected at least $MinimumPaints"
+    }
+    $scale = [Math]::Max(0.01, [double]$Snapshot.scale_factor)
+    $logicalWidth = [double]$Snapshot.window_width / $scale
+    $logicalHeight = [double]$Snapshot.window_height / $scale
+    $promptPaints = @($Snapshot.prompt_context_paints)
+    foreach ($promptPaint in $promptPaints) {
+        $prompt = @($promptPaint)
+        $promptRect = @($prompt[2])
+        if ($prompt.Count -ne 3 -or $promptRect.Count -ne 4 -or
+            @($promptRect | Where-Object {
+                [double]::IsNaN([double]$_) -or
+                    [double]::IsInfinity([double]$_)
+            }).Count -ne 0 -or
+            [double]$promptRect[0] -lt 0.0 -or [double]$promptRect[1] -lt 0.0 -or
+            [double]$promptRect[2] -le 0.0 -or [double]$promptRect[3] -le 0.0 -or
+            [double]$promptRect[0] + [double]$promptRect[2] -gt $logicalWidth + 1.0 -or
+            [double]$promptRect[1] + [double]$promptRect[3] -gt $logicalHeight + 1.0) {
+            throw "$Stage published malformed prompt-context paint geometry"
+        }
+    }
+    $identities = [Collections.Generic.HashSet[string]]::new()
+    for ($leftIndex = 0; $leftIndex -lt $paints.Count; $leftIndex++) {
+        $left = @($paints[$leftIndex])
+        $leftRect = @($left[2])
+        if ($left.Count -ne 3 -or $leftRect.Count -ne 4 -or
+            @($leftRect | Where-Object {
+                [double]::IsNaN([double]$_) -or
+                    [double]::IsInfinity([double]$_)
+            }).Count -ne 0 -or
+            [double]$leftRect[0] -lt 0.0 -or [double]$leftRect[1] -lt 0.0 -or
+            [double]$leftRect[2] -le 0.0 -or [double]$leftRect[3] -le 0.0 -or
+            [double]$leftRect[0] + [double]$leftRect[2] -gt $logicalWidth + 1.0 -or
+            [double]$leftRect[1] + [double]$leftRect[3] -gt $logicalHeight + 1.0) {
+            throw "$Stage published malformed command-result paint geometry"
+        }
+        if (-not $identities.Add([string]$left[1])) {
+            throw "$Stage painted command-result identity $($left[1]) more than once"
+        }
+        for ($rightIndex = $leftIndex + 1; $rightIndex -lt $paints.Count; $rightIndex++) {
+            $right = @($paints[$rightIndex])
+            $rightRect = @($right[2])
+            if ($right.Count -ne 3 -or $rightRect.Count -ne 4) {
+                throw "$Stage published malformed command-result paint geometry"
+            }
+            $horizontalOverlap =
+                [double]$leftRect[0] -lt [double]$rightRect[0] + [double]$rightRect[2] -and
+                [double]$rightRect[0] -lt [double]$leftRect[0] + [double]$leftRect[2]
+            $verticalOverlap =
+                [double]$leftRect[1] -lt [double]$rightRect[1] + [double]$rightRect[3] -and
+                [double]$rightRect[1] -lt [double]$leftRect[1] + [double]$leftRect[3]
+            if ($horizontalOverlap -and $verticalOverlap) {
+                throw "$Stage overlapped command-result identities $($left[1]) and $($right[1])"
+            }
+        }
+        foreach ($promptPaint in $promptPaints) {
+            $promptRect = @($promptPaint[2])
+            $horizontalOverlap =
+                [double]$leftRect[0] -lt [double]$promptRect[0] + [double]$promptRect[2] -and
+                [double]$promptRect[0] -lt [double]$leftRect[0] + [double]$leftRect[2]
+            $verticalOverlap =
+                [double]$leftRect[1] -lt [double]$promptRect[1] + [double]$promptRect[3] -and
+                [double]$promptRect[1] -lt [double]$leftRect[1] + [double]$leftRect[3]
+            if ($horizontalOverlap -and $verticalOverlap) {
+                throw "$Stage overlaps command-result identity $($left[1]) with prompt context"
+            }
+        }
+    }
+}
+
+function Get-AutomexiaDescendantProcessIds {
     param([int]$RootProcessId)
 
     $processes = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
@@ -457,7 +798,37 @@ function Get-AutomexiaDescendantCount {
             }
         }
     }
-    return $seen.Count
+    return @($seen | Sort-Object)
+}
+
+function Get-AutomexiaOwnedProcessIds {
+    param(
+        [int]$RootProcessId,
+        [string]$FixtureConfigRoot
+    )
+
+    $owned = [Collections.Generic.HashSet[int]]::new()
+    foreach ($processId in @(Get-AutomexiaDescendantProcessIds $RootProcessId)) {
+        [void]$owned.Add([int]$processId)
+    }
+    if (-not [string]::IsNullOrWhiteSpace($FixtureConfigRoot)) {
+        foreach ($candidate in @(Get-CimInstance Win32_Process |
+                Select-Object ProcessId, CommandLine)) {
+            if ($null -ne $candidate.CommandLine -and
+                $candidate.CommandLine.IndexOf(
+                    $FixtureConfigRoot,
+                    [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+                [void]$owned.Add([int]$candidate.ProcessId)
+            }
+        }
+    }
+    return @($owned | Sort-Object)
+}
+
+function Get-AutomexiaDescendantCount {
+    param([int]$RootProcessId)
+
+    return @(Get-AutomexiaOwnedProcessIds $RootProcessId $configRoot).Count
 }
 
 function Get-AutomexiaResourceSample {
@@ -582,6 +953,9 @@ $process = $null
 $window = [IntPtr]::Zero
 $lastSnapshot = $null
 $testStage = 'startup'
+$ownedDescendantsAtShutdown = @()
+$reportPath = $null
+$report = $null
 
 function Read-AutomexiaSnapshot {
     param(
@@ -762,8 +1136,209 @@ $rendererConfig
     if ([int64]$initialPanel.shell_pid -le 0) {
         throw 'The initial ConPTY child process ID was not recorded'
     }
+    $blankPromptLine = [string]$initialPanel.raw_cursor_line_text
     $script:testStage = 'initial resource baseline'
     $resourceBaseline = Get-AutomexiaResourceSample $process
+
+    if ($ConnectionHubOnly) {
+        $modalCaptureRoot = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+            $null
+        } else {
+            [IO.Path]::GetFullPath($ModalCaptureDirectory)
+        }
+        if ($null -ne $modalCaptureRoot) {
+            New-Item -ItemType Directory -Force -Path $modalCaptureRoot | Out-Null
+        }
+        $rendererName = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+        $setupCapturePath = if ($null -eq $modalCaptureRoot) {
+            $null
+        } else {
+            Join-Path $modalCaptureRoot "connection-hub-$rendererName.png"
+        }
+        $directCapturePath = if ($null -eq $modalCaptureRoot) {
+            $null
+        } else {
+            Join-Path $modalCaptureRoot "connection-hub-direct-$rendererName.png"
+        }
+
+        $script:testStage = 'focused connection hub setup composition'
+        $hubControl = 'open-connection-hub:focused-native-hub'
+        Send-AutomexiaTestControl $hubControl
+        $hubSetup = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (([string]$hubSetup.last_control -ne $hubControl -or
+                -not [bool]$hubSetup.connection_hub_active -or
+                [string]$hubSetup.connection_hub_route -ne 'results') -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubSetup = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetup.sequence)
+        }
+        if (-not [bool]$hubSetup.connection_hub_active -or
+            [string]$hubSetup.connection_hub_route -ne 'results') {
+            Write-Host ($hubSetup | ConvertTo-Json -Depth 8)
+            throw 'Focused native Connection Hub did not open on Results'
+        }
+        $hubSetupPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetup.sequence)
+        $terminalBefore = Get-ActiveAutomexiaPanel $hubSetupPresented
+        if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+            throw 'Could not expose Automexia for focused setup capture'
+        }
+        try {
+            Start-Sleep -Milliseconds 100
+            $setupFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $setupCapturePath)
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        }
+        if ($setupFrame.Width -lt 100 -or $setupFrame.Height -lt 100 -or
+            $setupFrame.SampleCount -lt 100 -or
+            $setupFrame.DistinctColorBuckets -lt 8 -or
+            $setupFrame.LuminanceSpread -lt 32) {
+            throw 'Focused native Connection Hub setup frame is blank or unreadable'
+        }
+
+        $script:testStage = 'focused connection hub direct-entry composition'
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x4C, $false)) {
+            throw 'Could not deliver the native Connection Hub L mnemonic'
+        }
+        $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetupPresented.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not [bool]$hubDirect.connection_hub_active -or
+                -not [bool]$hubDirect.connection_hub_literal_entry) -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+        }
+        if (-not [bool]$hubDirect.connection_hub_active -or
+            -not [bool]$hubDirect.connection_hub_literal_entry) {
+            Write-Host ($hubDirect | ConvertTo-Json -Depth 8)
+            throw 'Native L did not open the focused direct-entry editor'
+        }
+        $hubDirectPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+        if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+            throw 'Could not expose Automexia for focused direct-entry capture'
+        }
+        try {
+            Start-Sleep -Milliseconds 100
+            $directFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+                $window, $directCapturePath)
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        }
+        if ($directFrame.Width -lt 100 -or $directFrame.Height -lt 100 -or
+            $directFrame.SampleCount -lt 100 -or
+            $directFrame.DistinctColorBuckets -lt 8 -or
+            $directFrame.LuminanceSpread -lt 32) {
+            throw 'Focused native Connection Hub direct frame is blank or unreadable'
+        }
+
+        $hubScale = [double]$hubDirectPresented.scale_factor
+        $logicalWidth = [double]$hubDirectPresented.window_width / $hubScale
+        $logicalHeight = [double]$hubDirectPresented.window_height / $hubScale
+        $margin = if ($logicalWidth -lt 420.0 -or $logicalHeight -lt 320.0) {
+            6.0
+        } else {
+            18.0
+        }
+        $cardWidth = [Math]::Min(840.0, [Math]::Max(1.0, $logicalWidth - $margin * 2.0))
+        $cardHeight = [Math]::Min(420.0, [Math]::Max(1.0, $logicalHeight - $margin * 2.0))
+        $cardX = [Math]::Max(0.0, ($logicalWidth - $cardWidth) * 0.5)
+        $cardY = [Math]::Max(0.0, ($logicalHeight - $cardHeight) * 0.5)
+        $inner = if ($cardWidth -lt 650.0) { 12.0 } else { 20.0 }
+        $closeX = [int][Math]::Round(($cardX + $cardWidth - $inner - 20.0) * $hubScale)
+        $closeY = [int][Math]::Round(($cardY + 32.0) * $hubScale)
+        $closeLParam = [IntPtr](($closeX -band 0xffff) -bor (($closeY -band 0xffff) -shl 16))
+        if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient(
+                $window, $closeX, $closeY) -or
+            -not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0200, [IntPtr]::Zero, $closeLParam)) {
+            throw 'Could not move to the focused direct-entry close target'
+        }
+        $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectPresented.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([string]$hubPointerReady.connection_hub_pointer_hit -ne
+                'CancelLiteralDestination' -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
+        }
+        if ([string]$hubPointerReady.connection_hub_pointer_hit -ne
+            'CancelLiteralDestination') {
+            Write-Host ($hubPointerReady | ConvertTo-Json -Depth 8)
+            throw 'The physical pointer did not resolve to direct-entry Cancel'
+        }
+        if (-not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0201, [IntPtr]1, $closeLParam) -or
+            -not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0202, [IntPtr]::Zero, $closeLParam)) {
+            throw 'Could not click the focused direct-entry close target'
+        }
+        $hubCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not [bool]$hubCancelled.connection_hub_active -or
+                [bool]$hubCancelled.connection_hub_literal_entry) -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCancelled.sequence)
+        }
+        $terminalAfterCancel = Get-ActiveAutomexiaPanel $hubCancelled
+        if (-not [bool]$hubCancelled.connection_hub_active -or
+            [bool]$hubCancelled.connection_hub_literal_entry -or
+            [string]$hubCancelled.connection_hub_route -ne 'results' -or
+            [int64]$terminalAfterCancel.route_id -ne [int64]$terminalBefore.route_id -or
+            [int]$hubCancelled.display_offset -ne [int]$hubSetupPresented.display_offset -or
+            [string]$terminalAfterCancel.raw_cursor_line_text -ne
+                [string]$terminalBefore.raw_cursor_line_text) {
+            Write-Host ($hubCancelled | ConvertTo-Json -Depth 8)
+            throw 'Native close did not cancel only direct entry or changed terminal state'
+        }
+
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+            throw 'Could not deliver Connection Hub Escape after nested cancellation'
+        }
+        $hubClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCancelled.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([bool]$hubClosed.connection_hub_active -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $hubClosed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubClosed.sequence)
+        }
+        if ([bool]$hubClosed.connection_hub_active) {
+            throw 'Focused Connection Hub remained active after Escape'
+        }
+
+        if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
+            $reportPath = [IO.Path]::GetFullPath($ResourceReport)
+            $reportDirectory = [IO.Path]::GetDirectoryName($reportPath)
+            if (-not [string]::IsNullOrWhiteSpace($reportDirectory)) {
+                New-Item -ItemType Directory -Force -Path $reportDirectory | Out-Null
+            }
+            $focusedReport = [ordered]@{
+                schema_version = 1
+                mode = 'connection-hub-only'
+                renderer = $rendererName
+                fixture = [string]$initial.visual_test_fixture
+                setup = [ordered]@{
+                    frame = @($setupFrame.Width, $setupFrame.Height)
+                    distinct_color_buckets = $setupFrame.DistinctColorBuckets
+                    luminance_spread = $setupFrame.LuminanceSpread
+                    artifact = if ($null -eq $setupCapturePath) { $null } else {
+                        [IO.Path]::GetFileName($setupCapturePath)
+                    }
+                }
+                direct_entry = [ordered]@{
+                    frame = @($directFrame.Width, $directFrame.Height)
+                    distinct_color_buckets = $directFrame.DistinctColorBuckets
+                    luminance_spread = $directFrame.LuminanceSpread
+                    close_cancelled_nested_only = $true
+                    terminal_state_preserved = $true
+                    artifact = if ($null -eq $directCapturePath) { $null } else {
+                        [IO.Path]::GetFileName($directCapturePath)
+                    }
+                }
+            } | ConvertTo-Json -Depth 5
+            [IO.File]::WriteAllText(
+                $reportPath, $focusedReport,
+                [Text.UTF8Encoding]::new($false))
+        }
+        Write-Host "Focused native Connection Hub $rendererName visual/input assurance passed"
+        return
+    }
 
     # Create a top-level tab through the exact Ctrl+T lifecycle. The renderer
     # snapshot is taken immediately after the control is consumed, before any
@@ -1069,12 +1644,16 @@ $rendererConfig
                     [int64]$caseReady.command_result_key -gt $previousResultKey -and
                     [int64]$caseReady.command_result_generation -eq $previousPromptId -and
                     [int]$caseReady.command_result_exit_code -eq [int]$case.ExitCode -and
+                    [int64]$caseReady.command_result_completed_at_unix_ms -gt 1600000000000 -and
+                    [string]$caseReady.command_result_label -like
+                        '*2026-08-26 12:34:56' -and
                     $null -ne $caseReady.command_result_surface
             } else {
                 $semanticResult = @($caseReady.semantic_rows | Where-Object {
                     $_.has_result -and
                         [int64]$_.generation -eq $previousPromptId -and
-                        [int]$_.result_exit_code -eq [int]$case.ExitCode
+                        [int]$_.result_exit_code -eq [int]$case.ExitCode -and
+                        [int64]$_.result_completed_at_unix_ms -gt 1600000000000
                 })
                 # A preceding output group may remain visible by design. The
                 # silent command itself must publish semantic completion but
@@ -1106,7 +1685,9 @@ $rendererConfig
             $visibleBoundary = @($caseReady.semantic_rows | Where-Object {
                 $null -ne $_.boundary_result_id -and
                     [int64]$_.boundary_result_id -eq [int64]$caseReady.command_result_key -and
-                    [int64]$_.boundary_source_generation -eq $previousPromptId
+                    [int64]$_.boundary_source_generation -eq $previousPromptId -and
+                    [int64]$_.boundary_completed_at_unix_ms -eq
+                        [int64]$caseReady.command_result_completed_at_unix_ms
             })
             if ($visibleBoundary.Count -ne 1) {
                 throw "Viewport-overflow case '$($case.Name)' did not retain exactly one visible terminal-owned result boundary"
@@ -1135,6 +1716,18 @@ $rendererConfig
             painted = [bool]$case.HasOutput
             output_rows = $outputRowsEvidence
             source_owner_offscreen = $ownerMustBeOffscreen
+            completed_at_unix_ms = if ([bool]$case.HasOutput) {
+                [int64]$caseReady.command_result_completed_at_unix_ms
+            } else {
+                [int64](@($caseReady.semantic_rows | Where-Object {
+                    $_.has_result -and [int64]$_.generation -eq $previousPromptId
+                })[0].result_completed_at_unix_ms)
+            }
+            timestamp_label = if ([bool]$case.HasOutput) {
+                [string]$caseReady.command_result_label
+            } else {
+                $null
+            }
         }
         $resultProbe = $caseReady
     }
@@ -1200,11 +1793,16 @@ $rendererConfig
     $resultGutter = [double]$resultDivider[1] - $resultSurfaceBottom
     if ([double]$resultSurface[2] -lt 4.0 -or
         [double]$resultSurface[3] -lt 1.0 -or
-        [double]$resultDivider[2] -lt [double]$resultSurface[2] -or
+        [double]$resultDivider[2] -lt 1.0 -or
+        [double]$resultDivider[2] -gt 48.0 -or
+        [double]$resultDivider[2] -gt ([double]$resultSurface[2] + 4.0) * 0.25 -or
+        [double]$resultDivider[0] -le [double]$resultSurface[0] -or
+        ([double]$resultDivider[0] + [double]$resultDivider[2]) -ge
+            ([double]$resultSurface[0] + [double]$resultSurface[2]) -or
         $resultGutter -lt 6.0 -or
         $resultGutter -gt 12.5) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw "Command-result surface geometry is clipped or lacks its breathing gutter: gutter=$resultGutter"
+        throw 'Command-result geometry must keep its gutter and a short inset marker, not a pane divider'
     }
     $resultOpacity = @($historyReady.command_result_opacity)
     if ($resultOpacity.Count -ne 3 -or
@@ -1225,6 +1823,55 @@ $rendererConfig
     if ($resultPulseHold -lt 0.32 -or $resultPulseHold -gt 0.34) {
         throw 'Command-result lightening no longer holds before its single fade'
     }
+
+    # Freeze the live editor as well as renderer-owned clocks. A valid result
+    # surface can otherwise be compared beside different pending shell input,
+    # making a full-frame backend diff fail for an unrelated but real pixel
+    # difference. Escape clears without executing; the sentinel is removed
+    # after navigation and every transition must retain it byte-for-byte.
+    $captureInputSentinel = 'AMX_CAPTURE_INPUT_59217'
+    $captureClearControl = 'write-hex:result-capture-clear:1b'
+    Send-AutomexiaTestControl $captureClearControl
+    $captureClear = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyReady.sequence)
+    $captureInputDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$captureClear.last_control -ne $captureClearControl -or
+            [string](Get-ActiveAutomexiaPanel $captureClear).raw_cursor_line_text -cne
+                $blankPromptLine) -and
+           [DateTime]::UtcNow -lt $captureInputDeadline) {
+        $captureClear = Read-AutomexiaSnapshot -AfterSequence ([int64]$captureClear.sequence)
+    }
+    if ([string]$captureClear.last_control -ne $captureClearControl -or
+        [string](Get-ActiveAutomexiaPanel $captureClear).raw_cursor_line_text -cne
+            $blankPromptLine) {
+        throw 'The native result capture could not restore the exact blank prompt line'
+    }
+    $captureInputControl = "write-text:result-capture-input:$captureInputSentinel"
+    # The blank snapshot trims the prompt's trailing separator, while PSReadLine
+    # materializes that one cell as soon as editable text exists.
+    $captureExpectedLine = $blankPromptLine + ' ' + $captureInputSentinel
+    Send-AutomexiaTestControl $captureInputControl
+    $captureInputReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$captureClear.sequence)
+    $captureInputDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$captureInputReady.last_control -ne $captureInputControl -or
+            [string](Get-ActiveAutomexiaPanel $captureInputReady).raw_cursor_line_text -cne
+                $captureExpectedLine) -and
+           [DateTime]::UtcNow -lt $captureInputDeadline) {
+        $captureInputReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$captureInputReady.sequence)
+    }
+    if ([string]$captureInputReady.last_control -ne $captureInputControl -or
+        [string](Get-ActiveAutomexiaPanel $captureInputReady).raw_cursor_line_text -cne
+            $captureExpectedLine) {
+        $captureActualLine =
+            [string](Get-ActiveAutomexiaPanel $captureInputReady).raw_cursor_line_text
+        throw ('The native result capture could not establish deterministic live shell input ' +
+            '(control={0}; actual-length={1}; expected-length={2}; sentinel-suffix={3})' -f
+            ([string]$captureInputReady.last_control -eq $captureInputControl),
+            $captureActualLine.Length,
+            $captureExpectedLine.Length,
+            $captureActualLine.EndsWith(
+                $captureInputSentinel, [StringComparison]::Ordinal))
+    }
+    $historyReady = $captureInputReady
 
     $resultFramePath = if ([string]::IsNullOrWhiteSpace($ResultCapture)) {
         $null
@@ -1287,6 +1934,10 @@ $rendererConfig
     $resultCaptureDeadline = [DateTime]::UtcNow.AddSeconds(5)
     $resultCaptureAttempts = 0
     $resultPixelsValid = $false
+    if (-not [AutomexiaResizeDriver]::MoveWindowTo($window, 20, 20)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not place Automexia fully on-screen for command-result capture (Win32 error $code)"
+    }
     if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
         $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Could not expose Automexia for command-result capture (Win32 error $code)"
@@ -1338,6 +1989,7 @@ $rendererConfig
             $resultPixelsValid = (
                 $resultFrame.Width -ge 100 -and
                 $resultFrame.Height -ge 100 -and
+                $resultFrame.NonOpaquePixelCount -eq 0 -and
                 $resultPixels.SampleCount -ge 32 -and
                 $resultGlyphPixels.SampleCount -ge 32 -and
                 $resultGlyphPixels.DistinctColorBuckets -ge 8 -and
@@ -1356,6 +2008,184 @@ $rendererConfig
     if ($resultPaintDelta -lt 16) {
         throw "Command-result resting paint is not perceptible against its gutter: RGB delta $resultPaintDelta"
     }
+
+    # Resize immediately before the public shortcut sequence. This preserves
+    # the reported real-world ordering and proves the freshly reflowed frame,
+    # not a stable pre-resize frame, owns each command badge exactly once.
+    $commandJumpBaseline = $historyReady
+    $commandJumpRestoreWidth = [int]$commandJumpBaseline.window_width
+    $commandJumpRestoreHeight = [int]$commandJumpBaseline.window_height
+    $commandJumpResizeWidth = [Math]::Max(
+        520, [Math]::Min(900, $commandJumpRestoreWidth - 180))
+    $commandJumpResizeHeight = [Math]::Max(
+        360, [Math]::Min(640, $commandJumpRestoreHeight - 120))
+    $script:testStage = 'resize before native command navigation'
+    if (-not [AutomexiaResizeDriver]::MoveWindow(
+            $window, 40, 40, $commandJumpResizeWidth,
+            $commandJumpResizeHeight, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "MoveWindow failed before command navigation with Win32 error $code"
+    }
+    $commandJumpResized = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpBaseline.sequence)
+    $commandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int]$commandJumpResized.columns -eq [int]$commandJumpBaseline.columns -and
+           [int]$commandJumpResized.rows -eq [int]$commandJumpBaseline.rows -and
+           [DateTime]::UtcNow -lt $commandJumpDeadline) {
+        $commandJumpResized = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpResized.sequence)
+    }
+    if ([int]$commandJumpResized.columns -eq [int]$commandJumpBaseline.columns -and
+        [int]$commandJumpResized.rows -eq [int]$commandJumpBaseline.rows) {
+        throw 'Native resize did not change terminal geometry before command navigation'
+    }
+    Assert-AutomexiaCommandResultPaintIsolation `
+        $commandJumpResized 'freshly reflowed command-result frame'
+    $commandJumpBaseline = $commandJumpResized
+
+    # Use real foreground Ctrl+Shift+Arrow input. The selected PowerShell pane
+    # must move between OSC 133 command marks while its command line, prompt
+    # generation, route, and PTY-visible state remain unchanged. A downward
+    # jump must reverse direction and stop cleanly at the live prompt boundary.
+    $commandJumpPanel = Get-ActiveAutomexiaPanel $commandJumpBaseline
+    $commandJumpRawLine = [string]$commandJumpPanel.raw_cursor_line_text
+    $commandJumpPrompt = [int64]$commandJumpPanel.raw_cursor_prompt_id
+    $commandJumpRoute = [int64]$commandJumpPanel.route_id
+    $script:testStage = 'native previous command jump'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x26, $true, $true, $true)) {
+        throw 'Could not deliver native Ctrl+Shift+Up command navigation'
+    }
+    $commandJumpPrevious = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpBaseline.sequence)
+    $commandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int]$commandJumpPrevious.display_offset -le
+           [int]$commandJumpBaseline.display_offset -and
+           [DateTime]::UtcNow -lt $commandJumpDeadline) {
+        $commandJumpPrevious = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpPrevious.sequence)
+    }
+    if ([int]$commandJumpPrevious.display_offset -le
+        [int]$commandJumpBaseline.display_offset) {
+        Write-Host ($commandJumpPrevious | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+Shift+Up did not jump to the previous command marker'
+    }
+    $commandJumpPreviousPanel = Get-ActiveAutomexiaPanel $commandJumpPrevious
+    if ([int64]$commandJumpPreviousPanel.raw_cursor_prompt_id -ne $commandJumpPrompt -or
+        [int64]$commandJumpPreviousPanel.route_id -ne $commandJumpRoute -or
+        [string]$commandJumpPreviousPanel.raw_cursor_line_text -ne $commandJumpRawLine) {
+        throw 'Previous-command navigation changed prompt, route, or PTY-visible input state'
+    }
+    Assert-AutomexiaCommandResultPaintIsolation `
+        $commandJumpPrevious 'previous-command result frame'
+    $resultNavigationFramePath = if ([string]::IsNullOrWhiteSpace($ResultNavigationCapture)) {
+        $null
+    } else {
+        [IO.Path]::GetFullPath($ResultNavigationCapture)
+    }
+    if ($null -ne $resultNavigationFramePath) {
+        $resultNavigationDirectory = [IO.Path]::GetDirectoryName($resultNavigationFramePath)
+        if (-not [string]::IsNullOrWhiteSpace($resultNavigationDirectory)) {
+            New-Item -ItemType Directory -Force -Path $resultNavigationDirectory | Out-Null
+        }
+    }
+    $script:testStage = 'resized command-navigation composited frame'
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        throw 'Could not expose Automexia for resized command-navigation capture'
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $resultNavigationFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $resultNavigationFramePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($resultNavigationFrame.Width -lt 100 -or
+        $resultNavigationFrame.Height -lt 100 -or
+        $resultNavigationFrame.SampleCount -lt 100 -or
+        $resultNavigationFrame.DistinctColorBuckets -lt 8 -or
+        $resultNavigationFrame.LuminanceSpread -lt 32) {
+        throw 'Resized command-navigation composited frame is blank or unreadable'
+    }
+
+    $script:testStage = 'native next command jump'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x28, $true, $true, $true)) {
+        throw 'Could not deliver native Ctrl+Shift+Down command navigation'
+    }
+    $commandJumpNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpPrevious.sequence)
+    $commandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int]$commandJumpNext.display_offset -ge
+           [int]$commandJumpPrevious.display_offset -and
+           [DateTime]::UtcNow -lt $commandJumpDeadline) {
+        $commandJumpNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpNext.sequence)
+    }
+    if ([int]$commandJumpNext.display_offset -ge
+        [int]$commandJumpPrevious.display_offset) {
+        Write-Host ($commandJumpNext | ConvertTo-Json -Depth 10)
+        throw 'Ctrl+Shift+Down did not jump toward the next command marker'
+    }
+    Assert-AutomexiaCommandResultPaintIsolation `
+        $commandJumpNext 'next-command result frame'
+    for ($jump = 0; $jump -lt 64 -and
+         [int]$commandJumpNext.display_offset -ne 0; $jump++) {
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+                $window, 0x28, $true, $true, $true)) {
+            throw 'Could not continue native next-command navigation'
+        }
+        $commandJumpNext = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpNext.sequence)
+        Assert-AutomexiaCommandResultPaintIsolation `
+            $commandJumpNext "next-command result frame $jump"
+    }
+    if ([int]$commandJumpNext.display_offset -ne 0) {
+        throw 'Next-command navigation did not reach the live prompt boundary within 64 marked commands'
+    }
+    $commandJumpNextPanel = Get-ActiveAutomexiaPanel $commandJumpNext
+    if ([int64]$commandJumpNextPanel.raw_cursor_prompt_id -ne $commandJumpPrompt -or
+        [int64]$commandJumpNextPanel.route_id -ne $commandJumpRoute -or
+        [string]$commandJumpNextPanel.raw_cursor_line_text -ne $commandJumpRawLine) {
+        throw 'Next-command navigation changed prompt, route, or PTY-visible input state'
+    }
+    if (-not [AutomexiaResizeDriver]::MoveWindow(
+            $window, 40, 40, $commandJumpRestoreWidth,
+            $commandJumpRestoreHeight, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "MoveWindow failed while restoring command-navigation size with Win32 error $code"
+    }
+    $commandJumpRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpNext.sequence)
+    $commandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int]$commandJumpRestored.columns -eq [int]$commandJumpNext.columns -and
+           [int]$commandJumpRestored.rows -eq [int]$commandJumpNext.rows -and
+           [DateTime]::UtcNow -lt $commandJumpDeadline) {
+        $commandJumpRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpRestored.sequence)
+    }
+    if ([int]$commandJumpRestored.columns -eq [int]$commandJumpNext.columns -and
+        [int]$commandJumpRestored.rows -eq [int]$commandJumpNext.rows) {
+        throw 'Native command-navigation test did not restore terminal geometry'
+    }
+    $commandJumpRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpRestored.sequence)
+    Assert-AutomexiaCommandResultPaintIsolation `
+        $commandJumpRestored 'restored command-result frame'
+    $captureReleaseControl = 'write-hex:result-capture-release:1b5b36373b34363b333b313b383b315f1b5b36373b34363b303b303b383b315f'
+    Send-AutomexiaTestControl $captureReleaseControl
+    $captureReleased = Read-AutomexiaSnapshot -AfterSequence ([int64]$commandJumpRestored.sequence)
+    $captureInputDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$captureReleased.last_control -ne $captureReleaseControl -or
+            [string](Get-ActiveAutomexiaPanel $captureReleased).raw_cursor_line_text -cne
+                $blankPromptLine) -and
+           [DateTime]::UtcNow -lt $captureInputDeadline) {
+        $captureReleased = Read-AutomexiaSnapshot -AfterSequence ([int64]$captureReleased.sequence)
+    }
+    if ([string]$captureReleased.last_control -ne $captureReleaseControl -or
+        [string](Get-ActiveAutomexiaPanel $captureReleased).raw_cursor_line_text -cne
+            $blankPromptLine) {
+        $releasedLine =
+            [string](Get-ActiveAutomexiaPanel $captureReleased).raw_cursor_line_text
+        throw ('The native result-capture input sentinel was not cleared without execution ' +
+            '(control={0}; actual-length={1}; blank-length={2}; still-has-sentinel={3})' -f
+            ([string]$captureReleased.last_control -eq $captureReleaseControl),
+            $releasedLine.Length,
+            $blankPromptLine.Length,
+            ($releasedLine.IndexOf(
+                $captureInputSentinel, [StringComparison]::Ordinal) -ge 0))
+    }
+    $historyReady = $captureReleased
 
     # Establish whether latency is in generic frontend -> PTY delivery or in a
     # PSReadLine history action. A printable key uses the same channel, ConPTY,
@@ -1718,6 +2548,8 @@ $rendererConfig
             [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
             $null -ne $cmdListing.command_result_generation -or
             $null -ne $cmdListing.command_result_exit_code -or
+            [int64]$cmdListing.command_result_completed_at_unix_ms -le 1600000000000 -or
+            [string]$cmdListing.command_result_label -notlike '*2026-08-26 12:34:56' -or
             $null -eq $cmdListing.command_result_surface -or
             $null -eq $cmdListing.command_result_divider) -and
            [DateTime]::UtcNow -lt $cmdListingDeadline) {
@@ -1733,6 +2565,8 @@ $rendererConfig
         [int64]$cmdListing.command_result_key -le $cmdPreviousResultKey -or
         $null -ne $cmdListing.command_result_generation -or
         $null -ne $cmdListing.command_result_exit_code -or
+        [int64]$cmdListing.command_result_completed_at_unix_ms -le 1600000000000 -or
+        [string]$cmdListing.command_result_label -notlike '*2026-08-26 12:34:56' -or
         $null -eq $cmdListing.command_result_surface -or
         $null -eq $cmdListing.command_result_divider) {
         Write-Host ($cmdListing | ConvertTo-Json -Depth 10)
@@ -1759,6 +2593,31 @@ $rendererConfig
         throw 'PowerShell metadata did not replace CMD identity immediately after exit'
     }
     $historyDone = $powerShellRestored
+
+    # Clear-Host intentionally removes old semantic rows earlier in this
+    # scenario. Seed fresh, multi-line marked commands immediately before the
+    # split so the isolation check cannot pass or fail based on incidental
+    # scrollback retained by a shell version or window height.
+    for ($seedIndex = 1; $seedIndex -le 2; $seedIndex++) {
+        $previousPrompt = [int64]$historyDone.latest_prompt_id
+        $script:testStage = "seed selected-pane command navigation $seedIndex"
+        Send-AutomexiaTestControl (
+            "write-line:split-history-${seedIndex}:" +
+            "1..24 | ForEach-Object { 'AUTOMEXIA_SPLIT_HISTORY_{0:D2}_' -f `$_ }"
+        )
+        $seededHistory = Read-AutomexiaSnapshot -AfterSequence ([int64]$historyDone.sequence)
+        $seedDeadline = [DateTime]::UtcNow.AddSeconds(10)
+        while (([int64]$seededHistory.latest_prompt_id -le $previousPrompt -or
+                [int](Get-ActiveAutomexiaPanel $seededHistory).display_offset -ne 0) -and
+               [DateTime]::UtcNow -lt $seedDeadline) {
+            $seededHistory = Read-AutomexiaSnapshot -AfterSequence ([int64]$seededHistory.sequence)
+        }
+        if ([int64]$seededHistory.latest_prompt_id -le $previousPrompt -or
+            [int](Get-ActiveAutomexiaPanel $seededHistory).display_offset -ne 0) {
+            throw "PowerShell did not publish split-navigation history seed $seedIndex"
+        }
+        $historyDone = $seededHistory
+    }
 
     # Deterministic binding tests prove bare Ctrl+R clones while Ctrl+Alt+R
     # sends shell history search. This feature-gated,
@@ -1858,6 +2717,70 @@ $rendererConfig
     if ($sourcePanel.visible_text -like "*$marker*") {
         throw 'Clone-only terminal output contaminated the source session'
     }
+
+    # The same public shortcut must affect only the selected source pane. The
+    # independent clone has its own terminal and must retain its exact offset.
+    $rightBeforeCommandJump = @($sourceAgain.panels | Where-Object {
+        [int64]$_.route_id -eq $rightRoute
+    })[0]
+    $sourceBeforeCommandJump = Get-ActiveAutomexiaPanel $sourceAgain
+    $script:testStage = 'selected-pane previous command isolation'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x26, $true, $true, $true)) {
+        throw 'Could not deliver selected-pane Ctrl+Shift+Up navigation'
+    }
+    $sourceCommandJump = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceAgain.sequence)
+    $sourceCommandJumpDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([int](Get-ActiveAutomexiaPanel $sourceCommandJump).display_offset -le
+           [int]$sourceBeforeCommandJump.display_offset -and
+           [DateTime]::UtcNow -lt $sourceCommandJumpDeadline) {
+        $sourceCommandJump = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceCommandJump.sequence)
+    }
+    $sourceAfterCommandJump = Get-ActiveAutomexiaPanel $sourceCommandJump
+    $rightAfterCommandJump = @($sourceCommandJump.panels | Where-Object {
+        [int64]$_.route_id -eq $rightRoute
+    })[0]
+    if ([int]$sourceAfterCommandJump.display_offset -le
+        [int]$sourceBeforeCommandJump.display_offset -or
+        [int]$rightAfterCommandJump.display_offset -ne
+        [int]$rightBeforeCommandJump.display_offset) {
+        throw ("Command navigation changed the wrong pane or failed to move the selected pane " +
+            "(source {0}->{1}; clone {2}->{3})" -f
+            [int]$sourceBeforeCommandJump.display_offset,
+            [int]$sourceAfterCommandJump.display_offset,
+            [int]$rightBeforeCommandJump.display_offset,
+            [int]$rightAfterCommandJump.display_offset)
+    }
+    if ([string]$sourceAfterCommandJump.raw_cursor_line_text -ne
+        [string]$sourceBeforeCommandJump.raw_cursor_line_text -or
+        [string]$rightAfterCommandJump.raw_cursor_line_text -ne
+        [string]$rightBeforeCommandJump.raw_cursor_line_text -or
+        [int64]$sourceAfterCommandJump.raw_cursor_prompt_id -ne
+        [int64]$sourceBeforeCommandJump.raw_cursor_prompt_id -or
+        [int64]$rightAfterCommandJump.raw_cursor_prompt_id -ne
+        [int64]$rightBeforeCommandJump.raw_cursor_prompt_id) {
+        throw 'Selected-pane command navigation leaked input into a PTY'
+    }
+    $sourceRestored = $sourceCommandJump
+    for ($jump = 0; $jump -lt 64 -and
+         [int](Get-ActiveAutomexiaPanel $sourceRestored).display_offset -ne 0; $jump++) {
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+                $window, 0x28, $true, $true, $true)) {
+            throw 'Could not restore the selected pane after command navigation'
+        }
+        $sourceRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$sourceRestored.sequence)
+    }
+    if ([int](Get-ActiveAutomexiaPanel $sourceRestored).display_offset -ne 0) {
+        throw 'Selected-pane next-command navigation did not restore the live prompt boundary'
+    }
+    $rightRestored = @($sourceRestored.panels | Where-Object {
+        [int64]$_.route_id -eq $rightRoute
+    })[0]
+    if ([int]$rightRestored.display_offset -ne
+        [int]$rightBeforeCommandJump.display_offset) {
+        throw 'Restoring selected-pane command navigation changed the unfocused pane'
+    }
+    $sourceAgain = $sourceRestored
 
     # Add a lower independent clone before the storm so layout, prompt, PTY,
     # and session isolation are exercised together under rapid resizing.
@@ -2055,12 +2978,32 @@ $rendererConfig
     Send-AutomexiaTestControl $fullscreenControl
     $fullscreenSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$final.sequence)
     $fullscreenDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    $fullscreenBrightnessFrame = $null
+    $fullscreenSettled = $false
+    $fullscreenOccluded = $false
+    $fullscreenOcclusionReason = $null
     do {
         if ([string]$fullscreenSnapshot.last_control -ne $fullscreenControl -or
             -not [bool]$fullscreenSnapshot.fullscreen_display_request_active) {
             $fullscreenSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$fullscreenSnapshot.sequence)
         }
-        $fullscreenBrightnessFrame = [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+        try {
+            $fullscreenBrightnessFrame =
+                [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+            $fullscreenOccluded = $false
+        } catch {
+            if (-not $_.Exception.Message.Contains('unowned top-level window')) {
+                throw
+            }
+            # The taskbar/compositor can briefly remain above a window while
+            # borderless fullscreen is settling. Retry within the existing
+            # bounded readiness deadline; a persistent titled surface fails.
+            $fullscreenOccluded = $true
+            $fullscreenOcclusionReason = $_.Exception.Message
+            $fullscreenSettled = $false
+            Start-Sleep -Milliseconds 50
+            continue
+        }
         $fullscreenSettled = (
             [Math]::Abs($fullscreenBrightnessFrame.Width - [AutomexiaResizeDriver]::PrimaryWidth()) -le 2 -and
             [Math]::Abs($fullscreenBrightnessFrame.Height - [AutomexiaResizeDriver]::PrimaryHeight()) -le 2)
@@ -2072,10 +3015,10 @@ $rendererConfig
             Start-Sleep -Milliseconds 50
         }
     } while (-not $fullscreenReady -and [DateTime]::UtcNow -lt $fullscreenDeadline)
-    if (-not $fullscreenSettled -or
+    if ($fullscreenOccluded -or -not $fullscreenSettled -or
         [string]$fullscreenSnapshot.last_control -ne $fullscreenControl -or
         -not [bool]$fullscreenSnapshot.fullscreen_display_request_active) {
-        throw "Fullscreen did not settle with an active DisplayRequired request at the display bounds: $($fullscreenBrightnessFrame.Width)x$($fullscreenBrightnessFrame.Height)"
+        throw "Fullscreen did not settle unobscured with an active DisplayRequired request at the display bounds: $fullscreenOcclusionReason"
     }
 
     if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
@@ -2097,12 +3040,29 @@ $rendererConfig
     Send-AutomexiaTestControl $restoreControl
     $restoredSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$fullscreenSnapshot.sequence)
     $restoreDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    $restoredBrightnessFrame = $null
+    $restoredSettled = $false
+    $restoreOccluded = $false
+    $restoreOcclusionReason = $null
     do {
         if ([string]$restoredSnapshot.last_control -ne $restoreControl -or
             [bool]$restoredSnapshot.fullscreen_display_request_active) {
             $restoredSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$restoredSnapshot.sequence)
         }
-        $restoredBrightnessFrame = [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+        try {
+            $restoredBrightnessFrame =
+                [AutomexiaResizeDriver]::CaptureClientFrame($window, $null)
+            $restoreOccluded = $false
+        } catch {
+            if (-not $_.Exception.Message.Contains('unowned top-level window')) {
+                throw
+            }
+            $restoreOccluded = $true
+            $restoreOcclusionReason = $_.Exception.Message
+            $restoredSettled = $false
+            Start-Sleep -Milliseconds 50
+            continue
+        }
         $restoredSettled = (
             [Math]::Abs($restoredBrightnessFrame.Width - $windowedBrightnessFrame.Width) -le 2 -and
             [Math]::Abs($restoredBrightnessFrame.Height - $windowedBrightnessFrame.Height) -le 2)
@@ -2114,10 +3074,10 @@ $rendererConfig
             Start-Sleep -Milliseconds 50
         }
     } while (-not $restoreReady -and [DateTime]::UtcNow -lt $restoreDeadline)
-    if (-not $restoredSettled -or
+    if ($restoreOccluded -or -not $restoredSettled -or
         [string]$restoredSnapshot.last_control -ne $restoreControl -or
         [bool]$restoredSnapshot.fullscreen_display_request_active) {
-        throw "Fullscreen exit did not restore the windowed bounds and release DisplayRequired: $($restoredBrightnessFrame.Width)x$($restoredBrightnessFrame.Height)"
+        throw "Fullscreen exit did not restore unobscured windowed bounds and release DisplayRequired: $restoreOcclusionReason"
     }
     if ($restoredBrightnessFrame.DominantColorBucket -ne $windowedBrightnessFrame.DominantColorBucket) {
         throw "Fullscreen exit did not restore the rendered dominant color bucket: $($restoredBrightnessFrame.DominantColorBucket)"
@@ -2725,6 +3685,16 @@ $rendererConfig
     } else {
         'confirm-quit-wgpu.png'
     }
+    $hubCaptureName = if ($UseCpuRenderer) {
+        'connection-hub-cpu.png'
+    } else {
+        'connection-hub-wgpu.png'
+    }
+    $hubDirectCaptureName = if ($UseCpuRenderer) {
+        'connection-hub-direct-cpu.png'
+    } else {
+        'connection-hub-direct-wgpu.png'
+    }
     $paletteCapturePath = if ($null -eq $modalCaptureRoot) {
         $null
     } else {
@@ -2734,6 +3704,212 @@ $rendererConfig
         $null
     } else {
         Join-Path $modalCaptureRoot $quitCaptureName
+    }
+    $hubCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $hubCaptureName
+    }
+    $hubDirectCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $hubDirectCaptureName
+    }
+
+    $script:testStage = 'connection hub native section navigation and composition'
+    $hubControl = 'open-connection-hub:modal-hub'
+    Send-AutomexiaTestControl $hubControl
+    $hubSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$imageLifecycleFinal.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (([string]$hubSnapshot.last_control -ne $hubControl -or
+            -not [bool]$hubSnapshot.connection_hub_active -or
+            [string]$hubSnapshot.connection_hub_route -ne 'results' -or
+            [bool]$hubSnapshot.palette_enabled -or
+            [bool]$hubSnapshot.confirm_quit_active) -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubSnapshot = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSnapshot.sequence)
+    }
+    if ([string]$hubSnapshot.last_control -ne $hubControl -or
+        -not [bool]$hubSnapshot.connection_hub_active -or
+        [string]$hubSnapshot.connection_hub_route -ne 'results' -or
+        [bool]$hubSnapshot.palette_enabled -or
+        [bool]$hubSnapshot.confirm_quit_active) {
+        Write-Host ($hubSnapshot | ConvertTo-Json -Depth 8)
+        throw 'The Connection Hub did not acquire exclusive modal ownership'
+    }
+    $hubPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSnapshot.sequence)
+    $hubInputBaseline = $hubPresented
+    $hubTerminalBefore = Get-ActiveAutomexiaPanel $hubInputBaseline
+
+    foreach ($section in @(
+            [ordered]@{ key = 0x57; route = 'workspaces'; label = 'W' },
+            [ordered]@{ key = 0x50; route = 'providers'; label = 'P' },
+            [ordered]@{ key = 0x43; route = 'results'; label = 'C' })) {
+        $script:testStage = "connection hub native $($section.label) section mnemonic"
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+                $window, [uint32]$section.key, $false, $false, $false)) {
+            $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+            throw "Could not inject Connection Hub $($section.label) mnemonic (Win32 error $code)"
+        }
+        $nextHub = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPresented.sequence)
+        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ((-not [bool]$nextHub.connection_hub_active -or
+                [string]$nextHub.connection_hub_route -ne [string]$section.route) -and
+               [DateTime]::UtcNow -lt $hubDeadline) {
+            $nextHub = Read-AutomexiaSnapshot -AfterSequence ([int64]$nextHub.sequence)
+        }
+        if (-not [bool]$nextHub.connection_hub_active -or
+            [string]$nextHub.connection_hub_route -ne [string]$section.route) {
+            throw ("Connection Hub {0} did not select {1} " +
+                "(active={2}; actual-route={3})" -f
+                $section.label,
+                $section.route,
+                [bool]$nextHub.connection_hub_active,
+                [string]$nextHub.connection_hub_route)
+        }
+        $hubPresented = $nextHub
+    }
+
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for Connection Hub capture (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $hubFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $hubCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($hubFrame.Width -lt 100 -or
+        $hubFrame.Height -lt 100 -or
+        $hubFrame.SampleCount -lt 100 -or
+        $hubFrame.DistinctColorBuckets -lt 8 -or
+        $hubFrame.LuminanceSpread -lt 32) {
+        throw "Connection Hub composited frame is blank or unreadable: $($hubFrame.Width)x$($hubFrame.Height), buckets=$($hubFrame.DistinctColorBuckets), spread=$($hubFrame.LuminanceSpread)"
+    }
+
+    $script:testStage = 'connection hub native direct-entry composition'
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x4C, $false, $false, $false)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject Connection Hub L mnemonic (Win32 error $code)"
+    }
+    $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPresented.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$hubDirect.connection_hub_active -or
+            -not [bool]$hubDirect.connection_hub_literal_entry) -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubDirect = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+    }
+    if (-not [bool]$hubDirect.connection_hub_active -or
+        -not [bool]$hubDirect.connection_hub_literal_entry) {
+        Write-Host ($hubDirect | ConvertTo-Json -Depth 8)
+        throw 'Connection Hub L did not open the direct-entry editor'
+    }
+    $hubDirectPresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirect.sequence)
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not expose Automexia for direct-entry capture (Win32 error $code)"
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $hubDirectFrame = [AutomexiaResizeDriver]::CaptureClientFrame(
+            $window, $hubDirectCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($hubDirectFrame.Width -lt 100 -or
+        $hubDirectFrame.Height -lt 100 -or
+        $hubDirectFrame.SampleCount -lt 100 -or
+        $hubDirectFrame.DistinctColorBuckets -lt 8 -or
+        $hubDirectFrame.LuminanceSpread -lt 32) {
+        throw "Connection Hub direct-entry frame is blank or unreadable: $($hubDirectFrame.Width)x$($hubDirectFrame.Height), buckets=$($hubDirectFrame.DistinctColorBuckets), spread=$($hubDirectFrame.LuminanceSpread)"
+    }
+
+    # Click the exact top-right close target through the production physical-to-
+    # logical conversion. It must cancel only the nested editor and preserve the
+    # Hub plus terminal state.
+    $hubScale = [double]$hubDirectPresented.scale_factor
+    $hubLogicalWidth = [double]$hubDirectPresented.window_width / $hubScale
+    $hubLogicalHeight = [double]$hubDirectPresented.window_height / $hubScale
+    $hubMargin = if ($hubLogicalWidth -lt 420.0 -or $hubLogicalHeight -lt 320.0) {
+        6.0
+    } else {
+        18.0
+    }
+    $hubCardWidth = [Math]::Min(840.0, [Math]::Max(1.0, $hubLogicalWidth - $hubMargin * 2.0))
+    $hubCardHeight = [Math]::Min(420.0, [Math]::Max(1.0, $hubLogicalHeight - $hubMargin * 2.0))
+    $hubCardX = [Math]::Max(0.0, ($hubLogicalWidth - $hubCardWidth) * 0.5)
+    $hubCardY = [Math]::Max(0.0, ($hubLogicalHeight - $hubCardHeight) * 0.5)
+    $hubInner = if ($hubCardWidth -lt 650.0) { 12.0 } else { 20.0 }
+    $hubCloseX = [int][Math]::Round(($hubCardX + $hubCardWidth - $hubInner - 20.0) * $hubScale)
+    $hubCloseY = [int][Math]::Round(($hubCardY + 32.0) * $hubScale)
+    $hubCloseLParam = [IntPtr](($hubCloseX -band 0xffff) -bor (($hubCloseY -band 0xffff) -shl 16))
+    if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient(
+            $window, $hubCloseX, $hubCloseY) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0200, [IntPtr]::Zero, $hubCloseLParam)) {
+        throw 'Could not hover the Connection Hub direct-entry close target'
+    }
+    # SetCursorPos may enqueue a second native move after the posted move. Wait
+    # for the renderer-owned hit test to confirm the exact target before the
+    # press so foreground scheduling cannot turn this into an inert click.
+    $hubCloseHover = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectPresented.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([string]$hubCloseHover.connection_hub_pointer_hit -ne 'CancelLiteralDestination' -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubCloseHover = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCloseHover.sequence)
+    }
+    if ([string]$hubCloseHover.connection_hub_pointer_hit -ne 'CancelLiteralDestination') {
+        throw 'Connection Hub direct-entry close target did not acquire pointer hover'
+    }
+    if (-not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0201, [IntPtr]1, $hubCloseLParam) -or
+        -not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0202, [IntPtr]::Zero, $hubCloseLParam)) {
+        throw 'Could not click the Connection Hub direct-entry close target'
+    }
+    $hubDirectCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubCloseHover.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$hubDirectCancelled.connection_hub_active -or
+            [bool]$hubDirectCancelled.connection_hub_literal_entry) -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubDirectCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectCancelled.sequence)
+    }
+    if (-not [bool]$hubDirectCancelled.connection_hub_active -or
+        [bool]$hubDirectCancelled.connection_hub_literal_entry -or
+        [string]$hubDirectCancelled.connection_hub_route -ne 'results') {
+        throw ("Direct-entry close did not cancel only the nested editor " +
+            "(hub={0}; literal={1}; route={2}; last-hit={3})" -f
+            [bool]$hubDirectCancelled.connection_hub_active,
+            [bool]$hubDirectCancelled.connection_hub_literal_entry,
+            [string]$hubDirectCancelled.connection_hub_route,
+            [string]$hubDirectCancelled.connection_hub_last_hit)
+    }
+    $hubPresented = $hubDirectCancelled
+
+    $script:testStage = 'connection hub native dismissal and PTY isolation'
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject Connection Hub Escape (Win32 error $code)"
+    }
+    $hubDismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPresented.sequence)
+    $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([bool]$hubDismissed.connection_hub_active -and
+           [DateTime]::UtcNow -lt $hubDeadline) {
+        $hubDismissed = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDismissed.sequence)
+    }
+    $hubTerminalAfter = Get-ActiveAutomexiaPanel $hubDismissed
+    if ([bool]$hubDismissed.connection_hub_active -or
+        [int64]$hubTerminalAfter.route_id -ne [int64]$hubTerminalBefore.route_id -or
+        [int]$hubDismissed.display_offset -ne [int]$hubInputBaseline.display_offset -or
+        [int]$hubDismissed.cursor_column -ne [int]$hubInputBaseline.cursor_column -or
+        [int]$hubDismissed.cursor_row -ne [int]$hubInputBaseline.cursor_row -or
+        [string]$hubTerminalAfter.raw_cursor_line_text -ne
+            [string]$hubTerminalBefore.raw_cursor_line_text) {
+        Write-Host ($hubDismissed | ConvertTo-Json -Depth 8)
+        throw 'Connection Hub navigation changed terminal state or remained active'
     }
 
     $script:testStage = 'topmost command palette composition'
@@ -2756,6 +3932,117 @@ $rendererConfig
     # The snapshot that acknowledges a control is published before that dirty
     # frame is presented. Wait one additional renderer generation.
     $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteSnapshot.sequence)
+    if ([int]$palettePresented.palette_total_results -ne 6 -or
+        -not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Command categories;')) {
+        throw 'The native command palette did not open its six-category root'
+    }
+    $paletteRootPanel = Get-ActiveAutomexiaPanel $palettePresented
+    $paletteRoot = $palettePresented
+    # Browse the real hierarchy before testing overflow; the short category
+    # root must not be padded with fake commands just to make a wheel test pass.
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x28, $true)) {
+        throw 'Could not select the native Panes and Sessions category'
+    }
+    $paletteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    } while ([int]$palettePresented.palette_selected_index -ne 1 -and
+             [DateTime]::UtcNow -lt $paletteDeadline)
+    if ([int]$palettePresented.palette_selected_index -ne 1 -or
+        -not [bool]$palettePresented.palette_enabled) {
+        throw 'Native category selection did not become ready'
+    }
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x0D, $false)) {
+        throw 'Could not enter the native Panes and Sessions category'
+    }
+    $paletteDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    do {
+        $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    } while (-not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Panes & Sessions;') -and
+             [DateTime]::UtcNow -lt $paletteDeadline)
+    $paletteCategoryPanel = Get-ActiveAutomexiaPanel $palettePresented
+    if (-not [bool]$palettePresented.palette_enabled -or
+        -not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Panes & Sessions;') -or
+        [int]$palettePresented.palette_total_results -ne 12 -or
+        [int64]$paletteCategoryPanel.route_id -ne [int64]$paletteRootPanel.route_id -or
+        [int]$palettePresented.display_offset -ne [int]$paletteRoot.display_offset -or
+        [int]$palettePresented.cursor_column -ne [int]$paletteRoot.cursor_column -or
+        [int]$palettePresented.cursor_row -ne [int]$paletteRoot.cursor_row -or
+        [string]$paletteCategoryPanel.raw_cursor_line_text -ne [string]$paletteRootPanel.raw_cursor_line_text) {
+        throw 'Native category entry changed terminal state, ran a command, or lost its Back row'
+    }
+    $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    if ([int]$palettePresented.palette_total_results -le
+            [int]$palettePresented.palette_visible_results -or
+        [int]$palettePresented.palette_scroll_offset -ne 0) {
+        Write-Host ($palettePresented | ConvertTo-Json -Depth 8)
+        throw 'The native command-palette fixture must begin at the top of an overflowing list'
+    }
+    $palettePanelBeforeWheel = Get-ActiveAutomexiaPanel $palettePresented
+    $wheelClientX = [int]([double]$palettePresented.window_width / 2.0)
+    $wheelClientY = [int]([double]$palettePresented.window_height / 2.0)
+
+    $script:testStage = 'command palette native mouse wheel down'
+    if (-not [AutomexiaResizeDriver]::PostMouseWheel(
+            $window, $wheelClientX, $wheelClientY, -360)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject command-palette wheel-down input (Win32 error $code)"
+    }
+    $paletteWheelDown = Read-AutomexiaSnapshot -AfterSequence ([int64]$palettePresented.sequence)
+    $paletteWheelDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$paletteWheelDown.palette_enabled -or
+            [int]$paletteWheelDown.palette_scroll_offset -le 0) -and
+           [DateTime]::UtcNow -lt $paletteWheelDeadline) {
+        $paletteWheelDown =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteWheelDown.sequence)
+    }
+    $palettePanelAfterWheelDown = Get-ActiveAutomexiaPanel $paletteWheelDown
+    $paletteSelectionEnd = [int]$paletteWheelDown.palette_scroll_offset +
+        [int]$paletteWheelDown.palette_visible_results
+    if (-not [bool]$paletteWheelDown.palette_enabled -or
+        [int]$paletteWheelDown.palette_scroll_offset -le 0 -or
+        [int]$paletteWheelDown.palette_selected_index -lt
+            [int]$paletteWheelDown.palette_scroll_offset -or
+        [int]$paletteWheelDown.palette_selected_index -ge $paletteSelectionEnd -or
+        [int64]$palettePanelAfterWheelDown.route_id -ne
+            [int64]$palettePanelBeforeWheel.route_id -or
+        [int]$paletteWheelDown.display_offset -ne [int]$palettePresented.display_offset -or
+        [int]$paletteWheelDown.cursor_column -ne [int]$palettePresented.cursor_column -or
+        [int]$paletteWheelDown.cursor_row -ne [int]$palettePresented.cursor_row -or
+        [string]$palettePanelAfterWheelDown.raw_cursor_line_text -ne
+            [string]$palettePanelBeforeWheel.raw_cursor_line_text) {
+        Write-Host ($paletteWheelDown | ConvertTo-Json -Depth 8)
+        throw 'Native palette wheel-down escaped its modal list or hid the selected command'
+    }
+
+    $script:testStage = 'command palette native mouse wheel up'
+    if (-not [AutomexiaResizeDriver]::PostMouseWheel(
+            $window, $wheelClientX, $wheelClientY, 360)) {
+        $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
+        throw "Could not inject command-palette wheel-up input (Win32 error $code)"
+    }
+    $paletteWheelUp = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteWheelDown.sequence)
+    $paletteWheelDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ((-not [bool]$paletteWheelUp.palette_enabled -or
+            [int]$paletteWheelUp.palette_scroll_offset -ne 0) -and
+           [DateTime]::UtcNow -lt $paletteWheelDeadline) {
+        $paletteWheelUp =
+            Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteWheelUp.sequence)
+    }
+    $palettePanelAfterWheelUp = Get-ActiveAutomexiaPanel $paletteWheelUp
+    if (-not [bool]$paletteWheelUp.palette_enabled -or
+        [int]$paletteWheelUp.palette_scroll_offset -ne 0 -or
+        [int64]$palettePanelAfterWheelUp.route_id -ne
+            [int64]$palettePanelBeforeWheel.route_id -or
+        [int]$paletteWheelUp.display_offset -ne [int]$palettePresented.display_offset -or
+        [int]$paletteWheelUp.cursor_column -ne [int]$palettePresented.cursor_column -or
+        [int]$paletteWheelUp.cursor_row -ne [int]$palettePresented.cursor_row -or
+        [string]$palettePanelAfterWheelUp.raw_cursor_line_text -ne
+            [string]$palettePanelBeforeWheel.raw_cursor_line_text) {
+        Write-Host ($paletteWheelUp | ConvertTo-Json -Depth 8)
+        throw 'Native palette wheel-up did not return to the top without terminal side effects'
+    }
+    $palettePresented = $paletteWheelUp
     if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
         $code = [Runtime.InteropServices.Marshal]::GetLastWin32Error()
         throw "Could not expose Automexia for palette capture (Win32 error $code)"
@@ -2837,9 +4124,17 @@ $rendererConfig
     Send-AutomexiaTestControl 'new-window:9001'
     $windows = Wait-AutomexiaWindowCount -Expected 2
     $newWindow = @($windows | Where-Object { $_ -ne $window })[0]
+    $windowCloseTimer = [Diagnostics.Stopwatch]::StartNew()
     if (-not [AutomexiaResizeDriver]::PostMessage(
         $newWindow, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
         throw 'Could not post WM_CLOSE to the secondary Automexia window'
+    }
+    while ([AutomexiaResizeDriver]::IsWindowVisible($newWindow) -and
+           $windowCloseTimer.ElapsedMilliseconds -lt 500) {
+        Start-Sleep -Milliseconds 5
+    }
+    if ([AutomexiaResizeDriver]::IsWindowVisible($newWindow)) {
+        throw 'Secondary window dismissal waited for resource cleanup'
     }
     $remaining = Wait-AutomexiaWindowCount -Expected 1
     $process.Refresh()
@@ -2965,6 +4260,30 @@ $rendererConfig
                     $resultGutterBackground.MeanBlue)
                 blank_surface_gutter_rgb_delta = $resultPaintDelta
                 representative_commands = $resultCommandEvidence
+                completed_at_unix_ms = [int64]$historyReady.command_result_completed_at_unix_ms
+                timestamp_label = [string]$historyReady.command_result_label
+                resize_navigation = [ordered]@{
+                    resized_grid = @(
+                        [int]$commandJumpResized.columns,
+                        [int]$commandJumpResized.rows)
+                    previous_offset = [int]$commandJumpPrevious.display_offset
+                    next_offset = [int]$commandJumpNext.display_offset
+                    resized_paints = @($commandJumpResized.command_result_paints)
+                    previous_paints = @($commandJumpPrevious.command_result_paints)
+                    next_paints = @($commandJumpNext.command_result_paints)
+                    restored_paints = @($commandJumpRestored.command_result_paints)
+                    captured_frame = [ordered]@{
+                        width = [int]$resultNavigationFrame.Width
+                        height = [int]$resultNavigationFrame.Height
+                        distinct_color_buckets = [int]$resultNavigationFrame.DistinctColorBuckets
+                        luminance_spread = [int]$resultNavigationFrame.LuminanceSpread
+                        artifact = if ($null -eq $resultNavigationFramePath) {
+                            $null
+                        } else {
+                            [IO.Path]::GetFileName($resultNavigationFramePath)
+                        }
+                    }
+                }
                 artifact = if ($null -eq $resultFramePath) {
                     $null
                 } else {
@@ -2978,10 +4297,42 @@ $rendererConfig
                     height = $paletteFrame.Height
                     distinct_color_buckets = $paletteFrame.DistinctColorBuckets
                     luminance_spread = $paletteFrame.LuminanceSpread
+                    wheel_down_offset = [int]$paletteWheelDown.palette_scroll_offset
+                    wheel_down_selected_index =
+                        [int]$paletteWheelDown.palette_selected_index
+                    wheel_up_offset = [int]$paletteWheelUp.palette_scroll_offset
+                    terminal_display_offset_preserved =
+                        [int]$paletteWheelDown.display_offset -eq
+                            [int]$palettePresented.display_offset
                     artifact = if ($null -eq $paletteCapturePath) {
                         $null
                     } else {
                         [IO.Path]::GetFileName($paletteCapturePath)
+                    }
+                }
+                connection_hub = [ordered]@{
+                    width = $hubFrame.Width
+                    height = $hubFrame.Height
+                    distinct_color_buckets = $hubFrame.DistinctColorBuckets
+                    luminance_spread = $hubFrame.LuminanceSpread
+                    section_sequence = @('results', 'workspaces', 'providers', 'results')
+                    direct_entry = [ordered]@{
+                        width = $hubDirectFrame.Width
+                        height = $hubDirectFrame.Height
+                        distinct_color_buckets = $hubDirectFrame.DistinctColorBuckets
+                        luminance_spread = $hubDirectFrame.LuminanceSpread
+                        close_cancelled_nested_only = $true
+                        artifact = if ($null -eq $hubDirectCapturePath) {
+                            $null
+                        } else {
+                            [IO.Path]::GetFileName($hubDirectCapturePath)
+                        }
+                    }
+                    terminal_state_preserved = $true
+                    artifact = if ($null -eq $hubCapturePath) {
+                        $null
+                    } else {
+                        [IO.Path]::GetFileName($hubCapturePath)
                     }
                 }
                 close_confirmation = [ordered]@{
@@ -2997,7 +4348,8 @@ $rendererConfig
                 }
                 exclusive_state_restored = (
                     -not [bool]$modalDismissed.palette_enabled -and
-                    -not [bool]$modalDismissed.confirm_quit_active)
+                    -not [bool]$modalDismissed.confirm_quit_active -and
+                    -not [bool]$modalDismissed.connection_hub_active)
             }
             image_preview_pixels = [ordered]@{
                 width = $previewPixels.Width
@@ -3019,21 +4371,87 @@ $rendererConfig
                 ceilings = $imageResourceLimits
             }
         } | ConvertTo-Json -Depth 5
-        $temporaryReport = "$reportPath.$PID.tmp"
-        [IO.File]::WriteAllText($temporaryReport, $report, [Text.UTF8Encoding]::new($false))
-        Move-Item -LiteralPath $temporaryReport -Destination $reportPath -Force
     }
 
-    Write-Host (
+    $successSummary = (
         'Native CMD/resize/history/fullscreen/multi-window stress passed: sequence {0}, grid {1}x{2}, prompt {3}, Up shell/VT {4}ms ({5}ms total), Ctrl+R shell/VT {6}ms ({7}ms total)' -f
         $final.sequence, $final.columns, $final.rows, $final.latest_prompt_id,
         $upShellMilliseconds, $upTimer.ElapsedMilliseconds,
         $searchShellMilliseconds, $searchTimer.ElapsedMilliseconds)
+
+    # Capture exact process identities before closing the owner. Once a child
+    # becomes orphaned, count-only sampling and parent-tree traversal can no
+    # longer prove that the original route released it.
+    $script:testStage = 'application process-tree shutdown'
+    $ownedDescendantsAtShutdown = @(
+        Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
+    $shutdownTimer = [Diagnostics.Stopwatch]::StartNew()
+    if (-not $process.CloseMainWindow()) {
+        throw 'Automexia did not accept the native close request'
+    }
+    # Window retirement and child/resource teardown are different observations.
+    # A process-exit ceiling alone previously allowed seconds of visible lag.
+    while ([AutomexiaResizeDriver]::IsWindowVisible($window) -and
+           $shutdownTimer.ElapsedMilliseconds -lt 500) {
+        Start-Sleep -Milliseconds 5
+    }
+    $dismissalMilliseconds = $shutdownTimer.ElapsedMilliseconds
+    if ([AutomexiaResizeDriver]::IsWindowVisible($window)) {
+        throw 'Final window dismissal waited for resource cleanup'
+    }
+    if (-not $process.WaitForExit(15000)) {
+        throw 'Automexia did not exit within the native shutdown budget'
+    }
+    $ownedExitDeadline = [DateTime]::UtcNow.AddSeconds(10)
+    do {
+        $remainingOwnedProcesses = @($ownedDescendantsAtShutdown | Where-Object {
+            $null -ne (Get-Process -Id $_ -ErrorAction SilentlyContinue)
+        })
+        if ($remainingOwnedProcesses.Count -eq 0) {
+            break
+        }
+        Start-Sleep -Milliseconds 25
+    } while ([DateTime]::UtcNow -lt $ownedExitDeadline)
+    $shutdownTimer.Stop()
+    if ($remainingOwnedProcesses.Count -ne 0) {
+        throw "Automexia shutdown left $($remainingOwnedProcesses.Count) owned descendant processes"
+    }
+    if ($shutdownTimer.ElapsedMilliseconds -gt $MaximumOwnedShutdownMilliseconds) {
+        throw "Automexia owned shutdown exceeded the multi-session wall-clock ceiling: $($shutdownTimer.ElapsedMilliseconds)ms > ${MaximumOwnedShutdownMilliseconds}ms"
+    }
+    if ($null -ne $reportPath -and $null -ne $report) {
+        $reportData = $report | ConvertFrom-Json
+        $reportData | Add-Member -NotePropertyName owned_process_tree_shutdown -NotePropertyValue ([ordered]@{
+            descendant_count = $ownedDescendantsAtShutdown.Count
+            dismissal_milliseconds = $dismissalMilliseconds
+            dismissal_ceiling_milliseconds = 500
+            elapsed_milliseconds = $shutdownTimer.ElapsedMilliseconds
+            ceiling_milliseconds = $MaximumOwnedShutdownMilliseconds
+            owner_exited = $true
+            descendants_exited = $true
+        })
+        $temporaryReport = "$reportPath.$PID.tmp"
+        [IO.File]::WriteAllText(
+            $temporaryReport,
+            ($reportData | ConvertTo-Json -Depth 7),
+            [Text.UTF8Encoding]::new($false))
+        Move-Item -LiteralPath $temporaryReport -Destination $reportPath -Force
+    }
+    $process = $null
+    Write-Host ($successSummary + ', owned shutdown ' +
+        $shutdownTimer.ElapsedMilliseconds + 'ms')
 } finally {
     if ($null -ne $process -and -not $process.HasExited) {
+        $ownedDescendantsAtShutdown = @(
+            Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
         [void]$process.CloseMainWindow()
-        if (-not $process.WaitForExit(5000)) {
+        if (-not $process.WaitForExit(15000)) {
             Stop-Process -Id $process.Id -Force
+        }
+    }
+    foreach ($ownedProcessId in $ownedDescendantsAtShutdown) {
+        if ($null -ne (Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue)) {
+            Stop-Process -Id $ownedProcessId -Force
         }
     }
     if ($null -eq $previousSnapshot) {

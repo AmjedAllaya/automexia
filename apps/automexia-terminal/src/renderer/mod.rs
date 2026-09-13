@@ -12,7 +12,9 @@ pub mod responsive;
 pub mod scrollbar;
 pub mod search;
 pub mod session_footer;
+mod suggestion_text;
 pub mod suggestions;
+pub(crate) mod text_fit;
 pub mod trail_cursor;
 pub(crate) mod ui_theme;
 pub mod utils;
@@ -325,6 +327,138 @@ fn command_result_boundary(
     result
 }
 
+#[inline]
+fn command_result_anchor_is_valid(
+    anchor: &crate::automexia::ui::CommandResultAnchor,
+) -> bool {
+    anchor.x.is_finite()
+        && anchor.y.is_finite()
+        && anchor.width.is_finite()
+        && anchor.height.is_finite()
+        && anchor.width > 0.0
+        && anchor.height > 0.0
+        && anchor.output_top.is_none_or(f32::is_finite)
+}
+
+#[inline]
+fn command_result_anchor_priority(
+    anchor: &crate::automexia::ui::CommandResultAnchor,
+) -> (bool, bool, u64) {
+    // A following-prompt boundary is the truthful end of the preceding
+    // output. It owns a shared prompt row ahead of the just-completed command
+    // whose own following boundary is outside the visible snapshot.
+    let has_visible_output = anchor
+        .output_top
+        .is_some_and(|output_top| output_top < anchor.y);
+    (anchor.separates_next_prompt, has_visible_output, anchor.key)
+}
+
+#[inline]
+fn command_result_timestamp_sort_key(
+    timestamp: Option<rio_backend::crosswords::grid::row::SemanticCommandTimestamp>,
+) -> (bool, u64, u16, u8, u8, u8, u8, u8) {
+    timestamp.map_or((false, 0, 0, 0, 0, 0, 0, 0), |timestamp| {
+        (
+            true,
+            timestamp.unix_ms,
+            timestamp.year,
+            timestamp.month,
+            timestamp.day,
+            timestamp.hour,
+            timestamp.minute,
+            timestamp.second,
+        )
+    })
+}
+
+#[inline]
+fn compare_command_result_anchor_preference(
+    left: &crate::automexia::ui::CommandResultAnchor,
+    right: &crate::automexia::ui::CommandResultAnchor,
+) -> std::cmp::Ordering {
+    command_result_anchor_priority(left)
+        .cmp(&command_result_anchor_priority(right))
+        .then_with(|| left.generation.cmp(&right.generation))
+        .then_with(|| left.exit_code.cmp(&right.exit_code))
+        .then_with(|| left.elapsed_ms.cmp(&right.elapsed_ms))
+        .then_with(|| {
+            command_result_timestamp_sort_key(left.completed_at)
+                .cmp(&command_result_timestamp_sort_key(right.completed_at))
+        })
+        .then_with(|| left.output_top.is_some().cmp(&right.output_top.is_some()))
+        .then_with(|| match (left.output_top, right.output_top) {
+            (Some(left), Some(right)) => left.total_cmp(&right),
+            _ => std::cmp::Ordering::Equal,
+        })
+        .then_with(|| left.x.total_cmp(&right.x))
+        .then_with(|| left.y.total_cmp(&right.y))
+        .then_with(|| left.width.total_cmp(&right.width))
+        .then_with(|| left.height.total_cmp(&right.height))
+}
+
+#[inline]
+fn command_result_anchors_share_row(
+    left: &crate::automexia::ui::CommandResultAnchor,
+    right: &crate::automexia::ui::CommandResultAnchor,
+) -> bool {
+    left.y < right.y + right.height && right.y < left.y + left.height
+}
+
+/// Collapse source/boundary aliases and enforce one completion badge owner per
+/// visible terminal row. A prompt can legitimately carry the preceding
+/// command's boundary and its own completion metadata at the same time; only
+/// the preceding boundary is paintable until the latter command's following
+/// prompt enters the snapshot.
+fn normalize_command_result_anchors(
+    anchors: &mut Vec<crate::automexia::ui::CommandResultAnchor>,
+) {
+    anchors.retain(command_result_anchor_is_valid);
+
+    // First collapse repeated projections of one pane-local result identity.
+    // Prefer its following-prompt boundary over a source-row fallback.
+    anchors.sort_by(|left, right| {
+        left.key
+            .cmp(&right.key)
+            .then_with(|| compare_command_result_anchor_preference(left, right))
+    });
+    let mut write = 0;
+    for read in 0..anchors.len() {
+        let candidate = anchors[read];
+        if write > 0 && anchors[write - 1].key == candidate.key {
+            anchors[write - 1] = candidate;
+        } else {
+            anchors[write] = candidate;
+            write += 1;
+        }
+    }
+    anchors.truncate(write);
+
+    // Then make display-row ownership exclusive. The higher-priority anchor
+    // wins deterministically, so input ordering and resize history cannot
+    // change which badge is painted.
+    anchors.sort_by(|left, right| {
+        left.y
+            .total_cmp(&right.y)
+            .then_with(|| left.key.cmp(&right.key))
+    });
+    write = 0;
+    for read in 0..anchors.len() {
+        let candidate = anchors[read];
+        if write > 0 && command_result_anchors_share_row(&anchors[write - 1], &candidate)
+        {
+            if compare_command_result_anchor_preference(&candidate, &anchors[write - 1])
+                .is_gt()
+            {
+                anchors[write - 1] = candidate;
+            }
+        } else {
+            anchors[write] = candidate;
+            write += 1;
+        }
+    }
+    anchors.truncate(write);
+}
+
 fn command_result_anchors(
     rows: &[Row<Square>],
     origin_x: f32,
@@ -359,6 +493,7 @@ fn command_result_anchors(
                 separates_next_prompt: false,
                 exit_code: result.exit_code,
                 elapsed_ms: result.elapsed_ms,
+                completed_at: result.completed_at,
             };
             Some(command_result_boundary(anchor, prompt_anchors))
         })
@@ -395,10 +530,10 @@ fn command_result_anchors(
             separates_next_prompt: true,
             exit_code: boundary.result.exit_code,
             elapsed_ms: boundary.result.elapsed_ms,
+            completed_at: boundary.result.completed_at,
         });
     }
-    anchors
-        .sort_by(|left, right| left.y.total_cmp(&right.y).then(left.key.cmp(&right.key)));
+    normalize_command_result_anchors(&mut anchors);
     anchors
 }
 
@@ -558,6 +693,7 @@ fn semantic_pane_render_state(
             shell_name: rc.shell_name.clone(),
             shell_user: rc.shell_user.clone(),
             shell_path: rc.shell_path.clone(),
+            environment: rc.shell_environment.clone(),
             shell_integration: rc.shell_integration,
             shell_pid: context.shell_pid,
         },
@@ -836,6 +972,13 @@ impl Renderer {
         }
     }
 
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_active_prompt_context_paints(
+        &self,
+    ) -> Vec<devops_status::NativePromptContextPaint> {
+        self.devops_status.native_test_prompt_paints()
+    }
+
     #[inline]
     pub fn use_drawable_chars(&self) -> bool {
         self.use_drawable_chars
@@ -1103,6 +1246,12 @@ impl Renderer {
                         terminal.user_vars.get("automexia_shell_path"),
                     );
                     context.renderable_content.shell_integration = live_shell_integration;
+                    automexia_devops::sync_location_hints(
+                        &mut context.renderable_content.shell_environment,
+                        |name| terminal.user_vars.get(name).map(String::as_str),
+                        live_shell_integration,
+                        context.renderable_content.shell_name.as_deref(),
+                    );
                     context.renderable_content.seeded_session_metadata = false;
                 }
                 context.renderable_content.shell_prompt_active = terminal
@@ -1921,6 +2070,7 @@ impl Renderer {
 #[cfg(test)]
 mod prompt_visual_anchor_tests {
     use super::*;
+    use proptest::prelude::*;
     use rio_backend::config::colors::ColorRgb;
     use rio_backend::crosswords::pos::Column;
     use rio_backend::crosswords::{Crosswords, CrosswordsSize};
@@ -1970,6 +2120,47 @@ mod prompt_visual_anchor_tests {
         assert!(renderer.draw_bold_text_with_light_colors);
         assert!(renderer.ignore_selection_fg_color);
         assert!(renderer.custom_mouse_cursor);
+    }
+
+    #[test]
+    fn fragmented_location_metadata_updates_vt_hints_without_visible_cells() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(96, 10),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        let mut processor = Processor::default();
+        let mut hints = std::collections::BTreeMap::new();
+        // Literal wire bytes use an independent base64 oracle. One-byte delivery
+        // covers splits inside names, padding and terminators, not just complete OSCs.
+        let wire = b"\x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9tZQ==\x07\
+                     \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=L2ZpeHR1cmUvY29uZmln\x07";
+        for byte in wire {
+            processor.advance(&mut terminal, std::slice::from_ref(byte));
+        }
+        automexia_devops::sync_location_hints(
+            &mut hints,
+            |name| terminal.user_vars.get(name).map(String::as_str),
+            true,
+            Some("bash"),
+        );
+        assert_eq!(hints["HOME"], "/fixture/home");
+        assert_eq!(hints["KUBECONFIG"], "/fixture/config");
+        let clear = b"\x1b]1337;SetUserVar=automexia_env_HOME=\x07\
+                      \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=\x07";
+        processor.advance(&mut terminal, clear);
+        automexia_devops::sync_location_hints(
+            &mut hints,
+            |name| terminal.user_vars.get(name).map(String::as_str),
+            true,
+            Some("bash"),
+        );
+        assert!(hints.values().all(String::is_empty));
+        assert_eq!(terminal.grid.cursor.pos.row.0, 0);
+        assert_eq!(terminal.grid.cursor.pos.col.0, 0);
     }
 
     #[test]
@@ -2269,6 +2460,212 @@ mod prompt_visual_anchor_tests {
         }
     }
 
+    fn snapshot_result_anchors(
+        terminal: &mut Crosswords<VoidListener>,
+    ) -> Vec<crate::automexia::ui::CommandResultAnchor> {
+        let first_absolute_row = terminal
+            .lines_evicted()
+            .saturating_add(terminal.history_size() as u64)
+            .saturating_sub(terminal.display_offset() as u64);
+        let mut visible_rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        terminal.snapshot_visible(
+            &TerminalDamage::Full,
+            terminal.columns(),
+            &mut visible_rows,
+            &mut styles,
+            &mut extras,
+        );
+        let prompt_anchors = visible_rows
+            .iter()
+            .enumerate()
+            .filter_map(|(row_index, row)| {
+                (row.semantic_prompt == SemanticPrompt::Prompt)
+                    .then(|| prompt_visual_anchor(&visible_rows, row_index))
+                    .flatten()
+                    .map(|visual_index| crate::automexia::ui::PromptAnchor {
+                        generation: row.semantic_prompt_id,
+                        key: first_absolute_row.saturating_add(row_index as u64),
+                        x: 4.0,
+                        y: visual_index as f32 * 20.0,
+                        width: 720.0,
+                        height: 20.0,
+                    })
+            })
+            .collect::<Vec<_>>();
+        command_result_anchors(&visible_rows, 4.0, 0.0, 720.0, 20.0, &prompt_anchors)
+    }
+
+    #[test]
+    fn resize_then_command_navigation_never_projects_overlapping_result_badges() {
+        for policy in [
+            rio_backend::crosswords::ResizePolicy::Reflow,
+            rio_backend::crosswords::ResizePolicy::Conpty,
+        ] {
+            assert_resize_navigation_projection(policy);
+        }
+    }
+
+    fn assert_resize_navigation_projection(
+        policy: rio_backend::crosswords::ResizePolicy,
+    ) {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(96, 10),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            1_024,
+        );
+        terminal.set_resize_policy(policy);
+        let mut processor = Processor::default();
+        let mut stream = Vec::new();
+        for command in 1..=6 {
+            stream.extend_from_slice(
+                format!(
+                    "\x1b]133;A;aid={command}\x07 \r\n\
+                     \x1b]133;P;k=c;aid={command}\x07/workspaces/example-project\r\n\
+                     \x1b]133;P;k=c;aid={command}\x07lambda command-{command}\x1b]133;B\x07\r\n\
+                     \x1b]133;C\x07result-{command}-abcdefghijklmnopqrstuvwxyz\r\n\
+                     \x1b]133;D;0\x07"
+                )
+                .as_bytes(),
+            );
+        }
+        stream.extend_from_slice(
+            b"\x1b]133;A;aid=7\x07 \r\n\
+              \x1b]133;P;k=c;aid=7\x07/workspaces/example-project\r\n\
+              \x1b]133;P;k=c;aid=7\x07lambda \x1b]133;B\x07",
+        );
+        processor.advance(&mut terminal, &stream);
+
+        for (columns, rows) in [(23, 8), (96, 10), (31, 7), (72, 9)] {
+            terminal.resize(CrosswordsSize::new(columns, rows));
+            for forward in [false, false, true, false, true, true] {
+                let _ = terminal.scroll_to_prompt(forward);
+                let anchors = snapshot_result_anchors(&mut terminal);
+                for pair in anchors.windows(2) {
+                    assert_ne!(
+                        pair[0].key, pair[1].key,
+                        "one result identity must be projected once after {columns}x{rows} reflow"
+                    );
+                    assert!(
+                        !command_result_anchors_share_row(&pair[0], &pair[1]),
+                        "result badges overlap after {columns}x{rows} reflow and navigation: {pair:?}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn shared_prompt_row_belongs_to_the_preceding_output_boundary() {
+        let preceding_boundary = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(5),
+            key: 5,
+            x: 4.0,
+            y: 120.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(80.0),
+            separates_next_prompt: true,
+            exit_code: Some(0),
+            elapsed_ms: Some(200),
+            completed_at: None,
+        };
+        let next_source = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(6),
+            key: 6,
+            output_top: Some(160.0),
+            separates_next_prompt: false,
+            elapsed_ms: Some(900),
+            ..preceding_boundary
+        };
+
+        // This is the exact valid VT state behind the reported overdraw: one
+        // prompt row carries the prior result boundary and its own result.
+        for mut anchors in [
+            vec![preceding_boundary, next_source],
+            vec![next_source, preceding_boundary],
+        ] {
+            normalize_command_result_anchors(&mut anchors);
+            assert_eq!(anchors, vec![preceding_boundary]);
+        }
+    }
+
+    #[test]
+    fn repeated_result_identity_keeps_only_its_following_prompt_boundary() {
+        let source = crate::automexia::ui::CommandResultAnchor {
+            generation: Some(11),
+            key: 41,
+            x: 4.0,
+            y: 20.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(40.0),
+            separates_next_prompt: false,
+            exit_code: Some(7),
+            elapsed_ms: Some(25),
+            completed_at: None,
+        };
+        let boundary = crate::automexia::ui::CommandResultAnchor {
+            y: 100.0,
+            output_top: Some(40.0),
+            separates_next_prompt: true,
+            ..source
+        };
+        let mut anchors = vec![boundary, source, source];
+
+        normalize_command_result_anchors(&mut anchors);
+
+        assert_eq!(anchors, vec![boundary]);
+    }
+
+    proptest! {
+        #[test]
+        fn result_projection_is_order_independent_and_never_overlaps(
+            raw in proptest::collection::vec(
+                (0u64..48, 0u8..24, any::<bool>(), 0u16..2_000),
+                0..192,
+            ),
+        ) {
+            let anchors = raw
+                .into_iter()
+                .map(|(key, row, boundary, elapsed_ms)| {
+                    let y = f32::from(row) * 20.0;
+                    crate::automexia::ui::CommandResultAnchor {
+                        generation: Some(key),
+                        key,
+                        x: 4.0,
+                        y,
+                        width: 720.0,
+                        height: 20.0,
+                        output_top: Some(if boundary { y - 20.0 } else { y + 20.0 }),
+                        separates_next_prompt: boundary,
+                        exit_code: Some(0),
+                        elapsed_ms: Some(u64::from(elapsed_ms)),
+                        completed_at: None,
+                    }
+                })
+                .collect::<Vec<_>>();
+            let mut forward = anchors.clone();
+            let mut reversed = anchors;
+            reversed.reverse();
+
+            normalize_command_result_anchors(&mut forward);
+            normalize_command_result_anchors(&mut reversed);
+
+            prop_assert_eq!(&forward, &reversed);
+            for (index, left) in forward.iter().enumerate() {
+                for right in &forward[index + 1..] {
+                    prop_assert_ne!(left.key, right.key);
+                    prop_assert!(!command_result_anchors_share_row(left, right));
+                }
+            }
+        }
+    }
+
     #[test]
     fn result_anchors_cover_success_error_single_and_multiline_output() {
         for (exit_code, output_row_count) in [(0, 1usize), (7, 3usize)] {
@@ -2282,6 +2679,7 @@ mod prompt_visual_anchor_tests {
                     id: 10,
                     exit_code: Some(exit_code),
                     elapsed_ms: Some(18),
+                    completed_at: None,
                 },
             );
             rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
@@ -2328,6 +2726,17 @@ mod prompt_visual_anchor_tests {
             id: 33,
             exit_code: Some(0),
             elapsed_ms: Some(9),
+            completed_at: Some(
+                rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+                    unix_ms: 1_777_575_942_000,
+                    year: 2026,
+                    month: 8,
+                    day: 26,
+                    hour: 19,
+                    minute: 5,
+                    second: 42,
+                },
+            ),
         };
         let mut rows = (0..=3).map(|_| Row::<Square>::new(12)).collect::<Vec<_>>();
         rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
@@ -2369,6 +2778,7 @@ mod prompt_visual_anchor_tests {
         assert_eq!(results[0].output_top, Some(40.0));
         assert_eq!(results[0].y, 60.0);
         assert!(results[0].separates_next_prompt);
+        assert_eq!(results[0].completed_at, result.completed_at);
     }
     #[test]
     fn legacy_cmd_result_uses_lambda_and_next_prompt_without_claiming_status() {
@@ -2379,6 +2789,7 @@ mod prompt_visual_anchor_tests {
                 id: 10,
                 exit_code: None,
                 elapsed_ms: None,
+                completed_at: None,
             },
         );
         rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
@@ -2426,6 +2837,7 @@ mod prompt_visual_anchor_tests {
                 id: 10,
                 exit_code: None,
                 elapsed_ms: None,
+                completed_at: None,
             },
         );
         rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
@@ -2437,6 +2849,7 @@ mod prompt_visual_anchor_tests {
                 id: 10,
                 exit_code: Some(0),
                 elapsed_ms: Some(1),
+                completed_at: None,
             },
         );
         rows[4].set_semantic_prompt(SemanticPrompt::PromptContinuation, None);
@@ -2491,6 +2904,17 @@ mod prompt_visual_anchor_tests {
             separates_next_prompt: false,
             exit_code: Some(0),
             elapsed_ms: Some(18),
+            completed_at: Some(
+                rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+                    unix_ms: 1_777_575_942_000,
+                    year: 2026,
+                    month: 8,
+                    day: 26,
+                    hour: 19,
+                    minute: 5,
+                    second: 42,
+                },
+            ),
         };
         let prompts = [
             crate::automexia::ui::PromptAnchor {
@@ -2520,6 +2944,7 @@ mod prompt_visual_anchor_tests {
         assert!(boundary.separates_next_prompt);
         assert_eq!(boundary.exit_code, Some(0));
         assert_eq!(boundary.elapsed_ms, Some(18));
+        assert_eq!(boundary.completed_at, result.completed_at);
     }
 
     #[test]
@@ -2535,6 +2960,7 @@ mod prompt_visual_anchor_tests {
             separates_next_prompt: false,
             exit_code: Some(7),
             elapsed_ms: Some(1_250),
+            completed_at: None,
         };
         let prompts = [crate::automexia::ui::PromptAnchor {
             generation: Some(2),

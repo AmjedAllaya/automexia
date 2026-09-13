@@ -183,6 +183,7 @@ enum SecondaryClickClipboardAction {
 enum PointerPaneFocusReason {
     Click,
     Wheel,
+    ClipboardClick,
 }
 
 impl PointerPaneFocusReason {
@@ -487,6 +488,27 @@ fn publish_native_resize_snapshot_generation(
 }
 
 #[cfg(feature = "native-gui-test-hooks")]
+const MAX_PENDING_NATIVE_SNAPSHOT_BYTES: usize = 4 * 1024 * 1024;
+
+#[cfg(feature = "native-gui-test-hooks")]
+struct PendingNativeResizeSnapshot {
+    path: std::path::PathBuf,
+    payload: Vec<u8>,
+    generation: u64,
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
+impl PendingNativeResizeSnapshot {
+    fn publish(self) -> std::io::Result<bool> {
+        publish_native_resize_snapshot_generation(
+            &self.path,
+            &self.payload,
+            self.generation,
+        )
+    }
+}
+
+#[cfg(feature = "native-gui-test-hooks")]
 fn native_test_control_checkpoint() -> String {
     std::env::var_os("AUTOMEXIA_NATIVE_TEST_CONTROL")
         .and_then(|path| std::fs::read_to_string(path).ok())
@@ -525,7 +547,17 @@ struct NativeWindowSnapshot {
     grid_margin: Margin,
     active_tab_profile: Option<String>,
     palette_enabled: bool,
+    palette_scroll_offset: usize,
+    palette_selected_index: usize,
+    palette_visible_results: usize,
+    palette_total_results: usize,
+    palette_accessibility_summary: Option<String>,
     confirm_quit_active: bool,
+    connection_hub_active: bool,
+    connection_hub_route: Option<&'static str>,
+    connection_hub_literal_entry: bool,
+    connection_hub_pointer_hit: Option<String>,
+    connection_hub_last_hit: Option<String>,
     compatibility_inspector_active: bool,
     compatibility_inspector_accessibility_summary: Option<String>,
     compatibility_inspector_clear_confirmation: bool,
@@ -543,6 +575,11 @@ struct NativeWindowSnapshot {
     command_result_generation: Option<u64>,
     command_result_key: Option<u64>,
     command_result_exit_code: Option<i32>,
+    command_result_completed_at_unix_ms: Option<u64>,
+    command_result_label: Option<String>,
+    command_result_paints:
+        Vec<crate::renderer::command_results::NativeCommandResultPaint>,
+    prompt_context_paints: Vec<crate::renderer::devops_status::NativePromptContextPaint>,
     command_result_pulse_duration_ms: Option<u64>,
     command_result_pulse_hold_fraction: Option<f32>,
     command_result_pulse_generation: u64,
@@ -556,7 +593,7 @@ fn write_native_resize_snapshot(
     last_control: &str,
     image_preview: crate::image_preview::NativeImagePreviewState,
     pointer: serde_json::Value,
-) {
+) -> Option<PendingNativeResizeSnapshot> {
     use rio_backend::crosswords::grid::row::SemanticPrompt;
     use std::sync::atomic::{AtomicU64, Ordering};
 
@@ -568,9 +605,7 @@ fn write_native_resize_snapshot(
     #[cfg(not(target_os = "windows"))]
     let fullscreen_display_request_active = false;
 
-    let Some(path) = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT") else {
-        return;
-    };
+    let path = std::env::var_os("AUTOMEXIA_RESIZE_SNAPSHOT")?;
 
     let mut visible_text = String::new();
     let mut visible_row_texts = Vec::with_capacity(content.visible_rows.len());
@@ -617,6 +652,10 @@ fn write_native_resize_snapshot(
                 "result_elapsed_ms": row
                     .semantic_command_result
                     .and_then(|result| result.elapsed_ms),
+                "result_completed_at_unix_ms": row
+                    .semantic_command_result
+                    .and_then(|result| result.completed_at)
+                    .map(|timestamp| timestamp.unix_ms),
                 "has_result": row.semantic_command_result.is_some(),
                 "boundary_source_generation": row
                     .semantic_command_boundary
@@ -624,6 +663,10 @@ fn write_native_resize_snapshot(
                 "boundary_result_id": row
                     .semantic_command_boundary
                     .map(|boundary| boundary.result.id),
+                "boundary_completed_at_unix_ms": row
+                    .semantic_command_boundary
+                    .and_then(|boundary| boundary.result.completed_at)
+                    .map(|timestamp| timestamp.unix_ms),
             })
         })
         .collect::<Vec<_>>();
@@ -689,7 +732,6 @@ fn write_native_resize_snapshot(
         "latest_prompt_start_count": latest_prompt_start_count,
         "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
-        "palette_enabled": window.palette_enabled,
         "confirm_quit_active": window.confirm_quit_active,
         "fullscreen_display_request_active": fullscreen_display_request_active,
         "image_preview": {
@@ -713,6 +755,23 @@ fn write_native_resize_snapshot(
         "panels": panels,
     });
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["display_offset"] = serde_json::json!(content.display_offset);
+    snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
+    snapshot["connection_hub_active"] = serde_json::json!(window.connection_hub_active);
+    snapshot["connection_hub_route"] = serde_json::json!(window.connection_hub_route);
+    snapshot["connection_hub_literal_entry"] =
+        serde_json::json!(window.connection_hub_literal_entry);
+    snapshot["connection_hub_pointer_hit"] =
+        serde_json::json!(window.connection_hub_pointer_hit);
+    snapshot["connection_hub_last_hit"] =
+        serde_json::json!(window.connection_hub_last_hit);
+    snapshot["palette_scroll_offset"] = serde_json::json!(window.palette_scroll_offset);
+    snapshot["palette_selected_index"] = serde_json::json!(window.palette_selected_index);
+    snapshot["palette_visible_results"] =
+        serde_json::json!(window.palette_visible_results);
+    snapshot["palette_total_results"] = serde_json::json!(window.palette_total_results);
+    snapshot["palette_accessibility_summary"] =
+        serde_json::json!(window.palette_accessibility_summary);
     snapshot["compatibility_inspector_active"] =
         serde_json::json!(window.compatibility_inspector_active);
     snapshot["compatibility_inspector_accessibility_summary"] =
@@ -737,6 +796,11 @@ fn write_native_resize_snapshot(
     snapshot["command_result_key"] = serde_json::json!(window.command_result_key);
     snapshot["command_result_exit_code"] =
         serde_json::json!(window.command_result_exit_code);
+    snapshot["command_result_completed_at_unix_ms"] =
+        serde_json::json!(window.command_result_completed_at_unix_ms);
+    snapshot["command_result_label"] = serde_json::json!(window.command_result_label);
+    snapshot["command_result_paints"] = serde_json::json!(window.command_result_paints);
+    snapshot["prompt_context_paints"] = serde_json::json!(window.prompt_context_paints);
     snapshot["command_result_pulse_duration_ms"] =
         serde_json::json!(window.command_result_pulse_duration_ms);
     snapshot["command_result_pulse_hold_fraction"] =
@@ -754,14 +818,19 @@ fn write_native_resize_snapshot(
             serde_json::json!(crate::automexia::visual_test_hooks::animations_enabled());
     }
 
-    let payload = snapshot.to_string();
-    if let Err(error) = publish_native_resize_snapshot_generation(
-        std::path::Path::new(&path),
-        payload.as_bytes(),
-        sequence,
-    ) {
-        tracing::warn!("could not write native resize snapshot: {error}");
+    let payload = snapshot.to_string().into_bytes();
+    if payload.len() > MAX_PENDING_NATIVE_SNAPSHOT_BYTES {
+        tracing::warn!(
+            payload_bytes = payload.len(),
+            "native resize snapshot exceeded its pending publication bound"
+        );
+        return None;
     }
+    Some(PendingNativeResizeSnapshot {
+        path: path.into(),
+        payload,
+        generation: sequence,
+    })
 }
 
 /// Reusable buffers for the hottest row-emission path. Keeping these on the
@@ -808,6 +877,7 @@ impl ConsumedWin32KeyReleases {
 }
 
 pub(crate) struct ScreenServices {
+    pub(crate) workers: crate::performer::PtyWorkerRegistry,
     pub(crate) action_surface: action_surface::Controller,
     pub(crate) suggestions: crate::automexia::suggestions::SuggestionService,
     pub(crate) connection_hub: crate::automexia::connections::ConnectionHubController,
@@ -856,6 +926,10 @@ pub struct Screen<'screen> {
     row_render_scratch: RowRenderScratch,
     #[cfg(feature = "native-gui-test-hooks")]
     native_test_last_control: String,
+    #[cfg(feature = "native-gui-test-hooks")]
+    pending_native_snapshot: Option<PendingNativeResizeSnapshot>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_test_present_after_control: bool,
 }
 
 pub struct ChromePress {
@@ -900,6 +974,7 @@ impl Screen<'_> {
         let raw_window_handle = window_properties.raw_window_handle;
         let raw_display_handle = window_properties.raw_display_handle;
         let ScreenServices {
+            workers,
             action_surface,
             suggestions,
             connection_hub,
@@ -995,6 +1070,9 @@ impl Screen<'_> {
             config.keyboard.binding_profile,
             &legacy_unbinds,
         );
+        renderer
+            .command_palette
+            .set_effective_bindings(&bindings, binding_registry.as_ref());
 
         let is_native = config.navigation.is_native();
 
@@ -1006,6 +1084,7 @@ impl Screen<'_> {
         );
 
         let context_manager_config = context::ContextManagerConfig {
+            workers,
             #[cfg(test)]
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
@@ -1133,6 +1212,10 @@ impl Screen<'_> {
             row_render_scratch: RowRenderScratch::default(),
             #[cfg(feature = "native-gui-test-hooks")]
             native_test_last_control: native_test_control_checkpoint(),
+            #[cfg(feature = "native-gui-test-hooks")]
+            pending_native_snapshot: None,
+            #[cfg(feature = "native-gui-test-hooks")]
+            native_test_present_after_control: false,
         })
     }
 
@@ -1499,6 +1582,17 @@ impl Screen<'_> {
         self.select_current_based_on_pointer(PointerPaneFocusReason::Wheel)
     }
 
+    pub fn select_mouse_clipboard_target(&mut self) -> Option<bool> {
+        if self.renderer.command_palette.is_enabled() || self.search_active() {
+            return None;
+        }
+        let mouse = &self.mouse;
+        self.context_manager
+            .current_grid()
+            .find_terminal_at_position(mouse.x as f32, mouse.y as f32)?;
+        Some(self.select_current_based_on_pointer(PointerPaneFocusReason::ClipboardClick))
+    }
+
     #[inline]
     fn select_current_based_on_pointer(
         &mut self,
@@ -1548,6 +1642,44 @@ impl Screen<'_> {
         &mut self.touchpurpose
     }
 
+    /// Binding-only publication must not resize panes, reload fonts or touch PTYs
+    /// except for the existing cancellation of pre-registry sequence bytes.
+    pub(crate) fn update_bindings(
+        &mut self,
+        config: &rio_backend::config::Config,
+        binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
+    ) {
+        // Prefix state belongs to the registry generation. Flush retained
+        // bytes to each original PTY before the immutable snapshot swap.
+        let mut states = std::mem::take(&mut self.binding_states);
+        for (route_id, state) in &mut states {
+            let bytes =
+                state.cancel(automexia_keybindings::CancellationReason::RegistryReplaced);
+            if !bytes.is_empty() {
+                if let Some(context) = self.context_manager.get_by_route_id(*route_id) {
+                    context.messenger.send_write(bytes);
+                }
+            }
+        }
+        self.binding_registry = binding_registry;
+        self.last_compatibility_bindings.clear();
+        self.bindings = crate::bindings::default_key_bindings(config);
+        let legacy_unbinds = self
+            .binding_registry
+            .as_ref()
+            .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
+        self.renderer.command_palette.set_binding_registry(
+            self.binding_registry
+                .as_ref()
+                .map(|snapshot| snapshot.registry.as_ref()),
+            config.keyboard.binding_profile,
+            &legacy_unbinds,
+        );
+        self.renderer
+            .command_palette
+            .set_effective_bindings(&self.bindings, self.binding_registry.as_ref());
+    }
+
     /// update_config is triggered in any configuration file update
     #[inline]
     pub fn update_config(
@@ -1587,33 +1719,7 @@ impl Screen<'_> {
             .update_filters(config.renderer.filters.as_slice());
 
         if should_update_bindings {
-            // Prefix state belongs to the registry generation. Flush retained
-            // bytes to each original PTY before the immutable snapshot swap.
-            let mut states = std::mem::take(&mut self.binding_states);
-            for (route_id, state) in &mut states {
-                let bytes = state
-                    .cancel(automexia_keybindings::CancellationReason::RegistryReplaced);
-                if !bytes.is_empty() {
-                    if let Some(context) = self.context_manager.get_by_route_id(*route_id)
-                    {
-                        context.messenger.send_write(bytes);
-                    }
-                }
-            }
-            self.binding_registry = binding_registry;
-            self.last_compatibility_bindings.clear();
-            self.bindings = crate::bindings::default_key_bindings(config);
-            let legacy_unbinds = self
-                .binding_registry
-                .as_ref()
-                .map_or_else(Vec::new, |snapshot| snapshot.legacy_unbind_labels());
-            self.renderer.command_palette.set_binding_registry(
-                self.binding_registry
-                    .as_ref()
-                    .map(|snapshot| snapshot.registry.as_ref()),
-                config.keyboard.binding_profile,
-                &legacy_unbinds,
-            );
+            self.update_bindings(config, binding_registry);
         }
 
         // Apply configuration in-place. Replacing the renderer here used to
@@ -1692,22 +1798,20 @@ impl Screen<'_> {
 
     #[inline]
     pub fn change_font_size(&mut self, action: FontSizeAction) {
-        let dim = &mut self.context_manager.current_mut().dimension;
-        let changed = match action {
-            FontSizeAction::Increase => dim.increase_font_size(),
-            FontSizeAction::Decrease => dim.decrease_font_size(),
-            FontSizeAction::Reset => dim.reset_font_size(),
+        use rio_backend::event::FontSizeRequest;
+
+        let current = self.context_manager.current().dimension.font_size;
+        let request = match action {
+            FontSizeAction::Increase if current < 100.0 => {
+                FontSizeRequest::Set((current + 1.0).min(100.0))
+            }
+            FontSizeAction::Decrease if current > 6.0 => {
+                FontSizeRequest::Set((current - 1.0).max(6.0))
+            }
+            FontSizeAction::Reset => FontSizeRequest::Reset,
+            FontSizeAction::Increase | FontSizeAction::Decrease => return,
         };
-        if !changed {
-            return;
-        }
-
-        self.context_manager
-            .current_grid_mut()
-            .update_dimensions(&mut self.sugarloaf);
-
-        self.mark_dirty();
-        self.resize_all_contexts();
+        self.context_manager.update_font_size(request);
     }
 
     #[inline]
@@ -1848,6 +1952,19 @@ impl Screen<'_> {
         let display_offset = terminal.display_offset();
         drop(terminal);
         display_offset
+    }
+
+    /// Move the selected pane to an adjacent shell command marker without
+    /// writing bytes to its PTY or disturbing any other pane.
+    fn scroll_to_command(&mut self, forward: bool) -> bool {
+        let current = self.context_manager.current_mut();
+        let rich_text_id = current.rich_text_id;
+        let moved = current.terminal.lock().scroll_to_prompt(forward);
+        if moved {
+            self.renderer.scrollbar.notify_scroll(rich_text_id);
+            self.mark_dirty();
+        }
+        moved
     }
 
     #[inline]
@@ -2170,8 +2287,7 @@ impl Screen<'_> {
             if binding.is_triggered_by(binding_mode.to_owned(), mods, &button) {
                 match binding.action {
                     Act::PasteSelection => {
-                        let content = clipboard.get(ClipboardType::Selection);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Selection);
                     }
                     Act::Paste if button == MouseButton::Right => {
                         match secondary_click_clipboard_action(
@@ -2182,10 +2298,10 @@ impl Screen<'_> {
                                 self.clear_selection();
                             }
                             SecondaryClickClipboardAction::PasteClipboard => {
-                                let content = clipboard.get(ClipboardType::Clipboard);
-                                if !content.is_empty() {
-                                    self.paste(&content, true);
-                                }
+                                self.paste_from_clipboard(
+                                    clipboard,
+                                    ClipboardType::Clipboard,
+                                );
                             }
                         }
                     }
@@ -2206,48 +2322,45 @@ impl Screen<'_> {
         let binding_mode = BindingMode::new(mode, search_active);
         let mut ignore_chars = None;
 
+        // Normalize once per event, not once per configured candidate. Keep
+        // physical and logical keys separate so explicit scancodes retain ownership.
+        let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
+            // Windows may expose Ctrl+Alt as AltGr and mangle the logical
+            // key into an unidentified/composed value. Normalize before
+            // character classification so explicit Ctrl+Alt remains reachable.
+            match key.key_without_modifiers() {
+                Key::Character(character) => {
+                    Key::Character(character.to_lowercase().into())
+                }
+                key => key,
+            }
+        } else if let Key::Character(ch) = key.logical_key.as_ref() {
+            // Modified character bindings use the uncomposed spelling; ordinary
+            // characters retain the layout's logical value, case-insensitively.
+            if mods.shift_key() || mods.alt_key() {
+                key.key_without_modifiers()
+            } else {
+                Key::Character(ch.to_lowercase().into())
+            }
+        } else {
+            key.logical_key.clone()
+        };
+        let logical_match = BindingKey::Keycode {
+            key: logical_key,
+            location: key.location,
+        };
+        let physical_match = BindingKey::Scancode(key.physical_key);
+
         for i in 0..self.bindings.len() {
             let binding = &self.bindings[i];
-            let trigger = &binding.trigger;
-            let action = binding.action.clone();
-
-            // We don't want the key without modifier, because it means something else most of
-            // the time. However what we want is to manually lowercase the character to account
-            // for both small and capital letters on regular characters at the same time.
-            let logical_key = if cfg!(windows) && mods.control_key() && mods.alt_key() {
-                // Windows may expose Ctrl+Alt as AltGr and mangle the logical
-                // key into an unidentified/composed value. Normalize before
-                // character classification so Ctrl+Alt shell-control
-                // passthroughs and other application shortcuts remain
-                // reachable.
-                match key.key_without_modifiers() {
-                    Key::Character(character) => {
-                        Key::Character(character.to_lowercase().into())
-                    }
-                    key => key,
-                }
-            } else if let Key::Character(ch) = key.logical_key.as_ref() {
-                // Match `Alt` bindings without `Alt` being applied, otherwise they use the
-                // composed chars, which are not intuitive to bind.
-                //
-                if mods.shift_key() || mods.alt_key() {
-                    key.key_without_modifiers()
-                } else {
-                    Key::Character(ch.to_lowercase().into())
-                }
-            } else {
-                key.logical_key.clone()
+            let key_match = match &binding.trigger {
+                BindingKey::Scancode(_) => &physical_match,
+                BindingKey::Keycode { .. } => &logical_match,
             };
 
-            let key_match = match (&trigger, logical_key) {
-                (BindingKey::Scancode(_), _) => BindingKey::Scancode(key.physical_key),
-                (_, code) => BindingKey::Keycode {
-                    key: code,
-                    location: key.location,
-                },
-            };
-
-            if binding.is_triggered_by(binding_mode.to_owned(), mods, &key_match) {
+            if binding.is_triggered_by(binding_mode.clone(), mods, key_match) {
+                // Only matched actions need ownership across mutable dispatch.
+                let action = binding.action.clone();
                 *ignore_chars.get_or_insert(true) &= action != Act::ReceiveChar;
 
                 match &action {
@@ -2256,15 +2369,13 @@ impl Screen<'_> {
                         self.paste(s, false);
                     }
                     Act::Paste => {
-                        let content = clipboard.get(ClipboardType::Clipboard);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
                     }
                     Act::ClearSelection => {
                         self.clear_selection();
                     }
                     Act::PasteSelection => {
-                        let content = clipboard.get(ClipboardType::Selection);
-                        self.paste(&content, true);
+                        self.paste_from_clipboard(clipboard, ClipboardType::Selection);
                     }
                     Act::Copy => {
                         self.copy_selection(ClipboardType::Clipboard, clipboard);
@@ -2533,22 +2644,10 @@ impl Screen<'_> {
                         self.change_font_size(FontSizeAction::Reset);
                     }
                     Act::ScrollToPrevPrompt => {
-                        let current = self.context_manager.current_mut();
-                        let rtid = current.rich_text_id;
-                        let mut terminal = current.terminal.lock();
-                        terminal.scroll_to_prompt(false);
-                        drop(terminal);
-                        self.renderer.scrollbar.notify_scroll(rtid);
-                        self.mark_dirty();
+                        self.scroll_to_command(false);
                     }
                     Act::ScrollToNextPrompt => {
-                        let current = self.context_manager.current_mut();
-                        let rtid = current.rich_text_id;
-                        let mut terminal = current.terminal.lock();
-                        terminal.scroll_to_prompt(true);
-                        drop(terminal);
-                        self.renderer.scrollbar.notify_scroll(rtid);
-                        self.mark_dirty();
+                        self.scroll_to_command(true);
                     }
                     Act::ScrollPageUp => {
                         // Move vi mode cursor.
@@ -3936,6 +4035,46 @@ impl Screen<'_> {
             .is_none()
     }
 
+    /// One activation owner for pointer and keyboard. Navigation and empty
+    /// results cannot fall through into command execution or PTY input.
+    pub fn activate_palette_selection(&mut self, clipboard: &mut Clipboard) {
+        use crate::renderer::command_palette::PaletteAction;
+        if self.renderer.command_palette.activate_navigation() {
+            return;
+        }
+        if self.renderer.command_palette.is_action_placeholder() {
+            self.submit_action_placeholder(self.renderer.command_palette.query.clone());
+        } else if let Some(id) =
+            self.renderer.command_palette.get_selected_action_item_id()
+        {
+            self.begin_action_review(&id);
+        } else if let Some(choice) = self.renderer.command_palette.get_review_choice() {
+            self.apply_reviewed_action(choice, clipboard);
+        } else if let Some(font) = self.renderer.command_palette.get_selected_font() {
+            clipboard.set(rio_backend::clipboard::ClipboardType::Clipboard, font);
+            self.renderer.command_palette.set_enabled(false);
+        } else if let Some(id) = self.renderer.command_palette.get_selected_market_id() {
+            match crate::automexia::runtime::toggle(&id) {
+                Ok(_) => self
+                    .renderer
+                    .command_palette
+                    .enter_market_mode(crate::automexia::runtime::market_items()),
+                Err(_) => tracing::warn!("extension activation change failed"),
+            }
+        } else {
+            match self.renderer.command_palette.get_selected_action() {
+                Some(PaletteAction::OpenMarket) => self.open_extension_marketplace(),
+                Some(PaletteAction::OpenActions) => self.open_action_center(),
+                Some(PaletteAction::ListFonts) => self.open_font_browser(),
+                Some(action) => {
+                    self.renderer.command_palette.set_enabled(false);
+                    self.execute_palette_action(action, clipboard);
+                }
+                None => {}
+            }
+        }
+    }
+
     // return true if the click was handled by the island
     #[inline]
     pub fn handle_palette_click(&mut self, clipboard: &mut Clipboard) -> bool {
@@ -3949,6 +4088,37 @@ impl Screen<'_> {
         let mouse_x = self.mouse.x as f32 / scale_factor;
         let mouse_y = self.mouse.y as f32 / scale_factor;
 
+        let dimensions = (window_width, window_size.height, scale_factor);
+        if self
+            .renderer
+            .command_palette
+            .shortcut_editor_click(mouse_x, mouse_y, dimensions)
+        {
+            if self.renderer.command_palette.has_shortcut_change() {
+                self.context_manager.request_shortcut_edit();
+            }
+            self.mark_dirty();
+            return true;
+        }
+        if self.renderer.command_palette.shortcut_badge_click(
+            &mut self.sugarloaf,
+            mouse_x,
+            mouse_y,
+            dimensions,
+            matches!(self.mouse.click_state, ClickState::DoubleClick),
+        ) {
+            self.mark_dirty();
+            return true;
+        }
+        if self.renderer.command_palette.try_back_click(
+            mouse_x,
+            mouse_y,
+            (window_width, window_size.height, scale_factor),
+        ) {
+            self.mark_dirty();
+            return true;
+        }
+
         match self.renderer.command_palette.hit_test(
             mouse_x,
             mouse_y,
@@ -3958,29 +4128,7 @@ impl Screen<'_> {
         ) {
             Ok(Some(index)) => {
                 self.renderer.command_palette.selected_index = index;
-                if self.renderer.command_palette.is_action_placeholder() {
-                    let value = self.renderer.command_palette.query.clone();
-                    self.submit_action_placeholder(value);
-                } else if let Some(action_id) =
-                    self.renderer.command_palette.get_selected_action_item_id()
-                {
-                    self.begin_action_review(&action_id);
-                } else if let Some(choice) =
-                    self.renderer.command_palette.get_review_choice()
-                {
-                    self.apply_reviewed_action(choice, clipboard);
-                } else if let Some(action) =
-                    self.renderer.command_palette.get_selected_action()
-                {
-                    if action
-                        == crate::renderer::command_palette::PaletteAction::OpenActions
-                    {
-                        self.open_action_center();
-                    } else {
-                        self.renderer.command_palette.set_enabled(false);
-                        self.execute_palette_action(action, clipboard);
-                    }
-                }
+                self.activate_palette_selection(clipboard);
                 self.mark_dirty();
                 true
             }
@@ -5746,11 +5894,53 @@ impl Screen<'_> {
         self.mouse.accumulated_scroll.y %= height;
     }
 
+    pub(crate) fn paste_from_clipboard(
+        &mut self,
+        clipboard: &mut Clipboard,
+        source: ClipboardType,
+    ) -> bool {
+        if self.renderer.command_palette.is_enabled() {
+            return false;
+        }
+        // Capture identity before asking the OS provider. No caller may derive
+        // the destination from focus after a delayed clipboard read.
+        let target = self.context_manager.current().paste_target();
+        let content = clipboard.get(source);
+        if self.search_active() {
+            self.paste(&content, true);
+            !content.is_empty()
+        } else {
+            self.finish_paste(target, &content, true)
+        }
+    }
+
+    fn finish_paste(
+        &mut self,
+        target: context::paste::PasteTarget,
+        text: &str,
+        bracketed: bool,
+    ) -> bool {
+        match self.context_manager.deliver_paste(target, text, bracketed) {
+            Ok(sent) => sent,
+            Err(_) => {
+                self.renderer.assistant.set_error(RioError {
+                    level: RioErrorLevel::Warning,
+                    report: RioErrorType::PasteRejected,
+                });
+                self.context_manager.request_render();
+                false
+            }
+        }
+    }
+
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
+        if self.renderer.command_palette.is_enabled() {
+            return;
+        }
         let search_active = self.search_active();
         if search_active {
-            for c in text.chars() {
+            for c in text.chars().take(MAX_SEARCH_QUERY_BYTES) {
                 self.search_input(c);
             }
             return;
@@ -5760,52 +5950,8 @@ impl Screen<'_> {
             return;
         }
 
-        // Every payload forwarded to the PTY exits terminal selection mode.
-        // This includes plain/application-cursor arrows, normal text,
-        // clipboard paste, and IME commits.
-        self.scroll_bottom_when_cursor_not_visible();
-        self.clear_selection();
-
-        if bracketed && self.get_mode().contains(Mode::BRACKETED_PASTE) {
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(&b"\x1b[200~"[..]);
-
-            // Write filtered escape sequences.
-            //
-            // We remove `\x1b` to ensure it's impossible for the pasted text to write the bracketed
-            // paste end escape `\x1b[201~` and `\x03` since some shells incorrectly terminate
-            // bracketed paste on its receival.
-            let filtered = text.replace(['\x1b', '\x03'], "");
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(filtered.into_bytes());
-
-            self.ctx_mut()
-                .current_mut()
-                .messenger
-                .send_write(&b"\x1b[201~"[..]);
-        } else {
-            let payload = if bracketed {
-                // In non-bracketed (ie: normal) mode, terminal applications cannot distinguish
-                // pasted data from keystrokes.
-                //
-                // In theory, we should construct the keystrokes needed to produce the data we are
-                // pasting... since that's neither practical nor sensible (and probably an
-                // impossible task to solve in a general way), we'll just replace line breaks
-                // (windows and unix style) with a single carriage return (\r, which is what the
-                // Enter key produces).
-                text.replace("\r\n", "\r").replace('\n', "\r").into_bytes()
-            } else {
-                // When we explicitly disable bracketed paste don't manipulate with the input,
-                // so we pass user input as is.
-                text.to_owned().into_bytes()
-            };
-
-            self.ctx_mut().current_mut().messenger.send_write(payload);
-        }
+        let target = self.context_manager.current().paste_target();
+        self.finish_paste(target, text, bracketed);
     }
 
     pub(crate) fn render_welcome(&mut self) {
@@ -5942,8 +6088,13 @@ impl Screen<'_> {
                 self.copy_selection(ClipboardType::Clipboard, clipboard);
             }
             PaletteAction::Paste => {
-                let content = clipboard.get(ClipboardType::Clipboard);
-                self.paste(&content, true);
+                self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
+            }
+            PaletteAction::ScrollToPreviousCommand => {
+                self.scroll_to_command(false);
+            }
+            PaletteAction::ScrollToNextCommand => {
+                self.scroll_to_command(true);
             }
             PaletteAction::SearchForward => {
                 self.start_search(Direction::Right);
@@ -6073,8 +6224,21 @@ impl Screen<'_> {
             .renderer
             .run(&mut self.sugarloaf, &mut self.context_manager);
         #[cfg(feature = "native-gui-test-hooks")]
+        let force_present_for_control = self.native_test_present_after_control;
+        #[cfg(feature = "native-gui-test-hooks")]
         {
+            // A test control is consumed after this frame's overlay model has
+            // already been recorded. Defer both readiness publication and its
+            // forced present to the next frame so state and pixels describe the
+            // same generation instead of exposing a partially rasterized CPU
+            // surface to the native driver.
+            self.native_test_present_after_control = false;
+            let previous_control = self.native_test_last_control.clone();
             self.process_native_test_control();
+            let control_changed = self.native_test_last_control != previous_control;
+            if control_changed {
+                self.native_test_present_after_control = true;
+            }
             let window_size = self.sugarloaf.window_size();
             let mut panels = self.context_manager.native_test_panel_snapshots();
             for panel in &mut panels {
@@ -6130,7 +6294,23 @@ impl Screen<'_> {
                 self.renderer.command_results.native_test_result_identity();
             let command_result_style =
                 self.renderer.command_results.native_test_result_style();
-            write_native_resize_snapshot(
+            let command_result_label = self
+                .renderer
+                .command_results
+                .native_test_result_label()
+                .map(str::to_owned);
+            let command_result_paints = self
+                .renderer
+                .command_results
+                .native_test_result_paints()
+                .to_vec();
+            let prompt_context_paints =
+                self.renderer.native_test_active_prompt_context_paints();
+            let palette_scroll_state =
+                self.renderer.command_palette.native_test_scroll_state();
+            self.pending_native_snapshot = (!control_changed)
+                .then(|| {
+                    write_native_resize_snapshot(
                 &self.context_manager.current().renderable_content,
                 panels,
                 NativeWindowSnapshot {
@@ -6146,7 +6326,55 @@ impl Screen<'_> {
                         .context_manager
                         .tab_profile_identity(self.context_manager.current_index()),
                     palette_enabled: self.renderer.command_palette.is_enabled(),
+                    palette_scroll_offset: palette_scroll_state.0,
+                    palette_selected_index: palette_scroll_state.1,
+                    palette_visible_results: palette_scroll_state.2,
+                    palette_total_results: palette_scroll_state.3,
+                    palette_accessibility_summary: self.renderer.command_palette.accessibility_summary(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    connection_hub_active: self.connection_hub.is_active(),
+                    connection_hub_route: self
+                        .connection_hub
+                        .is_active()
+                        .then_some(match self.connection_hub.route() {
+                        automexia_ui_model::connection_hub::HubRoute::Results => {
+                            "results"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::Review => "review",
+                        automexia_ui_model::connection_hub::HubRoute::RecipePlanner => {
+                            "recipe-planner"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::Workspaces => {
+                            "workspaces"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::WorkspaceReview => {
+                            "workspace-review"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::Providers => {
+                            "providers"
+                        }
+                        automexia_ui_model::connection_hub::HubRoute::ProviderReview => {
+                            "provider-review"
+                        }
+                    }),
+                    connection_hub_literal_entry: self
+                        .connection_hub
+                        .literal_destination_entry_is_active(),
+                    connection_hub_pointer_hit: self
+                        .renderer
+                        .connection_hub
+                        .hit_test(
+                            self.mouse.x as f32 / self.sugarloaf.scale_factor(),
+                            self.mouse.y as f32 / self.sugarloaf.scale_factor(),
+                            (
+                                window_size.width,
+                                window_size.height,
+                                self.sugarloaf.scale_factor(),
+                            ),
+                        )
+                        .map(|hit| format!("{hit:?}")),
+                    connection_hub_last_hit:
+                        connection_hub::native_connection_hub_last_hit(),
                     compatibility_inspector_active: self
                         .renderer
                         .compatibility_inspector
@@ -6184,6 +6412,11 @@ impl Screen<'_> {
                         .map(|identity| identity.1),
                     command_result_exit_code: command_result_identity
                         .and_then(|identity| identity.2),
+                    command_result_completed_at_unix_ms: command_result_identity
+                        .and_then(|identity| identity.3),
+                    command_result_label,
+                    command_result_paints,
+                    prompt_context_paints,
                     command_result_divider: command_result_visual.map(|visual| visual.1),
                     command_result_opacity: command_result_style.map(|style| style.0),
                     command_result_pulse_duration_ms: command_result_style
@@ -6196,7 +6429,9 @@ impl Screen<'_> {
                 &self.native_test_last_control,
                 self.image_preview.native_test_state(&self.sugarloaf),
                 pointer,
-            );
+                )
+                })
+                .flatten();
             // The control file is intentionally not watched by product code.
             // Keep feature-gated automation responsive while the window is
             // otherwise idle so latency measurements cover PTY/shell/render
@@ -6227,6 +6462,8 @@ impl Screen<'_> {
         let has_animation = self.renderer.needs_redraw();
         let should_present =
             any_panel_dirty || has_animation || preview_changed || preview_visible;
+        #[cfg(feature = "native-gui-test-hooks")]
+        let should_present = should_present || force_present_for_control;
 
         if self.renderer.custom_mouse_cursor {
             let scale = self.sugarloaf.scale_factor();
@@ -6869,7 +7106,18 @@ impl Screen<'_> {
                 // A dropped frame (no drawable, e.g. right after wake)
                 // already consumed this frame's damage; without a retry
                 // the content is lost until unrelated PTY traffic.
-                if self.sugarloaf.take_frame_dropped() {
+                let frame_dropped = self.sugarloaf.take_frame_dropped();
+                #[cfg(feature = "native-gui-test-hooks")]
+                if let Some(pending) = self.pending_native_snapshot.take() {
+                    if !frame_dropped {
+                        if let Err(error) = pending.publish() {
+                            tracing::warn!(
+                                "could not publish presented native resize snapshot: {error}"
+                            );
+                        }
+                    }
+                }
+                if frame_dropped {
                     self.mark_dirty();
                     self.context_manager.request_render();
                 }
@@ -6880,6 +7128,10 @@ impl Screen<'_> {
                 // them so the next presented frame doesn't
                 // composite them on top of their re-pushed selves.
                 self.sugarloaf.discard_frame();
+                #[cfg(feature = "native-gui-test-hooks")]
+                {
+                    self.pending_native_snapshot = None;
+                }
             }
 
             // Return each panel's snapshot buffers to the matching
@@ -7941,6 +8193,7 @@ mod tests {
     fn wheel_focus_preserves_selection_while_click_focus_clears_it() {
         assert!(PointerPaneFocusReason::Click.clears_target_selection());
         assert!(!PointerPaneFocusReason::Wheel.clears_target_selection());
+        assert!(!PointerPaneFocusReason::ClipboardClick.clears_target_selection());
     }
 
     #[test]

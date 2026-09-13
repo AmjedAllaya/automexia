@@ -32,20 +32,37 @@ struct BoundedJsonWriter {
 }
 
 impl BoundedJsonWriter {
-    fn new() -> Self {
-        Self {
-            bytes: Vec::with_capacity(64 * 1024),
-        }
+    fn new() -> std::io::Result<Self> {
+        let mut bytes = Vec::new();
+        bytes
+            .try_reserve_exact(64 * 1024)
+            .map_err(|_| allocation_error())?;
+        Ok(Self { bytes })
     }
 }
 
 impl Write for BoundedJsonWriter {
     fn write(&mut self, buffer: &[u8]) -> std::io::Result<usize> {
-        let remaining = MAX_METADATA_BYTES.saturating_sub(self.bytes.len());
-        if buffer.len() > remaining {
-            return Err(std::io::Error::other(
-                "metadata exceeds its persistent byte limit",
-            ));
+        let required = self
+            .bytes
+            .len()
+            .checked_add(buffer.len())
+            .filter(|required| *required <= MAX_METADATA_BYTES)
+            .ok_or_else(|| {
+                std::io::Error::other("metadata exceeds its persistent byte limit")
+            })?;
+        if required > self.bytes.capacity() {
+            // Keep this tiny extension-local writer independent of application
+            // persistence. Cap amortized growth before Vec can over-reserve.
+            let capacity = self
+                .bytes
+                .capacity()
+                .saturating_mul(2)
+                .max(required)
+                .min(MAX_METADATA_BYTES);
+            self.bytes
+                .try_reserve_exact(capacity - self.bytes.len())
+                .map_err(|_| allocation_error())?;
         }
         self.bytes.extend_from_slice(buffer);
         Ok(buffer.len())
@@ -54,6 +71,13 @@ impl Write for BoundedJsonWriter {
     fn flush(&mut self) -> std::io::Result<()> {
         Ok(())
     }
+}
+
+fn allocation_error() -> std::io::Error {
+    std::io::Error::new(
+        std::io::ErrorKind::OutOfMemory,
+        "metadata serialization allocation failed",
+    )
 }
 
 #[derive(Debug)]
@@ -303,7 +327,9 @@ impl MetadataStore {
 
 fn serialize_document(document: &MetadataDocument) -> Result<Vec<u8>, InventoryError> {
     document.validate()?;
-    let mut writer = BoundedJsonWriter::new();
+    let mut writer = BoundedJsonWriter::new().map_err(|_| {
+        InventoryError::Persistence("metadata serialization failed".into())
+    })?;
     serde_json::to_writer_pretty(&mut writer, document).map_err(|_| {
         InventoryError::Persistence("metadata serialization failed".into())
     })?;
@@ -434,7 +460,7 @@ fn apply_private_permissions(
     path: &Path,
     _directory: bool,
 ) -> Result<(), InventoryError> {
-    use std::{ffi::OsStr, os::windows::ffi::OsStrExt, ptr};
+    use std::ptr;
     use windows_sys::Win32::{
         Foundation::{CloseHandle, LocalFree, GENERIC_ALL},
         Security::{
@@ -529,10 +555,7 @@ fn apply_private_permissions(
         )));
     }
     let acl = LocalAcl(raw_acl);
-    let wide = OsStr::new(path)
-        .encode_wide()
-        .chain(std::iter::once(0))
-        .collect::<Vec<_>>();
+    let wide = windows_local_wide_path(path)?;
     let result = unsafe {
         SetNamedSecurityInfoW(
             wide.as_ptr(),
@@ -550,6 +573,62 @@ fn apply_private_permissions(
         )));
     }
     Ok(())
+}
+
+#[cfg(windows)]
+fn windows_local_wide_path(path: &Path) -> Result<Vec<u16>, InventoryError> {
+    use std::{
+        os::windows::ffi::OsStrExt as _,
+        path::{Component, Prefix},
+    };
+
+    let prefix = match path.components().next() {
+        Some(Component::Prefix(prefix)) if path.is_absolute() => prefix.kind(),
+        _ => {
+            return Err(InventoryError::Persistence(
+                "private metadata root must be an absolute local Windows drive path"
+                    .into(),
+            ));
+        }
+    };
+    let mut wide = path.as_os_str().encode_wide().collect::<Vec<_>>();
+    if wide.contains(&0) {
+        return Err(InventoryError::Persistence(
+            "private metadata path contains an unsupported NUL".into(),
+        ));
+    }
+    // Normalize before adding the verbatim prefix, which deliberately performs
+    // neither separator nor dot-segment normalization.
+    for unit in &mut wide {
+        if *unit == b'/' as u16 {
+            *unit = b'\\' as u16;
+        }
+    }
+    if wide
+        .split(|unit| *unit == b'\\' as u16)
+        .any(|segment| segment == [b'.' as u16] || segment == [b'.' as u16, b'.' as u16])
+    {
+        return Err(InventoryError::Persistence(
+            "private metadata path cannot contain dot segments".into(),
+        ));
+    }
+    match prefix {
+        Prefix::Disk(_) => {
+            wide.splice(
+                0..0,
+                [b'\\' as u16, b'\\' as u16, b'?' as u16, b'\\' as u16],
+            );
+        }
+        Prefix::VerbatimDisk(_) => {}
+        _ => {
+            return Err(InventoryError::Persistence(
+                "private metadata root must be an absolute local Windows drive path"
+                    .into(),
+            ));
+        }
+    }
+    wide.push(0);
+    Ok(wide)
 }
 
 #[cfg(not(any(unix, windows)))]
@@ -592,6 +671,58 @@ mod tests {
                 last_used_at_ms: Some(42),
             }],
         }
+    }
+
+    #[test]
+    fn bounded_json_writer_keeps_literal_format_and_validation_order() {
+        assert_eq!(
+            serialize_document(&MetadataDocument::default()).unwrap(),
+            b"{\n  \"schema\": 1,\n  \"revision\": 0,\n  \"connections\": []\n}"
+        );
+        let invalid = MetadataDocument {
+            schema: 0,
+            ..MetadataDocument::default()
+        };
+        assert!(matches!(
+            serialize_document(&invalid),
+            Err(InventoryError::InvalidMetadata(_))
+        ));
+        let mut writer = BoundedJsonWriter::new().unwrap();
+        serde_json::to_writer_pretty(&mut writer, &["é", "quote\""]).unwrap();
+        assert_eq!(writer.bytes, b"[\n  \"\xc3\xa9\",\n  \"quote\\\"\"\n]");
+    }
+
+    #[test]
+    fn bounded_json_writer_caps_reservation_after_large_then_small_writes() {
+        // This exercises the private writer's contract, not a claim that the
+        // current metadata schema permits a single label this large.
+        let mut writer = BoundedJsonWriter::new().unwrap();
+        writer
+            .write_all(&vec![b'x'; MAX_METADATA_BYTES / 2 + 1])
+            .unwrap();
+        writer.write_all("é".as_bytes()).unwrap();
+        assert!(writer.bytes.capacity() <= MAX_METADATA_BYTES);
+    }
+
+    #[test]
+    fn bounded_json_writer_rejects_overflow_without_modifying_accepted_bytes() {
+        let mut writer = BoundedJsonWriter::new().unwrap();
+        assert_eq!(writer.write(&[]).unwrap(), 0);
+        writer.write_all("é".as_bytes()).unwrap();
+        let before = writer.bytes.clone();
+        let rejected = vec![b'x'; MAX_METADATA_BYTES - 1];
+        let error = writer.write(&rejected).unwrap_err();
+        assert_eq!(error.kind(), std::io::ErrorKind::Other);
+        assert_eq!(
+            error.to_string(),
+            "metadata exceeds its persistent byte limit"
+        );
+        writer.flush().unwrap();
+        assert_eq!(writer.bytes, before);
+        writer.write_all(&rejected[..rejected.len() - 1]).unwrap();
+        assert_eq!(writer.bytes.len(), MAX_METADATA_BYTES);
+        assert!(writer.write(b"x").is_err());
+        assert!(writer.bytes.capacity() <= MAX_METADATA_BYTES);
     }
 
     #[test]
@@ -705,5 +836,45 @@ mod tests {
         let store = MetadataStore::new(root.path().join("devops-ssh")).unwrap();
         store.save(&sample()).unwrap();
         assert_eq!(store.load().unwrap(), sample());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn long_local_metadata_paths_keep_private_acl_and_atomic_recovery() {
+        let temporary = tempfile::tempdir().unwrap();
+        let store =
+            MetadataStore::new(temporary.path().join("p".repeat(180)).join("devops-ssh"))
+                .unwrap();
+        assert!(store.path().to_string_lossy().len() > 260);
+        store.save(&sample()).unwrap();
+        let next = store.compare_and_swap(0, &sample()).unwrap();
+        assert_eq!(next.revision, 1);
+        assert_eq!(store.load().unwrap(), next);
+        assert!(store.previous_path().is_file());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_acl_paths_reject_relative_remote_and_dot_segments() {
+        for path in [
+            Path::new("relative"),
+            Path::new(r"\\server\share\devops-ssh"),
+        ] {
+            let error = windows_local_wide_path(path).unwrap_err().to_string();
+            assert!(error.contains("absolute local Windows drive path"));
+            assert!(!error.contains(&path.to_string_lossy().to_string()));
+        }
+        for path in [
+            Path::new(r"D:\devops-ssh\..\escape"),
+            Path::new(r"D:\devops-ssh\.\local"),
+        ] {
+            let error = windows_local_wide_path(path).unwrap_err().to_string();
+            assert!(error.contains("dot segments"));
+            assert!(!error.contains(&path.to_string_lossy().to_string()));
+        }
+        let mixed = Path::new(r"D:\ssh").join("metadata/recovery");
+        assert!(!windows_local_wide_path(&mixed)
+            .unwrap()
+            .contains(&(b'/' as u16)));
     }
 }

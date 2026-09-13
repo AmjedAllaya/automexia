@@ -48,6 +48,17 @@ impl RegistrySnapshot {
             .collect()
     }
 
+    pub fn suppresses_legacy_trigger(
+        &self,
+        trigger: &automexia_keybindings::Trigger,
+        modes: ModeFlags,
+    ) -> bool {
+        self.legacy_unbinds.iter().any(|binding| {
+            binding.sequence.as_slice() == std::slice::from_ref(trigger)
+                && binding.predicate.matches(modes)
+        })
+    }
+
     pub fn global_quake_triggers(&self) -> Vec<String> {
         self.registry
             .bindings()
@@ -95,6 +106,43 @@ pub fn platform_family() -> PlatformFamily {
 }
 
 pub fn build(config: &Config) -> Result<Option<RegistrySnapshot>, RegistryBuildError> {
+    super::shortcut::validate_records(&config.bindings.ui_shortcuts)
+        .map_err(|_| RegistryBuildError::InvalidUserBinding)?;
+    if !config.bindings.ui_shortcuts.is_empty() {
+        let mut base = config.clone();
+        base.bindings.ui_shortcuts.clear();
+        let baseline = build(&base)?;
+        let bindings = super::default_key_bindings(&base);
+        for record in &config.bindings.ui_shortcuts {
+            let action = super::shortcut::action_from_id(&record.action)
+                .ok_or(RegistryBuildError::InvalidUserBinding)?;
+            let candidate = super::shortcut::binding(action, &record.trigger)
+                .map_err(|_| RegistryBuildError::InvalidUserBinding)?;
+            // Default function-key escape bytes may be replaced, but an explicit
+            // user SendText/ReceiveChar/None is an intentional owner, not a default.
+            if base
+                .bindings
+                .keys
+                .iter()
+                .filter_map(|key| super::convert(key.clone()).ok())
+                .any(|key| {
+                    key.action != candidate.action && key.triggers_match(&candidate)
+                })
+            {
+                return Err(RegistryBuildError::InvalidUserBinding);
+            }
+            if super::shortcut::conflict(
+                action,
+                &record.trigger,
+                &bindings,
+                baseline.as_ref(),
+            )
+            .is_some()
+            {
+                return Err(RegistryBuildError::InvalidUserBinding);
+            }
+        }
+    }
     let requested = config.keyboard.binding_profile;
     if requested == ProfileId::Automexia && config.bindings.keybinds.is_empty() {
         return Ok(None);
@@ -131,6 +179,7 @@ pub fn build(config: &Config) -> Result<Option<RegistrySnapshot>, RegistryBuildE
         }
     }
     specs.extend(user);
+    specs = super::shortcut::apply_typed(&config.bindings.ui_shortcuts, specs);
 
     let mut report = compile_with_options(
         &specs,
@@ -230,6 +279,33 @@ fn normalize_modifiers(
     normalized
 }
 
+/// Project an existing legacy binding for display and registry probing only.
+/// Dispatch remains owned by the native event path; do not infer a physical
+/// key from a character, since that would silently assume a keyboard layout.
+pub fn legacy_trigger(
+    binding: &super::KeyBinding,
+) -> Option<automexia_keybindings::Trigger> {
+    use automexia_keybindings::{KeyAtom, NamedKey, Trigger};
+    use rio_window::keyboard::{Key, KeyLocation, PhysicalKey};
+    let key = match &binding.trigger {
+        super::BindingKey::Scancode(PhysicalKey::Code(code)) => {
+            KeyAtom::Physical(format!("{code:?}"))
+        }
+        super::BindingKey::Keycode {
+            key,
+            location: KeyLocation::Standard,
+        } => match key {
+            Key::Character(value) => KeyAtom::Logical(value.to_lowercase()),
+            Key::Named(value) => {
+                KeyAtom::Named(NamedKey::parse(&camel_to_snake(&format!("{value:?}")))?)
+            }
+            _ => return None,
+        },
+        _ => return None,
+    };
+    Trigger::new(key, normalize_modifiers(binding.mods)).ok()
+}
+
 fn camel_to_snake(value: &str) -> String {
     let mut output = String::with_capacity(value.len() + 4);
     for (index, character) in value.chars().enumerate() {
@@ -247,6 +323,48 @@ mod tests {
     #[test]
     fn default_has_no_competing_registry_authority() {
         assert!(build(&Config::default()).unwrap().is_none());
+    }
+
+    #[test]
+    fn shell_controls_survive_typed_fallback_and_exact_unbind() {
+        use automexia_keybindings::{Modifiers, SequenceResolution, SurfaceBindingState};
+        for lines in [vec![], vec!["ctrl+shift+y=quit"], vec!["ctrl+r=unbind"]] {
+            let mut config = Config::default();
+            config.bindings.keybinds = lines.into_iter().map(str::to_string).collect();
+            let snapshot = build(&config).unwrap();
+            let legacy = super::super::default_key_bindings(&config);
+            for (key, byte) in [("r", 0x12), ("d", 0x04)] {
+                let event = NormalizedKeyEvent {
+                    logical: Some(key),
+                    modifiers: Modifiers::CONTROL,
+                    ..NormalizedKeyEvent::default()
+                };
+                for mode in [ModeFlags::empty(), ModeFlags::ALT_SCREEN] {
+                    if let Some(snapshot) = &snapshot {
+                        let mut state = SurfaceBindingState::default();
+                        assert_eq!(
+                            state.resolve_event(
+                                &snapshot.registry,
+                                &event,
+                                &[byte],
+                                mode
+                            ),
+                            SequenceResolution::NoMatch
+                        );
+                        assert!(state.pending_bytes().is_empty());
+                        assert_eq!(
+                            snapshot.suppresses_legacy(&event, mode),
+                            key == "r" && config.bindings.keybinds == ["ctrl+r=unbind"]
+                        );
+                    }
+                }
+                assert!(!legacy.iter().any(|binding| {
+                    legacy_trigger(binding)
+                        .is_some_and(|trigger| trigger.matches_event(&event))
+                        && binding.mode.is_empty()
+                }));
+            }
+        }
     }
 
     #[test]

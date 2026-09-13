@@ -16,7 +16,12 @@ use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, Sessio
 use automexia_ui_model::{self, IconOptics, Segment};
 
 use crate::automexia::runtime;
-use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
+use crate::automexia::ui::{
+    PromptAnchor, COMMAND_RESULT_PROMPT_RESERVE, MAX_PROMPT_CONTEXT_HISTORY,
+};
+
+#[cfg(feature = "native-gui-test-hooks")]
+pub(crate) type NativePromptContextPaint = (Option<u64>, u64, [f32; 4]);
 
 pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
@@ -26,7 +31,6 @@ const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.62;
 const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
 const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
-const PROMPT_RESULT_RESERVE: f32 = 112.0;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct PromptTagMetrics {
@@ -63,6 +67,11 @@ fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
         tag_gap,
         radius,
     }
+}
+
+#[inline]
+fn prompt_context_right_edge(anchor: &PromptAnchor) -> f32 {
+    anchor.x + (anchor.width - COMMAND_RESULT_PROMPT_RESERVE).max(0.0)
 }
 
 struct PromptSnapshot {
@@ -104,6 +113,8 @@ pub struct DevOpsStatus {
     snapshot_revision: u32,
     refresh_pending: bool,
     request_in_flight: bool,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_prompt_paints: std::cell::RefCell<Vec<NativePromptContextPaint>>,
 }
 
 impl DevOpsStatus {
@@ -121,6 +132,11 @@ impl DevOpsStatus {
                 .map(|segment| segment.value.clone())
                 .collect(),
         ))
+    }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_prompt_paints(&self) -> Vec<NativePromptContextPaint> {
+        self.native_prompt_paints.borrow().clone()
     }
 
     /// Keep asynchronous context discovery warm for semantic prompt rows.
@@ -158,6 +174,8 @@ impl DevOpsStatus {
         historical_anchors: &[PromptAnchor],
         live_anchor: Option<PromptAnchor>,
     ) -> bool {
+        #[cfg(feature = "native-gui-test-hooks")]
+        self.native_prompt_paints.borrow_mut().clear();
         self.ensure_live_segments(session);
         let new_prompt = self.sync_active_prompt(
             session,
@@ -375,7 +393,7 @@ impl DevOpsStatus {
         let text_y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
         let icon_y = tag_y + (metrics.height - metrics.icon_size) * 0.5;
         let mut cursor_x = anchor.x + PROMPT_TAG_LEFT_INSET;
-        let right_edge = anchor.x + (anchor.width - PROMPT_RESULT_RESERVE).max(80.0);
+        let right_edge = prompt_context_right_edge(anchor);
 
         for segment in segments {
             let color = segment_color(colors, segment.role);
@@ -404,6 +422,12 @@ impl DevOpsStatus {
                 metrics.radius,
                 ORDER - 1,
             );
+            #[cfg(feature = "native-gui-test-hooks")]
+            self.native_prompt_paints.borrow_mut().push((
+                anchor.generation,
+                anchor.key,
+                [cursor_x, tag_y, segment_width, metrics.height],
+            ));
             let content_x = cursor_x + metrics.padding_x;
             draw_icon_in_slot(
                 sugarloaf,
@@ -476,7 +500,10 @@ impl DevOpsStatus {
     ) where
         F: FnOnce() -> runtime::DevOpsRefreshCompletion,
     {
-        let session_changed = self.last_session.as_ref() != Some(session);
+        let session_changed = self
+            .last_session
+            .as_ref()
+            .is_none_or(|previous| !runtime::same_devops_context(previous, session));
         let expired = self
             .last_refresh_request
             .is_none_or(|instant| instant.elapsed() >= REFRESH_INTERVAL);
@@ -532,10 +559,25 @@ impl DevOpsStatus {
 
         let (revision, cached_session, contribution) =
             runtime::context_contribution(session.session_id);
+        self.accept_cached_snapshot(
+            session,
+            revision,
+            cached_session.as_ref(),
+            contribution,
+        );
+    }
+
+    fn accept_cached_snapshot(
+        &mut self,
+        session: &SessionFacts,
+        revision: u32,
+        cached_session: Option<&SessionFacts>,
+        contribution: ContextContribution,
+    ) {
         match snapshot_candidate(
             self.snapshot_revision,
             revision,
-            cached_session.as_ref(),
+            cached_session,
             session,
         ) {
             SnapshotCandidate::Unchanged => return,
@@ -551,8 +593,9 @@ impl DevOpsStatus {
             SnapshotCandidate::Current => {}
         }
         self.snapshot_revision = revision;
-        self.refresh_pending = false;
-        self.request_in_flight = false;
+        self.refresh_pending =
+            contribution.freshness == automexia_extension_api::Freshness::Refreshing;
+        self.request_in_flight = self.refresh_pending;
         self.contribution = Some(contribution);
     }
 
@@ -585,7 +628,9 @@ fn snapshot_candidate(
 ) -> SnapshotCandidate {
     if candidate_revision == current_revision || cached_session.is_none() {
         SnapshotCandidate::Unchanged
-    } else if cached_session != Some(current_session) {
+    } else if cached_session
+        .is_some_and(|cached| !runtime::same_devops_context(cached, current_session))
+    {
         SnapshotCandidate::StaleSession
     } else {
         SnapshotCandidate::Current
@@ -638,17 +683,35 @@ fn draw_icon_in_slot(
     base_size: f32,
     color: [f32; 4],
 ) {
+    draw_icon_text_in_slot(
+        sugarloaf.text_mut(),
+        icon,
+        slot_x,
+        base_y,
+        slot_width,
+        base_size,
+        color,
+    );
+}
+
+fn draw_icon_text_in_slot(
+    text: &mut rio_backend::sugarloaf::text::Text,
+    icon: IconKind,
+    slot_x: f32,
+    base_y: f32,
+    slot_width: f32,
+    base_size: f32,
+    color: [f32; 4],
+) {
     let glyph = icon_glyph(icon);
     let opts = DrawOpts {
         font_size: icon_font_size(base_size, icon),
         color: color_to_u8(color),
         ..DrawOpts::default()
     };
-    let measured_width = sugarloaf.text_mut().measure(glyph, &opts);
+    let measured_width = text.measure(glyph, &opts);
     let x = slot_x + (slot_width - measured_width) * 0.5;
-    sugarloaf
-        .text_mut()
-        .draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
+    text.draw(x, icon_draw_y(base_y, base_size, icon), glyph, &opts);
 }
 pub(crate) fn next_context_wake_millis(refresh_pending: bool) -> u64 {
     if refresh_pending {
@@ -757,6 +820,7 @@ mod tests {
             shell_path: None,
             shell_integration: true,
             shell_pid: 42,
+            environment: Default::default(),
         }
     }
 
@@ -850,6 +914,25 @@ mod tests {
                 .unwrap()
                 > (24.0 - comfortable.height) * 0.5
         );
+        let wide = PromptAnchor {
+            generation: Some(1),
+            key: 1,
+            x: 4.0,
+            y: 20.0,
+            width: 720.0,
+            height: 24.0,
+        };
+        assert_eq!(
+            prompt_context_right_edge(&wide),
+            wide.x + wide.width - COMMAND_RESULT_PROMPT_RESERVE
+        );
+        assert_eq!(
+            prompt_context_right_edge(&PromptAnchor {
+                width: COMMAND_RESULT_PROMPT_RESERVE - 1.0,
+                ..wide
+            }),
+            wide.x
+        );
     }
     #[test]
     fn renderer_icon_adapter_uses_shared_glyphs_and_optics() {
@@ -873,6 +956,100 @@ mod tests {
     }
 
     #[test]
+    fn kubernetes_icon_raster_grows_without_touching_its_label() {
+        use rio_backend::sugarloaf::{
+            font::{FontData, FontLibrary, FontLibraryData},
+            text::Text,
+        };
+        use std::sync::Arc;
+        let mut data = FontLibraryData::default();
+        data.insert(FontData::from_static_slice(include_bytes!("../../../../rio-fonts/resources/SymbolsNerdFontMono/SymbolsNerdFontMono-Regular.ttf")).unwrap());
+        let fonts = FontLibrary {
+            inner: Arc::new(parking_lot::RwLock::new(data)),
+        };
+        for scale in [1.0, 1.5, 2.0, 3.0] {
+            for row_height in [12.0, 18.0, 24.0, 40.0] {
+                let metrics = prompt_tag_metrics(row_height);
+                let mut text = Text::new(&fonts);
+                text.set_scale_factor(scale);
+                text.init_cpu();
+                let x = 12.0;
+                let y = 12.0;
+                draw_icon_text_in_slot(
+                    &mut text,
+                    IconKind::Kubernetes,
+                    x,
+                    y,
+                    metrics.icon_slot,
+                    metrics.icon_size,
+                    [0.31, 0.84, 1.0, 1.0],
+                );
+                assert_eq!(
+                    text.instance_count(),
+                    1,
+                    "bundled Kubernetes glyph must rasterize"
+                );
+                let glyph = text.instances()[0];
+                let right = glyph.pos[0]
+                    + f32::from(glyph.bearings[0])
+                    + glyph.glyph_size[0] as f32;
+                let label_start = (x + metrics.icon_slot + metrics.icon_gap) * scale;
+                assert!(
+                    right < label_start,
+                    "icon must not reach the namespace text"
+                );
+                assert!(
+                    glyph.glyph_size[1] as f32 <= row_height * scale,
+                    "ink stays inside its row"
+                );
+                if row_height == 24.0 && scale == 1.0 {
+                    let mut pixels = vec![0u32; 96 * 48];
+                    text.render_cpu_base(&mut pixels, 96, 48);
+                    // This standalone Text fixture has no frame finalizer;
+                    // render both partitions just like the other CPU fixtures.
+                    text.render_cpu_modal(&mut pixels, 96, 48);
+                    let ink = pixels.iter().filter(|pixel| **pixel != 0).count();
+                    // Literal previous size is an independent regression oracle,
+                    // not a second call to the current optical-sizing policy.
+                    let mut previous = Text::new(&fonts);
+                    previous.init_cpu();
+                    previous.draw(
+                        x,
+                        y,
+                        icon_glyph(IconKind::Kubernetes),
+                        &DrawOpts {
+                            font_size: metrics.icon_size * 0.94,
+                            ..Default::default()
+                        },
+                    );
+                    let mut old_pixels = vec![0u32; 96 * 48];
+                    previous.render_cpu_base(&mut old_pixels, 96, 48);
+                    previous.render_cpu_modal(&mut old_pixels, 96, 48);
+                    let old_ink = old_pixels.iter().filter(|pixel| **pixel != 0).count();
+                    assert!(
+                        old_ink > 0 && ink > old_ink * 5 / 4,
+                        "logo needs a visible ink-area increase"
+                    );
+                    if let Some(path) =
+                        std::env::var_os("AUTOMEXIA_KUBERNETES_ICON_PREVIEW")
+                    {
+                        image_rs::RgbImage::from_fn(96, 48, |x, y| {
+                            let pixel = pixels[y as usize * 96 + x as usize];
+                            image_rs::Rgb([
+                                (pixel >> 16) as u8,
+                                (pixel >> 8) as u8,
+                                pixel as u8,
+                            ])
+                        })
+                        .save(path)
+                        .unwrap();
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
     fn renderer_compaction_delegates_to_grapheme_safe_ui_policy() {
         assert_eq!(
             compact_label("dev-😀-cluster-name", 10),
@@ -886,7 +1063,7 @@ mod tests {
 
     #[test]
     fn live_segments_rebuild_only_when_generic_inputs_change() {
-        let session = session("amjed@host:/work", Some("Ubuntu"));
+        let session = session("alice@host:/work", Some("Ubuntu"));
         let mut status = DevOpsStatus::default();
         status.ensure_live_segments(&session);
         let initial_revision = status.live_segments_revision;
@@ -915,7 +1092,7 @@ mod tests {
 
     #[test]
     fn generic_projection_preserves_priority_and_user_is_final() {
-        let session = session("amjed@host:/work", Some("Ubuntu"));
+        let session = session("alice@host:/work", Some("Ubuntu"));
         let status = DevOpsStatus {
             contribution: Some(contribution(vec![
                 status_segment(
@@ -925,7 +1102,7 @@ mod tests {
                     IconKind::Docker,
                     60,
                 ),
-                status_segment("user", "amjed", SegmentRole::User, IconKind::User, 90),
+                status_segment("user", "alice", SegmentRole::User, IconKind::User, 90),
             ])),
             ..DevOpsStatus::default()
         };
@@ -943,6 +1120,28 @@ mod tests {
     }
 
     #[test]
+    fn title_change_accepts_progress_without_releasing_the_pending_latch() {
+        let facts = session("starting", Some("Ubuntu"));
+        let mut renamed = facts.clone();
+        renamed.title = "command in progress".into();
+        let mut status = DevOpsStatus::default();
+        let mut contribution = ContextContribution::empty(
+            ExtensionId::new("automexia.devops").unwrap(),
+            SessionId::new(facts.session_id as u64),
+        );
+        contribution.freshness = Freshness::Refreshing;
+        status.accept_cached_snapshot(&renamed, 11, Some(&facts), contribution.clone());
+        assert_eq!(status.snapshot_revision, 11);
+        assert!(status.refresh_pending && status.request_in_flight);
+        assert_eq!(next_context_wake_millis(status.refresh_pending), 100);
+        contribution.freshness = Freshness::Current;
+        status.accept_cached_snapshot(&renamed, 12, Some(&facts), contribution);
+        assert_eq!(status.snapshot_revision, 12);
+        assert!(!status.refresh_pending && !status.request_in_flight);
+        assert_eq!(next_context_wake_millis(status.refresh_pending), 3000);
+    }
+
+    #[test]
     fn completed_refreshes_schedule_the_next_live_poll() {
         assert_eq!(next_context_wake_millis(true), 100);
         assert_eq!(next_context_wake_millis(false), LIVE_REFRESH_MILLIS);
@@ -950,7 +1149,7 @@ mod tests {
 
     #[test]
     fn stale_startup_contribution_is_retried_without_timeout() {
-        let current = session("amjed@host:/work/current", Some("Ubuntu"));
+        let current = session("alice@host:/work/current", Some("Ubuntu"));
         let stale = session("Automexia", None);
         assert_eq!(
             snapshot_candidate(0, 2, Some(&stale), &current),

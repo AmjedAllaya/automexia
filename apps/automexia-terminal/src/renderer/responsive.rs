@@ -6,7 +6,9 @@
 
 use std::borrow::Cow;
 
-use rio_backend::sugarloaf::{Attributes, Sugarloaf};
+use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
+
+use super::text_fit::{fit_end, fit_start};
 
 const COMPACT_WIDTH: f32 = 840.0;
 const MINIMAL_WIDTH: f32 = 480.0;
@@ -99,9 +101,9 @@ impl ChromeMetrics {
             title_font_size,
             profile_icon_size,
         ) = match density {
-            Density::Minimal => (40.0, 4.0, 40.0, 4.0, 4.0, 10.0, 12.5, 16.0),
-            Density::Compact => (44.0, 6.0, 44.0, 4.0, 5.0, 16.0, 13.5, 17.0),
-            Density::Comfortable => (48.0, 8.0, 46.0, 5.0, 6.0, 20.0, 14.5, 18.0),
+            Density::Minimal => (40.0, 2.0, 40.0, 4.0, 4.0, 10.0, 12.5, 15.0),
+            Density::Compact => (40.0, 3.0, 40.0, 4.0, 4.0, 14.0, 13.0, 16.0),
+            Density::Comfortable => (42.0, 4.0, 40.0, 4.0, 5.0, 16.0, 13.5, 17.0),
         };
         let (
             app_button_x,
@@ -111,9 +113,9 @@ impl ChromeMetrics {
             local_tab_icon_size,
             local_tab_font_size,
         ) = match density {
-            Density::Minimal => (6.0, 26.0, 40.0, 18.0, 14.0, 12.0),
-            Density::Compact => (8.0, 28.0, 40.0, 19.0, 15.0, 12.0),
-            Density::Comfortable => (10.0, 30.0, 40.0, 20.0, 16.0, 12.5),
+            Density::Minimal => (6.0, 26.0, 40.0, 17.0, 14.0, 12.0),
+            Density::Compact => (7.0, 27.0, 40.0, 18.0, 15.0, 12.0),
+            Density::Comfortable => (8.0, 28.0, 40.0, 18.0, 16.0, 12.5),
         };
 
         // Controls remain reachable at every supported size. Lower-priority
@@ -123,9 +125,9 @@ impl ChromeMetrics {
         let show_palette = width >= 640.0;
         let leading_width = if show_app_button {
             match density {
-                Density::Comfortable => 60.0,
-                Density::Compact => 52.0,
-                Density::Minimal => 48.0,
+                Density::Comfortable => 48.0,
+                Density::Compact => 46.0,
+                Density::Minimal => 44.0,
             }
         } else {
             8.0
@@ -187,16 +189,17 @@ fn finite_non_negative(value: f32) -> f32 {
 }
 
 /// Keep the start of a UI label and replace an overflowing tail with an
-/// ellipsis. Width is measured with the renderer's active font fallback.
+/// ellipsis. Measure the same shaped candidates and options used for drawing.
 pub fn elide_end<'a>(
     sugarloaf: &mut Sugarloaf,
     value: &'a str,
     max_width: f32,
-    font_size: f32,
+    options: &DrawOpts,
 ) -> Cow<'a, str> {
-    elide_end_with_widths(value, max_width, |character| {
-        sugarloaf.char_advance(character, Attributes::default(), font_size)
+    fit_end(value, max_width, "…", |candidate, _| {
+        sugarloaf.text_mut().measure(candidate, options)
     })
+    .display
 }
 
 /// Keep the editable end of a long value visible, prefixing it with an
@@ -205,83 +208,41 @@ pub fn elide_start<'a>(
     sugarloaf: &mut Sugarloaf,
     value: &'a str,
     max_width: f32,
-    font_size: f32,
+    options: &DrawOpts,
 ) -> Cow<'a, str> {
-    elide_start_with_widths(value, max_width, |character| {
-        sugarloaf.char_advance(character, Attributes::default(), font_size)
+    fit_start(value, max_width, "…", |candidate, _| {
+        sugarloaf.text_mut().measure(candidate, options)
     })
-}
-
-fn elide_end_with_widths<'a>(
-    value: &'a str,
-    max_width: f32,
-    mut width: impl FnMut(char) -> f32,
-) -> Cow<'a, str> {
-    const ELLIPSIS: char = '…';
-    if max_width <= 0.0 {
-        return Cow::Borrowed("");
-    }
-    let ellipsis_width = width(ELLIPSIS);
-    let mut used = 0.0;
-    for (index, character) in value.char_indices() {
-        let character_width = width(character);
-        if used + character_width > max_width {
-            if ellipsis_width > max_width {
-                return Cow::Borrowed("");
-            }
-            let mut end = index;
-            while end > 0 && used + ellipsis_width > max_width {
-                let (previous_index, previous) = value[..end]
-                    .char_indices()
-                    .next_back()
-                    .expect("non-empty prefix");
-                used -= width(previous);
-                end = previous_index;
-            }
-            let mut output = String::from(&value[..end]);
-            output.push(ELLIPSIS);
-            return Cow::Owned(output);
-        }
-        used += character_width;
-    }
-    Cow::Borrowed(value)
-}
-
-fn elide_start_with_widths<'a>(
-    value: &'a str,
-    max_width: f32,
-    mut width: impl FnMut(char) -> f32,
-) -> Cow<'a, str> {
-    const ELLIPSIS: char = '…';
-    if max_width <= 0.0 {
-        return Cow::Borrowed("");
-    }
-    let characters: Vec<char> = value.chars().collect();
-    let widths: Vec<f32> = characters.iter().copied().map(&mut width).collect();
-    if widths.iter().sum::<f32>() <= max_width {
-        return Cow::Borrowed(value);
-    }
-    let ellipsis_width = width(ELLIPSIS);
-    if ellipsis_width > max_width {
-        return Cow::Borrowed("");
-    }
-    let mut used = ellipsis_width;
-    let mut start = characters.len();
-    for index in (0..characters.len()).rev() {
-        if used + widths[index] > max_width {
-            break;
-        }
-        used += widths[index];
-        start = index;
-    }
-    let mut output = String::from(ELLIPSIS);
-    output.extend(characters[start..].iter());
-    Cow::Owned(output)
+    .display
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // Independent scalar-width oracles preserve these literal characterization
+    // fixtures. Production measures whole candidates through the Text owner.
+    fn elide_end_with_widths(
+        value: &str,
+        maximum: f32,
+        mut width: impl FnMut(char) -> f32,
+    ) -> Cow<'_, str> {
+        fit_end(value, maximum, "…", |candidate, _| {
+            candidate.chars().map(&mut width).sum()
+        })
+        .display
+    }
+
+    fn elide_start_with_widths(
+        value: &str,
+        maximum: f32,
+        mut width: impl FnMut(char) -> f32,
+    ) -> Cow<'_, str> {
+        fit_start(value, maximum, "…", |candidate, _| {
+            candidate.chars().map(&mut width).sum()
+        })
+        .display
+    }
 
     #[test]
     fn invalid_scale_and_dimensions_are_sanitized() {
@@ -296,8 +257,8 @@ mod tests {
         let viewport = Viewport::from_physical(300.0, 200.0, 1.0);
         let metrics = ChromeMetrics::for_viewport(viewport);
         assert_eq!(metrics.density, Density::Minimal);
-        assert_eq!(metrics.content_top(), 44.0);
-        assert!(viewport.height - metrics.content_top() >= 156.0);
+        assert_eq!(metrics.content_top(), 42.0);
+        assert!(viewport.height - metrics.content_top() >= 158.0);
     }
 
     #[test]
@@ -305,7 +266,7 @@ mod tests {
         let metrics =
             ChromeMetrics::for_viewport(Viewport::from_physical(600.0, 400.0, 1.0));
         assert_eq!(metrics.density, Density::Compact);
-        assert_eq!(metrics.content_top(), 50.0);
+        assert_eq!(metrics.content_top(), 43.0);
     }
 
     #[test]
@@ -314,15 +275,15 @@ mod tests {
         let metrics = ChromeMetrics::for_viewport(viewport);
         assert_eq!(viewport.width, 3840.0);
         assert_eq!(metrics.density, Density::Comfortable);
-        assert_eq!(metrics.header_height, 48.0);
-        assert_eq!(metrics.content_top(), 56.0);
+        assert_eq!(metrics.header_height, 42.0);
+        assert_eq!(metrics.content_top(), 46.0);
     }
 
     #[test]
     fn pane_local_tabs_never_expand_the_window_header_reservation() {
         let metrics =
             ChromeMetrics::for_viewport(Viewport::from_physical(1_280.0, 760.0, 1.0));
-        assert_eq!(metrics.content_top(), 56.0);
+        assert_eq!(metrics.content_top(), 46.0);
 
         let short =
             ChromeMetrics::for_viewport(Viewport::from_physical(1_280.0, 220.0, 1.0));
@@ -350,11 +311,11 @@ mod tests {
             comfortable.tab_actions_width(),
             comfortable.action_button_size * 2.0
         );
-        assert_eq!(comfortable.header_height, 48.0);
-        assert_eq!(comfortable.window_button_width, 46.0);
+        assert_eq!(comfortable.header_height, 42.0);
+        assert_eq!(comfortable.window_button_width, 40.0);
         assert_eq!(
             comfortable.header_height - comfortable.tab_inset_y * 2.0,
-            38.0
+            34.0
         );
         assert_eq!(comfortable.action_button_size, 40.0);
         assert!(comfortable.title_font_size <= 16.0);
@@ -370,11 +331,26 @@ mod tests {
             let tab_height = metrics.header_height - metrics.tab_inset_y * 2.0;
             assert!(metrics.window_button_width >= 40.0);
             assert!(metrics.action_button_size >= 40.0);
+            assert!(metrics.header_height >= 40.0);
             assert!(tab_height >= 32.0);
             assert!(metrics.app_button_size < metrics.header_height);
             assert!((12.0..=15.0).contains(&metrics.title_font_size));
             assert!(metrics.local_tab_font_size >= 12.0);
         }
+    }
+
+    #[test]
+    fn polished_chrome_keeps_targets_while_reducing_visible_reservation() {
+        let metrics =
+            ChromeMetrics::for_viewport(Viewport::from_physical(1_920.0, 1_080.0, 1.0));
+
+        assert_eq!(metrics.header_height, 42.0);
+        assert_eq!(metrics.content_top(), 46.0);
+        assert_eq!(metrics.window_button_width, 40.0);
+        assert_eq!(metrics.action_button_size, 40.0);
+        assert_eq!(metrics.app_button_size, 28.0);
+        assert_eq!(metrics.leading_width, 48.0);
+        assert_eq!(metrics.title_font_size, 13.5);
     }
 
     #[test]
@@ -409,5 +385,106 @@ mod tests {
             elide_start_with_widths("feature/very-long", 10.0, |_| 1.0),
             "…very-long"
         );
+    }
+
+    #[test]
+    fn fitting_preserves_whitespace_marker_budget_and_unchanged_storage() {
+        for (value, maximum, end, start) in [
+            ("", 1.0, "", ""),
+            ("abc", 0.0, "", ""),
+            ("abc", 0.5, "", ""),
+            ("abc", 1.0, "…", "…"),
+            ("abc", 2.0, "a…", "…c"),
+            ("abc", 3.0, "abc", "abc"),
+            (" a b ", 4.0, " a …", "… b "),
+        ] {
+            assert_eq!(elide_end_with_widths(value, maximum, |_| 1.0), end);
+            assert_eq!(elide_start_with_widths(value, maximum, |_| 1.0), start);
+        }
+        let original = String::from("An unchanged label");
+        for result in [
+            elide_end_with_widths(&original, 100.0, |_| 1.0),
+            elide_start_with_widths(&original, 100.0, |_| 1.0),
+        ] {
+            assert!(matches!(result, Cow::Borrowed(_)));
+            assert!(std::ptr::eq(result.as_ptr(), original.as_ptr()));
+        }
+    }
+
+    #[test]
+    fn fitting_preserves_nonuniform_advance_budget() {
+        let width = |value| if value == '界' { 2.0 } else { 1.0 };
+        assert_eq!(elide_end_with_widths("界", 2.0, width), "界");
+        assert_eq!(elide_end_with_widths("界x", 2.0, width), "…");
+        assert_eq!(elide_start_with_widths("界x", 2.0, width), "…x");
+    }
+
+    #[test]
+    fn fitting_never_slices_combining_or_joined_graphemes() {
+        assert_eq!(elide_end_with_widths("a\u{301}bc", 2.0, |_| 1.0), "…");
+        assert_eq!(elide_end_with_widths("a👨\u{200d}💻z", 4.0, |_| 1.0), "a…");
+        assert_eq!(elide_start_with_widths("qa\u{301}", 2.0, |_| 1.0), "…");
+    }
+
+    #[test]
+    fn fitting_rejects_nonfinite_geometry_without_measuring() {
+        for maximum in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -1.0, 0.0] {
+            assert_eq!(
+                elide_end_with_widths("label", maximum, |_| panic!(
+                    "invalid geometry must not shape"
+                )),
+                ""
+            );
+            assert_eq!(
+                elide_start_with_widths("label", maximum, |_| panic!(
+                    "invalid geometry must not shape"
+                )),
+                ""
+            );
+        }
+    }
+
+    #[cfg(not(target_os = "macos"))]
+    #[test]
+    fn fitted_label_respects_actual_rounded_font_measurement() {
+        use rio_backend::sugarloaf::{
+            font::{constants, FontData, FontLibrary, FontLibraryData},
+            swash,
+            text::{DrawOpts, Text},
+        };
+        use std::sync::Arc;
+        let mut data = FontLibraryData::default();
+        data.insert(
+            FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap(),
+        );
+        for _ in 0..3 {
+            data.insert_alias(0);
+        }
+        let fonts = FontLibrary {
+            inner: Arc::new(parking_lot::RwLock::new(data)),
+        };
+        let font =
+            swash::FontRef::from_index(constants::FONT_CASCADIA_CODE_NF, 0).unwrap();
+        let metrics = font.glyph_metrics(&[]);
+        let units = f32::from(font.metrics(&[]).units_per_em);
+        let options = DrawOpts {
+            font_size: 12.6,
+            ..DrawOpts::default()
+        };
+        let advance = |character: char| {
+            metrics.advance_width(font.charmap().map(character as u32))
+                * options.font_size
+                / units
+        };
+        // The old app path uses these unrounded isolated advances. The actual
+        // prepared-font shaper is an independent oracle for the emitted label.
+        let maximum = advance('W') * 6.0 + 0.01;
+        let mut text = Text::new(&fonts);
+        let display = fit_end("WWWWWWWW", maximum, "…", |candidate, _| {
+            text.measure(candidate, &options)
+        })
+        .display;
+        let actual = Text::new(&fonts).measure(&display, &options);
+        assert!(actual <= maximum, "actual width {actual} exceeds {maximum}");
     }
 }

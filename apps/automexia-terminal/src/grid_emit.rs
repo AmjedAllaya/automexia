@@ -423,12 +423,7 @@ fn semantic_or_cell_fg(
     // Terraform, TUIs, etc.). Semantic highlighting only improves plain
     // default-foreground output.
     let can_override = !style.flags.contains(StyleFlags::INVERSE)
-        && matches!(
-            style.fg,
-            AnsiColor::Named(NamedColor::Foreground)
-                | AnsiColor::Named(NamedColor::White)
-                | AnsiColor::Named(NamedColor::LightWhite)
-        );
+        && matches!(style.fg, AnsiColor::Named(NamedColor::Foreground));
     if can_override {
         if let Some(color) = semantic {
             return color;
@@ -2988,3 +2983,7 @@ mod nerd_icon_tests {
         assert_eq!(centered_nerd_icon_bearings(8, 14, 10, 20.0, false), [1, 17]);
     }
 }
+
+#[cfg(test)]
+#[path = "grid_emit_semantics_tests.rs"]
+mod semantic_status_tests;

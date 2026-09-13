@@ -15,7 +15,6 @@ use super::model::{CloudContext, KubernetesContext, WslContext};
 use automexia_extension_api::SessionFacts;
 
 const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
-const MAX_KUBECONFIG_FILES: usize = 16;
 const MAX_LABEL_CHARS: usize = 96;
 
 pub fn detect(session: &SessionFacts) -> DevOpsSnapshot {
@@ -27,6 +26,18 @@ pub fn detect(session: &SessionFacts) -> DevOpsSnapshot {
 
     #[cfg(not(target_arch = "wasm32"))]
     detect_native(session)
+}
+
+/// Attach isolated guest discovery using the same domain classification owner.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn attach_kubernetes_context(
+    snapshot: &mut DevOpsSnapshot,
+    context: Option<KubernetesContext>,
+) {
+    snapshot.production |= context.as_ref().is_some_and(|context| {
+        looks_production(&context.context) || looks_production(&context.namespace)
+    });
+    snapshot.kubernetes = context;
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -53,15 +64,14 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
 
     // Passive status discovery reads only bounded public local files and
     // session metadata. It never invokes WSL, a shell, or a provider CLI.
-    let kubernetes = kubernetes_context(home, view.use_process_env)
-        .or_else(|| {
-            if view.wsl.is_some() {
-                kubernetes_context(host_home.as_deref(), true)
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
+    let kubernetes = if view.wsl.is_some()
+        || (cfg!(target_os = "windows") && crate::kubernetes::is_wsl_candidate(session))
+    {
+        // The application isolates guest-backed reads in a bounded helper.
+        // Never substitute the host cluster while that result is unavailable.
+        None
+    } else {
+        kubernetes_context(session, home).or_else(|| {
             project_context
                 .as_ref()
                 .and_then(kubernetes_from_automexia_json)
@@ -70,7 +80,8 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
                         .as_ref()
                         .and_then(kubernetes_from_automexia_json)
                 })
-        });
+        })
+    };
 
     let docker = docker_context(home, view.use_process_env)
         .or_else(|| {
@@ -226,8 +237,8 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
     // lookup can inherit unbounded provider/filesystem latency and stall the
     // single bounded extension worker. Shell-published distro/version metadata
     // provides the visible OS identity, /mnt/<drive> paths map directly to the
-    // host filesystem for Git/project discovery, and host Docker/Kubernetes/
-    // cloud configuration remains the safe fallback.
+    // host filesystem for Git/project discovery. Docker/cloud keep their existing
+    // host fallback; Kubernetes uses isolated guest discovery, never host context.
     let distro_label = session
         .os_version
         .as_ref()
@@ -282,90 +293,11 @@ fn inherited_environment() -> Option<String> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn kubernetes_context(
+    session: &SessionFacts,
     home: Option<&Path>,
-    use_process_env: bool,
 ) -> Option<KubernetesContext> {
-    let paths: Vec<PathBuf> =
-        match use_process_env.then(|| env::var_os("KUBECONFIG")).flatten() {
-            Some(value) => env::split_paths(&value)
-                .take(MAX_KUBECONFIG_FILES)
-                .collect(),
-            None => home
-                .map(|home| vec![home.join(".kube").join("config")])
-                .unwrap_or_default(),
-        };
-    if paths.is_empty() {
-        return None;
-    }
-
-    let documents: Vec<String> = paths
-        .iter()
-        .filter_map(|path| read_small_text(path))
-        .collect();
-    let current = documents
-        .iter()
-        .find_map(|content| yaml_scalar(content, "current-context"))?;
-    let namespace = documents
-        .iter()
-        .find_map(|content| kube_namespace_for_context(content, &current))
-        .unwrap_or_else(|| "default".to_string());
-
-    Some(KubernetesContext {
-        context: sanitize_label(&current),
-        namespace: sanitize_label(&namespace),
-    })
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn kube_namespace_for_context(content: &str, wanted: &str) -> Option<String> {
-    // Kubeconfig context items look like:
-    // - context:
-    //     namespace: ns
-    //   name: ctx
-    // We keep the parser deliberately read-only and narrow rather than pulling
-    // a YAML dependency into the terminal frontend.
-    let mut in_item = false;
-    let mut name: Option<String> = None;
-    let mut namespace: Option<String> = None;
-
-    let flush =
-        |name: &mut Option<String>, namespace: &mut Option<String>| -> Option<String> {
-            if name.as_deref() == Some(wanted) {
-                return namespace.take();
-            }
-            *name = None;
-            *namespace = None;
-            None
-        };
-
-    for raw in content.lines() {
-        let line = raw.trim();
-        if line == "- context:" || line.starts_with("- context:") {
-            if in_item {
-                if let Some(found) = flush(&mut name, &mut namespace) {
-                    return Some(found);
-                }
-            }
-            in_item = true;
-            name = None;
-            namespace = None;
-            continue;
-        }
-        if !in_item {
-            continue;
-        }
-        if let Some(value) = line.strip_prefix("namespace:") {
-            namespace = Some(unquote(value));
-        } else if let Some(value) = line.strip_prefix("name:") {
-            name = Some(unquote(value));
-        } else if line.starts_with("- ") && !line.starts_with("- context:") {
-            if let Some(found) = flush(&mut name, &mut namespace) {
-                return Some(found);
-            }
-            in_item = false;
-        }
-    }
-    flush(&mut name, &mut namespace)
+    let paths = crate::kubernetes::local_paths(session, home);
+    crate::kubernetes::from_files(&paths)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -781,24 +713,6 @@ fn ini_value(path: &Path, wanted_section: &str, wanted_key: &str) -> Option<Stri
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn yaml_scalar(content: &str, key: &str) -> Option<String> {
-    content.lines().find_map(|raw| {
-        let line = raw.trim();
-        let value = line.strip_prefix(key)?.strip_prefix(':')?.trim();
-        let value = unquote(value);
-        (!value.is_empty()).then_some(value)
-    })
-}
-
-#[cfg(not(target_arch = "wasm32"))]
-fn unquote(value: &str) -> String {
-    value
-        .trim()
-        .trim_matches(|character| character == '"' || character == '\'')
-        .to_string()
-}
-
-#[cfg(not(target_arch = "wasm32"))]
 fn read_json(path: &Path) -> Option<Value> {
     let text = read_small_text(path)?;
     serde_json::from_str(&text).ok()
@@ -826,7 +740,9 @@ pub fn sanitize_label(input: &str) -> String {
         if count >= MAX_LABEL_CHARS {
             break;
         }
-        if character.is_control() {
+        if character.is_control()
+            || matches!(character, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')
+        {
             continue;
         }
         out.push(character);
@@ -850,6 +766,42 @@ fn looks_production(value: &str) -> bool {
 #[cfg(all(test, not(target_arch = "wasm32")))]
 mod tests {
     use super::*;
+    use crate::kubernetes::namespace_for_context as kube_namespace_for_context;
+
+    #[test]
+    fn kube_namespace_is_independent_of_yaml_mapping_order() {
+        // Both forms are valid kubeconfig; hand-written files often put name first.
+        for document in [
+            "contexts:\n- context:\n    namespace: sandbox\n  name: fixture\n",
+            "contexts:\n- name: fixture\n  context:\n    namespace: sandbox\n",
+            "contexts: [{name: fixture, context: {namespace: sandbox}}]\n",
+            r#"{"contexts":[{"name":"fixture","context":{"namespace":"sandbox"}}]}"#,
+        ] {
+            assert_eq!(
+                kube_namespace_for_context(document, "fixture").as_deref(),
+                Some("sandbox"),
+            );
+        }
+    }
+
+    #[test]
+    fn kube_namespace_never_borrows_fields_from_another_section() {
+        let document = "contexts:\n- context: {}\n  name: fixture\nusers:\n- name: fixture\n  user:\n    namespace: not-a-context\n";
+        assert_eq!(
+            kube_namespace_for_context(document, "fixture").as_deref(),
+            Some("default"),
+        );
+        assert_eq!(kube_namespace_for_context(document, "absent"), None);
+    }
+
+    #[test]
+    fn kube_namespace_decodes_quoted_labels_without_yaml_comments() {
+        let document = "contexts:\n- context:\n    namespace: \"sandbox\" # local selection\n  name: 'fixture'\n";
+        assert_eq!(
+            kube_namespace_for_context(document, "fixture").as_deref(),
+            Some("sandbox"),
+        );
+    }
 
     #[cfg(target_os = "windows")]
     #[test]
@@ -861,35 +813,37 @@ mod tests {
             distro: Some("Ubuntu-24.04".to_string()),
             os_version: Some("24.04".to_string()),
             shell_name: Some("bash".to_string()),
-            shell_user: Some("amjed".to_string()),
+            shell_user: Some("alice".to_string()),
             shell_path: Some("/usr/bin/bash".to_string()),
             shell_integration: true,
             shell_pid: 42,
+            environment: Default::default(),
         };
         let view = windows_wsl_session_view(&session).expect("explicit WSL view");
         assert_eq!(view.cwd.as_deref(), Some(Path::new(r"D:\work tree")));
-        assert_eq!(view.wsl.expect("WSL identity").user, "amjed");
+        assert_eq!(view.wsl.expect("WSL identity").user, "alice");
     }
 
     #[cfg(target_os = "windows")]
     #[test]
     fn native_powershell_drive_title_is_not_wsl() {
-        let title = "lamjed@DESKTOP-2LR87FN: D:/workstation/projects/automexia";
+        let title = "alice@devbox: D:/projects/automexia";
         let session = SessionFacts {
             session_id: 1,
-            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
+            cwd: Some(PathBuf::from(r"D:\projects\automexia")),
             title: title.to_string(),
             // A nested WSL process may have left these terminal-scoped user
             // variables behind. The native drive title must still win.
             distro: Some("Ubuntu-24.04".to_string()),
             os_version: Some("24.04".to_string()),
             shell_name: Some("PowerShell".to_string()),
-            shell_user: Some("lamjed".to_string()),
+            shell_user: Some("alice".to_string()),
             shell_path: Some(
                 r"C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe".to_string(),
             ),
             shell_integration: true,
             shell_pid: 42,
+            environment: Default::default(),
         };
         assert!(windows_wsl_session_view(&session).is_none());
     }
@@ -899,15 +853,16 @@ mod tests {
     fn native_command_prompt_never_inherits_a_stale_wsl_badge() {
         let session = SessionFacts {
             session_id: 1,
-            cwd: Some(PathBuf::from(r"D:\workstation\projects\automexia")),
-            title: "CMD - D:/workstation/projects/automexia".to_string(),
+            cwd: Some(PathBuf::from(r"D:\projects\automexia")),
+            title: "CMD - D:/fixture/automexia".to_string(),
             distro: Some("Ubuntu-24.04".to_string()),
             os_version: Some("24.04".to_string()),
             shell_name: Some("CMD".to_string()),
-            shell_user: Some("lamjed".to_string()),
+            shell_user: Some("alice".to_string()),
             shell_path: Some(r"C:\Windows\System32\cmd.exe".to_string()),
             shell_integration: true,
             shell_pid: 42,
+            environment: Default::default(),
         };
         assert!(windows_wsl_session_view(&session).is_none());
     }
@@ -1004,6 +959,7 @@ mod tests {
     #[test]
     fn label_sanitizer_strips_controls_and_limits_length() {
         assert_eq!(sanitize_label("  dev\nops\t  "), "devops");
+        assert_eq!(sanitize_label("safe\u{202e}label\u{2069}"), "safelabel");
         let long = "x".repeat(MAX_LABEL_CHARS + 20);
         assert_eq!(sanitize_label(&long).chars().count(), MAX_LABEL_CHARS);
     }

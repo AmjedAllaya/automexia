@@ -23,7 +23,7 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
         result = CHECKER.validate_repository()
         self.assertEqual(result["version"], "1.3.1")
         self.assertEqual(result["fixture_artifacts"], 6)
-        self.assertEqual(result["nightly_fuzz_targets"], 2)
+        self.assertEqual(result["nightly_fuzz_targets"], 3)
         self.assertEqual(result["external_native_platforms"], 3)
 
     def test_duplicate_manifest_keys_are_rejected(self) -> None:
@@ -52,8 +52,8 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
             ("xtask", "keybindings::verify()?;", ""),
             (
                 "nightly",
-                "ecosystem_bundle, ghostty_keybindings, ghostty_migration]",
-                "ecosystem_bundle]",
+                "- ghostty_migration",
+                "# removed ghostty_migration",
             ),
             (
                 "nightly",
@@ -69,6 +69,11 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
                 "qa",
                 'os.environ.get("AUTOMEXIA_QA_GHOSTTY_EVIDENCE", "").strip()',
                 '""',
+            ),
+            (
+                "roadmap",
+                "G0 — source lock",
+                "G0 source lock",
             ),
             ("context", "pub fn clear_parked_topologies", "fn removed_clear"),
             (
@@ -91,7 +96,10 @@ class GhosttyCompatibilityGateTests(unittest.TestCase):
             with self.subTest(source=source, token=old):
                 changed = dict(valid)
                 self.assertIn(old, changed[source])
-                changed[source] = changed[source].replace(old, new, 1)
+                # The roadmap intentionally repeats phase names in its index and
+                # detailed section. Mutate every matching contract anchor so a
+                # surviving duplicate cannot make this deletion test a no-op.
+                changed[source] = changed[source].replace(old, new)
                 with self.assertRaises(CHECKER.GhosttyCompatibilityError):
                     CHECKER.validate_gate_sources(changed)
 

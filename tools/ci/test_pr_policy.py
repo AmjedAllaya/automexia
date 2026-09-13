@@ -31,7 +31,8 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             "tests/fixtures/session-launch/d0-d3-contract-v2.json",
             "tests/fixtures/session-launch/d0-d3-contract-v3.json",
             "tests/fixtures/session-launch/d0-d3-contract-v4.json",
-            "tests/fixtures/session-launch/d0-d3-contract-v6.json",
+            "tests/fixtures/session-launch/d0-d3-contract-v7.json",
+            "tests/fixtures/session-launch/native-openssh-evidence-synthetic-v2.json",
             "tests/assurance/release-trust-policy-v1.json",
             "tests/assurance/s1-assurance-policy-v1.json",
             "tests/assurance/performance-ratchet-policy-v1.json",
@@ -84,17 +85,23 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
             set(),
         )
 
-    def test_ci_collects_the_reviewed_commit_with_each_approval(self) -> None:
+    def test_release_collects_only_exact_head_approvals(self) -> None:
         workflow = (
-            MODULE_PATH.parents[2] / ".github" / "workflows" / "ci.yml"
+            MODULE_PATH.parents[2] / ".github" / "workflows" / "release.yml"
         ).read_text(encoding="utf-8")
 
-        self.assertIn("--paginate --slurp |", workflow)
+        self.assertIn("pull-requests: read", workflow)
+        self.assertIn("PR_HEAD_SHA:", workflow)
+        self.assertRegex(
+            workflow,
+            r'gh api --paginate --slurp "[^"]+/reviews" \|\s*\n'
+            r'\s+python3 tools/ci/check_pr_policy.py --count-approvals',
+        )
         self.assertIn(
-            "python tools/ci/check_pr_policy.py --format-approvals", workflow
+            'python3 tools/ci/check_pr_policy.py --count-approvals "$PR_AUTHOR" "$PR_HEAD_SHA"',
+            workflow,
         )
         self.assertNotIn("--slurp --jq", workflow)
-        self.assertNotIn("jq -r", workflow)
 
     def test_review_pages_keep_only_each_humans_latest_approval_record(self) -> None:
         old = "a" * 40
@@ -159,6 +166,37 @@ class PullRequestDocumentationPolicyTests(unittest.TestCase):
         self.assertEqual(
             POLICY.approval_records_from_review_pages(pages),
             f"Bob|{old},Carol|{current}",
+        )
+        self.assertEqual(
+            POLICY.approval_count_from_review_pages(pages, "author", current),
+            1,
+        )
+        self.assertEqual(
+            POLICY.approval_count_from_review_pages(pages, "author", old),
+            1,
+        )
+
+    def test_approval_count_rejects_stale_or_invalid_head(self) -> None:
+        head = "a" * 40
+        pages = [
+            [
+                {
+                    "id": 1,
+                    "submitted_at": "2026-08-21T10:00:00Z",
+                    "state": "APPROVED",
+                    "commit_id": head,
+                    "user": {"login": "Alice", "type": "User"},
+                }
+            ]
+        ]
+
+        self.assertEqual(
+            POLICY.approval_count_from_review_pages(pages, "author", "b" * 40),
+            0,
+        )
+        self.assertEqual(
+            POLICY.approval_count_from_review_pages(pages, "author", "not-a-sha"),
+            0,
         )
 
     def test_review_page_count_is_bounded(self) -> None:
