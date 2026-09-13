@@ -134,7 +134,11 @@ public product announcements.
 
 `automexia-extension-api::surface` owns bounded, versioned semantic table data.
 The application-owned surface slot validates trusted grant binding, frame size,
-generation, revision and expiry while retaining at most one snapshot. This
+generation, revision and expiry while retaining at most one snapshot. Its
+`automexia-ui-model::semantic_table` presentation owns that same snapshot plus
+bounded geometry and selection; replacement reconciles row/resource identities
+outside input/render paths. Borrowed presentation carries its displayed revision,
+and host navigation rejects stale revisions and non-ready states. This
 [contract](SEMANTIC-SURFACE-CONTRACT.md) has no automatic UI or provider transport
 activation; terminal embedding surfaces keep their separate identity and owner.
 

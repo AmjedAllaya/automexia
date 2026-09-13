@@ -13,6 +13,7 @@ use automexia_extension_api::{
     },
     Capability, CapabilityDecision, Decision, ResourceScope,
 };
+use automexia_ui_model::semantic_table::{Navigation, TablePresentation};
 
 /// Fixed redacted errors. Never return serde errors containing provider text.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -22,6 +23,7 @@ pub enum AdmissionError {
     Stale,
     FrameTooLarge,
     InvalidFrame,
+    NotReady,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -30,6 +32,14 @@ pub enum SurfacePhase {
     Ready,
     Failed(SurfaceTitle),
     Closed,
+}
+
+/// Revision and borrowed data are issued together, so input can retain the exact
+/// displayed revision without consulting a later snapshot during dispatch.
+pub struct PresentedTable<'a> {
+    pub revision: u64,
+    pub phase: &'a SurfacePhase,
+    pub table: &'a TablePresentation,
 }
 
 #[derive(Debug)]
@@ -43,7 +53,7 @@ pub struct SemanticSurfaceSlot {
     once: bool,
     consumed: bool,
     phase: SurfacePhase,
-    snapshot: Option<SemanticTable>,
+    snapshot: Option<TablePresentation>,
 }
 
 impl SemanticSurfaceSlot {
@@ -125,7 +135,11 @@ impl SemanticSurfaceSlot {
         match update.into_event() {
             SurfaceEvent::Loading => self.phase = SurfacePhase::Loading,
             SurfaceEvent::Replace(table) => {
-                self.snapshot = Some(table);
+                if let Some(presentation) = &mut self.snapshot {
+                    presentation.replace(table);
+                } else {
+                    self.snapshot = Some(TablePresentation::new(table));
+                }
                 self.phase = SurfacePhase::Ready;
             }
             SurfaceEvent::Failed(message) => self.phase = SurfacePhase::Failed(message),
@@ -143,7 +157,53 @@ impl SemanticSurfaceSlot {
     /// after its host authorization expires. The returned snapshot is borrowed.
     pub fn snapshot(&mut self, now_ms: u64) -> Option<&SemanticTable> {
         self.active(now_ms).ok()?;
-        self.snapshot.as_ref()
+        self.snapshot.as_ref().map(TablePresentation::table)
+    }
+
+    /// Read-only projection of the same admitted snapshot, with no second copy.
+    pub fn presentation(&mut self, now_ms: u64) -> Option<PresentedTable<'_>> {
+        self.active(now_ms).ok()?;
+        Some(PresentedTable {
+            revision: self.revision,
+            phase: &self.phase,
+            table: self.snapshot.as_ref()?,
+        })
+    }
+
+    pub fn fit_table(
+        &mut self,
+        columns: usize,
+        rows: usize,
+        now_ms: u64,
+    ) -> Result<(), AdmissionError> {
+        self.active(now_ms)?;
+        self.snapshot
+            .as_mut()
+            .ok_or(AdmissionError::NotReady)?
+            .fit(columns, rows);
+        Ok(())
+    }
+
+    /// Input must carry the revision that was presented, never the newest value
+    /// read after a delayed event. Selection does not grant resource authority.
+    pub fn navigate_table(
+        &mut self,
+        revision: u64,
+        navigation: Navigation,
+        now_ms: u64,
+    ) -> Result<bool, AdmissionError> {
+        self.active(now_ms)?;
+        if revision != self.revision {
+            return Err(AdmissionError::Stale);
+        }
+        if self.phase != SurfacePhase::Ready {
+            return Err(AdmissionError::NotReady);
+        }
+        Ok(self
+            .snapshot
+            .as_mut()
+            .ok_or(AdmissionError::NotReady)?
+            .navigate(navigation))
     }
 
     pub fn revoke(&mut self) {

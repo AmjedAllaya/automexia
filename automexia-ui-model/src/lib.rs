@@ -13,6 +13,7 @@ use unicode_segmentation::UnicodeSegmentation;
 
 pub mod connection_hub;
 pub mod quick_actions;
+pub mod semantic_table;
 
 pub mod suggestions;
 pub mod tables;

@@ -580,6 +580,17 @@ Benchmark typed validation separately from decoding. Keep reviewed fuzz seeds an
 decode/validation benchmarks for 0/1/100/2,000/20,000 rows. An admission-only model
 is not an activated browser, renderer, multi-surface registry or native AT proof.
 
+Typed table presentation needs exact borrowed-value and pointer-identity tests,
+zero/tiny/maximum/over-limit viewport bounds, non-wrapping navigation, invalid
+indices, mixed-axis fixed-seed transitions, reorder/delete/resource-handle reuse,
+schema changes and independent scrolled-anchor preservation. Traverse fake
+provider frames through host admission and revision-bound navigation; loading,
+failure, expiry, clock rollback and malformed refresh must not retarget selection.
+Benchmark checked navigation/projection separately from replacement/drop for
+0/1/100/2,000/20,000 rows, with flat sampling and one prepared replacement at a
+time. Keep raw shell capture bounds unchanged. Models are not native input,
+screen-reader, compositor, clipboard, provider or sustained RSS evidence.
+
 ### image-protocols-local-preview
 
 Inline image quads use the same command-row projection and crop texture slices
@@ -775,6 +786,11 @@ Linux-namespace exclusion; the selector must reject that overlap before stable
 authorization rather than failing an unrelated branch grammar later.
 
 ### contributor-automation-quality-policy
+
+Model benchmark dependencies must stay development-only. Reuse the shared
+Criterion-kind validator for extension API and UI model packages; test runtime,
+build, renamed, target-specific and missing/malformed declarations, and mutate
+the owner dispatch so an allowlist entry alone never permits runtime authority.
 
 `tools/ci/qa_process.py` and `tools/ci/test_qa_process.py` reinforce the existing
 QA owner with parent-exit retained-pipe regressions, exact descendant identities,
