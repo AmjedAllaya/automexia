@@ -1245,8 +1245,10 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
 
     _validate_native_contract_sources(_load_native_contract_sources(root))
     from check_semantic_surfaces import validate_repository as validate_surfaces
+    from check_context_contributions import validate_repository as validate_context
     try:
         validate_surfaces(root)
+        validate_context(root)
     except ValueError as error:
         raise ReinforcementError(str(error)) from error
 

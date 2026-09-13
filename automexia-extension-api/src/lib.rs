@@ -4,6 +4,7 @@
 //! construction and rejects unknown fields or unsupported schema versions.
 //! Secret material is represented only by opaque references.
 
+mod context_decode;
 pub mod surface;
 mod text;
 
@@ -663,6 +664,7 @@ struct ContextContributionWire {
     source_revision: u64,
     generated_at_ms: u64,
     freshness: Freshness,
+    #[serde(deserialize_with = "context_decode::segments")]
     segments: Vec<StatusSegment>,
 }
 

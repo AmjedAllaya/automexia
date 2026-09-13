@@ -24,3 +24,7 @@ harness = false
 [[bench]]
 name = "semantic_surfaces"
 harness = false
+
+[[bench]]
+name = "context_contributions"
+harness = false

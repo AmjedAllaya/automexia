@@ -495,6 +495,10 @@ Reinforce bounded route-scoped prompt metadata, directory and status updates,
 Git state, long and hostile labels, stale generation rejection, and redaction.
 Context rendering must never change commands or trigger network work.
 
+The shared context wire boundary is covered by the extension-contract-runtime
+section below; count admission must reject before decoding an excess payload,
+without changing current prompt wrapping or native grid behavior.
+
 Kubernetes prompt discovery must reproduce real local `kubectl config set-context`
 writes, same-directory replacement/clear, native first-source-wins semantics,
 reordered/quoted/inline YAML and JSON, default/missing namespace, invalid input,
@@ -551,6 +555,14 @@ Reinforce version negotiation, strict message schemas and ceilings, exact
 capability denial, session isolation, cancellation, queue saturation, stale
 generation rejection, crash/restart, disable, uninstall, and shutdown. Optional
 failure must leave the core terminal functional.
+
+Context contribution tests use literal v1 envelopes and an observed fragmented
+reader to prove rejection before the 65th segment is decoded, including huge and
+malformed tails. Preserve exact in-limit values/order, version/schema validation
+and typed constructor parity. Source-dispatch/limit/oracle/benchmark mutations
+guard the real decoder path. Checked decode/drop timings cover 0/1/32/64 entries;
+count admission is not a substitute for separate transport byte/deadline budgets.
+See `docs/CONTEXT-CONTRIBUTION-CONTRACT.md` for the current contract and commands.
 
 The shared text owner has independent literal-cluster characterization for
 trimmed and whitespace-preserving labels, borrowed prefix storage, zero/one,
