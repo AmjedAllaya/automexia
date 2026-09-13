@@ -18,6 +18,8 @@ Supported hosts are **GitHub.com and GitLab.com**. Accepted remotes are HTTPS,
 optional `.git` suffix. GitLab subgroup paths are supported up to 16 components.
 GitHub paths must contain an owner and repository. Host-specific issue pages are
 used; this does not create an issue or change its state.
+Hostnames are case-insensitive, including SSH URLs; repository and subgroup
+names keep their original casing.
 
 `--preview` prints one JSON destination without opening a browser or contacting
 the host. It reads local metadata only. The command does not authenticate, fetch,

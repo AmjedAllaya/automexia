@@ -184,6 +184,53 @@ class GuestNativeTests(unittest.TestCase):
         self.assertEqual(json.loads(output)["action"], "edit-file")
         self.assertFalse((self.root / "unexpected-execution").exists())
 
+    def test_relative_guest_path_cannot_select_project_python_before_isolation(self):
+        if BINARY.suffix.lower() != ".exe":
+            self.skipTest("interpreter bootstrap belongs to the Windows-backed WSL adapter")
+        # -I cannot protect startup when env has already selected a project binary.
+        # The harmless canary proves absence of execution, not just a failed action.
+        for directory in (self.root, self.root / "relative/bin"):
+            directory.mkdir(parents=True, exist_ok=True)
+            python = directory / "python3"
+            python.write_text("#!/bin/sh\n/usr/bin/touch bootstrap-canary\nexit 71\n")
+            python.chmod(0o700)
+        (self.root / "Dockerfile").write_text("fixture\n")
+        for path in (".:/usr/bin:/bin", ":/usr/bin:/bin", "relative/bin:/usr/bin:/bin", "/usr/bin::/bin:."):
+            with self.subTest(path_kind=path):
+                (self.root / "bootstrap-canary").unlink(missing_ok=True)
+                self.environment["PATH"] = path
+                for args, action in ((["edit", "--preview", "Dockerfile"], "edit-file"),
+                                     (["open", "--preview", "."], "open-directory"),
+                                     (["find", "file", "Dockerfile"], None)):
+                    code, output, _ = self.invoke(args)
+                    self.assertFalse((self.root / "bootstrap-canary").exists(), "project interpreter executed before isolated mode")
+                    self.assertEqual(code, 0, "absolute installed tools must remain usable")
+                    if action:
+                        self.assertEqual(json.loads(output)["action"], action)
+                    else:
+                        self.assertEqual(output, b"./Dockerfile\n")
+        for path in (".", ":", "relative/bin", ".:relative/bin:"):
+            (self.root / "bootstrap-canary").unlink(missing_ok=True)
+            self.environment["PATH"] = path
+            code, output, errors = self.invoke(["edit", "--preview", "Dockerfile"])
+            self.assertNotEqual(code, 0, "no absolute PATH must fail closed")
+            self.assertEqual(output, b"")
+            self.assertFalse((self.root / "bootstrap-canary").exists())
+            self.assertNotIn(str(self.root).encode(), errors)
+
+    def test_absolute_guest_tool_locations_keep_precedence(self):
+        if BINARY.suffix.lower() != ".exe":
+            self.skipTest("interpreter bootstrap belongs to the Windows-backed WSL adapter")
+        self.client("tldr")
+        python = self.root / "clients/python3"
+        python.write_text('#!/bin/sh\n/usr/bin/touch absolute-python-selected\nexec /usr/bin/python3 "$@"\n')
+        python.chmod(0o700)
+        self.environment["PATH"] = "relative/bin::" + self.environment["PATH"] + ":."
+        code, output, _ = self.invoke(["explain", "tar"])
+        self.assertEqual(code, 0, "explicit absolute client location was lost")
+        self.assertTrue((self.root / "absolute-python-selected").exists(), "absolute interpreter order changed")
+        self.assertIn(b"tar -tf {{archive.tar}}", output)
+
     def test_editor_preview_resolves_guest_file_links_and_rejects_directories(self):
         target = self.root / "file & Unicode-é.rs"
         target.write_text("fixture\n")

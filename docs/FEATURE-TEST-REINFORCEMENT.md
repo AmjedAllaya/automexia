@@ -618,6 +618,12 @@ Use an isolated native fixture to assert exact handle recovery after each captur
 and measure checked capture latency. Do not move this work onto the GUI path.
 The WSL import-path canary must prove project Python modules
 cannot execute; a default safe host environment is not a sufficient oracle.
+Also test the earlier interpreter-selection boundary with real project-local
+`python3` canaries and dot/empty/relative PATH entries. Reject an all-relative
+PATH before launch; preserve explicitly configured absolute tool precedence.
+Test POSIX splitting on Windows, byte/count/control limits and redacted errors.
+Mutations must catch skipped, reordered and bypassed bootstrap validation, not
+only presence of `-I`. Benchmark exact filtered output separately from WSL launch.
 The native shell smoke runs a real search from an isolated project directory.
 The separate `check_amx_guest_native.py` entrypoint exercises Linux supervision;
 it cannot be replaced by a Windows-only mock. Keep a real tealdeer cache and
@@ -651,6 +657,8 @@ Repository navigation must use one read-only Git remote lookup in the owning
 session. Assert exact GitHub/GitLab root and issue destinations, explicit remote
 selection and no fallback when a remote is missing. Reject credentials, unreviewed
 hosts, schemes, ports, traversal, controls and over-limit names/URLs/components.
+Include mixed-case SSH DNS hosts on both services, exact repository path casing
+and mixed-case lookalikes; HTTPS/SCP-only tests cannot cover SSH parser behavior.
 Use real temporary Git repositories and unchanged-file/config oracles; guest
 results must come from guest metadata rather than the host checkout. Never fetch,
 authenticate or call a repository-existence API to implement offline preview.

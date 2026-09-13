@@ -868,7 +868,9 @@ Repository navigation uses the `amx_repo_` library filter and explicit ignored
 `amx_repo_benchmark_checked_remote_parsing` benchmark. Real temporary Git repositories
 must prove exact root/issues destinations, selected remote ownership, unchanged
 config/files, missing-remote rejection and credential-free diagnostics. The guest
-suite must use guest metadata. The post-build harness now runs eleven scenarios
+and native CLI fixtures include mixed-case SSH GitHub/GitLab hostnames while
+retaining path casing; unit negatives reject similarly spelled unapproved hosts.
+The guest suite must use guest metadata. The post-build harness runs eleven scenarios
 per available shell. No browser or authentication is needed for these tests;
 parsing benchmarks do not measure Git or desktop latency.
 
@@ -897,6 +899,7 @@ execution, native desktop visibility, accessibility or handler-failure evidence.
 cargo test -p automexia-terminal --lib --locked amx_local_ -- --nocapture
 cargo test -p automexia-terminal --lib --locked amx_process_ -- --nocapture
 cargo test -p automexia-terminal --lib --locked amx_local_benchmark_checked_parsing -- --ignored --nocapture
+cargo test -p automexia-terminal --lib --locked amx_local_guest_path_benchmark_checked_filtering -- --ignored --nocapture
 python tools/ci/test_amx_guest_bridge.py
 python tools/ci/check_amx_guest_native.py --binary target/debug/automexia.exe
 ```
@@ -908,6 +911,16 @@ The tests cover exact guest process identities, EOF/cancellation/deadlines,
 descendant retirement, default ignore/privacy rules and hostile Python import
 paths. Tealdeer argument/cache policy uses an isolated client fixture; a real
 installed tealdeer cache remains a separate native check.
+
+The WSL suite also places harmless `python3` canaries in project-relative search
+locations. Dot, empty and relative PATH entries must not execute them before
+Python isolation. All-relative PATH must fail, while an explicit absolute custom
+interpreter/client location retains precedence. Reset each canary between cases
+so an earlier failure cannot contaminate a later assertion. Pure tests enforce
+8192-byte/256-entry limits, POSIX splitting on Windows and control rejection.
+The checked filter benchmark asserts exact ordered output, not interpreter or
+desktop latency. These bootstrap cases are inapplicable to a native Unix binary;
+skips there must not be presented as Windows-backed WSL validation.
 
 The library tests exercise stream ceilings, malformed records, redacted errors,
 pre-cancellation and actual native child cleanup. The ignored child fixture is

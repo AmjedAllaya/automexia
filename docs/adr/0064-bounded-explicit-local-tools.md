@@ -57,6 +57,12 @@ system-wide process scan is used. Lease EOF still precedes forced WSL cleanup.
 
 Windows-backed WSL wrappers pass transient distro, directory, PATH and HOME
 hints only to Automexia's fallback, never to an existing `amx` executable.
+Before `/usr/bin/env` selects Python, the Windows adapter validates the guest's
+POSIX colon-separated PATH: at most 8192 bytes and 256 entries, no control
+characters. It drops empty/relative entries, preserves absolute entries in order,
+and fails when none remain. There is no fallback to the project directory or
+an implicit default PATH. This pure bounded operation performs no I/O; explicitly
+configured absolute tool locations still carry the user's execution authority.
 An embedded, fixed Python-stdlib supervisor launches exact guest argv and owns
 the Linux process group. Python runs with `-I`: current-project imports and
 PYTHONPATH cannot replace its standard library. A stdin lease, SIGTERM handler
@@ -92,7 +98,9 @@ fixture checks exact handle recovery after each of 20 captures and reports
 correctness-checked capture timing, not interactive terminal latency. These
 tests reproduced delayed process signaling after both leader exit and a zero
 active-job count; a later diagnostic wait remains a failure, never a retry pass.
-Native WSL tests use real ripgrep, exact process handles and a project-module canary;
+Native WSL tests use real ripgrep, exact process handles, project-module and
+project-interpreter canaries, relative/empty PATH rejection and absolute-tool
+precedence. The import canary alone did not cover interpreter selection;
 tealdeer argv is tested with an independent client fixture. A real installed
 tealdeer cache, native Unix Rust process execution and native desktop behavior
 remain separate validation requirements when unavailable.
@@ -110,6 +118,7 @@ existing aliases/functions/executables retain ownership.
 - [process-wrap source](https://github.com/watchexec/process-wrap)
 - [signal-hook source](https://github.com/vorner/signal-hook)
 - [Python isolated mode](https://docs.python.org/3/using/cmdline.html#cmdoption-I)
+- [GNU env executable search](https://www.gnu.org/software/coreutils/manual/html_node/env-invocation.html)
 - [Windows console handlers](https://learn.microsoft.com/en-us/windows/console/setconsolectrlhandler)
 - [Windows nested-job accounting](https://learn.microsoft.com/en-us/windows/win32/procthread/nested-jobs)
 - [QueryInformationJobObject](https://learn.microsoft.com/en-us/windows/win32/api/jobapi2/nf-jobapi2-queryinformationjobobject)

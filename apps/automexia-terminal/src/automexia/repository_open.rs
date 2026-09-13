@@ -88,7 +88,10 @@ fn destination(bytes: &[u8], page: RepoPage) -> io::Result<String> {
         if !credentials_ok || url.query().is_some() || url.fragment().is_some() {
             return Err(invalid());
         }
-        (url.host_str().ok_or_else(invalid)?.to_owned(), path)
+        (
+            url.host_str().ok_or_else(invalid)?.to_ascii_lowercase(),
+            path,
+        )
     };
     if !matches!(host.as_str(), "github.com" | "gitlab.com") {
         return Err(invalid());
@@ -167,6 +170,30 @@ mod tests {
     }
 
     #[test]
+    fn amx_repo_dns_case_is_insensitive_but_repository_case_is_preserved() {
+        // SSH is not a special URL scheme: its parser does not fold DNS case.
+        for (host, canonical, suffix) in [
+            ("GitHub.COM", "github.com", "/issues"),
+            ("GitLab.COM", "gitlab.com", "/-/issues"),
+        ] {
+            for remote in [
+                format!("ssh://git@{host}:22/Example-Org/Fixture-Repo.git"),
+                format!("git@{host}:Example-Org/Fixture-Repo.git"),
+                format!("https://{host}/Example-Org/Fixture-Repo.git"),
+            ] {
+                assert_eq!(
+                    destination(remote.as_bytes(), RepoPage::Root).unwrap(),
+                    format!("https://{canonical}/Example-Org/Fixture-Repo")
+                );
+                assert_eq!(
+                    destination(remote.as_bytes(), RepoPage::Issues).unwrap(),
+                    format!("https://{canonical}/Example-Org/Fixture-Repo{suffix}")
+                );
+            }
+        }
+    }
+
+    #[test]
     fn amx_repo_credentials_hosts_and_ambiguous_paths_are_never_opened() {
         for remote in [
             "",
@@ -179,6 +206,9 @@ mod tests {
             "ssh://alice@github.com/a/b",
             "ssh://git:fixture@github.com/a/b",
             "https://github.com.example.invalid/a/b",
+            "ssh://git@GitHub.COM.example.invalid/a/b",
+            "ssh://git@GitLab.COM./a/b",
+            "ssh://git@GITHUBCOM/a/b",
             "https://example.invalid/a/b",
             "git@alias:a/b",
             "git@github.com:/a/b",
@@ -292,7 +322,7 @@ mod tests {
             for _ in 0..1000 {
                 assert_eq!(
                     destination(
-                        b"ssh://git@github.com/example/fixture.git\n",
+                        b"ssh://git@GitHub.COM/example/fixture.git\n",
                         RepoPage::Issues
                     )
                     .unwrap(),

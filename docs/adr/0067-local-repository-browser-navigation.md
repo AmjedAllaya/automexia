@@ -38,9 +38,15 @@ or unsupported routes are rejected. Error/debug output does not disclose raw
 remote values or paths. No persistence, configuration migration or credential
 custody is introduced. Remove the route to roll back; existing Git is untouched.
 
+Fold only the parsed DNS hostname to ASCII lowercase before the fixed-host
+allowlist. The URL parser does not do this for non-special SSH URLs. Repository
+and subgroup path casing remains exact; mixed-case lookalike hosts remain rejected.
+No SSH connection, DNS lookup, host alias expansion or credential access is added.
+
 ## Evidence
 
-Unit matrices cover schemes, hosts, ports, credentials, path normalization,
+Unit matrices cover schemes, mixed-case hosts with case-preserved paths, ports,
+credentials, path normalization,
 Unicode/control rejection, exact issues routes and resource boundaries. Real
 temporary repositories provide independent config and read-only oracles. Shipped
 shell tests execute the actual CLI, and the WSL suite checks guest metadata
@@ -52,6 +58,7 @@ unexecuted native platforms remain external, not inferred from offline previews.
 ## Sources
 
 - [Git remote command](https://git-scm.com/docs/git-remote)
+- [DNS case insensitivity (RFC 4343)](https://www.rfc-editor.org/rfc/rfc4343.html)
 - [Git configuration](https://git-scm.com/docs/git-config)
 - [GitHub CLI browse contract](https://cli.github.com/manual/gh_browse)
 - [GitHub CLI browse implementation](https://github.com/cli/cli/blob/trunk/pkg/cmd/browse/browse.go)

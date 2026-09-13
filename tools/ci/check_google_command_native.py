@@ -38,7 +38,9 @@ class GoogleCommandTests(unittest.TestCase):
             code, _ = run([git, "-c", "init.templateDir=", "init", "--quiet", str(root)], env, cwd=root)
             self.assertEqual(code, 0, "temporary repository initialization failed")
             for name, remote in (("origin", "git@github.com:example-org/fixture-repo.git"),
-                                 ("upstream", "https://gitlab.com/example-group/subgroup/fixture-repo.git")):
+                                 ("upstream", "https://gitlab.com/example-group/subgroup/fixture-repo.git"),
+                                 ("mixed-hub", "ssh://git@GitHub.COM/Example-Org/Fixture-Repo.git"),
+                                 ("mixed-lab", "ssh://git@GitLab.COM/Example-Group/Subgroup/Fixture-Repo.git")):
                 code, _ = run([git, "remote", "add", name, remote], env, cwd=root)
                 self.assertEqual(code, 0)
             hints = []
@@ -48,7 +50,9 @@ class GoogleCommandTests(unittest.TestCase):
             before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
             for args, expected in (([], "https://github.com/example-org/fixture-repo"),
                                    (["issues"], "https://github.com/example-org/fixture-repo/issues"),
-                                   (["issues", "--remote", "upstream"], "https://gitlab.com/example-group/subgroup/fixture-repo/-/issues")):
+                                   (["issues", "--remote", "upstream"], "https://gitlab.com/example-group/subgroup/fixture-repo/-/issues"),
+                                   (["--remote", "mixed-hub"], "https://github.com/Example-Org/Fixture-Repo"),
+                                   (["issues", "--remote", "mixed-lab"], "https://gitlab.com/Example-Group/Subgroup/Fixture-Repo/-/issues")):
                 code, output = run([str(BINARY), *hints, "repo", "--preview", *args], env, cwd=root)
                 self.assertEqual(code, 0, "real repository preview failed")
                 plan = json.loads(output)

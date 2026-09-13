@@ -108,7 +108,8 @@ and do no work on terminal hot paths. See
 
 `amx find` and `amx explain` activate installed local tools explicitly through
 the app-owned bounded process adapter, not terminal hot paths or generic Quick
-Action execution. WSL uses a scoped guest lease and isolated Python supervisor;
+Action execution. WSL filters relative/empty guest PATH entries before selecting
+its isolated Python supervisor and retains one scoped guest lease;
 see [ADR 0064](adr/0064-bounded-explicit-local-tools.md).
 
 `amx open` extends this explicit application boundary with directory-only

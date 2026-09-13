@@ -20,6 +20,22 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_guest_path_validation_precedes_lookup_and_cannot_be_bypassed(self):
+        REINFORCEMENT._validate_local_tool_sources(self.native_sources)
+        source = self.native_sources["local_session"]
+        validation = 'let path = guest_tool_path(self.path.as_deref().unwrap())?;'
+        lookup = 'let mut command = Command::new(super::resolve_tool("wsl")?);'
+        binding = 'command.arg(format!("PATH={path}"));'
+        mutations = [
+            source.replace(validation, 'ORDER_PLACEHOLDER', 1).replace(lookup, validation, 1).replace('ORDER_PLACEHOLDER', lookup, 1),
+            source.replace(binding, 'command.arg(format!("PATH={}", self.path.as_deref().unwrap()));', 1),
+            source.replace(binding, binding + '\ncommand.arg(format!("PATH={}", self.path.as_deref().unwrap()));', 1),
+        ]
+        for mutation in mutations:
+            with self.subTest(mutation=mutations.index(mutation)):
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_local_tool_sources(dict(self.native_sources, local_session=mutation))
+
     def test_editor_disable_precedes_override_and_unc_identity_is_retained(self):
         REINFORCEMENT._validate_local_tool_sources(self.native_sources)
         first = "configured.scheme()?;"

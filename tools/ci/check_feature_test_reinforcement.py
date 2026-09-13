@@ -689,6 +689,9 @@ LOCAL_TOOL_CONTRACTS = {
 }
 
 LOCAL_TOOL_CONTRACTS["guest_native"] += (
+    "def test_relative_guest_path_cannot_select_project_python_before_isolation(self):",
+    "def test_absolute_guest_tool_locations_keep_precedence(self):",
+    '"project interpreter executed before isolated mode"',
     "def test_repository_navigation_reads_the_guest_repository_not_host_metadata(self):",
     "def test_editor_preview_resolves_guest_file_links_and_rejects_directories(self):",
     '"file probe imported untrusted project code"',
@@ -699,6 +702,23 @@ LOCAL_TOOL_CONTRACTS["guest_native"] += (
 LOCAL_TOOL_CONTRACTS["cli_main"] += ("CliCommand::Repo(command)", "automexia::repository_open::execute(command, session)")
 LOCAL_TOOL_CONTRACTS["google_native"] += ('def test_real_repository_navigation_is_offline_exact_and_read_only(self):', 'if case == "repository":', '"missing remote must not select another remote"', '"credentials must not appear in diagnostics"')
 LOCAL_TOOL_CONTRACTS["guest_bridge"] += ('args[:4] != ["--no-pager", "remote", "get-url", "--"]',)
+LOCAL_TOOL_CONTRACTS["local_session"] += (
+    "MAX_GUEST_HINT_BYTES: usize = 8192", "path.len() > MAX_GUEST_HINT_BYTES",
+    "path.chars().any(char::is_control)", "path.split(':').enumerate()",
+    "if index >= 256", "entry.starts_with('/')", "if absolute.is_empty()",
+    "fn amx_local_guest_path_keeps_absolute_order_and_posix_semantics()",
+    "fn amx_local_guest_path_limits_fail_closed_without_disclosing_input()",
+    "fn amx_local_invalid_guest_path_is_rejected_before_executable_lookup()",
+    "fn amx_local_guest_path_benchmark_checked_filtering()",
+)
+LOCAL_TOOL_CONTRACTS["repository_open"] += (
+    "url.host_str().ok_or_else(invalid)?.to_ascii_lowercase()",
+    "fn amx_repo_dns_case_is_insensitive_but_repository_case_is_preserved()",
+)
+LOCAL_TOOL_CONTRACTS["google_native"] += (
+    "ssh://git@GitHub.COM/Example-Org/Fixture-Repo.git",
+    "ssh://git@GitLab.COM/Example-Group/Subgroup/Fixture-Repo.git",
+)
 LOCAL_TOOL_CONTRACTS["cli_process"] += (
     "self.completion.pin_members()", "self.completion.is_empty()?",
     "windows_completion::members_stopped(&self.members)?", "if self.reaped && tree_empty",
@@ -725,6 +745,15 @@ LOCAL_TOOL_CONTRACTS["cli_completion"] = (
 def _validate_local_tool_sources(sources: dict[str, str]) -> None:
     for owner, fragments in LOCAL_TOOL_CONTRACTS.items():
         _require_fragments(sources[owner], fragments, "local tool " + owner)
+    bootstrap = _source_slice(sources["local_session"], 'let path = guest_tool_path', 'command.arg(request);', 'guest interpreter bootstrap')
+    _require_order(bootstrap, (
+        'let path = guest_tool_path(self.path.as_deref().unwrap())?;',
+        'Command::new(super::resolve_tool("wsl")?)',
+        'command.arg(format!("PATH={path}"));',
+        '"python3", "-I", "-c"',
+    ), 'validate PATH before interpreter selection')
+    if 'format!("PATH={}", self.path' in sources["local_session"]:
+        raise ReinforcementError("guest bootstrap restores unfiltered PATH")
     editor = _source_slice(sources["editor"], "fn selected_editor(", "pub fn execute(", "editor preference policy")
     _require_order(editor, ("configured.scheme()?;", "override_editor.unwrap_or(configured)", "selected.scheme()?;"), "disable-before-editor-override")
     _require_fragments(sources["editor"], ('uri.insert(boundary,',), "editor UNC identity")

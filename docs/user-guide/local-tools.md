@@ -66,6 +66,15 @@ and the requested client **inside that distribution**. Python runs only on the
 explicit command path, in isolated mode. Native Linux/macOS do not need this
 WSL helper. Reopen an existing session after updating its shell integration.
 
+WSL tool discovery uses only absolute entries in the guest PATH, in their original
+order. Empty and relative entries (including `.`) are ignored before Python is
+selected, so a project-local executable cannot replace the interpreter through
+those entries. A PATH without absolute entries, with control characters, over
+8192 bytes or over 256 entries is rejected. Configure a trusted absolute tool
+directory if needed; Automexia does not change your shell configuration or install
+a replacement. Explicit absolute locations are trusted, not sandboxed. This
+also applies to the WSL helpers for `amx open`, `amx edit` and `amx repo`.
+
 Set `AUTOMEXIA_AMX=0` before loading shell integration to disable the helper.
 Pre-existing `amx` aliases, functions and executables are preserved.
 
