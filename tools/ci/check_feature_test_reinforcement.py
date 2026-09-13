@@ -319,6 +319,7 @@ for _feature in WRAPPING_FEATURES:
         _details[_field] = (*_details.get(_field, ()), _phrase)
 
 NATIVE_CONTRACT_SOURCES = {
+    "repository_open": "apps/automexia-terminal/src/automexia/repository_open.rs",
     "desktop_path": "apps/automexia-terminal/src/automexia/desktop_path.rs",
     "editor": "apps/automexia-terminal/src/automexia/editor.rs",
     "directory_open": "apps/automexia-terminal/src/automexia/directory_open.rs",
@@ -671,6 +672,7 @@ def _validate_google_sources(sources: dict[str, str]) -> None:
 
 
 LOCAL_TOOL_CONTRACTS = {
+    "repository_open": ('local_tools::run_tool("git", &args, session)', 'MAX_REMOTE_BYTES: usize = 4096', 'MAX_REMOTE_NAME_BYTES: usize = 128', '"--no-pager", "remote", "get-url", "--", remote', 'url.password().is_none()', '"github.com" | "gitlab.com"', 'components > 16', 'part.len() > 255', 'RepoPage::Issues', 'if preview', 'super::desktop_open::open', 'fn amx_repo_credentials_hosts_and_ambiguous_paths_are_never_opened()', 'fn amx_repo_benchmark_checked_remote_parsing()'),
     "directory_open": ('Kind::Directory', "if preview", "fn amx_open_preview_never_launches_and_failure_is_redacted()"),
     "desktop_path": ('local_tools::run_tool(kind.probe()', 'Self::Directory => "amx-directory"', 'Self::File => "amx-file"', 'Self::Directory => path.is_dir()', 'Self::File => path.is_file()', "if !kind.matches(&resolved)", "MAX_PATH_BYTES: usize = 4096", "all(windows_directory_component)", "stem.eq_ignore_ascii_case(name)", "fn amx_open_benchmark_checked_guest_mapping()"),
     "editor": ('Kind::File', 'read_bounded_untrusted_regular', 'MAX_CONFIG_BYTES: usize = 16 * 1024', 'preferences.version != 1', 'configured.scheme()?;', 'serde(deny_unknown_fields)', 'desktop_path::valid_text(path)', 'line > MAX_POSITION', 'column > MAX_POSITION', 'path.contains', 'ends_with(".code-workspace")', 'uri.path_segments_mut()', 'if preview', 'super::desktop_open::open', 'fn amx_edit_urls_preserve_exact_path_authority_and_coordinates()', 'fn amx_edit_preferences_are_bounded_strict_and_user_disable_wins()', 'fn amx_edit_preview_and_error_never_launch_or_disclose_diagnostics()', 'fn amx_edit_benchmark_checked_uri_encoding()'),
@@ -687,12 +689,16 @@ LOCAL_TOOL_CONTRACTS = {
 }
 
 LOCAL_TOOL_CONTRACTS["guest_native"] += (
+    "def test_repository_navigation_reads_the_guest_repository_not_host_metadata(self):",
     "def test_editor_preview_resolves_guest_file_links_and_rejects_directories(self):",
     '"file probe imported untrusted project code"',
     "def test_directory_preview_resolves_guest_symlinks_without_desktop_or_writes(self):",
     'plan["destination"] == expected', '("alias/..", parent)',
     '"directory probe imported untrusted project code"',
 )
+LOCAL_TOOL_CONTRACTS["cli_main"] += ("CliCommand::Repo(command)", "automexia::repository_open::execute(command, session)")
+LOCAL_TOOL_CONTRACTS["google_native"] += ('def test_real_repository_navigation_is_offline_exact_and_read_only(self):', 'if case == "repository":', '"missing remote must not select another remote"', '"credentials must not appear in diagnostics"')
+LOCAL_TOOL_CONTRACTS["guest_bridge"] += ('args[:4] != ["--no-pager", "remote", "get-url", "--"]',)
 LOCAL_TOOL_CONTRACTS["cli_process"] += (
     "self.completion.pin_members()", "self.completion.is_empty()?",
     "windows_completion::members_stopped(&self.members)?", "if self.reaped && tree_empty",

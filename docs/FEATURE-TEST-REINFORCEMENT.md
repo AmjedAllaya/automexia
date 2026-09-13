@@ -647,6 +647,17 @@ preview, native oracles and benchmark correctness. URI timing does not measure
 editor startup; no-launch tests do not prove visible desktop activation. Native
 macOS/Linux desktop, editor prompts and actual cursor placement remain external.
 
+Repository navigation must use one read-only Git remote lookup in the owning
+session. Assert exact GitHub/GitLab root and issue destinations, explicit remote
+selection and no fallback when a remote is missing. Reject credentials, unreviewed
+hosts, schemes, ports, traversal, controls and over-limit names/URLs/components.
+Use real temporary Git repositories and unchanged-file/config oracles; guest
+results must come from guest metadata rather than the host checkout. Never fetch,
+authenticate or call a repository-existence API to implement offline preview.
+Mutation-test the fixed Git argv, guest allowlist, URL policy, preview, native
+shell/guest dispatch and checked parsing benchmark. Browser visibility, repository
+existence/permissions and unexecuted native platforms remain separate evidence.
+
 Use live eza output over isolated fictional variable-length filenames to cover
 multi-column resize behavior, not only equal-width synthetic rows. Preserve icons
 and colors, verify every filename occurs once and restore exact initial cell

@@ -862,8 +862,16 @@ Editor tests use `cargo test -p automexia-terminal --lib --locked amx_edit_`.
 Run `amx_edit_benchmark_checked_uri_encoding` explicitly with `-- --ignored --nocapture`;
 its checked URI timing excludes metadata, process and desktop latency. The real
 post-build CLI tests cover configuration, disable/override, exact paths and
-positions without launches or writes. Ten scenarios run through each available
+positions without launches or writes. Eleven scenarios run through each available
 shipped native shell. The guest suite also checks file symlinks and import isolation.
+Repository navigation uses the `amx_repo_` library filter and explicit ignored
+`amx_repo_benchmark_checked_remote_parsing` benchmark. Real temporary Git repositories
+must prove exact root/issues destinations, selected remote ownership, unchanged
+config/files, missing-remote rejection and credential-free diagnostics. The guest
+suite must use guest metadata. The post-build harness now runs eleven scenarios
+per available shell. No browser or authentication is needed for these tests;
+parsing benchmarks do not measure Git or desktop latency.
+
 On an installed native desktop, manually open a disposable file at a known
 line/column in both supported editions, check permission/UNC prompts, missing
 registration and focus/close behavior. Do not mark preview-only execution as

@@ -29,6 +29,40 @@ def run(command, environment, cwd=ROOT):
 
 
 class GoogleCommandTests(unittest.TestCase):
+    def test_real_repository_navigation_is_offline_exact_and_read_only(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-repo-") as temporary:
+            root = Path(temporary).resolve()
+            env = self.environment(temporary)
+            git = shutil.which("git")
+            self.assertIsNotNone(git, "installed Git is required for repository navigation validation")
+            code, _ = run([git, "-c", "init.templateDir=", "init", "--quiet", str(root)], env, cwd=root)
+            self.assertEqual(code, 0, "temporary repository initialization failed")
+            for name, remote in (("origin", "git@github.com:example-org/fixture-repo.git"),
+                                 ("upstream", "https://gitlab.com/example-group/subgroup/fixture-repo.git")):
+                code, _ = run([git, "remote", "add", name, remote], env, cwd=root)
+                self.assertEqual(code, 0)
+            hints = []
+            if os.name != "nt" and BINARY.suffix.lower() == ".exe":
+                hints = ["--amx-wsl-distribution", os.environ["WSL_DISTRO_NAME"], "--amx-wsl-cwd", str(root),
+                         "--amx-wsl-path", "/usr/bin:/bin", "--amx-wsl-home", str(root)]
+            before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            for args, expected in (([], "https://github.com/example-org/fixture-repo"),
+                                   (["issues"], "https://github.com/example-org/fixture-repo/issues"),
+                                   (["issues", "--remote", "upstream"], "https://gitlab.com/example-group/subgroup/fixture-repo/-/issues")):
+                code, output = run([str(BINARY), *hints, "repo", "--preview", *args], env, cwd=root)
+                self.assertEqual(code, 0, "real repository preview failed")
+                plan = json.loads(output)
+                self.assertEqual(plan, dict(action="browse-repository", destination=expected, execution="preview-only"))
+            code, output = run([str(BINARY), *hints, "repo", "--preview", "--remote", "missing"], env, cwd=root)
+            self.assertNotEqual(code, 0, "missing remote must not select another remote")
+            self.assertNotIn(str(root).encode(), output)
+            self.assertEqual({p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}, before)
+            code, _ = run([git, "remote", "set-url", "origin", "https://alice:fixture@github.com/example/fixture"], env, cwd=root)
+            self.assertEqual(code, 0)
+            code, output = run([str(BINARY), *hints, "repo", "--preview"], env, cwd=root)
+            self.assertNotEqual(code, 0)
+            self.assertNotIn(b"alice:fixture", output, "credentials must not appear in diagnostics")
+
     def test_real_editor_preview_preserves_file_position_and_never_writes(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-edit-") as temporary:
             root = Path(temporary).resolve()
@@ -169,7 +203,7 @@ class GoogleCommandTests(unittest.TestCase):
 
     def test_native_shell_forwarding_collision_disable_and_repeat_source(self):
         for shell in SHELLS:
-            for case in ("normal", "function", "alias", "external", "disabled", "missing", "searches", "local", "directory", "editor"):
+            for case in ("normal", "function", "alias", "external", "disabled", "missing", "searches", "local", "directory", "editor", "repository"):
                 with self.subTest(shell=shell, case=case), tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="google-shell-") as temporary:
                     env = self.environment(temporary)
                     ps = shell in ("powershell", "pwsh")
@@ -183,6 +217,13 @@ class GoogleCommandTests(unittest.TestCase):
                         (Path(temporary) / "folder & Unicode-é").mkdir()
                     if case == "editor":
                         (Path(temporary) / "source & Unicode-é.rs").write_text("fixture\n")
+                    if case == "repository":
+                        git = shutil.which("git")
+                        self.assertIsNotNone(git, "installed Git is required for the native repository scenario")
+                        code, _ = run([git, "-c", "init.templateDir=", "init", "--quiet", temporary], env, cwd=Path(temporary))
+                        self.assertEqual(code, 0)
+                        code, _ = run([git, "remote", "add", "origin", "git@github.com:example-org/fixture-repo.git"], env, cwd=Path(temporary))
+                        self.assertEqual(code, 0)
                     if case == "external":
                         # Fixed independent executable sentinel proves the wrapper
                         # does not hijack an existing command on PATH.
@@ -193,7 +234,7 @@ class GoogleCommandTests(unittest.TestCase):
                     fixture = str(ROOT / f"tests/fixtures/google-command/query.{suffix}")
                     arguments = [shutil.which(shell)]
                     arguments += ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", fixture] if ps else (["--noprofile", "--norc", fixture] if shell == "bash" else ["-f", fixture] if shell == "zsh" else ["--no-config", fixture])
-                    code, output = run(arguments, env, cwd=Path(temporary) if case in ("local", "directory", "editor") else ROOT)
+                    code, output = run(arguments, env, cwd=Path(temporary) if case in ("local", "directory", "editor", "repository") else ROOT)
                     self.assertEqual(code, 0, "native amx scenario failed")
                     marker = b"AMX_OUTPUT_BEGIN"
                     self.assertIn(marker, output, "native fixture did not reach its assertion boundary")
@@ -224,6 +265,8 @@ class GoogleCommandTests(unittest.TestCase):
                             destination = "/" + destination.replace("\\", "/")
                         destination = "vscode://file" + quote(destination, safe="/:&") + ":42:7"
                         expected = json.dumps(dict(action="edit-file", editor="vscode", destination=destination, execution="preview-only"), ensure_ascii=False, sort_keys=True, separators=(",", ":")).encode()
+                    if case == "repository":
+                        expected = b'{"action":"browse-repository","destination":"https://github.com/example-org/fixture-repo/issues","execution":"preview-only"}'
                     if shell == "zsh":
                         # Zsh's installed preexec hook announces the command even
                         # in this source fixture. Check its exact frame rather

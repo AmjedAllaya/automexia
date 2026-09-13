@@ -14,7 +14,7 @@ import subprocess
 import sys
 import time
 
-PROGRAMS = {"rg", "tldr", "amx-directory", "amx-file"}
+PROGRAMS = {"rg", "tldr", "git", "amx-directory", "amx-file"}
 MAX_REQUEST_BYTES = 16384
 MAX_ARGUMENTS = 256
 
@@ -60,6 +60,8 @@ def validate_request(raw):
             raise ValueError("argument rejected")
     if request["program"] in {"amx-directory", "amx-file"} and (len(args) != 1 or not args[0]):
         raise ValueError("path request rejected")
+    if request["program"] == "git" and (len(args) != 5 or args[:4] != ["--no-pager", "remote", "get-url", "--"]):
+        raise ValueError("read-only Git request required")
     if type(request["timeout_seconds"]) is not int or not 1 <= request["timeout_seconds"] <= 60:
         raise ValueError("deadline rejected")
     return request
@@ -80,7 +82,7 @@ def supervise(request):
     else:
         program = resolve_tool(request["program"])
         if not program:
-            sys.stderr.write("amx: required Linux tool is missing; install ripgrep (rg) or tealdeer (tldr) explicitly. Nothing was installed.\n")
+            sys.stderr.write("amx: required Linux tool is missing; install the requested Git, ripgrep (rg) or tealdeer (tldr) client explicitly. Nothing was installed.\n")
             return 127
         arguments = [program, *request["arguments"]]
     selector = selectors.DefaultSelector()

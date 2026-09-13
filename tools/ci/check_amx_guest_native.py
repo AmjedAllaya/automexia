@@ -201,6 +201,20 @@ class GuestNativeTests(unittest.TestCase):
             self.assertNotEqual(code, 0)
         self.assertEqual(target.read_text(), "fixture\n")
 
+    def test_repository_navigation_reads_the_guest_repository_not_host_metadata(self):
+        git = shutil.which("git")
+        self.assertIsNotNone(git, "Git is required for guest repository validation")
+        for args in (["-c", "init.templateDir=", "init", "--quiet"],
+                     ["remote", "add", "origin", "git@gitlab.com:example-group/nested/fixture-repo.git"]):
+            result = subprocess.run([git, *args], cwd=self.root, env=self.environment, capture_output=True, timeout=10)
+            self.assertEqual(result.returncode, 0, "guest Git fixture setup failed")
+        before = {p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}
+        code, output, errors = self.invoke(["repo", "issues", "--preview"])
+        self.assertEqual(code, 0, "guest repository lookup failed")
+        self.assertEqual(errors, b"")
+        self.assertEqual(json.loads(output), dict(action="browse-repository", destination="https://gitlab.com/example-group/nested/fixture-repo/-/issues", execution="preview-only"))
+        self.assertEqual({p.relative_to(self.root): p.read_bytes() for p in self.root.rglob("*") if p.is_file()}, before)
+
     def test_explain_uses_offline_exact_client_argv_and_never_executes_examples(self):
         self.client("tldr")
         before = set(self.root.rglob("*"))

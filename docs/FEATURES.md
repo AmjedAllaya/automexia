@@ -21,6 +21,7 @@ unlisted product capability is available.
 | Explicit local tools | `amx find` uses installed ripgrep; `amx explain` displays offline tealdeer examples, with bounded execution and argument previews | [Local tools](user-guide/local-tools.md) |
 | Directory opening | `amx open` hands an existing directory to the desktop file manager, with a non-launching destination preview | [Open a directory](user-guide/open-directory.md) |
 | File editing | `amx edit` requests VS Code or Insiders at a file/line/column, with user preferences, disable and no-launch preview | [Edit a file](user-guide/edit-file.md) |
+| Repository navigation | `amx repo` opens GitHub.com/GitLab.com repository or issue pages from local Git metadata, with offline preview | [Open a repository](user-guide/open-repository.md) |
 | Local and inline images | Bounded local raster preview plus Sixel, Kitty, and iTerm2 protocol images | [Image previews](IMAGE-PREVIEWS.md) |
 | OpenSSH interoperability | Ordinary system OpenSSH use and explicit, reviewed local inventory behavior described in the public guide | [Remote connections](guide/remote-connections.md), [SSH inventory](SSH-INVENTORY.md) |
 | Accessibility | Keyboard-only operation, focus models, high-contrast support, reduced motion, and renderer-neutral accessibility semantics | [Accessibility](ACCESSIBILITY.md) |

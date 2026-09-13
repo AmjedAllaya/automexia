@@ -83,6 +83,8 @@ pub enum CliCommand {
     Open(OpenCommand),
     /// Open an existing file in the configured desktop editor (default: VS Code).
     Edit(EditCommand),
+    /// Open the current repository or its issues using local Git metadata.
+    Repo(RepoCommand),
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
     /// Search and manage typed Quick Actions without opening a window.
@@ -135,6 +137,33 @@ pub struct EditCommand {
     /// Print the exact destination without launching the editor or writing settings.
     #[clap(long)]
     pub preview: bool,
+}
+
+#[derive(Args)]
+pub struct RepoCommand {
+    #[clap(value_enum, default_value = "root")]
+    pub page: RepoPage,
+    /// Read this configured fetch remote; no fallback to another remote.
+    #[clap(long, default_value = "origin")]
+    pub remote: String,
+    /// Resolve and print the destination without browser, network or authentication.
+    #[clap(long)]
+    pub preview: bool,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, ValueEnum)]
+pub enum RepoPage {
+    Root,
+    Issues,
+}
+
+impl std::fmt::Debug for RepoCommand {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RepoCommand")
+            .field("page", &self.page)
+            .field("preview", &self.preview)
+            .finish_non_exhaustive()
+    }
 }
 
 impl std::fmt::Debug for EditCommand {

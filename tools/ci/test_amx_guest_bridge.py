@@ -19,6 +19,15 @@ finally:
 
 
 class GuestBridgeTests(unittest.TestCase):
+    def test_git_bridge_allows_only_literal_read_only_remote_lookup(self):
+        request = dict(version=1, program="git", arguments=["--no-pager", "remote", "get-url", "--", "origin"], timeout_seconds=10)
+        self.assertEqual(BRIDGE.validate_request(json.dumps(request)), request)
+        for arguments in (["fetch"], ["push"], ["config", "--global", "fixture", "value"],
+                          ["--no-pager", "remote", "get-url", "origin"],
+                          ["--no-pager", "remote", "get-url", "--", "origin", "extra"]):
+            with self.assertRaises(ValueError):
+                BRIDGE.validate_request(json.dumps(dict(request, arguments=arguments)))
+
     def test_directory_probe_accepts_one_literal_path_not_source_or_extra_arguments(self):
         request = dict(version=1, program="amx-directory", arguments=["folder & café"], timeout_seconds=10)
         for program in ("amx-directory", "amx-file"):

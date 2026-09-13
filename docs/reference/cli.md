@@ -40,6 +40,13 @@ strict user-root `amx.toml` preferences can select or disable editing. See
 [editor behavior and limits](../user-guide/edit-file.md). The same command is
 available as `amx edit` in integrated shells.
 
+## Repository navigation
+
+`automexia repo [root|issues] [--remote NAME] [--preview]` reads a local configured
+Git remote and opens its GitHub.com/GitLab.com page. Origin is the default;
+`--preview` is offline and does not open a browser. See [repository navigation](../user-guide/open-repository.md)
+for remote syntax, limits and WSL behavior. Integrated shells use `amx repo`.
+
 ## Google search
 
 `automexia search <source> <terms>` supports `google`, `github` (repositories),

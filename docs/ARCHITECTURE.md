@@ -121,6 +121,11 @@ policy, strict user-root editor preference and fixed editor-URI authority remain
 application-owned. It does not change terminal settings-editor behavior or enable
 generic Quick Action execution. See [ADR 0066](adr/0066-explicit-editor-file-handoff.md).
 
+`amx repo` uses installed Git for one bounded read-only remote lookup, validates
+the host/path policy locally, and uses the existing browser adapter. Previews
+perform no repository-existence API or authentication. See
+[ADR 0067](adr/0067-local-repository-browser-navigation.md).
+
 Current capability-free shared contracts are owned by
 `automexia-connectivity` and `automexia-command-productivity` where required
 by existing source consumers. These package names are maintenance facts, not

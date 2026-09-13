@@ -31,6 +31,7 @@ pub(crate) mod private_fs;
 #[doc(hidden)]
 pub mod prompt_discovery;
 pub mod quick_actions;
+pub mod repository_open;
 pub mod runtime;
 #[doc(hidden)]
 pub mod semantic_surfaces;
