@@ -24,6 +24,9 @@ Ripgrep's ignore-file, hidden-file and binary defaults remain in effect. Common
 credential filenames and private configuration directories are also excluded;
 symlinks are not followed. Do not treat these exclusions as a complete secret
 scanner. There is no background index, search history or search-result cache.
+Text matches are withheld until the result stream is complete. If ripgrep detects
+binary data later in a file, earlier matches from that file are not displayed.
+Binary detection is heuristic, not a complete file-type or privacy guarantee.
 
 Results preserve relative paths; text results include line numbers. Control and
 bidirectional-formatting characters are shown as escapes. Newlines inside a
@@ -59,8 +62,9 @@ the client. Explicit previews and results can contain your query or file data;
 do not share them without review. Automexia errors do not echo client stderr or
 session paths.
 
-Press Ctrl+C to cancel. Local commands have a 15-second overall deadline and
-bounded process cleanup. Windows-backed WSL sessions use the pane's Linux
+Press Ctrl+C to cancel. Each client invocation has a 15-second deadline and
+bounded process cleanup. `explain` uses two such calls: a version check followed
+by the offline lookup. Windows-backed WSL sessions use the pane's Linux
 directory, tools and HOME, with a guest deadline of 12 seconds. Install Python 3
 and the requested client **inside that distribution**. Python runs only on the
 explicit command path, in isolated mode. Native Linux/macOS do not need this

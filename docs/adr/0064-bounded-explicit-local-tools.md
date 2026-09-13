@@ -24,7 +24,7 @@ shared: product diagnostics and untrusted output require different treatment.
 
 The app resolves installed executables from absolute PATH entries, supplies
 literal argument arrays and never evaluates shell text. Capture has separate
-stdout/stderr ceilings of 4 MiB/64 KiB, a 15-second command deadline, bounded
+stdout/stderr ceilings of 4 MiB/64 KiB, a 15-second per-client deadline, bounded
 nonblocking pipe service and scoped cancellation. Native cleanup has a separate
 two-second deadline. Failed or unconfirmed cleanup is an error, not success.
 
@@ -82,10 +82,23 @@ relative, and escaped against terminal control/bidi injection. Invalid,
 truncated, byte-oriented or excessive results fail with an actionable message.
 This is a privacy filter, not a guarantee that every secret filename is known.
 
+Typed JSON records preserve required-field and duplicate-field validation.
+Buffer at most 1,000 matches across 32,768 file identities; require each begin,
+match and end to agree on identity, followed by the summary, before publication.
+Preserve match order even for interleaved files. An end record with a non-null
+`binary_offset` discards that file's earlier matches: a match can be emitted
+before ripgrep detects binary data. Orphan, duplicate, incomplete or ambiguous
+records fail without publishing partial results. Captured and formatted text
+retain their separate 4 MiB ceilings; discarded matches still consume the budget.
+No extra filesystem scan, process, persistence or terminal hot-path work is added.
+Ripgrep's binary detection remains heuristic; this is not a complete binary scan.
+
 Examples require a tealdeer version probe and `--no-auto-update --raw --color
 never`. The user owns and explicitly prepares its offline cache. Automexia
 does not execute examples. Client-owned cache maintenance is not represented
 as a read-only filesystem or network sandbox.
+The version probe and example lookup are two separately bounded client calls;
+each has the existing capture and cleanup deadline.
 
 ## Evidence and rollback
 
@@ -105,7 +118,13 @@ tealdeer argv is tested with an independent client fixture. A real installed
 tealdeer cache, native Unix Rust process execution and native desktop behavior
 remain separate validation requirements when unavailable.
 
-The parser benchmark verifies result count, ordering and final contents before
+Permanent native tests include early and late NUL files beside valid text, exact
+documented search examples, nested Git fetch-URL rewriting and independent editor
+URI decoding with project/user preference isolation. An independent client records
+exact offline argv and covers unsupported versions, missing cache, invalid UTF-8
+and escaped hostile output without executing examples or requesting updates.
+
+The parser benchmark verifies every output row, ordering and final contents before
 reporting timing; it does not measure filesystem, native process or compositor
 latency. Removing these CLI routes and optional helper code reverts the feature
 without a persistence migration. `AUTOMEXIA_AMX=0` disables the shell helper;
@@ -114,6 +133,7 @@ existing aliases/functions/executables retain ownership.
 ## Primary references
 
 - [ripgrep guide](https://github.com/BurntSushi/ripgrep/blob/master/GUIDE.md)
+- [ripgrep JSON record and binary-offset contract](https://docs.rs/grep-printer/latest/grep_printer/struct.JSON.html)
 - [tealdeer source and CLI](https://github.com/tealdeer-rs/tealdeer)
 - [process-wrap source](https://github.com/watchexec/process-wrap)
 - [signal-hook source](https://github.com/vorner/signal-hook)

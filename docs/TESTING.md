@@ -873,6 +873,11 @@ retaining path casing; unit negatives reject similarly spelled unapproved hosts.
 The guest suite must use guest metadata. The post-build harness runs eleven scenarios
 per available shell. No browser or authentication is needed for these tests;
 parsing benchmarks do not measure Git or desktop latency.
+The permanent post-build harness also checks nested Git discovery with `insteadOf`
+rewriting and a deliberately different push URL; only the fetch destination wins.
+Editor tests decode the URI independently for spaces, Unicode, literal percent,
+hash and apostrophe filenames and prove project preferences cannot override user
+disable. Seven literal documented search examples retain exact offline URL oracles.
 
 On an installed native desktop, manually open a disposable file at a known
 line/column in both supported editions, check permission/UNC prompts, missing
@@ -911,6 +916,10 @@ The tests cover exact guest process identities, EOF/cancellation/deadlines,
 descendant retirement, default ignore/privacy rules and hostile Python import
 paths. Tealdeer argument/cache policy uses an isolated client fixture; a real
 installed tealdeer cache remains a separate native check.
+The independent client fixture also records exact calls for unsupported versions,
+missing cache, invalid UTF-8 and hostile control/bidi output. Failures must not
+publish partial examples, disclose client diagnostics, request updates or execute
+an example. This proves adapter behavior, not a sandbox for an installed client.
 
 The WSL suite also places harmless `python3` canaries in project-relative search
 locations. Dot, empty and relative PATH entries must not execute them before
@@ -927,6 +936,13 @@ pre-cancellation and actual native child cleanup. The ignored child fixture is
 invoked only by its parent tests; run the benchmark by its exact name and require
 one executed test. Its 500-file/500-match parsing workload checks output on each
 iteration and measures parsing, not process, disk, shell or desktop latency.
+Native text search includes a match before a NUL beyond the first read buffer,
+beside an ordinary text file. Checking only a leading NUL missed this regression:
+ripgrep can emit a match before its end record identifies the file as binary.
+Require exact retained text and unchanged fixture files on Windows and WSL.
+Parser tests cover interleaved files, binary-only results, required fields,
+duplicate fields and identities, incomplete lifecycles, invalid binary offsets,
+post-summary records and independent complete-output benchmark assertions.
 Windows console cancellation and WSL supervision do not certify the native Unix
 Rust adapter. Complete that adapter's lifecycle tests on each claimed native OS.
 

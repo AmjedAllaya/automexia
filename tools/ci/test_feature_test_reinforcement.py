@@ -20,6 +20,15 @@ SPEC.loader.exec_module(REINFORCEMENT)
 
 
 class FeatureTestReinforcementTests(unittest.TestCase):
+    def test_search_completion_must_precede_nonbinary_publication(self):
+        REINFORCEMENT._validate_local_tool_sources(self.native_sources)
+        source = self.native_sources["local_tools"]
+        completion = "ended.iter().any(Option::is_none)"
+        publication = "result.push_str(&row)"
+        mutation = source.replace(completion, "ORDER_PLACEHOLDER", 1).replace(publication, completion, 1).replace("ORDER_PLACEHOLDER", publication, 1)
+        with self.assertRaises(REINFORCEMENT.ReinforcementError):
+            REINFORCEMENT._validate_local_tool_sources(dict(self.native_sources, local_tools=mutation))
+
     def test_guest_path_validation_precedes_lookup_and_cannot_be_bypassed(self):
         REINFORCEMENT._validate_local_tool_sources(self.native_sources)
         source = self.native_sources["local_session"]

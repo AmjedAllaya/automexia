@@ -6,7 +6,7 @@ from pathlib import Path
 import shutil
 import tempfile
 import unittest
-from urllib.parse import quote
+from urllib.parse import quote, unquote, urlsplit
 
 import qa_process
 
@@ -29,6 +29,99 @@ def run(command, environment, cwd=ROOT):
 
 
 class GoogleCommandTests(unittest.TestCase):
+    def invoke(self, root, environment, *arguments):
+        hints = []
+        if os.name != "nt" and BINARY.suffix.lower() == ".exe":
+            hints = ["--amx-wsl-distribution", os.environ["WSL_DISTRO_NAME"], "--amx-wsl-cwd", str(root),
+                     "--amx-wsl-path", "/usr/bin:/bin", "--amx-wsl-home", environment["HOME"]]
+        return run([str(BINARY), *hints, *arguments], environment, cwd=root)
+
+    def test_requested_search_examples_have_exact_offline_destinations(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-examples-") as temporary:
+            root = Path(temporary).resolve()
+            env = self.environment(temporary)
+            for args, expected in [
+                (["google", "--print-url", "how", "to", "configure", "kubernetes", "ingress"], b"https://www.google.com/search?q=how+to+configure+kubernetes+ingress"),
+                (["google", "--print-url", "C++ & Rust comparison"], b"https://www.google.com/search?q=C%2B%2B+%26+Rust+comparison"),
+                (["google", "--print-url", "rust", "tutorials"], b"https://www.google.com/search?q=rust+tutorials"),
+                (["search", "github", "--print-url", "rust", "terminal"], b"https://github.com/search?type=repositories&q=rust+terminal"),
+                (["search", "youtube", "--print-url", "kubernetes", "networking"], b"https://www.youtube.com/results?search_query=kubernetes+networking"),
+                (["search", "ddg", "--print-url", "linux", "permissions"], b"https://duckduckgo.com/?q=linux+permissions"),
+                (["docs", "kubernetes", "--print-url", "deployment"], b"https://www.google.com/search?as_sitesearch=kubernetes.io%2Fdocs&q=deployment"),
+            ]:
+                code, output = self.invoke(root, env, *args)
+                self.assertEqual(code, 0)
+                self.assertEqual(output.strip(), expected)
+            self.assertEqual(list(root.rglob("*")), [], "preview created persistent state")
+
+    def test_real_repository_nested_fetch_rewrite_is_read_only(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-fetch-") as temporary:
+            root = Path(temporary).resolve()
+            env = self.environment(temporary)
+            git = shutil.which("git")
+            self.assertIsNotNone(git, "installed Git is required")
+            for args in (["-c", "init.templateDir=", "init", "--quiet"],
+                         ["remote", "add", "origin", "fixture:fixture-repo.git"],
+                         ["config", "url.https://github.com/example-org/.insteadOf", "fixture:"],
+                         ["remote", "set-url", "--push", "origin", "https://gitlab.com/different/fixture.git"]):
+                code, _ = run([git, *args], env, cwd=root)
+                self.assertEqual(code, 0, "isolated Git fixture setup failed")
+            nested = root / "nested"
+            nested.mkdir()
+            before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            code, output = self.invoke(nested, env, "repo", "issues", "--preview")
+            self.assertEqual(code, 0)
+            self.assertEqual(json.loads(output)["destination"], "https://github.com/example-org/fixture-repo/issues")
+            self.assertEqual({p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}, before)
+
+    def test_real_editor_uri_decodes_exactly_and_project_cannot_override_disable(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-editor-identity-") as temporary:
+            root = Path(temporary).resolve()
+            env = self.environment(temporary)
+            for name in ("space & cafe-é.rs", "percent%20%23.rs", "hash#.rs", "apostrophe'file.rs"):
+                target = root / name
+                target.write_bytes(b"fixture\n")
+                code, output = self.invoke(root, env, "edit", name, "--line", "42", "--column", "7", "--preview")
+                self.assertEqual(code, 0)
+                parsed = urlsplit(json.loads(output)["destination"])
+                # Decode independently: reusing production-style quoting in the
+                # oracle would miss double escaping and fragment/file confusion.
+                expected = str(target).replace("\\", "/")
+                if os.name != "nt" and BINARY.suffix.lower() == ".exe":
+                    expected = "//wsl.localhost/" + os.environ["WSL_DISTRO_NAME"] + expected
+                elif os.name == "nt":
+                    expected = "/" + expected
+                self.assertTrue(unquote(parsed.path) == expected + ":42:7", "editor URI changes file identity")
+                self.assertEqual((parsed.scheme, parsed.netloc, parsed.query, parsed.fragment), ("vscode", "file", "", ""))
+                self.assertEqual(target.read_bytes(), b"fixture\n")
+            (root / "amx.toml").write_text("version=1\neditor='disabled'\n")
+            project = root / "project"
+            project.mkdir()
+            (project / "amx.toml").write_text("version=1\neditor='vscode'\n")
+            (project / "file.rs").write_bytes(b"fixture\n")
+            before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            code, output = self.invoke(project, env, "edit", "file.rs", "--editor", "vscode", "--preview")
+            self.assertNotEqual(code, 0, "project settings overrode user disable")
+            self.assertIn(b"disabled", output)
+            self.assertEqual({p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}, before)
+
+    def test_real_text_search_discards_late_binary_matches(self):
+        with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-binary-") as temporary:
+            root = Path(temporary).resolve()
+            (root / ".git").mkdir()
+            (root / "text.txt").write_bytes(b"fixture\nconnection refused\n")
+            (root / "early.dat").write_bytes(b"\0connection refused\n")
+            # A NUL outside the initial read buffer arrives after rg has already
+            # emitted a match. Only its end record retracts that file's results.
+            (root / "late.dat").write_bytes(b"connection refused\n" + b"x\n" * 100000 + b"\0")
+            env = self.environment(temporary)
+            before = {p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}
+            code, output = self.invoke(root, env, "find", "text", "connection refused")
+            self.assertEqual(code, 0, "installed ripgrep must complete the real search")
+            prefix = b".\\" if os.name == "nt" else b"./"
+            self.assertEqual(output, prefix + b"text.txt:2:connection refused\n")
+            self.assertEqual({p.relative_to(root): p.read_bytes() for p in root.rglob("*") if p.is_file()}, before)
+
     def test_real_repository_navigation_is_offline_exact_and_read_only(self):
         with tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="amx-repo-") as temporary:
             root = Path(temporary).resolve()
@@ -186,7 +279,8 @@ class GoogleCommandTests(unittest.TestCase):
                    APPDATA=temporary, XDG_CONFIG_HOME=temporary,
                    AUTOMEXIA_CONFIG_HOME=temporary, USER="alice", USERNAME="alice",
                    HOSTNAME="devbox", TERM_PROGRAM="Automexia", AUTOMEXIA_PLAIN_LS="1",
-                   AUTOMEXIA_CLI=str(BINARY), LC_ALL="C.UTF-8")
+                   AUTOMEXIA_CLI=str(BINARY), LC_ALL="C.UTF-8",
+                   GIT_CONFIG_NOSYSTEM="1", GIT_CONFIG_GLOBAL=os.devnull, GIT_TERMINAL_PROMPT="0")
         if os.name != "nt" and BINARY.suffix.lower() == ".exe":
             # The Windows application must read this isolated test root, not the
             # host user's real preferences. /p translates and /w is guest-to-host.

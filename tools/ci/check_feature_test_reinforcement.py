@@ -689,6 +689,10 @@ LOCAL_TOOL_CONTRACTS = {
 }
 
 LOCAL_TOOL_CONTRACTS["guest_native"] += (
+    "def test_explain_client_failures_and_controls_are_safe_without_downloads(self):",
+    'self.assertEqual(actual, expected, "unsupported client or cache update was requested")',
+    'self.assertEqual(output, b"", "failed client published partial examples")',
+    'self.assertNotIn(b"fixture-client-diagnostic", errors)',
     "def test_relative_guest_path_cannot_select_project_python_before_isolation(self):",
     "def test_absolute_guest_tool_locations_keep_precedence(self):",
     '"project interpreter executed before isolated mode"',
@@ -716,8 +720,30 @@ LOCAL_TOOL_CONTRACTS["repository_open"] += (
     "fn amx_repo_dns_case_is_insensitive_but_repository_case_is_preserved()",
 )
 LOCAL_TOOL_CONTRACTS["google_native"] += (
+    "def test_real_text_search_discards_late_binary_matches(self):",
+    'self.assertEqual(output, prefix + b"text.txt:2:connection refused\\n")',
+    'b"x\\n" * 100000',
+    "def test_requested_search_examples_have_exact_offline_destinations(self):",
+    "def test_real_repository_nested_fetch_rewrite_is_read_only(self):",
+    '"--push", "origin", "https://gitlab.com/different/fixture.git"',
+    "def test_real_editor_uri_decodes_exactly_and_project_cannot_override_disable(self):",
+    'unquote(parsed.path) == expected + ":42:7"',
+    'self.assertNotEqual(code, 0, "project settings overrode user disable")',
     "ssh://git@GitHub.COM/Example-Org/Fixture-Repo.git",
     "ssh://git@GitLab.COM/Example-Group/Subgroup/Fixture-Repo.git",
+)
+LOCAL_TOOL_CONTRACTS["local_tools"] += (
+    'let record: SearchRecord = serde_json::from_slice(row)',
+    'files.len() >= MAX_FILES || files.contains_key(&data.path.text)',
+    'pending.len() >= MAX_RESULTS', 'data.binary_offset.as_u64().is_some()',
+    'ended[index] = Some(!data.binary_offset.is_null());',
+    'ended.iter().any(Option::is_none)', 'if summarized',
+    'if ended[index] == Some(false)', 'if formatted_bytes > 4 * 1024 * 1024',
+)
+LOCAL_TOOL_CONTRACTS["local_tool_tests"] += (
+    "fn amx_local_late_binary_end_retracts_only_that_files_matches()",
+    "fn amx_local_structured_lifecycle_fails_closed_before_publication()",
+    "assert_eq!(result, expected_files)", "assert_eq!(result, expected_matches)",
 )
 LOCAL_TOOL_CONTRACTS["cli_process"] += (
     "self.completion.pin_members()", "self.completion.is_empty()?",
@@ -745,6 +771,8 @@ LOCAL_TOOL_CONTRACTS["cli_completion"] = (
 def _validate_local_tool_sources(sources: dict[str, str]) -> None:
     for owner, fragments in LOCAL_TOOL_CONTRACTS.items():
         _require_fragments(sources[owner], fragments, "local tool " + owner)
+    parser = _source_slice(sources["local_tools"], "fn render_matches(", "fn resolve_tool(", "structured search publication")
+    _require_order(parser, ("ended.iter().any(Option::is_none)", "for (index, row) in pending", "if ended[index] == Some(false)", "result.push_str(&row)"), "complete nonbinary files before publication")
     bootstrap = _source_slice(sources["local_session"], 'let path = guest_tool_path', 'command.arg(request);', 'guest interpreter bootstrap')
     _require_order(bootstrap, (
         'let path = guest_tool_path(self.path.as_deref().unwrap())?;',

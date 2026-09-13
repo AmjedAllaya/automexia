@@ -244,6 +244,38 @@ fn render_files(bytes: &[u8], query: &str) -> io::Result<String> {
     })
 }
 
+#[derive(serde::Deserialize)]
+struct SearchText {
+    text: String,
+}
+
+#[derive(serde::Deserialize)]
+struct SearchFile {
+    path: SearchText,
+}
+
+#[derive(serde::Deserialize)]
+struct SearchMatch {
+    path: SearchText,
+    line_number: u64,
+    lines: SearchText,
+}
+
+#[derive(serde::Deserialize)]
+struct SearchEnd {
+    path: SearchText,
+    binary_offset: serde_json::Value,
+}
+
+#[derive(serde::Deserialize)]
+#[serde(tag = "type", content = "data", rename_all = "lowercase")]
+enum SearchRecord {
+    Begin(SearchFile),
+    Match(SearchMatch),
+    End(SearchEnd),
+    Summary(serde::de::IgnoredAny),
+}
+
 fn render_matches(bytes: &[u8]) -> io::Result<String> {
     if bytes.len() > 4 * 1024 * 1024 {
         return Err(invalid(
@@ -253,46 +285,82 @@ fn render_matches(bytes: &[u8]) -> io::Result<String> {
     if !bytes.is_empty() && bytes.last() != Some(&b'\n') {
         return Err(invalid("incomplete structured search output"));
     }
-    let mut result = String::new();
-    let mut count = 0;
+    let mut files = std::collections::HashMap::new();
+    let mut ended = Vec::new();
+    let mut pending = Vec::new();
+    let mut formatted_bytes = 0;
+    let mut summarized = false;
     for row in bytes.split(|b| *b == b'\n').filter(|row| !row.is_empty()) {
-        let record: serde_json::Value = serde_json::from_slice(row)
-            .map_err(|_| invalid("invalid structured search output"))?;
-        match record.get("type").and_then(|v| v.as_str()) {
-            Some("begin" | "end" | "summary") => continue,
-            Some("match") => (),
-            _ => return Err(invalid("unexpected structured search record")),
+        if summarized {
+            return Err(invalid("search records after summary"));
         }
-        count += 1;
-        if count > MAX_RESULTS {
+        let record: SearchRecord = serde_json::from_slice(row)
+            .map_err(|_| invalid("invalid structured search output"))?;
+        let data = match record {
+            SearchRecord::Begin(data) => {
+                relative_name(&data.path.text)?;
+                if files.len() >= MAX_FILES || files.contains_key(&data.path.text) {
+                    return Err(invalid("duplicate or over-limit search file"));
+                }
+                files.insert(data.path.text, ended.len());
+                ended.push(None);
+                continue;
+            }
+            SearchRecord::End(data) => {
+                let index = *files
+                    .get(&data.path.text)
+                    .ok_or_else(|| invalid("search file ended without beginning"))?;
+                if ended[index].is_some()
+                    || !(data.binary_offset.is_null()
+                        || data.binary_offset.as_u64().is_some())
+                {
+                    return Err(invalid("invalid search file end"));
+                }
+                ended[index] = Some(!data.binary_offset.is_null());
+                continue;
+            }
+            SearchRecord::Summary(_) => {
+                summarized = true;
+                continue;
+            }
+            SearchRecord::Match(data) => data,
+        };
+        if pending.len() >= MAX_RESULTS {
             return Err(invalid("too many text matches; narrow the search"));
         }
-        let data = &record["data"];
-        let path = data["path"]["text"].as_str().ok_or_else(|| {
-            invalid(
-                "non-UTF-8 search path; use ripgrep directly for byte-oriented output",
-            )
-        })?;
+        let path = data.path.text.as_str();
         relative_name(path)?;
-        let line = data["line_number"]
-            .as_u64()
-            .filter(|n| *n > 0)
-            .ok_or_else(|| invalid("invalid match line number"))?;
-        let text = data["lines"]["text"].as_str().ok_or_else(|| {
-            invalid("non-UTF-8 match; use ripgrep directly for byte-oriented output")
-        })?;
-        use std::fmt::Write;
-        let _ = writeln!(
-            result,
-            "{}:{line}:{}",
+        let index = *files
+            .get(path)
+            .ok_or_else(|| invalid("match without search file beginning"))?;
+        if ended[index].is_some() || data.line_number == 0 {
+            return Err(invalid("invalid match lifecycle or line number"));
+        }
+        let line = data.line_number;
+        let text = data.lines.text;
+        let rendered = format!(
+            "{}:{line}:{}\n",
             safe_text(path).replace('\n', "\\n"),
             safe_text(text.trim_end_matches(['\r', '\n'])).replace('\n', "\\n")
         );
-        if result.len() > 4 * 1024 * 1024 {
+        formatted_bytes += rendered.len();
+        if formatted_bytes > 4 * 1024 * 1024 {
             return Err(invalid("formatted search exceeded its byte limit"));
         }
+        pending.push((index, rendered));
     }
-    Ok(if count == 0 {
+    if (!bytes.is_empty() && !summarized) || ended.iter().any(Option::is_none) {
+        return Err(invalid("incomplete structured search output"));
+    }
+    // A match can precede binary detection. Publish only complete text files,
+    // retaining match order even if the client's file records are interleaved.
+    let mut result = String::new();
+    for (index, row) in pending {
+        if ended[index] == Some(false) {
+            result.push_str(&row);
+        }
+    }
+    Ok(if result.is_empty() {
         "No matching text.\n".into()
     } else {
         result

@@ -8,10 +8,23 @@ import sys
 import time
 
 if Path(sys.argv[0]).name == "tldr":
+    mode_file = Path(__file__).with_name("mode")
+    mode = mode_file.read_text() if mode_file.exists() else "normal"
+    if mode != "normal":
+        with Path(__file__).with_name("calls.jsonl").open("a") as calls:
+            calls.write(json.dumps(sys.argv[1:]) + "\n")
     if sys.argv[1:] == ["--version"]:
-        print("tealdeer 1.8.0")
+        print("unsupported-client 1.0" if mode == "unsupported" else "tealdeer 1.8.0")
     elif sys.argv[1:] == ["--no-auto-update", "--raw", "--color", "never", "--", "tar"]:
-        print("# tar\nExample only: tar -tf {{archive.tar}}")
+        if mode == "missing-cache":
+            print("\x1b]52;fixture-client-diagnostic", file=sys.stderr)
+            raise SystemExit(3)
+        if mode == "invalid-text":
+            sys.stdout.buffer.write(b"\xff")
+        elif mode == "controls":
+            print("touch amx-example-must-not-run\n\x1b]52;\u202eexample")
+        else:
+            print("# tar\nExample only: tar -tf {{archive.tar}}")
     else:
         raise SystemExit(8)
 elif sys.argv[1] == "lease":

@@ -603,8 +603,19 @@ Benchmark checked search and documentation URL pairs without opening a browser.
 
 Local-tool reinforcement: exact rg/tldr argv, default ignores plus negative
 privacy rules, bounded JSON/NUL parsing, terminal-control/bidi escaping, no
-automatic install/update and no browser fallback. Require actual child/process
-handle evidence for cancellation, timeout, stream saturation, descendant cleanup
+automatic install/update and no browser fallback. Require real installed-client
+evidence for early and late binary detection: keep a match before a distant NUL
+beside valid text, then require only the valid file's exact results. The parser
+must reject orphan, duplicate, unfinished, invalid-offset and post-summary records,
+including interleaved files, before publication. Count discarded matches against
+the budget. Mutation-test completion-before-publication and binary filtering;
+benchmark every output row, not just count or endpoints. Native offline-client
+fixtures must prove exact argv, unsupported-client refusal, missing-cache and
+invalid-text failure, escaped controls and absence of execution or update calls.
+Require permanent exact documented-search examples, nested Git fetch/insteadOf
+behavior distinct from push URLs, independently decoded editor file identities
+and rejection of project preferences overriding user disable. Require actual
+child/process handle evidence for cancellation, timeout, stream saturation, descendant cleanup
 and guest-lease EOF. Windows cleanup tests must acquire the acknowledged live process
 handle before allowing parent exit or requesting cancellation, and retain it
 through the immediate post-capture assertion. A PID lookup after cleanup can

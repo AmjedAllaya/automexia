@@ -271,6 +271,33 @@ class GuestNativeTests(unittest.TestCase):
         self.assertIn(b"tar -tf {{archive.tar}}", output)
         self.assertEqual(set(self.root.rglob("*")), before)
 
+    def test_explain_client_failures_and_controls_are_safe_without_downloads(self):
+        self.client("tldr")
+        tools = self.root / "clients"
+        mode_file = tools / "mode"
+        calls = tools / "calls.jsonl"
+        for mode in ("unsupported", "missing-cache", "invalid-text", "controls"):
+            with self.subTest(mode=mode):
+                mode_file.write_text(mode)
+                calls.write_text("")
+                before = set(self.root.rglob("*"))
+                code, output, errors = self.invoke(["explain", "tar"])
+                actual = [json.loads(line) for line in calls.read_text().splitlines()]
+                expected = [["--version"]]
+                if mode != "unsupported":
+                    expected.append(["--no-auto-update", "--raw", "--color", "never", "--", "tar"])
+                self.assertEqual(actual, expected, "unsupported client or cache update was requested")
+                if mode == "controls":
+                    self.assertEqual(code, 0)
+                    self.assertEqual(output.decode(), "Offline reference examples — review before using; nothing below is executed.\ntouch amx-example-must-not-run\n\\u{1b}]52;\\u{202e}example\n\n")
+                    self.assertEqual(errors, b"")
+                else:
+                    self.assertNotEqual(code, 0)
+                    self.assertEqual(output, b"", "failed client published partial examples")
+                    self.assertNotIn(b"fixture-client-diagnostic", errors)
+                    self.assertNotIn(str(self.root).encode(), errors)
+                self.assertEqual(set(self.root.rglob("*")), before, "examples executed or created persistent state")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
