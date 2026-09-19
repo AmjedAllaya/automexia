@@ -30,6 +30,287 @@ SPEC.loader.exec_module(CACHE)
 
 
 class DevelopmentCacheTests(unittest.TestCase):
+    @contextlib.contextmanager
+    def collection_fixture(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary) / "checkout"
+            root.mkdir()
+            cache = Path(temporary) / "cache"
+            obsolete = cache / "toolsets" / "obsolete"
+            obsolete.mkdir(parents=True)
+            (obsolete / "artifact").write_bytes(b"fixture")
+            with (
+                mock.patch.object(CACHE, "cache_root", return_value=cache),
+                mock.patch.object(CACHE, "worktree_paths", return_value=[]),
+                mock.patch.object(CACHE, "_current_toolset_id", return_value="current"),
+                contextlib.redirect_stdout(io.StringIO()),
+            ):
+                yield root, cache, obsolete
+
+    def collect(self, root: Path, *, apply: bool = True) -> int:
+        return CACHE.run_gc(root=root, scope="automatic", grace_hours=0, apply=apply)
+
+    def test_collection_excludes_new_lease_until_deletion_finishes(self) -> None:
+        with self.collection_fixture() as (root, _cache, obsolete):
+            remove = CACHE.remove_candidate
+
+            def checked_remove(candidate, *, root):
+                with self.assertRaises(CACHE.CacheError):
+                    with CACHE.cache_lease("late-writer", root=root):
+                        self.fail("a writer entered while collection could delete its cache")
+                remove(candidate, root=root)
+
+            with mock.patch.object(CACHE, "remove_candidate", side_effect=checked_remove) as deletion:
+                self.assertEqual(self.collect(root), len(b"fixture"))
+            self.assertEqual(deletion.call_count, 1)
+            self.assertFalse(obsolete.exists())
+            with CACHE.cache_lease("late-writer", root=root):
+                pass
+
+    def test_collection_retains_idle_named_lease_until_deletion_finishes(self) -> None:
+        with self.collection_fixture() as (root, cache, obsolete):
+            with CACHE.cache_lease("existing-writer", root=root):
+                pass
+            remove = CACHE.remove_candidate
+
+            def checked_remove(candidate, *, root):
+                path = cache / CACHE.LEASE_DIRECTORY_NAME / "existing-writer.lock"
+                with path.open("r+b") as contender:
+                    with self.assertRaises(OSError):
+                        CACHE._lock(contender, nonblocking=True)
+                remove(candidate, root=root)
+
+            with mock.patch.object(CACHE, "remove_candidate", side_effect=checked_remove):
+                self.collect(root)
+            self.assertFalse(obsolete.exists())
+
+    def test_collection_preserves_active_leases_and_distinct_writers(self) -> None:
+        with self.collection_fixture() as (root, _cache, obsolete):
+            with CACHE.cache_lease("first", root=root), CACHE.cache_lease("second", root=root):
+                self.assertEqual(self.collect(root), 0)
+                self.assertEqual((obsolete / "artifact").read_bytes(), b"fixture")
+            self.assertEqual(self.collect(root), len(b"fixture"))
+
+    def test_collection_rejects_another_collector_and_releases_after_failure(self) -> None:
+        with self.collection_fixture() as (root, _cache, obsolete):
+            attempts = []
+
+            def failed_remove(candidate, *, root):
+                attempts.append(candidate)
+                self.assertEqual(len(attempts), 1, "a second collector reached deletion")
+                with self.assertRaises(CACHE.CacheError):
+                    self.collect(root)
+                raise CACHE.CacheError("fixture removal failure")
+
+            with mock.patch.object(CACHE, "remove_candidate", side_effect=failed_remove):
+                with self.assertRaisesRegex(CACHE.CacheError, "fixture removal failure"):
+                    self.collect(root)
+            self.assertTrue(obsolete.exists())
+            with CACHE.cache_lease("after-error", root=root):
+                pass
+            self.assertEqual(self.collect(root), len(b"fixture"))
+
+    def test_collection_native_subprocess_cannot_enter_during_deletion(self) -> None:
+        with self.collection_fixture() as (root, cache, obsolete):
+            remove = CACHE.remove_candidate
+            probe = "\n".join([
+                "import importlib.util, pathlib, sys",
+                "spec = importlib.util.spec_from_file_location('cache_probe', sys.argv[1])",
+                "owner = importlib.util.module_from_spec(spec)",
+                "sys.modules[spec.name] = owner",
+                "spec.loader.exec_module(owner)",
+                "owner.cache_root = lambda **kwargs: pathlib.Path(sys.argv[2])",
+                "try:",
+                "    with owner.cache_lease('child-probe', root=pathlib.Path(sys.argv[3])):",
+                "        pass",
+                "except owner.CacheError:",
+                "    sys.exit(42)",
+            ])
+
+            def checked_remove(candidate, *, root):
+                result = subprocess.run(
+                    [sys.executable, "-B", "-c", probe, str(ROOT / "tools/ci/dev_cache.py"), str(cache), str(root)],
+                    stdout=subprocess.DEVNULL,
+                    stderr=subprocess.DEVNULL,
+                    timeout=10,
+                    check=False,
+                )
+                self.assertEqual(result.returncode, 42)
+                remove(candidate, root=root)
+
+            with mock.patch.object(CACHE, "remove_candidate", side_effect=checked_remove):
+                self.collect(root)
+            self.assertFalse(obsolete.exists())
+
+    def test_collection_dry_run_creates_no_lease_files(self) -> None:
+        with self.collection_fixture() as (root, cache, obsolete):
+            before = sorted(path.relative_to(cache) for path in cache.rglob("*"))
+            self.assertEqual(self.collect(root, apply=False), len(b"fixture"))
+            self.assertEqual(sorted(path.relative_to(cache) for path in cache.rglob("*")), before)
+            self.assertEqual((obsolete / "artifact").read_bytes(), b"fixture")
+
+    def test_tree_scan_stops_before_materializing_file_and_directory_floods(self) -> None:
+        class CountedScan:
+            def __init__(self, entries):
+                self.entries = iter(entries)
+                self.visits = 0
+                self.closed = False
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *args):
+                self.closed = True
+
+            def __iter__(self):
+                return self
+
+            def __next__(self):
+                entry = next(self.entries)
+                self.visits += 1
+                return entry
+
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for directories in (False, True):
+                with self.subTest(directories=directories):
+                    fixture = root / ("directories" if directories else "files")
+                    fixture.mkdir()
+                    if directories:
+                        (fixture / "entry").mkdir()
+                    else:
+                        (fixture / "entry").write_bytes(b"x")
+                    with os.scandir(fixture) as entries:
+                        entry = next(entries)
+                    scan = CountedScan([entry] * 100)
+                    with (
+                        mock.patch.object(CACHE.os, "scandir", return_value=scan),
+                        mock.patch.object(CACHE, "MAX_FILES", 2),
+                        mock.patch.object(CACHE, "MAX_DIRECTORIES", 2),
+                    ):
+                        with self.assertRaises(CACHE.CacheError):
+                            CACHE.measure_tree(fixture)
+                    self.assertEqual(scan.visits, 2 if directories else 3)
+                    self.assertTrue(scan.closed)
+
+    def test_collection_scan_stops_at_entry_limit(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            for index in range(10):
+                (root / str(index)).mkdir()
+            original_scan = os.scandir
+            original_iterdir = Path.iterdir
+            visits = []
+
+            def counted(entries):
+                for entry in entries:
+                    visits.append(1)
+                    yield entry
+
+            @contextlib.contextmanager
+            def scan(path):
+                with original_scan(path) as entries:
+                    yield counted(entries)
+
+            with (
+                mock.patch.object(CACHE.os, "scandir", side_effect=scan),
+                mock.patch.object(Path, "iterdir", side_effect=lambda: counted(original_iterdir(root))),
+                mock.patch.object(CACHE, "MAX_DIRECTORIES", 2),
+            ):
+                with self.assertRaisesRegex(CACHE.CacheError, "ceiling"):
+                    CACHE._direct_directories(root)
+            self.assertEqual(len(visits), 3)
+
+    def test_collection_inventory_error_releases_admission_and_named_locks(self) -> None:
+        with self.collection_fixture() as (root, _cache, obsolete):
+            with CACHE.cache_lease("existing", root=root):
+                pass
+            with mock.patch.object(CACHE, "inventory", side_effect=CACHE.CacheError("fixture inventory failure")):
+                with self.assertRaisesRegex(CACHE.CacheError, "fixture inventory failure"):
+                    self.collect(root)
+            self.assertEqual((obsolete / "artifact").read_bytes(), b"fixture")
+            with CACHE.cache_lease("existing", root=root), CACHE.cache_lease("new", root=root):
+                pass
+            self.assertEqual(self.collect(root), len(b"fixture"))
+
+    def test_lease_scan_bounds_handles_and_releases_on_overflow(self) -> None:
+        with self.collection_fixture() as (root, cache, obsolete):
+            for name in ("first", "second", "third"):
+                with CACHE.cache_lease(name, root=root):
+                    pass
+            with mock.patch.object(CACHE, "MAX_LEASES", 2):
+                with self.assertRaisesRegex(CACHE.CacheError, "ceiling"):
+                    self.collect(root)
+            self.assertEqual((obsolete / "artifact").read_bytes(), b"fixture")
+            for name in ("first", "second", "third"):
+                path = cache / CACHE.LEASE_DIRECTORY_NAME / f"{name}.lock"
+                with path.open("r+b") as handle:
+                    CACHE._lock(handle, nonblocking=True)
+                    CACHE._unlock(handle)
+            with CACHE.cache_lease("after-overflow", root=root):
+                pass
+            self.assertEqual(self.collect(root), len(b"fixture"))
+
+    def test_lease_scan_bounds_ignored_entries_and_closes_iterator(self) -> None:
+        with self.collection_fixture() as (root, cache, _obsolete):
+            directory = cache / CACHE.LEASE_DIRECTORY_NAME
+            directory.mkdir()
+            for index in range(10):
+                (directory / f"ignored-{index}").write_bytes(b"")
+            original_scan = os.scandir
+            visits = []
+            closed = []
+
+            @contextlib.contextmanager
+            def scan(path):
+                with original_scan(path) as entries:
+                    def counted():
+                        for entry in entries:
+                            visits.append(1)
+                            yield entry
+                    try:
+                        yield counted()
+                    finally:
+                        closed.append(True)
+
+            with (
+                mock.patch.object(CACHE.os, "scandir", side_effect=scan),
+                mock.patch.object(CACHE, "MAX_DIRECTORIES", 2),
+            ):
+                with self.assertRaisesRegex(CACHE.CacheError, "ceiling"):
+                    CACHE.shared_cache_is_leased(root=root)
+            self.assertEqual(len(visits), 3)
+            self.assertEqual(closed, [True])
+
+    def test_streaming_tree_accepts_exact_limits_and_rejects_next_entry(self) -> None:
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            (root / "child").mkdir()
+            (root / "child" / "first").write_bytes(b"one")
+            with (
+                mock.patch.object(CACHE, "MAX_FILES", 1),
+                mock.patch.object(CACHE, "MAX_DIRECTORIES", 2),
+            ):
+                measured = CACHE.measure_tree(root)
+                self.assertEqual((measured.bytes, measured.files, measured.directories), (3, 1, 2))
+                (root / "second").write_bytes(b"two")
+                with self.assertRaisesRegex(CACHE.CacheError, "file count"):
+                    CACHE.measure_tree(root)
+            (root / "child" / "nested").mkdir()
+            with mock.patch.object(CACHE, "MAX_DIRECTORIES", 2):
+                with self.assertRaisesRegex(CACHE.CacheError, "directory count"):
+                    CACHE.measure_tree(root)
+
+    def test_lease_names_are_bounded_before_creating_files(self) -> None:
+        with self.collection_fixture() as (root, cache, _obsolete):
+            for name in ("", "UPPER", "../outside", "a" * 65):
+                with self.subTest(name=name), self.assertRaisesRegex(CACHE.CacheError, "identifier"):
+                    with CACHE.cache_lease(name, root=root):
+                        self.fail("invalid lease was admitted")
+            self.assertFalse((cache / CACHE.LEASE_DIRECTORY_NAME).exists())
+            with CACHE.cache_lease("a" * 64, root=root):
+                pass
+
     def candidate(
         self,
         path: Path,

@@ -75,6 +75,22 @@ targets, live process markers, active leases, required toolsets, and entries
 inside the grace period. Interrupted verification directories carry a process
 marker so a live owner is protected and a dead owner can later be reclaimed.
 
+Traversal enforces limits while reading entries. Queued directories count
+toward the tree ceiling; ordinary files count toward collection entry ceilings.
+Lease inspection accepts at most 128 named leases, with identifiers limited to
+64 lowercase letters, digits or hyphens.
+
+Applied cleanup retains admission and all acquired idle native leases through
+fresh eligibility checks and deletion. Active named leases protect shared
+candidates; concurrent collectors and new admissions fail closed with a
+retry-later error. Distinct admitted users can run concurrently. Dry runs reserve
+nothing. Inventory, deletion and traversal errors release the locks.
+
+All users of a shared cache must use the admission-aware lease owner. Retained
+native locks exclude older users of existing named lease files, but an older
+writer introducing a previously unseen name does not honor admission. Stop such
+older clients before applying cleanup; dry-run inspection remains available.
+
 ## Build profiles
 
 Normal development and tests retain line-table debug information while

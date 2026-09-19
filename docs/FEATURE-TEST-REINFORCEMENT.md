@@ -867,6 +867,13 @@ success/failure cleanup, and the dormant pre-push hook. Compare the generated
 tree and hashes independently. Exercise native process ownership on each
 claimed platform and keep unexecuted hosts external.
 
+Cache regressions also require new-name admission during deletion, retained
+named locks, concurrent collectors, native subprocess exclusion, iterator
+consumption and closure, queued-directory limits, lease-handle overflow, and
+lock release after inventory or deletion failure. An independent temporary
+storage tree checks forbidden deletion and unchanged bytes. Older clients that
+introduce unseen lease names remain outside the admission protocol.
+
 The summarized workspace-test owner must also keep its 30-minute deadline,
 16 MiB stdout ceiling, live compiler diagnostics, Unix process group or Windows
 Job Object, and real success/deadline/overflow child-process tests. Mutation

@@ -599,6 +599,13 @@ dead process owners, current and dirty worktrees, grace periods, dry-run versus
 apply, failure cleanup, and storage de-duplication. The independent oracles are
 the generated storage tree and file digests, not cache self-reporting.
 
+Cache regressions also require new-name admission during deletion, retained
+named locks, concurrent collectors, native subprocess exclusion, iterator
+consumption and closure, queued-directory limits, lease-handle overflow, and
+lock release after inventory or deletion failure. An independent temporary
+storage tree checks forbidden deletion and unchanged bytes. Older clients that
+introduce unseen lease names remain outside the admission protocol.
+
 Run the focused owners first:
 
 ```text

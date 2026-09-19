@@ -24,6 +24,9 @@ CACHE_DIRECTORY_NAME = ".automexia-cache"
 LEGACY_TOOL_DIRECTORY_NAME = ".automexia-tools"
 VERIFICATION_TARGET_PREFIX = "automexia-verification-v1-"
 LEASE_DIRECTORY_NAME = ".automexia-leases"
+ADMISSION_LOCK_NAME = ".gc-admission"
+MAX_LEASES = 128
+MAX_LEASE_NAME_LENGTH = 64
 ACTIVE_MARKER_NAME = ".automexia-active"
 TOOLSET_SCHEMA = 1
 DEFAULT_GRACE_HOURS = 72
@@ -252,7 +255,10 @@ def measure_tree(path: Path) -> Measurement:
         raise CacheError("refusing to traverse a linked or reparse-point cache")
     total = 0
     files = 0
-    directories = 0
+    # Count discovery, not visitation: pending paths consume the same budget.
+    directories = 1
+    if directories > MAX_DIRECTORIES:
+        raise CacheError("cache directory count exceeds its safety ceiling")
     try:
         newest = path.stat().st_mtime
     except OSError as error:
@@ -260,33 +266,30 @@ def measure_tree(path: Path) -> Measurement:
     pending = [path]
     while pending:
         directory = pending.pop()
-        directories += 1
-        if directories > MAX_DIRECTORIES:
-            raise CacheError("cache directory count exceeds its safety ceiling")
         try:
-            entries = list(os.scandir(directory))
+            with os.scandir(directory) as entries:
+                for entry in entries:
+                    metadata = entry.stat(follow_symlinks=False)
+                    newest = max(newest, metadata.st_mtime)
+                    if stat.S_ISLNK(metadata.st_mode) or (
+                        getattr(metadata, "st_file_attributes", 0)
+                        & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                    ):
+                        raise CacheError("cache trees cannot contain links or reparse points")
+                    if stat.S_ISDIR(metadata.st_mode):
+                        directories += 1
+                        if directories > MAX_DIRECTORIES:
+                            raise CacheError("cache directory count exceeds its safety ceiling")
+                        pending.append(Path(entry.path))
+                    elif stat.S_ISREG(metadata.st_mode):
+                        files += 1
+                        if files > MAX_FILES:
+                            raise CacheError("cache file count exceeds its safety ceiling")
+                        total += metadata.st_size
+                    else:
+                        raise CacheError("cache trees can contain only files and directories")
         except OSError as error:
-            raise CacheError("could not read a cache directory") from error
-        for entry in entries:
-            try:
-                metadata = entry.stat(follow_symlinks=False)
-            except OSError as error:
-                raise CacheError("could not inspect a cache entry") from error
-            newest = max(newest, metadata.st_mtime)
-            if entry.is_symlink() or (
-                getattr(metadata, "st_file_attributes", 0)
-                & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
-            ):
-                raise CacheError("cache trees cannot contain links or reparse points")
-            if entry.is_dir(follow_symlinks=False):
-                pending.append(Path(entry.path))
-            elif entry.is_file(follow_symlinks=False):
-                files += 1
-                if files > MAX_FILES:
-                    raise CacheError("cache file count exceeds its safety ceiling")
-                total += metadata.st_size
-            else:
-                raise CacheError("cache trees can contain only files and directories")
+            raise CacheError("could not read or inspect a cache directory") from error
     return Measurement(total, newest, files, directories)
 
 
@@ -295,24 +298,28 @@ def _direct_directories(path: Path, *, allow_ordinary_files: bool = False) -> li
         return []
     if _is_reparse_or_link(path):
         raise CacheError("cache collection root cannot be a link or reparse point")
+    directories = []
     try:
-        entries = list(path.iterdir())
+        with os.scandir(path) as entries:
+            for count, entry in enumerate(entries, start=1):
+                if count > MAX_DIRECTORIES:
+                    raise CacheError("cache collection exceeds its directory ceiling")
+                metadata = entry.stat(follow_symlinks=False)
+                if stat.S_ISLNK(metadata.st_mode) or (
+                    getattr(metadata, "st_file_attributes", 0)
+                    & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                ):
+                    raise CacheError("cache collections cannot contain links or reparse points")
+                if stat.S_ISDIR(metadata.st_mode):
+                    directories.append(Path(entry.path))
+                elif stat.S_ISREG(metadata.st_mode) and allow_ordinary_files:
+                    continue
+                elif stat.S_ISREG(metadata.st_mode):
+                    raise CacheError("cache collections can contain only directories")
+                else:
+                    raise CacheError("cache collections contain an unsupported entry")
     except OSError as error:
         raise CacheError("could not enumerate a cache collection") from error
-    if len(entries) > MAX_DIRECTORIES:
-        raise CacheError("cache collection exceeds its directory ceiling")
-    directories = []
-    for entry in entries:
-        if _is_reparse_or_link(entry):
-            raise CacheError("cache collections cannot contain links or reparse points")
-        if entry.is_dir():
-            directories.append(entry)
-        elif entry.is_file() and allow_ordinary_files:
-            continue
-        elif entry.is_file():
-            raise CacheError("cache collections can contain only directories")
-        else:
-            raise CacheError("cache collections contain an unsupported entry")
     return sorted(directories, key=lambda item: item.name)
 
 
@@ -343,52 +350,118 @@ def _unlock(handle: object) -> None:
 
 
 @contextlib.contextmanager
+def _locked_lease_file(
+    path: Path, *, create: bool, nonblocking: bool
+) -> Iterator[None]:
+    if _is_reparse_or_link(path):
+        raise CacheError("cache leases must be ordinary files")
+    with path.open("a+b" if create else "r+b") as handle:
+        metadata = os.fstat(handle.fileno())
+        if (
+            not stat.S_ISREG(metadata.st_mode)
+            or _is_reparse_or_link(path)
+            or not os.path.samestat(metadata, path.stat())
+        ):
+            raise CacheError("cache lease identity changed or is not an ordinary file")
+        # Both adapters can lock an empty file; no initialization write may race
+        # a lock already held on the first byte.
+        _lock(handle, nonblocking=nonblocking)
+        try:
+            yield
+        finally:
+            _unlock(handle)
+
+
+@contextlib.contextmanager
+def _cache_admission(*, root: Path) -> Iterator[None]:
+    directory = leases_root(root=root)
+    ensure_cache_directory(directory)
+    try:
+        with _locked_lease_file(
+            directory / ADMISSION_LOCK_NAME, create=True, nonblocking=True
+        ):
+            yield
+    except OSError as error:
+        raise CacheError("development-cache admission is busy or unavailable; retry later") from error
+
+
+@contextlib.contextmanager
 def cache_lease(name: str, *, root: Path = ROOT) -> Iterator[None]:
-    if not name or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in name):
+    if (
+        not name
+        or len(name) > MAX_LEASE_NAME_LENGTH
+        or any(character not in "abcdefghijklmnopqrstuvwxyz0123456789-" for character in name)
+    ):
         raise CacheError("cache lease name must be a bounded lowercase identifier")
     directory = leases_root(root=root)
     ensure_cache_directory(directory)
-    path = directory / f"{name}.lock"
     try:
-        with path.open("a+b") as handle:
-            if path.stat().st_size == 0:
-                handle.write(b"0")
-                handle.flush()
-            _lock(handle, nonblocking=False)
-            try:
-                yield
-            finally:
-                _unlock(handle)
+        with _locked_lease_file(
+            directory / f"{name}.lock", create=True, nonblocking=False
+        ):
+            # Never hold admission while waiting for the named lease. Once
+            # admitted, the retained named lock protects this whole operation.
+            with _cache_admission(root=root):
+                pass
+            yield
     except OSError as error:
         raise CacheError("could not acquire the development-cache lease") from error
 
 
-def shared_cache_is_leased(*, root: Path = ROOT) -> bool:
+def _lease_paths(*, root: Path) -> Iterator[Path]:
     directory = leases_root(root=root)
     if not directory.exists():
-        return False
+        return
     if _is_reparse_or_link(directory):
         raise CacheError("cache lease directory cannot be a link or reparse point")
+    leases = 0
     try:
-        entries = list(directory.glob("*.lock"))
+        with os.scandir(directory) as entries:
+            for count, entry in enumerate(entries, start=1):
+                if count > MAX_DIRECTORIES:
+                    raise CacheError("cache lease directory exceeds its entry ceiling")
+                if not entry.name.endswith(".lock"):
+                    continue
+                leases += 1
+                if leases > MAX_LEASES:
+                    raise CacheError("cache lease count exceeds its safety ceiling")
+                metadata = entry.stat(follow_symlinks=False)
+                if not stat.S_ISREG(metadata.st_mode) or (
+                    getattr(metadata, "st_file_attributes", 0)
+                    & getattr(stat, "FILE_ATTRIBUTE_REPARSE_POINT", 0)
+                ):
+                    raise CacheError("cache leases must be ordinary files")
+                yield Path(entry.path)
     except OSError as error:
         raise CacheError("could not inspect development-cache leases") from error
-    if len(entries) > MAX_DIRECTORIES:
-        raise CacheError("cache lease count exceeds its safety ceiling")
-    for path in entries:
-        if _is_reparse_or_link(path) or not path.is_file():
-            raise CacheError("cache leases must be ordinary files")
-        try:
-            with path.open("r+b") as handle:
-                try:
-                    _lock(handle, nonblocking=True)
-                except OSError:
-                    return True
-                else:
-                    _unlock(handle)
-        except OSError:
-            return True
+
+
+def shared_cache_is_leased(*, root: Path = ROOT) -> bool:
+    with contextlib.closing(_lease_paths(root=root)) as paths:
+        for path in paths:
+            try:
+                with _locked_lease_file(path, create=False, nonblocking=True):
+                    pass
+            except OSError:
+                return True
     return False
+
+
+@contextlib.contextmanager
+def _collection_lease(*, root: Path) -> Iterator[bool]:
+    # The admission lock prevents a new name from entering after the probe.
+    # Retaining existing named locks also protects legacy users of those files.
+    with _cache_admission(root=root), contextlib.ExitStack() as held:
+        shared_leased = False
+        with contextlib.closing(_lease_paths(root=root)) as paths:
+            for path in paths:
+                try:
+                    held.enter_context(
+                        _locked_lease_file(path, create=False, nonblocking=True)
+                    )
+                except OSError:
+                    shared_leased = True
+        yield shared_leased
 
 
 def process_is_active(process_id: int) -> bool:
@@ -485,11 +558,14 @@ def inventory(
     *,
     root: Path = ROOT,
     scope: str = "all",
+    _shared_leased: bool | None = None,
 ) -> list[Candidate]:
     if scope not in SCOPES:
         raise CacheError("unknown cache scope")
     current = Path(os.path.abspath(root))
-    shared_leased = shared_cache_is_leased(root=root)
+    shared_leased = (
+        shared_cache_is_leased(root=root) if _shared_leased is None else _shared_leased
+    )
     candidates: list[Candidate] = []
     worktrees = worktree_paths(root=root)
     for index, worktree in enumerate(worktrees, start=1):
@@ -733,24 +809,26 @@ def run_gc(
     grace_hours: int,
     apply: bool,
 ) -> int:
-    candidates = inventory(root=root, scope=scope)
-    selected = reclaimable(
-        candidates, scope=scope, grace_hours=grace_hours
-    )
-    total = sum(candidate.measurement.bytes for candidate in selected)
-    action = "REMOVE" if apply else "WOULD REMOVE"
-    for candidate in selected:
-        print(f"{action}: {candidate.label} ({format_bytes(candidate.measurement.bytes)})")
-    if apply:
-        for candidate in selected:
-            remove_candidate(candidate, root=root)
-        print(f"PASS: removed {len(selected)} cache directories ({format_bytes(total)})")
-    else:
-        print(
-            f"DRY RUN: {len(selected)} cache directories are reclaimable "
-            f"({format_bytes(total)}); add --apply to remove them"
+    guard = _collection_lease(root=root) if apply else contextlib.nullcontext(None)
+    with guard as shared_leased:
+        candidates = inventory(root=root, scope=scope, _shared_leased=shared_leased)
+        selected = reclaimable(
+            candidates, scope=scope, grace_hours=grace_hours
         )
-    return total
+        total = sum(candidate.measurement.bytes for candidate in selected)
+        action = "REMOVE" if apply else "WOULD REMOVE"
+        for candidate in selected:
+            print(f"{action}: {candidate.label} ({format_bytes(candidate.measurement.bytes)})")
+        if apply:
+            for candidate in selected:
+                remove_candidate(candidate, root=root)
+            print(f"PASS: removed {len(selected)} cache directories ({format_bytes(total)})")
+        else:
+            print(
+                f"DRY RUN: {len(selected)} cache directories are reclaimable "
+                f"({format_bytes(total)}); add --apply to remove them"
+            )
+        return total
 
 
 def main() -> int:
