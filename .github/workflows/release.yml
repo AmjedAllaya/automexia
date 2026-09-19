@@ -141,7 +141,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -174,7 +174,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -214,7 +214,7 @@ jobs:
         persist-credentials: false
         ref: ${{ needs.authorize.outputs.commit }}
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -224,7 +224,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
-    - uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af
+    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute the exact native and benchmark release workload
@@ -330,7 +330,7 @@ jobs:
         fetch-depth: 0
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -391,7 +391,7 @@ jobs:
         ref: ${{ needs.preflight.outputs.commit }}
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -403,7 +403,7 @@ jobs:
     - name: Install native Linux build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev shellcheck zsh fish
     - name: Install pinned release quality tools
-      uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af
+      uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
     - name: Formatting
@@ -472,7 +472,7 @@ jobs:
 
         '
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -556,7 +556,7 @@ jobs:
     - name: Install native build dependencies
       run: sudo apt-get update && sudo apt-get install -y --no-install-recommends build-essential pkg-config glslang-tools libasound2-dev libfontconfig1-dev libxkbcommon-dev libwayland-dev libx11-xcb-dev binutils
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
@@ -666,7 +666,7 @@ jobs:
         if ($scripts.Count -eq 0) { throw 'no PowerShell integration files were provided for signing' }
     - name: Authenticate to Azure Artifact Signing
       if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
-      uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906
+      uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -767,7 +767,7 @@ jobs:
         name: signed-inputs-${{ matrix.artifact }}
         path: signed-inputs
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Install pinned Rust and packager toolchain
@@ -778,7 +778,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - name: Install pinned cargo-packager
-      uses: taiki-e/install-action@9534c84618278caac52cb373bb164ed464dbd8af
+      uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-packager@0.11.8
     - name: Restore signed inputs into packaging workspace
@@ -885,7 +885,7 @@ jobs:
         if ($msi.Count -ne 1 -or $zip.Count -ne 1) { throw 'expected exactly one MSI and one ZIP to finalize' }
     - name: Authenticate to Azure Artifact Signing
       if: vars.AUTOMEXIA_WINDOWS_SIGNING_BACKEND == 'azure-artifact-signing'
-      uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906
+      uses: azure/login@7ddb5af1ef8758cf1353cf3b42f940aee27ba21c
       with:
         client-id: ${{ secrets.AZURE_CLIENT_ID }}
         tenant-id: ${{ secrets.AZURE_TENANT_ID }}
@@ -1136,7 +1136,7 @@ jobs:
         name: ${{ matrix.artifact }}
         path: staged
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
+      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
       with:
         python-version: '3.12'
     - name: Install pinned Rust toolchain
