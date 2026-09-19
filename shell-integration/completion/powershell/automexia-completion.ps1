@@ -43,10 +43,20 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
             $script:AutomexiaCompletionRoot,
             (Join-Path $script:AutomexiaCompletionRoot 'powershell')
         )) {
-            if (-not (Test-Path -LiteralPath $candidate)) { continue }
-            $item = Get-Item -LiteralPath $candidate -Force
-            if (-not $item.PSIsContainer -or
-                $item.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+            try {
+                # File.GetAttributes is one direct local filesystem probe. The
+                # provider-based Test-Path/Get-Item pair doubled shell-startup
+                # I/O and made the completion adapter miss its 50 ms budget.
+                $attributes = [IO.File]::GetAttributes($candidate)
+            } catch [IO.FileNotFoundException] {
+                continue
+            } catch [IO.DirectoryNotFoundException] {
+                continue
+            } catch {
+                return $false
+            }
+            if (($attributes -band [IO.FileAttributes]::Directory) -eq 0 -or
+                ($attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                 return $false
             }
         }
@@ -64,17 +74,24 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
             $file = Join-Path $script:AutomexiaCompletionRoot "powershell\$target.ps1"
             $digestPath = "$file.sha256"
             $overridePath = "$file.allow-override"
-            if (-not (Test-Path -LiteralPath $file -PathType Leaf) -or
-                -not (Test-Path -LiteralPath $digestPath -PathType Leaf) -or
-                -not (Test-Path -LiteralPath $overridePath -PathType Leaf)) {
+            $fileItem = [IO.FileInfo]::new($file)
+            $fileItem.Refresh()
+            if (-not $fileItem.Exists) {
                 continue
             }
-            $fileItem = Get-Item -LiteralPath $file -Force
-            $digestItem = Get-Item -LiteralPath $digestPath -Force
-            $overrideItem = Get-Item -LiteralPath $overridePath -Force
-            if ($fileItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -or
-                $digestItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint) -or
-                $overrideItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+            $digestItem = [IO.FileInfo]::new($digestPath)
+            $digestItem.Refresh()
+            if (-not $digestItem.Exists) {
+                continue
+            }
+            $overrideItem = [IO.FileInfo]::new($overridePath)
+            $overrideItem.Refresh()
+            if (-not $overrideItem.Exists) {
+                continue
+            }
+            if (($fileItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                ($digestItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0 -or
+                ($overrideItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
                 $script:AutomexiaCompletionSkipped.Add("${target}:link")
                 continue
             }
@@ -85,11 +102,17 @@ if (-not $global:AutomexiaCompletionAdapterLoaded) {
                 continue
             }
             $digestText = [IO.File]::ReadAllText($digestPath)
-            $expectedDigests = @([IO.File]::ReadAllLines($digestPath))
-            $invalidDigests = @($expectedDigests | Where-Object { $_ -notmatch '^[0-9a-f]{64}$' })
+            $expectedDigests = @($digestText.TrimEnd("`n").Split("`n"))
+            $invalidDigest = $false
+            foreach ($expectedDigest in $expectedDigests) {
+                if ($expectedDigest -notmatch '^[0-9a-f]{64}$') {
+                    $invalidDigest = $true
+                    break
+                }
+            }
             if (-not $digestText.EndsWith("`n") -or
                 $expectedDigests.Count -lt 1 -or $expectedDigests.Count -gt 2 -or
-                $invalidDigests.Count -ne 0) {
+                $invalidDigest) {
                 $script:AutomexiaCompletionSkipped.Add("${target}:digest")
                 continue
             }
