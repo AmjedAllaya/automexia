@@ -5,7 +5,7 @@
 <h1 align="center">Automexia Terminal</h1>
 
 <p align="center">
-  <strong>A flexible open-source terminal for focused command-line work.</strong>
+  <strong>A flexible terminal for focused command-line work.</strong>
 </p>
 
 <p align="center">
@@ -33,7 +33,7 @@ to live. It combines native shell sessions, windows, tabs, split panes,
 pane-local tabs, search, command navigation, images, configuration, keyboard
 discovery, and explicit local tooling in one focused application.
 
-The public project is deliberately useful without an account, hosted service,
+The released Linux terminal is deliberately useful without an account, hosted service,
 provider login, paid dependency, or model. Automexia does not replace your
 shell, SSH client, credential store, cloud CLI, editor, or specialist tools; it
 provides the terminal workspace around them.
@@ -202,7 +202,7 @@ See [Configuration](docs/CONFIGURATION.md), [Migration](docs/MIGRATION.md), and
 
 ### Accessibility
 
-The public project owns keyboard-only operation, focus behavior, high-contrast
+Automexia owns keyboard-only operation, focus behavior, high-contrast
 support, reduced-motion behavior, and renderer-neutral accessibility semantics.
 Native assistive-technology evidence is treated separately from portable source
 tests.
@@ -218,7 +218,7 @@ OpenSSH and the operating system keep ownership of configuration, credentials,
 agents, host keys, authentication, proxy behavior, and networking. Automexia
 owns the local terminal session around those tools.
 
-The public project also contains explicit, bounded local OpenSSH inventory
+Automexia also contains explicit, bounded local OpenSSH inventory
 behavior. Inventory reads selected local metadata only; it does not silently log
 in, scan a network, or take ownership of SSH credentials.
 
@@ -227,7 +227,7 @@ See [Remote connections](docs/guide/remote-connections.md) and
 
 ### Local command productivity
 
-Current source includes public, local command-productivity surfaces. Their read
+Current source includes local command-productivity surfaces. Their read
 paths do not start a provider, network connection, terminal session, task, or
 action, and mutating operations are preview-first and explicit.
 
@@ -258,16 +258,10 @@ signature files. Follow the verification steps in
 Do not treat GitHub-generated source archives or an unverified third-party
 package as an Automexia application release.
 
-### Build from source
+### Build from source for authorized contributors
 
-Clone the current public repository:
-
-```text
-git clone https://github.com/AmjedAllaya/automexia.git
-cd automexia
-```
-
-Install the platform prerequisites described in
+If you have authorized access to the private source repository, use an approved
+checkout. Install the platform prerequisites described in
 [Installation](docs/INSTALLATION.md), then install the repository tools and run
 the project doctor before the first expensive build.
 
@@ -319,7 +313,7 @@ command families where supported by the current build. See the complete
 
 ## Architecture
 
-Automexia's public architecture keeps authority flowing in one direction:
+Automexia's architecture keeps authority flowing in one direction:
 
 ```text
 application
@@ -411,7 +405,7 @@ terminal history, exploit details, or identifying provider output. Follow
 
 ## Extension and capability boundary
 
-The public codebase contains versioned infrastructure for optional components,
+The codebase contains versioned infrastructure for optional components,
 but Automexia v0.4 does **not** claim a public third-party extension marketplace,
 download service, or unrestricted component-execution model.
 
@@ -420,9 +414,8 @@ application-owned capabilities and cannot silently gain ambient terminal
 history, clipboard, filesystem, network, credential, process, or PTY authority.
 Disabling or removing optional behavior must leave the base terminal usable.
 
-This README intentionally does not announce unreleased advanced products,
-provider workflows, hosted services, specialist extensions, commercial plans,
-or private implementation phases.
+This README documents only implemented behavior and current release status.
+Unreleased and private work remains outside this documentation boundary.
 
 ## Development and contribution
 
@@ -439,7 +432,7 @@ reconstruct the normal validation sequence manually.
 | `cargo storage` | Report build-storage use. |
 | `cargo purge` | Remove verified project build artifacts after Automexia closes. |
 | `cargo xtask doctor` | Check contributor prerequisites, storage, and platform placement. |
-| `cargo xtask verify architecture` | Enforce public architecture and capability boundaries. |
+| `cargo xtask verify architecture` | Enforce architecture and capability boundaries. |
 | `cargo xtask verify identity` | Enforce Automexia product identity. |
 | `cargo xtask verify provenance` | Verify licensing, notices, attribution, and publication policy. |
 | `cargo xtask test conformance` | Run terminal and Unicode conformance coverage. |
@@ -480,7 +473,7 @@ See [Testing](docs/TESTING.md), [Readiness audit](docs/READINESS-AUDIT.md), and
 
 ## Documentation map
 
-The public documentation is intentionally organized by task and authority.
+The documentation is intentionally organized by task and authority.
 
 | Goal | Start here |
 |---|---|
@@ -504,10 +497,10 @@ The public documentation is intentionally organized by task and authority.
 | Report security issues | [Security](SECURITY.md) |
 | Browse everything | [Documentation home](docs/index.md) |
 
-## Public project boundary
+## Documentation and release boundary
 
-This repository documents the **current open-source terminal and implemented
-free terminal capabilities**.
+This repository documents the **current implemented terminal and released free
+terminal capabilities**.
 
 Some source behavior can be source-complete, disabled, release-gated, or still
 waiting for native evidence. Those states are intentionally different from
@@ -517,9 +510,8 @@ The presence of an internal package name, fixture, test, disabled source path,
 or capability contract is not a product announcement. Public availability is
 owned by the feature catalog and release documentation.
 
-Unreleased advanced features, future open-source ideas, commercial strategy,
-pricing, hosted services, and private architectures are maintained outside the
-public documentation boundary.
+Unreleased and private work is intentionally maintained outside the
+documentation boundary.
 
 See [Features](docs/FEATURES.md), [Product vision](docs/PRODUCT-VISION.md),
 [Brand guide](docs/BRANDING.md), and
@@ -564,7 +556,7 @@ Automexia Terminal is available under the [MIT License](LICENSE).
 
 <p align="center">
   <strong>Automexia Terminal</strong><br>
-  A flexible open-source terminal for focused command-line work.<br><br>
+  A flexible terminal for focused command-line work.<br><br>
   <a href="docs/INSTALLATION.md">Install</a> ·
   <a href="docs/index.md">Documentation</a> ·
   <a href="docs/FEATURES.md">Feature status</a> ·
