@@ -73,6 +73,31 @@ class SemanticSurfaceGuards(unittest.TestCase):
             with self.assertRaises(ValueError):
                 checker.validate_sources(sources)
 
+    def test_typed_presentation_boundaries_are_enforced(self) -> None:
+        for owner, old, new in [
+            ("host", "revision != self.revision", "false"),
+            ("host", "self.phase != SurfacePhase::Ready", "false"),
+            ("host", "map(TablePresentation::table)", "cloned()"),
+            ("host", "revision: self.revision", "revision: 1"),
+            ("presentation", "MAX_VISIBLE_ROWS: usize = 1024", "MAX_VISIBLE_ROWS: usize = usize::MAX"),
+            ("presentation", "MAX_VISIBLE_COLUMNS: usize = 16_384", "MAX_VISIBLE_COLUMNS: usize = usize::MAX"),
+            ("presentation", "&self.table.rows()[self.visible_range()]", "self.table.rows()"),
+            ("presentation", "self.selected = next_selection", "self.selected = Some(0)"),
+            ("presentation_benchmark", "navigate-project-checked", "unverified-navigation"),
+            ("presentation_benchmark", "replace-drop-checked", "unverified-refresh"),
+            ("presentation_benchmark", "criterion_group!(benches, semantic_table_presentation);", "criterion_group!(benches, unrelated);"),
+            ("presentation_manifest", "harness = false", "harness = true"),
+            ("architecture", 'matches!(name, "automexia-extension-api" | "automexia-ui-model")', 'name == "automexia-extension-api"'),
+            ("architecture", "verify_benchmark_dependency(dependency)?;", ""),
+            ("presentation_benchmark", "BatchSize::PerIteration", "BatchSize::SmallInput"),
+        ]:
+            with self.subTest(owner=owner, boundary=old):
+                self.assertIn(old, self.sources[owner])
+                sources = dict(self.sources)
+                sources[owner] = sources[owner].replace(old, new, 1)
+                with self.assertRaises(ValueError):
+                    checker.validate_sources(sources)
+
 
 if __name__ == "__main__":
     unittest.main()

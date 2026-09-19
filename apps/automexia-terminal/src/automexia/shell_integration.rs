@@ -9,6 +9,24 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub const ROOT_ENV: &str = "AUTOMEXIA_SHELL_INTEGRATION_ROOT";
+const CLI_ENV: &str = "AUTOMEXIA_CLI";
+
+fn cli_wslenv(existing: &str) -> String {
+    let mut entries: Vec<_> = existing
+        .split(':')
+        .filter(|part| !part.is_empty() && part.split('/').next() != Some(CLI_ENV))
+        .collect();
+    entries.push("AUTOMEXIA_CLI/up");
+    entries.join(":")
+}
+
+fn cmd_alias_safe(target: &str) -> bool {
+    !target.is_empty()
+        && target.len() <= 4096
+        && !target.chars().any(|c| {
+            c.is_control() || matches!(c, '%' | '!' | '"' | '&' | '|' | '<' | '>' | '^')
+        })
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum PersistentOperation {
@@ -127,6 +145,27 @@ pub fn discover_root() -> Option<PathBuf> {
 /// and starts no process.
 pub fn prepare_session_environment() -> Option<PathBuf> {
     let root = discover_root();
+    // This is the running application, never a PATH search or config-supplied executable.
+    match env::current_exe().ok().filter(|path| path.is_absolute()) {
+        Some(executable) => {
+            env::set_var(CLI_ENV, &executable);
+            if executable.to_str().is_some_and(cmd_alias_safe) {
+                env::set_var("AUTOMEXIA_CLI_CMD", &executable);
+            } else {
+                env::remove_var("AUTOMEXIA_CLI_CMD");
+            }
+        }
+        None => {
+            env::remove_var(CLI_ENV);
+            env::remove_var("AUTOMEXIA_CLI_CMD");
+        }
+    }
+    if cfg!(windows) {
+        env::set_var(
+            "WSLENV",
+            cli_wslenv(&env::var("WSLENV").unwrap_or_default()),
+        );
+    }
     match &root {
         Some(path) => env::set_var(ROOT_ENV, path),
         None => env::remove_var(ROOT_ENV),
@@ -274,6 +313,25 @@ pub fn run_persistent(
 mod tests {
     use super::*;
     use std::fs;
+
+    #[test]
+    fn google_command_wslenv_path_translation_is_unique_and_one_way() {
+        assert_eq!(
+            cli_wslenv("KEEP/u:AUTOMEXIA_CLI/l:OTHER/p:AUTOMEXIA_CLI"),
+            "KEEP/u:OTHER/p:AUTOMEXIA_CLI/up"
+        );
+        assert_eq!(cli_wslenv(&cli_wslenv("")), "AUTOMEXIA_CLI/up");
+        assert!(cmd_alias_safe("bin/Automexia Terminal/automexia.exe"));
+        for path in [
+            "",
+            "bin/!expand!/automexia.exe",
+            "bin/%expand%/automexia.exe",
+            "bin/a&b/automexia.exe",
+            "bin/\n/automexia.exe",
+        ] {
+            assert!(!cmd_alias_safe(path));
+        }
+    }
 
     fn make_root(root: &Path) {
         #[cfg(windows)]

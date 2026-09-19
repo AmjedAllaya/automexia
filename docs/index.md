@@ -34,7 +34,12 @@ including open-source ideas, and commercial strategy.
 |---|---|
 | Configuration | [Configuration](CONFIGURATION.md), [compact reference](reference/configuration.md) |
 | Keyboard | [Keyboard](KEYBOARD.md), [compact reference](reference/keyboard.md) |
+| Table output | [Focused core table view](user-guide/table-output.md) |
+| Keyboard hyperlinks | [Link review, opening and copying](user-guide/hyperlinks.md) |
 | Command line | [CLI](CLI-REFERENCE.md), [compact reference](reference/cli.md) |
+| Directory opening | [Desktop handoff and preview](user-guide/open-directory.md) |
+| File editing | [Editor choice, file position and preview](user-guide/edit-file.md) |
+| Repository navigation | [Git remote and issue-page opening](user-guide/open-repository.md) |
 | Shell integration | [Shell integration](SHELL-INTEGRATION.md) |
 | Kubernetes prompt context | [Behavior and assurance](PROMPT-CONTEXT-ASSURANCE.md) |
 | Image behavior | [Image previews](IMAGE-PREVIEWS.md) |

@@ -10,6 +10,7 @@ use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
+use crate::automexia::ui::command_info::CompletionLabel;
 use crate::automexia::ui::{CommandResultAnchor, COMMAND_RESULT_PROMPT_RESERVE};
 
 mod rows;
@@ -60,6 +61,18 @@ fn command_result_divider(anchor: &CommandResultAnchor) -> Option<[f32; 4]> {
         return None;
     }
     rows::boundary_marker([anchor.x, anchor.y, anchor.width, anchor.height])
+}
+
+fn clip_vertical_rect(rect: [f32; 4], bounds: [f32; 2]) -> Option<[f32; 4]> {
+    let [x, y, width, height] = rect;
+    let top = y.max(bounds[0]);
+    let bottom = (y + height).min(bounds[1]);
+    (top.is_finite() && bottom.is_finite() && bottom > top).then_some([
+        x,
+        top,
+        width,
+        bottom - top,
+    ])
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -293,7 +306,9 @@ impl CommandResults {
         anchors: &[CommandResultAnchor],
         allow_animation: bool,
         prefer_untagged: bool,
+        planned: (&[CompletionLabel], [f32; 2]),
     ) {
+        let (planned_labels, vertical_bounds) = planned;
         let now = Instant::now();
         self.pulse
             .observe(anchors, allow_animation, prefer_untagged, now);
@@ -364,10 +379,26 @@ impl CommandResults {
             let divider = visual
                 .map(|visual| visual.divider)
                 .or_else(|| command_result_divider(anchor));
-            if let Some([x, y, width, height]) = divider {
+            if let Some([x, y, width, height]) =
+                divider.and_then(|rect| clip_vertical_rect(rect, vertical_bounds))
+            {
                 let mut divider_color = accent_color;
                 divider_color[3] = RESULT_DIVIDER_ALPHA;
                 sugarloaf.rect(None, x, y, width, height, divider_color, 0.0, ORDER - 2);
+            }
+            if planned_labels.iter().any(|label| {
+                CommandResultIdentity::from(&label.anchor)
+                    == CommandResultIdentity::from(anchor)
+            }) {
+                continue;
+            }
+            // A projected result may end just outside the viewport. Its output
+            // shading can remain visible, but its legacy label must not land on
+            // the footer or a neighbouring pane.
+            if anchor.y < vertical_bounds[0]
+                || anchor.y + anchor.height > vertical_bounds[1]
+            {
+                continue;
             }
             let maximum_width = result_label_maximum_width(anchor.width);
             let Some((label, text_width)) =
@@ -394,7 +425,85 @@ impl CommandResults {
                 }
             }
         }
+        for label in planned_labels {
+            let anchor = &label.anchor;
+            let metrics = result_label_metrics(anchor.height);
+            let color = result_label_color(colors, anchor.exit_code);
+            #[cfg(feature = "native-gui-test-hooks")]
+            let inset = automexia_ui_model::prompt_context_top_inset(
+                anchor.height,
+                metrics.height,
+                true,
+            )
+            .unwrap_or(0.0);
+            #[cfg(feature = "native-gui-test-hooks")]
+            let mut bounds: Option<[f32; 4]> = None;
+            for fragment in &label.fragments {
+                let Some(text) = label.text.get(fragment.bytes.clone()) else {
+                    continue;
+                };
+                #[cfg(feature = "native-gui-test-hooks")]
+                let x = anchor.x + 2.0 + fragment.x + fragment.padding + fragment.leading;
+                #[cfg(feature = "native-gui-test-hooks")]
+                let y = anchor.y + fragment.row as f32 * anchor.height + inset;
+                super::command_info::draw_fragment_text(
+                    sugarloaf.text_mut(),
+                    text,
+                    fragment,
+                    [anchor.x, anchor.y],
+                    [anchor.height, metrics.font_size, metrics.height],
+                    color_to_u8(color),
+                );
+                #[cfg(feature = "native-gui-test-hooks")]
+                {
+                    let width =
+                        fragment.width - fragment.padding * 2.0 - fragment.leading;
+                    let next = [x, y, x + width, y + metrics.height];
+                    bounds = Some(bounds.map_or(next, |old| {
+                        [
+                            old[0].min(next[0]),
+                            old[1].min(next[1]),
+                            old[2].max(next[2]),
+                            old[3].max(next[3]),
+                        ]
+                    }));
+                }
+            }
+            #[cfg(feature = "native-gui-test-hooks")]
+            if let Some([x0, y0, x1, y1]) = bounds {
+                self.native_paints.push((
+                    anchor.generation,
+                    anchor.key,
+                    [x0, y0, x1 - x0, y1 - y0],
+                ));
+                if native_label_target == Some(CommandResultIdentity::from(anchor)) {
+                    self.native_label = Some(label.text.clone());
+                }
+            }
+        }
     }
+}
+
+fn result_label_color(colors: Colors, exit_code: Option<i32>) -> [f32; 4] {
+    match exit_code {
+        Some(0) => colors.green,
+        Some(_) => colors.red,
+        None => colors.blue,
+    }
+}
+
+pub(super) fn complete_result_label(anchor: &CommandResultAnchor) -> String {
+    let timestamp = command_timestamp_label(anchor.completed_at);
+    command_result_presentation(
+        anchor.exit_code,
+        command_elapsed_ms(anchor.elapsed_ms),
+        timestamp.as_deref(),
+    )
+    .labels
+    .into_iter()
+    .flatten()
+    .next()
+    .unwrap_or_default()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -527,6 +636,31 @@ mod row_tests;
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn projected_result_markers_never_paint_the_footer_or_another_pane() {
+        let bounds = [20.0, 100.0];
+        assert_eq!(
+            super::clip_vertical_rect([2.0, 100.0, 32.0, 1.0], bounds),
+            None
+        );
+        assert_eq!(
+            super::clip_vertical_rect([2.0, 10.0, 32.0, 5.0], bounds),
+            None
+        );
+        assert_eq!(
+            super::clip_vertical_rect([2.0, 99.5, 32.0, 1.0], bounds),
+            Some([2.0, 99.5, 32.0, 0.5])
+        );
+        assert_eq!(
+            super::clip_vertical_rect([2.0, 19.5, 32.0, 1.0], bounds),
+            Some([2.0, 20.0, 32.0, 0.5])
+        );
+        assert_eq!(
+            super::clip_vertical_rect([2.0, 40.0, 32.0, 1.0], bounds),
+            Some([2.0, 40.0, 32.0, 1.0])
+        );
+    }
+
     use super::*;
 
     fn timestamp() -> rio_backend::crosswords::grid::row::SemanticCommandTimestamp {

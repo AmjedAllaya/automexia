@@ -40,6 +40,7 @@ pub enum PaletteAction {
     SearchGlobalForward,
     SearchGlobalBackward,
     PreviewSelectedImage,
+    ViewTableOutput,
     ClearScreen,
     CloseCurrentSplitOrTab,
     OpenMarket,

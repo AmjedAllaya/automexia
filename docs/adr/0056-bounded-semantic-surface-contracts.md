@@ -1,6 +1,6 @@
 # ADR 0056: Bounded semantic surface contracts
 
-Status: Accepted (contract and host admission only; no UI activation)
+Status: Accepted (contract, host admission and bounded presentation; no UI activation)
 
 ## Ownership
 
@@ -43,6 +43,34 @@ snapshot; invalid updates do not replace it; close/revocation permanently retire
 the slot. This model is not registered with a renderer, provider transport or
 global runtime. There is no active semantic-table UI or multi-slot registry.
 An active registry requires its own total-slot and aggregate-byte budget.
+
+The host now owns a capability-free `TablePresentation` in the existing UI model
+crate. It contains the single table, bounded viewport geometry and selected index.
+Refresh reconciles stable row/resource handles; deletion clears selection.
+Navigation is revision-bound and requires ready state, while expired/revoked data
+is removed from both snapshot and presentation reads. No mutable presentation
+reference escapes the host slot. The raw terminal table detector and its smaller
+capture limits are intentionally separate contracts, not duplicate authorities.
+
+The model follows non-wrapping directional navigation from the
+[W3C grid interaction guidance](https://www.w3.org/WAI/ARIA/apg/patterns/grid/),
+without treating web ARIA attributes as native accessibility implementation.
+The cross-crate API exposes immutable borrows and typed navigation, following
+[Rust visibility rules](https://doc.rust-lang.org/reference/visibility-and-privacy.html).
+No runtime dependency, provider, persistent state or new capability is added. Removing
+the host consumer and model is a migration-free rollback. Priority-based hiding,
+details, copy, native input, rendering and assistive-technology delivery are not
+established by presentation-model tests.
+
+The optimized presentation benchmark belongs to `automexia-ui-model`, using
+the workspace's existing Criterion dev dependency. It does not build the full
+application/provider graph merely to measure row navigation. Release optimization
+and correctness assertions remain enabled; this is test ownership, not a relaxed
+performance profile or skipped application integration tests.
+The architecture gate reuses its existing Criterion check for both model owners:
+only Cargo's development dependency kind is admitted, including renamed and
+target-specific declarations. Runtime, build, missing and malformed kinds remain
+rejected; mutation tests guard both helper behavior and dispatch to the UI model.
 
 ## Evidence and limitations
 

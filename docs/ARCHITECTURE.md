@@ -32,10 +32,17 @@ served. ConPTY (including WSL on Windows) retains its history-free mutable
 viewport origin; Unix PTYs retain their native reflow behavior. Wrapped history
 seams use non-content padding rather than a duplicate output cache. Column
 reflow also distinguishes ConPTY hard-line fill from Unix explicit whitespace:
-native trailing padding cannot create extra logical output rows. Forced wraps,
+native trailing padding cannot create extra logical output rows. Native seam
+partitioning preserves the final real cell, including inter-column blanks, and
+the native cursor reserves its cell at an exact shrink margin. All-blank soft
+wraps retain their spaces when copied; only hard breaks create newlines. Forced wraps,
 cursor distance and text extras remain owned by the grid. Prompt
 editing does not authorize claiming historical repaint rows. See
 [ADR 0048](adr/0048-native-resize-and-prompt-ownership.md).
+For mixed-axis native resizing, column reflow precedes height reduction so live
+text is not prematurely archived. Printed-space fill below the cursor uses the
+native content predicate; former seam fragments retain soft wraps and non-content
+padding even after moving entirely into history.
 For managed ConPTY sessions, the PTY worker commits native and grid dimensions
 from the same coalesced resize. UI requests update cell metrics without reflowing
 ahead of that transaction. Renderer snapshots use the last committed grid and
@@ -94,6 +101,32 @@ without an explicit user action.
 
 ## Core and extension ownership
 
+Explicit `amx search` and `amx docs` commands extend the existing application
+CLI/default-handler owner. They share bounded query validation with `amx google`
+and do no work on terminal hot paths. See
+[ADR 0063](adr/0063-explicit-browser-search-routing.md).
+
+`amx find` and `amx explain` activate installed local tools explicitly through
+the app-owned bounded process adapter, not terminal hot paths or generic Quick
+Action execution. WSL filters relative/empty guest PATH entries before selecting
+its isolated Python supervisor and retains one scoped guest lease;
+see [ADR 0064](adr/0064-bounded-explicit-local-tools.md).
+
+`amx open` extends this explicit application boundary with directory-only
+validation and the existing desktop adapter. WSL directory resolution is a fixed
+isolated child of the leased helper; no startup, renderer or PTY path performs
+filesystem discovery. See [ADR 0065](adr/0065-explicit-directory-handoff.md).
+
+`amx edit` shares only the path mechanism with directory opening. Its regular-file
+policy, strict user-root editor preference and fixed editor-URI authority remain
+application-owned. It does not change terminal settings-editor behavior or enable
+generic Quick Action execution. See [ADR 0066](adr/0066-explicit-editor-file-handoff.md).
+
+`amx repo` uses installed Git for one bounded read-only remote lookup, validates
+the host/path policy locally, and uses the existing browser adapter. Previews
+perform no repository-existence API or authentication. See
+[ADR 0067](adr/0067-local-repository-browser-navigation.md).
+
 Current capability-free shared contracts are owned by
 `automexia-connectivity` and `automexia-command-productivity` where required
 by existing source consumers. These package names are maintenance facts, not
@@ -101,7 +134,11 @@ public product announcements.
 
 `automexia-extension-api::surface` owns bounded, versioned semantic table data.
 The application-owned surface slot validates trusted grant binding, frame size,
-generation, revision and expiry while retaining at most one snapshot. This
+generation, revision and expiry while retaining at most one snapshot. Its
+`automexia-ui-model::semantic_table` presentation owns that same snapshot plus
+bounded geometry and selection; replacement reconciles row/resource identities
+outside input/render paths. Borrowed presentation carries its displayed revision,
+and host navigation rejects stale revisions and non-ready states. This
 [contract](SEMANTIC-SURFACE-CONTRACT.md) has no automatic UI or provider transport
 activation; terminal embedding surfaces keep their separate identity and owner.
 
@@ -207,6 +244,12 @@ no workspace package may depend on it. See
 
 ## Output readability
 
+Keyboard hyperlink review extends the existing core hint owner. Bounded visible
+cell/extras snapshots and cell-aware matching preserve OSC 8 destinations and
+reject stale route/output/geometry before activation. Input stays modal and
+default opening uses the existing platform adapter with validated targets and
+content-free diagnostics. See [ADR 0061](adr/0061-keyboard-hyperlink-review.md).
+
 Command-result row bands belong to the core renderer's private
 `command_results/rows.rs` geometry owner. It splits proven visible output bounds
 into inset fixed-grid bands; it never detects commands, parses tables, modifies
@@ -221,9 +264,18 @@ The same geometry owner gives command boundaries a short leading accent rather
 than a pane-spanning line: at most 48 logical pixels, at most one quarter of the
 pane width, with a leading inset up to 12 pixels. Invalid or unpaintably small
 rectangles are omitted. Structural pane dividers and their pointer targets stay
-with the layout owner. Status/timestamp labels, output bands, prompt reservations
-and the completion pulse are unchanged. This is draw-only core feedback under
+with the layout owner. The marker does not change completion identity or the
+completion pulse. This is draw-only core feedback under
 ADR 0035, not an optional extension or a terminal-grid mutation.
+
+Command context and timestamps now share the application-owned wrapping layout
+in `renderer/command_info.rs`. A verified blank prompt row can occupy several
+display rows without adding VT rows. The pane's `RenderableContent` projection
+maps grid paint, selection/search, pointer input, carets, images and scrolling.
+Complete labels remain reachable in short windows; native protocol coordinates
+and copied output remain unchanged. Unexpanded frames have an allocation-free
+identity map. See [ADR 0059](adr/0059-wrapped-command-information.md) for limits,
+ownership, compatibility and validation boundaries.
 
 ## VT control-string trust boundary
 
@@ -357,6 +409,14 @@ in its fixed header and row. See
 
 ## Configuration transaction
 
+Core `rio-vt::config::colors` owns fixed-size ASCII RGB/RGBA conversion for both
+configuration deserialization and palette defaults. Borrowed helpers and defaults
+share one stack decoder; the existing owned API delegates to it. Valid conversion
+needs no regex compilation, heap buffer or retained cache. Inputs are inspected
+within a nine-byte token ceiling, and invalid Unicode cannot reach byte-indexed
+decoding. App branding and persistence remain separate owners. See
+[ADR 0058](adr/0058-bounded-colour-setup.md).
+
 Configuration is read with bounded size and parsing depth. A candidate is
 validated completely before publication. Invalid reloads keep the
 last-known-good configuration and return a redacted error.
@@ -378,6 +438,12 @@ Migration from compatible predecessor configuration is explicit,
 non-destructive, reversible, and never overwrites the source.
 
 ## Shell integration
+
+`amx google` delegates to the existing application's one-shot Google CLI, not
+the VT parser or an extension. The CLI exits before terminal startup; native
+Windows URL opening shares the existing screen handler. Shells retain quoting
+and history ownership, helpers retain name collisions, and no persistent alias
+or background service is added. See [ADR 0062](adr/0062-explicit-google-search-command.md).
 
 Supported shell integration is session-local and keeps the shell's own editor,
 history, completion, quoting, and pipeline semantics authoritative. Prompt
@@ -587,6 +653,14 @@ remains private, and unavailable native evidence remains an explicit gate.
 
 ## Command-productivity source boundaries
 
+Quick Action scoring stays in the existing capability-free
+`automexia-command-productivity::actions` model. It streams Unicode scalars rather
+than materializing byte-offset tables; string-level lowercase, exact scores,
+scope precedence and result limits remain unchanged. No retained cache, process,
+thread, provider authority or new extension is added. Independent public-search
+and maximum-input allocation oracles live in `tests/quick_action_activation.rs`
+under that crate; the existing Quick Action benchmark checks scores and identities.
+
 CP3.1 persists only reviewed opt-in aliases under the command-productivity
 owner. CP3.2 adds static reviewed DevOps-pack candidates without activation or
 provider authority. CP3.3 keeps native inventory and trusted workspace parsing
@@ -594,6 +668,12 @@ in capability-separated adapters; the pure compiler receives validated typed
 records only. See [DEVOPS-ALIASES.md](DEVOPS-ALIASES.md).
 
 ## Session-launch source boundary
+
+Focused table output follows [ADR 0060](adr/0060-focused-core-table-output.md):
+the capability-free UI model recognizes bounded grid text, VT remains the only
+terminal owner, and the application owns the route-scoped read-only snapshot,
+input containment and drawing. It does not invoke provider extensions or mutate
+normal scrollback. The [guide](user-guide/table-output.md) describes limits.
 
 D0 follows ADR 0012: the terminal owns the local session and PTY while system
 OpenSSH owns networking, authentication, credentials, host trust, and proxy

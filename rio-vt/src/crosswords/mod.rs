@@ -2538,13 +2538,7 @@ impl<U: EventListener> Crosswords<U> {
     }
 
     fn selection_text_fits(&self, range: SelectionRange, max_bytes: usize) -> bool {
-        let block = matches!(
-            self.selection,
-            Some(Selection {
-                ty: SelectionType::Block,
-                ..
-            })
-        );
+        let block = range.is_block;
         let last_col = self.grid.last_column();
         let mut bytes = 0usize;
 
@@ -2605,7 +2599,62 @@ impl<U: EventListener> Crosswords<U> {
 
         true
     }
+    /// Read a bounded range without temporarily replacing the user's selection.
+    pub fn bounds_to_string_bounded(
+        &self,
+        start: Pos,
+        end: Pos,
+        max_bytes: usize,
+    ) -> Result<String, SelectionTextError> {
+        if start > end
+            || start.row < self.grid.topmost_line()
+            || end.row > self.grid.bottommost_line()
+            || start.col >= self.grid.columns()
+            || end.col >= self.grid.columns()
+            || !self.selection_text_fits(
+                SelectionRange {
+                    start,
+                    end,
+                    is_block: false,
+                },
+                max_bytes,
+            )
+        {
+            return Err(SelectionTextError::CapacityExceeded);
+        }
+        let text = self.bounds_to_string(start, end);
+        if text.len() > max_bytes {
+            return Err(SelectionTextError::CapacityExceeded);
+        }
+        Ok(text)
+    }
+
     pub fn bounds_to_string(&self, start: Pos, end: Pos) -> String {
+        self.bounds_to_string_impl(start, end, false)
+    }
+
+    /// Presentation-only text with tab cells expanded from the actual grid.
+    /// Copying keeps its original tab semantics; this never changes selection.
+    pub fn bounds_to_display_string_bounded(
+        &self,
+        start: Pos,
+        end: Pos,
+        max_bytes: usize,
+    ) -> Result<String, SelectionTextError> {
+        // Count every native cell before expanding tabs, including empty cells.
+        let rows = (end.row.0 as i64 - start.row.0 as i64 + 1).max(0) as usize;
+        if rows.saturating_mul(self.columns()) > max_bytes {
+            return Err(SelectionTextError::CapacityExceeded);
+        }
+        self.bounds_to_string_bounded(start, end, max_bytes)?;
+        let text = self.bounds_to_string_impl(start, end, true);
+        if text.len() > max_bytes {
+            return Err(SelectionTextError::CapacityExceeded);
+        }
+        Ok(text)
+    }
+
+    fn bounds_to_string_impl(&self, start: Pos, end: Pos, expand_tabs: bool) -> String {
         let mut text = String::new();
         let mut blank_rows: usize = 0;
         let mut blank_cells: usize = 0;
@@ -2635,11 +2684,16 @@ impl<U: EventListener> Crosswords<U> {
                 start_col..end_col,
                 line == end.row,
                 &mut blank_cells,
+                expand_tabs,
             );
 
             if !had_content {
-                // Defer entirely-blank rows; trailing blank rows get dropped.
-                blank_rows += 1;
+                // A blank soft-wrap fragment is still part of the current
+                // logical line (for example a long inter-column gap). Only a
+                // hard break contributes a newline; keep its cells buffered.
+                if !self.grid[line][last_col].wrapline() {
+                    blank_rows += 1;
+                }
                 continue;
             }
 
@@ -2677,6 +2731,7 @@ impl<U: EventListener> Crosswords<U> {
             cols,
             include_wrapped_wide,
             &mut blank_cells,
+            false,
         );
         text
     }
@@ -2695,6 +2750,7 @@ impl<U: EventListener> Crosswords<U> {
         mut cols: Range<Column>,
         include_wrapped_wide: bool,
         blank_cells: &mut usize,
+        expand_tabs: bool,
     ) -> bool {
         let mut had_content = false;
         let grid_line = &self.grid[line];
@@ -2720,7 +2776,7 @@ impl<U: EventListener> Crosswords<U> {
                 }
             }
 
-            if cell.c() == '\t' {
+            if cell.c() == '\t' && !expand_tabs {
                 tab_mode = true;
             }
 
@@ -2733,7 +2789,7 @@ impl<U: EventListener> Crosswords<U> {
 
             // Buffer blank cells. They only get emitted as real spaces if a
             // non-blank cell follows (on this row or a wrap continuation).
-            if !has_extras && (c == '\0' || c == ' ') {
+            if !has_extras && (c == '\0' || c == ' ' || (expand_tabs && c == '\t')) {
                 *blank_cells += 1;
                 continue;
             }

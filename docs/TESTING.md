@@ -1,5 +1,72 @@
 # Testing
 
+## Keyboard hyperlinks
+
+```text
+cargo test -p automexia-terminal --bin automexia --locked keyboard_links -- --nocapture
+cargo test -p automexia-terminal --bin automexia --locked keyboard_links_benchmark -- --ignored --nocapture
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+```
+
+The first command runs real-parser, keyboard-policy, default platform-table,
+resource-bound and controlled preview-pixel regressions. The benchmark is
+explicitly ignored by ordinary tests: require its actual nonzero test count and
+correctness assertions. It measures capture plus 100 exact snapshot/navigation
+operations, not native browser opening or compositor latency. For a fresh
+fictional CPU preview, set `AUTOMEXIA_HYPERLINK_PREVIEW` to a temporary PNG target
+before the first command, inspect that image and remove it after review.
+Native WGPU/CPU desktop frames, browser/clipboard behavior, alternative keyboard
+layouts and Narrator/NVDA/VoiceOver/Orca delivery require separate native runs.
+Do not promote controlled pixels or all-platform binding tables into OS claims.
+
+## Bounded colour setup
+
+```text
+cargo test -p rio-vt --test color_conversion --locked
+cargo test -p rio-vt --lib --locked config::colors::tests
+cargo test -p rio-backend --lib --locked config::
+cargo bench -p rio-vt --bench vt_input --profile dev --locked -- color_setup --noplot
+cargo bench -p automexia-terminal --bench automexia_services --profile dev --locked -- color_setup --noplot
+```
+
+The integration target checks literal numerical RGB/RGBA values, every channel
+value, malformed Unicode, size and marker boundaries, serde defaults and a
+fixed-seed independent ASCII grammar. Its thread-local System allocation counter
+includes first-use and 32 repeated default/helper calls with a zero-allocation
+ceiling. This measures allocation calls on that path, not whole-process RSS.
+The Unicode regression reproduces the former validator/decoder mismatch before
+the production fix. Correctness assertions execute inside benchmark iterations.
+Use Criterion's `--save-baseline` before editing and `--baseline` afterward on
+the same host, compiler, profile and feature set. These development-profile
+benchmarks measure setup only; optimized builds, full window startup, native
+compositors and controlled S2 evidence are separate claims.
+
+## Bounded Quick Action scoring
+
+```text
+cargo test -p automexia-command-productivity --test quick_action_activation --locked
+cargo bench -p automexia-command-productivity --bench quick_actions --profile dev --locked -- bounded_search_scoring --noplot
+```
+
+The public search path is checked against an independent indexed-scalar oracle,
+literal scores, contextual Greek lowercase, missing/repeated subsequences,
+word boundaries, deterministic ties and the 128-result ceiling. Fixed-seed
+properties complement maximum-length ASCII and Unicode candidates and queries.
+A test-only thread-local System allocator measures the largest allocation over
+32 repeated searches: each allocation must fit an 8 KiB ceiling for that fixture.
+This is not a total-memory or RSS ceiling. An allocating canary and unwind reset
+test protect the instrumentation. The old character table exceeds this ceiling.
+
+The existing capability-free command-productivity owner streams scalar values
+using the standard library; no cache, worker, I/O or package boundary is added.
+String-level lowercase remains authoritative; per-character folding can change
+[context-dependent Unicode results](https://doc.rust-lang.org/std/primitive.str.html#method.to_lowercase).
+Trust, session, provider and execution policies remain with their existing owners.
+Benchmark iterations assert exact scores and action identities on a 1,024-action
+inventory and a maximum-length candidate. Same-host setup/search measurements
+do not certify native input-to-frame latency or provider/network performance.
+
 ## Shortcut editor assurance
 
 Current source adds palette badge double-click and contextual F2 editing. Owners
@@ -293,13 +360,56 @@ separately exercises the native editor as described above. Neither establishes
 desktop drag gestures, GPU frames, screen readers or a native macOS host.
 Keep those evidence gates open.
 
-The WSL test is opt-in: set `AUTOMEXIA_TEST_WSL_DISTRIBUTION` to an installed
+The WSL tests are opt-in: set `AUTOMEXIA_TEST_WSL_DISTRIBUTION` to an installed
 test distribution and `AUTOMEXIA_TEST_WSL_FIXTURE` to that distribution's path to
 `rio-vt/tests/fixtures/live-resize-output.sh`. Then run:
 
 ```text
 cargo test -p rio-vt --test live_resize --locked native_live_wsl -- --ignored
 ```
+
+The real-listing case additionally requires eza in that distribution. It creates
+28 varied fictional filenames under a randomly named, workspace-local temporary
+directory and checks cleanup. It does not load user shell profiles or inspect a
+real project. Four WSL tests must execute, not a successful zero-test filter.
+The listing campaign covers widths from 99 down to 2 columns, restoration to
+100 columns, and 8- and 2-row panes. It checks the raw adapter, queued resize
+bursts and each intermediate worker commit. Every final assertion precedes
+child release, with exact filename uniqueness, original gaps and prompt adjacency.
+The title-only probe first proves unchanged rows and cursor without a resize.
+
+The extreme listing case starts at 146 by 16 cells and includes long mixed file
+and directory names. A handpicked sequence and eight fixed-seed sequences each
+exercise 48 transitions through one/two-cell viewports and sizes up to 512 by 96.
+Consecutive mixed-axis changes do not reset to the original size between steps.
+Run all raw, burst and intermediate-commit paths. Exact order, spacing, filename
+uniqueness and prompt adjacency must hold at every acknowledgment, not only at
+the final restore. The previous pairwise campaign missed premature live-prefix
+archiving, native printed-space fill and short historical continuation loss.
+
+Deterministic replays cover wider/shorter and narrower/shorter native redraws,
+space-filled rows below the cursor and a former seam becoming fully historical.
+The application pixel oracle compares restored live and historical rows against
+literal fresh reference grids at scales 1, 1.25 and 2. Set
+`AUTOMEXIA_EXTREME_PREVIEW` to a private PNG path and inspect the fresh artifact.
+`cargo bench -p rio-vt --bench vt_input --locked -- grid_extreme_replay_roundtrip_checked`
+times extreme reflow, fictional native replay and visible snapshots, with exact
+copied-input and bounded-history assertions outside each timed iteration. It is
+separate from `grid_extreme_roundtrip_checked`, which cycles one-cell and large
+viewports without replaying a frame from a different native live origin. Each
+benchmark retains one terminal across iterations and validates original text.
+This timing is not native PTY or compositor latency. Historical eviction at the configured
+scrollback limit is distinct from corruption; no unbounded backup buffer is used.
+
+The previous ASCII/constant-width fixtures missed spaces at a native history
+seam, a cursor exactly at the new margin, and entirely blank soft-wrap fragments.
+`resize_repaint` now covers these cases deterministically, including erased cells,
+pre-existing selection and repeated width round trips. The existing application
+pixel test also moves the suffix into history and compares its exact restored
+column against a fresh literal reference at 100%, 125% and 200% scale. Set
+`AUTOMEXIA_SEAM_PREVIEW` to a private PNG path to inspect that additional image.
+Minimized zero-sized window events remain ignored by the application; a native
+desktop minimize/restore campaign is separate from these process/grid checks.
 
 Never record resolved checkout paths or distribution-specific personal data in
 evidence. WSL validates the Windows ConPTY route, not a native Linux desktop.
@@ -312,6 +422,11 @@ bounded retained terminal. Keep profile, host, history depth and input fixed
 for comparisons; a development-profile smoke measurement is not a release
 latency or performance-improvement claim. Native GUI resize/pane/tab gestures,
 exact controlled pixels and accessibility checks remain separate gates.
+
+`cargo bench -p rio-vt --bench vt_input --locked -- grid_seam_roundtrip_checked`
+measures the native-policy seam round trip plus visible snapshots. Every iteration
+checks exact copied text and bounded history outside the timed interval; a
+corrupt faster run must fail. This is grid/snapshot timing, not WSL or GUI latency.
 
 `cargo bench -p rio-vt --bench vt_input --locked -- grid_table_roundtrip_checked`
 checks exact copied table text, snapshot dimensions and bounded history on every
@@ -733,7 +848,126 @@ Persistence tests cover:
 Fixtures use fictional stable values or isolated temporary paths. Never snapshot
 the real user profile, host, environment, Git identity, or shell history.
 
+## Explicit local tools
+
+Windows process regressions retain a live native process handle before cancellation
+or before releasing an acknowledged parent to exit. They assert that same handle
+is signaled immediately after capture; post-cleanup PID lookup is not an exact
+identity oracle. The descendant regression runs four concurrent workers with
+25 cycles each, both inherited-pipe and closed-pipe children. Failure-only later
+observations remain diagnostic and never convert a failed assertion into a pass.
+
+Directory handoff tests use `cargo test -p automexia-terminal --lib --locked amx_open_`.
+Editor tests use `cargo test -p automexia-terminal --lib --locked amx_edit_`.
+Run `amx_edit_benchmark_checked_uri_encoding` explicitly with `-- --ignored --nocapture`;
+its checked URI timing excludes metadata, process and desktop latency. The real
+post-build CLI tests cover configuration, disable/override, exact paths and
+positions without launches or writes. Eleven scenarios run through each available
+shipped native shell. The guest suite also checks file symlinks and import isolation.
+Repository navigation uses the `amx_repo_` library filter and explicit ignored
+`amx_repo_benchmark_checked_remote_parsing` benchmark. Real temporary Git repositories
+must prove exact root/issues destinations, selected remote ownership, unchanged
+config/files, missing-remote rejection and credential-free diagnostics. The guest
+and native CLI fixtures include mixed-case SSH GitHub/GitLab hostnames while
+retaining path casing; unit negatives reject similarly spelled unapproved hosts.
+The guest suite must use guest metadata. The post-build harness runs eleven scenarios
+per available shell. No browser or authentication is needed for these tests;
+parsing benchmarks do not measure Git or desktop latency.
+The permanent post-build harness also checks nested Git discovery with `insteadOf`
+rewriting and a deliberately different push URL; only the fetch destination wins.
+Editor tests decode the URI independently for spaces, Unicode, literal percent,
+hash and apostrophe filenames and prove project preferences cannot override user
+disable. Seven literal documented search examples retain exact offline URL oracles.
+
+On an installed native desktop, manually open a disposable file at a known
+line/column in both supported editions, check permission/UNC prompts, missing
+registration and focus/close behavior. Do not mark preview-only execution as
+actual editor-window evidence. Native Linux/macOS Rust and desktop checks must
+be recorded separately from Windows-backed WSL. Preferences remain untouched
+outside isolated fixtures; do not run this test using a real user configuration.
+Windows local-tool cleanup additionally verifies empty job accounting and native
+signals from bounded member handles pinned before termination. The process suite
+includes 100 concurrent descendant cycles and an isolated 20-cycle exact handle-
+recovery measurement. A later diagnostic wait does not erase an immediate failure;
+leader exit and pipe EOF alone are insufficient. No native Unix equivalence or
+interactive performance is inferred from these Windows fixtures.
+Run the ignored `amx_open_benchmark_checked_guest_mapping` test explicitly with
+`-- --ignored --nocapture` for checked pure conversion timing, not desktop latency.
+The post-build native CLI harness verifies exact directory previews and no writes;
+the guest runner additionally proves POSIX symlinks and isolated Python imports.
+Neither opens a file manager. Manually check a disposable directory through the
+real installed desktop association on every claimed platform, then close it.
+Do not substitute Windows-backed WSL previews for native Linux Rust or macOS
+execution, native desktop visibility, accessibility or handler-failure evidence.
+
+```text
+cargo test -p automexia-terminal --lib --locked amx_local_ -- --nocapture
+cargo test -p automexia-terminal --lib --locked amx_process_ -- --nocapture
+cargo test -p automexia-terminal --lib --locked amx_local_benchmark_checked_parsing -- --ignored --nocapture
+cargo test -p automexia-terminal --lib --locked amx_local_guest_path_benchmark_checked_filtering -- --ignored --nocapture
+python tools/ci/test_amx_guest_bridge.py
+python tools/ci/check_amx_guest_native.py --binary target/debug/automexia.exe
+```
+
+Run the guest entrypoint inside the selected WSL distribution, supplying its
+translated path to the built Windows executable. It requires installed Python
+and ripgrep; missing prerequisites fail rather than becoming passing skips.
+The tests cover exact guest process identities, EOF/cancellation/deadlines,
+descendant retirement, default ignore/privacy rules and hostile Python import
+paths. Tealdeer argument/cache policy uses an isolated client fixture; a real
+installed tealdeer cache remains a separate native check.
+The independent client fixture also records exact calls for unsupported versions,
+missing cache, invalid UTF-8 and hostile control/bidi output. Failures must not
+publish partial examples, disclose client diagnostics, request updates or execute
+an example. This proves adapter behavior, not a sandbox for an installed client.
+
+The WSL suite also places harmless `python3` canaries in project-relative search
+locations. Dot, empty and relative PATH entries must not execute them before
+Python isolation. All-relative PATH must fail, while an explicit absolute custom
+interpreter/client location retains precedence. Reset each canary between cases
+so an earlier failure cannot contaminate a later assertion. Pure tests enforce
+8192-byte/256-entry limits, POSIX splitting on Windows and control rejection.
+The checked filter benchmark asserts exact ordered output, not interpreter or
+desktop latency. These bootstrap cases are inapplicable to a native Unix binary;
+skips there must not be presented as Windows-backed WSL validation.
+
+The library tests exercise stream ceilings, malformed records, redacted errors,
+pre-cancellation and actual native child cleanup. The ignored child fixture is
+invoked only by its parent tests; run the benchmark by its exact name and require
+one executed test. Its 500-file/500-match parsing workload checks output on each
+iteration and measures parsing, not process, disk, shell or desktop latency.
+Native text search includes a match before a NUL beyond the first read buffer,
+beside an ordinary text file. Checking only a leading NUL missed this regression:
+ripgrep can emit a match before its end record identifies the file as binary.
+Require exact retained text and unchanged fixture files on Windows and WSL.
+Parser tests cover interleaved files, binary-only results, required fields,
+duplicate fields and identities, incomplete lifecycles, invalid binary offsets,
+post-summary records and independent complete-output benchmark assertions.
+Windows console cancellation and WSL supervision do not certify the native Unix
+Rust adapter. Complete that adapter's lifecycle tests on each claimed native OS.
+
 ## Shell integration
+
+The Google command's post-build smoke is part of `cargo ready`. To run it
+separately after building the application, use
+`python tools/ci/check_google_command_native.py --binary target/debug/automexia`
+(append `.exe` on Windows). It prints the shells actually executed, checks the
+real CLI's offline preview and lack of config writes, and sources each native
+adapter twice with normal, collision, disabled and missing-executable cases.
+All child runs are bounded; queries are fictional and no browser is opened.
+Windows/WSL checks do not establish macOS or native Linux desktop behavior.
+Interactive CMD DOSKEY, browser association and actual page loading remain
+native manual gates; test quoted spaces and `&`, disabled integration, a prior
+`amx` macro and a missing default browser without entering private data.
+
+Run focused contracts with
+`cargo test -p automexia-terminal --lib google_command_` and the correctness-
+checked microbenchmark with
+`cargo test -p automexia-terminal --lib google_command_benchmark_checked_encoding -- --ignored --nocapture`.
+The benchmark checks exact encoded bytes on every operation; it measures URL
+construction only, not shell startup, browser startup, PTY or network latency.
+The reinforcement checker/mutation suite guards limits, encoding, privacy,
+native capture, shared launch ownership and post-build readiness dispatch.
 
 Supported-shell tests verify session-local provisioning, prompt boundaries,
 status/duration/path/Git metadata, object-preserving listings, disable/remove
@@ -1255,3 +1489,64 @@ The complete alias scenario inventory is maintained in
 D0 is governed by ADR 0012. Tests preserve system OpenSSH ownership, exact
 argument boundaries, no implicit Enter, route/session isolation, cancellation,
 descendant cleanup, and ordinary manual SSH fallback.
+
+## Wrapped command information
+
+Run the actual library and binary targets; require a nonzero test count:
+
+```text
+cargo test -p automexia-terminal --lib --all-features --locked automexia::ui::command_info::tests
+cargo test -p automexia-terminal --bin automexia --all-features --locked renderer::command_info::tests
+cargo test -p automexia-terminal --bin automexia --all-features --locked context::paste::tests
+cargo bench -p automexia-terminal --bench automexia_services --profile dev -- command_information
+python tools/ci/check_feature_test_reinforcement.py
+python tools/ci/test_feature_test_reinforcement.py
+```
+
+The parser-driven regression checks complete context and timestamps at 80, 24
+and 12 columns, then restores the original width. Its independent row-origin
+expectations, native cell/cursor/history invariants, real grid glyph emission,
+metadata draw data and exact restored CPU pixels cover different failure modes.
+The standalone CPU text fixture must render both layer partitions; queued glyphs
+alone do not prove that a captured frame contains text.
+
+Set `AUTOMEXIA_COMMAND_INFO_PREVIEW` to a temporary PNG output path before the
+binary test to capture a fictional narrow-pane frame. Require a newly generated,
+nonempty image and inspect it. Do not capture contributor shell metadata in
+repository artifacts. Separate tests cover fractional-scale ink bounds,
+three-row panes with no native history, queued wheel events, blank-padding
+limits, source-row uniqueness, image texture cropping, and accepted/rejected
+paste isolation. Re-run the existing live WSL resize and table-seam tests.
+
+The benchmark checks every label's byte coverage and geometry during measured
+packing, plus the allocation-free identity projection. Development-profile
+layout timing is not a measurement of native PTY, GPU or compositor latency.
+
+Native desktop checks remain separate: narrow/wide and minimize/restore with
+multiple panes/tabs, mouse selection and copying, search, command jumps, wheel
+and scrollbar drag, typing/paste return, IME, screen-reader navigation, inline
+images, themes and reduced motion. Run the supported Windows, Linux and macOS
+shell/backend combinations on actual desktops before claiming their native
+visual or accessibility coverage. Finish with the full contributor readiness
+and privacy gates; focused tests are not full-product certification.
+
+## Focused core table view
+
+Run `cargo test -p automexia-ui-model --test tables --locked`,
+`cargo test -p automexia-terminal --lib --locked table_output`, and
+`cargo test -p automexia-terminal --bin automexia --locked table_view`.
+The parser test uses actual HT/tab stops and extreme VT resizing; the visual
+test traverses parser, capture, model, draw stream and real CPU font rendering.
+It asserts literal row edges, byte-exact source retention, exact restored pixels
+and detection of a one-pixel separator shift. Set `AUTOMEXIA_CORE_TABLE_PREVIEW`
+to a private output PNG path for a fresh fictional-data artifact and inspect it.
+This isolated CPU surface does not certify native modal compositor ordering.
+
+Run `cargo bench -p automexia-terminal --bench automexia_services -- core_table_view`
+for correctness-checked 256-row capture and resize/scroll timing. Measurements
+cover the bounded model, not PTY, clipboard, native input or compositor latency.
+Also run the full application, VT, shortcut/checker mutation and contributor
+readiness suites. Native validation must exercise opening from selection and
+history, live output underneath, route closure, ordinary and modified key-up,
+paste/IME containment, physical wheel/trackpad/scrollbar interaction, small and
+large windows, multiple themes/scales and assistive-technology focus delivery.

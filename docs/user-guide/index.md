@@ -15,6 +15,11 @@ terminal behavior.
 ## Work in the terminal
 
 - [Commands and shell workflows](commands-and-shell.md)
+- [Browser and official-documentation search](google-search.md)
+- [Local search and offline examples](local-tools.md)
+- [Open a directory](open-directory.md)
+- [Edit a file](edit-file.md)
+- [Open a repository](open-repository.md)
 - [Productivity](productivity.md)
 - [Customization](customization.md)
 - [Files and images](files-and-images.md)

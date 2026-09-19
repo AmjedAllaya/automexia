@@ -5,6 +5,102 @@ use automexia_extension_api::{
 use automexia_terminal::automexia::semantic_surfaces::{
     AdmissionError, SemanticSurfaceSlot, SurfacePhase,
 };
+use automexia_ui_model::semantic_table::Navigation;
+
+#[test]
+fn admitted_tables_reconcile_selection_and_reject_delayed_input() {
+    let mut host = slot(Decision::AllowSession);
+    host.accept_frame(&frame(1, REPLACE), 110).unwrap();
+    host.fit_table(1, 1, 110).unwrap();
+    assert!(host.navigate_table(1, Navigation::First, 110).unwrap());
+    let displayed_revision = host.presentation(110).unwrap().revision;
+    assert_eq!(displayed_revision, 1);
+    assert_eq!(
+        host.presentation(110)
+            .unwrap()
+            .table
+            .selected()
+            .unwrap()
+            .id()
+            .get(),
+        5
+    );
+    let replacement = REPLACE.replace("\"id\":5", "\"id\":6");
+    host.accept_frame(&frame(2, &replacement), 111).unwrap();
+    assert!(host.presentation(111).unwrap().table.selected().is_none());
+    assert_eq!(
+        host.navigate_table(displayed_revision, Navigation::First, 111),
+        Err(AdmissionError::Stale)
+    );
+    assert!(host.presentation(111).unwrap().table.selected().is_none());
+    assert!(host.navigate_table(2, Navigation::First, 111).unwrap());
+    host.accept_frame(&frame(3, "\"loading\""), 112).unwrap();
+    assert_eq!(
+        host.presentation(112).unwrap().phase,
+        &SurfacePhase::Loading
+    );
+    assert_eq!(
+        host.navigate_table(3, Navigation::Last, 112),
+        Err(AdmissionError::NotReady)
+    );
+    assert_eq!(
+        host.presentation(112).unwrap().table.visible_rows()[0]
+            .id()
+            .get(),
+        6
+    );
+    host.accept_frame(&frame(4, r#"{"failed":"Unavailable"}"#), 113)
+        .unwrap();
+    assert_eq!(
+        host.navigate_table(4, Navigation::First, 113),
+        Err(AdmissionError::NotReady)
+    );
+    assert!(host.snapshot(113).is_some());
+    assert!(host.presentation(200).is_none());
+    assert_eq!(host.fit_table(2, 2, 200), Err(AdmissionError::Closed));
+    assert_eq!(
+        host.navigate_table(4, Navigation::First, 200),
+        Err(AdmissionError::Closed)
+    );
+}
+
+#[test]
+fn malformed_refresh_keeps_exact_borrowed_projection_and_clock_rollback_revokes_it() {
+    let mut host = slot(Decision::AllowSession);
+    host.accept_frame(&frame(1, REPLACE), 110).unwrap();
+    host.fit_table(8, 10, 110).unwrap();
+    host.navigate_table(1, Navigation::First, 110).unwrap();
+    let original = host
+        .presentation(110)
+        .unwrap()
+        .table
+        .visible_rows()
+        .as_ptr();
+    assert_eq!(
+        host.accept_frame(&frame(2, "{}"), 111),
+        Err(AdmissionError::InvalidFrame)
+    );
+    assert_eq!(
+        host.presentation(111)
+            .unwrap()
+            .table
+            .visible_rows()
+            .as_ptr(),
+        original
+    );
+    assert_eq!(
+        host.presentation(111)
+            .unwrap()
+            .table
+            .selected()
+            .unwrap()
+            .id()
+            .get(),
+        5
+    );
+    assert!(host.presentation(109).is_none());
+    assert!(host.snapshot(112).is_none());
+}
 
 fn binding() -> SurfaceBinding {
     SurfaceBinding {

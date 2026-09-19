@@ -9,6 +9,10 @@ SOURCES = {
     "bounds": "automexia-extension-api/src/surface/bounds.rs",
     "host": "apps/automexia-terminal/src/automexia/semantic_surfaces.rs",
     "benchmark": "automexia-extension-api/benches/semantic_surfaces.rs",
+    "presentation": "automexia-ui-model/src/semantic_table.rs",
+    "presentation_benchmark": "automexia-ui-model/benches/semantic_table_presentation.rs",
+    "presentation_manifest": "automexia-ui-model/Cargo.toml",
+    "architecture": "tools/xtask/src/main.rs",
 }
 
 
@@ -37,9 +41,20 @@ def validate_sources(sources: dict[str, str]) -> None:
         raise ValueError("semantic surface benchmark sampling must remain bounded for every group")
     if host.index("frame.len()>MAX_SURFACE_FRAME_BYTES") > host.index("serde_json::from_slice(frame)"):
         raise ValueError("semantic surface framing must precede decoding")
+    for owner, tokens in {
+        "host": ["snapshot:Option<TablePresentation>", "presentation.replace(table)", "revision!=self.revision", "self.phase!=SurfacePhase::Ready", "map(TablePresentation::table)", "revision:self.revision,phase:&self.phase,table:self.snapshot.as_ref()?"],
+        "presentation": ["MAX_VISIBLE_ROWS:usize=1024", "MAX_VISIBLE_COLUMNS:usize=16_384", "table:SemanticTable", "&self.table.rows()[self.visible_range()]", "(r.id(),r.resource())", "self.selected=next_selection", "self.table=table", "saturating_add_signed(delta)", "index<count"],
+        "presentation_benchmark": ["semantic_table_presentation", "navigate-project-checked", "replace-drop-checked", "BatchSize::PerIteration", "SamplingMode::Flat", "[0,1,100,2_000,20_000]", "assert_eq!(rows.len(),count.min(25))"],
+        "presentation_manifest": ['[[bench]]name="semantic_table_presentation"harness=false'],
+        "architecture": ['ifmatches!(name,"automexia-extension-api"|"automexia-ui-model"){verify_benchmark_dependency(dependency)?;}', 'dependency["kind"].as_str()==Some("dev")'],
+    }.items():
+        if any(token not in code(owner) for token in tokens):
+            raise ValueError("typed presentation lost an ownership, input or evidence boundary")
+    if not re.search(r"criterion_group!\([^;]*\bsemantic_table_presentation\b", code("presentation_benchmark")):
+        raise ValueError("typed presentation benchmark is not dispatched")
     if "size_hint()" in bounds or "Vec::deserialize" in contract + bounds:
         raise ValueError("semantic surface decoding must not trust sequence allocation hints")
-    for value in (contract, bounds, host):
+    for value in (contract, bounds, host, code("presentation")):
         if any(token in value for token in ("std::fs", "std::net", "std::process", "Command::new", "automexia_devops", "rio_vt", "teletypewriter")):
             raise ValueError("semantic surface data/admission acquired unrelated authority")
 

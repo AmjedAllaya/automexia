@@ -5,14 +5,23 @@
 //! renderer backends, or platform-specific windowing code.
 
 pub mod api;
+pub mod browser_search;
 pub mod builtins;
+pub(crate) mod cli_process;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod connections;
+pub mod desktop_open;
+mod desktop_path;
+pub mod directory_open;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ecosystem;
+pub mod editor;
 #[doc(hidden)]
 pub mod export;
 pub mod ghostty_migration;
+pub mod google;
+#[doc(hidden)]
+pub mod local_tools;
 pub mod marketplace;
 pub mod migration;
 #[cfg(not(target_arch = "wasm32"))]
@@ -22,6 +31,7 @@ pub(crate) mod private_fs;
 #[doc(hidden)]
 pub mod prompt_discovery;
 pub mod quick_actions;
+pub mod repository_open;
 pub mod runtime;
 #[doc(hidden)]
 pub mod semantic_surfaces;
@@ -32,6 +42,7 @@ pub mod shell_integration;
 pub mod shortcut_preferences;
 mod state;
 pub mod suggestions;
+pub mod table_output;
 pub mod theme;
 pub mod ui;
 #[cfg(feature = "visual-test-hooks")]

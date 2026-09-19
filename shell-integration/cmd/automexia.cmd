@@ -7,6 +7,15 @@ set "AUTOMEXIA_CMD_INTEGRATION_LOADED=1"
 set "AUTOMEXIA_SHELL_INTEGRATION=1"
 set "TERM_PROGRAM=Automexia"
 set "COLORTERM=truecolor"
+rem Preserve existing macros and executables. Rust excludes expansion characters
+rem from this macro target; query text is parsed once by the user's native CMD.
+if "%AUTOMEXIA_AMX%"=="0" goto :automexia_amx_done
+if not defined AUTOMEXIA_CLI_CMD goto :automexia_amx_done
+doskey /macros | findstr /B /I /L "amx=" >nul 2>nul
+if not errorlevel 1 goto :automexia_amx_done
+where amx >nul 2>nul
+if errorlevel 1 doskey amx="%AUTOMEXIA_CLI_CMD%" $*
+:automexia_amx_done
 set "AUTOMEXIA_CMD_ROOT=%~dp0"
 if not defined AUTOMEXIA_CMD_USER_BASE64 set "AUTOMEXIA_CMD_USER_BASE64=__AUTOMEXIA_CMD_USER_BASE64__"
 if not defined AUTOMEXIA_CMD_PATH_BASE64 set "AUTOMEXIA_CMD_PATH_BASE64=__AUTOMEXIA_CMD_PATH_BASE64__"

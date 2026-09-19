@@ -39,6 +39,16 @@ listed or summarized here.
 | [0051](adr/0051-mnemonic-pane-shortcuts-and-honest-discovery.md) | Mnemonic pane shortcuts, shortcut-family audit and effective discovery |
 | [0053](adr/0053-effective-rust-toolchain-identity.md) | Explicit compiler selection and verified MSRV |
 | [0055](adr/0055-session-local-prompt-discovery.md) | Session-local Kubernetes prompt discovery and bounded guest reads |
+| [0058](adr/0058-bounded-colour-setup.md) | Bounded colour setup without temporary allocations |
+| [0059](adr/0059-wrapped-command-information.md) | Shared display-only command-information wrapping |
+| [0060](adr/0060-focused-core-table-output.md) | Focused core table output and bounded read-only navigation |
+| [0061](adr/0061-keyboard-hyperlink-review.md) | Bounded keyboard hyperlink review and deliberate activation |
+| [0062](adr/0062-explicit-google-search-command.md) | Explicit one-shot Google search and session-local command helpers |
+| [0063](adr/0063-explicit-browser-search-routing.md) | Bounded multi-provider and official-documentation browser searches |
+| [0064](adr/0064-bounded-explicit-local-tools.md) | Bounded local search, offline examples and native/WSL process ownership |
+| [0065](adr/0065-explicit-directory-handoff.md) | Explicit directory-only desktop handoff and supervised WSL resolution |
+| [0066](adr/0066-explicit-editor-file-handoff.md) | Explicit file-and-position handoff to a configured desktop editor |
+| [0067](adr/0067-local-repository-browser-navigation.md) | Offline Git remote resolution and explicit repository browser navigation |
 
 ## When an ADR is required
 

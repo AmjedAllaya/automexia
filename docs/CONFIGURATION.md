@@ -34,6 +34,15 @@ The main file must be a regular UTF-8 file no larger than 4 MiB. Each theme
 must be a regular UTF-8 file no larger than 1 MiB. Parse/read/theme failure is
 reported and runtime reload keeps the last known-good configuration.
 
+## Explicit command preferences
+
+Optional `amx.toml` beside `config.toml` configures only the explicit `amx edit`
+desktop handoff. It is not loaded at terminal startup and does not replace the
+terminal settings editor. Use `version = 1` and `editor = "vscode"`,
+`"vscode-insiders"` or `"disabled"`. The strict regular-file limit is 16 KiB;
+unknown/invalid fields fail closed. Automexia never writes this file. See
+[editor configuration, overrides and rollback](user-guide/edit-file.md).
+
 ## Minimal example
 
 ```toml
@@ -201,6 +210,12 @@ border-radius = 0
 Pane-local tab rails and footers use responsive product invariants and have no
 v0.4 user setting. See [Liquid Hacker UX](LIQUID-HACKER-UX.md).
 
+Command information wraps automatically when the pane is too narrow for its
+context badges and completion timestamp. No setting is required. Use scrolling
+or keyboard paging to reach additional information lines in a short window;
+typing returns to the live command. Widening restores a single row when it fits.
+These display rows do not change the shell's dimensions or copied output.
+
 ## Fonts
 
 ```toml
@@ -295,7 +310,12 @@ search-focused-match-background, search-focused-match-foreground,
 hint-foreground, hint-background
 ```
 
-Colors use `#RRGGBB`. Semantic DevOps identities retain their distinct anchor
+Colors accept six ASCII hexadecimal digits (`RRGGBB`) or eight (`RRGGBBAA`),
+with an optional leading `#` and either letter case. Alpha defaults to opaque.
+Whitespace, extra markers and Unicode lookalike digits are rejected. Conversion
+inspects at most nine input bytes before rejecting oversized values; errors never
+echo the input. Failed theme reload retains the last working configuration.
+Semantic DevOps identities retain their distinct anchor
 hues and apply contrast correction against the context background; user theme
 colors still own terminal ANSI output, search, and selection precedence.
 
@@ -304,6 +324,10 @@ colors still own terminal ANSI output, search, and selection precedence.
 Hints discover URLs/paths without executing terminal text as a shell command.
 The default rule recognizes hyperlinks and local-looking paths and opens them
 through a platform handler with `Ctrl+Alt+O`.
+Keyboard labels now select for review; Enter performs the configured action.
+Tab/Shift+Tab navigate, Ctrl+Shift+C copies, Left/Right inspect long destinations,
+and Escape returns without shell input. See [keyboard hyperlinks](user-guide/hyperlinks.md)
+for default-opener safety, stale-capture behavior and resource limits.
 
 ```toml
 [hints]

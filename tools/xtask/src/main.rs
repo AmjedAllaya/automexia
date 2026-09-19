@@ -958,6 +958,7 @@ fn ready() -> TaskResult {
     complete_ci_gate()?;
     build_debug_app()?;
     smoke_debug_app()?;
+    smoke_google_command()?;
     println!("PASS: Automexia is locally ready to run and submit");
     Ok(())
 }
@@ -1273,6 +1274,19 @@ fn smoke_debug_app() -> TaskResult {
     )?;
     println!("PASS: debug executable reports {expected}");
     Ok(())
+}
+
+fn smoke_google_command() -> TaskResult {
+    let program =
+        python_program().ok_or("Python 3 is required for native command smoke")?;
+    let binary = debug_binary(&product_identity()?);
+    let mut command = Command::new(program);
+    command.current_dir(root()).args([
+        OsStr::new("tools/ci/check_google_command_native.py"),
+        OsStr::new("--binary"),
+        binary.as_os_str(),
+    ]);
+    run_command(command, "native Google command smoke (offline preview)")
 }
 
 fn launch_debug_app(app_args: &[String]) -> TaskResult {
@@ -2644,11 +2658,11 @@ fn powershell_identity_fixture_is_fictional(source: &str) -> bool {
         && !source.contains("GetBytes($env:ComSpec)")
 }
 
-fn verify_text_benchmark_dependency(dependency: &serde_json::Value) -> TaskResult {
+fn verify_benchmark_dependency(dependency: &serde_json::Value) -> TaskResult {
     require(
         dependency["name"].as_str() != Some("criterion")
             || dependency["kind"].as_str() == Some("dev"),
-        "extension-api Criterion dependency must remain development-only",
+        "Model Criterion dependency must remain development-only",
     )
 }
 
@@ -2879,6 +2893,7 @@ fn verify_architecture() -> TaskResult {
                 "automexia-command-productivity",
                 "automexia-connectivity",
                 "automexia-extension-api",
+                "criterion",
                 "serde",
                 "serde_json",
                 "unicode-segmentation",
@@ -2901,8 +2916,8 @@ fn verify_architecture() -> TaskResult {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
-            if name == "automexia-extension-api" {
-                verify_text_benchmark_dependency(dependency)?;
+            if matches!(name, "automexia-extension-api" | "automexia-ui-model") {
+                verify_benchmark_dependency(dependency)?;
             }
             if name == "automexia-devops" {
                 verify_devops_test_dependency(dependency)?;
@@ -5169,7 +5184,7 @@ mod tests {
     }
 
     #[test]
-    fn text_benchmark_dependency_rejects_runtime_build_and_renamed_mutations() {
+    fn model_benchmark_dependency_rejects_runtime_build_and_renamed_mutations() {
         for kind in [
             serde_json::Value::Null,
             serde_json::json!("build"),
@@ -5181,14 +5196,14 @@ mod tests {
                     "name": "criterion", "kind": kind, "rename": renamed,
                     "target": "cfg(unix)"
                 });
-                assert!(verify_text_benchmark_dependency(&dependency).is_err());
+                assert!(verify_benchmark_dependency(&dependency).is_err());
                 dependency["kind"] = serde_json::json!("dev");
-                assert!(verify_text_benchmark_dependency(&dependency).is_ok());
+                assert!(verify_benchmark_dependency(&dependency).is_ok());
                 dependency.as_object_mut().unwrap().remove("kind");
-                assert!(verify_text_benchmark_dependency(&dependency).is_err());
+                assert!(verify_benchmark_dependency(&dependency).is_err());
             }
         }
-        assert!(verify_text_benchmark_dependency(
+        assert!(verify_benchmark_dependency(
             &serde_json::json!({"name": "serde", "kind": null})
         )
         .is_ok());

@@ -25,6 +25,42 @@ Everything after the explicit program is passed as an exact argument. Do not
 use this option as a replacement for shell pipelines, redirects, aliases,
 functions, or expansion; enter those in the real shell.
 
+## Open a directory
+
+`automexia open [directory]` opens an existing directory in the desktop file
+manager; the default is `.`. `--preview` resolves the destination without opening
+it. Files are rejected. See [directory opening and platform limits](../user-guide/open-directory.md).
+
+## Edit a file
+
+`automexia edit <file> [--line N] [--column N]` requests an existing file in
+Visual Studio Code by default. `--preview` prints the encoded destination without
+opening an editor. `--editor vscode-insiders` selects Insiders for one invocation;
+strict user-root `amx.toml` preferences can select or disable editing. See
+[editor behavior and limits](../user-guide/edit-file.md). The same command is
+available as `amx edit` in integrated shells.
+
+## Repository navigation
+
+`automexia repo [root|issues] [--remote NAME] [--preview]` reads a local configured
+Git remote and opens its GitHub.com/GitLab.com page. Origin is the default;
+`--preview` is offline and does not open a browser. See [repository navigation](../user-guide/open-repository.md)
+for remote syntax, limits and WSL behavior. Integrated shells use `amx repo`.
+
+## Google search
+
+`automexia search <source> <terms>` supports `google`, `github` (repositories),
+`youtube` and `ddg`. `automexia docs <tool> <terms>` searches Google restricted
+to official documentation for `kubernetes`, `docker`, `rust`, `python`, `git`
+or `terraform`. Both accept `--print-url` before query terms for an offline
+preview. Integrated shells expose the same commands as `amx`. Unknown names
+fail without fallback. See [search examples](../user-guide/google-search.md).
+
+`automexia google <terms>` opens one encoded Google search in the default
+browser. Integrated sessions expose `amx google <terms>` without installing a
+global alias. `--print-url` before the query previews it offline; `--` allows
+leading search operators. See [usage, limits and privacy](../user-guide/google-search.md).
+
 ## Local actions, aliases, packs, and workspaces
 
 These source-owned local command families are part of the free product. Their
@@ -153,3 +189,11 @@ mutating by their nature. Review their current help before use.
 Do not lower storage guards in routine development or CI. See
 [Configuration](../CONFIGURATION.md), [Testing](../TESTING.md), and
 [WSL development](../WSL-DEVELOPMENT.md).
+
+## Local tools
+
+`automexia find file <literal>`, `automexia find text <literal>` and
+`automexia explain <command> [subcommand]` are also available through `amx` in
+integrated shells. `--preview` performs no client execution. See [local tools](../user-guide/local-tools.md)
+for required clients, bounded search semantics, offline cache preparation and
+guest cancellation. These commands do not enable generic Quick Action execution.

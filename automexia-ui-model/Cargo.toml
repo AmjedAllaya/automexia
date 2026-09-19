@@ -17,4 +17,9 @@ unicode-segmentation = { workspace = true }
 serde = { workspace = true }
 
 [dev-dependencies]
+criterion = { workspace = true }
 serde_json = { workspace = true }
+
+[[bench]]
+name = "semantic_table_presentation"
+harness = false

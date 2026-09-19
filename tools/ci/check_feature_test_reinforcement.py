@@ -88,6 +88,16 @@ FORBIDDEN_ABSOLUTE_CLAIMS = re.compile(
 )
 
 REQUIRED_FEATURE_SCENARIO_DETAILS = {
+    "command-productivity-cp22-quick-actions": {
+        "needed_tests": ("Independent scalar score oracle", "contextual Unicode lowercase"),
+        "verification_reinforcements": ("maximum-input scoring allocation ceiling", "allocating canary and unwind reset"),
+        "checker_reinforcements": ("scalar-score and allocation evidence",),
+    },
+    "identity-config-migration": {
+        "needed_tests": ("Unicode colour digit panic", "exact RGB/RGBA"),
+        "verification_reinforcements": ("first-use zero-allocation palette", "same-host palette setup"),
+        "checker_reinforcements": ("colour grammar and allocation evidence",),
+    },
     "contributor-automation-quality-policy": {
         "needed_tests": ("parent-exit retained-pipe", "exact descendant identities", "joined readers"),
     },
@@ -119,6 +129,9 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
             "ConPTY history/live seams",
             "Long padded table rows",
             "No-resize probe invariance",
+            "Real WSL multi-column listings",
+            "exact-margin cursor cell",
+            "blank soft-wrap fragments",
             "viewport identity journal",
             "parser-created selection journal",
             "hard-line journal",
@@ -291,7 +304,47 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
 }
 
+WRAPPING_FEATURES = (
+    "terminal-protocols-grid-history", "renderer-fonts-responsive-ui",
+    "prompt-context-devops-semantics", "windows-tabs-sessions-input",
+    "image-protocols-local-preview",
+)
+for _feature in WRAPPING_FEATURES:
+    _details = REQUIRED_FEATURE_SCENARIO_DETAILS.setdefault(_feature, {})
+    for _field, _phrase in (
+        ("needed_tests", "Shared command-information wrapping"),
+        ("verification_reinforcements", "actual glyph pixels, complete label bytes"),
+        ("checker_reinforcements", "Reject loss of shared wrapping dispatch"),
+    ):
+        _details[_field] = (*_details.get(_field, ()), _phrase)
+
 NATIVE_CONTRACT_SOURCES = {
+    "repository_open": "apps/automexia-terminal/src/automexia/repository_open.rs",
+    "desktop_path": "apps/automexia-terminal/src/automexia/desktop_path.rs",
+    "editor": "apps/automexia-terminal/src/automexia/editor.rs",
+    "directory_open": "apps/automexia-terminal/src/automexia/directory_open.rs",
+    "local_tools": "apps/automexia-terminal/src/automexia/local_tools.rs",
+    "local_tool_tests": "apps/automexia-terminal/src/automexia/local_tools/boundary_tests.rs",
+    "local_session": "apps/automexia-terminal/src/automexia/local_tools/session.rs",
+    "cli_process": "apps/automexia-terminal/src/automexia/cli_process.rs",
+    "cli_completion": "apps/automexia-terminal/src/automexia/cli_process/windows_completion.rs",
+    "cli_cancellation": "apps/automexia-terminal/src/automexia/cli_process/cancellation.rs",
+    "guest_bridge": "shell-integration/amx-tool-bridge.py",
+    "guest_native": "tools/ci/check_amx_guest_native.py",
+    "google": "apps/automexia-terminal/src/automexia/google.rs",
+    "browser_search": "apps/automexia-terminal/src/automexia/browser_search.rs",
+    "google_native": "tools/ci/check_google_command_native.py",
+    "desktop_open": "apps/automexia-terminal/src/automexia/desktop_open.rs",
+    "session_cli": "apps/automexia-terminal/src/automexia/shell_integration.rs",
+    "cli_main": "apps/automexia-terminal/src/main.rs",
+    "hyperlinks": "apps/automexia-terminal/src/hints.rs",
+    "hyperlink_scan": "apps/automexia-terminal/src/hints/scan.rs",
+    "hyperlink_preview": "apps/automexia-terminal/src/hints/preview.rs",
+    "hyperlink_tests": "apps/automexia-terminal/src/hints_tests.rs",
+    "table_model": "automexia-ui-model/src/tables.rs",
+    "table_capture": "apps/automexia-terminal/src/automexia/table_output.rs",
+    "table_view": "apps/automexia-terminal/src/table_view.rs",
+    "table_pixels": "apps/automexia-terminal/src/table_view_tests.rs",
     "qa": "tools/ci/qa.py",
     "qa_process": "tools/ci/qa_process.py",
     "compiler_probe": "tools/ci/rust_toolchain.py",
@@ -310,6 +363,13 @@ NATIVE_CONTRACT_SOURCES = {
     "windows_pipes": "teletypewriter/src/windows/pipes.rs",
     "sugarloaf_cpu": "sugarloaf/src/renderer/cpu.rs",
     "native_driver": "tests/integration/resize-stress-windows.ps1",
+    "resize_listing_tests": "rio-vt/tests/live_resize.rs",
+    "resize_listing_fixture": "rio-vt/tests/fixtures/live-resize-output.sh",
+    "resize_bench": "rio-vt/benches/vt_input.rs",
+    "command_wrap_model": "apps/automexia-terminal/src/automexia/ui/command_info.rs",
+    "command_wrap_renderer": "apps/automexia-terminal/src/renderer/command_info.rs",
+    "renderer": "apps/automexia-terminal/src/renderer/mod.rs",
+    "application_bench": "apps/automexia-terminal/benches/automexia_services.rs",
 }
 
 
@@ -478,6 +538,257 @@ def _validate_qa_process_sources(sources: dict[str, str]) -> None:
         raise ReinforcementError('compiler identity must use the same bounded lifecycle owner')
 
 
+def _validate_resize_listing_sources(sources: dict[str, str]) -> None:
+    # Dispatch/fixture guards complement real executions; these are not an
+    # independent oracle for terminal geometry or native rendering.
+    listing = _source_slice(sources["resize_listing_tests"],
+                            "fn native_live_wsl_eza_listing_restores_columns()",
+                            "fn listing_name(", "real WSL listing regression")
+    _require_fragments(listing, (
+        "tempfile::Builder::new()", "std::fs::File::create_new(",
+        "for height in [8, 2]", "run_fixture_sizes(",
+        "ResizeDelivery::Burst, ResizeDelivery::AwaitWorkerCommit",
+        "run_worker_output_sizes(", ".close()",
+    ), "real WSL listing regression")
+    tests = sources["resize_listing_tests"]
+    _require_fragments(tests, (
+        '"worker probe cannot repair output"',
+        'text.matches(&format!("entry-{index:02}-")).count(),\n                1,',
+    ), "listing baseline and uniqueness oracles")
+    _require_fragments(sources["resize_listing_fixture"], (
+        "eza --icons=always --color=always --width=100 --grid --sort=name --",
+        "RESIZE-BASELINE", "steps=48",
+    ), "real WSL listing producer")
+    benchmark = _source_slice(sources["resize_bench"], "fn native_seam_roundtrip(",
+                              "fn pane_close_repaint(", "checked seam benchmark")
+    _require_fragments(benchmark, (
+        "terminal.grid.history_size() < 64", "terminal.selection_to_string()",
+        "expected", "terminal.snapshot_visible(",
+    ), "checked seam benchmark")
+    extreme = _source_slice(tests,
+        "fn native_live_wsl_eza_extreme_resize_restores_columns()",
+        "fn run_native_eza_listing(", "extreme native listing campaign")
+    _require_fragments(extreme, (
+        "(1, 1)", "(1, 2)", "(2, 1)", "(512, 96)",
+        "for seed in 1..=8u64", "0..48", '"listing-wide"',
+    ), "extreme native listing campaign")
+    _require_fragments(listing, ("std::fs::create_dir(path)",
+        '"abcdefgh".repeat(index % 5 + 1)'), "mixed long listing entries")
+    extreme_bench = _source_slice(sources["resize_bench"],
+        "fn extreme_resize_roundtrip(", "fn pane_close_repaint(",
+        "checked extreme benchmark")
+    _require_fragments(extreme_bench, (
+        "terminal.grid.history_size() < 100", "terminal.selection_to_string()",
+        "terminal.snapshot_visible(", "(2, 24)", "(16, 3)",
+    ), "checked extreme benchmark")
+
+
+def _validate_command_wrapping_sources(sources: dict[str, str]) -> None:
+    # Supplemental wiring guards: runtime tests, not these strings, establish
+    # complete labels, native-cell preservation and independently checked pixels.
+    for owner, fragments in {
+        "renderer": ("mod command_info;", "command_info::layout(", "command_info::project_images("),
+        "screen": ("p.command_rows.source_row(y)", ".native_row(position.row.0.max(0) as usize)"),
+        "command_wrap_model": (
+            "remaining.grapheme_indices(true)", "word_boundary.or(accepted)?",
+            "fn queued_wheel_events_preserve_every_wrapped_line()",
+            "fn projection_never_duplicates_native_cells_for_any_visible_offset()",
+            "assert!(previous.is_none_or(|previous| source > previous));",
+        ),
+        "command_wrap_renderer": (
+            "fn narrow_prompt_band_cannot_give_all_its_width_to_the_timestamp()",
+            "fn short_pane_keeps_all_context_reachable_without_native_history()",
+            "fn wrapped_real_font_ink_stays_inside_narrow_panes_at_fractional_scales()",
+            "projected_grid_pixels(&content, width, height)",
+            "text.render_cpu_base(&mut pixels, width, height);",
+            "text.render_cpu_modal(&mut pixels, width, height);",
+            "assert_eq!(restored, completion.text);",
+            '"metadata reaches the actual grid frame"',
+            "pixels.iter().zip(original).filter(|(a, b)| a != b).count(),\n                        0,",
+        ),
+        "application_bench": (
+            "fn command_information(c: &mut Criterion)", "    command_information\n);",
+            "assert_eq!(fragment.bytes.start, ends[fragment.item]);",
+            "assert_eq!(ends, values.map(str::len));",
+            "assert!(fragment.x + fragment.width <= width + 0.001);",
+            "assert_eq!(projection.origin(1), band.rows);",
+        ),
+    }.items():
+        _require_fragments(sources[owner], fragments, "shared command wrapping " + owner)
+
+
+def _validate_table_sources(sources: dict[str, str]) -> None:
+    # Wiring guards complement parser/input/pixel tests, never replace them.
+    for owner, fragments in {
+        "table_model": ("MAX_TABLE_BYTES: usize = 256 * 1024", "MAX_TABLE_ROWS: usize = 256", "row.graphemes(true)", "source: Vec<String>"),
+        "table_capture": (".bounds_to_display_string_bounded(", "Mode::ALT_SCREEN | Mode::MOUSE_MODE", "fn core_table_capture_uses_real_tab_stops_and_retains_cursor_history_and_copy()"),
+        "table_view": ("self.close();", "WindowEvent::Ime(_)", "WindowEvent::DroppedFile(_)", "self.viewport.horizontal_thumb(", "table.visible_range(", "Effect::Consumed"),
+        "table_pixels": ("fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()", "assert_eq!(pixels, after.pixels(760, 260));", "line.0.y += 1.0;", "assert_eq!(row_lines, [77.0, 99.0, 121.0, 143.0]);"),
+        "application": (".handle_table_window_event(&event, &mut self.router.clipboard)",),
+        "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_table_key_release(key)", "self.table_view.draw("),
+        "application_bench": ("    core_table_view,", "assert_eq!(table.source(), &source);", "assert_eq!(table.column_starts(), &[0, 11, 27]);"),
+    }.items():
+        _require_fragments(sources[owner], fragments, "focused core table " + owner)
+
+
+def _validate_hyperlink_sources(sources: dict[str, str]) -> None:
+    # Structural guards supplement actual parser, intent and raster assertions.
+    for owner, fragments in {
+        "hyperlinks": ("MAX_HINT_MATCHES: usize = 256", "MAX_HINT_BYTES: usize = 4096", "if !pressed || repeat", "KeyIntent::Activate", "pub(crate) fn safe_open_target", "self.snapshot = None;"),
+        "hyperlink_scan": ("MAX_CELLS: usize = 256 * 1024", "MAX_LINE: usize = 16 * 1024", "self.dimensions !=", "grid.extras_table.get(*id) != Some(value)", "limits.set_retry_limit_in_match(10_000)", "previous_link == &link", "positions.extend(std::iter::repeat_n((position, end), c.len_utf8()))", "usize::from(cell.is_wide())", "end: positions[start + matched.len() - 1].1"),
+        "hyperlink_preview": ("Copy only · blocked destination", "state.focus_in_lower_half()", "text_fit::fit_end", "fitted.display.into_owned()"),
+        "hyperlink_tests": ("fn keyboard_links_real_platform_bindings_and_modal_intents()", "fn keyboard_links_one_osc_anchor_survives_wrapping_and_combining_extras()", "fn keyboard_links_cover_both_cells_of_final_wide_grapheme()", "fn keyboard_links_label_navigation_resets_destination_pan()", "assert_eq!(original, preview_pixels(&state, 760, 180))", "damaged[68 * 760] ^= 1", "fn keyboard_links_benchmark_checked_capture_navigation()", "assert_eq!(state.matches().len(), 100)"),
+        "application": (".handle_hint_window_event(&event, &mut self.router.clipboard)",),
+        "screen": ("self.remember_hint_key(key)", "if !self.validate_hint_snapshot()", "self.hint_route == Some(current.route_id)", "crate::hints::key_intent(", "if !crate::hints::safe_open_target(&hint_match.text)", "WindowEvent::Ime(_) | WindowEvent::Touch(_) | WindowEvent::DroppedFile(_)"),
+    }.items():
+        _require_fragments(sources[owner], fragments, "keyboard hyperlink " + owner)
+    _require_fragments(sources["hyperlinks"], ("if label.len() > columns", "occupied.contains(&(target.start.row.0, col))"), "whole nonoverlapping hyperlink labels")
+    _require_fragments(sources["hyperlink_preview"], ("state.focused_label()",), "hyperlink label preview fallback")
+    _require_fragments(sources["screen"], (".label_cells()",), "shared hyperlink label placement")
+    _require_fragments(sources["hyperlink_tests"], ("fn keyboard_links_right_edge_labels_are_whole_and_do_not_overlap()", "assert_eq!(state.label_cells().len(), 300)"), "bounded label tests and benchmark")
+    body = _source_slice(sources["screen"], "fn process_hint_key(", "pub(crate) fn handle_hint_window_event", "hyperlink key owner")
+    if body.index("self.validate_hint_snapshot()") > body.index("self.execute_hint_action("):
+        raise ReinforcementError("hyperlink activation precedes stale-state validation")
+    for forbidden in ('args {:?}', 'could not open {target}'):
+        if forbidden in sources["screen"]:
+            raise ReinforcementError("hyperlink launcher discloses untrusted target data")
+
+
+def _validate_google_sources(sources: dict[str, str]) -> None:
+    for owner, fragments in {
+        "browser_search": ("super::google::validated_query(arguments)?", ".append_pair(provider.query_key, &query)", 'append_pair("as_sitesearch", site)', "if command.search.print_url", "fn amx_browser_search_every_route_enforces_limits_before_dispatch()", "fn amx_browser_search_benchmark_checked_routing()"),
+        "google": ("MAX_QUERY_BYTES: usize = 4096", "MAX_QUERY_ARGUMENTS: usize = 256", "argument.chars().any(char::is_control)", 'url::Url::parse("https://www.google.com/search")', 'append_pair("q", &query)', "if command.print_url", "fn google_command_dispatch_preview_failure_and_debug_are_private()", "fn google_command_benchmark_checked_encoding()"),
+        "google_native": ("timeout_seconds=25", "65536", '"function", "alias", "external", "disabled", "missing"', "set(Path(temporary).rglob", "actual == expected", "def test_real_search_and_docs_routes_are_offline_and_bounded(self):"),
+        "desktop_open": ("target.contains('\\0')", "ShellExecuteW(", ".arg(target)", ".stdin(Stdio::null())", "with_com_apartment(|| open_windows(target))", "impl Drop for ApartmentGuard", "if result >= 0", "fn google_command_native_apartment_balances_success_failure_and_existing_mode()"),
+        "session_cli": ("env::current_exe()", '"AUTOMEXIA_CLI/up"', "cmd_alias_safe"),
+        "xtask": ("smoke_google_command()?;", '"tools/ci/check_google_command_native.py"', 'run_command(command, "native Google command smoke (offline preview)")'),
+        "cli_main": ("CliCommand::Google(command)", "automexia::google::execute(command)", "automexia::browser_search::execute(command, false)", "automexia::browser_search::execute(command, true)"),
+        "screen": ("crate::automexia::desktop_open::open(target)",),
+    }.items():
+        _require_fragments(sources[owner], fragments, "Google command " + owner)
+    ready = _source_slice(sources["xtask"], "fn ready()", "fn dev(", "Google native readiness")
+    if ready.index("build_debug_app()?") > ready.index("smoke_google_command()?"):
+        raise ReinforcementError("Google native smoke must use the current built executable")
+
+
+LOCAL_TOOL_CONTRACTS = {
+    "repository_open": ('local_tools::run_tool("git", &args, session)', 'MAX_REMOTE_BYTES: usize = 4096', 'MAX_REMOTE_NAME_BYTES: usize = 128', '"--no-pager", "remote", "get-url", "--", remote', 'url.password().is_none()', '"github.com" | "gitlab.com"', 'components > 16', 'part.len() > 255', 'RepoPage::Issues', 'if preview', 'super::desktop_open::open', 'fn amx_repo_credentials_hosts_and_ambiguous_paths_are_never_opened()', 'fn amx_repo_benchmark_checked_remote_parsing()'),
+    "directory_open": ('Kind::Directory', "if preview", "fn amx_open_preview_never_launches_and_failure_is_redacted()"),
+    "desktop_path": ('local_tools::run_tool(kind.probe()', 'Self::Directory => "amx-directory"', 'Self::File => "amx-file"', 'Self::Directory => path.is_dir()', 'Self::File => path.is_file()', "if !kind.matches(&resolved)", "MAX_PATH_BYTES: usize = 4096", "all(windows_directory_component)", "stem.eq_ignore_ascii_case(name)", "fn amx_open_benchmark_checked_guest_mapping()"),
+    "editor": ('Kind::File', 'read_bounded_untrusted_regular', 'MAX_CONFIG_BYTES: usize = 16 * 1024', 'preferences.version != 1', 'configured.scheme()?;', 'serde(deny_unknown_fields)', 'desktop_path::valid_text(path)', 'line > MAX_POSITION', 'column > MAX_POSITION', 'path.contains', 'ends_with(".code-workspace")', 'uri.path_segments_mut()', 'if preview', 'super::desktop_open::open', 'fn amx_edit_urls_preserve_exact_path_authority_and_coordinates()', 'fn amx_edit_preferences_are_bounded_strict_and_user_disable_wins()', 'fn amx_edit_preview_and_error_never_launch_or_disclose_diagnostics()', 'fn amx_edit_benchmark_checked_uri_encoding()'),
+    "desktop_open": ('open_windows_verb(target, "explore")', 'directory_command(target, cfg!(target_os = "macos"))', 'command.arg("-R")', 'fn amx_open_directory_commands_preserve_literal_targets_and_reveal_packages()'),
+    "cli_main": ("CliCommand::Open(command)", "automexia::directory_open::execute(command, session)", "CliCommand::Edit(command)", "automexia::editor::execute(command, session)"),
+    "local_tools": ('"--no-config"', '"--fixed-strings"', '"--no-auto-update"', "cancellation.cancelled()", "MAX_RESULTS: usize = 1000", "MAX_FILES: usize = 32768", "relative_name(path)?", "incomplete structured search output"),
+    "local_tool_tests": ("fn amx_local_structured_matches_cannot_inject_controls_or_fake_result_rows()", "fn amx_local_benchmark_checked_parsing()"),
+    "local_session": ('"python3", "-I", "-c"', "guest invocation exceeds the native command-line limit"),
+    "cli_process": ("CreationFlags(Default::default())", "libc::WNOWAIT", "WaitForSingleObject", "drop(lease)", "limits.stdout > 4 * 1024 * 1024", "fn amx_process_native_console_cancel_retires_the_owned_tool()"),
+    "cli_cancellation": ("ACTIVE.swap(true", "SetConsoleCtrlHandler", "signal_hook::flag::register", "impl Drop for Cancellation"),
+    "guest_bridge": ("object_pairs_hook=unique_fields", "start_new_session=True", "os.WNOWAIT", "selector.select(0)", "signal.signal(signal.SIGTERM, interrupted)", "os.killpg(child.pid, signal.SIGKILL)", 'len(args) != 1 or not args[0]', 'sys.executable, "-I", "-c", PATH_PROBE', 'os.path.realpath(sys.argv[1], strict=True)', "os.path.isdir(target)", "os.path.isfile(target)", 'request["program"] in {"amx-directory", "amx-file"}'),
+    "guest_native": ("def test_lease_eof_termination_and_deadline_retire_exact_guest_child(self):", "os.pidfd_open", "def test_project_python_modules_cannot_execute_during_guest_launch(self):", "def test_real_ripgrep_respects_ignore_privacy_binary_and_symlink_rules(self):"),
+    "google_native": ('"searches", "local", "directory", "editor"', 'expected = b"./Dockerfile"', 'def test_real_directory_preview_is_exact_and_never_writes(self):', 'plan["destination"] == target', 'if case == "directory":', 'def test_real_editor_preview_preserves_file_position_and_never_writes(self):', 'def test_real_editor_config_override_disable_and_invalid_targets(self):', 'if case == "editor":', 'AUTOMEXIA_CONFIG_HOME/pw'),
+}
+
+LOCAL_TOOL_CONTRACTS["guest_native"] += (
+    "def test_explain_client_failures_and_controls_are_safe_without_downloads(self):",
+    'self.assertEqual(actual, expected, "unsupported client or cache update was requested")',
+    'self.assertEqual(output, b"", "failed client published partial examples")',
+    'self.assertNotIn(b"fixture-client-diagnostic", errors)',
+    "def test_relative_guest_path_cannot_select_project_python_before_isolation(self):",
+    "def test_absolute_guest_tool_locations_keep_precedence(self):",
+    '"project interpreter executed before isolated mode"',
+    "def test_repository_navigation_reads_the_guest_repository_not_host_metadata(self):",
+    "def test_editor_preview_resolves_guest_file_links_and_rejects_directories(self):",
+    '"file probe imported untrusted project code"',
+    "def test_directory_preview_resolves_guest_symlinks_without_desktop_or_writes(self):",
+    'plan["destination"] == expected', '("alias/..", parent)',
+    '"directory probe imported untrusted project code"',
+)
+LOCAL_TOOL_CONTRACTS["cli_main"] += ("CliCommand::Repo(command)", "automexia::repository_open::execute(command, session)")
+LOCAL_TOOL_CONTRACTS["google_native"] += ('def test_real_repository_navigation_is_offline_exact_and_read_only(self):', 'if case == "repository":', '"missing remote must not select another remote"', '"credentials must not appear in diagnostics"')
+LOCAL_TOOL_CONTRACTS["guest_bridge"] += ('args[:4] != ["--no-pager", "remote", "get-url", "--"]',)
+LOCAL_TOOL_CONTRACTS["local_session"] += (
+    "MAX_GUEST_HINT_BYTES: usize = 8192", "path.len() > MAX_GUEST_HINT_BYTES",
+    "path.chars().any(char::is_control)", "path.split(':').enumerate()",
+    "if index >= 256", "entry.starts_with('/')", "if absolute.is_empty()",
+    "fn amx_local_guest_path_keeps_absolute_order_and_posix_semantics()",
+    "fn amx_local_guest_path_limits_fail_closed_without_disclosing_input()",
+    "fn amx_local_invalid_guest_path_is_rejected_before_executable_lookup()",
+    "fn amx_local_guest_path_benchmark_checked_filtering()",
+)
+LOCAL_TOOL_CONTRACTS["repository_open"] += (
+    "url.host_str().ok_or_else(invalid)?.to_ascii_lowercase()",
+    "fn amx_repo_dns_case_is_insensitive_but_repository_case_is_preserved()",
+)
+LOCAL_TOOL_CONTRACTS["google_native"] += (
+    "def test_real_text_search_discards_late_binary_matches(self):",
+    'self.assertEqual(output, prefix + b"text.txt:2:connection refused\\n")',
+    'b"x\\n" * 100000',
+    "def test_requested_search_examples_have_exact_offline_destinations(self):",
+    "def test_real_repository_nested_fetch_rewrite_is_read_only(self):",
+    '"--push", "origin", "https://gitlab.com/different/fixture.git"',
+    "def test_real_editor_uri_decodes_exactly_and_project_cannot_override_disable(self):",
+    'unquote(parsed.path) == expected + ":42:7"',
+    'self.assertNotEqual(code, 0, "project settings overrode user disable")',
+    "ssh://git@GitHub.COM/Example-Org/Fixture-Repo.git",
+    "ssh://git@GitLab.COM/Example-Group/Subgroup/Fixture-Repo.git",
+)
+LOCAL_TOOL_CONTRACTS["local_tools"] += (
+    'let record: SearchRecord = serde_json::from_slice(row)',
+    'files.len() >= MAX_FILES || files.contains_key(&data.path.text)',
+    'pending.len() >= MAX_RESULTS', 'data.binary_offset.as_u64().is_some()',
+    'ended[index] = Some(!data.binary_offset.is_null());',
+    'ended.iter().any(Option::is_none)', 'if summarized',
+    'if ended[index] == Some(false)', 'if formatted_bytes > 4 * 1024 * 1024',
+)
+LOCAL_TOOL_CONTRACTS["local_tool_tests"] += (
+    "fn amx_local_late_binary_end_retracts_only_that_files_matches()",
+    "fn amx_local_structured_lifecycle_fails_closed_before_publication()",
+    "assert_eq!(result, expected_files)", "assert_eq!(result, expected_matches)",
+)
+LOCAL_TOOL_CONTRACTS["cli_process"] += (
+    "self.completion.pin_members()", "self.completion.is_empty()?",
+    "windows_completion::members_stopped(&self.members)?", "if self.reaped && tree_empty",
+    "if had_lease && !self.reaped", "GetProcessHandleCount", "for _ in 0..20",
+    '"native handles grew after completed capture"',
+    "fn observe_identity(", "struct PinnedIdentity", '"descendant-no-pipes"',
+    "for _ in 0..4", "for iteration in 0..25", "AMX_PROCESS_RELEASE",
+    '"fixture must remain live until the parent pins its identity"',
+    '"pinned native descendant remained live after capture; later completion={}"',
+)
+
+LOCAL_TOOL_CONTRACTS["cli_completion"] = (
+    "MAX_MEMBERS: usize = 256", "QueryInformationJobObject(",
+    "accounting.ActiveProcesses == 0", "JobObjectBasicProcessIdList",
+    "IsProcessInJob(", "WAIT_OBJECT_0 => Ok(true)", "WAIT_TIMEOUT => Ok(false)",
+    "core.get_wrap::<JobObject>().is_none()", "fn post_spawn(",
+    "AssignProcessToJobObject(", "let _ = child.kill();",
+    "Instant::now() < deadline", "OwnedHandle::from_raw_handle(raw)",
+    "fn amx_process_completion_requires_suspended_job_owner_before_spawn()",
+    "fn amx_process_completion_list_layout_matches_win32()",
+)
+
+
+def _validate_local_tool_sources(sources: dict[str, str]) -> None:
+    for owner, fragments in LOCAL_TOOL_CONTRACTS.items():
+        _require_fragments(sources[owner], fragments, "local tool " + owner)
+    parser = _source_slice(sources["local_tools"], "fn render_matches(", "fn resolve_tool(", "structured search publication")
+    _require_order(parser, ("ended.iter().any(Option::is_none)", "for (index, row) in pending", "if ended[index] == Some(false)", "result.push_str(&row)"), "complete nonbinary files before publication")
+    bootstrap = _source_slice(sources["local_session"], 'let path = guest_tool_path', 'command.arg(request);', 'guest interpreter bootstrap')
+    _require_order(bootstrap, (
+        'let path = guest_tool_path(self.path.as_deref().unwrap())?;',
+        'Command::new(super::resolve_tool("wsl")?)',
+        'command.arg(format!("PATH={path}"));',
+        '"python3", "-I", "-c"',
+    ), 'validate PATH before interpreter selection')
+    if 'format!("PATH={}", self.path' in sources["local_session"]:
+        raise ReinforcementError("guest bootstrap restores unfiltered PATH")
+    editor = _source_slice(sources["editor"], "fn selected_editor(", "pub fn execute(", "editor preference policy")
+    _require_order(editor, ("configured.scheme()?;", "override_editor.unwrap_or(configured)", "selected.scheme()?;"), "disable-before-editor-override")
+    _require_fragments(sources["editor"], ('uri.insert(boundary,',), "editor UNC identity")
+    retire = _source_slice(sources["cli_process"], "fn retire(", "fn cleanup(", "native completion")
+    _require_order(retire, ("self.completion.pin_members()", "self.inner.start_kill()", "self.members = members?"), "pin-before-termination")
+
+
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     missing = set(NATIVE_CONTRACT_SOURCES) - set(sources)
     if missing:
@@ -486,6 +797,12 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _validate_shortcut_editor_sources(sources)
     _validate_child_exit_sources(sources)
     _validate_qa_process_sources(sources)
+    _validate_resize_listing_sources(sources)
+    _validate_command_wrapping_sources(sources)
+    _validate_table_sources(sources)
+    _validate_hyperlink_sources(sources)
+    _validate_google_sources(sources)
+    _validate_local_tool_sources(sources)
 
     stress = _source_slice(sources["xtask"], "fn test_resize_stress(",
                            "if !native_gui {", "default resize stress dispatch")
@@ -928,8 +1245,10 @@ def validate_document(document: Any, root: Path = ROOT) -> dict[str, int]:
 
     _validate_native_contract_sources(_load_native_contract_sources(root))
     from check_semantic_surfaces import validate_repository as validate_surfaces
+    from check_context_contributions import validate_repository as validate_context
     try:
         validate_surfaces(root)
+        validate_context(root)
     except ValueError as error:
         raise ReinforcementError(str(error)) from error
 

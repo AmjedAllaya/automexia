@@ -2,10 +2,8 @@ pub mod defaults;
 pub mod term;
 
 use defaults::*;
-use regex::Regex;
 use serde::Serialize;
 use serde::{de, Deserialize};
-use std::num::ParseIntError;
 use std::ops::Mul;
 
 // `ColorWGPU` is the legacy name; `rio_graphics::Color` is the actual
@@ -356,13 +354,13 @@ impl Default for Colors {
 }
 
 pub fn hex_to_color_arr(s: &str) -> ColorArray {
-    ColorBuilder::from_hex(s.to_string(), Format::SRGB0_1)
+    ColorBuilder::from_hex_str(s, Format::SRGB0_1)
         .unwrap_or_default()
         .to_arr()
 }
 
 pub fn hex_to_color_wgpu(s: &str) -> ColorWGPU {
-    ColorBuilder::from_hex(s.to_string(), Format::SRGB0_1)
+    ColorBuilder::from_hex_str(s, Format::SRGB0_1)
         .unwrap_or_default()
         .to_wgpu()
 }
@@ -514,49 +512,46 @@ impl ColorBuilder {
         }
     }
 
-    pub fn from_hex(mut hex: String, conversion_type: Format) -> Result<Self, String> {
-        let mut alpha: f64 = 1.0;
-        let non_hex_chars = Regex::new(r"(?i)[^#a-f\d]").unwrap();
+    pub fn from_hex(hex: String, conversion_type: Format) -> Result<Self, String> {
+        Self::from_hex_str(&hex, conversion_type)
+    }
 
-        // match valid 6 or 8 hex characters
-        let valid_hex_size = Regex::new(r"(?i)^#?[a-f\d]{6}([a-f\d]{2})?$").unwrap();
-
-        if non_hex_chars.is_match(&hex) {
+    fn from_hex_str(hex: &str, conversion_type: Format) -> Result<Self, String> {
+        // Inspect no more than a complete #RRGGBBAA token. Preserve the familiar
+        // character error for its prefix without scanning an oversized input.
+        if hex
+            .as_bytes()
+            .iter()
+            .take(9)
+            .any(|byte| *byte != b'#' && !byte.is_ascii_hexdigit())
+        {
             return Err(String::from("Error: Character is not valid"));
         }
-
-        if !valid_hex_size.is_match(&hex) {
+        let digits = hex.strip_prefix('#').unwrap_or(hex).as_bytes();
+        if !matches!(digits.len(), 6 | 8) || !digits.iter().all(u8::is_ascii_hexdigit) {
             return Err(String::from("Error: Hex String size is not valid"));
         }
-
-        hex = hex.replace('#', "");
-
-        if hex.len() == 8 {
-            let (rgb_part, alpha_part) = hex.split_at(6);
-            let alpha_from_hex = i32::from_str_radix(alpha_part, 16).unwrap();
-            hex = rgb_part.to_string();
-            alpha = (alpha_from_hex as f64) / 255.0;
+        let nibble = |byte: u8| {
+            if byte.is_ascii_digit() {
+                byte - b'0'
+            } else {
+                (byte | 0x20) - b'a' + 10
+            }
+        };
+        let mut rgba = [0_u8, 0, 0, 255];
+        for (channel, pair) in rgba.iter_mut().zip(digits.chunks_exact(2)) {
+            *channel = (nibble(pair[0]) << 4) | nibble(pair[1]);
         }
-
-        let rgb = decode_hex(&hex).unwrap_or_default();
-        if rgb.is_empty() || (rgb.len() != 3 && rgb.len() != 4) {
-            return Err(String::from("Error: Invalid string, not able to convert"));
-        }
-
-        match conversion_type {
-            Format::SRGB0_1 => Ok(Self {
-                red: (rgb[0] as f64) / 255.0,
-                green: (rgb[1] as f64) / 255.0,
-                blue: (rgb[2] as f64) / 255.0,
-                alpha,
-            }),
-            Format::SRGB0_255 => Ok(Self {
-                red: (rgb[0] as f64),
-                green: (rgb[1] as f64),
-                blue: (rgb[2] as f64),
-                alpha,
-            }),
-        }
+        let divisor = match conversion_type {
+            Format::SRGB0_1 => 255.0,
+            Format::SRGB0_255 => 1.0,
+        };
+        Ok(Self {
+            red: f64::from(rgba[0]) / divisor,
+            green: f64::from(rgba[1]) / divisor,
+            blue: f64::from(rgba[2]) / divisor,
+            alpha: f64::from(rgba[3]) / 255.0,
+        })
     }
 
     pub fn from_rgb(rgb: ColorRgb, conversion_type: Format) -> Self {
@@ -608,13 +603,6 @@ impl ColorBuilder {
             self.alpha
         )
     }
-}
-
-fn decode_hex(s: &str) -> Result<Vec<u8>, ParseIntError> {
-    (0..s.len())
-        .step_by(2)
-        .map(|i| u8::from_str_radix(&s[i..i + 2], 16))
-        .collect()
 }
 
 impl Default for ColorBuilder {

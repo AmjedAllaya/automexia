@@ -36,6 +36,12 @@ The same rule applies to Python, FFmpeg, database clients, build tools, and
 project scripts. If an expression uses pipes, redirects, globs, command
 substitution, functions, or environment expansion, enter it in the shell.
 
+## Search from the command line
+
+Enter `amx google rust async tutorial` to open a Google search in your default
+browser. [Google search](google-search.md) explains quoting, offline preview,
+session helper availability and privacy.
+
 ## Launch-time CLI
 
 The installed syntax is:

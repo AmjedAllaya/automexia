@@ -3,6 +3,8 @@
 //! This module contains renderer-neutral geometry/data only. The terminal engine,
 //! PTY and VT parser must not depend on product-domain or extension implementations.
 
+pub mod command_info;
+
 /// One semantic-prompt row geometry that an application contribution may decorate.
 ///
 /// Historical anchors come from OSC 133 row metadata. The live anchor is
@@ -67,7 +69,7 @@ pub struct CommandResultAnchor {
 /// when a terminal is left open for days.
 pub const MAX_PROMPT_CONTEXT_HISTORY: usize = 256;
 
-/// Logical width reserved at the right of every prompt row for core command
-/// completion metadata. Optional prompt-context contributions must stop before
-/// this region, and the core label must fit inside it with an internal gap.
+/// Conservative legacy completion-label budget for rows that cannot be proven
+/// safe for display expansion. Proven blank prompt rows use shared wrapping;
+/// optional context never subtracts this width from its available space.
 pub const COMMAND_RESULT_PROMPT_RESERVE: f32 = 288.0;

@@ -80,8 +80,8 @@ impl Category {
             | ToggleFullscreen
             | ToggleAppearanceTheme
             | ListFonts => Self::Appearance,
-            ConfigEditor | PreviewSelectedImage | OpenMarket | OpenConnections
-            | OpenActions => Self::Tools,
+            ConfigEditor | PreviewSelectedImage | ViewTableOutput | OpenMarket
+            | OpenConnections | OpenActions => Self::Tools,
         }
     }
 }

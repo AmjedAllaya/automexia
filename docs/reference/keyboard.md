@@ -1,5 +1,12 @@
 # Keyboard and input reference
 
+## Keyboard links
+
+The classic default `Ctrl+Alt+O` starts link review. Tab/Shift+Tab or Up/Down
+navigate; labels select; Enter activates; Ctrl+Shift+C copies the destination;
+Left/Right inspect long targets; Escape returns to the shell. See
+[hyperlinks](../user-guide/hyperlinks.md) for configuration and safety limits.
+
 This page defines Automexia's active v0.4 defaults. Explicit entries under
 `[bindings]` replace matching default triggers. The separate
 [Ghostty compatibility](../GHOSTTY-KEYBOARD-COMPATIBILITY.md) documents the
@@ -16,6 +23,10 @@ underlying configuration. See the [editor guide](../user-guide/shortcuts.md#cust
 for scope, conflicts and persistence. The default tables below remain unchanged.
 
 ## Windows and Linux/BSD defaults
+
+**Ctrl+Shift+F7** opens the [focused table view](../user-guide/table-output.md)
+with the Automexia profile on all platforms, including macOS. Its configurable
+action is `ViewTableOutput`; Escape returns to the terminal.
 
 ### Windows, tabs, and panes
 

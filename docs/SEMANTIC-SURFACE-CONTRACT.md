@@ -53,10 +53,46 @@ capsule or extension retirement. There is no automatic registration, persistence
 worker, network connection, global registry or rendering in this model. Readiness
 of this boundary does not establish interactive UI or native accessibility.
 
+## Typed presentation state
+
+The admitted host slot owns one `TablePresentation` from `automexia-ui-model`.
+Its snapshot accessor borrows that same table; no duplicate text/grid cache is
+created. The model exposes exact typed cells and a borrowed visible row range,
+bounded to 1,024 rows and 16,384 terminal columns. These are presentation ceilings,
+not changes to the 20,000-row data contract or the separate 256-row shell capture.
+Schema preferred widths and one-cell separators define horizontal positions;
+cells remain intact rather than being split into new table rows. Cell formatting,
+responsive hide/details policies and drawing are not activated by this model.
+
+Directional selection and paging do not wrap at dataset edges. Explicit scrolling
+can leave selection offscreen; input selection reveals it again. Empty data has
+no selection, and invalid indices do nothing. Replacement preserves the selected
+row and viewport anchor by row plus resource handle within the same schema ID.
+Deleted or reused resources clear selection instead of choosing a neighbor. A new
+schema ID resets selection and scroll offsets. Replacement scans at most the
+admitted row count, outside input/render paths. Input, fit and visible row reads
+perform constant work; column projection traverses at most 64 schema entries.
+
+Host navigation requires the exact displayed revision and a ready surface.
+`presentation()` issues that revision, phase and immutable table borrow together.
+Delayed input, loading/failure states, expiry, clock rollback and closed slots
+cannot change selection. Last-good data stays readable until authorization ends.
+Selection is not authorization to execute a resource action. Native pointer
+adapters must resolve logical rows from current layout, bind press/release to the
+same view identity, and carry the displayed revision rather than substituting a
+new one at dispatch. No keyboard shortcut, clipboard write or cluster request is
+introduced here. The ordinary terminal table view remains unchanged.
+
 ## Verification
 
 Run `cargo test -p automexia-extension-api` and
 `cargo test -p automexia-terminal --test semantic_surface_admission`.
+Run `cargo test -p automexia-ui-model --test semantic_table` for typed navigation,
+refresh, borrowed cells, extreme dimensions and fixed-seed mixed transitions.
+Run `cargo bench -p automexia-ui-model --bench semantic_table_presentation`
+for checked navigation/projection and replacement/drop at 0/1/100/2,000/20,000 rows.
+These optimized model timings include correctness assertions; they do not measure
+native rendering, input-to-photon latency, API traffic or process memory.
 `cargo bench -p automexia-extension-api --bench semantic_surfaces` measures the
 bounded table decoder, typed schema/row construction and validation separately,
 and bounded diagnostic summaries. Constructor measurements exclude fixture cloning

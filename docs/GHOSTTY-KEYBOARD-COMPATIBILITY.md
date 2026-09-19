@@ -1,5 +1,10 @@
 # Ghostty keyboard compatibility
 
+Keyboard hyperlink review extends the classic configured hint path; it does
+not add or change a pinned Ghostty-profile trigger. Explicit hint bindings,
+profile overrides and tombstones retain their existing precedence. See
+[keyboard links](user-guide/hyperlinks.md).
+
 Automexia provides an explicit, versioned Ghostty 1.3 compatibility profile
 without changing existing users' shortcuts. `automexia` remains the default.
 The pinned profile is derived from Ghostty 1.3.1 tag `v1.3.1`, commit

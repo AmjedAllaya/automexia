@@ -627,6 +627,150 @@ fn table_resize_roundtrip(c: &mut Criterion) {
     }
 }
 
+fn native_seam_roundtrip(c: &mut Criterion) {
+    use rio_vt::crosswords::grid::Dimensions;
+    use std::time::{Duration, Instant};
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(9, 8),
+        CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        2_000,
+    );
+    terminal.set_resize_policy(rio_vt::crosswords::ResizePolicy::Conpty);
+    let prefix = "xxxxxx   ".repeat(6);
+    let expected = format!("{prefix}tail");
+    Processor::default().advance(
+        &mut terminal,
+        format!("{prefix}tail\r\n{}", "\r\n".repeat(6)).as_bytes(),
+    );
+    let mut rows = Vec::new();
+    let mut styles = Vec::new();
+    let mut extras = rustc_hash::FxHashMap::default();
+    c.bench_function("grid_seam_roundtrip_checked", |b| {
+        b.iter_custom(|iterations| {
+            let mut elapsed = Duration::ZERO;
+            for _ in 0..iterations {
+                let start = Instant::now();
+                for columns in [100, 9] {
+                    terminal.resize(CrosswordsSize::new(columns, 8));
+                    terminal.snapshot_visible(
+                        &TerminalDamage::Full,
+                        columns,
+                        &mut rows,
+                        &mut styles,
+                        &mut extras,
+                    );
+                    std::hint::black_box(&rows);
+                }
+                elapsed += start.elapsed();
+                // Reject correctness or lifetime regressions outside the timed region.
+                assert!(terminal.grid.history_size() < 64);
+                assert_eq!(rows.len(), 8);
+                assert!(rows.iter().all(|row| row.inner.len() == 9));
+                let mut selection = Selection::new(
+                    SelectionType::Simple,
+                    Pos::new(terminal.grid.topmost_line(), Column(0)),
+                    Side::Left,
+                );
+                selection.update(
+                    Pos::new(terminal.grid.bottommost_line(), Column(8)),
+                    Side::Right,
+                );
+                terminal.selection = Some(selection);
+                assert_eq!(
+                    terminal.selection_to_string().unwrap().trim_matches('\n'),
+                    expected
+                );
+                terminal.selection = None;
+            }
+            elapsed
+        })
+    });
+}
+
+fn extreme_resize_roundtrip(c: &mut Criterion) {
+    use rio_vt::crosswords::grid::Dimensions;
+    use std::time::{Duration, Instant};
+    // A one-cell viewport archives the prompt context. Keep that pure reflow
+    // campaign separate from a native replay recorded while three rows remain
+    // live; replaying that old frame after archival would fabricate output.
+    for (name, sizes) in [
+        (
+            "grid_extreme_roundtrip_checked",
+            &[(1, 1), (512, 96), (146, 16)][..],
+        ),
+        (
+            "grid_extreme_replay_roundtrip_checked",
+            &[(2, 24), (16, 3), (146, 16)][..],
+        ),
+    ] {
+        let mut terminal = term();
+        terminal.resize(CrosswordsSize::new(146, 16));
+        terminal.set_resize_policy(rio_vt::crosswords::ResizePolicy::Conpty);
+        let lines: Vec<_> = (1..=14).map(|index| format!(
+        "ROW-{index:02}  folder-{index:02}                          document-{index:02}.txt"
+    )).collect();
+        let expected = format!("{}\n\n/example\nlambda", lines.join("\n"));
+        let mut parser = Processor::default();
+        parser.advance(
+            &mut terminal,
+            format!("{}\r\n\r\n/example\r\nlambda ", lines.join("\r\n")).as_bytes(),
+        );
+        let mut rows = Vec::new();
+        let mut styles = Vec::new();
+        let mut extras = rustc_hash::FxHashMap::default();
+        c.bench_function(name, |b| {
+            b.iter_custom(|iterations| {
+                let mut elapsed = Duration::ZERO;
+                for _ in 0..iterations {
+                    let started = Instant::now();
+                    for &(cols, height) in sizes {
+                        terminal.resize(CrosswordsSize::new(cols, height));
+                        if (cols, height) == (16, 3) {
+                            parser.advance(
+                            &mut terminal,
+                            b"\x1b[H\x1b[K\r\n/example        \r\nlambda\x1b[K\x1b[1C",
+                        );
+                        }
+                        terminal.snapshot_visible(
+                            &TerminalDamage::Full,
+                            cols,
+                            &mut rows,
+                            &mut styles,
+                            &mut extras,
+                        );
+                        std::hint::black_box(&rows);
+                    }
+                    elapsed += started.elapsed();
+                    // A fast corrupt round trip is a failed benchmark. Compare to
+                    // the original input, not another use of the reflow algorithm.
+                    assert!(terminal.grid.history_size() < 100);
+                    assert_eq!(rows.len(), 16);
+                    assert!(rows.iter().all(|row| row.inner.len() == 146));
+                    let mut selection = Selection::new(
+                        SelectionType::Simple,
+                        Pos::new(terminal.grid.topmost_line(), Column(0)),
+                        Side::Left,
+                    );
+                    selection.update(
+                        Pos::new(terminal.grid.bottommost_line(), Column(145)),
+                        Side::Right,
+                    );
+                    terminal.selection = Some(selection);
+                    assert_eq!(
+                        terminal.selection_to_string().unwrap().trim_matches('\n'),
+                        expected
+                    );
+                    terminal.selection = None;
+                }
+                elapsed
+            })
+        });
+    }
+}
+
 fn pane_close_repaint(c: &mut Criterion) {
     let mut terminal = Crosswords::new(
         CrosswordsSize::new(146, 28),
@@ -665,9 +809,53 @@ fn pane_close_repaint(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    color_setup,
     bench,
     grid_resize,
     table_resize_roundtrip,
+    native_seam_roundtrip,
+    extreme_resize_roundtrip,
     pane_close_repaint
 );
 criterion_main!(benches);
+
+fn color_setup(c: &mut Criterion) {
+    use rio_vt::config::colors::{hex_to_color_arr, Colors};
+    use std::hint::black_box;
+    let mut group = c.benchmark_group("color_setup");
+    group
+        .sample_size(30)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    group.bench_function("default_palette", |b| {
+        b.iter(|| {
+            let palette = Colors::default();
+            assert_eq!(palette.foreground, [1.0; 4]);
+            black_box(palette)
+        })
+    });
+    group.bench_function("rgba_helper", |b| {
+        b.iter(|| {
+            let color = hex_to_color_arr(black_box("#12345678"));
+            assert_eq!(
+                color,
+                [
+                    (18.0 / 255.0) as f32,
+                    (52.0 / 255.0) as f32,
+                    (86.0 / 255.0) as f32,
+                    (120.0 / 255.0) as f32
+                ]
+            );
+            black_box(color)
+        })
+    });
+    group.bench_function("serde_palette", |b| {
+        b.iter(|| {
+            let palette: Colors =
+                serde_json::from_str(black_box(r##"{"cursor":"#12345678"}"##)).unwrap();
+            assert_eq!(palette.cursor[0], (18.0 / 255.0) as f32);
+            black_box(palette)
+        })
+    });
+    group.finish();
+}

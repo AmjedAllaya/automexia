@@ -199,6 +199,140 @@ fn resized_native_table_matches_independent_viewport_pixels() {
             }
         }
     }
+    assert_native_seam_pixels(pixels);
+    assert_extreme_resize_pixels(pixels);
+}
+
+fn assert_extreme_resize_pixels(
+    pixels: impl Fn(&mut Crosswords<VoidListener>, f32) -> (Vec<u32>, u32, u32),
+) {
+    let create = || {
+        Crosswords::new(
+            CrosswordsSize::new(146, 16),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            2_000,
+        )
+    };
+    let lines: Vec<_> = (1..=14).map(|index| format!(
+        "ROW-{index:02}  folder-{index:02}                          document-{index:02}.txt"
+    )).collect();
+    let mut actual = create();
+    actual.set_resize_policy(rio_backend::crosswords::ResizePolicy::Conpty);
+    let mut parser = Processor::default();
+    parser.advance(
+        &mut actual,
+        format!("{}\r\n\r\n/example\r\nlambda ", lines.join("\r\n")).as_bytes(),
+    );
+    for (cols, rows) in [(2, 24), (16, 3), (146, 16)] {
+        actual.resize(CrosswordsSize::new(cols, rows));
+        if (cols, rows) == (16, 3) {
+            for byte in b"\x1b[H\x1b[K\r\n/example        \r\nlambda\x1b[K\x1b[1C" {
+                parser.advance(&mut actual, &[*byte]);
+            }
+        }
+    }
+    // Native history cannot be pulled back into its mutable viewport. Check
+    // both the final live rows and the original ordered table in scrollback.
+    for history in [false, true] {
+        let mut reference = create();
+        let text = if history {
+            actual.scroll_display(rio_backend::crosswords::grid::Scroll::Top);
+            format!("{}\r\n\r\n/example", lines.join("\r\n"))
+        } else {
+            "\r\n/example\r\nlambda ".into()
+        };
+        Processor::default().advance(&mut reference, text.as_bytes());
+        for scale in [1.0, 1.25, 2.0] {
+            let (rendered, width, height) = pixels(&mut actual, scale);
+            let (expected, _, _) = pixels(&mut reference, scale);
+            assert_eq!(rendered.len(), expected.len());
+            assert_eq!(
+                rendered
+                    .iter()
+                    .zip(&expected)
+                    .filter(|(a, b)| a != b)
+                    .count(),
+                0,
+                "extreme restore pixels, history={history}, scale={scale}"
+            );
+            assert!(rendered.iter().any(|pixel| *pixel != 0x00081218));
+            if history && scale == 1.0 {
+                if let Some(path) = std::env::var_os("AUTOMEXIA_EXTREME_PREVIEW") {
+                    image_rs::RgbImage::from_fn(width, height, |x, y| {
+                        let pixel = rendered[(y * width + x) as usize];
+                        image_rs::Rgb([
+                            (pixel >> 16) as u8,
+                            (pixel >> 8) as u8,
+                            pixel as u8,
+                        ])
+                    })
+                    .save(path)
+                    .expect("fictional extreme resize preview");
+                }
+            }
+        }
+    }
+}
+
+fn assert_native_seam_pixels(
+    pixels: impl Fn(&mut Crosswords<VoidListener>, f32) -> (Vec<u32>, u32, u32),
+) {
+    let create = |columns| {
+        Crosswords::new(
+            CrosswordsSize::new(columns, 8),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            2_000,
+        )
+    };
+    let prefix = "xxxxxx   ".repeat(6);
+    let mut actual = create(9);
+    actual.set_resize_policy(rio_backend::crosswords::ResizePolicy::Conpty);
+    let mut parser = Processor::default();
+    for byte in format!("{prefix}tail\r\n{}", "\r\n".repeat(6)).as_bytes() {
+        parser.advance(&mut actual, &[*byte]);
+    }
+    actual.resize(CrosswordsSize::new(100, 8));
+    // Once the live suffix also enters history, growing rejoins it to the
+    // retained prefix. Lost seam spaces visibly shift 'tail' to the left.
+    parser.advance(&mut actual, "after\r\n".repeat(8).as_bytes());
+    actual.resize(CrosswordsSize::new(101, 8));
+    actual.scroll_display(rio_backend::crosswords::grid::Scroll::Top);
+    let mut reference = create(101);
+    Processor::default().advance(
+        &mut reference,
+        format!("{prefix}tail{}after", "\r\n".repeat(7)).as_bytes(),
+    );
+    for scale in [1.0, 1.25, 2.0] {
+        let (rendered, width, height) = pixels(&mut actual, scale);
+        let (expected, reference_width, reference_height) = pixels(&mut reference, scale);
+        assert_eq!((width, height), (reference_width, reference_height));
+        assert_eq!(rendered.len(), expected.len());
+        assert_eq!(
+            rendered
+                .iter()
+                .zip(&expected)
+                .filter(|(a, b)| a != b)
+                .count(),
+            0,
+            "exact seam-gap pixels at scale {scale}"
+        );
+        if scale == 1.0 {
+            if let Some(path) = std::env::var_os("AUTOMEXIA_SEAM_PREVIEW") {
+                image_rs::RgbImage::from_fn(width, height, |x, y| {
+                    let pixel = rendered[(y * width + x) as usize];
+                    image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+                })
+                .save(path)
+                .expect("fictional seam preview");
+            }
+        }
+    }
 }
 
 #[test]
