@@ -43,7 +43,29 @@ pub entries: Vec<String>,
         self.assertGreaterEqual(counts["config_keys"], 100)
         self.assertGreaterEqual(counts["binding_actions"], 60)
         self.assertEqual(counts["cli_flags"], 17)
-        self.assertEqual(counts["cli_commands"], 6)
+        # Keep this reviewed inventory explicit: the coverage checker proves that
+        # every registered command is documented, while this assertion catches a
+        # parser regression that could otherwise make both sides silently shrink.
+        self.assertEqual(
+            COVERAGE.application_cli_commands(),
+            {
+                "actions",
+                "aliases",
+                "docs",
+                "edit",
+                "explain",
+                "find",
+                "google",
+                "migrate",
+                "open",
+                "packs",
+                "repo",
+                "search",
+                "shell-integration",
+                "workspaces",
+            },
+        )
+        self.assertEqual(counts["cli_commands"], 14)
         self.assertGreaterEqual(counts["xtask_commands"], 20)
 
     def test_missing_config_key_is_rejected(self) -> None:

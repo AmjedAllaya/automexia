@@ -31,7 +31,16 @@ class FeatureAssuranceTests(unittest.TestCase):
         self.assertGreaterEqual(counts["features"], 12)
         self.assertGreaterEqual(counts["components"], 20)
         self.assertGreater(counts["evidence"], counts["features"] * 9)
-        self.assertEqual(counts["benchmarks"], 24)
+        # The count is a reviewed drift sentinel in addition to the production
+        # checker's requirement that every discovered benchmark has evidence.
+        self.assertEqual(counts["benchmarks"], 26)
+        discovered = ASSURANCE.benchmark_targets(ASSURANCE.ROOT)
+        self.assertIn(
+            "automexia-extension-api/benches/text_compaction.rs", discovered
+        )
+        self.assertIn(
+            "automexia-ui-model/benches/semantic_table_presentation.rs", discovered
+        )
         self.assertEqual(counts["fuzz_targets"], 19)
         self.assertGreaterEqual(counts["documentation"], counts["features"] * 3)
 
