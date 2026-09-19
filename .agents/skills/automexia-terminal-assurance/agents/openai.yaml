@@ -1,0 +1,6 @@
+interface:
+  display_name: "Automexia Terminal Assurance"
+  short_description: "Design and run terminal-specific assurance"
+  default_prompt: "Use $automexia-terminal-assurance to define and execute the evidence needed for this terminal change."
+policy:
+  allow_implicit_invocation: true

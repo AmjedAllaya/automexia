@@ -1,0 +1,6 @@
+interface:
+  display_name: "Automexia Feature Planning"
+  short_description: "Plan architecture and evidence before coding"
+  default_prompt: "Use $automexia-feature-planning to plan this Automexia change before implementation."
+policy:
+  allow_implicit_invocation: true
