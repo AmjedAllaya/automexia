@@ -1,17 +1,17 @@
 ---
 name: automexia-terminal-assurance
-description: Design and verify evidence for Automexia PTY, parser, rendering, input, resize, Unicode, concurrency, lifecycle, resource, security, performance, persistence, and cross-platform changes. Use before editing affected behavior and before completion; never infer native evidence from mocks or cross-compiles.
+description: Design and verify focused evidence for Automexia PTY, parser, rendering, input, resize, Unicode, concurrency, lifecycle, resource, security, performance, persistence, and cross-platform changes. Use when those contracts are affected; never infer native evidence from mocks or cross-compiles.
 ---
 
 # Automexia Terminal Assurance
 
-Define the smallest evidence set that can fail for the real defect, then expand it to the boundaries and interactions affected by the change. Keep terminal input/output responsive, resource-bounded, generation-safe, and owned by one authority.
+Define the smallest evidence set that can fail for the real defect, then expand only to affected boundaries and interactions. Keep terminal input/output responsive, resource-bounded, generation-safe, and owned by one authority.
 
-This skill complements `$automexia-feature-planning`. Load the planning skill first for a new behavior, architecture change, dependency change, or refactor. Use `$automexia-native-ux-review` for visible native UI, compositor, keyboard, IME, focus, scale, or assistive-technology evidence.
+Load `$automexia-feature-planning` first only when the change itself requires planning. Load `$automexia-native-ux-review` only when visible native UI, compositor, keyboard/IME/focus, scaling, or accessibility behavior is affected.
 
-## Authoritative inputs
+## Targeted authority lookup
 
-Read the affected sections of:
+Do **not** read these files in full by default:
 
 - `../../../docs/TESTING.md`
 - `../../../docs/FEATURE-TEST-REINFORCEMENT.md`
@@ -19,68 +19,69 @@ Read the affected sections of:
 - `../../../tests/assurance/feature-matrix.json`
 - `../../../docs/ARCHITECTURE.md`
 - `../../../SECURITY.md`
-- the owning implementation, real callers, existing tests, benchmarks, fixtures, and platform adapters
 
-The Markdown reinforcement plan and its JSON mirror are coupled authorities. Update every affected feature entry, risk flag, interaction, oracle, evidence owner, and exit criterion. Run the contract checker and its mutation tests when these records change.
+Instead:
+
+1. identify the affected feature ID, source owner, test name, invariant, or heading;
+2. use `rg -n`/structured extraction to locate only matching sections or JSON objects;
+3. read directly referenced entries needed to understand the contract;
+4. inspect owning implementation, important callers, existing relevant tests/benchmarks/fixtures/platform adapters;
+5. expand to adjacent entries only when the change creates a concrete interaction.
+
+Never load both complete assurance JSON files merely to find one feature. If the feature cannot be located reliably with bounded search/extraction, report that limitation and use the smallest safe fallback.
+
+The reinforcement Markdown and JSON mirror remain coupled authorities. Update only affected entries/risk flags/interactions/oracles/evidence owners/exit criteria, then run their contract checker/mutation tests when those records change.
 
 ## Test-first contract
 
-1. Reproduce the real user or system path before changing production behavior. The regression must fail for the observed reason.
-2. Add the smallest deterministic isolation test only after the real path is represented; it complements rather than replaces the real-path regression.
+1. Reproduce the real user/system path or identify the existing real-path regression before production editing.
+2. Add the smallest deterministic isolation test only when it provides distinct evidence.
 3. Characterize legacy behavior before moving ownership or consolidating implementations.
-4. Add boundary and negative cases that distinguish the intended invariant from a narrow example.
-5. Implement only enough to satisfy the next contract, then run the focused gate.
-6. Keep the regression as permanent evidence and update the feature assurance records.
+4. Add only boundary/negative cases that distinguish the intended invariant from the observed failure.
+5. Implement the smallest coherent change and run the focused gate.
+6. Keep the regression as permanent evidence when it protects a real contract.
 
-If implementation is not authorized, produce the scenario and evidence plan without editing production code.
+If implementation is not authorized, produce the scenario/evidence plan without editing production code.
 
-## Choose independent evidence
+## Evidence selection
 
-Use the closest useful layer, then retain a real-path check:
+Choose the closest useful layer and expand only when the claim requires it:
 
-- unit tests for pure state, parsing, policy, layout, units, and limits;
-- integration and conformance tests for crate, shell, PTY, provider, protocol, capability, and persistence boundaries;
-- property tests and fuzz targets for parsers, structured input, Unicode, fragmentation, malformed data, and limit transitions;
-- deterministic model/concurrency tests for ordering, cancellation, saturation, generation replacement, restart, and shutdown;
-- renderer-neutral snapshots for semantic layout and draw data;
-- controlled raster evidence for exact owned pixels when a pixel contract exists;
-- native tests for PTYs, shells, windows, GPU presentation, clipboard, IME, accessibility projection, packaging, credentials, and process trees;
-- benchmarks with correctness assertions for latency, throughput, allocations, memory, startup, sustained operation, and cleanup;
-- repeated lifecycle tests for handles, threads, child processes, workers, caches, temporary files, logs, and storage.
+- unit/model tests for pure state, parsing, policy, layout, units, limits, ordering, cancellation, and generations;
+- integration/conformance/native tests for PTY, shell, provider, protocol, process, persistence, platform, or capability boundaries;
+- property/fuzz tests for hostile structured input, Unicode, fragmentation, malformed data, and limit transitions;
+- renderer-neutral snapshots or controlled raster evidence for owned visual contracts;
+- benchmarks/resource tests when latency, allocation, throughput, sustained operation, or cleanup is part of the change.
 
-Never compute expected results with the production mechanism under test. A mock proves only the mocked boundary. A cross-platform table or cross-compile cannot replace a native run.
+A mock proves only its boundary. A cross-compile cannot replace a native run. Never compute an expected result using the same production mechanism under test.
 
 ## Scenario inventory
 
-Read [references/terminal-scenario-matrix.md](references/terminal-scenario-matrix.md) for PTY, parser, resize, input, rendering, concurrency, security, resource, and persistence scenarios. Select every row whose invariant or interaction can change; explain exclusions rather than copying the entire matrix into every task.
+Use [references/terminal-scenario-matrix.md](references/terminal-scenario-matrix.md) only for the affected domain. Read/select relevant rows; do not copy or execute the whole matrix for every task.
 
-At minimum consider zero, one, boundary-minus-one, boundary, boundary-plus-one, maximum, over-limit, large, repeated, fragmented, malformed, cancelled, stale, and concurrent inputs. Cover every affected state transition, failure transition, retry, disable, rollback, migration, recovery, uninstall, shutdown, and restart.
+At minimum consider the boundary classes that can actually change: zero/one, limit edges, malformed/fragmented input, repeated use, cancellation/staleness, concurrency, failure/retry, cleanup/shutdown, and platform-specific behavior where applicable.
 
-## Required terminal invariants
+## Terminal invariants
 
-- Treat terminal output, shell metadata, paths, imported files, provider output, completions, control sequences, and AI-generated content as untrusted.
-- Keep filesystem, provider, network, authentication, database, and extension work off input, PTY, resize, renderer, and startup hot paths.
-- Publish state before waking the renderer. Reject stale route, session, pane, geometry, and generation results.
-- Bound bytes, decoded dimensions, recursion, file counts, queues, tasks, history, caches, logs, storage, time, retries, concurrency, threads, handles, and child processes.
-- Make cancellation, cleanup, shutdown, and ownership observable. A worker-body notification or `is_finished()` hint is not proof that native thread-local destruction completed.
-- Keep foreign joins and blocking cleanup off the input and event thread. Retain cleanup ownership after timeout.
-- Launch processes using typed executables and exact argument arrays. Do not evaluate structured actions through command strings or implicit Enter.
-- Redact failures while preserving the operation and repository-relative owner needed to act on them.
+- Treat terminal output, shell metadata, paths, imported/provider content, completions, control sequences, and AI-generated content as untrusted.
+- Keep filesystem/provider/network/auth/database/extension work off input, PTY, resize, renderer, and startup hot paths.
+- Reject stale route/session/pane/geometry/generation results and publish state before waking the renderer.
+- Bound bytes, dimensions, recursion, files, queues, tasks, history, caches, logs, storage, time, retries, concurrency, threads, handles, and child processes.
+- Make cancellation, cleanup, shutdown, and ownership observable; retain cleanup ownership after timeout.
+- Keep foreign joins/blocking cleanup off input/event threads.
+- Launch processes with typed executables and exact argument arrays; do not shell-evaluate structured actions.
+- Keep diagnostics bounded, redacted, and content-minimal.
 
-## Evidence ladder
+## Validation ladder and output discipline
 
-Read [references/evidence-ladder.md](references/evidence-ladder.md) before claiming completion. Run the narrowest failing regression first, then the owning target, affected integration and policy gates, applicable feature combinations, and repository-wide required checks. Stop broad repetition when current evidence passes and no new failure or uncertainty justifies more work.
+Use [references/evidence-ladder.md](references/evidence-ladder.md) when more than a focused/owner-level check is needed.
 
-For every filtered command, verify the real executed test names and nonzero test count. For generated images, reports, packages, or other artifacts, require a fresh artifact and inspect its relevant content.
+1. During editing, run the narrow failing/characterization test.
+2. After implementation, run the owning target and applicable static checks.
+3. Before delivery, run only the integration/policy/platform/repository gates whose inputs were invalidated by the change.
 
-## Test intent comments
+Do not rerun an expensive passing check after a later edit that cannot affect it. Capture verbose output to a file when practical and return only pass/fail counts plus relevant failure excerpts; use full output only when it is required evidence. Verify filtered test names and nonzero counts.
 
-Use names and assertions to express ordinary behavior. Add concise comments only when they preserve non-obvious intent: a boundary value, historical failure, real user path, authority boundary, mocked host observation, independent oracle, cleanup requirement, atomicity, redaction, concurrency ordering, or native setup sequence.
+## Completion
 
-Do not narrate syntax, repeat the test name, add mechanical Arrange/Act/Assert labels, or use comments to hide oversized fixtures.
-
-## Completion classification
-
-Report the feature as complete only when every applicable exit criterion has current evidence. Leave it partial or external when native OS, hardware, account, assistive technology, signing, controlled performance environment, long campaign, or human assessment has not run.
-
-State exactly what ran, where it ran, what artifact was inspected, and what remains unavailable. Never promise that no defect can escape.
+Call the affected contract complete only when its applicable exit criteria have current evidence. Leave native OS, hardware, account, assistive-technology, signing, controlled-performance, long-campaign, or human evidence explicitly partial/external when unavailable. State exactly what ran and what remains unavailable.

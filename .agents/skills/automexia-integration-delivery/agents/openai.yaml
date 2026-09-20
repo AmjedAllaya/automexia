@@ -3,4 +3,4 @@ interface:
   short_description: "Integrate, validate, commit, and hand off safely"
   default_prompt: "Use $automexia-integration-delivery to resolve integration work and prepare a verified handoff."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

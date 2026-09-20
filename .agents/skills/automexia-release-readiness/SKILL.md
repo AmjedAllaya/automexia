@@ -1,17 +1,17 @@
 ---
 name: automexia-release-readiness
-description: Audit and prepare Automexia release candidates across identity, builds, packages, signing/notarization, SBOM/provenance, native evidence, documentation, rollback, and publication authorization. Use for packaging, release rehearsal, or stable/prerelease decisions; external release mutations require explicit authorization.
+description: Audit and prepare Automexia release candidates across identity, builds, packages, signing/notarization, SBOM/provenance, native evidence, documentation, rollback, and publication authorization. Use only for packaging/release/rehearsal decisions; external release mutations require explicit authorization.
 ---
 
 # Automexia Release Readiness
 
-Establish whether one immutable revision is ready for the requested release channel. Separate local preparation, native platform evidence, credentialed signing, hosted protection, and publication. A locally passing build is not a release.
+Establish whether one immutable revision is ready for the requested release stage/channel. Separate local preparation, native platform evidence, credentialed signing, hosted protection, and publication. A locally passing build is not a release.
 
-Load `$automexia-integration-delivery` for commits, branch integration, push, or final handoff. Load `$automexia-terminal-assurance` and `$automexia-native-ux-review` for behavior, resource, rendering, input, accessibility, or native evidence changed by the candidate.
+Load `$automexia-integration-delivery` only if the requested release workflow also reaches commit/branch/push/PR work. Load terminal/UX assurance only for candidate changes or evidence that actually touches those contracts.
 
-## Authorities
+## Targeted authorities
 
-Read before making a release claim:
+Do not read the entire release documentation set up front. First identify the requested stage, channel, package, and claimed platforms. Then search/read only applicable sections of:
 
 - `../../../RELEASING.md`
 - `../../../SECURITY.md`
@@ -23,71 +23,63 @@ Read before making a release claim:
 - `../../../docs/PLATFORMS.md`
 - `../../../docs/DOCUMENTATION.md`
 - `../../../docs/public-release/`
-- relevant release ADRs, stable-release policy, feature matrix, reinforcement plan, package definitions, workflows, and change fragments
+- relevant release ADRs/policies, feature evidence, package definitions, workflows, and change fragments
 
-Use the repository's current release commands and policies rather than copying a command from this skill. Confirm command help and source before execution when the repository may have changed.
+Use current repository commands/policies. Load feature matrices/reinforcement entries only for affected release claims, never whole matrices by default.
 
 ## Authorization model
 
-Distinguish these actions:
-
-1. inspect and plan;
-2. run local validation;
-3. build unsigned local packages;
-4. use signing or notarization credentials;
-5. create or move tags;
-6. push a release branch or tag;
-7. create a hosted release or upload artifacts;
-8. publish packages or update distribution channels.
-
-Authorization for an earlier action does not authorize a later one. Prepare every reviewable artifact and result possible before requesting approval for an irreversible or external step.
+Keep these transitions separate: inspect/plan; local validation; unsigned package build; signing/notarization credentials; tag creation/movement; release-branch/tag push; hosted release/upload; package/channel publication. Authorization for one stage does not authorize the next.
 
 ## Candidate identity
 
-Before release work, record:
+Before release work, record only the identity needed for the requested stage:
 
-- exact commit and branch/tag intent;
+- exact commit and intended channel/tag/branch;
 - clean or explicitly accounted working tree;
-- toolchain, lockfile, dependency policy, feature set, source provenance, and submodule/vendor state;
-- version values across manifests, application output, package metadata, public docs, release notes, and compatibility contracts;
-- release channel and supported platform/architecture matrix;
-- previous release or baseline used for comparison;
-- credentials, hardware, accounts, native runners, and human reviews required but unavailable locally.
+- toolchain/lockfile/feature/source provenance needed by the package;
+- version values and compatibility contracts implicated by this release;
+- claimed platform/architecture/package matrix;
+- prior release/baseline when comparison is required;
+- unavailable credentials/hardware/accounts/native runners/human reviews.
 
 Never package an ambiguous tree or reuse artifacts from another revision.
 
 ## Readiness sequence
 
-1. **Scope and freeze:** Define channel, candidate identity, included changes, known limitations, rollback, and externally blocked gates.
-2. **Source and dependency trust:** Verify lockfile, licenses, notices, advisories, vet/deny policy, vendored provenance, action pins, generators, and source/publication boundaries.
-3. **Behavioral assurance:** Require current focused, workspace, integration, conformance, fuzz/property, performance/resource, security, documentation, and repository-profile evidence applicable to the candidate.
-4. **Native quality:** Apply [references/platform-release-matrix.md](references/platform-release-matrix.md) for each claimed platform, architecture, shell, renderer, input method, accessibility technology, and package.
-5. **Package construction:** Build through repository-owned packaging entrypoints. Verify package contents, permissions, metadata, icons, desktop integration, terminfo/shell assets, install, upgrade, repair, uninstall, and cleanup.
-6. **Signing and notarization:** Use only approved credential backends and least-authority hosted or native environments. Verify signatures and notarization on final artifacts, not intermediate files.
-7. **SBOM and provenance:** Bind checksums, SBOM, attestations, signatures, source revision, toolchain, and package identity to the exact final bytes.
-8. **Privacy and publication review:** Scan source, docs, logs, reports, packages, symbols, SBOM, screenshots, release notes, and metadata for secrets and machine-local or private information.
-9. **Documentation and communication:** Verify install, upgrade, migration, uninstall, support, security, known limitations, release notes, checksums, and platform claims match the artifact.
-10. **Rehearsal and rollback:** Exercise safe local or staging workflows, failure propagation, cancellation, partial upload handling, rollback, and artifact revocation without claiming publication.
-11. **Final authorization:** Present the immutable candidate, evidence, external gates, exact external actions, destinations, and rollback before signing, tagging, uploading, or publishing when those actions are not already authorized.
-12. **Post-publication verification:** When publication is authorized and completed, verify remote tag/release identity, assets, checksums, signatures, download/install behavior, distribution metadata, and rollback readiness.
+Apply only stages required by the requested release action:
+
+1. **Scope/freeze:** candidate identity, included changes, limitations, rollback, external gates.
+2. **Source/dependency trust:** relevant lockfile/licenses/advisories/provenance/action pins/generators/source-publication boundaries.
+3. **Behavioral assurance:** current evidence for contracts changed by the candidate; do not replay unrelated historical assurance.
+4. **Native quality:** use [references/platform-release-matrix.md](references/platform-release-matrix.md) only for claimed platforms/packages.
+5. **Package construction:** build through repository-owned entrypoints and verify affected contents/metadata/install-upgrade-uninstall behavior.
+6. **Signing/notarization:** use only approved credentials/environments and verify final artifact bytes.
+7. **SBOM/provenance:** bind checksums/attestations/signatures/source identity to final artifacts.
+8. **Privacy/publication review:** scan release-owned artifacts for secrets/private identifiers.
+9. **Documentation:** verify release/install/migration/support/known-limitations truth affected by the candidate.
+10. **Rehearsal/rollback:** exercise the relevant failure/rollback path before irreversible external steps.
+11. **Authorized external transition:** present exact action/destination/rollback, then perform only what is authorized.
+12. **Post-publication verification:** when publication occurs, verify remote identity/assets/signatures/distribution state relevant to the release.
+
+Capture verbose build/signing/verification logs to files when practical and retain concise status/failure excerpts in model context.
 
 ## Release evidence
 
-Use [references/release-evidence-record.md](references/release-evidence-record.md) as the review artifact. Every result must identify the exact candidate and environment. Failed or incomplete runs remain visible; a later pass does not erase them without an investigated cause.
+Use [references/release-evidence-record.md](references/release-evidence-record.md) when a structured release record is required. Every result must identify the exact candidate/environment. Retain unresolved failures until their cause/disposition is known; do not rerun unrelated evidence simply to create a larger record.
 
-A release remains partial or blocked when required native OS, architecture, hardware, GPU, account, credential, signing, notarization, accessibility, long-duration resource campaign, governance review, or human assessment is unavailable.
+A release remains partial/blocked when required native OS, architecture, hardware, account, credential, signing/notarization, accessibility, long-duration campaign, governance review, or human assessment is unavailable.
 
 ## Fail-closed rules
 
 - Do not substitute unsigned packages for signed release artifacts.
-- Do not call a cross-compiled package natively tested.
-- Do not sign bytes that differ from the inspected final package.
-- Do not publish from a dirty or unidentified tree.
-- Do not weaken branch protection, action pinning, permissions, provenance, tests, or signatures to complete a release.
+- Do not call a cross-compile natively tested.
+- Do not sign bytes different from the inspected final package.
+- Do not publish from an unidentified or unaccounted tree.
+- Do not weaken protection, permissions, provenance, tests, or signatures to complete a release.
 - Do not expose credentials or secret-bearing diagnostics.
-- Do not infer public release readiness from a local `cargo build` or a focused test.
-- Do not update a stable channel when required evidence is partial, stale, failed, or bound to another revision.
+- Do not infer release readiness from a local `cargo build` or unrelated old evidence.
 
 ## Completion
 
-Report one of: locally prepared, package-validated, native-evidence partial, ready for signing, ready for authorized publication, published and verified, or blocked. Name the exact remaining transition and who or what must perform it.
+Report the exact reached state: locally prepared, package-validated, native-evidence partial, ready for signing, ready for authorized publication, published and verified, or blocked. Name only the remaining transition/evidence relevant to the requested release stage.

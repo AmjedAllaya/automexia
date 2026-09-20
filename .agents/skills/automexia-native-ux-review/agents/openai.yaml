@@ -3,4 +3,4 @@ interface:
   short_description: "Review native terminal UX and accessibility"
   default_prompt: "Use $automexia-native-ux-review to evaluate this Automexia interface on its claimed native platforms."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false

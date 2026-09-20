@@ -3,4 +3,4 @@ interface:
   short_description: "Prove packages and releases are ready"
   default_prompt: "Use $automexia-release-readiness to assess and prepare this Automexia release candidate through its authorized stage."
 policy:
-  allow_implicit_invocation: true
+  allow_implicit_invocation: false
