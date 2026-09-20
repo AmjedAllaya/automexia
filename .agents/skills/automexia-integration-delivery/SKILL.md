@@ -1,6 +1,6 @@
 ---
 name: automexia-integration-delivery
-description: Resolve Automexia merge, rebase, or cherry-pick conflicts and prepare validated changes for review, commits, an authorized push, or final handoff. Use for integration conflicts, coherent staging, DCO commits, documentation synchronization, remote verification, or completion review. This skill never treats implementation authority as permission to commit, push, rewrite history, publish, release, delete, or discard unrelated work.
+description: Resolve Automexia merge/rebase/cherry-pick conflicts and deliver validated changes through review, coherent DCO commits, authorized pushes, PR preparation, and verified handoff. Use for integration conflicts or Git delivery; never infer permission to rewrite history, publish, release, delete, or discard work.
 ---
 
 # Automexia Integration Delivery
@@ -8,6 +8,12 @@ description: Resolve Automexia merge, rebase, or cherry-pick conflicts and prepa
 Integrate semantics rather than file versions, preserve every contributor's unrelated work, and produce a reviewable change whose tests, documentation, history, and remote state match the claim.
 
 Load `$automexia-feature-planning` before changing behavior or architecture discovered during integration. Load `$automexia-terminal-assurance` and `$automexia-native-ux-review` for affected runtime and UI contracts. Load `$automexia-release-readiness` only for release-candidate or publication preparation.
+
+## Current authorities
+
+Read the applicable current sections of `../../../CONTRIBUTING.md`, `../../../docs/CI-ASSURANCE.md`, `../../../docs/DOCUMENTATION.md`, and `../../../docs/DEVELOPMENT-CACHE.md`, plus the active Git operation metadata, repository workflows, branch policy, generators, and change-fragment rules. Use their current commands and policy instead of copying historical commands from a prior handoff.
+
+Local validation and hosted validation are separate evidence. Verify whether current policy activates a local pre-push hook instead of assuming it runs; an inactive hook is not evidence, and an exact-commit hosted result remains separate from a local pass.
 
 ## Authority boundaries
 
@@ -40,15 +46,12 @@ After resolution, verify there are no unmerged entries or conflict markers, comp
 
 ## Review and validation
 
-Use [references/delivery-checklist.md](references/delivery-checklist.md). At minimum:
+Use [references/delivery-checklist.md](references/delivery-checklist.md) and apply only the sections authorized by the user. At minimum:
 
-1. inspect the complete task-owned diff and staged diff;
-2. verify no unrelated changes were included or overwritten;
-3. run whitespace, conflict-marker, formatting, documentation, privacy, secret, architecture, and targeted behavior checks applicable to the change;
-4. run the owning tests and required repository profile after the final edit;
-5. update implementation truth in tests, specifications, ADRs, roadmap/audit, user/contributor docs, and change fragment as applicable;
-6. classify native, account, hardware, signing, human, and long-duration evidence honestly;
-7. scan every task-owned changed or generated artifact for confidential and machine-local information before handoff.
+1. inspect the complete task-owned and staged diffs and verify that unrelated work remains untouched;
+2. run the applicable owning tests, repository profile, static, architecture, documentation, privacy, secret, and policy checks after the final edit;
+3. synchronize specifications, tests, ADRs, roadmap/audits, contributor and user docs, and change fragments that own the resulting truth;
+4. classify unavailable native or external evidence honestly and scan every task-owned artifact for confidential or machine-local information.
 
 Do not weaken a gate or omit a failure to obtain a clean delivery.
 

@@ -1,6 +1,6 @@
 ---
 name: automexia-terminal-assurance
-description: Design, implement, or verify tests and evidence for Automexia terminal behavior, including PTYs, parsers, rendering, input, panes, resize, Unicode, concurrency, lifecycle, security, resources, performance, persistence, and cross-platform contracts. Use before production editing when these paths can change and again before completion. Do not use as proof of native platforms or hardware that did not actually run.
+description: Design and verify evidence for Automexia PTY, parser, rendering, input, resize, Unicode, concurrency, lifecycle, resource, security, performance, persistence, and cross-platform changes. Use before editing affected behavior and before completion; never infer native evidence from mocks or cross-compiles.
 ---
 
 # Automexia Terminal Assurance

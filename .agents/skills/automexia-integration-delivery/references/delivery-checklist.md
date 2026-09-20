@@ -9,6 +9,7 @@ Apply only the sections authorized by the user.
 - Unrelated dirty work is present only as untouched context.
 - Production behavior, tests, docs, ADRs, roadmap/audits, and change fragment agree.
 - No unfinished placeholder, debug bypass, temporary compatibility owner, or obsolete copy remains without explicit ownership and removal criteria.
+- A final search found no obsolete path, duplicate authority, unreachable owner, stale TODO, hard-coded local identifier, unbounded operation, secret-bearing log, silent fallback, or stale documentation in the task scope.
 - Errors are typed, actionable, bounded, and redacted; recoverable input does not panic.
 - Unsafe code is minimal, encapsulated, documented with invariants, and has appropriate review/evidence.
 - No real username, host, profile path, environment value, credentials, private history, or identifying provider output entered an artifact.
@@ -24,6 +25,7 @@ Apply only the sections authorized by the user.
 - Architecture, feature reinforcement, dependency, security, privacy, workflow, packaging, and release-policy gates pass when applicable.
 - Required fresh artifacts were generated and inspected.
 - Required repository profile passed after the final edit.
+- Current CI policy was consulted; the local hook's active or inactive status was verified rather than assumed, and hosted results identify the exact commit and jobs separately.
 - Native and external evidence names only environments actually exercised.
 
 ## Commit

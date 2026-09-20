@@ -1,6 +1,6 @@
 ---
 name: automexia-release-readiness
-description: Prepare, audit, or verify an Automexia release candidate across versioning, reproducible builds, packages, signing, notarization, SBOMs, provenance, public documentation, native quality evidence, rollback, and publication authorization. Use for release readiness, release rehearsal, packaging, signing, stable or prerelease decisions. Do not publish, tag, sign, upload, deploy, or change credentials without explicit authorization.
+description: Audit and prepare Automexia release candidates across identity, builds, packages, signing/notarization, SBOM/provenance, native evidence, documentation, rollback, and publication authorization. Use for packaging, release rehearsal, or stable/prerelease decisions; external release mutations require explicit authorization.
 ---
 
 # Automexia Release Readiness

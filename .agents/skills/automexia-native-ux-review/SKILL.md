@@ -1,6 +1,6 @@
 ---
 name: automexia-native-ux-review
-description: Plan, inspect, test, or review Automexia's visible native terminal experience, including hierarchy, density, text, themes, panes, tabs, overlays, input, focus, keyboard, IME, responsive layouts, scaling, motion, rendering, and accessibility. Use before implementing user-visible changes and when producing native UX evidence. Do not use controlled model or raster fixtures as substitutes for native platform evidence.
+description: Review and plan Automexia's visible native terminal UX, including hierarchy, panes/tabs, overlays, input/focus, keyboard, IME, responsive layout, scaling, motion, rendering, and accessibility. Use before user-visible implementation and for native UX evidence; keep controlled fixtures distinct from native proof.
 ---
 
 # Automexia Native UX Review
@@ -69,7 +69,7 @@ A semantic summary does not prove Narrator, NVDA, VoiceOver, or Orca delivery. C
 
 ## Tool use
 
-Use native computer control only for an authorized local test scenario and keep a sibling input sentinel where accidental PTY input would be harmful. Use Figma for design systems, variants, tokens, and reviewable proposed screens when the user requests design work. Figma remains a design artifact; source and native behavior remain authoritative after implementation.
+Use native computer control when the requested work or validation requires a local native scenario and current tool rules permit it. Keep a sibling input sentinel where accidental PTY input would be harmful.
 
 Store screenshots, recordings, accessibility dumps, and reports only in approved private evidence locations. Use fictional stable data. Redact usernames, paths, hosts, commands, history, provider output, credentials, account identifiers, and private environment details before sharing or committing anything.
 

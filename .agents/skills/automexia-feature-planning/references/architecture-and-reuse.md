@@ -14,7 +14,7 @@ Search by contract before building:
 6. maintained external library, SDK, CLI, or service evaluated from primary sources;
 7. a new local module or internal workspace crate.
 
-Do not choose a new dependency or abstraction until the earlier candidates have been examined and rejected with reasons.
+Do not choose a new dependency or abstraction until the earlier candidates have been examined and rejected with reasons. When a generator or scaffolder owns a structure, update or invoke that owner and verify its output instead of hand-authoring a competing copy.
 
 ## Build, wrap, or adopt
 
@@ -24,11 +24,12 @@ Do not choose a new dependency or abstraction until the earlier candidates have 
 
 **Adopt** directly when the dependency's public contract already matches the need and a wrapper would only rename it or create a second policy owner.
 
-For each serious external candidate evaluate:
+For each serious external candidate include viable maintained free and open-source options, then evaluate:
 
-- license and redistribution compatibility;
+- official source, exact version, required and default features, and why existing project code is insufficient;
+- license, redistribution, ongoing cost, service dependency, vendor lock-in, and source-publication compatibility;
 - maintainers, ownership, release cadence, provenance, advisories, and response history;
-- required features, default features, unsafe code, transitive dependencies, binary size, build time, startup impact, and MSRV;
+- unsafe code, transitive dependencies, duplicate versions, binary size, build time, startup impact, and MSRV;
 - Windows, Linux/BSD, macOS, architecture, shell, and offline behavior;
 - threads, tasks, cancellation, queues, timeouts, retries, storage, network, and cleanup;
 - authority and capability footprint, credential handling, sandbox expectations, and logging;
@@ -84,14 +85,21 @@ Shared code must expose a minimal typed API, prefer private or crate visibility,
 
 Preserve distinct units in types and tests: bytes, Unicode scalar values, graphemes, terminal cells, logical pixels, and physical pixels are not interchangeable. Queue bounds, task bounds, shutdown deadlines, entry counts, byte budgets, metadata equality, and file identity are also distinct contracts.
 
+## Cache and generated-state ownership
+
+For build cache, generated storage, or cleanup changes, read `../../../docs/DEVELOPMENT-CACHE.md` and use the repository-owned inspection commands. Keep mutable compiler targets isolated by worktree and operating system, and keep immutable tools, downloads, staging, temporary data, verification artifacts, and final release outputs under their documented owners.
+
+Before adding or changing a cache, define content identity, byte/file/directory ceilings, producer and consumers, lease or process ownership, atomic publication, corruption behavior, cleanup scope, grace period, rollback, and proof that the cache cannot grant release authority. Preview cleanup and review exact generated candidates before applying it; never broaden a candidate into a cache root, worktree root, linked path, dirty worktree, live process, or leased directory.
+
 ## Staged consolidation
 
 1. Characterize every consumer and reproduce observed drift.
 2. Define and independently test the shared contract.
 3. Extract only the common mechanism.
 4. Migrate one consumer at a time, retaining real-path tests.
-5. Compare hot-path allocations and performance where relevant.
-6. Remove old implementations only after call sites, feature combinations, targets, packaging, docs, and provenance are verified.
-7. Give temporary adapters one implementation owner and explicit removal criteria.
+5. Run the affected tests and policy gates after each consumer; do not accumulate an untested multi-consumer migration.
+6. Compare hot-path allocations and performance where relevant.
+7. Remove old implementations only after call sites, feature combinations, targets, packaging, docs, and provenance are verified.
+8. Give temporary adapters one implementation owner and explicit removal criteria.
 
 Do not combine repository-wide cleanup with a focused change unless that consolidation is required to close the requested contract.

@@ -39,7 +39,7 @@ For each gate record status, command or procedure, environment, fresh artifact, 
 | Hosted protection/governance | | | | |
 | Publication verification | | | | |
 
-Use implemented, passed, failed, partial, external, or not applicable with a reason. Never use passed for unavailable evidence.
+Use passed, failed, partial, external, not run, or not applicable with a reason. Never use passed for unavailable evidence or implementation existence alone.
 
 ## Artifact inventory
 

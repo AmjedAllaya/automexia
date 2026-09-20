@@ -57,8 +57,12 @@ Use the lightest rung that proves the current step, then broaden only when the c
 The final evidence record must name:
 
 - changed contract and owner;
+- tested revision plus relevant dirty-state identity;
+- toolchain, target, feature set, exact commands, executed tests, and outcomes;
 - regression and controls that ran;
 - owning and repository gates that passed;
 - native platforms and configurations that actually ran;
 - fresh artifacts inspected;
 - unresolved failures, external gates, and practical limits.
+
+Local and hosted results are separate claims. Hosted evidence must identify the exact commit and applicable jobs; a pass from an older commit, different features, or pre-change worktree is not current evidence.
