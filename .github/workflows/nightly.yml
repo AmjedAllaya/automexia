@@ -21,7 +21,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -81,7 +81,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -128,7 +128,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -139,7 +139,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind nightly
     - name: Install the nightly-2026-08-25 compiler required by libFuzzer
       run: rustup toolchain install nightly-2026-08-25 --profile minimal
-    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+    - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
       with:
         tool: cargo-fuzz@0.13.1
     - name: Fuzz ${{ matrix.target }} with nightly-2026-08-25
@@ -159,7 +159,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -202,7 +202,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -232,7 +232,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -261,7 +261,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -270,7 +270,7 @@ jobs:
         set -euo pipefail
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
         python tools/ci/rust_toolchain.py verify --kind development
-    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+    - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute and retain Criterion measurements
@@ -308,7 +308,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -318,7 +318,7 @@ jobs:
         if ($LASTEXITCODE -ne 0) { throw 'compiler installation failed' }
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
-    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+    - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
       with:
         tool: cargo-nextest@0.9.137,cargo-deny@0.20.2
     - name: Execute native GUI resource stress and controlled benchmarks
@@ -364,7 +364,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -375,7 +375,7 @@ jobs:
         python tools/ci/rust_toolchain.py verify --kind development
         if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
     - run: rustup target add ${{ matrix.target }}
-    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+    - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
       if: matrix.target == 'x86_64-pc-windows-msvc'
       with:
         tool: cargo-packager@0.11.8
@@ -420,7 +420,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -488,7 +488,7 @@ jobs:
       with:
         persist-credentials: false
     - name: Select Python for compiler-policy bootstrap
-      uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+      uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
       with:
         python-version: '3.12'
     - name: Verify effective Rust compiler and Cargo
@@ -498,7 +498,7 @@ jobs:
         rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
         python tools/ci/rust_toolchain.py verify --kind development
     - run: rustup target add x86_64-apple-darwin aarch64-apple-darwin
-    - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+    - uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
       with:
         tool: cargo-packager@0.11.8
     - run: 'cargo build --release --locked -p automexia-terminal --target x86_64-apple-darwin

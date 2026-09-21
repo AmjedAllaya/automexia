@@ -73,7 +73,7 @@ jobs:
           "$RUNNER_TEMP/actionlint" -color -shellcheck "$RUNNER_TEMP/shellcheck"
 
       - name: Install pinned zizmor 1.21.0
-        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
         with:
           tool: zizmor@1.21.0
           fallback: none
@@ -138,7 +138,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Install pinned Rust toolchain
@@ -172,7 +172,7 @@ jobs:
           version: v0.16.0
 
       - name: Install pinned test runner
-        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
         with:
           tool: cargo-nextest@0.9.137
 
@@ -234,7 +234,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Verify effective Rust compiler and Cargo
@@ -244,7 +244,7 @@ jobs:
           rustup toolchain install "$RUSTUP_TOOLCHAIN" --profile minimal
           python tools/ci/rust_toolchain.py verify --kind development
       - name: Install pinned Rust security tools
-        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
         with:
           tool: cargo-audit@0.22.0,cargo-deny@0.20.2,cargo-vet@0.10.2
 
@@ -308,7 +308,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Validate internal release branch, SemVer, version, and protected paths
@@ -362,7 +362,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Install pinned Rust coverage toolchain
@@ -374,7 +374,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'compiler identity verification failed' }
 
       - name: Install pinned coverage tool
-        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
         with:
           tool: cargo-llvm-cov@0.6.18
 

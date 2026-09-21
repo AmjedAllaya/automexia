@@ -102,7 +102,7 @@ jobs:
           persist-credentials: false
           ref: ${{ needs.authorize.outputs.commit }}
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Install pinned Rust and native dependencies
@@ -129,7 +129,7 @@ jobs:
         with:
           version: v0.16.0
       - name: Install pinned quality tools
-        uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
+        uses: taiki-e/install-action@4076c08d76dba979c11a7285295b0716c1d67908
         with:
           tool: cargo-nextest@0.9.137,cargo-audit@0.22.0,cargo-deny@0.20.2
       - name: Rust formatting
@@ -193,7 +193,7 @@ jobs:
           restore-keys: |
             cargo-sources-v1-${{ runner.os }}-
       - name: Select Python for compiler-policy bootstrap
-        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97
         with:
           python-version: '3.12'
       - name: Require native architecture and install packaging dependencies
