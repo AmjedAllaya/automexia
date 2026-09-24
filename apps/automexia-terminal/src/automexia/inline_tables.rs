@@ -49,6 +49,17 @@ pub struct Snapshot {
 }
 
 impl Snapshot {
+    /// Capture only when application presentation is enabled; terminal state is untouched.
+    pub fn capture_for<T: EventListener>(
+        terminal: &Crosswords<T>,
+        enabled: bool,
+    ) -> Self {
+        if enabled {
+            Self::capture(terminal)
+        } else {
+            Self::default()
+        }
+    }
     fn eligible<T: EventListener>(terminal: &Crosswords<T>) -> bool {
         !terminal
             .mode()
@@ -524,6 +535,38 @@ mod tests {
         state.refresh(Snapshot::capture(&term));
         assert_eq!(state.surfaces.len(), 1);
     }
+    #[test]
+    fn presentation_table_toggle_releases_maps_and_preserves_source() {
+        let term = fixture(24);
+        let cursor = term.cursor();
+        let before = term.bounds_to_string(
+            Pos::new(term.grid.topmost_line(), Column(0)),
+            Pos::new(term.grid.bottommost_line(), term.grid.last_column()),
+        );
+        let mut tables = InlineTables::default();
+        let mut projection = RowProjection::default();
+        tables.refresh(Snapshot::capture_for(&term, true));
+        assert_eq!(tables.surfaces.len(), 1);
+        projection.rebuild(term.screen_lines(), &tables.bands());
+        assert!(tables.hides_native(0));
+        tables.refresh(Snapshot::capture_for(&term, false));
+        projection.rebuild(term.screen_lines(), &tables.bands());
+        assert!(tables.surfaces.is_empty());
+        assert!(!tables.hides_native(0));
+        assert!(!projection.expanded());
+        assert_eq!(tables.source_position(&projection, 0, 2), None);
+        tables.refresh(Snapshot::capture_for(&term, true));
+        assert_eq!(tables.surfaces.len(), 1);
+        assert_eq!(term.cursor(), cursor);
+        assert_eq!(
+            term.bounds_to_string(
+                Pos::new(term.grid.topmost_line(), Column(0)),
+                Pos::new(term.grid.bottommost_line(), term.grid.last_column()),
+            ),
+            before
+        );
+    }
+
     #[test]
     fn inline_tables_reject_program_modes_and_release_stale_source() {
         let mut term = fixture(80);

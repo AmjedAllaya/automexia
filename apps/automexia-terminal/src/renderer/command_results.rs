@@ -15,6 +15,12 @@ use crate::automexia::ui::{CommandResultAnchor, COMMAND_RESULT_PROMPT_RESERVE};
 
 mod rows;
 
+pub(super) struct ResultOptions {
+    pub allow_animation: bool,
+    pub prefer_untagged: bool,
+    pub show_timestamps: bool,
+}
+
 const ORDER: u8 = 19;
 const RESULT_LABEL_FONT_ROW_RATIO: f32 = 0.62;
 const RESULT_LABEL_MAX_FONT_SIZE: f32 = 14.0;
@@ -299,15 +305,19 @@ impl CommandResults {
         &self.native_paints
     }
     /// Draw completion state on the semantic row that owns the command.
-    pub fn render_command_results(
+    pub(super) fn render_command_results(
         &mut self,
         sugarloaf: &mut Sugarloaf,
         colors: Colors,
         anchors: &[CommandResultAnchor],
-        allow_animation: bool,
-        prefer_untagged: bool,
+        options: ResultOptions,
         planned: (&[CompletionLabel], [f32; 2]),
     ) {
+        let ResultOptions {
+            allow_animation,
+            prefer_untagged,
+            show_timestamps,
+        } = options;
         let (planned_labels, vertical_bounds) = planned;
         let now = Instant::now();
         self.pulse
@@ -332,7 +342,9 @@ impl CommandResults {
             self.native_paints.clear();
         }
         for anchor in anchors {
-            let timestamp = command_timestamp_label(anchor.completed_at);
+            let timestamp = show_timestamps
+                .then(|| command_timestamp_label(anchor.completed_at))
+                .flatten();
             let presentation = command_result_presentation(
                 anchor.exit_code,
                 command_elapsed_ms(anchor.elapsed_ms),
@@ -492,8 +504,13 @@ fn result_label_color(colors: Colors, exit_code: Option<i32>) -> [f32; 4] {
     }
 }
 
-pub(super) fn complete_result_label(anchor: &CommandResultAnchor) -> String {
-    let timestamp = command_timestamp_label(anchor.completed_at);
+pub(super) fn complete_result_label(
+    anchor: &CommandResultAnchor,
+    show_timestamps: bool,
+) -> String {
+    let timestamp = show_timestamps
+        .then(|| command_timestamp_label(anchor.completed_at))
+        .flatten();
     command_result_presentation(
         anchor.exit_code,
         command_elapsed_ms(anchor.elapsed_ms),
@@ -674,6 +691,30 @@ mod tests {
             second: 42,
         }
     }
+    #[test]
+    fn presentation_timestamp_toggle_keeps_status_duration_and_metadata() {
+        let anchor = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 40.0,
+            width: 720.0,
+            height: 20.0,
+            output_top: Some(0.0),
+            separates_next_prompt: true,
+            exit_code: Some(2),
+            elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
+        };
+        let before = anchor;
+        assert!(complete_result_label(&anchor, true).contains("2026-08-26 19:05:42"));
+        let hidden = complete_result_label(&anchor, false);
+        assert!(!hidden.contains("2026-08-26"));
+        assert!(!hidden.contains("19:05:42"));
+        assert_eq!(hidden, "×  18ms");
+        assert_eq!(anchor, before);
+    }
+
     #[test]
     fn command_duration_uses_compact_units() {
         assert_eq!(command_elapsed_ms(Some(18)), Some(18));

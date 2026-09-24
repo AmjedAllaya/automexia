@@ -25,6 +25,8 @@ mod renderer;
 mod router;
 mod scheduler;
 mod screen;
+mod settings_catalog;
+mod settings_view;
 mod table_view;
 mod watcher;
 

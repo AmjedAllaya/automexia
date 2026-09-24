@@ -10,6 +10,7 @@ pub mod keyboard;
 pub mod layout;
 pub mod navigation;
 pub mod platform;
+pub mod presentation;
 pub mod product;
 pub mod renderer;
 pub mod theme;
@@ -184,6 +185,8 @@ pub struct Config {
     pub scrollback_history_limit: usize,
     #[serde(default = "effects::Effects::default")]
     pub effects: effects::Effects,
+    #[serde(default)]
+    pub presentation: presentation::Presentation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -715,6 +718,7 @@ impl Default for Config {
             enable_scroll_bar: true,
             scrollback_history_limit: default_scrollback_history_limit(),
             effects: effects::Effects::default(),
+            presentation: presentation::Presentation::default(),
         }
     }
 }
@@ -1691,3 +1695,6 @@ mod tests {
         assert!(result.env_vars.contains(&String::from("GLOBAL=1")));
     }
 }
+
+#[cfg(test)]
+mod presentation_tests;

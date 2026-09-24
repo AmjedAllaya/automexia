@@ -24,6 +24,11 @@ for scope, conflicts and persistence. The default tables below remain unchanged.
 
 ## Windows and Linux/BSD defaults
 
+**Ctrl+Shift+S** opens the native Settings sheet on Windows/Linux/BSD;
+**Cmd+Shift+S** does so on macOS. The action is `OpenSettings`, applies outside
+Search, Vi and alternate-screen modes, and can be customized in the palette.
+The existing configuration-editor shortcut remains unchanged.
+
 **Ctrl+Shift+F7** opens the [focused table view](../user-guide/table-output.md)
 with the Automexia profile on all platforms, including macOS. Its configurable
 action is `ViewTableOutput`; Escape returns to the terminal.
@@ -224,7 +229,7 @@ ResetFontSize, IncreaseFontSize, DecreaseFontSize,
 CreateWindow, CloseWindow, ReloadConfig, ToggleQuake,
 ScrollToPrevPrompt, ScrollToNextPrompt,
 CreateTab, CreateLocalTab, MoveCurrentTabToPrev, MoveCurrentTabToNext,
-CloseTab, CloseSplitOrTab, CloseUnfocusedTabs, OpenConfigEditor,
+CloseTab, CloseSplitOrTab, CloseUnfocusedTabs, OpenConfigEditor, OpenSettings,
 SelectPrevTab, SelectNextTab, SelectPrevLocalTab, SelectNextLocalTab,
 SelectLastTab, ScrollPageUp, ScrollPageDown, ScrollHalfPageUp,
 ScrollHalfPageDown, ScrollToTop, ScrollToBottom,

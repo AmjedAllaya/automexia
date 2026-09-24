@@ -1334,6 +1334,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn open_settings(&self) {
+        self.event_proxy
+            .send_event(RioEvent::OpenSettings, self.window_id);
+    }
+
+    #[inline]
+    pub fn extension_inventory_changed(&self) {
+        self.event_proxy
+            .send_event(RioEvent::ExtensionInventoryChanged, self.window_id);
+    }
+
+    #[inline]
     pub fn switch_to_settings(&mut self) {
         self.event_proxy
             .send_event(RioEvent::CreateConfigEditor, self.window_id);

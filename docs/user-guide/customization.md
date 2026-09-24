@@ -9,7 +9,8 @@ Automexia is designed to work with **zero configuration**. The most maintainable
 | Different directory for one launch | `automexia --working-dir <PATH>` |
 | Different shell/program for one launch | `automexia ... -e <PROGRAM> [ARGS...]` |
 | Permanent declarative terminal preference | `config.toml` |
-| Font size or light/dark appearance changed in the running UI | Saved automatically for the next launch |
+| Font size, appearance, shortcuts or supported Settings choices changed in the running UI | Saved automatically for the next launch |
+| Table formatting, detected-status highlighting or command timestamps | Open **Settings** from the command palette |
 | Different preferences by platform | Platform-specific config override tables |
 | Temporary diagnostic logging | `--enable-log-file` or log environment override |
 | Frequent UI action on another key | Double-click its palette badge or select it and press F2; use `[bindings]` for advanced mappings |
@@ -72,7 +73,21 @@ Use:
 - Linux/BSD: `Ctrl+Shift+,`
 - macOS: `Cmd+,`
 
-The configured editor is used. By default the reference defines Notepad on Windows and `vi` on Unix unless you override `[editor]`.
+These shortcuts retain the external configuration editor. The palette calls it
+**Edit Configuration File**. By default the reference defines Notepad on Windows
+and `vi` on Unix unless you override `[editor]`.
+
+To change output presentation inside Automexia, select **Settings** in the
+command palette or press **Ctrl+Shift+S** (**Cmd+Shift+S** on macOS). Search by name, use Tab to move between search, the list, Reset
+and Close, use arrows to select a setting, and press Space to change a boolean.
+Escape closes the sheet. Changes apply immediately and show whether saving
+succeeded. Reset inherits your current configuration instead of copying a
+default into the override file.
+
+Installed built-in extensions add their supported controls to this list. Turning
+off a feature keeps its control available to turn back on. Removing its
+extension removes its entries. An unavailable integration explains why its
+control cannot be changed.
 
 Example editor override:
 
@@ -207,9 +222,10 @@ Choose one approach deliberately:
 Both adaptive theme files must load successfully. Theme/config failures do not replace the current runtime state with partially parsed values; Automexia keeps the last known-good configuration.
 
 The appearance shortcut also saves the selected light/dark choice. To clear all
-runtime UI overrides, close Automexia and remove the two
-`state/user-preferences-v1*.toml` files. The next launch uses `config.toml` and
-the host appearance again.
+runtime UI overrides, close Automexia and remove the version-2 primary and
+previous preference snapshots plus any retained version-1 snapshots. Otherwise
+legacy choices would import again. The next launch uses `config.toml` and the
+host appearance again. Individual Settings controls can instead use Reset.
 
 ## 9. Add a custom key binding
 
@@ -266,11 +282,11 @@ The [terminal interaction status](../TERMINAL-INTERACTION-REQUIREMENTS.md)
 identifies current UI and persistence owners. This guide describes only
 settings supported by current source, not additional configuration options.
 
-Opening the configuration uses the configured external editor; it should not
-be confused with an editor for every preference inside the terminal. The
-application-owned runtime-preference overlay stores font size and forced
-light/dark appearance, not every setting in this guide. Other declarative
-preferences remain in `config.toml`. See
+The Settings sheet currently edits output-presentation switches and declared
+built-in extension presentation controls. It does not yet edit every setting in
+this guide. Font size, appearance and shortcut changes continue through their
+existing controls and share the same application preference writer. Other
+declarative preferences remain in `config.toml`. See
 [runtime preference ownership](../adr/0036-application-owned-runtime-user-preferences.md)
 for precedence, reset, recovery and storage limits. Existing configuration
 support does not establish release or native evidence for every combination.

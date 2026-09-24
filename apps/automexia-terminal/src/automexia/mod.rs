@@ -37,6 +37,7 @@ pub mod repository_open;
 pub mod runtime;
 #[doc(hidden)]
 pub mod semantic_surfaces;
+pub mod settings_extensions;
 #[cfg(target_os = "windows")]
 pub mod shell;
 pub mod shell_integration;

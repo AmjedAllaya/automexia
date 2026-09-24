@@ -134,7 +134,7 @@ def main() -> int:
         "inactive panes lack isolated core command-result state",
     )
 
-    devops_start = renderer.find("        if self.devops_enabled {")
+    devops_start = renderer.find("        if self.devops_context_enabled {")
     route_guard = renderer.find(
         "        if self.command_result_route != Some(active_route) {",
         devops_start,

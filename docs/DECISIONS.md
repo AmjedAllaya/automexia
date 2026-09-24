@@ -51,6 +51,7 @@ listed or summarized here.
 | [0067](adr/0067-local-repository-browser-navigation.md) | Offline Git remote resolution and explicit repository browser navigation |
 | [0073](adr/0073-bounded-extension-worker-retirement.md) | Bounded extension worker retirement and native join acknowledgement |
 | [0078](adr/0078-inline-header-table-presentation.md) | Inline header tables with bounded cell wrapping and source mapping |
+| [0079](adr/0079-shared-settings-and-presentation-preferences.md) | Shared Settings catalogue and application-owned presentation preferences |
 
 ## When an ADR is required
 

@@ -159,6 +159,10 @@ const SHORTCUT_PREV_PANE: &str = "Cmd+[";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PREV_PANE: &str = "Shift+F6";
 #[cfg(target_os = "macos")]
+const SHORTCUT_NATIVE_SETTINGS: &str = "Cmd+Shift+S";
+#[cfg(not(target_os = "macos"))]
+const SHORTCUT_NATIVE_SETTINGS: &str = "Ctrl+Shift+S";
+#[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
@@ -364,7 +368,7 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::PaneNext,
             accent: BRAND_CYAN,
         },
-        ConfigEditor => RowPresentation {
+        ConfigEditor | OpenSettings => RowPresentation {
             icon: CommandIcon::Settings,
             accent: BRAND_AMBER,
         },
@@ -582,6 +586,11 @@ const COMMANDS: &[Command] = &[
     },
     Command {
         title: "Settings",
+        shortcut: SHORTCUT_NATIVE_SETTINGS,
+        action: PaletteAction::OpenSettings,
+    },
+    Command {
+        title: "Edit Configuration File",
         shortcut: SHORTCUT_SETTINGS,
         action: PaletteAction::ConfigEditor,
     },
@@ -2854,6 +2863,23 @@ mod tests {
                 command.title
             );
         }
+    }
+
+    #[test]
+    fn settings_command_uses_native_preferences_and_keeps_text_editor_accessible() {
+        let settings = COMMANDS
+            .iter()
+            .find(|command| command.title == "Settings")
+            .unwrap();
+        assert_eq!(
+            serde_json::to_value(settings.action).unwrap(),
+            "OpenSettings"
+        );
+        let editor = COMMANDS
+            .iter()
+            .find(|command| command.action == PaletteAction::ConfigEditor)
+            .unwrap();
+        assert_eq!(editor.title, "Edit Configuration File");
     }
 
     #[test]

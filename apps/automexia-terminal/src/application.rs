@@ -35,6 +35,8 @@ use crate::automexia::preferences::{
     MAX_FONT_POINTS, MIN_FONT_POINTS,
 };
 
+mod settings;
+
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
 enum RuntimeConfigReload {
@@ -202,6 +204,7 @@ pub struct Application<'a> {
     config: rio_backend::config::Config,
     user_preferences: UserPreferences,
     preference_writer: PreferenceWriter,
+    settings_revision: u64,
     event_proxy: EventProxy,
     router: Router<'a>,
     scheduler: Scheduler,
@@ -245,7 +248,11 @@ impl Application<'_> {
         if let Some(error) = preference_load.warning {
             router.propagate_error_to_next_route(preference_warning(
                 error,
-                preference_load.source == runtime_preferences::PreferenceSource::Previous,
+                matches!(
+                    preference_load.source,
+                    runtime_preferences::PreferenceSource::Previous
+                        | runtime_preferences::PreferenceSource::LegacyPrevious
+                ),
             ));
         }
 
@@ -263,7 +270,8 @@ impl Application<'_> {
 
         rio_notifier::request_authorization();
 
-        Application {
+        let mut application = Application {
+            settings_revision: 1,
             base_config,
             config,
             user_preferences,
@@ -285,7 +293,9 @@ impl Application<'_> {
             global_hotkey: None,
             #[cfg(target_os = "macos")]
             quake_previous_app: None,
-        }
+        };
+        application.initialize_extension_inventory();
+        application
     }
 
     fn publish_user_preferences(
@@ -313,6 +323,7 @@ impl Application<'_> {
             route.window.configure_window(&self.config);
             route.request_redraw();
         }
+        self.refresh_settings_catalogs();
         self.preference_writer.submit(self.user_preferences.clone());
     }
 
@@ -360,6 +371,7 @@ impl Application<'_> {
                 .update_bindings(&self.config, snapshot.clone());
             route.request_redraw();
         }
+        self.refresh_settings_catalogs();
         let revision = self.preference_writer.submit(self.user_preferences.clone());
         if let Some(route) = self.router.routes.get_mut(&window_id) {
             let palette = &mut route.window.screen.renderer.command_palette;
@@ -376,6 +388,14 @@ impl Application<'_> {
     fn finish_shortcut_writes(&mut self) {
         if let Some((revision, result)) = self.preference_writer.completion() {
             for route in self.router.routes.values_mut() {
+                route
+                    .window
+                    .screen
+                    .settings_view
+                    .save_completed(revision, result.is_ok());
+                if route.window.screen.settings_view.is_open() {
+                    route.request_overlay_redraw();
+                }
                 if route
                     .window
                     .screen
@@ -403,6 +423,7 @@ impl Application<'_> {
                 .renderer
                 .command_palette
                 .is_editing_shortcut()
+                || route.window.screen.settings_view.is_open()
             {
                 continue;
             }
@@ -1047,6 +1068,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.clear_errors();
                     route.request_redraw();
                 }
+                self.refresh_settings_catalogs();
             }
             RioEventType::Rio(RioEvent::Exit | RioEvent::Quit) => {
                 let should_exit =
@@ -1496,6 +1518,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
             }
+            RioEventType::Rio(RioEvent::OpenSettings) => self.open_settings(window_id),
+            RioEventType::Rio(RioEvent::ExtensionInventoryChanged) => {
+                self.extension_inventory_changed();
+            }
             RioEventType::Rio(RioEvent::ApplyShortcutEdit) => {
                 self.apply_shortcut_edit(window_id)
             }
@@ -1625,6 +1651,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             Some(window) => window,
             None => return,
         };
+
+        if route
+            .window
+            .screen
+            .handle_settings_window_event(&event, &mut self.router.clipboard)
+        {
+            let typing_release = matches!(&event, WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Released);
+            self.finish_settings_input(window_id, typing_release);
+            return;
+        }
 
         if route
             .window
@@ -3314,14 +3351,24 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // Use the modifiers passed from the menu action
         route.window.screen.set_modifiers(*modifiers);
 
-        // Process the key event
-        route
+        // Native menus share the view key adapter without acquiring physical
+        // release latches: a clicked menu item need not produce a key-up event.
+        let settings_handled = route
             .window
             .screen
-            .process_key_event(key, &mut self.router.clipboard);
+            .handle_settings_menu_key(key, &mut self.router.clipboard);
+        if !settings_handled {
+            route
+                .window
+                .screen
+                .process_key_event(key, &mut self.router.clipboard);
+        }
 
         // Restore the original modifiers
         route.window.screen.set_modifiers(original_modifiers);
+        if settings_handled {
+            self.finish_settings_input(window_id, key.state == ElementState::Released);
+        }
     }
 
     // Emitted when the event loop is being shut down.

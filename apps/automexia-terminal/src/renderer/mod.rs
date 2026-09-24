@@ -752,7 +752,10 @@ pub struct Renderer {
     pub command_palette: command_palette::CommandPalette,
     pub compatibility_inspector: compatibility_inspector::CompatibilityInspector,
     pub connection_hub: connection_hub::ConnectionHub,
+    /// Installed classifier availability, independent of prompt-context settings.
     pub devops_enabled: bool,
+    pub devops_context_enabled: bool,
+    pub presentation: rio_backend::config::presentation::Presentation,
     extension_generation: u32,
     /// Operational prompt state for the selected route.
     pub devops_status: devops_status::DevOpsStatus,
@@ -865,7 +868,9 @@ impl Renderer {
             compatibility_inspector:
                 compatibility_inspector::CompatibilityInspector::default(),
             connection_hub: connection_hub::ConnectionHub::default(),
-            devops_enabled: crate::automexia::runtime::context_status_enabled(),
+            devops_enabled: crate::automexia::runtime::output_highlighting_available(),
+            devops_context_enabled: crate::automexia::runtime::context_status_enabled(),
+            presentation: config.presentation,
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
             devops_statuses: FxHashMap::default(),
@@ -941,6 +946,7 @@ impl Renderer {
         self.colors = colors;
         self.navigation = config.navigation.clone();
         self.margin = config.margin;
+        self.presentation = config.presentation;
         self.named_colors = named_colors;
         self.dynamic_background = dynamic_background_for(config, &self.named_colors);
         self.opacity_cells = config.window.opacity_cells;
@@ -977,10 +983,13 @@ impl Renderer {
             return false;
         }
         self.extension_generation = generation;
-        let enabled = crate::automexia::runtime::context_status_enabled();
-        let changed = enabled != self.devops_enabled;
-        self.devops_enabled = enabled;
-        if !enabled {
+        let available = crate::automexia::runtime::output_highlighting_available();
+        let context_enabled = crate::automexia::runtime::context_status_enabled();
+        let changed = available != self.devops_enabled
+            || context_enabled != self.devops_context_enabled;
+        self.devops_enabled = available;
+        self.devops_context_enabled = context_enabled;
+        if !context_enabled {
             self.devops_status.clear();
             self.devops_statuses.clear();
         }
@@ -1365,17 +1374,21 @@ impl Renderer {
                 inline_snapshot = (!matches!(
                     damage,
                     TerminalDamage::Noop | TerminalDamage::CursorOnly
-                ) || context
-                    .renderable_content
-                    .inline_tables
-                    .needs_snapshot(&*terminal))
+                ) || (self.presentation.inline_tables
+                    && context
+                        .renderable_content
+                        .inline_tables
+                        .needs_snapshot(&*terminal)))
                 .then(|| {
                     if context.renderable_content.hint_labels.is_some()
                         || context.renderable_content.hint_matches.is_some()
                     {
                         crate::automexia::inline_tables::Snapshot::default()
                     } else {
-                        crate::automexia::inline_tables::Snapshot::capture(&*terminal)
+                        crate::automexia::inline_tables::Snapshot::capture_for(
+                            &*terminal,
+                            self.presentation.inline_tables,
+                        )
                     }
                 });
                 context.renderable_content.frame_damage = damage;
@@ -1556,7 +1569,7 @@ impl Renderer {
         self.command_result_states
             .retain(|route, _| visible_inactive_routes.contains(route));
 
-        if self.devops_enabled {
+        if self.devops_context_enabled {
             let refresh_pending = self
                 .devops_status
                 .refresh_session_context(&active_pane.session, || {
@@ -1626,7 +1639,7 @@ impl Renderer {
                 };
                 pane
             };
-            let status = if !self.devops_enabled {
+            let status = if !self.devops_context_enabled {
                 None
             } else if context.route_id == active_route {
                 Some(&self.devops_status)
@@ -1639,6 +1652,7 @@ impl Renderer {
                 &mut context.renderable_content,
                 sugarloaf,
                 self.named_colors,
+                self.presentation.command_timestamps,
             ) {
                 context.renderable_content.frame_damage = TerminalDamage::Full;
                 any_panel_dirty = true;
@@ -1830,8 +1844,13 @@ impl Renderer {
             sugarloaf,
             self.named_colors,
             &active_pane.command_results,
-            result_animation_enabled(active_pane.allow_result_animation),
-            prefer_untagged_results,
+            command_results::ResultOptions {
+                allow_animation: result_animation_enabled(
+                    active_pane.allow_result_animation,
+                ),
+                prefer_untagged: prefer_untagged_results,
+                show_timestamps: self.presentation.command_timestamps,
+            },
             (
                 &active_pane.completion_labels,
                 [active_pane.origin_y, active_pane.bottom_y],
@@ -1852,8 +1871,13 @@ impl Renderer {
                     sugarloaf,
                     self.named_colors,
                     &pane.command_results,
-                    result_animation_enabled(pane.allow_result_animation),
-                    prefer_untagged_results,
+                    command_results::ResultOptions {
+                        allow_animation: result_animation_enabled(
+                            pane.allow_result_animation,
+                        ),
+                        prefer_untagged: prefer_untagged_results,
+                        show_timestamps: self.presentation.command_timestamps,
+                    },
                     (&pane.completion_labels, [pane.origin_y, pane.bottom_y]),
                 );
         }

@@ -1611,3 +1611,31 @@ cleanup and rejected stale work. The architecture mutation test must reject
 missing retirement contracts and acknowledgement before join. Record executed
 counts on each native platform; Windows/Linux evidence does not certify other
 hosts, desktop latency or arbitrary blocking/destructive Rust handlers.
+
+## Native Settings and presentation controls
+
+Run the model owner with `cargo test --locked -p automexia-ui-model --test settings`.
+The application library filters `automexia::preferences`,
+`automexia::settings_extensions`, `automexia::runtime::tests::context_settings` and
+`presentation_table_toggle` cover migration, installed descriptors, cancelled
+work and source-preserving table disablement. Run the backend configuration
+owner and the full application library after integration.
+
+Binary filters `settings_catalog::`, `settings_view::`, `presentation_`,
+`screen::settings::`, `settings_defaults_` and `settings_command_` cover current-catalogue revalidation,
+Reset, uninstall versus feature disable, real parser-to-label composition,
+all-local-tab invalidation, menu/window input parity and the additive palette
+entry. Verify nonzero executed counts. View fixtures render actual bundled-font
+text with both base and modal layers, test clipping and selected search text,
+and cover insufficient-space recovery without shrinking the chosen font.
+
+The runtime fixture uses isolated native subprocesses and a temporary marker
+store to exercise inventory publication and actual uninstall/reinstall. It
+rejects work captured before feature disable or membership removal, including
+lease exhaustion; callback publication is checked independently of timing.
+
+These tests do not establish native screen-reader delivery, compositor pixels,
+or real platform IME behavior. Exercise menu and keyboard paste, composition,
+focus, save failure/restart, font changes and multiwindow removal on every native
+platform claimed. Preserve earlier failures and identify oracle corrections;
+do not count compile failures or empty filters as test results.

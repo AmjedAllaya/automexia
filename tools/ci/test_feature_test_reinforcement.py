@@ -156,7 +156,10 @@ class FeatureTestReinforcementTests(unittest.TestCase):
             ("table_view", "self.viewport.horizontal_thumb("),
             ("table_pixels", "assert_eq!(pixels, after.pixels(760, 260));"),
             ("table_pixels", "line.0.y += 1.0;"),
-            ("screen", "self.consume_table_key_release(key)"),
+            ("screen", "self.consume_overlay_key_release(event)"),
+            ("screen", "self.handle_settings_key(key, clipboard)"),
+            ("screen_settings", "self.consume_overlay_key_release(key)"),
+            ("screen_settings", "self.dispatch_settings_key(key, clipboard, true)"),
             ("application_bench", "    core_table_view,"),
         ):
             with self.subTest(owner=owner, contract=fragment):
@@ -165,6 +168,17 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 sources[owner] = sources[owner].replace(fragment, "removed contract")
                 with self.assertRaises(REINFORCEMENT.ReinforcementError):
                     REINFORCEMENT._validate_table_sources(sources)
+
+    def test_shared_modal_release_must_precede_settings_dispatch(self) -> None:
+        REINFORCEMENT._validate_table_sources(self.native_sources)
+        owner = self.native_sources["screen_settings"]
+        release = "self.consume_overlay_key_release(key)"
+        dispatch = "self.dispatch_settings_key(key, clipboard, true)"
+        self.assertIn(release, owner)
+        self.assertIn(dispatch, owner)
+        mutation = owner.replace(release, "ORDER_PLACEHOLDER", 1).replace(dispatch, release, 1).replace("ORDER_PLACEHOLDER", dispatch, 1)
+        with self.assertRaises(REINFORCEMENT.ReinforcementError):
+            REINFORCEMENT._validate_table_sources(dict(self.native_sources, screen_settings=mutation))
 
     def test_inline_tables_keep_bounded_capture_projection_and_glyph_evidence(self) -> None:
         REINFORCEMENT._validate_inline_table_sources(self.native_sources)

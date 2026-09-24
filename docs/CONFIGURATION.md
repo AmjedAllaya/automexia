@@ -15,9 +15,11 @@ Automexia uses one writable product root:
 | Linux | `$XDG_CONFIG_HOME/automexia`, or `~/.config/automexia` |
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
-application-owned `state/`. Runtime font and appearance choices are stored in
-the private, versioned `state/user-preferences-v1.toml` overlay; it is not a
-second general configuration file.
+application-owned `state/`. Runtime font, appearance, shortcut and supported
+Settings choices use the private, versioned `state/user-preferences-v2.toml`
+overlay. It contains explicit UI overrides, not a second general configuration.
+Version-1 preferences import only when both version-2 snapshots are absent;
+the old files remain unchanged for rollback.
 `AUTOMEXIA_CONFIG_HOME` replaces the complete root. `AUTOMEXIA_LOG_LEVEL`
 overrides the configured log level. For v0.4 only, `RIO_CONFIG_HOME` is a
 read-only migration source and `RIO_LOG_LEVEL` is a deprecated value fallback;
@@ -249,16 +251,48 @@ Automexia automatically saves the settings that can be changed directly from
 the running UI:
 
 - font size changed with `Ctrl`/`Cmd` plus `+`, `-`, or `0`;
-- the forced light/dark appearance selected by the appearance shortcut.
+- the forced light/dark appearance selected by the appearance shortcut;
+- shortcut overrides saved by the existing palette shortcut editor;
+- table formatting, status highlighting and command timestamp display;
+- declared presentation features of installed built-in extensions, currently
+  DevOps prompt context.
 
 Writes are coalesced off the input/rendering path, bounded to 16 KiB, restricted
 to the current user, and retain one last-known-good snapshot. A malformed,
 oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
-`config.toml` values. Close Automexia before deleting
-`state/user-preferences-v1.toml` and its `.previous.toml` companion to clear all
-runtime overrides. This file never stores credentials, terminal contents,
+`config.toml` values. Invalid or newer version-2 data is never replaced by an
+automatic legacy import. To clear individual choices, use Reset. To clear all
+runtime overrides, close Automexia and remove the version-2 primary and
+previous snapshots and any retained version-1 snapshots; leaving version-1
+files would import their choices again. This file never stores credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.
+
+## Output presentation
+
+The command palette's **Settings** opens the native application settings sheet.
+Changes apply across windows, panes and tabs; Reset clears the UI override and
+inherits the current configuration. **Edit Configuration File** and its existing
+shortcut still open the external editor.
+
+```toml
+[presentation]
+inline-tables = true
+output-highlighting = true
+command-timestamps = true
+```
+
+| Key | Default | Effect |
+|---|---|---|
+| `presentation.inline-tables` | `true` | Add borders and per-cell wrapping to recognized header tables. Disabled output uses the original terminal grid. |
+| `presentation.output-highlighting` | `true` | Color recognized statuses while the classifier extension is installed. Producer ANSI colors retain precedence. |
+| `presentation.command-timestamps` | `true` | Show completion timestamps. Disabling this keeps exit status, duration and terminal-owned command metadata. |
+
+The installed-extension list is loaded asynchronously. Supported extension
+controls appear from that inventory; disabling a feature retains its control,
+while removing its extension removes the entry and its saved feature override.
+An unavailable inventory does not imply uninstall. Settings never grants
+provider permissions or activates protected integrations.
 
 ## Renderer and keyboard
 

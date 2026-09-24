@@ -360,6 +360,7 @@ NATIVE_CONTRACT_SOURCES = {
     "xtask": "tools/xtask/src/main.rs",
     "palette": "apps/automexia-terminal/src/renderer/command_palette.rs",
     "screen": "apps/automexia-terminal/src/screen/mod.rs",
+    "screen_settings": "apps/automexia-terminal/src/screen/settings.rs",
     "application": "apps/automexia-terminal/src/application.rs",
     "context": "apps/automexia-terminal/src/context/mod.rs",
     "router": "apps/automexia-terminal/src/router/mod.rs",
@@ -630,10 +631,16 @@ def _validate_table_sources(sources: dict[str, str]) -> None:
         "table_view": ("self.close();", "WindowEvent::Ime(_)", "WindowEvent::DroppedFile(_)", "self.viewport.horizontal_thumb(", "table.visible_range(", "Effect::Consumed"),
         "table_pixels": ("fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()", "assert_eq!(pixels, after.pixels(760, 260));", "line.0.y += 1.0;", "assert_eq!(row_lines, [77.0, 99.0, 121.0, 143.0]);"),
         "application": (".handle_table_window_event(&event, &mut self.router.clipboard)",),
-        "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_table_key_release(key)", "self.table_view.draw("),
+        "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_overlay_key_release(event)", "self.handle_settings_key(key, clipboard)", "self.table_view.draw("),
+        "screen_settings": ("self.consume_overlay_key_release(key)", "self.dispatch_settings_key(key, clipboard, true)"),
         "application_bench": ("    core_table_view,", "assert_eq!(table.source(), &source);", "assert_eq!(table.column_starts(), &[0, 11, 27]);"),
     }.items():
         _require_fragments(sources[owner], fragments, "focused core table " + owner)
+    key_owner = _source_slice(sources["screen_settings"], "pub(crate) fn handle_settings_key(", "pub(crate) fn handle_settings_menu_key(", "shared modal key-release owner")
+    release = key_owner.find("self.consume_overlay_key_release(key)")
+    dispatch = key_owner.find("self.dispatch_settings_key(key, clipboard, true)")
+    if release < 0 or dispatch < 0 or release >= dispatch:
+        raise ReinforcementError("shared modal release must be consumed before view dispatch")
 
 
 def _validate_inline_table_sources(sources: dict[str, str]) -> None:
