@@ -1,47 +1,15 @@
 #![cfg(all(windows, feature = "pty"))]
 
 use std::borrow::Cow;
-use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
-use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::pos::{Column, Line};
-use rio_vt::crosswords::{Crosswords, CrosswordsSize, Mode};
-use rio_vt::event::sync::FairMutex;
-use rio_vt::event::{EventListener, Msg, RioEvent, WindowId, WindowSize};
-use rio_vt::performer::{Machine, PtyWorkerHandle};
+use rio_vt::crosswords::CrosswordsSize;
+use rio_vt::event::{Msg, RioEvent, WindowSize};
 
-#[derive(Clone)]
-struct Events(mpsc::SyncSender<RioEvent>);
-
-impl EventListener for Events {
-    fn send_event(&self, event: RioEvent, _: WindowId) {
-        if matches!(&event, RioEvent::Title(title) if title.starts_with("EDITOR-") && title.len() < 128)
-            || matches!(&event, RioEvent::ChildExited(..) | RioEvent::PtyWrite(..))
-        {
-            self.0
-                .try_send(event)
-                .expect("bounded editor fixture events");
-        }
-    }
-}
-
-struct Editor {
-    handle: PtyWorkerHandle<()>,
-    sender: rio_vt::performer::PtySender,
-    events: mpsc::Receiver<RioEvent>,
-    terminal: Arc<FairMutex<Crosswords<Events>>>,
-}
-
-impl Drop for Editor {
-    fn drop(&mut self) {
-        let _ = self.sender.send(Msg::Shutdown);
-        assert!(
-            self.handle.join_timeout(Duration::from_secs(10)),
-            "editor worker cleanup"
-        );
-    }
-}
+#[path = "support/powershell_editor.rs"]
+mod powershell_editor;
+use powershell_editor::Editor;
 
 impl Editor {
     fn title(&self) -> String {
@@ -63,17 +31,6 @@ impl Editor {
                 _ => unreachable!(),
             }
         }
-    }
-
-    fn key(&self, virtual_key: u16, scan: u16, character: u16, fallback: &[u8]) {
-        let bytes = if self.terminal.lock().mode().contains(Mode::WIN32_INPUT) {
-            format!("\x1b[{virtual_key};{scan};{character};1;0;1_\x1b[{virtual_key};{scan};0;0;0;1_").into_bytes()
-        } else {
-            fallback.to_vec()
-        };
-        self.sender
-            .send(Msg::Input(Cow::Owned(bytes)))
-            .expect("editor input");
     }
 }
 
@@ -123,25 +80,7 @@ fn run_editor_resize(history: usize) {
         28,
     )
     .unwrap_or_else(|_| panic!("native editor fixture launch"));
-    let (sender, receiver) = mpsc::sync_channel(32);
-    let events = Events(sender);
-    let terminal = Arc::new(FairMutex::new(Crosswords::new(
-        CrosswordsSize::new(146, 28),
-        CursorShape::Block,
-        events.clone(),
-        WindowId::from(0),
-        0,
-        2_000,
-    )));
-    let machine = Machine::new(terminal.clone(), pty, events, WindowId::from(0), 0)
-        .unwrap_or_else(|_| panic!("native editor worker startup"));
-    let sender = machine.channel();
-    let mut editor = Editor {
-        handle: machine.spawn(),
-        sender,
-        events: receiver,
-        terminal,
-    };
+    let mut editor = Editor::launch(pty, 146, 28);
     assert_eq!(editor.title(), "EDITOR-READY");
     editor.key(123, 88, 0, b"\x1b[24~");
     assert!(

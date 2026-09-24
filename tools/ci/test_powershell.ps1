@@ -55,5 +55,10 @@ if ($integrationLifecycle -notmatch 'SetUserVar=automexia_shell_user=' -or
     $integrationLifecycle -notmatch 'SetUserVar=automexia_shell_path=') {
     throw 'PowerShell integration did not emit the captured identity contract'
 }
+# Forward only this fixed, content-free availability marker. Never echo the
+# captured shell lifecycle stream, which contains native identity metadata.
+if ($integrationLifecycle.Contains('EXTERNAL: native PowerShell profile-directory metadata unavailable (no host profile path).')) {
+    Write-Host 'EXTERNAL: native PowerShell profile-directory metadata unavailable (no host profile path).'
+}
 $integrationLifecycle = $null
 Write-Host 'PASS: all repository PowerShell sources parse and the integration contract passes'

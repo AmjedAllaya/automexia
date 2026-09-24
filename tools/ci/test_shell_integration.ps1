@@ -658,13 +658,21 @@ foreach ($tagText in @('A0000003', 'A000000C')) {
     }
     if (-not $rejected) { throw ('Linked reparse tag 0x{0:X8} was accepted' -f $tag) }
 }
-$actualProfileDirectory = Split-Path -Parent ([string]$PROFILE.CurrentUserCurrentHost)
-if (Test-Path -LiteralPath $actualProfileDirectory -PathType Container) {
-    $actualProfileItem = Get-Item -LiteralPath $actualProfileDirectory -Force
-    if ($actualProfileItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
-        $actualProfileTag = Get-AutomexiaReparseTag $actualProfileDirectory
-        if (Test-AutomexiaCloudReparseTag $actualProfileTag) {
-            Assert-AutomexiaSafeProfilePathChain $actualProfileDirectory
+# Some native hosts have no current-user profile path. The isolated profile,
+# cloud-tag, reparse-point and installer fixtures remain mandatory below/above;
+# this ambient directory metadata probe needs an actual host-provided path.
+$actualProfilePath = [string]$PROFILE.CurrentUserCurrentHost
+if ([string]::IsNullOrWhiteSpace($actualProfilePath)) {
+    Write-Host 'EXTERNAL: native PowerShell profile-directory metadata unavailable (no host profile path).'
+} else {
+    $actualProfileDirectory = Split-Path -Parent $actualProfilePath
+    if (Test-Path -LiteralPath $actualProfileDirectory -PathType Container) {
+        $actualProfileItem = Get-Item -LiteralPath $actualProfileDirectory -Force
+        if ($actualProfileItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
+            $actualProfileTag = Get-AutomexiaReparseTag $actualProfileDirectory
+            if (Test-AutomexiaCloudReparseTag $actualProfileTag) {
+                Assert-AutomexiaSafeProfilePathChain $actualProfileDirectory
+            }
         }
     }
 }
