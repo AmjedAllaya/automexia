@@ -3,6 +3,12 @@
 Status: implemented in source; native desktop and assistive-technology evidence
 remains a separate validation requirement.
 
+Scope update: [ADR 0078](0078-inline-header-table-presentation.md) supersedes
+this decision's focused-only restriction for conservatively recognized header
+tables. The focused viewer and its original interaction contract remain in
+place. The decision below records the earlier choice; it is not a prohibition
+on the additional inline presentation.
+
 ## Decision
 
 The user selected a focused core table view, not inline scrollback rewriting.

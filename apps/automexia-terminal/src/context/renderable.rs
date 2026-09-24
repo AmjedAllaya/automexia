@@ -89,6 +89,7 @@ pub struct RenderableContent {
     /// one terminal lock + one materialize pass per frame per panel.
     pub visible_rows: Vec<Row<Square>>,
     pub command_rows: crate::automexia::ui::command_info::RowProjection,
+    pub inline_tables: crate::automexia::inline_tables::InlineTables,
     pub style_table: Vec<rio_backend::crosswords::style::Style>,
     /// Per-frame snapshot of extras (zero-width chars, hyperlinks,
     /// sixel/iterm graphics) actually referenced by visible cells —
@@ -198,6 +199,7 @@ impl RenderableContent {
             frame_damage: TerminalDamage::Full,
             visible_rows: Vec::new(),
             command_rows: Default::default(),
+            inline_tables: Default::default(),
             style_table: Vec::new(),
             extras: rustc_hash::FxHashMap::default(),
             term_colors: TermColors::default(),

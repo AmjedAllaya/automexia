@@ -8,6 +8,9 @@ pub mod connection_hub;
 pub mod custom_cursor;
 pub mod devops_status;
 pub mod helpers;
+#[cfg(test)]
+mod inline_table_tests;
+mod inline_tables;
 pub mod island;
 pub mod responsive;
 pub mod scrollbar;
@@ -1187,6 +1190,7 @@ impl Renderer {
                 .take_terminal_damage();
             context.renderable_content.pending_update.reset();
 
+            let inline_snapshot;
             {
                 let mut terminal = context.terminal.lock();
 
@@ -1358,8 +1362,30 @@ impl Renderer {
                 } else {
                     context.renderable_content.kitty_graphics_dirty = false;
                 }
+                inline_snapshot = (!matches!(
+                    damage,
+                    TerminalDamage::Noop | TerminalDamage::CursorOnly
+                ) || context
+                    .renderable_content
+                    .inline_tables
+                    .needs_snapshot(&*terminal))
+                .then(|| {
+                    if context.renderable_content.hint_labels.is_some()
+                        || context.renderable_content.hint_matches.is_some()
+                    {
+                        crate::automexia::inline_tables::Snapshot::default()
+                    } else {
+                        crate::automexia::inline_tables::Snapshot::capture(&*terminal)
+                    }
+                });
                 context.renderable_content.frame_damage = damage;
                 drop(terminal);
+            }
+
+            if let Some(snapshot) = inline_snapshot {
+                if context.renderable_content.inline_tables.refresh(snapshot) {
+                    context.renderable_content.frame_damage = TerminalDamage::Full;
+                }
             }
 
             context.renderable_content.has_blinking_enabled =
@@ -1617,6 +1643,40 @@ impl Renderer {
                 context.renderable_content.frame_damage = TerminalDamage::Full;
                 any_panel_dirty = true;
             }
+            inline_tables::draw(
+                sugarloaf,
+                &context.renderable_content,
+                [
+                    (panel_rect[0] + grid_scaled_margin.left).round() / scale_factor,
+                    (panel_rect[1] + grid_scaled_margin.top).round() / scale_factor,
+                    context.dimension.cell.cell_width as f32 / scale_factor,
+                    context.dimension.cell.cell_height as f32 / scale_factor,
+                ],
+                context.dimension.scaled_font_size / scale_factor,
+                scale_factor,
+                inline_tables::PaintOptions {
+                    colors: self.named_colors,
+                    preserve_selection_foreground: self.ignore_selection_fg_color,
+                    active: context.route_id == active_route,
+                },
+                |style| {
+                    let mut style = *style;
+                    if style.flags.contains(StyleFlags::INVERSE) {
+                        std::mem::swap(&mut style.fg, &mut style.bg);
+                    }
+                    (
+                        self.compute_color(
+                            &style.fg,
+                            style.flags,
+                            &context.renderable_content.term_colors,
+                        ),
+                        self.compute_bg_color(
+                            &style,
+                            &context.renderable_content.term_colors,
+                        ),
+                    )
+                },
+            );
             // Image positions follow the newly published row projection.
             // Rebuild on content/geometry damage, retaining idle quads.
             let rc = &context.renderable_content;

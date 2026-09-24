@@ -166,6 +166,27 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 with self.assertRaises(REINFORCEMENT.ReinforcementError):
                     REINFORCEMENT._validate_table_sources(sources)
 
+    def test_inline_tables_keep_bounded_capture_projection_and_glyph_evidence(self) -> None:
+        REINFORCEMENT._validate_inline_table_sources(self.native_sources)
+        for owner, fragment in (
+            ("inline_capture", "MAX_SCAN_CELLS: usize = 64 * 1024"),
+            ("inline_capture", "pub fn source_position"),
+            ("inline_renderer", "canvas.text().draw_cells_clipped("),
+            ("inline_renderer", "selection.contains(cell)"),
+            ("inline_pixels", "fn inline_table_visual_scroll_round_trip_preserves_partial_soft_wrapped_rows()"),
+            ("text_clip_tests", "fn cell_clipping_contains_real_glyph_ink_at_fractional_scales()"),
+            ("renderer", ".needs_snapshot(&*terminal)"),
+            ("command_wrap_renderer", "content.inline_tables.bands()"),
+            ("screen", "self.native_mouse_position(display_offset)"),
+            ("application_bench", '"inline_wrap_checked"'),
+        ):
+            with self.subTest(owner=owner, contract=fragment):
+                sources = self.native_sources.copy()
+                self.assertIn(fragment, sources[owner])
+                sources[owner] = sources[owner].replace(fragment, "removed contract")
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_inline_table_sources(sources)
+
     def test_command_wrapping_scenarios_remain_cross_owner(self) -> None:
         for feature_id in REINFORCEMENT.WRAPPING_FEATURES:
             for field, phrase in (

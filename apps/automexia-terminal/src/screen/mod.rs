@@ -1632,13 +1632,13 @@ impl Screen<'_> {
     }
 
     #[inline]
-    pub fn mouse_position(&self, display_offset: usize) -> Pos {
+    fn native_mouse_position(&self, display_offset: usize) -> Pos {
         let current_grid = self.context_manager.current_grid();
         let (context, margin) = current_grid.current_context_with_computed_dimension();
         let context_dimension = context.dimension;
-        let mut position = calculate_mouse_position(
+        calculate_mouse_position(
             &self.mouse,
-            0,
+            display_offset,
             (context_dimension.columns, context_dimension.lines),
             margin.left,
             margin.top,
@@ -1646,7 +1646,24 @@ impl Screen<'_> {
                 context_dimension.cell.cell_width,
                 context_dimension.cell.cell_height,
             ),
-        );
+        )
+    }
+
+    pub fn mouse_position(&self, display_offset: usize) -> Pos {
+        let current_grid = self.context_manager.current_grid();
+        let (context, _) = current_grid.current_context_with_computed_dimension();
+        let mut position = self.native_mouse_position(0);
+        if let Some((row, column)) =
+            context.renderable_content.inline_tables.source_position(
+                &context.renderable_content.command_rows,
+                position.row.0.max(0) as usize,
+                position.col.0,
+            )
+        {
+            position.row = Line(row - display_offset as i32);
+            position.col = Column(column);
+            return position;
+        }
         position.row = Line(
             context
                 .renderable_content
@@ -5710,7 +5727,7 @@ impl Screen<'_> {
         let mode = terminal.mode();
         drop(terminal);
 
-        let pos = self.mouse_position(display_offset);
+        let pos = self.native_mouse_position(display_offset);
 
         // Assure the mouse pos is not in the scrollback.
         if pos.row < 0 {
@@ -6758,6 +6775,7 @@ impl Screen<'_> {
                 cursor_col: u16,
                 cursor_row: u16,
                 command_rows: crate::automexia::ui::command_info::RowProjection,
+                inline_tables: crate::automexia::inline_tables::InlineTables,
                 cursor_visible: bool,
                 /// Terminal-side cursor shape (block / underline /
                 /// beam / hidden). Driven by DECSCUSR + the
@@ -6957,6 +6975,9 @@ impl Screen<'_> {
                         && projected_cursor
                             < ctx.renderable_content.screen_lines as isize,
                     command_rows,
+                    inline_tables: std::mem::take(
+                        &mut ctx.renderable_content.inline_tables,
+                    ),
                     cursor_shape,
                     cursor_blinking,
                     cursor_blink_visible,
@@ -7056,7 +7077,7 @@ impl Screen<'_> {
                      y: usize,
                      grid: &mut rio_backend::sugarloaf::grid::GridRenderer,
                      rasterizer: &mut crate::grid_emit::GridGlyphRasterizer| {
-                        let Some(source_y) = p.command_rows.source_row(y) else {
+                        let Some(source_y) = p.command_rows.source_row(y).filter(|row| !p.inline_tables.hides_native(*row)) else {
                             row_scratch.backgrounds.resize(cols, Default::default());
                             row_scratch.backgrounds.fill(Default::default());
                             grid.write_row(y as u32, &row_scratch.backgrounds, &[]);
@@ -7373,6 +7394,7 @@ impl Screen<'_> {
                     }
                     item.val.renderable_content.visible_rows = p.visible_rows;
                     item.val.renderable_content.command_rows = p.command_rows;
+                    item.val.renderable_content.inline_tables = p.inline_tables;
                     item.val.renderable_content.style_table = style_table;
                     item.val.renderable_content.extras = p.extras;
                     item.val.renderable_content.hint_labels = p.hint_labels;

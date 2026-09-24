@@ -264,6 +264,32 @@ fn core_table_view(c: &mut Criterion) {
             black_box(viewport);
         })
     });
+    let mut headed = source.clone();
+    headed[0] = format!("{:<11}{:<16}{}", "NAME", "VALUE", "DETAIL");
+    let headed = Table::detect(headed, cell_width).unwrap();
+    group.bench_function("inline_wrap_checked", |b| {
+        b.iter(|| {
+            for width in [9, 37, 80, 256] {
+                let wrapped = headed.wrap(black_box(width), cell_width).unwrap();
+                assert_eq!(wrapped.rows.len(), 256);
+                assert!(wrapped.width <= width);
+                assert!(wrapped.rows.iter().map(|row| row.height).sum::<usize>() <= 4096);
+                for (column, expected) in ["row001", "value-001", "detail-001"]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let actual: String = wrapped.rows[1].cells[column]
+                        .fragments
+                        .iter()
+                        .map(|fragment| &headed.source()[1][fragment.bytes.clone()])
+                        .collect();
+                    assert_eq!(actual, expected);
+                }
+                black_box(wrapped);
+            }
+            assert_eq!(headed.source()[1], source[1]);
+        })
+    });
     group.finish();
 }
 

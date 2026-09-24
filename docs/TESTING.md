@@ -1555,6 +1555,30 @@ shell/backend combinations on actual desktops before claiming their native
 visual or accessibility coverage. Finish with the full contributor readiness
 and privacy gates; focused tests are not full-product certification.
 
+## Inline header tables
+
+Run `cargo test --locked -p automexia-ui-model --test tables`,
+`cargo test --locked -p automexia-terminal --lib automexia::inline_tables`,
+`cargo test --locked -p automexia-terminal --bin automexia renderer::inline_table_tests`,
+and `cargo test --locked -p sugarloaf --lib text::`.
+The fixtures preserve actual VT source and scalar widths through narrow reflow,
+scrolling across a soft-wrapped row, mixed Unicode and source selection. Raster
+oracles independently check shared borders, actual glyph ink, ANSI colors and
+partial selection at fractional scales. Generic fixtures cover typed mixed-case
+and lowercase headers, empty columns, rulers, Markdown and ASCII/Unicode frames,
+including adjacent pipeline text. Contextual font runs retain ligatures and
+wide-cell selection, with native macOS color/joining tests gated to that OS.
+Mouse-reporting programs keep native
+coordinates. Run the unchanged focused-table and command-information suites to
+cover coexistence, then the owning targets and required readiness profile.
+
+`cargo bench --locked -p automexia-terminal --bench automexia_services -- core_table_view`
+also exercises bounded inline wrapping with literal source checks. These model
+and controlled-raster results are separate from native window/compositor,
+physical input, clipboard and screen-reader evidence. Native Windows, Linux and
+macOS checks must use fictional data and verify pane isolation, resize/scroll,
+prompt editing, selection/copy, ANSI styles, program modes and theme/scale changes.
+
 ## Focused core table view
 
 Run `cargo test -p automexia-ui-model --test tables --locked`,

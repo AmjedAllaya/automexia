@@ -44,7 +44,7 @@
       "documentation": {
         "guide": ["docs/LIQUID-HACKER-UX.md#keyboard-selection","docs/user-guide/hyperlinks.md"],
         "reference": ["docs/TESTING.md#terminal-conformance","docs/CONFIGURATION.md#hints"],
-        "explanation": ["docs/adr/0060-focused-core-table-output.md","docs/ARCHITECTURE.md#vt-control-string-trust-boundary","docs/adr/0059-wrapped-command-information.md","docs/adr/0048-native-resize-and-prompt-ownership.md#extreme-mixed-dimension-resize-ordering","docs/adr/0061-keyboard-hyperlink-review.md"]
+        "explanation": ["docs/adr/0060-focused-core-table-output.md","docs/ARCHITECTURE.md#vt-control-string-trust-boundary","docs/adr/0059-wrapped-command-information.md","docs/adr/0048-native-resize-and-prompt-ownership.md#extreme-mixed-dimension-resize-ordering","docs/adr/0061-keyboard-hyperlink-review.md","docs/adr/0078-inline-header-table-presentation.md"]
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["rio-vt/src/codepoint_width.rs", "rio-vt/src/selection.rs"]},
@@ -94,7 +94,7 @@
       "documentation": {
         "guide": ["docs/LIQUID-HACKER-UX.md#layout-contract","docs/user-guide/customization.md#5-configure-fonts-and-saved-runtime-zoom","docs/ACCESSIBILITY.md","docs/user-guide/hyperlinks.md"],
         "reference": ["docs/CONFIGURATION.md#saved-runtime-preferences","docs/UI-BRANDING-ROADMAP.md#evidence-ledger","docs/CONFIGURATION.md#hints"],
-        "explanation": ["docs/adr/0060-focused-core-table-output.md","docs/adr/0004-native-persistent-operational-chrome.md","docs/adr/0013-renderer-independent-accessibility-model.md","docs/adr/0036-application-owned-runtime-user-preferences.md","docs/adr/0059-wrapped-command-information.md","docs/adr/0061-keyboard-hyperlink-review.md"]
+        "explanation": ["docs/adr/0060-focused-core-table-output.md","docs/adr/0004-native-persistent-operational-chrome.md","docs/adr/0013-renderer-independent-accessibility-model.md","docs/adr/0036-application-owned-runtime-user-preferences.md","docs/adr/0059-wrapped-command-information.md","docs/adr/0061-keyboard-hyperlink-review.md","docs/adr/0078-inline-header-table-presentation.md"]
       },
       "quality": {
         "accessibility": {"level": "external", "evidence": ["apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/renderer/devops_status.rs", "apps/automexia-terminal/src/screen/mod.rs", "tests/integration/resize-stress-windows.ps1", "docs/ACCESSIBILITY.md"], "rationale": "Renderer-neutral search semantics and redundant, bounded completed-output cues plus Windows WGPU/CPU fresh-identity, glyph-pixel, and blank-surface contrast evidence are controlled; native UI Automation, VoiceOver, and AT-SPI delivery remains an external v0.5 gate."},
@@ -119,7 +119,7 @@
       "documentation": {
         "guide": ["docs/GETTING-STARTED.md#4-try-panes-tabs-and-selection","docs/user-guide/shortcuts.md#search-and-scrollback","docs/user-guide/shortcuts.md#customize-a-shortcut-in-the-palette","docs/user-guide/hyperlinks.md"],
         "reference": ["docs/KEYBOARD.md#windows-and-linuxbsd-defaults","docs/GHOSTTY-COMPATIBILITY-ROADMAP.md#final-acceptance-gate","docs/CONFIGURATION.md#hints"],
-        "explanation": ["docs/adr/0060-focused-core-table-output.md","docs/adr/0006-prompt-context-and-workspace-actions.md","docs/adr/0007-pane-local-session-tabs.md","docs/adr/0026-versioned-ghostty-keybinding-profiles.md","docs/adr/0054-palette-shortcut-editor.md","docs/adr/0059-wrapped-command-information.md","docs/adr/0061-keyboard-hyperlink-review.md"]
+        "explanation": ["docs/adr/0060-focused-core-table-output.md","docs/adr/0006-prompt-context-and-workspace-actions.md","docs/adr/0007-pane-local-session-tabs.md","docs/adr/0026-versioned-ghostty-keybinding-profiles.md","docs/adr/0054-palette-shortcut-editor.md","docs/adr/0059-wrapped-command-information.md","docs/adr/0061-keyboard-hyperlink-review.md","docs/adr/0078-inline-header-table-presentation.md"]
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["apps/automexia-terminal/src/renderer/command_palette.rs", "apps/automexia-terminal/src/renderer/search.rs", "apps/automexia-terminal/src/bindings/mod.rs", "apps/automexia-terminal/src/renderer/command_palette/shortcut_editor.rs"]},

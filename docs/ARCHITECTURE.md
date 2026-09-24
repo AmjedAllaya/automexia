@@ -673,7 +673,13 @@ Focused table output follows [ADR 0060](adr/0060-focused-core-table-output.md):
 the capability-free UI model recognizes bounded grid text, VT remains the only
 terminal owner, and the application owns the route-scoped read-only snapshot,
 input containment and drawing. It does not invoke provider extensions or mutate
-normal scrollback. The [guide](user-guide/table-output.md) describes limits.
+normal scrollback. [ADR 0078](adr/0078-inline-header-table-presentation.md)
+extends that model with conservative inline header-table recognition, bounded
+cell wrapping and source-preserving pointer projection. Its extra display space
+shares the existing pane row projection with command information. Sugarloaf
+clips the emitted glyph quads before every backend consumes them; shared borders
+remain geometry rather than terminal characters. Native program modes retain
+ordinary VT presentation. The [guide](user-guide/table-output.md) describes limits.
 
 D0 follows ADR 0012: the terminal owns the local session and PTY while system
 OpenSSH owns networking, authentication, credentials, host trust, and proxy

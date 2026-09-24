@@ -345,6 +345,11 @@ NATIVE_CONTRACT_SOURCES = {
     "table_capture": "apps/automexia-terminal/src/automexia/table_output.rs",
     "table_view": "apps/automexia-terminal/src/table_view.rs",
     "table_pixels": "apps/automexia-terminal/src/table_view_tests.rs",
+    "inline_capture": "apps/automexia-terminal/src/automexia/inline_tables.rs",
+    "inline_renderer": "apps/automexia-terminal/src/renderer/inline_tables.rs",
+    "inline_pixels": "apps/automexia-terminal/src/renderer/inline_table_tests.rs",
+    "text_clip": "sugarloaf/src/text.rs",
+    "text_clip_tests": "sugarloaf/src/text_tests.rs",
     "qa": "tools/ci/qa.py",
     "qa_process": "tools/ci/qa_process.py",
     "compiler_probe": "tools/ci/rust_toolchain.py",
@@ -631,6 +636,22 @@ def _validate_table_sources(sources: dict[str, str]) -> None:
         _require_fragments(sources[owner], fragments, "focused core table " + owner)
 
 
+def _validate_inline_table_sources(sources: dict[str, str]) -> None:
+    # Read-only VT capture, one projection and actual glyph tests form one owner chain.
+    for owner, fragments in {
+        "inline_capture": ("MAX_SCAN_CELLS: usize = 64 * 1024", "MAX_SCAN_ROWS: usize = 512", "MAX_SURFACES: usize = 4", ".bounds_to_display_string_bounded(", "pub fn needs_snapshot", "pub fn source_position", "StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES"),
+        "inline_renderer": (".row_geometry(si, ri, &content.command_rows)", "canvas.text().draw_cells_clipped(", "selection.contains(cell)", "value.grapheme_indices(true)"),
+        "inline_pixels": ("fn inline_table_pixels_have_single_shared_edges_at_wide_narrow_and_fractional_sizes()", "fn inline_table_real_glyphs_cannot_escape_their_cells_or_pane()", "fn inline_table_visual_scroll_round_trip_preserves_partial_soft_wrapped_rows()", "fn inline_table_finishes_a_visible_soft_wrapped_row_below_the_viewport()"),
+        "text_clip": ("pub fn draw_clipped(", "pub fn draw_cells_clipped("),
+        "text_clip_tests": ("fn cell_clipping_contains_real_glyph_ink_at_fractional_scales()",),
+        "renderer": (".needs_snapshot(&*terminal)", "inline_tables::draw("),
+        "command_wrap_renderer": ("content.inline_tables.bands()",),
+        "screen": ("self.native_mouse_position(display_offset)", "!p.inline_tables.hides_native(*row)"),
+        "application_bench": ('"inline_wrap_checked"', "assert_eq!(wrapped.rows.len(), 256);"),
+    }.items():
+        _require_fragments(sources[owner], fragments, "inline header table " + owner)
+
+
 def _validate_hyperlink_sources(sources: dict[str, str]) -> None:
     # Structural guards supplement actual parser, intent and raster assertions.
     for owner, fragments in {
@@ -800,6 +821,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _validate_resize_listing_sources(sources)
     _validate_command_wrapping_sources(sources)
     _validate_table_sources(sources)
+    _validate_inline_table_sources(sources)
     _validate_hyperlink_sources(sources)
     _validate_google_sources(sources)
     _validate_local_tool_sources(sources)

@@ -1268,6 +1268,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             RioEventType::Rio(RioEvent::MouseCursorDirty) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
                     route.window.screen.reset_mouse();
+                    route.window.screen.mark_dirty();
+                    route.request_redraw();
                 }
             }
             RioEventType::Rio(RioEvent::Scroll(scroll)) => {

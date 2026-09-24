@@ -1,4 +1,27 @@
-# Focused table output
+# Table output
+
+Header tables in normal terminal output can appear inline with borders. Values
+wrap inside their own cells when a pane narrows, and every cell in a row keeps
+the same height. Long names wrap between complete graphemes; spaces provide
+preferred breaks in values such as `94 (17s ago)`. The terminal's original text,
+VT grid, cursor and reflow remain the source of truth.
+
+Automatic presentation recognizes aligned whitespace tables, Markdown pipe
+tables, and ASCII or Unicode table frames. Headers may use uppercase, mixed-case
+or lowercase labels when a ruler or typed data makes their role clear. Empty
+cells and explicitly ruled single-column tables are supported. Recognition uses
+the output structure rather than command names, and does not derive resource
+health from a value. Unsupported output
+keeps its ordinary terminal presentation.
+
+Borders and glyphs stay inside their pane and cell bounds. Source terminal
+colours and the selection-foreground preference remain authoritative. Hovered
+links retain their underline in the active pane. Pointer selection maps displayed characters back
+to the original terminal cells; copying does not include decorative borders or
+insert the presentation's extra line breaks. This presentation does not run
+commands, change clipboard contents, or intercept normal shell input.
+
+## Focused table viewer
 
 Open **Ctrl+Shift+P → Tools → View Table Output**, or use **Ctrl+Shift+F7**
 with the Automexia profile. The shortcut is customizable: select the palette
@@ -37,22 +60,33 @@ saved, uploaded or fetched from a provider.
 
 ## Recognition and limits
 
-Use aligned plain-text tables with at least two rows and two columns separated
-by shared whitespace gutters of at least two cells. This includes many `ls`,
-Kubernetes and container listings, but not every possible command format.
-Quoted CSV, JSON, box-drawing schemas, single-space columns and arbitrary prose
-are not parsed as structured data. Unsupported output remains available in the
+A header and at least one data row are required. Whitespace tables normally use
+shared gutters of at least two cells; a single-space layout needs stronger
+header evidence. Explicit rulers also support a single column. Ambiguous lists,
+quoted CSV, JSON and arbitrary prose are not parsed as structured data. Producer
+hard line breaks and truncated values cannot be reconstructed. Unsupported output remains available in the
 ordinary terminal. Alternate-screen and mouse-reporting applications are not
-captured.
+captured. Inline presentation is also disabled while terminal vi mode is active.
+Output with images or unsupported text decorations retains its ordinary rendering.
 
-Capture is bounded to 256 KiB, 256 logical rows, 4,096 cells per row and 64
-recognized columns. Automatic discovery inspects at most 4,096 native rows and
-256 Ki native cells near the viewport, not unlimited history. Select a smaller
-complete table if a limit is exceeded. A selection beginning halfway through a
+Each recognized table is bounded to 256 KiB, 256 logical rows, 4,096 cells per row
+and 64 columns. Inline discovery examines at most 512 native rows and 64 Ki
+native cells near the viewport, retaining at most four table surfaces and trying
+at most eight header starts per contiguous block. Wrapping
+is bounded to 4,096 content lines and 32,768 fragments per table. A pane must fit
+at least one complete grapheme and the cell padding in every column; if it
+cannot, or a limit is exceeded, the original terminal output remains available.
+Enlarging the pane allows a supported inline layout to return.
+
+Opening the focused viewer without a selection discovers candidates within at
+most 4,096 native rows and 256 Ki native cells. Select a smaller complete table
+if a capture limit is exceeded. A selection beginning halfway through a
 row or a command that already truncated or hard-wrapped its output may not form
 a recognizable table; the view cannot reconstruct missing application data.
 
-Very small windows may have no room for table cells or labels; Escape remains
-available, and enlarging the window restores the snapshot. Native compositor,
-physical trackpad and assistive-technology coverage is separate from automated
-model, input and controlled CPU-rendering tests; see [testing](../TESTING.md).
+Very small focused-view windows may have no room for cells or labels; Escape
+remains available, and enlarging the window restores the snapshot. Model,
+input and controlled CPU-rendering evidence is distinct from native compositor,
+physical trackpad and assistive-technology coverage; see
+[testing](../TESTING.md). No native desktop or screen-reader coverage is implied
+by the common frontend code.

@@ -50,6 +50,16 @@ fixtures or reports.
 
 ### terminal-protocols-grid-history
 
+Inline header tables preserve authoritative VT scalar widths, source bytes and
+ANSI styles while wrapping complete graphemes within aligned cells. Exercise
+actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
+hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
+Shared borders and clipped glyph quads need independent raster bounds at
+fractional scales; selected substrings must paint only their source cells.
+The bounded model and snapshot benchmarks do not establish native compositor,
+physical input or assistive-technology delivery. See
+[the protocol](TESTING.md#inline-header-tables).
+
 Keyboard hyperlink review must retain exact OSC 8 targets over history, soft
 wraps, CJK and combining cells, with one label per contiguous anchor. Enforce
 capture/regex bounds and byte-to-cell mapping. Replaced cells or extras must
@@ -247,6 +257,16 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Inline header tables preserve authoritative VT scalar widths, source bytes and
+ANSI styles while wrapping complete graphemes within aligned cells. Exercise
+actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
+hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
+Shared borders and clipped glyph quads need independent raster bounds at
+fractional scales; selected substrings must paint only their source cells.
+The bounded model and snapshot benchmarks do not establish native compositor,
+physical input or assistive-technology delivery. See
+[the protocol](TESTING.md#inline-header-tables).
+
 Keyboard hyperlink preview uses real parser targets and the production font
 fitter. Compare exact restored pixels, mutate one channel, and cover tiny through
 8K geometry plus 100–400% scale. Full destinations stay separate from shortened
@@ -397,6 +417,16 @@ live editor input at a fixed unsent sentinel so cursor-line drift cannot
 masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
+
+Inline header tables preserve authoritative VT scalar widths, source bytes and
+ANSI styles while wrapping complete graphemes within aligned cells. Exercise
+actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
+hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
+Shared borders and clipped glyph quads need independent raster bounds at
+fractional scales; selected substrings must paint only their source cells.
+The bounded model and snapshot benchmarks do not establish native compositor,
+physical input or assistive-technology delivery. See
+[the protocol](TESTING.md#inline-header-tables).
 
 Exercise the actual classic hyperlink binding on every platform table and the
 shared key-intent owner: Tab/Back, labels, Enter, copy, Escape, repeats and

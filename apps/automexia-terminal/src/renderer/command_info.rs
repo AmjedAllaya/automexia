@@ -222,6 +222,8 @@ fn prepare(
             header.band = band;
         }
     }
+    spans.extend(content.inline_tables.bands());
+    spans.sort_unstable();
     let previous_top = content.command_rows.top();
     let changed = content
         .command_rows
