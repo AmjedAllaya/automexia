@@ -5,12 +5,17 @@
 
 use std::collections::VecDeque;
 use std::hash::Hash;
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 #[cfg(not(target_arch = "wasm32"))]
 use std::sync::mpsc::{self, SyncSender, TrySendError};
+#[cfg(not(target_arch = "wasm32"))]
+use std::sync::Condvar;
 use std::sync::{Arc, Mutex, MutexGuard};
 #[cfg(not(target_arch = "wasm32"))]
 use std::thread::{self, JoinHandle};
+use std::time::Duration;
 
 use automexia_extension_api::{
     BoundedText, ContractError, EnvironmentCapsule, ExtensionId, OperationId, SessionId,
@@ -251,13 +256,282 @@ enum WorkerMessage<T> {
     Shutdown,
 }
 
+/// Maximum live cleanup owners, including owners dropped during blocked work.
+#[cfg(not(target_arch = "wasm32"))]
+const MAX_WORKER_OWNERS: usize = 64;
+#[cfg(not(target_arch = "wasm32"))]
+static LIVE_WORKER_OWNERS: AtomicUsize = AtomicUsize::new(0);
+#[cfg(not(target_arch = "wasm32"))]
+const WORKER_POLL_INTERVAL: Duration = Duration::from_millis(10);
+const WORKER_SHUTDOWN_BUDGET: Duration = Duration::from_secs(2);
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Default)]
+enum OwnerBudget {
+    #[default]
+    Global,
+    #[cfg(test)]
+    Isolated(Arc<AtomicUsize>, usize),
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl OwnerBudget {
+    fn counter_and_limit(&self) -> (&AtomicUsize, usize) {
+        match self {
+            Self::Global => (&LIVE_WORKER_OWNERS, MAX_WORKER_OWNERS),
+            #[cfg(test)]
+            Self::Isolated(counter, limit) => (counter, *limit),
+        }
+    }
+
+    fn acquire(&self) -> Option<OwnerPermit> {
+        let (counter, limit) = self.counter_and_limit();
+        counter
+            .fetch_update(Ordering::AcqRel, Ordering::Acquire, |live| {
+                (live < limit).then_some(live + 1)
+            })
+            .ok()
+            .map(|_| OwnerPermit(self.clone()))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct OwnerPermit(OwnerBudget);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for OwnerPermit {
+    fn drop(&mut self) {
+        self.0.counter_and_limit().0.fetch_sub(1, Ordering::AcqRel);
+    }
+}
+
+/// Observable retirement state. Failed cleanup never authorizes replacement.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum WorkerShutdownStatus {
+    Running,
+    Retiring,
+    Complete,
+    CleanupFailed,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+struct JoinCompletion {
+    finished: AtomicBool,
+    failed: AtomicBool,
+    registrations: AtomicUsize,
+    notification: Mutex<()>,
+    changed: Condvar,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl JoinCompletion {
+    fn finish(&self) {
+        let _notification = self
+            .notification
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.finished.store(true, Ordering::Release);
+        self.changed.notify_all();
+    }
+
+    fn fail(&self) {
+        let _notification = self.notification.lock().unwrap_or_else(|p| p.into_inner());
+        self.failed.store(true, Ordering::Release);
+        self.changed.notify_all();
+    }
+
+    fn complete(&self) -> bool {
+        self.finished.load(Ordering::Acquire)
+            && self.registrations.load(Ordering::Acquire) == 0
+            && !self.failed.load(Ordering::Acquire)
+    }
+
+    fn wait(&self, timeout: Duration) -> bool {
+        let guard = self
+            .notification
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        let _guard = self
+            .changed
+            .wait_timeout_while(guard, timeout, |_| {
+                !self.complete() && !self.failed.load(Ordering::Acquire)
+            })
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.complete()
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct RegistrationLease(Arc<JoinCompletion>);
+
+#[cfg(not(target_arch = "wasm32"))]
+impl RegistrationLease {
+    fn new(completion: &Arc<JoinCompletion>) -> Self {
+        completion.registrations.fetch_add(1, Ordering::AcqRel);
+        Self(Arc::clone(completion))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for RegistrationLease {
+    fn drop(&mut self) {
+        let _notification = self
+            .0
+            .notification
+            .lock()
+            .unwrap_or_else(|p| p.into_inner());
+        self.0.registrations.fetch_sub(1, Ordering::AcqRel);
+        self.0.changed.notify_all();
+    }
+}
+
+// Panic payload destructors run inside the worker's actual native join boundary,
+// including TLS they create. A destructor failure is explicit and closes restart.
+// Recovery is bounded: recursively panicking Rust destructors beyond two attempts
+// resume unwinding; this in-process primitive is not an arbitrary-code sandbox.
+#[cfg(not(target_arch = "wasm32"))]
+fn dispose_panic_payload(
+    mut payload: Box<dyn std::any::Any + Send>,
+    completion: &JoinCompletion,
+) {
+    for _ in 0..2 {
+        match std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| drop(payload))) {
+            Ok(()) => return,
+            Err(next) => {
+                completion.fail();
+                payload = next;
+            }
+        }
+    }
+    std::panic::resume_unwind(payload);
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct JoinJob {
+    handle: JoinHandle<()>,
+    completion: Arc<JoinCompletion>,
+}
+
+/// One-slot mailbox: a new generation is admitted only after the old join ack.
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Default)]
+struct CleanupMailbox {
+    job: Mutex<Option<JoinJob>>,
+    closing: AtomicBool,
+    changed: Condvar,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct CleanupService {
+    mailbox: Arc<CleanupMailbox>,
+    // Drop does not join this service on a latency-sensitive caller. The service
+    // retains its permit and sole worker handle until actual cleanup completes.
+    _handle: JoinHandle<()>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl CleanupService {
+    fn new(name: &str, permit: OwnerPermit) -> Option<Self> {
+        let mailbox = Arc::new(CleanupMailbox::default());
+        let worker_mailbox = Arc::clone(&mailbox);
+        let handle = thread::Builder::new()
+            .name(format!("{name}-cleanup"))
+            .spawn(move || {
+                let _permit = permit;
+                loop {
+                    let job = {
+                        let guard = worker_mailbox
+                            .job
+                            .lock()
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        let mut guard = worker_mailbox
+                            .changed
+                            .wait_while(guard, |job| {
+                                job.is_none()
+                                    && !worker_mailbox.closing.load(Ordering::Acquire)
+                            })
+                            .unwrap_or_else(|poisoned| poisoned.into_inner());
+                        guard.take()
+                    };
+                    let Some(job) = job else { break };
+                    // Actual join includes native TLS destruction. No caller or
+                    // slot-lock holder executes foreign thread cleanup.
+                    match job.handle.join() {
+                        Ok(()) => job.completion.finish(),
+                        Err(payload) => {
+                            // No opaque destructor executes on the cleanup service.
+                            // An unrecoverable outer panic closes this owner; it is
+                            // propagated with the ordinary Rust unwind contract.
+                            job.completion.fail();
+                            std::panic::resume_unwind(payload);
+                        }
+                    }
+                }
+            })
+            .ok()?;
+        Some(Self {
+            mailbox,
+            _handle: handle,
+        })
+    }
+
+    fn own(&self, job: JoinJob) {
+        let mut pending = self
+            .mailbox
+            .job
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        // The slot admits at most one generation before its join acknowledgement.
+        // The cleanup loop removes this job before publishing that acknowledgement.
+        debug_assert!(pending.is_none());
+        *pending = Some(job);
+        self.mailbox.changed.notify_one();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl Drop for CleanupService {
+    fn drop(&mut self) {
+        let _pending = self
+            .mailbox
+            .job
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner());
+        self.mailbox.closing.store(true, Ordering::Release);
+        self.mailbox.changed.notify_one();
+    }
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 struct WorkerThread<T> {
     sender: SyncSender<WorkerMessage<T>>,
-    handle: JoinHandle<()>,
+    stopping: Arc<AtomicBool>,
+    completion: Arc<JoinCompletion>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl<T> WorkerThread<T> {
+    fn request_shutdown(&self) {
+        self.stopping.store(true, Ordering::Release);
+        // A full queue already guarantees a wake. This never waits for capacity
+        // and only drops this control message, never a caller-owned work value.
+        let _ = self.sender.try_send(WorkerMessage::Shutdown);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+struct WorkerSlot<T> {
+    worker: Option<WorkerThread<T>>,
+    cleanup: Option<CleanupService>,
 }
 
 /// Restartable bounded worker. Submission never waits for extension work.
+///
+/// At most 64 owners can start across the process. Each owner lazily starts one
+/// cleanup service, reused across generations, and at most one worker. A retiring
+/// generation keeps its slot until its actual native join is acknowledged.
+/// Handlers own their cancellation and generation checks before publication.
 pub struct BoundedWorker<T>
 where
     T: Send + 'static,
@@ -266,7 +540,9 @@ where
     capacity: usize,
     handler: Arc<dyn Fn(T) + Send + Sync + 'static>,
     #[cfg(not(target_arch = "wasm32"))]
-    slot: Mutex<Option<WorkerThread<T>>>,
+    slot: Mutex<WorkerSlot<T>>,
+    #[cfg(not(target_arch = "wasm32"))]
+    budget: OwnerBudget,
     #[cfg(target_arch = "wasm32")]
     _marker: std::marker::PhantomData<T>,
 }
@@ -285,7 +561,12 @@ where
             capacity: capacity.max(1),
             handler: Arc::new(handler),
             #[cfg(not(target_arch = "wasm32"))]
-            slot: Mutex::new(None),
+            slot: Mutex::new(WorkerSlot {
+                worker: None,
+                cleanup: None,
+            }),
+            #[cfg(not(target_arch = "wasm32"))]
+            budget: OwnerBudget::Global,
             #[cfg(target_arch = "wasm32")]
             _marker: std::marker::PhantomData,
         }
@@ -306,58 +587,55 @@ where
         self.try_submit_then(value, || {})
     }
 
-    /// Submit work and publish its registration before the handler can start.
+    /// Publish registration after queue admission and before the handler starts.
     ///
-    /// The callback runs only after the bounded channel accepts the item. This
-    /// closes the fast-worker race without coupling this crate to application
-    /// state or frontend event types.
+    /// The callback executes without runtime locks and may re-enter the worker.
+    /// Retirement during registration returns Unavailable; callers must retire
+    /// that registration too. In-flight handlers must reject obsolete publication
+    /// using their own operation/context generation and cancellation token.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn try_submit_then(
         &self,
         value: T,
         on_queued: impl FnOnce(),
     ) -> RefreshSubmission {
-        let mut slot = self.lock_slot();
-        if !self.ensure_thread(&mut slot) {
-            return RefreshSubmission::Unavailable;
-        }
+        let (sender, stopping, _registration) = {
+            let mut slot = self.lock_slot();
+            if !self.ensure_thread(&mut slot) {
+                return RefreshSubmission::Unavailable;
+            }
+            let Some(worker) = slot.worker.as_ref() else {
+                return RefreshSubmission::Unavailable;
+            };
+            (
+                worker.sender.clone(),
+                Arc::clone(&worker.stopping),
+                RegistrationLease::new(&worker.completion),
+            )
+        };
         let (registration_sender, registration_ready) = mpsc::channel();
         let message = WorkerMessage::Work {
             value,
             registration_ready,
         };
-        let first = slot
-            .as_ref()
-            .expect("worker was ensured")
-            .sender
-            .try_send(message);
-        let result = match first {
-            Ok(()) => RefreshSubmission::Queued,
-            Err(TrySendError::Full(_)) => RefreshSubmission::Busy,
-            Err(TrySendError::Disconnected(message)) => {
-                if let Some(worker) = slot.take() {
-                    let _ = worker.handle.join();
-                }
-                if !self.ensure_thread(&mut slot) {
-                    return RefreshSubmission::Unavailable;
-                }
-                match slot
-                    .as_ref()
-                    .expect("replacement worker was ensured")
-                    .sender
-                    .try_send(message)
+        let result = sender.try_send(message);
+        match result {
+            Ok(()) => {
+                on_queued();
+                if stopping.load(Ordering::Acquire)
+                    || registration_sender.send(()).is_err()
                 {
-                    Ok(()) => RefreshSubmission::Queued,
-                    Err(TrySendError::Full(_)) => RefreshSubmission::Busy,
-                    Err(TrySendError::Disconnected(_)) => RefreshSubmission::Unavailable,
+                    RefreshSubmission::Unavailable
+                } else {
+                    RefreshSubmission::Queued
                 }
             }
-        };
-        if result == RefreshSubmission::Queued {
-            on_queued();
-            let _ = registration_sender.send(());
+            Err(TrySendError::Full(_)) => RefreshSubmission::Busy,
+            Err(TrySendError::Disconnected(_)) => {
+                stopping.store(true, Ordering::Release);
+                RefreshSubmission::Unavailable
+            }
         }
-        result
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -374,65 +652,186 @@ where
         RefreshSubmission::Unavailable
     }
 
+    /// Cancel queued work and request retirement without joining or waiting for
+    /// queue capacity. A running handler must finish its own bounded operation.
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn shutdown(&self) {
-        let worker = self.lock_slot().take();
-        if let Some(worker) = worker {
-            let _ = worker.sender.send(WorkerMessage::Shutdown);
-            let _ = worker.handle.join();
+    pub fn request_shutdown(&self) {
+        if let Some(worker) = self.lock_slot().worker.as_ref() {
+            worker.request_shutdown();
         }
     }
 
     #[cfg(target_arch = "wasm32")]
-    pub fn shutdown(&self) {}
+    pub fn request_shutdown(&self) {}
+
+    /// Request retirement and wait at most `timeout` for this generation's actual
+    /// join acknowledgement and admitted registration callbacks. False retains
+    /// ownership and refuses replacement. A registration callback cannot wait for
+    /// its own completion: request retirement and return instead. No slot lock is
+    /// held while waiting. Use request_shutdown on input paths.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn shutdown_timeout(&self, timeout: Duration) -> bool {
+        let completion = {
+            let slot = self.lock_slot();
+            let Some(worker) = slot.worker.as_ref() else {
+                return true;
+            };
+            worker.request_shutdown();
+            Arc::clone(&worker.completion)
+        };
+        completion.wait(timeout)
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn shutdown_timeout(&self, _timeout: Duration) -> bool {
+        true
+    }
+
+    /// Inspect retirement without waiting. CleanupFailed is permanent for this
+    /// owner and must not be interpreted as a successful join.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn shutdown_status(&self) -> WorkerShutdownStatus {
+        let slot = self.lock_slot();
+        let Some(worker) = slot.worker.as_ref() else {
+            return WorkerShutdownStatus::Complete;
+        };
+        if worker.completion.failed.load(Ordering::Acquire) {
+            WorkerShutdownStatus::CleanupFailed
+        } else if worker.completion.complete() {
+            WorkerShutdownStatus::Complete
+        } else if worker.stopping.load(Ordering::Acquire)
+            || worker.completion.finished.load(Ordering::Acquire)
+        {
+            WorkerShutdownStatus::Retiring
+        } else {
+            WorkerShutdownStatus::Running
+        }
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    pub fn shutdown_status(&self) -> WorkerShutdownStatus {
+        WorkerShutdownStatus::Complete
+    }
+
+    /// Compatibility shutdown with a two-second acknowledgement budget. Use
+    /// shutdown_timeout when the caller needs to report incomplete cleanup.
+    pub fn shutdown(&self) {
+        let _ = self.shutdown_timeout(WORKER_SHUTDOWN_BUDGET);
+    }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn lock_slot(&self) -> MutexGuard<'_, Option<WorkerThread<T>>> {
+    fn lock_slot(&self) -> MutexGuard<'_, WorkerSlot<T>> {
         self.slot
             .lock()
             .unwrap_or_else(|poisoned| poisoned.into_inner())
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn ensure_thread(&self, slot: &mut Option<WorkerThread<T>>) -> bool {
+    fn ensure_thread(&self, slot: &mut WorkerSlot<T>) -> bool {
         if slot
+            .worker
             .as_ref()
-            .is_some_and(|worker| worker.handle.is_finished())
+            .is_some_and(|worker| worker.completion.complete())
         {
-            if let Some(worker) = slot.take() {
-                let _ = worker.handle.join();
-            }
+            slot.worker = None;
         }
-        if slot.is_none() {
-            *slot = self.spawn_thread();
+        if let Some(worker) = slot.worker.as_ref() {
+            return !worker.stopping.load(Ordering::Acquire)
+                && !worker.completion.finished.load(Ordering::Acquire)
+                && !worker.completion.failed.load(Ordering::Acquire);
         }
-        slot.is_some()
+        if slot.cleanup.is_none() {
+            let Some(permit) = self.budget.acquire() else {
+                return false;
+            };
+            slot.cleanup = CleanupService::new(&self.name, permit);
+        }
+        let Some(cleanup) = slot.cleanup.as_ref() else {
+            return false;
+        };
+        let Some((worker, job)) = self.spawn_thread() else {
+            return false;
+        };
+        cleanup.own(job);
+        slot.worker = Some(worker);
+        true
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    fn spawn_thread(&self) -> Option<WorkerThread<T>> {
-        let (sender, receiver) = mpsc::sync_channel(self.capacity);
+    fn spawn_thread(&self) -> Option<(WorkerThread<T>, JoinJob)> {
+        let (sender, receiver) = mpsc::sync_channel::<WorkerMessage<T>>(self.capacity);
         let handler = Arc::clone(&self.handler);
-        let name = self.name.clone();
-        thread::Builder::new()
-            .name(name)
+        let stopping = Arc::new(AtomicBool::new(false));
+        let worker_stopping = Arc::clone(&stopping);
+        let completion = Arc::new(JoinCompletion::default());
+        let worker_completion = Arc::clone(&completion);
+        let handle = thread::Builder::new()
+            .name(self.name.clone())
             .spawn(move || {
-                while let Ok(message) = receiver.recv() {
-                    match message {
-                        WorkerMessage::Work {
-                            value,
-                            registration_ready,
-                        } => {
-                            if registration_ready.recv().is_ok() {
-                                handler(value);
-                            }
-                        }
-                        WorkerMessage::Shutdown => break,
-                    }
+                let result =
+                    std::panic::catch_unwind(std::panic::AssertUnwindSafe(move || {
+                        run_worker(receiver, handler, worker_stopping);
+                    }));
+                if let Err(payload) = result {
+                    dispose_panic_payload(payload, &worker_completion);
                 }
             })
-            .ok()
-            .map(|handle| WorkerThread { sender, handle })
+            .ok()?;
+        let job = JoinJob {
+            handle,
+            completion: Arc::clone(&completion),
+        };
+        Some((
+            WorkerThread {
+                sender,
+                stopping,
+                completion,
+            },
+            job,
+        ))
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn run_worker<T>(
+    receiver: mpsc::Receiver<WorkerMessage<T>>,
+    handler: Arc<dyn Fn(T) + Send + Sync + 'static>,
+    stopping: Arc<AtomicBool>,
+) {
+    // All user-owned values are parameters of this call so their ordinary Drop
+    // runs inside the caller's unwind guard, before native join acknowledgement.
+    while !stopping.load(Ordering::Acquire) {
+        let Ok(WorkerMessage::Work {
+            value,
+            registration_ready,
+        }) = receiver.recv()
+        else {
+            break;
+        };
+        while !stopping.load(Ordering::Acquire) {
+            match registration_ready.recv_timeout(WORKER_POLL_INTERVAL) {
+                Ok(()) => {
+                    if !stopping.load(Ordering::Acquire) {
+                        handler(value);
+                    }
+                    break;
+                }
+                Err(mpsc::RecvTimeoutError::Timeout) => continue,
+                Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            }
+        }
+    }
+}
+
+impl<T> Drop for BoundedWorker<T>
+where
+    T: Send + 'static,
+{
+    fn drop(&mut self) {
+        // Closing the cleanup mailbox retains the background owner until its
+        // pending/running join completes. Blocking native work is not detached
+        // from its join owner, nor interpreted as successful cleanup.
+        self.request_shutdown();
     }
 }
 
@@ -788,3 +1187,6 @@ mod tests {
         assert_eq!(count.load(AtomicOrdering::SeqCst), 1);
     }
 }
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+mod worker_tests;

@@ -581,6 +581,14 @@ network authority.
 
 ### extension-contract-runtime
 
+Worker tests must gate full queues, blocked handlers, reentrant and panicking
+registration, native thread-local destruction and callback lifetime beyond join.
+Require actual join before acknowledgement, no stale replacement, reuse of one
+cleanup service, charged owner admission after drop, failure isolation and bounded
+shutdown waits. Exercise the application review-owner drop while its handler is
+blocked. See [ADR 0073](adr/0073-bounded-extension-worker-retirement.md); no test
+may equate a finished Rust function with native thread cleanup.
+
 Reinforce version negotiation, strict message schemas and ceilings, exact
 capability denial, session isolation, cancellation, queue saturation, stale
 generation rejection, crash/restart, disable, uninstall, and shutdown. Optional

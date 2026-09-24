@@ -589,7 +589,12 @@ pub fn shutdown_background_services() {
         let mut runtime = write_runtime();
         runtime.cancel_all();
     }
-    worker().shutdown();
+    if !worker().shutdown_timeout(std::time::Duration::from_secs(2)) {
+        tracing::warn!(
+            "Background service cleanup did not complete: {:?}",
+            worker().shutdown_status()
+        );
+    }
 }
 
 pub fn request_devops_refresh(

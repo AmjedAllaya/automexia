@@ -2674,6 +2674,36 @@ fn verify_devops_test_dependency(dependency: &serde_json::Value) -> TaskResult {
     )
 }
 
+const EXTENSION_WORKER_CONTRACTS: &[&str] = &[
+    "sync_channel",
+    "try_send",
+    "MAX_WORKER_OWNERS: usize = 64",
+    "struct RegistrationLease",
+    "job.handle.join()",
+    "job.completion.finish()",
+    "pub fn request_shutdown",
+    "pub fn shutdown_timeout",
+    "pub fn shutdown_status",
+    "WorkerShutdownStatus::CleanupFailed",
+    "pub trait WakeRoute",
+    "pub struct CoalescingSlot",
+    "pub fn try_submit_then",
+    "registration_ready",
+    "pub fn plan_rebind",
+];
+
+fn verify_extension_worker_contract(source: &str) -> TaskResult {
+    require(
+        EXTENSION_WORKER_CONTRACTS.iter().all(|contract| source.contains(*contract))
+            && !source.contains("handle.is_finished()"),
+        "private extension runtime lacks bounded admission, actual join acknowledgement, registration lifetime, explicit retirement status, or existing shared primitives",
+    )?;
+    require(
+        source.find("job.handle.join()") < source.find("job.completion.finish()"),
+        "extension worker completion must follow the actual native join",
+    )
+}
+
 fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_prompt_discovery.py")?;
     run_python("tools/ci/test_prompt_discovery.py")?;
@@ -2960,17 +2990,7 @@ fn verify_architecture() -> TaskResult {
     }
     let runtime = read(&app.join("src/automexia/runtime.rs"))?;
     let extension_runtime = read(&root().join("automexia-extension-runtime/src/lib.rs"))?;
-    require(
-        extension_runtime.contains("sync_channel")
-            && extension_runtime.contains("try_send")
-            && extension_runtime.contains("handle.is_finished()")
-            && extension_runtime.contains("pub trait WakeRoute")
-            && extension_runtime.contains("pub struct CoalescingSlot")
-            && extension_runtime.contains("pub fn try_submit_then")
-            && extension_runtime.contains("registration_ready")
-            && extension_runtime.contains("pub fn plan_rebind"),
-        "private extension runtime lacks bounded queue, restart, injected wake, registration ordering, coalescing, or rebind primitives",
-    )?;
+    verify_extension_worker_contract(&extension_runtime)?;
     require(
         runtime.contains("MAX_SESSION_TITLE_BYTES")
             && runtime.contains("shutdown_background_services")
@@ -5154,6 +5174,28 @@ mod tests {
             None
         );
         assert_eq!(wsl_windows_drive(Path::new("/mnt/d/project"), false), None);
+    }
+
+    #[test]
+    fn extension_worker_retirement_contract_rejects_missing_or_reordered_proof() {
+        let source =
+            read(&root().join("automexia-extension-runtime/src/lib.rs")).unwrap();
+        verify_extension_worker_contract(&source).unwrap();
+        for &contract in EXTENSION_WORKER_CONTRACTS {
+            let altered = source.replace(contract, "removed worker contract");
+            assert!(
+                verify_extension_worker_contract(&altered).is_err(),
+                "missing {contract}"
+            );
+        }
+        let reversed = source
+            .replace("job.handle.join()", "ORDER_PLACEHOLDER")
+            .replace("job.completion.finish()", "job.handle.join()")
+            .replace("ORDER_PLACEHOLDER", "job.completion.finish()");
+        assert!(verify_extension_worker_contract(&reversed).is_err());
+        assert!(
+            verify_extension_worker_contract(&(source + "handle.is_finished()")).is_err()
+        );
     }
 
     #[test]

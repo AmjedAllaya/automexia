@@ -132,6 +132,13 @@ Current capability-free shared contracts are owned by
 by existing source consumers. These package names are maintenance facts, not
 public product announcements.
 
+The capability-free `automexia-extension-runtime` owns bounded worker admission,
+registration and retirement. Native join acknowledgement and outstanding
+registration leases prevent premature replacement; cleanup retains its charged
+owner through blocked work. Application consumers own request identity, result
+publication and cancellation. See
+[ADR 0073](adr/0073-bounded-extension-worker-retirement.md).
+
 `automexia-extension-api::surface` owns bounded, versioned semantic table data.
 The application-owned surface slot validates trusted grant binding, frame size,
 generation, revision and expiry while retaining at most one snapshot. Its

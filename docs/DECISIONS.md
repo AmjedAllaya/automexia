@@ -49,6 +49,7 @@ listed or summarized here.
 | [0065](adr/0065-explicit-directory-handoff.md) | Explicit directory-only desktop handoff and supervised WSL resolution |
 | [0066](adr/0066-explicit-editor-file-handoff.md) | Explicit file-and-position handoff to a configured desktop editor |
 | [0067](adr/0067-local-repository-browser-navigation.md) | Offline Git remote resolution and explicit repository browser navigation |
+| [0073](adr/0073-bounded-extension-worker-retirement.md) | Bounded extension worker retirement and native join acknowledgement |
 | [0078](adr/0078-inline-header-table-presentation.md) | Inline header tables with bounded cell wrapping and source mapping |
 
 ## When an ADR is required

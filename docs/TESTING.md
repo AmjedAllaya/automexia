@@ -1599,3 +1599,15 @@ readiness suites. Native validation must exercise opening from selection and
 history, live output underneath, route closure, ordinary and modified key-up,
 paste/IME containment, physical wheel/trackpad/scrollbar interaction, small and
 large windows, multiple themes/scales and assistive-technology focus delivery.
+
+## Extension worker retirement
+
+Run `cargo test --locked -p automexia-extension-runtime --lib` and
+`cargo test --locked -p automexia-terminal --bin automexia openssh_review_worker_tests`.
+Channel-gated regressions distinguish handler return, native thread-local cleanup,
+registration return and actual join acknowledgement. Cover queue saturation,
+reentry, callback unwind, blocked drop, owner capacity, restart, panic-payload
+cleanup and rejected stale work. The architecture mutation test must reject
+missing retirement contracts and acknowledgement before join. Record executed
+counts on each native platform; Windows/Linux evidence does not certify other
+hosts, desktop latency or arbitrary blocking/destructive Rust handlers.
