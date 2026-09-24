@@ -52,6 +52,20 @@ pub struct DrawOpts {
     pub font_id: Option<usize>,
 }
 
+/// A grapheme's UTF-8 byte start and original terminal-cell column.
+#[derive(Clone, Copy, Debug)]
+pub struct TextCellAnchor {
+    pub byte_offset: usize,
+    pub column: usize,
+}
+
+/// Fixed logical-pixel cell geometry supplied by the terminal presentation.
+#[derive(Clone, Copy, Debug)]
+pub struct TextCellLayout<'a> {
+    pub cell_width: f32,
+    pub anchors: &'a [TextCellAnchor],
+}
+
 impl Default for DrawOpts {
     fn default() -> Self {
         Self {
@@ -81,6 +95,8 @@ struct ShapedRun {
     size_u16: u16,
     synthetic_bold: bool,
     synthetic_italic: bool,
+    /// Bitmap format belongs to the final selected font, including overrides.
+    is_color: bool,
     /// `wght` axis value to apply when rasterizing this run's glyphs
     /// (variable-font fallback faces only). On macOS the variation is
     /// already baked into the CTFont handle, so this stays unused.
@@ -154,7 +170,7 @@ pub struct Text {
     scale_factor: f32,
     font_library: FontLibrary,
     font_resolve: FxHashMap<(char, u8), (u32, bool)>,
-    synthesis_cache: FxHashMap<u32, (bool, bool)>,
+    synthesis_cache: FxHashMap<u32, (bool, bool, bool)>,
     #[cfg(not(target_os = "macos"))]
     wght_variation_cache: FxHashMap<u32, Option<f32>>,
     ascent_cache: FxHashMap<(u32, u16), i16>,
@@ -339,6 +355,179 @@ impl Text {
         width_px / self.scale_factor
     }
 
+    /// Draw a label within logical-pixel cell bounds. Atlas ownership and
+    /// shaping remain shared with ordinary immediate-mode text.
+    pub fn draw_clipped(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: &str,
+        opts: &DrawOpts,
+        clip: [f32; 4],
+    ) -> f32 {
+        let Some(bounds) = self.clip_bounds(x, y, clip) else {
+            return 0.0;
+        };
+        let start = self.active_instance_count();
+        let advance = self.draw(x, y, text, opts);
+        self.clip_instances(start, bounds);
+        advance
+    }
+
+    /// Shape adjacent text together while anchoring each returned cluster to
+    /// its original terminal-cell column. Anchors must start at byte zero and
+    /// have increasing UTF-8 boundaries and nondecreasing columns. Font fallback
+    /// splits runs; natural font advances never accumulate between anchors.
+    /// Invalid geometry or anchor maps emit no glyphs.
+    pub fn draw_cells_clipped(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: &str,
+        opts: &DrawOpts,
+        layout: TextCellLayout<'_>,
+        clip: [f32; 4],
+    ) {
+        let Some(bounds) = self.clip_bounds(x, y, clip) else {
+            return;
+        };
+        let anchors = layout.anchors;
+        if text.is_empty()
+            || anchors.first().is_none_or(|a| a.byte_offset != 0)
+            || !(layout.cell_width * self.scale_factor).is_finite()
+            || layout.cell_width <= 0.0
+            || !(opts.font_size * self.scale_factor).is_finite()
+            || opts.font_size <= 0.0
+            || anchors.iter().any(|a| {
+                a.byte_offset >= text.len()
+                    || !text.is_char_boundary(a.byte_offset)
+                    || !((x + a.column as f32 * layout.cell_width) * self.scale_factor)
+                        .is_finite()
+            })
+            || anchors.windows(2).any(|a| {
+                a[0].byte_offset >= a[1].byte_offset || a[0].column > a[1].column
+            })
+        {
+            return;
+        }
+        let start = self.active_instance_count();
+        let mut first = 0;
+        while first < anchors.len() {
+            // The complete anchor map was validated before any emission.
+            let Some(ch) = text[anchors[first].byte_offset..].chars().next() else {
+                break;
+            };
+            let font_id = self.resolve_font_id(ch, opts);
+            let mut end = first + 1;
+            while end < anchors.len() {
+                let Some(ch) = text[anchors[end].byte_offset..].chars().next() else {
+                    break;
+                };
+                if self.resolve_font_id(ch, opts) != font_id {
+                    break;
+                }
+                end += 1;
+            }
+            let byte_start = anchors[first].byte_offset;
+            let byte_end = anchors.get(end).map_or(text.len(), |a| a.byte_offset);
+            let run_opts = DrawOpts {
+                font_id: Some(font_id as usize),
+                ..*opts
+            };
+            if let Some(run) = self.shape_for(&text[byte_start..byte_end], &run_opts) {
+                self.emit_cell_instances(
+                    [x, y],
+                    &run,
+                    opts,
+                    layout.cell_width,
+                    &anchors[first..end],
+                    byte_start,
+                );
+            }
+            first = end;
+        }
+        self.clip_instances(start, bounds);
+    }
+
+    fn active_instance_count(&self) -> usize {
+        if self.recording_modal {
+            self.modal_instances.len()
+        } else {
+            self.instances.len()
+        }
+    }
+
+    fn clip_bounds(&self, x: f32, y: f32, clip: [f32; 4]) -> Option<[f32; 4]> {
+        let [left, top, width, height] = clip;
+        let scale = self.scale_factor;
+        let bounds = [
+            left * scale,
+            top * scale,
+            (left + width) * scale,
+            (top + height) * scale,
+        ];
+        if ![x * scale, y * scale, width, height]
+            .iter()
+            .chain(bounds.iter())
+            .all(|v| v.is_finite())
+            || width <= 0.0
+            || height <= 0.0
+        {
+            return None;
+        }
+        Some(bounds)
+    }
+
+    fn clip_instances(&mut self, start: usize, bounds: [f32; 4]) {
+        let instances = if self.recording_modal {
+            &mut self.modal_instances
+        } else {
+            &mut self.instances
+        };
+        let mut write = start;
+        for read in start..instances.len() {
+            let mut glyph = instances[read];
+            let mut visible = true;
+            for axis in 0..2 {
+                let origin = glyph.pos[axis] + glyph.bearings[axis] as f32;
+                let size = glyph.glyph_size[axis];
+                if !origin.is_finite() {
+                    visible = false;
+                    break;
+                }
+                // Clip in whole atlas texels, rounding inward. Every backend
+                // consumes the same cropped quad and texture coordinates.
+                let before =
+                    (bounds[axis] - origin).ceil().max(0.0).min(size as f32) as u32;
+                let after = (origin + size as f32 - bounds[axis + 2])
+                    .ceil()
+                    .max(0.0)
+                    .min(size as f32) as u32;
+                let Some(remaining) = size
+                    .checked_sub(before)
+                    .and_then(|n| n.checked_sub(after))
+                    .filter(|n| *n > 0)
+                else {
+                    visible = false;
+                    break;
+                };
+                let Some(atlas) = glyph.glyph_pos[axis].checked_add(before) else {
+                    visible = false;
+                    break;
+                };
+                glyph.pos[axis] = origin + before as f32;
+                glyph.bearings[axis] = 0;
+                glyph.glyph_pos[axis] = atlas;
+                glyph.glyph_size[axis] = remaining;
+            }
+            if visible {
+                instances[write] = glyph;
+                write += 1;
+            }
+        }
+        instances.truncate(write);
+    }
+
     /// Measure `text` under `opts` without recording a draw. Returns
     /// logical-pixel width.
     pub fn measure(&mut self, text: &str, opts: &DrawOpts) -> f32 {
@@ -350,17 +539,14 @@ impl Text {
             .unwrap_or(0.0)
     }
 
-    fn shape_for(&mut self, text: &str, opts: &DrawOpts) -> Option<Arc<ShapedRun>> {
+    fn resolve_font_id(&mut self, first_ch: char, opts: &DrawOpts) -> u32 {
         use crate::{Attributes, SpanStyle, Stretch, Style as FontStyle, Weight};
-
-        let scaled = opts.font_size * self.scale_factor;
-        let size_u16 = scaled.round().clamp(1.0, u16::MAX as f32) as u16;
+        if let Some(id) = opts.font_id {
+            return id as u32;
+        }
         let style_flags =
             (if opts.bold { 1u8 } else { 0 }) | (if opts.italic { 2u8 } else { 0 });
-
-        let first_ch = text.chars().next()?;
-        let (font_id, _is_emoji) = match self.font_resolve.entry((first_ch, style_flags))
-        {
+        let (font_id, _) = match self.font_resolve.entry((first_ch, style_flags)) {
             std::collections::hash_map::Entry::Occupied(e) => *e.get(),
             std::collections::hash_map::Entry::Vacant(e) => {
                 let mut ss = SpanStyle::default();
@@ -382,7 +568,16 @@ impl Text {
                 v
             }
         };
-        let font_id = opts.font_id.map(|id| id as u32).unwrap_or(font_id);
+        font_id
+    }
+
+    fn shape_for(&mut self, text: &str, opts: &DrawOpts) -> Option<Arc<ShapedRun>> {
+        let first_ch = text.chars().next()?;
+        let font_id = self.resolve_font_id(first_ch, opts);
+        let scaled = opts.font_size * self.scale_factor;
+        let size_u16 = scaled.round().clamp(1.0, u16::MAX as f32) as u16;
+        let style_flags =
+            (if opts.bold { 1u8 } else { 0 }) | (if opts.italic { 2u8 } else { 0 });
 
         let key = ShapeKey {
             font_id,
@@ -393,15 +588,15 @@ impl Text {
             return Some(entry);
         }
 
-        let (synthetic_bold, synthetic_italic) = match self.synthesis_cache.entry(font_id)
-        {
-            std::collections::hash_map::Entry::Occupied(e) => *e.get(),
-            std::collections::hash_map::Entry::Vacant(e) => {
-                let lib = self.font_library.inner.read();
-                let fd = lib.get(&(font_id as usize));
-                *e.insert((fd.should_embolden, fd.should_italicize))
-            }
-        };
+        let (synthetic_bold, synthetic_italic, is_color) =
+            match self.synthesis_cache.entry(font_id) {
+                std::collections::hash_map::Entry::Occupied(e) => *e.get(),
+                std::collections::hash_map::Entry::Vacant(e) => {
+                    let lib = self.font_library.inner.read();
+                    let fd = lib.get(&(font_id as usize));
+                    *e.insert((fd.should_embolden, fd.should_italicize, fd.is_emoji))
+                }
+            };
 
         #[cfg(target_os = "macos")]
         let (glyphs, ascent_px) = {
@@ -521,6 +716,7 @@ impl Text {
             size_u16,
             synthetic_bold,
             synthetic_italic,
+            is_color,
             #[cfg(not(target_os = "macos"))]
             wght_variation,
             ascent_px,
@@ -536,42 +732,91 @@ impl Text {
         let scale = self.scale_factor;
         let mut pen_x = x * scale;
         let py = y * scale;
-        let color = opts.color;
-
         for glyph in &run.glyphs {
-            let Some((slot, is_color)) = self.rasterize_slot(run, glyph.id) else {
+            if self.emit_glyph(
+                run,
+                glyph.id,
+                [pen_x + glyph.x, py + glyph.y.max(0.0)],
+                opts.color,
+            ) {
+                pen_x += glyph.advance;
+            }
+        }
+    }
+
+    fn emit_cell_instances(
+        &mut self,
+        origin: [f32; 2],
+        run: &ShapedRun,
+        opts: &DrawOpts,
+        cell_width: f32,
+        anchors: &[TextCellAnchor],
+        byte_start: usize,
+    ) {
+        let scale = self.scale_factor;
+        let mut previous = None;
+        let mut local_pen = 0.0;
+        for glyph in &run.glyphs {
+            let Some(byte) = byte_start.checked_add(glyph.cluster as usize) else {
                 continue;
             };
-            if slot.w == 0 || slot.h == 0 {
-                pen_x += glyph.advance;
+            // CoreText and Swash Text adapters both expose UTF-8 clusters.
+            // Binary lookup also handles decreasing clusters from reordered text.
+            let index = anchors
+                .partition_point(|a| a.byte_offset <= byte)
+                .saturating_sub(1);
+            let Some(anchor) = anchors.get(index) else {
                 continue;
+            };
+            if previous != Some(index) {
+                local_pen = 0.0;
+                previous = Some(index);
             }
+            let pos = [
+                (origin[0] + anchor.column as f32 * cell_width) * scale
+                    + local_pen
+                    + glyph.x,
+                origin[1] * scale + glyph.y.max(0.0),
+            ];
+            if self.emit_glyph(run, glyph.id, pos, opts.color) {
+                local_pen += glyph.advance;
+            }
+        }
+    }
 
-            let atlas_tag = if is_color { 1u8 } else { 0u8 };
-            let instance_color = if is_color {
-                [255u8, 255, 255, 255]
+    fn emit_glyph(
+        &mut self,
+        run: &ShapedRun,
+        glyph_id: u16,
+        pos: [f32; 2],
+        color: [u8; 4],
+    ) -> bool {
+        let Some((slot, is_color)) = self.rasterize_slot(run, glyph_id) else {
+            return false;
+        };
+        if slot.w == 0 || slot.h == 0 {
+            return true;
+        }
+        let target = if self.recording_modal {
+            &mut self.modal_instances
+        } else {
+            &mut self.instances
+        };
+        target.push(TextInstance {
+            pos,
+            glyph_pos: [slot.x as u32, slot.y as u32],
+            glyph_size: [slot.w as u32, slot.h as u32],
+            bearings: [slot.bearing_x, slot.bearing_y],
+            color: if is_color {
+                [255, 255, 255, 255]
             } else {
                 color
-            };
-
-            let target = if self.recording_modal {
-                &mut self.modal_instances
-            } else {
-                &mut self.instances
-            };
-            target.push(TextInstance {
-                pos: [pen_x + glyph.x, py + glyph.y.max(0.0)],
-                glyph_pos: [slot.x as u32, slot.y as u32],
-                glyph_size: [slot.w as u32, slot.h as u32],
-                bearings: [slot.bearing_x, slot.bearing_y],
-                color: instance_color,
-                atlas: atlas_tag,
-                page: slot.page,
-                _pad: [0; 2],
-            });
-
-            pen_x += glyph.advance;
-        }
+            },
+            atlas: u8::from(is_color),
+            page: slot.page,
+            _pad: [0; 2],
+        });
+        true
     }
 
     /// Lookup or rasterize-and-insert a glyph. Returns
@@ -616,7 +861,7 @@ impl Text {
                 &handle,
                 glyph_id,
                 run.size_u16 as f32,
-                /* is_emoji: */ false,
+                run.is_color,
                 run.synthetic_italic,
                 run.synthetic_bold,
             )?;
@@ -794,7 +1039,7 @@ impl Text {
                 &handle,
                 glyph_id,
                 run.size_u16 as f32,
-                /* is_emoji: */ false,
+                run.is_color,
                 run.synthetic_italic,
                 run.synthetic_bold,
             )?;

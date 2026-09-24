@@ -341,7 +341,7 @@ fn semantic_row_severity(
     renderer: &Renderer,
     scratch: &mut String,
 ) -> Option<crate::automexia::api::SemanticSeverity> {
-    if !renderer.devops_enabled {
+    if !renderer.devops_enabled || !renderer.presentation.output_highlighting {
         return None;
     }
     scratch.clear();

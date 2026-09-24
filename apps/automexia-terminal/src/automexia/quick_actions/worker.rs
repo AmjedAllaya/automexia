@@ -8,7 +8,6 @@ use std::{
         atomic::{AtomicU64, Ordering},
         Arc, Condvar, Mutex, MutexGuard,
     },
-    thread::{self, JoinHandle},
     time::{Duration, Instant},
 };
 
@@ -18,7 +17,9 @@ use automexia_command_productivity::actions::{
     LayerIdentity, ProviderActionBinding, ProviderActionReview, ProviderActionSnapshot,
     QuickAction, SearchContext,
 };
-use automexia_extension_runtime::CompletionWake;
+use automexia_extension_runtime::{
+    BoundedWorker, CompletionWake, RefreshSubmission, WorkerShutdownStatus,
+};
 
 use super::{
     QuickActionMonitor, QuickActionService, QuickActionStore, ServiceStatus, StoreError,
@@ -159,6 +160,26 @@ struct WorkerShared {
     provider_snapshots: Arc<Mutex<BTreeMap<usize, Arc<PublishedProviderSnapshot>>>>,
 }
 
+struct WorkerRun {
+    monitor: QuickActionMonitor,
+    index: ActionIndex,
+    shared: WorkerShared,
+    _pending_cleanup: PendingCleanup,
+}
+
+// Queued callbacks may own foreign destructors. Retain them with the worker,
+// including when retirement cancels its kickoff before the loop starts.
+struct PendingCleanup {
+    pending: Arc<(Mutex<PendingState>, Condvar)>,
+}
+
+impl Drop for PendingCleanup {
+    fn drop(&mut self) {
+        let queued = std::mem::take(&mut lock(&self.pending.0).latest_by_route);
+        drop(queued);
+    }
+}
+
 struct RuntimeInner {
     service: Option<QuickActionService>,
     disabled: Option<QuickActionRuntimeErrorCode>,
@@ -168,21 +189,37 @@ struct RuntimeInner {
     workspace_authorizations: Arc<Mutex<BTreeMap<usize, RouteWorkspaceAuthorization>>>,
     provider_snapshots: Arc<Mutex<BTreeMap<usize, Arc<PublishedProviderSnapshot>>>>,
     next_request: AtomicU64,
-    handle: Mutex<Option<JoinHandle<()>>>,
+    worker: Option<BoundedWorker<WorkerRun>>,
+}
+
+impl RuntimeInner {
+    fn request_shutdown(&self) {
+        {
+            // This is also the publication/route-retirement lock. No worker
+            // result or authorization can appear after cancellation clears it.
+            let mut state = lock(&self.pending.0);
+            state.shutdown = true;
+            lock(&self.latest_requested).clear();
+            lock(&self.results).clear();
+            lock(&self.workspace_authorizations).clear();
+            lock(&self.provider_snapshots).clear();
+        }
+        self.pending.1.notify_all();
+        if let Some(worker) = &self.worker {
+            worker.request_shutdown();
+        }
+    }
+
+    fn worker_running(&self) -> bool {
+        self.worker.as_ref().is_some_and(|worker| {
+            worker.shutdown_status() == WorkerShutdownStatus::Running
+        })
+    }
 }
 
 impl Drop for RuntimeInner {
     fn drop(&mut self) {
-        {
-            let (pending, condition) = &*self.pending;
-            let mut state = lock(pending);
-            state.shutdown = true;
-            state.latest_by_route.clear();
-            condition.notify_all();
-        }
-        if let Some(handle) = lock(&self.handle).take() {
-            let _ = handle.join();
-        }
+        self.request_shutdown();
     }
 }
 
@@ -220,7 +257,7 @@ impl QuickActionRuntime {
         let results = Arc::new(Mutex::new(BTreeMap::new()));
         let workspace_authorizations = Arc::new(Mutex::new(BTreeMap::new()));
         let provider_snapshots = Arc::new(Mutex::new(BTreeMap::new()));
-        let handle = spawn_worker(
+        let worker = spawn_worker(
             monitor,
             initial,
             WorkerShared {
@@ -242,7 +279,7 @@ impl QuickActionRuntime {
             workspace_authorizations,
             provider_snapshots,
             next_request: AtomicU64::new(1),
-            handle: Mutex::new(Some(handle)),
+            worker: Some(worker),
         })))
     }
 
@@ -256,8 +293,32 @@ impl QuickActionRuntime {
             workspace_authorizations: Arc::new(Mutex::new(BTreeMap::new())),
             provider_snapshots: Arc::new(Mutex::new(BTreeMap::new())),
             next_request: AtomicU64::new(1),
-            handle: Mutex::new(None),
+            worker: None,
         }))
+    }
+
+    /// Cancel admission and publication without waiting for native cleanup.
+    pub fn request_shutdown(&self) {
+        self.0.request_shutdown();
+    }
+
+    /// Wait within one caller budget for actual native join acknowledgement.
+    /// A timeout retains cleanup ownership; this runtime never restarts.
+    pub fn shutdown_timeout(&self, timeout: Duration) -> bool {
+        let started = Instant::now();
+        self.request_shutdown();
+        self.0.worker.as_ref().is_none_or(|worker| {
+            worker.shutdown_timeout(timeout.saturating_sub(started.elapsed()))
+        })
+    }
+
+    pub fn shutdown_status(&self) -> WorkerShutdownStatus {
+        self.0
+            .worker
+            .as_ref()
+            .map_or(WorkerShutdownStatus::Complete, |worker| {
+                worker.shutdown_status()
+            })
     }
 
     pub fn service(&self) -> Option<&QuickActionService> {
@@ -268,10 +329,7 @@ impl QuickActionRuntime {
         if let Some(error) = self.0.disabled {
             return QuickActionRuntimeStatus::Disabled { error };
         }
-        if lock(&self.0.handle)
-            .as_ref()
-            .is_none_or(JoinHandle::is_finished)
-        {
+        if !self.0.worker_running() || lock(&self.0.pending.0).shutdown {
             return QuickActionRuntimeStatus::Disabled {
                 error: QuickActionRuntimeErrorCode::WorkerUnavailable,
             };
@@ -310,10 +368,7 @@ impl QuickActionRuntime {
                 error: QuickActionRuntimeErrorCode::InvalidQuery,
             };
         }
-        if lock(&self.0.handle)
-            .as_ref()
-            .is_none_or(JoinHandle::is_finished)
-        {
+        if !self.0.worker_running() || lock(&self.0.pending.0).shutdown {
             return SearchSubmission::Disabled {
                 error: QuickActionRuntimeErrorCode::WorkerUnavailable,
             };
@@ -387,11 +442,7 @@ impl QuickActionRuntime {
         route_id: usize,
         snapshot: ProviderActionSnapshot,
     ) -> Result<(), QuickActionRuntimeErrorCode> {
-        if self.0.disabled.is_some()
-            || lock(&self.0.handle)
-                .as_ref()
-                .is_none_or(JoinHandle::is_finished)
-        {
+        if self.0.disabled.is_some() || !self.0.worker_running() {
             return Err(QuickActionRuntimeErrorCode::WorkerUnavailable);
         }
         let key = ProviderSnapshotKey::from_snapshot(&snapshot);
@@ -402,6 +453,10 @@ impl QuickActionRuntime {
             snapshot,
             index,
         });
+        let state = lock(&self.0.pending.0);
+        if state.shutdown {
+            return Err(QuickActionRuntimeErrorCode::WorkerUnavailable);
+        }
         let mut snapshots = lock(&self.0.provider_snapshots);
         if !snapshots.contains_key(&route_id) && snapshots.len() >= MAX_RESULT_ROUTES {
             return Err(QuickActionRuntimeErrorCode::RouteCapacity);
@@ -420,6 +475,7 @@ impl QuickActionRuntime {
     }
 
     pub fn clear_provider_snapshot(&self, route_id: usize) -> bool {
+        let _state = lock(&self.0.pending.0);
         let removed = lock(&self.0.provider_snapshots).remove(&route_id).is_some();
         lock(&self.0.results).remove(&route_id);
         removed
@@ -464,6 +520,10 @@ impl QuickActionRuntime {
         route_id: usize,
         minimum_request_id: u64,
     ) -> Option<QuickActionSearchResult> {
+        let state = lock(&self.0.pending.0);
+        if state.shutdown {
+            return None;
+        }
         let result = lock(&self.0.results).remove(&route_id)?;
         let provider_key = current_provider_key(
             &lock(&self.0.provider_snapshots),
@@ -477,11 +537,14 @@ impl QuickActionRuntime {
 
     pub fn forget_route(&self, route_id: usize) {
         let (pending, _) = &*self.0.pending;
-        lock(pending).latest_by_route.remove(&route_id);
+        let mut state = lock(pending);
+        let removed = state.latest_by_route.remove(&route_id);
         lock(&self.0.latest_requested).remove(&route_id);
         lock(&self.0.results).remove(&route_id);
         lock(&self.0.workspace_authorizations).remove(&route_id);
         lock(&self.0.provider_snapshots).remove(&route_id);
+        drop(state);
+        drop(removed);
     }
 }
 
@@ -596,10 +659,30 @@ fn resolve_trusted_workspace(
 }
 
 fn spawn_worker(
-    mut monitor: QuickActionMonitor,
-    mut index: ActionIndex,
+    monitor: QuickActionMonitor,
+    index: ActionIndex,
     shared: WorkerShared,
-) -> Option<JoinHandle<()>> {
+) -> Option<BoundedWorker<WorkerRun>> {
+    let worker = BoundedWorker::new("automexia-quick-actions", 1, run_worker);
+    let pending_cleanup = PendingCleanup {
+        pending: Arc::clone(&shared.pending),
+    };
+    let run = WorkerRun {
+        monitor,
+        index,
+        shared,
+        _pending_cleanup: pending_cleanup,
+    };
+    (worker.try_submit(run) == RefreshSubmission::Queued).then_some(worker)
+}
+
+fn run_worker(run: WorkerRun) {
+    let WorkerRun {
+        mut monitor,
+        mut index,
+        shared,
+        _pending_cleanup,
+    } = run;
     let WorkerShared {
         pending,
         latest_requested,
@@ -609,136 +692,140 @@ fn spawn_worker(
         provider_snapshots,
     } = shared;
     let mut workspace_cache = WorkspaceIndexCache::new(workspace_trust_root);
-    thread::Builder::new()
-        .name("automexia-quick-actions".into())
-        .spawn(move || {
-            loop {
-                // Rebuild after every exact-source reconciliation outcome. A
-                // mutation performed through this process's shared service is
-                // already published before the watcher sees it, so its subsequent
-                // load is legitimately `Unchanged` even though the worker's index
-                // still needs the newer generation.
-                if monitor.poll(Instant::now()).is_some() {
-                    if let Ok(candidate) = index_for_service(monitor.service()) {
-                        index = candidate;
-                    }
+    loop {
+        if lock(&pending.0).shutdown {
+            break;
+        }
+        // Rebuild after every exact-source reconciliation outcome. A
+        // mutation performed through this process's shared service is
+        // already published before the watcher sees it, so its subsequent
+        // load is legitimately `Unchanged` even though the worker's index
+        // still needs the newer generation.
+        if monitor.poll(Instant::now()).is_some() {
+            if let Ok(candidate) = index_for_service(monitor.service()) {
+                index = candidate;
+            }
+        }
+        let request = {
+            let (slot, condition) = &*pending;
+            let state = lock(slot);
+            let (mut state, _) = condition
+                .wait_timeout_while(state, SEARCH_POLL_INTERVAL, |state| {
+                    !state.shutdown && state.latest_by_route.is_empty()
+                })
+                .unwrap_or_else(|poisoned| poisoned.into_inner());
+            if state.shutdown {
+                break;
+            }
+            // Keep one short, absolute coalescing window. Repeated wakeups
+            // replace the slot but never extend the deadline, so rapid
+            // typing publishes only the newest generation without letting
+            // a malicious producer postpone search indefinitely.
+            let deadline = Instant::now() + SEARCH_COALESCE_INTERVAL;
+            while !state.shutdown {
+                let now = Instant::now();
+                if now >= deadline {
+                    break;
                 }
-                let request = {
-                    let (slot, condition) = &*pending;
-                    let state = lock(slot);
-                    let (mut state, _) = condition
-                        .wait_timeout_while(state, SEARCH_POLL_INTERVAL, |state| {
-                            !state.shutdown && state.latest_by_route.is_empty()
-                        })
-                        .unwrap_or_else(|poisoned| poisoned.into_inner());
-                    if state.shutdown {
-                        break;
-                    }
-                    // Keep one short, absolute coalescing window. Repeated wakeups
-                    // replace the slot but never extend the deadline, so rapid
-                    // typing publishes only the newest generation without letting
-                    // a malicious producer postpone search indefinitely.
-                    let deadline = Instant::now() + SEARCH_COALESCE_INTERVAL;
-                    while !state.shutdown {
-                        let now = Instant::now();
-                        if now >= deadline {
-                            break;
-                        }
-                        let (next, _) = condition
-                            .wait_timeout(state, deadline.saturating_duration_since(now))
-                            .unwrap_or_else(|poisoned| poisoned.into_inner());
-                        state = next;
-                    }
-                    if state.shutdown {
-                        break;
-                    }
-                    std::mem::take(&mut state.latest_by_route)
-                };
-                if request.is_empty() {
+                let (next, _) = condition
+                    .wait_timeout(state, deadline.saturating_duration_since(now))
+                    .unwrap_or_else(|poisoned| poisoned.into_inner());
+                state = next;
+            }
+            if state.shutdown {
+                break;
+            }
+            std::mem::take(&mut state.latest_by_route)
+        };
+        if request.is_empty() {
+            continue;
+        }
+        for (_, request) in request {
+            if lock(&pending.0).shutdown {
+                break;
+            }
+            let published_provider = {
+                let snapshots = lock(&provider_snapshots);
+                if current_provider_key(
+                    &snapshots,
+                    request.route_id,
+                    request.context.session_id,
+                    request.context.capsule_revision,
+                ) != request.provider_key
+                {
                     continue;
                 }
-                for (_, request) in request {
-                    let published_provider = {
-                        let snapshots = lock(&provider_snapshots);
-                        if current_provider_key(
-                            &snapshots,
-                            request.route_id,
-                            request.context.session_id,
-                            request.context.capsule_revision,
-                        ) != request.provider_key
-                        {
-                            continue;
-                        }
-                        request.provider_key.and_then(|key| {
-                            snapshots
-                                .get(&request.route_id)
-                                .filter(|published| published.key == key)
-                                .cloned()
-                        })
-                    };
-                    let (request_index, authorization) = workspace_cache.index_for(
-                        request.workspace_path.as_deref(),
-                        monitor.service(),
-                        &index,
-                        Instant::now(),
-                    );
-                    let search_session_id = request.context.session_id;
-                    let search_capsule_revision = request.context.capsule_revision;
-                    let mut context = request.context;
-                    context.workspace_identity = authorization
-                        .as_ref()
-                        .map(|authorization| authorization.workspace_identity.clone());
-                    context.workspace_trusted = authorization.is_some();
-                    let base_hits = request_index
+                request.provider_key.and_then(|key| {
+                    snapshots
+                        .get(&request.route_id)
+                        .filter(|published| published.key == key)
+                        .cloned()
+                })
+            };
+            let (request_index, authorization) = workspace_cache.index_for(
+                request.workspace_path.as_deref(),
+                monitor.service(),
+                &index,
+                Instant::now(),
+            );
+            let search_session_id = request.context.session_id;
+            let search_capsule_revision = request.context.capsule_revision;
+            let mut context = request.context;
+            context.workspace_identity = authorization
+                .as_ref()
+                .map(|authorization| authorization.workspace_identity.clone());
+            context.workspace_trusted = authorization.is_some();
+            let base_hits = request_index
+                .search(&request.query, &context)
+                .unwrap_or_default();
+            let hits = published_provider
+                .as_ref()
+                .map(|published| {
+                    let provider_hits = published
+                        .index
                         .search(&request.query, &context)
                         .unwrap_or_default();
-                    let hits = published_provider
-                        .as_ref()
-                        .map(|published| {
-                            let provider_hits = published
-                                .index
-                                .search(&request.query, &context)
-                                .unwrap_or_default();
-                            merge_action_search_hits(provider_hits, base_hits.clone())
-                        })
-                        .unwrap_or(base_hits);
-                    if lock(&latest_requested).get(&request.route_id).copied()
-                        != Some(request.request_id)
-                        || current_provider_key(
-                            &lock(&provider_snapshots),
-                            request.route_id,
-                            search_session_id,
-                            search_capsule_revision,
-                        ) != request.provider_key
-                    {
-                        continue;
-                    }
-                    let mut route_authorizations = lock(&workspace_authorizations);
-                    if let Some(authorization) = authorization {
-                        route_authorizations.insert(request.route_id, authorization);
-                    } else {
-                        route_authorizations.remove(&request.route_id);
-                    }
-                    drop(route_authorizations);
-                    let result = QuickActionSearchResult {
-                        request_id: request.request_id,
-                        route_id: request.route_id,
-                        query: request.query,
-                        hits,
-                        status: status_from_service(monitor.service().status()),
-                        provider_generation: request
-                            .provider_key
-                            .map(|key| key.generation),
-                        provider_key: request.provider_key,
-                        search_session_id,
-                        search_capsule_revision,
-                    };
-                    lock(&results).insert(request.route_id, result);
-                    request.wake.wake();
-                }
+                    merge_action_search_hits(provider_hits, base_hits.clone())
+                })
+                .unwrap_or(base_hits);
+            // Serialize the final identity check and publication with shutdown,
+            // route removal, provider replacement and new submissions.
+            let state = lock(&pending.0);
+            if state.shutdown
+                || lock(&latest_requested).get(&request.route_id).copied()
+                    != Some(request.request_id)
+                || current_provider_key(
+                    &lock(&provider_snapshots),
+                    request.route_id,
+                    search_session_id,
+                    search_capsule_revision,
+                ) != request.provider_key
+            {
+                continue;
             }
-        })
-        .ok()
+            let mut route_authorizations = lock(&workspace_authorizations);
+            if let Some(authorization) = authorization {
+                route_authorizations.insert(request.route_id, authorization);
+            } else {
+                route_authorizations.remove(&request.route_id);
+            }
+            drop(route_authorizations);
+            let result = QuickActionSearchResult {
+                request_id: request.request_id,
+                route_id: request.route_id,
+                query: request.query,
+                hits,
+                status: status_from_service(monitor.service().status()),
+                provider_generation: request.provider_key.map(|key| key.generation),
+                provider_key: request.provider_key,
+                search_session_id,
+                search_capsule_revision,
+            };
+            lock(&results).insert(request.route_id, result);
+            drop(state);
+            request.wake.wake();
+        }
+    }
 }
 
 fn index_for_service(
@@ -825,7 +912,7 @@ mod tests {
         ProviderContextProvenance, ProviderContextTemplate, ProviderKind,
         ProviderProvenanceKind, ProviderScopeBinding, CONNECTION_SCHEMA_VERSION,
     };
-    use std::sync::mpsc;
+    use std::{sync::mpsc, thread};
 
     fn action(index: usize) -> QuickAction {
         QuickAction {
@@ -1038,7 +1125,265 @@ mod tests {
     }
 
     #[test]
-    fn repeated_open_search_drop_cycles_join_without_hanging() {
+    fn dropping_quick_actions_does_not_join_a_blocked_worker() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let (entered, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        let (left, finished) = mpsc::channel();
+        runtime.submit(
+            1,
+            String::new(),
+            context(),
+            Box::new(move || {
+                entered.send(()).unwrap();
+                // This gate is in the real search worker, outside its control
+                // locks. A finite wait keeps the original blocking Drop safe.
+                let released = resume.recv_timeout(Duration::from_secs(5));
+                let _ = left.send(());
+                assert!(released.is_ok());
+            }),
+        );
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (dropped, returned) = mpsc::channel();
+        let event_thread = thread::spawn(move || {
+            drop(runtime);
+            let _ = dropped.send(());
+        });
+        let responsive = returned.recv_timeout(Duration::from_millis(500)).is_ok();
+        // Always release and join test helpers before checking responsiveness.
+        // Handler return here is not evidence of native TLS destruction or join.
+        let _ = release.send(());
+        let finished = finished.recv_timeout(Duration::from_secs(5));
+        let joined = event_thread.join();
+        assert!(finished.is_ok());
+        assert!(joined.is_ok());
+        assert!(
+            responsive,
+            "Quick Actions Drop must not join an in-flight worker"
+        );
+    }
+
+    #[test]
+    fn shutdown_cancels_queued_routes_and_retains_blocked_callback_cleanup() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        runtime
+            .publish_provider_snapshot(1, provider_snapshot(1))
+            .unwrap();
+        let (entered, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        runtime.submit(
+            1,
+            String::new(),
+            context(),
+            Box::new(move || {
+                let _ = entered.send(());
+                let _ = resume.recv_timeout(Duration::from_secs(5));
+            }),
+        );
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (woke, wakeups) = mpsc::channel();
+        runtime.submit(
+            2,
+            String::new(),
+            context(),
+            Box::new(move || {
+                let _ = woke.send(());
+            }),
+        );
+        let before = Instant::now();
+        let acknowledged = runtime.shutdown_timeout(Duration::from_millis(20));
+        let elapsed = before.elapsed();
+        let status = runtime.shutdown_status();
+        let result = runtime.take_result(1, 0);
+        let provider = runtime.provider_snapshot_matches(1, &provider_snapshot(1));
+        let submission = runtime.submit(3, String::new(), context(), Box::new(|| {}));
+        let published = runtime.publish_provider_snapshot(3, provider_snapshot(1));
+        let _ = release.send(());
+        assert!(runtime.shutdown_timeout(Duration::from_secs(5)));
+        assert!(!acknowledged);
+        assert!(elapsed < Duration::from_millis(500));
+        assert_eq!(status, WorkerShutdownStatus::Retiring);
+        assert!(result.is_none());
+        assert!(!provider);
+        assert_eq!(
+            submission,
+            SearchSubmission::Disabled {
+                error: QuickActionRuntimeErrorCode::WorkerUnavailable,
+            }
+        );
+        assert_eq!(
+            published,
+            Err(QuickActionRuntimeErrorCode::WorkerUnavailable)
+        );
+        assert!(wakeups.try_recv().is_err());
+        assert!(runtime.take_result(2, 0).is_none());
+        assert_eq!(runtime.shutdown_status(), WorkerShutdownStatus::Complete);
+        assert!(matches!(
+            runtime.status(),
+            QuickActionRuntimeStatus::Disabled {
+                error: QuickActionRuntimeErrorCode::WorkerUnavailable,
+            }
+        ));
+    }
+
+    struct CleanupGate {
+        entered: mpsc::Sender<thread::ThreadId>,
+        release: mpsc::Receiver<()>,
+    }
+
+    impl Drop for CleanupGate {
+        fn drop(&mut self) {
+            let _ = self.entered.send(thread::current().id());
+            let _ = self.release.recv_timeout(Duration::from_secs(5));
+        }
+    }
+
+    thread_local! {
+        static NATIVE_CLEANUP: std::cell::RefCell<Option<CleanupGate>> = const { std::cell::RefCell::new(None) };
+    }
+
+    #[test]
+    fn shutdown_acknowledges_native_tls_cleanup_not_just_loop_return() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let (entered, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        let (installed, installation) = mpsc::channel();
+        runtime.submit(
+            1,
+            String::new(),
+            context(),
+            Box::new(move || {
+                NATIVE_CLEANUP.with(|slot| {
+                    *slot.borrow_mut() = Some(CleanupGate {
+                        entered,
+                        release: resume,
+                    })
+                });
+                let _ = installed.send(());
+            }),
+        );
+        installation.recv_timeout(Duration::from_secs(5)).unwrap();
+        runtime.request_shutdown();
+        let native_thread = started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let acknowledged = runtime.shutdown_timeout(Duration::from_millis(20));
+        let status = runtime.shutdown_status();
+        let _ = release.send(());
+        assert!(runtime.shutdown_timeout(Duration::from_secs(5)));
+        assert_ne!(native_thread, thread::current().id());
+        assert!(!acknowledged);
+        assert_eq!(status, WorkerShutdownStatus::Retiring);
+        assert_eq!(runtime.shutdown_status(), WorkerShutdownStatus::Complete);
+    }
+
+    #[test]
+    fn queued_callback_destruction_stays_with_worker_during_shutdown() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let (entered, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        runtime.submit(
+            1,
+            String::new(),
+            context(),
+            Box::new(move || {
+                let _ = entered.send(());
+                let _ = resume.recv_timeout(Duration::from_secs(5));
+            }),
+        );
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (dropping, dropped) = mpsc::channel();
+        let (finish_drop, drop_gate) = mpsc::channel();
+        let guard = CleanupGate {
+            entered: dropping,
+            release: drop_gate,
+        };
+        let (woke, wakeups) = mpsc::channel();
+        runtime.submit(
+            2,
+            String::new(),
+            context(),
+            Box::new(move || {
+                let _ = woke.send(());
+                drop(guard);
+            }),
+        );
+        let before = Instant::now();
+        runtime.request_shutdown();
+        let elapsed = before.elapsed();
+        let _ = release.send(());
+        let cleanup_thread = dropped.recv_timeout(Duration::from_secs(5)).unwrap();
+        let acknowledged = runtime.shutdown_timeout(Duration::from_millis(20));
+        let _ = finish_drop.send(());
+        assert!(runtime.shutdown_timeout(Duration::from_secs(5)));
+        assert!(elapsed < Duration::from_millis(500));
+        assert_ne!(cleanup_thread, thread::current().id());
+        assert!(!acknowledged);
+        assert!(wakeups.try_recv().is_err());
+    }
+
+    #[test]
+    fn completion_can_request_shutdown_without_holding_publication_locks() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let callback_runtime = runtime.clone();
+        let (finished, completed) = mpsc::channel();
+        runtime.submit(
+            1,
+            String::new(),
+            context(),
+            Box::new(move || {
+                assert!(callback_runtime.take_result(1, 0).is_some());
+                callback_runtime.request_shutdown();
+                let _ = finished.send(());
+            }),
+        );
+        completed.recv_timeout(Duration::from_secs(5)).unwrap();
+        assert!(runtime.shutdown_timeout(Duration::from_secs(5)));
+        assert!(runtime.take_result(1, 0).is_none());
+    }
+
+    #[test]
+    fn closing_a_queued_route_preserves_its_sibling() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let (entered, started) = mpsc::channel();
+        let (release, resume) = mpsc::channel();
+        runtime.submit(
+            1,
+            String::new(),
+            context(),
+            Box::new(move || {
+                let _ = entered.send(());
+                let _ = resume.recv_timeout(Duration::from_secs(5));
+            }),
+        );
+        started.recv_timeout(Duration::from_secs(5)).unwrap();
+        let (woke, wakeups) = mpsc::channel();
+        for route_id in [2, 3] {
+            let woke = woke.clone();
+            runtime.submit(
+                route_id,
+                String::new(),
+                context(),
+                Box::new(move || {
+                    let _ = woke.send(route_id);
+                }),
+            );
+        }
+        runtime.forget_route(2);
+        let _ = release.send(());
+        assert_eq!(wakeups.recv_timeout(Duration::from_secs(5)).unwrap(), 3);
+        assert!(runtime.take_result(2, 0).is_none());
+        assert!(runtime.take_result(3, 0).is_some());
+        assert!(runtime.shutdown_timeout(Duration::from_secs(5)));
+        assert!(wakeups.try_recv().is_err());
+    }
+
+    #[test]
+    fn repeated_open_search_shutdown_cycles_acknowledge_cleanup() {
         for cycle in 0..24 {
             let root = tempfile::tempdir().unwrap();
             let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
@@ -1052,6 +1397,8 @@ mod tests {
                 }),
             );
             receiver.recv_timeout(Duration::from_secs(2)).unwrap();
+            assert!(runtime.shutdown_timeout(Duration::from_secs(2)));
+            assert_eq!(runtime.shutdown_status(), WorkerShutdownStatus::Complete);
             drop(runtime);
         }
     }

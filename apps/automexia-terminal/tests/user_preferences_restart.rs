@@ -1,6 +1,8 @@
 use automexia_terminal::automexia::preferences::{
-    load_from_root, write_to_root, PreferenceSource, UserPreferences,
+    load_from_root, write_to_root, ExtensionFeaturePreference, PreferenceSource,
+    PresentationPreferences, UserPreferences,
 };
+use automexia_terminal::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID;
 use rio_backend::config::{theme::AppearanceTheme, Config};
 use std::{path::Path, process::Command};
 
@@ -14,7 +16,7 @@ fn preference_child_write() {
     };
     let preferences = match std::env::var(CHILD_MODE).as_deref() {
         Ok("set") => UserPreferences {
-            font_size: Some(23.0),
+            font_size: Some(23.5),
             appearance_theme: Some(AppearanceTheme::Light),
             shortcuts: vec![rio_backend::config::bindings::UiShortcut {
                 action: "CloneSplitRight".into(),
@@ -26,6 +28,15 @@ fn preference_child_write() {
                         .union(automexia_keybindings::Modifiers::SHIFT),
                 )
                 .unwrap(),
+            }],
+            presentation: PresentationPreferences {
+                inline_tables: Some(false),
+                output_highlighting: Some(false),
+                command_timestamps: Some(false),
+            },
+            extension_features: vec![ExtensionFeaturePreference {
+                id: DEVOPS_CONTEXT_STATUS_ID.into(),
+                enabled: false,
             }],
         },
         Ok("reset") => UserPreferences::default(),
@@ -48,17 +59,27 @@ fn run_child(root: &Path, mode: &str) {
 fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutation() {
     let root = tempfile::tempdir().unwrap();
     let config_path = root.path().join("config.toml");
-    let config_bytes = b"[fonts]\nsize = 15.0\n";
+    let config_bytes = b"force-theme = \"dark\"\n[fonts]\nsize = 15.25\n";
     std::fs::write(&config_path, config_bytes).unwrap();
 
     run_child(root.path(), "set");
     let restarted = load_from_root(root.path());
     assert_eq!(restarted.source, PreferenceSource::Primary);
     let mut base = Config::default();
-    base.fonts.size = 15.0;
+    base.fonts.size = 15.25;
+    base.force_theme = Some(AppearanceTheme::Dark);
     let effective = restarted.preferences.apply_to(&base);
-    assert_eq!(effective.fonts.size, 23.0);
+    assert_eq!(effective.fonts.size, 23.5);
     assert_eq!(effective.force_theme, Some(AppearanceTheme::Light));
+    assert!(!effective.presentation.inline_tables);
+    assert!(!effective.presentation.output_highlighting);
+    assert!(!effective.presentation.command_timestamps);
+    assert_eq!(
+        restarted
+            .preferences
+            .extension_feature_enabled(DEVOPS_CONTEXT_STATUS_ID),
+        Some(false)
+    );
     assert_eq!(effective.bindings.ui_shortcuts.len(), 1);
     assert_eq!(effective.bindings.ui_shortcuts[0].action, "CloneSplitRight");
     assert_eq!(
@@ -70,8 +91,10 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     run_child(root.path(), "reset");
     let reset = load_from_root(root.path());
     let effective = reset.preferences.apply_to(&base);
-    assert_eq!(effective.fonts.size, 15.0);
+    assert_eq!(effective.fonts.size, 15.25);
     assert_eq!(effective.force_theme, base.force_theme);
     assert!(effective.bindings.ui_shortcuts.is_empty());
+    assert_eq!(effective.presentation, base.presentation);
+    assert!(reset.preferences.extension_features.is_empty());
     assert_eq!(std::fs::read(&config_path).unwrap(), config_bytes);
 }

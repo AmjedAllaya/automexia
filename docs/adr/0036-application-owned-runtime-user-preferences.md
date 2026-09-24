@@ -3,6 +3,8 @@
 - Status: accepted
 - Date: 2026-08-26
 - Owners: Automexia maintainers
+- Amended by [ADR 0079](0079-shared-settings-and-presentation-preferences.md) for
+  version-2 storage, the shared Settings catalogue and presentation controls.
 
 ## Context
 

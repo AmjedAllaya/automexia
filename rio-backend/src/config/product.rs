@@ -44,29 +44,32 @@ fn non_empty_env_string(name: &str) -> Option<String> {
 }
 
 #[cfg(target_os = "windows")]
-pub fn default_config_dir() -> PathBuf {
+fn try_default_config_dir() -> Option<PathBuf> {
     non_empty_env("LOCALAPPDATA")
         .or_else(|| dirs::home_dir().map(|home| home.join("AppData").join("Local")))
-        .expect("Automexia requires a user-local application data directory")
-        .join("Automexia")
-        .join("Terminal")
+        .map(|root| root.join("Automexia").join("Terminal"))
 }
 
 #[cfg(target_os = "macos")]
-pub fn default_config_dir() -> PathBuf {
-    dirs::home_dir()
-        .expect("Automexia requires a home directory")
-        .join("Library")
-        .join("Application Support")
-        .join(APPLICATION_ID)
+fn try_default_config_dir() -> Option<PathBuf> {
+    dirs::home_dir().map(|home| {
+        home.join("Library")
+            .join("Application Support")
+            .join(APPLICATION_ID)
+    })
 }
 
 #[cfg(not(any(target_os = "windows", target_os = "macos")))]
-pub fn default_config_dir() -> PathBuf {
+fn try_default_config_dir() -> Option<PathBuf> {
     non_empty_env("XDG_CONFIG_HOME")
         .or_else(|| dirs::home_dir().map(|home| home.join(".config")))
-        .expect("Automexia requires XDG_CONFIG_HOME or a home directory")
-        .join("automexia")
+        .map(|root| root.join("automexia"))
+}
+
+/// Compatibility entry point for existing path consumers. Fallible operations
+/// should use `try_config_dir_path` instead of assuming profile discovery works.
+pub fn default_config_dir() -> PathBuf {
+    try_default_config_dir().expect("Automexia requires a user configuration directory")
 }
 
 #[cfg(target_os = "windows")]
@@ -89,9 +92,9 @@ pub fn legacy_config_dir() -> PathBuf {
     })
 }
 
-pub fn config_dir_path() -> PathBuf {
+pub fn try_config_dir_path() -> Option<PathBuf> {
     if let Some(path) = non_empty_env(CONFIG_HOME_ENV) {
-        return path;
+        return Some(path);
     }
     if non_empty_env(LEGACY_CONFIG_HOME_ENV).is_some() {
         LEGACY_CONFIG_WARNING.call_once(|| {
@@ -100,7 +103,11 @@ pub fn config_dir_path() -> PathBuf {
             );
         });
     }
-    default_config_dir()
+    try_default_config_dir()
+}
+
+pub fn config_dir_path() -> PathBuf {
+    try_config_dir_path().expect("Automexia requires a user configuration directory")
 }
 
 pub fn log_level_override() -> Option<String> {

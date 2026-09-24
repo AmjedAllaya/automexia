@@ -178,6 +178,8 @@ pub enum RioEvent {
     UpdateFontSize(FontSizeRequest),
     /// Notification only: the application retains the bounded edit request.
     ApplyShortcutEdit,
+    OpenSettings,
+    ExtensionInventoryChanged,
     PreferencesWritten,
     Scroll(Scroll),
     ToggleFullScreen,
@@ -384,6 +386,8 @@ impl Debug for RioEvent {
             RioEvent::SelectionScrollTick => write!(f, "SelectionScrollTick"),
             RioEvent::UpdateTitles => write!(f, "UpdateTitles"),
             RioEvent::ApplyShortcutEdit => write!(f, "ApplyShortcutEdit"),
+            RioEvent::OpenSettings => write!(f, "OpenSettings"),
+            RioEvent::ExtensionInventoryChanged => write!(f, "ExtensionInventoryChanged"),
             RioEvent::PreferencesWritten => write!(f, "PreferencesWritten"),
             RioEvent::Noop => write!(f, "Noop"),
             RioEvent::Copy(_) => write!(f, "Copy"),

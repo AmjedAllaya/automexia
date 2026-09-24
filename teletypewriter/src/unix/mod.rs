@@ -2,7 +2,12 @@
 
 #[cfg(target_os = "macos")]
 mod macos;
+mod passwd;
+mod pty_name;
 mod signals;
+use passwd::get_pw_entry;
+#[cfg(test)]
+mod boundary_tests;
 
 extern crate libc;
 
@@ -15,7 +20,7 @@ use corcovado::unix::EventedFd;
 use macos::*;
 use signal_hook::consts as sigconsts;
 use signals::Signals;
-use std::ffi::{CStr, CString};
+use std::ffi::CString;
 use std::fs::File;
 use std::io;
 use std::io::Error;
@@ -42,13 +47,6 @@ const TIOCSWINSZ: libc::c_ulong = 2148037735;
 
 #[link(name = "util")]
 extern "C" {
-    fn forkpty(
-        main: *mut libc::c_int,
-        name: *mut libc::c_char,
-        termp: *const libc::termios,
-        winsize: *const Winsize,
-    ) -> libc::pid_t;
-
     fn openpty(
         main: *mut libc::c_int,
         child: *mut libc::c_int,
@@ -63,65 +61,6 @@ extern "C" {
         options: libc::c_int,
     ) -> libc::pid_t;
 
-    fn ptsname(fd: *mut libc::c_int) -> *mut libc::c_char;
-}
-
-fn default_shell_command(shell: &str, args: &[String]) {
-    // Ignored signal dispositions survive exec (unlike caught
-    // handlers), so the shell inherits whatever the launcher left
-    // ignored: SIGINT/SIGQUIT from a background-job launch, and
-    // SIGPIPE which the Rust runtime always sets to ignore. Reset
-    // the full set to default before exec.
-    unsafe {
-        libc::signal(libc::SIGABRT, libc::SIG_DFL);
-        libc::signal(libc::SIGALRM, libc::SIG_DFL);
-        libc::signal(libc::SIGBUS, libc::SIG_DFL);
-        libc::signal(libc::SIGCHLD, libc::SIG_DFL);
-        libc::signal(libc::SIGFPE, libc::SIG_DFL);
-        libc::signal(libc::SIGHUP, libc::SIG_DFL);
-        libc::signal(libc::SIGILL, libc::SIG_DFL);
-        libc::signal(libc::SIGINT, libc::SIG_DFL);
-        libc::signal(libc::SIGPIPE, libc::SIG_DFL);
-        libc::signal(libc::SIGQUIT, libc::SIG_DFL);
-        libc::signal(libc::SIGSEGV, libc::SIG_DFL);
-        libc::signal(libc::SIGTERM, libc::SIG_DFL);
-        libc::signal(libc::SIGTRAP, libc::SIG_DFL);
-    }
-
-    let program = match CString::new(shell) {
-        Ok(program) => program,
-        Err(_) => return,
-    };
-
-    // argv[0] is the program itself, except on macOS with no custom
-    // args: there a bare shell becomes a login shell via the classic
-    // convention of prefixing argv[0] with '-' (what login(1) does),
-    // which every shell understands without flag parsing.
-    #[allow(unused_mut)]
-    let mut arg0 = program.clone();
-    #[cfg(target_os = "macos")]
-    if args.is_empty() {
-        let name = shell.rsplit('/').next().unwrap_or(shell);
-        if let Ok(login_arg0) = CString::new(format!("-{name}")) {
-            arg0 = login_arg0;
-        }
-    }
-    let mut argv_owned: Vec<CString> = vec![arg0];
-    for arg in args {
-        match CString::new(arg.as_str()) {
-            Ok(arg) => argv_owned.push(arg),
-            Err(_) => return,
-        }
-    }
-
-    // execvp requires a null-terminated argv.
-    let mut argv: Vec<*const libc::c_char> =
-        argv_owned.iter().map(|arg| arg.as_ptr()).collect();
-    argv.push(std::ptr::null());
-
-    unsafe {
-        libc::execvp(program.as_ptr(), argv.as_ptr());
-    }
 }
 
 pub struct Pty {
@@ -393,8 +332,7 @@ impl ShellUser {
     /// look for shell, username, longname, and home dir in the respective environment variables
     /// before falling back on looking in to `passwd`.
     fn from_env() -> Result<Self, Error> {
-        let mut buf = [0; 1024];
-        let pw = get_pw_entry(&mut buf);
+        let pw = get_pw_entry();
 
         let user = match std::env::var("USER") {
             Ok(user) => user,
@@ -498,6 +436,7 @@ pub fn create_pty_with_spawn(
     height: u16,
 ) -> Result<Pty, Error> {
     create_pty_with_spawn_inner(
+        LaunchMode::Spawn,
         None,
         shell,
         args,
@@ -537,6 +476,7 @@ pub fn create_exact_pty(
         })?
         .to_owned();
     create_pty_with_spawn_inner(
+        LaunchMode::Spawn,
         Some(executable),
         Some(&program),
         args,
@@ -617,8 +557,52 @@ impl ExactExecData {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum LaunchMode {
+    Spawn,
+    ForkCompatibility,
+}
+
+#[cfg(any(target_os = "macos", test))]
+fn macos_fork_arg0(shell: &str, args: &[String]) -> String {
+    if args.is_empty() {
+        format!("-{}", shell.rsplit('/').next().unwrap_or(shell))
+    } else {
+        shell.to_owned()
+    }
+}
+
+// Adopt both descriptors before any fallible setup. Each raw descriptor is
+// transferred exactly once and closes on every subsequent error path.
+fn open_pty(winsize: &Winsize) -> io::Result<(OwnedFd, OwnedFd)> {
+    let mut main = -1;
+    let mut child = -1;
+    let term = create_termp(true);
+    for attempt in 0..4 {
+        // SAFETY: all output and input pointers refer to live, correctly sized
+        // stack values; a null name buffer requests no name output. Successful
+        // openpty returns two distinct descriptors owned by this caller.
+        let status =
+            unsafe { openpty(&mut main, &mut child, ptr::null_mut(), &term, winsize) };
+        if status >= 0 {
+            // SAFETY: neither descriptor has another Rust owner. Construct
+            // both owners immediately, before allocations or fallible work.
+            return Ok(unsafe {
+                (OwnedFd::from_raw_fd(main), OwnedFd::from_raw_fd(child))
+            });
+        }
+        let error = Error::last_os_error();
+        if attempt == 3 {
+            return Err(error);
+        }
+        std::thread::sleep(Duration::from_millis(5));
+    }
+    unreachable!("the final openpty attempt always returns")
+}
+
 #[allow(clippy::too_many_arguments)]
 fn create_pty_with_spawn_inner(
+    launch_mode: LaunchMode,
     exact_executable: Option<ExactExecutable>,
     shell: Option<&str>,
     args: Vec<String>,
@@ -635,44 +619,16 @@ fn create_pty_with_spawn_inner(
     #[cfg(any(target_os = "macos", target_os = "freebsd"))]
     let is_controling_terminal = true;
 
-    let mut main: libc::c_int = 0;
-    let mut child: libc::c_int = 0;
     let winsize = Winsize {
         ws_row: rows as libc::c_ushort,
         ws_col: columns as libc::c_ushort,
         ws_xpixel: width as libc::c_ushort,
         ws_ypixel: height as libc::c_ushort,
     };
-    let term = create_termp(true);
-
-    let mut open = || unsafe {
-        openpty(
-            &mut main as *mut _,
-            &mut child as *mut _,
-            ptr::null_mut(),
-            &term as *const libc::termios,
-            &winsize as *const _,
-        )
-    };
-
-    // openpty fails transiently when many PTYs open concurrently (seen
-    // on macOS under parallel spawns, with garbage errno); a brief retry
-    // absorbs it instead of surfacing a dead surface to the embedder.
-    let mut res = open();
-    for _ in 0..3 {
-        if res >= 0 {
-            break;
-        }
-        std::thread::sleep(std::time::Duration::from_millis(5));
-        res = open();
-    }
-
-    if res < 0 {
-        return Err(Error::other(format!(
-            "openpty failed: {}",
-            Error::last_os_error()
-        )));
-    }
+    let (owned_main, owned_child) = open_pty(&winsize)?;
+    let main = owned_main.as_raw_fd();
+    let child = owned_child.as_raw_fd();
+    set_nonblocking(main)?;
 
     let user = match ShellUser::from_env() {
         Ok(data) => data,
@@ -704,7 +660,7 @@ fn create_pty_with_spawn_inner(
     let mut builder = {
         #[cfg(target_os = "macos")]
         {
-            if uses_default_shell && !exact_launch {
+            if uses_default_shell && !exact_launch && launch_mode == LaunchMode::Spawn {
                 // On macOS, use /usr/bin/login to ensure proper login shell environment
                 // This ensures PATH includes directories like /usr/local/bin
                 let hushlogin =
@@ -716,6 +672,9 @@ fn create_pty_with_spawn_inner(
                 login_cmd
             } else {
                 let mut cmd = Command::new(shell_program);
+                if launch_mode == LaunchMode::ForkCompatibility {
+                    cmd.arg0(macos_fork_arg0(shell_program, &args));
+                }
                 cmd.args(args);
                 cmd
             }
@@ -733,7 +692,10 @@ fn create_pty_with_spawn_inner(
     {
         // If running inside a flatpak sandbox.
         // Must retrieve $SHELL from outside the sandbox, so ask the host.
-        if !exact_launch && std::path::PathBuf::from("/.flatpak-info").exists() {
+        if !exact_launch
+            && launch_mode == LaunchMode::Spawn
+            && std::path::PathBuf::from("/.flatpak-info").exists()
+        {
             builder = Command::new("flatpak-spawn");
 
             let mut with_args = vec![
@@ -764,19 +726,15 @@ fn create_pty_with_spawn_inner(
         }
     }
 
-    // Setup child stdin/stdout/stderr as child fd of PTY.
-    // Ownership of fd is transferred to the Stdio structs and will be closed by them at the end of
-    // this scope. (It is not an issue that the fd is closed three times since File::drop ignores
-    // error on libc::close.).
-    let owned_child = unsafe { OwnedFd::from_raw_fd(child) };
-
+    // Each standard stream owns a distinct descriptor. The original slave
+    // remains owned until it is transferred to stdout below.
     builder.stdin(owned_child.try_clone()?);
     builder.stderr(owned_child.try_clone()?);
     builder.stdout(owned_child);
 
     if exact_launch {
         builder.env_clear();
-    } else {
+    } else if launch_mode == LaunchMode::Spawn {
         builder.env("USER", user.user);
         builder.env("HOME", user.home);
         if let Some(env) = env {
@@ -784,6 +742,11 @@ fn create_pty_with_spawn_inner(
         }
     }
 
+    // SAFETY: all allocations, strings, environment, stdio ownership and
+    // exact-executable preparation happen in the parent. The child callback
+    // only invokes async-signal-safe native operations and constructs OS-code
+    // errors. Captured descriptor/argv owners remain live in Command for spawn;
+    // child closes affect only its forked descriptor table, never the parent.
     unsafe {
         builder.pre_exec(move || {
             // Create a new process group.
@@ -796,23 +759,47 @@ fn create_pty_with_spawn_inner(
                 set_controlling_terminal(child)?;
             }
 
-            // No longer need child/main fds.
-            libc::close(child);
-            libc::close(main);
+            // Command has already mapped the slave to standard streams. A
+            // launcher with closed stdio can receive descriptors 0, 1 or 2;
+            // those now refer to the mapped streams and must remain open.
+            if child > libc::STDERR_FILENO {
+                libc::close(child);
+            }
+            if main > libc::STDERR_FILENO {
+                libc::close(main);
+            }
 
-            libc::signal(libc::SIGCHLD, libc::SIG_DFL);
-            libc::signal(libc::SIGHUP, libc::SIG_DFL);
-            libc::signal(libc::SIGINT, libc::SIG_DFL);
-            libc::signal(libc::SIGQUIT, libc::SIG_DFL);
-            libc::signal(libc::SIGTERM, libc::SIG_DFL);
-            libc::signal(libc::SIGALRM, libc::SIG_DFL);
+            // Ignored dispositions survive exec. Preserve the fork entry
+            // point's complete reset, including Rust's ignored SIGPIPE.
+            for signal in [
+                libc::SIGABRT,
+                libc::SIGALRM,
+                libc::SIGBUS,
+                libc::SIGCHLD,
+                libc::SIGFPE,
+                libc::SIGHUP,
+                libc::SIGILL,
+                libc::SIGINT,
+                libc::SIGPIPE,
+                libc::SIGQUIT,
+                libc::SIGSEGV,
+                libc::SIGTERM,
+                libc::SIGTRAP,
+            ] {
+                if libc::signal(signal, libc::SIG_DFL) == libc::SIG_ERR {
+                    return Err(Error::last_os_error());
+                }
+            }
 
             // The embedding process may run with signals blocked (e.g. on a
             // background thread); the child must not inherit that mask or
             // Ctrl-C and friends stop working in the spawned shell.
             let mut set: libc::sigset_t = std::mem::zeroed();
-            libc::sigemptyset(&mut set);
-            libc::sigprocmask(libc::SIG_SETMASK, &set, std::ptr::null_mut());
+            if libc::sigemptyset(&mut set) == -1
+                || libc::sigprocmask(libc::SIG_SETMASK, &set, ptr::null_mut()) == -1
+            {
+                return Err(Error::last_os_error());
+            }
 
             if let Some(exact) = exact_exec.as_ref() {
                 // Keep the replacement guard live on every platform even when
@@ -843,26 +830,23 @@ fn create_pty_with_spawn_inner(
     }
 
     // Prepare signal handling before spawning child.
-    let signals =
-        Signals::new([sigconsts::SIGCHLD]).expect("error preparing signal handling");
+    let signals = Signals::new([sigconsts::SIGCHLD])?;
 
     match builder.spawn() {
         Ok(child_process) => {
-            unsafe {
-                set_nonblocking(main);
-            }
-
             let ptsname: String = tty_ptsname(main).unwrap_or_else(|_| "".to_string());
             let child_unix = Child {
                 id: Arc::new(main),
                 ptsname,
-                pid: Arc::new(child_process.id().try_into().unwrap()),
+                // std obtains this positive Unix ID from pid_t itself, so
+                // converting its public u32 representation is lossless.
+                pid: Arc::new(child_process.id() as libc::pid_t),
                 process: Some(child_process),
             };
 
             Ok(Pty {
                 child: child_unix,
-                file: unsafe { File::from_raw_fd(main) },
+                file: File::from(owned_main),
                 managed_owned_tree: exact_launch,
                 managed_leader_reaped: false,
                 managed_reconciled: false,
@@ -882,15 +866,12 @@ fn create_pty_with_spawn_inner(
     }
 }
 
+/// Create a PTY with the historical fork launch policy.
 ///
-/// Creates a pseudoterminal using fork.
-///
-/// The [`create_pty`] creates a pseudoterminal with similar behavior as tty,
-/// which is a command in Unix and Unix-like operating systems to print the file name of the
-/// terminal connected to standard input. tty stands for TeleTYpewriter.
-///
-/// It returns two [`Pty`] along with respective process name [`String`] and process id (`libc::pid_`)
-///
+/// Argument boundaries and the inherited environment remain unchanged,
+/// including macOS bare-shell login argv[0]. The shared transactional Command launcher
+/// prepares data before fork and reports exec failures to the parent; no child
+/// can return into the embedding application on failure.
 pub fn create_pty_with_fork(
     shell: Option<&str>,
     args: &[String],
@@ -899,77 +880,18 @@ pub fn create_pty_with_fork(
     width: u16,
     height: u16,
 ) -> Result<Pty, Error> {
-    let mut main = 0;
-    let winsize = Winsize {
-        ws_row: rows as libc::c_ushort,
-        ws_col: columns as libc::c_ushort,
-        ws_xpixel: width as libc::c_ushort,
-        ws_ypixel: height as libc::c_ushort,
-    };
-    let term = create_termp(true);
-
-    let user = match ShellUser::from_env() {
-        Ok(data) => data,
-        Err(..) => ShellUser {
-            shell: shell.unwrap_or_default().to_string(),
-            ..Default::default()
-        },
-    };
-
-    let shell_program = shell.unwrap_or_else(|| {
-        tracing::info!("no shell configured, will retrieve from env");
-        &user.shell
-    });
-
-    tracing::info!("fork {:?}", shell_program);
-
-    match unsafe {
-        forkpty(
-            &mut main as *mut _,
-            ptr::null_mut(),
-            &term as *const libc::termios,
-            &winsize as *const _,
-        )
-    } {
-        0 => {
-            default_shell_command(shell_program, args);
-            Err(Error::other(format!(
-                "forkpty has reach unreachable with {shell_program}"
-            )))
-        }
-        id if id > 0 => {
-            // TODO: Currently we fork the process and don't wait to know if led to failure
-            // Whenever it happens it will just simply shut down the teletyperwriter
-            // In the future add an option to check before release the method
-            let ptsname: String = tty_ptsname(main).unwrap_or_else(|_| "".to_string());
-            let child = Child {
-                id: Arc::new(main),
-                ptsname,
-                pid: Arc::new(id),
-                process: None,
-            };
-
-            unsafe {
-                set_nonblocking(main);
-            }
-
-            let signals = Signals::new([sigconsts::SIGCHLD])
-                .expect("error preparing signal handling");
-            Ok(Pty {
-                child,
-                signals,
-                file: unsafe { File::from_raw_fd(main) },
-                managed_owned_tree: false,
-                managed_leader_reaped: false,
-                managed_reconciled: false,
-                token: corcovado::Token(0),
-                signals_token: corcovado::Token(0),
-            })
-        }
-        _ => Err(Error::other(format!(
-            "forkpty failed using {shell_program}"
-        ))),
-    }
+    create_pty_with_spawn_inner(
+        LaunchMode::ForkCompatibility,
+        None,
+        shell,
+        args.to_vec(),
+        &None,
+        None,
+        columns,
+        rows,
+        width,
+        height,
+    )
 }
 
 /// Really only needed on BSD, but should be fine elsewhere.
@@ -990,12 +912,17 @@ fn set_controlling_terminal(fd: libc::c_int) -> Result<(), Error> {
     Ok(())
 }
 
-// https://man7.org/linux/man-pages/man2/fcntl.2.html
-unsafe fn set_nonblocking(fd: libc::c_int) {
-    use libc::{fcntl, F_GETFL, F_SETFL, O_NONBLOCK};
-
-    let res = fcntl(fd, F_SETFL, fcntl(fd, F_GETFL, 0) | O_NONBLOCK);
-    assert_eq!(res, 0);
+fn set_nonblocking(fd: libc::c_int) -> io::Result<()> {
+    // SAFETY: fcntl validates the descriptor and does not access Rust memory.
+    // Read the flags successfully before constructing the updated flag set.
+    let flags = unsafe { libc::fcntl(fd, libc::F_GETFL) };
+    if flags == -1 {
+        return Err(Error::last_os_error());
+    }
+    if unsafe { libc::fcntl(fd, libc::F_SETFL, flags | libc::O_NONBLOCK) } == -1 {
+        return Err(Error::last_os_error());
+    }
+    Ok(())
 }
 
 #[derive(Debug)]
@@ -1251,72 +1178,9 @@ impl Drop for Pty {
     }
 }
 
-#[derive(Debug)]
-struct Passwd<'a> {
-    name: &'a str,
-    dir: &'a str,
-    shell: &'a str,
-}
-
-/// Return a Passwd struct with pointers into the provided buf.
-///
-/// # Unsafety
-///
-/// If `buf` is changed while `Passwd` is alive, bad thing will almost certainly happen.
-fn get_pw_entry(buf: &mut [i8; 1024]) -> Result<Passwd<'_>, Error> {
-    // Create zeroed passwd struct.
-    let mut entry: MaybeUninit<libc::passwd> = MaybeUninit::uninit();
-
-    let mut res: *mut libc::passwd = ptr::null_mut();
-
-    // Try and read the pw file.
-    let uid = unsafe { libc::getuid() };
-    let status = unsafe {
-        libc::getpwuid_r(
-            uid,
-            entry.as_mut_ptr(),
-            buf.as_mut_ptr() as *mut _,
-            buf.len(),
-            &mut res,
-        )
-    };
-    let entry = unsafe { entry.assume_init() };
-
-    if status < 0 {
-        return Err(Error::other("getpwuid_r failed"));
-    }
-
-    if res.is_null() {
-        return Err(Error::other("pw not found"));
-    }
-
-    // Sanity check.
-    assert_eq!(entry.pw_uid, uid);
-
-    // Build a borrowed Passwd struct.
-    Ok(Passwd {
-        name: unsafe { CStr::from_ptr(entry.pw_name).to_str().unwrap() },
-        dir: unsafe { CStr::from_ptr(entry.pw_dir).to_str().unwrap() },
-        shell: unsafe { CStr::from_ptr(entry.pw_shell).to_str().unwrap() },
-    })
-}
-
-/// Unsafe
-/// Return tty pts name [`String`]
-///
-/// # Safety
-///
-/// This function is unsafe because it contains the usage of `libc::ptsname`
-/// from libc that's naturally unsafe.
+/// Return the slave name for a live PTY master using caller-owned storage.
 pub fn tty_ptsname(fd: libc::c_int) -> Result<String, String> {
-    let c_str: &CStr = unsafe {
-        let name_ptr = ptsname(fd as *mut _);
-        CStr::from_ptr(name_ptr)
-    };
-    let str_slice: &str = c_str.to_str().unwrap();
-    let str_buf: String = str_slice.to_owned();
-
-    Ok(str_buf)
+    pty_name::terminal_name(fd).map_err(|error| error.to_string())
 }
 
 pub fn foreground_process_name(main_fd: RawFd, shell_pid: u32) -> String {
@@ -1415,12 +1279,12 @@ mod login_argv_tests {
 
     #[test]
     fn bare_shell_becomes_login_shell() {
-        let argv = login_argv(false, "rapha", "/bin/zsh", &[]);
+        let argv = login_argv(false, "alice", "/bin/zsh", &[]);
         assert_eq!(
             argv,
             vec![
                 "-flp",
-                "rapha",
+                "alice",
                 "/bin/bash",
                 "--noprofile",
                 "--norc",
@@ -1432,7 +1296,7 @@ mod login_argv_tests {
 
     #[test]
     fn hushlogin_adds_quiet_flag() {
-        let argv = login_argv(true, "rapha", "/bin/zsh", &[]);
+        let argv = login_argv(true, "alice", "/bin/zsh", &[]);
         assert_eq!(argv[0], "-q");
         assert_eq!(argv[1], "-flp");
     }
@@ -1440,12 +1304,12 @@ mod login_argv_tests {
     #[test]
     fn custom_command_goes_directly_to_login() {
         let args = vec!["-c".to_string(), "echo hello world; sleep 1".to_string()];
-        let argv = login_argv(false, "rapha", "/bin/bash", &args);
+        let argv = login_argv(false, "alice", "/bin/bash", &args);
         assert_eq!(
             argv,
             vec![
                 "-flp",
-                "rapha",
+                "alice",
                 "/bin/bash",
                 "-c",
                 "echo hello world; sleep 1",
@@ -1455,7 +1319,7 @@ mod login_argv_tests {
 
     #[test]
     fn quotes_in_shell_path_are_escaped() {
-        let argv = login_argv(false, "rapha", "/tmp/it's a shell", &[]);
+        let argv = login_argv(false, "alice", "/tmp/it's a shell", &[]);
         assert_eq!(argv.last().unwrap(), "exec -l '/tmp/it'\\''s a shell'");
     }
 }

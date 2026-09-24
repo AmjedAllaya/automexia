@@ -38,7 +38,12 @@ autoload -Uz add-zsh-hook
 
 __automexia_set_user_var() {
   local name=$1 value=$2 encoded
-  [[ -n $value ]] || return 0
+  # Empty values are explicit clears, including cached identity fields. They
+  # require no encoder process and must not leave a nested shell's value behind.
+  if [[ -z $value ]]; then
+    printf '\e]1337;SetUserVar=%s=\a' "$name"
+    return 0
+  fi
   # The commands array can enumerate every PATH directory, including WSL's
   # mounted Windows directories, on each cold frame-encoding subshell. Resolve
   # only the required executables; never change the user's hashing options.
@@ -64,7 +69,6 @@ __automexia_publish_static_metadata() {
   printf '\e]1337;SetUserVar=automexia_shell_name=enNo\a'
 }
 typeset -g __automexia_identity_frame=$(__automexia_publish_static_metadata)
-printf '%s' "$__automexia_identity_frame"
 unfunction __automexia_publish_static_metadata 2>/dev/null || true
 
 # Zsh-native attribute inspection avoids exporting an unexported shell variable
@@ -103,6 +107,13 @@ __automexia_publish_location_hints() {
     printf '\e]1337;SetUserVar=automexia_env_KUBECONFIG=\a'
   fi
 }
+
+# Startup uses the same complete metadata transaction as prompt replay. The
+# cached identity and locations stay together even if the PTY splits the bytes.
+printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
+printf '%s' "$__automexia_identity_frame"
+__automexia_publish_location_hints
+printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
 
 # Let eza emit the file-type glyphs seen in the liquid-hacker mockup. Keeping
 # this at the shell layer preserves the terminal's PTY contract: Automexia does

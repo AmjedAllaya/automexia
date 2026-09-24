@@ -71,7 +71,7 @@ fn welcome_layout(dimensions: (f32, f32, f32)) -> WelcomeLayout {
 }
 
 #[inline]
-pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors) {
+pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors, creating: bool) {
     let window = sugarloaf.window_size();
     let scale = sugarloaf.scale_factor();
     let dimensions = (window.width, window.height, scale);
@@ -187,13 +187,7 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors) {
         BRAND_CYAN,
         1.0,
     );
-    let action_label = if layout.tiny {
-        "Enter · continue"
-    } else if layout.compact {
-        "Enter · get started"
-    } else {
-        "Press Enter to get started"
-    };
+    let action_label = action_label(layout, creating);
     draw_centered(
         sugarloaf,
         action_label,
@@ -204,6 +198,22 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors) {
         BRAND_CYAN,
         true,
     );
+}
+
+fn action_label(layout: WelcomeLayout, creating: bool) -> &'static str {
+    if creating {
+        if layout.tiny {
+            "Creating…"
+        } else {
+            "Creating configuration…"
+        }
+    } else if layout.tiny {
+        "Enter · continue"
+    } else if layout.compact {
+        "Enter · get started"
+    } else {
+        "Press Enter to get started"
+    }
 }
 
 fn draw_terminal_mark(
@@ -275,6 +285,22 @@ fn rounded(
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn pending_action_copy_is_bounded_and_does_not_invite_duplicate_input() {
+        for dimensions in [
+            (180.0, 90.0, 1.0),
+            (320.0, 220.0, 1.0),
+            (1200.0, 800.0, 2.0),
+        ] {
+            let layout = super::welcome_layout(dimensions);
+            let pending = super::action_label(layout, true);
+            assert!(pending.contains("Creating"));
+            assert!(!pending.contains("Enter"));
+            assert!(pending.len() <= 32);
+            assert!(super::action_label(layout, false).contains("Enter"));
+        }
+    }
+
     use super::*;
 
     #[test]

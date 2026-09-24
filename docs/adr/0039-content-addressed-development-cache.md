@@ -47,6 +47,29 @@ repository authority.
    incompatible cache data must cause a cold rebuild or fail-closed tool
    reinstall, never change a compiled or released artifact's authority.
 
+## Native lease admission and bounded traversal
+
+Applied collection holds the cache-owned admission lock and all acquired idle
+named locks through fresh inventory, eligibility and deletion. Writers retain
+their named lock before briefly taking admission, so a collector never waits
+for a named lock while blocking an admitted writer. A busy named lease protects
+shared candidates. Admission contention returns a bounded retry-later error;
+distinct admitted writers remain concurrent. Context-managed guards release
+locks on failures. Dry runs are observational and do not reserve deletion rights.
+
+Directory iteration is streamed. Queued paths consume the same directory budget
+as visited paths, and ordinary files count toward collection-entry ceilings.
+At most 128 named lease handles are retained, and names have a 64-character
+ceiling. These limits precede retention rather than checking a materialized list.
+The standard-library native lock adapters remain authoritative; no new lock
+service or dependency is introduced.
+
+Locks are advisory: older clients introducing unseen names cannot honor the new
+admission rule. Stop those clients before applied cleanup. Existing named legacy
+leases remain protected. Source regressions cover native subprocess exclusion,
+late admission, collector contention, error release and iterator consumption.
+Native results certify only the executing platform, not every supported host.
+
 ## Alternatives considered
 
 - A repository-local tool cache was rejected because every worktree duplicates

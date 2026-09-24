@@ -26,6 +26,13 @@ use crate::ansi::{
 use super::osc;
 use super::parser::{Params, ParamsIter, Parser, Perform};
 
+/// Local retention policy for untrusted OSC 1337 user-variable metadata.
+/// Empty values remain entries; these byte limits include UTF-8 names/values.
+pub(crate) const MAX_USER_VAR_NAME_BYTES: usize = 128;
+pub(crate) const MAX_USER_VAR_VALUE_BYTES: usize = 8192;
+pub(crate) const MAX_USER_VARS: usize = 128;
+pub(crate) const MAX_USER_VAR_TOTAL_BYTES: usize = 64 * 1024;
+
 /// Maximum time before a synchronized update is aborted.
 const SYNC_UPDATE_TIMEOUT: Duration = Duration::from_millis(150);
 
@@ -162,6 +169,10 @@ pub trait Handler {
 
     /// OSC 1337 SetUserVar: record a shell-provided variable.
     fn set_user_var(&mut self, _name: String, _value: String) {}
+
+    /// Record a recognized rejected user-variable attempt without its content.
+    /// Rejection must not change variable values or semantic terminal state.
+    fn reject_user_var(&mut self) {}
 
     /// Reconcile terminal-owned semantic state after one PTY byte batch.
     /// Shell editors often repaint with cursor/erase sequences after SIGWINCH;
@@ -845,10 +856,9 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
         };
 
         debug!(
-            "[process_apc_buffer] Processing {} bytes (stripped to {}), starts with: {}",
+            "[process_apc_buffer] Processing {} bytes (stripped to {})",
             buffer.len(),
-            data.len(),
-            String::from_utf8_lossy(&data[..data.len().min(50)])
+            data.len()
         );
 
         // Check if this is a Glyph Protocol APC (starts with "25a1").
@@ -896,8 +906,8 @@ impl<'a, H: Handler + 'a> Performer<'a, H> {
             let kitty_params: Vec<&[u8]> = vec![b"G", control, payload];
 
             debug!(
-                "[process_apc_buffer] Parsed Kitty params: control={}, payload_len={}",
-                String::from_utf8_lossy(control),
+                "[process_apc_buffer] Parsed Kitty params: control_len={}, payload_len={}",
+                control.len(),
                 payload.len()
             );
 
@@ -1088,6 +1098,11 @@ impl<U: Handler> Perform for Performer<'_, U> {
         ignore: bool,
         action: char,
     ) {
+        // An overflowing DCS header must not activate any payload handler.
+        if ignore {
+            return;
+        }
+
         match (action, intermediates) {
             ('q', []) => {
                 self.handler.sixel_graphic_start(params);
@@ -1179,6 +1194,13 @@ impl<U: Handler> Perform for Performer<'_, U> {
             self.state.xtgettcap_state.overflowed = false;
         } else {
             debug!("[unhandled dcs_unhook]");
+        }
+    }
+
+    fn osc_rejected(&mut self, params: &[&[u8]]) {
+        if params.first().is_some_and(|id| *id == b"1337") && osc::is_set_user_var(params)
+        {
+            self.handler.reject_user_var();
         }
     }
 
@@ -1345,8 +1367,12 @@ impl<U: Handler> Perform for Performer<'_, U> {
 
             // OSC 1337 - iTerm2 user vars and inline image protocol.
             b"1337" => {
-                if let Some((name, value)) = osc::parse_set_user_var(params) {
-                    self.handler.set_user_var(name, value);
+                if osc::is_set_user_var(params) {
+                    if let Some((name, value)) = osc::parse_set_user_var(params) {
+                        self.handler.set_user_var(name, value);
+                    } else {
+                        self.handler.reject_user_var();
+                    }
                 } else if let Some((graphic, cursor_movement)) =
                     iterm2_image_protocol::parse(params)
                 {
@@ -2378,9 +2404,30 @@ mod tests {
         stored: std::collections::HashSet<u32>,
         replies: Vec<String>,
         chunking: kitty_graphics_protocol::KittyGraphicsState,
+        graphics: Vec<GraphicData>,
+        displays: usize,
+        printed: String,
     }
 
     impl Handler for KittyReplyHandler {
+        fn input(&mut self, character: char) {
+            self.printed.push(character);
+        }
+
+        fn store_graphic(&mut self, graphic: GraphicData) {
+            self.stored.insert(graphic.id.get() as u32);
+            self.graphics.push(graphic);
+        }
+
+        fn kitty_transmit_and_display(
+            &mut self,
+            graphic: GraphicData,
+            _: kitty_graphics_protocol::PlacementRequest,
+        ) {
+            self.displays += 1;
+            self.store_graphic(graphic);
+        }
+
         fn place_graphic(
             &mut self,
             placement: kitty_graphics_protocol::PlacementRequest,
@@ -2399,19 +2446,194 @@ mod tests {
         }
     }
 
+    #[test]
+    fn external_transport_is_denied_through_processor_at_every_split() {
+        use base64::Engine as _;
+        let resource = base64::engine::general_purpose::STANDARD
+            .encode(b"tty-graphics-protocol-fixture");
+        for medium in ["f", "t", "s"] {
+            for action in ["t", "T", "q"] {
+                let input = format!(
+                    "\x1b_Ga={action},t={medium},f=32,s=1,v=1,i=41;{resource}\x1b\\\
+                     \x1b_Ga=t,f=32,s=1,v=1,i=88;/wAA/w==\x1b\\after"
+                );
+                for split in 0..=input.len() {
+                    let mut handler = KittyReplyHandler::default();
+                    let mut processor = Processor::default();
+                    processor.advance(&mut handler, &input.as_bytes()[..split]);
+                    processor.advance(&mut handler, b"");
+                    processor.advance(&mut handler, &input.as_bytes()[split..]);
+                    assert_eq!(
+                        handler.replies,
+                        [
+                            "\x1b_Gi=41;EACCES: external transport requires permission\x1b\\",
+                            "\x1b_Gi=88;OK\x1b\\",
+                        ],
+                        "{medium}/{action} split {split}"
+                    );
+                    assert_eq!(handler.graphics.len(), 1);
+                    assert_eq!(handler.graphics[0].id.get(), 88);
+                    assert_eq!(handler.graphics[0].pixels, [255, 0, 0, 255]);
+                    assert_eq!(handler.displays, 0);
+                    assert_eq!(handler.printed, "after");
+                }
+            }
+        }
+    }
+
     #[derive(Default)]
     struct ProtocolBoundaryHandler {
         xtgettcap_responses: Vec<String>,
         glyph_responses: Vec<String>,
+        sixel_active: bool,
+        sixel_starts: usize,
+        sixel_finishes: usize,
+        sixel_bytes: Vec<u8>,
+        printed: String,
+        private_mode_sets: usize,
     }
 
     impl Handler for ProtocolBoundaryHandler {
+        fn input(&mut self, c: char) {
+            self.printed.push(c);
+        }
+
+        fn set_private_mode(&mut self, _: PrivateMode) {
+            self.private_mode_sets += 1;
+        }
+
+        fn sixel_graphic_start(&mut self, _: &Params) {
+            self.sixel_active = true;
+            self.sixel_starts += 1;
+        }
+
+        fn is_sixel_graphic_active(&self) -> bool {
+            self.sixel_active
+        }
+
+        fn sixel_graphic_put(&mut self, byte: u8) -> Result<(), sixel::Error> {
+            self.sixel_bytes.push(byte);
+            Ok(())
+        }
+
+        fn sixel_graphic_reset(&mut self) {
+            self.sixel_active = false;
+        }
+
+        fn sixel_graphic_finish(&mut self) {
+            self.sixel_active = false;
+            self.sixel_finishes += 1;
+        }
+
         fn xtgettcap_response(&mut self, response: String) {
             self.xtgettcap_responses.push(response);
         }
 
         fn glyph_protocol_response(&mut self, response: String) {
             self.glyph_responses.push(response);
+        }
+    }
+
+    #[test]
+    fn ignored_dcs_headers_do_not_activate_handlers_and_recover() {
+        // The parser accepts 32 parameters and four intermediate bytes.
+        // These fixtures exceed those protocol-parser boundaries.
+        let params = "1;".repeat(33);
+        let invalid = [
+            format!("\x1bP{params}q~\x1b\\"),
+            format!("\x1bP{params}+q544E\x1b\\"),
+            format!("\x1bP={params}s\x1b\\"),
+            "\x1bP+++++q544E\x1b\\".to_owned(),
+        ];
+        for input in invalid {
+            for split in 0..=input.len() {
+                let mut handler = ProtocolBoundaryHandler::default();
+                let mut processor = Processor::default();
+                processor.advance(&mut handler, &input.as_bytes()[..split]);
+                processor.advance(&mut handler, b"");
+                processor.advance(&mut handler, &input.as_bytes()[split..]);
+                assert_eq!(handler.sixel_starts, 0, "split {split}");
+                assert_eq!(handler.sixel_finishes, 0);
+                assert!(handler.sixel_bytes.is_empty());
+                assert!(handler.xtgettcap_responses.is_empty());
+                assert_eq!(handler.private_mode_sets, 0);
+                assert!(processor.sync_timeout().sync_timeout().is_none());
+                assert!(!processor.state.xtgettcap_state.active);
+
+                processor.advance(&mut handler, b"\x1bPq~\x1b\\\x1bP+q544E\x1b\\ok");
+                assert_eq!(handler.sixel_starts, 1);
+                assert_eq!(handler.sixel_finishes, 1);
+                assert_eq!(handler.sixel_bytes, b"~");
+                assert_eq!(
+                    handler.xtgettcap_responses,
+                    ["\x1bP1+r544E=6175746F6D65786961\x1b\\"]
+                );
+                assert_eq!(handler.printed, "ok");
+            }
+        }
+    }
+
+    #[test]
+    fn osc_color_grammar_is_enforced_through_processor_at_every_split() {
+        #[derive(Default)]
+        struct ColorHandler {
+            colors: Vec<(usize, ColorRgb)>,
+        }
+        impl Handler for ColorHandler {
+            fn set_color(&mut self, index: usize, color: ColorRgb) {
+                self.colors.push((index, color));
+            }
+        }
+        let input = format!(
+            "\x1b]4;1;#abcd\x07\x1b]4;1;#{}\x1b\\\x1b]10;rgb:+f/f/f\x07\x1b]4;1;#123456\x07\x1b]10;rgb:f/0/f\x1b\\",
+            "0".repeat(51),
+        );
+        for split in 0..=input.len() {
+            let mut handler = ColorHandler::default();
+            let mut processor = Processor::default();
+            processor.advance(&mut handler, &input.as_bytes()[..split]);
+            processor.advance(&mut handler, b"");
+            processor.advance(&mut handler, &input.as_bytes()[split..]);
+            assert_eq!(
+                handler.colors,
+                [
+                    (
+                        1,
+                        ColorRgb {
+                            r: 0x12,
+                            g: 0x34,
+                            b: 0x56
+                        }
+                    ),
+                    (
+                        NamedColor::Foreground as usize,
+                        ColorRgb {
+                            r: 255,
+                            g: 0,
+                            b: 255
+                        }
+                    ),
+                ],
+                "split {split}"
+            );
+        }
+    }
+
+    #[test]
+    fn fragmented_utf8_preserves_processor_text_and_repeat() {
+        for (input, expected) in [
+            (b"A\xc2\x85\x1b[2bZ".as_slice(), "AAAZ"),
+            (b"\xc3\xa9A\xe3\x81\x82Z".as_slice(), "éAあZ"),
+        ] {
+            for split in 0..=input.len() {
+                let mut handler = SyncHandler::default();
+                let mut processor = Processor::default();
+                processor.advance(&mut handler, &input[..split]);
+                processor.advance(&mut handler, b"");
+                processor.advance(&mut handler, &input[split..]);
+                assert_eq!(handler.printed, expected, "split {split}");
+                assert_eq!(processor.state.preceding_char, Some('Z'));
+            }
         }
     }
 

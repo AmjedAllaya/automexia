@@ -132,6 +132,7 @@ mod tests {
             size_u16: 14,
             synthetic_bold: false,
             synthetic_italic: false,
+            is_color: false,
             #[cfg(not(target_os = "macos"))]
             wght_variation: None,
             ascent_px: 12,

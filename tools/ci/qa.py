@@ -1001,7 +1001,7 @@ def main() -> int:
         ("session-clone", ["cargo", "xtask", "test", "session-clone"], None),
         (
             "loom-channel",
-            ["cargo", "test", "-p", "corcovado", "--test", "loom_channel_readiness", "--locked"],
+            ["cargo", "test", "-p", "corcovado", "--test", "loom_channel_readiness", "--test", "loom_channel_registration", "--locked"],
             {
                 "RUSTFLAGS": (
                     os.environ.get("RUSTFLAGS", "")

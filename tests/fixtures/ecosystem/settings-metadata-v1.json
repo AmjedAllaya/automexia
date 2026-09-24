@@ -1,0 +1,56 @@
+{
+  "schema_version": 1,
+  "publisher_id": "example.publisher",
+  "extension_id": "example.inspect",
+  "extension_version": "1.0.0",
+  "features": [
+    {
+      "id": "summary",
+      "label": "Summary",
+      "description": "Show a summary.",
+      "default_enabled": true,
+      "options": [
+        {
+          "id": "compact",
+          "label": "Compact labels",
+          "description": "Use short labels.",
+          "definition": {
+            "kind": "boolean",
+            "default": false
+          }
+        },
+        {
+          "id": "detail",
+          "label": "Detail",
+          "description": "Choose the detail level.",
+          "definition": {
+            "kind": "choice",
+            "default": "full",
+            "choices": [
+              {
+                "value": "short",
+                "label": "Short"
+              },
+              {
+                "value": "full",
+                "label": "Full"
+              }
+            ]
+          }
+        },
+        {
+          "id": "rows",
+          "label": "Rows",
+          "description": "Maximum summary rows.",
+          "definition": {
+            "kind": "integer",
+            "default": 5,
+            "min": 1,
+            "max": 9,
+            "step": 2
+          }
+        }
+      ]
+    }
+  ]
+}

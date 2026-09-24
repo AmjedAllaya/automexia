@@ -53,5 +53,14 @@ cancels outstanding work, rejects stale publication, joins owned processes,
 removes only Automexia-owned artifacts, and restores last-known-good or disabled
 state. Activation requires separate exact-artifact release evidence.
 
+The package store publishes its in-memory inventory only after an acknowledged
+bounded state write. Its cached committed snapshot reports a checked revision;
+failed replacement, incomplete acknowledgement or partial filesystem changes require explicit
+recovery before another mutation. Historical rows remain diagnostic only while
+recovery is required. State schema v1 and its byte limit are unchanged. Recovery
+rejects saved identity mismatches and advances the revision when membership
+changes. This does not promise rollback, renew package signatures, or make
+recovered metadata trusted Settings declarations.
+
 See [architecture](ARCHITECTURE.md), [extensions](EXTENSIONS.md),
 [testing](ECOSYSTEM-PLATFORM-TESTING.md), and [ADR 0029](adr/0029-sandboxed-signed-ecosystem-boundary.md).

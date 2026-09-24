@@ -40,7 +40,10 @@ editable command and cursor. Context decoration does not insert command text.
 
 For passive Kubernetes context, Bash, Zsh, Fish and PowerShell publish local HOME
 and exported KUBECONFIG paths with byte limits, cached encoding, explicit clearing
-and paired commit markers. These values are not credentials or process authority.
+and snapshot commit markers. Native Windows PowerShell additionally publishes
+HOMEDRIVE, HOMEPATH and USERPROFILE so the background worker can select the same
+local default configuration as Kubernetes. Prompts do not probe these paths.
+These values are not credentials or process authority.
 Set `AUTOMEXIA_CONTEXT_PATH_HINTS=0` to clear them on the next prompt; remove that
 setting to restore publication. CMD retains application-inherited discovery
 because its native PROMPT cannot encode changing environment values. See

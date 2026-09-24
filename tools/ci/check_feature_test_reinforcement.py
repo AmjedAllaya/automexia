@@ -94,12 +94,12 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
         "checker_reinforcements": ("scalar-score and allocation evidence",),
     },
     "identity-config-migration": {
-        "needed_tests": ("Unicode colour digit panic", "exact RGB/RGBA"),
+        "needed_tests": ("Unicode colour digit panic", "exact RGB/RGBA", "Whole-batch environment rejection", "every platform override", "Concurrent no-overwrite publication", "isolated fixture ownership"),
         "verification_reinforcements": ("first-use zero-allocation palette", "same-host palette setup"),
         "checker_reinforcements": ("colour grammar and allocation evidence",),
     },
     "contributor-automation-quality-policy": {
-        "needed_tests": ("parent-exit retained-pipe", "exact descendant identities", "joined readers"),
+        "needed_tests": ("native child admission during deletion", "retained named locks", "iterator closure", "128-lease overflow", "parent-exit retained-pipe", "exact descendant identities", "joined readers"),
     },
     "prompt-context-devops-semantics": {
         "needed_tests": ("Lifecycle versus readiness", "condition polarity", "mixed failure counts", "parser-to-grid status colours", "kind-prefixed pods", "zero-count log prefixes"),
@@ -160,6 +160,10 @@ REQUIRED_FEATURE_SCENARIO_DETAILS = {
     },
     "pty-scheduler-process-lifecycle": {
         "needed_tests": (
+            "Windows pipe storage",
+            "independent FIFO model",
+            "bounded cross-thread publication",
+            "joined endpoint drops",
             "Buffered native probes verify every consumed key value and ordinal",
             "Confirmed window dismissal",
             "Saturated native output",
@@ -345,6 +349,11 @@ NATIVE_CONTRACT_SOURCES = {
     "table_capture": "apps/automexia-terminal/src/automexia/table_output.rs",
     "table_view": "apps/automexia-terminal/src/table_view.rs",
     "table_pixels": "apps/automexia-terminal/src/table_view_tests.rs",
+    "inline_capture": "apps/automexia-terminal/src/automexia/inline_tables.rs",
+    "inline_renderer": "apps/automexia-terminal/src/renderer/inline_tables.rs",
+    "inline_pixels": "apps/automexia-terminal/src/renderer/inline_table_tests.rs",
+    "text_clip": "sugarloaf/src/text.rs",
+    "text_clip_tests": "sugarloaf/src/text_tests.rs",
     "qa": "tools/ci/qa.py",
     "qa_process": "tools/ci/qa_process.py",
     "compiler_probe": "tools/ci/rust_toolchain.py",
@@ -355,6 +364,7 @@ NATIVE_CONTRACT_SOURCES = {
     "xtask": "tools/xtask/src/main.rs",
     "palette": "apps/automexia-terminal/src/renderer/command_palette.rs",
     "screen": "apps/automexia-terminal/src/screen/mod.rs",
+    "screen_settings": "apps/automexia-terminal/src/screen/settings.rs",
     "application": "apps/automexia-terminal/src/application.rs",
     "context": "apps/automexia-terminal/src/context/mod.rs",
     "router": "apps/automexia-terminal/src/router/mod.rs",
@@ -625,10 +635,32 @@ def _validate_table_sources(sources: dict[str, str]) -> None:
         "table_view": ("self.close();", "WindowEvent::Ime(_)", "WindowEvent::DroppedFile(_)", "self.viewport.horizontal_thumb(", "table.visible_range(", "Effect::Consumed"),
         "table_pixels": ("fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()", "assert_eq!(pixels, after.pixels(760, 260));", "line.0.y += 1.0;", "assert_eq!(row_lines, [77.0, 99.0, 121.0, 143.0]);"),
         "application": (".handle_table_window_event(&event, &mut self.router.clipboard)",),
-        "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_table_key_release(key)", "self.table_view.draw("),
+        "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_overlay_key_release(event)", "self.handle_settings_key(key, clipboard)", "self.table_view.draw("),
+        "screen_settings": ("self.consume_overlay_key_release(key)", "self.dispatch_settings_key(key, clipboard, true)"),
         "application_bench": ("    core_table_view,", "assert_eq!(table.source(), &source);", "assert_eq!(table.column_starts(), &[0, 11, 27]);"),
     }.items():
         _require_fragments(sources[owner], fragments, "focused core table " + owner)
+    key_owner = _source_slice(sources["screen_settings"], "pub(crate) fn handle_settings_key(", "pub(crate) fn handle_settings_menu_key(", "shared modal key-release owner")
+    release = key_owner.find("self.consume_overlay_key_release(key)")
+    dispatch = key_owner.find("self.dispatch_settings_key(key, clipboard, true)")
+    if release < 0 or dispatch < 0 or release >= dispatch:
+        raise ReinforcementError("shared modal release must be consumed before view dispatch")
+
+
+def _validate_inline_table_sources(sources: dict[str, str]) -> None:
+    # Read-only VT capture, one projection and actual glyph tests form one owner chain.
+    for owner, fragments in {
+        "inline_capture": ("MAX_SCAN_CELLS: usize = 64 * 1024", "MAX_SCAN_ROWS: usize = 512", "MAX_SURFACES: usize = 4", ".bounds_to_display_string_bounded(", "pub fn needs_snapshot", "pub fn source_position", "StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES"),
+        "inline_renderer": (".row_geometry(si, ri, &content.command_rows)", "canvas.text().draw_cells_clipped(", "selection.contains(cell)", "value.grapheme_indices(true)"),
+        "inline_pixels": ("fn inline_table_pixels_have_single_shared_edges_at_wide_narrow_and_fractional_sizes()", "fn inline_table_real_glyphs_cannot_escape_their_cells_or_pane()", "fn inline_table_visual_scroll_round_trip_preserves_partial_soft_wrapped_rows()", "fn inline_table_finishes_a_visible_soft_wrapped_row_below_the_viewport()"),
+        "text_clip": ("pub fn draw_clipped(", "pub fn draw_cells_clipped("),
+        "text_clip_tests": ("fn cell_clipping_contains_real_glyph_ink_at_fractional_scales()",),
+        "renderer": (".needs_snapshot(&*terminal)", "inline_tables::draw("),
+        "command_wrap_renderer": ("content.inline_tables.bands()",),
+        "screen": ("self.native_mouse_position(display_offset)", "!p.inline_tables.hides_native(*row)"),
+        "application_bench": ('"inline_wrap_checked"', "assert_eq!(wrapped.rows.len(), 256);"),
+    }.items():
+        _require_fragments(sources[owner], fragments, "inline header table " + owner)
 
 
 def _validate_hyperlink_sources(sources: dict[str, str]) -> None:
@@ -800,6 +832,7 @@ def _validate_native_contract_sources(sources: dict[str, str]) -> None:
     _validate_resize_listing_sources(sources)
     _validate_command_wrapping_sources(sources)
     _validate_table_sources(sources)
+    _validate_inline_table_sources(sources)
     _validate_hyperlink_sources(sources)
     _validate_google_sources(sources)
     _validate_local_tool_sources(sources)

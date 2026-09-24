@@ -153,10 +153,19 @@ pub fn contribution(
             cloud.provider.to_string()
         };
         let role = cloud_role(cloud.provider);
+        let mut description = format!("{} cloud context", sanitize_label(cloud.provider));
+        let profile = sanitize_label(&cloud.profile);
+        let region = sanitize_label(&cloud.region);
+        if !profile.is_empty() {
+            description.push_str(&format!(", profile {profile}"));
+        }
+        if !region.is_empty() {
+            description.push_str(&format!(", region {region}"));
+        }
         push(
             &format!("cloud-{index}"),
             value.clone(),
-            format!("{} cloud context {value}", cloud.provider),
+            description,
             role,
             IconKind::Cloud,
             40 + u16::try_from(index).unwrap_or(9).min(9),
@@ -368,7 +377,7 @@ mod projection_tests {
                 (
                     "cloud-0",
                     "eu-west-3",
-                    "aws cloud context eu-west-3",
+                    "aws cloud context, profile prod, region eu-west-3",
                     SegmentRole::Aws,
                     IconKind::Cloud,
                     40,

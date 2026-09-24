@@ -63,10 +63,19 @@ def validate_qa_runner(source: str) -> None:
 
 
 def validate_application(main: str, shell: str, integration: str, cmd: str) -> None:
+    environment = section(main, "pub fn setup_environment_variables(", "fn execute_cli_command(")
+    validation = environment.find("rio_backend::config::environment::parse_environment(&config.env_vars)?;")
+    first_write = environment.find("std::env::set_var(")
     require(
-        main.find("for env_config in config.env_vars.iter()")
-        < main.find("shell_integration::prepare_session_environment()"),
-        "session integration trust resolution must override config-supplied paths",
+        0 <= validation < first_write,
+        "environment validation must precede every process environment write",
+    )
+    application = environment.find("for (name, value) in environment {")
+    assignment = environment.find("std::env::set_var(name, value);")
+    trust = environment.find("automexia::shell_integration::prepare_session_environment();")
+    require(
+        0 <= validation < application < assignment < trust,
+        "session integration trust resolution must follow the validated config batch",
     )
     require(
         "run_persistent(" in main
@@ -109,6 +118,69 @@ def validate_application(main: str, shell: str, integration: str, cmd: str) -> N
     require(
         "ExecutionPolicy Bypass" not in cmd,
         "shipped CMD helpers must not bypass PowerShell execution policy",
+    )
+
+
+def validate_welcome_input(router: str, application: str, worker: str) -> None:
+    # Source ownership guard only; native worker and routing tests prove behavior.
+    route_input = section(router, "pub fn has_key_wait(", "pub struct Router")
+    intent = section(router, "fn welcome_key_intent(", "pub struct Route")
+    keyboard = section(application, "WindowEvent::KeyboardInput {", "route.window.screen.context_manager.set_last_typing();")
+    for owner in (route_input, intent, keyboard):
+        require(
+            all(operation not in owner for operation in (
+                "create_config_file(", "std::fs::", "File::create(", "OpenOptions::",
+            )),
+            "Welcome input must defer configuration I/O to its owned worker",
+        )
+    require(
+        "return welcome_key_intent(" in route_input
+        and "RouteKeyIntent::CreateConfiguration" in intent
+        and "self.router.config_creation.submit(" in keyboard,
+        "Welcome input must submit its typed intent to the application owner",
+    )
+    events = section(application, "fn user_event(", "match event.payload {")
+    require(
+        "self.finish_configuration_creation();" in events,
+        "Welcome completion must drain before event routing to a possibly closed window",
+    )
+    completion = section(application, "fn finish_configuration_creation(", "fn request_application_exit(")
+    require(
+        "take_completion()" in completion
+        and "completion.applies_to(" in completion
+        and "&route.welcome_identity" in completion
+        and "route.path == RoutePath::Welcome" in completion,
+        "Welcome completion must check the originating route identity and state",
+    )
+    require(
+        "mpsc::sync_channel(1)" in worker
+        and 'BoundedWorker::new("starter-config", 1,' in worker,
+        "Welcome creation must retain one bounded worker and completion slot",
+    )
+    execution = section(worker, "impl Drop for CompletionPublisher", "fn execute_request(")
+    publication = execution.find("self.completed.try_send(completion).is_ok()")
+    wake = execution.find("wake.wake(window);")
+    require(
+        0 <= publication < wake,
+        "Welcome creation must publish its result before waking the application",
+    )
+
+
+def validate_windows_wake_registration(source: str) -> None:
+    constructor = section(source, "pub(crate) fn new(", "pub fn window_target(")
+    gate = constructor.find("create_event_target_after_registration(")
+    registration = constructor.find("USER_EVENT_MSG_ID.try_get()")
+    target = constructor.find("create_event_target_window()")
+    require(
+        0 <= gate < registration < target,
+        "Windows wake registration must precede native event-target creation",
+    )
+    helper = section(source, "fn create_event_target_after_registration(", "fn create_event_target_window(")
+    registration = helper.find("register().map_err(|error| EventLoopError::Os(os_error!(error)))?;")
+    target = helper.find("Ok(create_target())")
+    require(
+        0 <= registration < target,
+        "Windows wake registration failure must return before target allocation",
     )
 
 
@@ -286,6 +358,12 @@ def validate_repository() -> float:
         read("apps/automexia-terminal/src/automexia/shell_integration.rs"),
         read("shell-integration/cmd/automexia-ls.cmd"),
     )
+    validate_welcome_input(
+        read("apps/automexia-terminal/src/router/mod.rs"),
+        read("apps/automexia-terminal/src/application.rs"),
+        read("apps/automexia-terminal/src/config_creation.rs"),
+    )
+    validate_windows_wake_registration(read("rio-window/src/platform_impl/windows/event_loop.rs"))
     validate_wsl(read("shell-integration/windows-wsl.ps1"))
     validate_manifest(
         read("packaging/windows/automexia.manifest"),

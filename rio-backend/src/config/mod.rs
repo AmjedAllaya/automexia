@@ -3,13 +3,17 @@ pub mod bindings;
 // `colors` and `ConfigError` moved to the `rio-vt` core crate; re-export
 // so `rio_backend::config::{colors, ConfigError}` keep resolving.
 pub use rio_vt::config::{colors, ConfigError};
+mod creation;
+pub use creation::{create_config_file, CreateConfigError, CreateConfigOutcome};
 pub mod defaults;
 pub mod effects;
+pub mod environment;
 pub mod hints;
 pub mod keyboard;
 pub mod layout;
 pub mod navigation;
 pub mod platform;
+pub mod presentation;
 pub mod product;
 pub mod renderer;
 pub mod theme;
@@ -30,7 +34,7 @@ use crate::config::title::Title;
 use crate::config::window::Window;
 use colors::Colors;
 use serde::{Deserialize, Serialize};
-use std::io::{Read, Write};
+use std::io::Read;
 use std::path::{Path, PathBuf};
 use std::{default::Default, fs::File};
 #[cfg(feature = "renderer")]
@@ -184,6 +188,8 @@ pub struct Config {
     pub scrollback_history_limit: usize,
     #[serde(default = "effects::Effects::default")]
     pub effects: effects::Effects,
+    #[serde(default)]
+    pub presentation: presentation::Presentation,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -250,53 +256,25 @@ fn read_bounded_utf8(
     Ok(content)
 }
 
-#[inline]
-pub fn create_config_file(path: Option<PathBuf>) {
-    let default_file_path = path.clone().unwrap_or(config_file_path());
-    if default_file_path.exists() {
-        tracing::info!(
-            "configuration file already exists at {}",
-            default_file_path.display()
-        );
-        return;
-    }
-
-    if path.is_none() {
-        let default_dir_path = config_dir_path();
-        match std::fs::create_dir_all(&default_dir_path) {
-            Ok(_) => {
-                tracing::info!(
-                    "configuration path created {}",
-                    default_dir_path.display()
-                );
-            }
-            Err(err_message) => {
-                tracing::error!("could not create config directory: {err_message}");
-            }
-        }
-    }
-
-    match File::create(&default_file_path) {
-        Err(err_message) => {
-            tracing::error!(
-                "could not create config file {}: {err_message}",
-                default_file_path.display()
-            )
-        }
-        Ok(mut created_file) => {
-            tracing::info!("configuration file created {}", default_file_path.display());
-
-            if let Err(err_message) = writeln!(created_file, "{}", config_file_content())
-            {
-                tracing::error!(
-                    "could not update config file with defaults: {err_message}"
-                )
-            }
-        }
-    }
-}
-
 impl Config {
+    /// Validate every platform batch before publishing a configuration candidate.
+    pub fn validate_environment(&self) -> Result<(), environment::EnvironmentError> {
+        environment::parse_environment(&self.env_vars)?;
+        for platform in [
+            self.platform.linux.as_ref(),
+            self.platform.windows.as_ref(),
+            self.platform.macos.as_ref(),
+        ]
+        .into_iter()
+        .flatten()
+        {
+            if let Some(entries) = &platform.env_vars {
+                environment::parse_environment(entries)?;
+            }
+        }
+        Ok(())
+    }
+
     #[cfg(test)]
     fn load_from_path(path: &Path) -> Self {
         if path.exists() {
@@ -312,60 +290,14 @@ impl Config {
     }
     #[cfg(test)]
     fn load_from_path_without_fallback(path: &Path) -> Result<Self, String> {
-        if path.exists() {
-            let content =
-                read_bounded_utf8(path, product::MAX_CONFIG_FILE_BYTES, "configuration")?;
-            match toml::from_str::<Config>(&content) {
-                Ok(mut decoded) => {
-                    let theme = &decoded.theme;
-                    if theme.is_empty() {
-                        return Ok(decoded);
-                    }
-
-                    let tmp = std::env::temp_dir();
-                    let path = tmp.join(theme).with_extension("toml");
-                    if let Ok(loaded_theme) = Config::load_theme(&path) {
-                        decoded.colors = loaded_theme.colors;
-                    } else {
-                        warn!("failed to load theme: {}", theme);
-                    }
-
-                    if let Some(adaptive_theme) = &decoded.adaptive_theme {
-                        let light_theme = &adaptive_theme.light;
-                        let path = tmp.join(light_theme).with_extension("toml");
-                        let mut adaptive_colors = AdaptiveColors {
-                            dark: None,
-                            light: None,
-                        };
-
-                        if let Ok(light_loaded_theme) = Config::load_theme(&path) {
-                            adaptive_colors.light = Some(light_loaded_theme.colors);
-                        } else {
-                            warn!("failed to load light theme: {}", light_theme);
-                        }
-
-                        let dark_theme = &adaptive_theme.dark;
-                        let path = tmp.join(dark_theme).with_extension("toml");
-                        if let Ok(dark_loaded_theme) = Config::load_theme(&path) {
-                            adaptive_colors.dark = Some(dark_loaded_theme.colors);
-                        } else {
-                            warn!("failed to load dark theme: {}", dark_theme);
-                        }
-
-                        if adaptive_colors.light.is_some()
-                            && adaptive_colors.dark.is_some()
-                        {
-                            decoded.adaptive_colors = Some(adaptive_colors);
-                        }
-                    }
-
-                    Ok(decoded)
-                }
-                Err(err_message) => Err(format!("error parsing: {err_message:?}")),
-            }
-        } else {
-            Err(String::from("filepath does not exist"))
-        }
+        let content =
+            read_bounded_utf8(path, product::MAX_CONFIG_FILE_BYTES, "configuration")?;
+        let mut decoded = Self::decode_with_default_colors(&content, Colors::default())
+            .map_err(|error| format!("{error:?}"))?;
+        let theme_root = path.parent().ok_or("configuration fixture has no parent")?;
+        // Historical fixture helper is tolerant of an absent named theme.
+        let _ = decoded.resolve_themes(theme_root);
+        Ok(decoded)
     }
 
     fn load_theme(path: &Path) -> Result<Theme, String> {
@@ -385,150 +317,172 @@ impl Config {
         toml::to_string(self)
     }
 
-    pub fn load() -> Self {
-        let config_path = config_dir_path();
-        let path = config_file_path();
-        if path.exists() {
-            let content = match read_bounded_utf8(
-                &path,
-                product::MAX_CONFIG_FILE_BYTES,
-                "configuration",
-            ) {
-                Ok(content) => content,
-                Err(error) => {
-                    warn!(
-                        "failure to load config file, falling back to default: {error}"
-                    );
-                    return Config::default();
-                }
-            };
-            match toml::from_str::<Config>(&content) {
-                Ok(mut decoded) => {
-                    let theme = &decoded.theme;
-                    if theme.is_empty() {
-                        return decoded;
-                    }
+    fn decode_with_default_colors(
+        content: &str,
+        default_colors: Colors,
+    ) -> Result<Self, ConfigError> {
+        Self::decode_with_palette_defaults(content, |_| Ok(default_colors))
+    }
 
-                    let path = config_path
-                        .join("themes")
-                        .join(theme)
-                        .with_extension("toml");
-                    if let Ok(loaded_theme) = Config::load_theme(&path) {
-                        decoded.colors = loaded_theme.colors;
-                    } else {
-                        warn!("failed to load theme: {}", theme);
-                    }
+    fn decode_with_palette_defaults(
+        content: &str,
+        select_defaults: impl FnOnce(&Self) -> Result<Colors, ConfigError>,
+    ) -> Result<Self, ConfigError> {
+        // Consume [colors] once, retaining its presence independently of values.
+        // All other fields retain Config's existing schema and unknown-field policy.
+        #[derive(Deserialize)]
+        struct ConfigInput {
+            colors: Option<Colors>,
+            #[serde(flatten)]
+            config: Config,
+        }
+        let input: ConfigInput =
+            toml::from_str(content).map_err(|error: toml::de::Error| {
+                ConfigError::ErrLoadingConfig(error.to_string())
+            })?;
+        let mut decoded = input.config;
+        decoded
+            .validate_environment()
+            .map_err(|error| ConfigError::ErrLoadingConfig(error.to_string()))?;
+        decoded.colors = match input.colors {
+            Some(colors) => colors,
+            None => select_defaults(&decoded)?,
+        };
+        Ok(decoded)
+    }
 
-                    decoded
-                }
-                Err(err_message) => {
-                    warn!("failure to parse config file, falling back to default...\n{err_message:?}");
-                    Config::default()
-                }
-            }
-        } else {
-            Config::default()
+    /// Read the selected platform table without applying or appending its values.
+    pub fn active_platform_config(&self) -> Option<&PlatformConfig> {
+        #[cfg(windows)]
+        {
+            self.platform.windows.as_ref()
+        }
+        #[cfg(target_os = "linux")]
+        {
+            self.platform.linux.as_ref()
+        }
+        #[cfg(target_os = "macos")]
+        {
+            self.platform.macos.as_ref()
+        }
+        #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+        {
+            None
         }
     }
 
-    pub fn try_load() -> Result<Self, ConfigError> {
-        let path = config_file_path();
-        if path.exists() {
-            match read_bounded_utf8(
-                &path,
-                product::MAX_CONFIG_FILE_BYTES,
-                "configuration",
-            ) {
-                Ok(content) => match toml::from_str::<Config>(&content) {
-                    Ok(mut decoded) => {
-                        let theme = &decoded.theme;
-                        let theme_path = config_dir_path().join("themes");
-                        if !theme.is_empty() {
-                            let path = theme_path.join(theme).with_extension("toml");
-                            match Config::load_theme(&path) {
-                                Ok(loaded_theme) => {
-                                    decoded.colors = loaded_theme.colors;
-                                }
-                                Err(err_message) => {
-                                    return Err(ConfigError::ErrLoadingTheme(
-                                        err_message,
-                                    ));
-                                }
-                            }
-                        }
-
-                        if let Some(adaptive_theme) = &decoded.adaptive_theme {
-                            let mut adaptive_colors = AdaptiveColors {
-                                dark: None,
-                                light: None,
-                            };
-
-                            let light_theme = &adaptive_theme.light;
-                            let path =
-                                theme_path.join(light_theme).with_extension("toml");
-                            match Config::load_theme(&path) {
-                                Ok(light_loaded_theme) => {
-                                    adaptive_colors.light =
-                                        Some(light_loaded_theme.colors)
-                                }
-                                Err(err_message) => {
-                                    warn!("failed to load light theme: {}", light_theme);
-                                    return Err(ConfigError::ErrLoadingTheme(
-                                        err_message,
-                                    ));
-                                }
-                            }
-
-                            let dark_theme = &adaptive_theme.dark;
-                            let path = theme_path.join(dark_theme).with_extension("toml");
-                            match Config::load_theme(&path) {
-                                Ok(dark_loaded_theme) => {
-                                    adaptive_colors.dark = Some(dark_loaded_theme.colors)
-                                }
-                                Err(err_message) => {
-                                    warn!("failed to load dark theme: {}", dark_theme);
-                                    return Err(ConfigError::ErrLoadingTheme(
-                                        err_message,
-                                    ));
-                                }
-                            }
-
-                            if adaptive_colors.light.is_some()
-                                && adaptive_colors.dark.is_some()
-                            {
-                                decoded.adaptive_colors = Some(adaptive_colors);
-                            }
-                        }
-
-                        Ok(decoded)
-                    }
-                    Err(err_message) => {
-                        Err(ConfigError::ErrLoadingConfig(err_message.to_string()))
-                    }
-                },
-                Err(err_message) => {
-                    Err(ConfigError::ErrLoadingConfig(err_message.to_string()))
-                }
-            }
+    fn resolve_themes(&mut self, theme_root: &Path) -> Result<(), ConfigError> {
+        let theme = self
+            .active_platform_config()
+            .and_then(|platform| platform.theme.as_ref())
+            .unwrap_or(&self.theme)
+            .clone();
+        let load = |name: &str| {
+            Self::load_theme(&theme_root.join(name).with_extension("toml"))
+                .map(|theme| theme.colors)
+                .map_err(ConfigError::ErrLoadingTheme)
+        };
+        let colors = if theme.is_empty() {
+            self.colors
         } else {
-            Err(ConfigError::PathNotFound)
+            load(&theme)?
+        };
+        let adaptive_colors = if let Some(adaptive) = &self.adaptive_theme {
+            Some(AdaptiveColors {
+                light: Some(load(&adaptive.light)?),
+                dark: Some(load(&adaptive.dark)?),
+            })
+        } else {
+            self.adaptive_colors.clone()
+        };
+        // Publish only after the complete selected palette set has loaded.
+        self.theme = theme;
+        self.colors = colors;
+        self.adaptive_colors = adaptive_colors;
+        Ok(())
+    }
+
+    pub fn load() -> Self {
+        let path = config_file_path();
+        if !path.exists() {
+            return Self::default();
         }
+        let decoded =
+            read_bounded_utf8(&path, product::MAX_CONFIG_FILE_BYTES, "configuration")
+                .map_err(ConfigError::ErrLoadingConfig)
+                .and_then(|content| {
+                    Self::decode_with_default_colors(&content, Colors::default())
+                });
+        match decoded {
+            Ok(mut config) => {
+                // Preserve this legacy loader's named-theme-only behavior.
+                // The strict loader prepares the complete adaptive pair.
+                let adaptive_theme = config.adaptive_theme.take();
+                let resolved = config.resolve_themes(&config_dir_path().join("themes"));
+                config.adaptive_theme = adaptive_theme;
+                if resolved.is_err() {
+                    warn!("failed to resolve configured theme; preserving parsed configuration");
+                }
+                config
+            }
+            Err(_) => {
+                warn!("failed to load configuration; using defaults");
+                Self::default()
+            }
+        }
+    }
+
+    /// Preserve the backend's established palette defaults for existing callers.
+    pub fn try_load() -> Result<Self, ConfigError> {
+        Self::try_load_with_default_colors(Colors::default())
+    }
+
+    /// Prepare a complete candidate with caller-selected defaults for an omitted palette.
+    pub fn try_load_with_default_colors(
+        default_colors: Colors,
+    ) -> Result<Self, ConfigError> {
+        Self::try_load_with_palette_defaults(|_| Ok(default_colors))
+    }
+
+    /// Select omitted-palette defaults from a validated candidate, without environment mutation.
+    pub fn try_load_with_palette_defaults(
+        select_defaults: impl FnOnce(&Self) -> Result<Colors, ConfigError>,
+    ) -> Result<Self, ConfigError> {
+        Self::try_load_from_path_with_palette(
+            &config_file_path(),
+            &config_dir_path().join("themes"),
+            select_defaults,
+        )
+    }
+
+    #[cfg(test)]
+    fn try_load_from_path(
+        path: &Path,
+        theme_root: &Path,
+        default_colors: Colors,
+    ) -> Result<Self, ConfigError> {
+        Self::try_load_from_path_with_palette(path, theme_root, |_| Ok(default_colors))
+    }
+
+    fn try_load_from_path_with_palette(
+        path: &Path,
+        theme_root: &Path,
+        select_defaults: impl FnOnce(&Self) -> Result<Colors, ConfigError>,
+    ) -> Result<Self, ConfigError> {
+        if !path.exists() {
+            return Err(ConfigError::PathNotFound);
+        }
+        let content =
+            read_bounded_utf8(path, product::MAX_CONFIG_FILE_BYTES, "configuration")
+                .map_err(ConfigError::ErrLoadingConfig)?;
+        let mut decoded = Self::decode_with_palette_defaults(&content, select_defaults)?;
+        decoded.resolve_themes(theme_root)?;
+        Ok(decoded)
     }
 
     pub fn overwrite_based_on_platform(&mut self) {
-        #[cfg(windows)]
-        if let Some(windows) = &self.platform.windows {
-            self.overwrite_with_platform_config(windows.clone());
-        }
-
-        #[cfg(target_os = "linux")]
-        if let Some(linux) = &self.platform.linux {
-            self.overwrite_with_platform_config(linux.clone());
-        }
-
-        #[cfg(target_os = "macos")]
-        if let Some(macos) = &self.platform.macos {
-            self.overwrite_with_platform_config(macos.clone());
+        if let Some(platform) = self.active_platform_config().cloned() {
+            self.overwrite_with_platform_config(platform);
         }
     }
 
@@ -715,6 +669,7 @@ impl Default for Config {
             enable_scroll_bar: true,
             scrollback_history_limit: default_scrollback_history_limit(),
             effects: effects::Effects::default(),
+            presentation: presentation::Presentation::default(),
         }
     }
 }
@@ -730,6 +685,13 @@ impl Default for CursorConfig {
 }
 
 #[cfg(test)]
+mod creation_tests;
+#[cfg(test)]
+mod environment_tests;
+#[cfg(test)]
+mod theme_resolution_tests;
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use colors::{hex_to_color_arr, hex_to_color_wgpu};
@@ -737,52 +699,73 @@ mod tests {
     use std::io::Write;
     use sugarloaf::font::fonts::parse_unicode;
 
-    fn tmp_dir() -> PathBuf {
-        std::env::temp_dir()
-    }
-
-    fn bounded_test_path(name: &str) -> PathBuf {
-        tmp_dir().join(format!(
-            "automexia-config-boundary-{name}-{}",
-            std::process::id()
-        ))
+    fn tmp_dir() -> tempfile::TempDir {
+        tempfile::tempdir().unwrap()
     }
 
     fn create_temporary_config(prefix: &str, toml_str: &str) -> Config {
-        let file_name = tmp_dir().join(format!("test-rio-{prefix}-config.toml"));
-        let mut file = std::fs::File::create(&file_name).unwrap();
-        writeln!(file, "{toml_str}").unwrap();
-
-        match Config::load_from_path_without_fallback(&file_name) {
-            Ok(config) => config,
-            Err(e) => panic!("{e}"),
-        }
+        let directory = tmp_dir();
+        create_temporary_config_in(directory.path(), prefix, toml_str)
     }
 
-    fn create_temporary_theme(theme: &str, toml_str: &str) {
-        let file_name = tmp_dir().join(theme).with_extension("toml");
-        let mut file = std::fs::File::create(file_name).unwrap();
-        writeln!(file, "{toml_str}").unwrap();
+    fn create_temporary_config_in(
+        directory: &Path,
+        prefix: &str,
+        toml_str: &str,
+    ) -> Config {
+        let file_name = directory.join(format!("test-rio-{prefix}-config.toml"));
+        fs::write(&file_name, toml_str).unwrap();
+        Config::load_from_path_without_fallback(&file_name).unwrap()
+    }
+
+    fn create_temporary_theme(directory: &Path, theme: &str, toml_str: &str) {
+        let file_name = directory.join(theme).with_extension("toml");
+        fs::write(file_name, toml_str).unwrap();
+    }
+
+    #[test]
+    fn temporary_config_fixtures_keep_equal_names_in_separate_owned_roots() {
+        let first = tmp_dir();
+        let second = tmp_dir();
+        let first_path = first.path().to_path_buf();
+        let second_path = second.path().to_path_buf();
+        assert_ne!(first_path, second_path);
+        let first_config =
+            create_temporary_config_in(first.path(), "same", "line-height = 1.1");
+        let second_config =
+            create_temporary_config_in(second.path(), "same", "line-height = 1.7");
+        assert_eq!(first_config.line_height, 1.1);
+        assert_eq!(second_config.line_height, 1.7);
+        assert_eq!(fs::read_dir(&first_path).unwrap().count(), 1);
+        assert_eq!(fs::read_dir(&second_path).unwrap().count(), 1);
+        drop(first);
+        drop(second);
+        assert!(!first_path.exists());
+        assert!(!second_path.exists());
     }
 
     #[test]
     fn test_filepath_does_not_exist_without_fallback() {
+        let directory = tmp_dir();
         let should_fail = Config::load_from_path_without_fallback(
-            &tmp_dir().join("it-should-never-exist"),
+            &directory.path().join("it-should-never-exist"),
         );
         assert!(should_fail.is_err(), "{}", true);
     }
 
     #[test]
     fn test_filepath_does_not_exist_with_fallback() {
-        let config = Config::load_from_path(&tmp_dir().join("it-should-never-exist"));
+        let directory = tmp_dir();
+        let config =
+            Config::load_from_path(&directory.path().join("it-should-never-exist"));
         assert_eq!(config.theme, String::default());
         assert_eq!(config.cursor.shape, default_cursor());
     }
 
     #[test]
     fn config_reader_rejects_oversized_invalid_utf8_and_non_files_without_panics() {
-        let oversized = bounded_test_path("oversized.toml");
+        let directory_owner = tmp_dir();
+        let oversized = directory_owner.path().join("oversized.toml");
         let file = File::create(&oversized).unwrap();
         file.set_len(product::MAX_CONFIG_FILE_BYTES + 1).unwrap();
         let error = Config::load_from_path_without_fallback(&oversized).unwrap_err();
@@ -790,14 +773,14 @@ mod tests {
         assert_eq!(Config::load_from_path(&oversized), Config::default());
         fs::remove_file(&oversized).unwrap();
 
-        let invalid_utf8 = bounded_test_path("invalid-utf8.toml");
+        let invalid_utf8 = directory_owner.path().join("invalid-utf8.toml");
         fs::write(&invalid_utf8, [0xff, 0xfe, 0xfd]).unwrap();
         let error = Config::load_from_path_without_fallback(&invalid_utf8).unwrap_err();
         assert!(error.contains("as UTF-8"));
         assert_eq!(Config::load_from_path(&invalid_utf8), Config::default());
         fs::remove_file(&invalid_utf8).unwrap();
 
-        let directory = bounded_test_path("directory");
+        let directory = directory_owner.path().join("directory");
         fs::create_dir_all(&directory).unwrap();
         let error = Config::load_from_path_without_fallback(&directory).unwrap_err();
         assert!(error.contains("not a regular file") || error.contains("could not open"));
@@ -807,14 +790,15 @@ mod tests {
 
     #[test]
     fn theme_reader_enforces_its_smaller_size_and_utf8_boundaries() {
-        let oversized = bounded_test_path("oversized-theme.toml");
+        let directory_owner = tmp_dir();
+        let oversized = directory_owner.path().join("oversized-theme.toml");
         let file = File::create(&oversized).unwrap();
         file.set_len(product::MAX_THEME_FILE_BYTES + 1).unwrap();
         let error = Config::load_theme(&oversized).unwrap_err();
         assert!(error.contains("theme exceeds the maximum size"));
         fs::remove_file(&oversized).unwrap();
 
-        let invalid_utf8 = bounded_test_path("invalid-theme.toml");
+        let invalid_utf8 = directory_owner.path().join("invalid-theme.toml");
         fs::write(&invalid_utf8, [0xff, 0xfe, 0xfd]).unwrap();
         let error = Config::load_theme(&invalid_utf8).unwrap_err();
         assert!(error.contains("as UTF-8"));
@@ -873,7 +857,9 @@ mod tests {
             height = "small"
         "#;
 
-        let file_name = tmp_dir()
+        let directory = tmp_dir();
+        let file_name = directory
+            .path()
             .join("test-rio-invalid-config")
             .with_extension("toml");
         let mut file = std::fs::File::create(&file_name).unwrap();
@@ -1100,8 +1086,54 @@ mod tests {
     }
 
     #[test]
-    fn test_change_theme_with_colors_overwrite() {
+    #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+    fn active_platform_theme_loads_instead_of_missing_base_theme() {
+        let directory = tmp_dir();
         create_temporary_theme(
+            directory.path(),
+            "selected-platform",
+            "[colors]\nred = '#123456'\n",
+        );
+        let result = create_temporary_config_in(
+            directory.path(),
+            "platform-colors",
+            r#"
+            theme = "missing-global"
+            [platform]
+            windows.theme = "selected-platform"
+            linux.theme = "selected-platform"
+            macos.theme = "selected-platform"
+        "#,
+        );
+        assert_eq!(result.colors.red, hex_to_color_arr("#123456"));
+    }
+
+    #[test]
+    fn adaptive_only_configuration_resolves_both_palettes() {
+        let directory = tmp_dir();
+        create_temporary_theme(directory.path(), "day", "[colors]\nred = '#123456'\n");
+        create_temporary_theme(directory.path(), "night", "[colors]\nred = '#654321'\n");
+        let result = create_temporary_config_in(
+            directory.path(),
+            "adaptive-only",
+            r#"
+            [adaptive-theme]
+            light = "day"
+            dark = "night"
+        "#,
+        );
+        let adaptive = result
+            .adaptive_colors
+            .expect("both selected themes must resolve");
+        assert_eq!(adaptive.light.unwrap().red, hex_to_color_arr("#123456"));
+        assert_eq!(adaptive.dark.unwrap().red, hex_to_color_arr("#654321"));
+    }
+
+    #[test]
+    fn test_change_theme_with_colors_overwrite() {
+        let directory = tmp_dir();
+        create_temporary_theme(
+            directory.path(),
             "lucario-with-colors",
             r#"
             [colors]
@@ -1110,7 +1142,8 @@ mod tests {
         "#,
         );
 
-        let result = create_temporary_config(
+        let result = create_temporary_config_in(
+            directory.path(),
             "change-theme-with-colors",
             r#"
             theme = "lucario-with-colors"
@@ -1691,3 +1724,6 @@ mod tests {
         assert!(result.env_vars.contains(&String::from("GLOBAL=1")));
     }
 }
+
+#[cfg(test)]
+mod presentation_tests;

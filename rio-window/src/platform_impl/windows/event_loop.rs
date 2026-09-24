@@ -217,11 +217,18 @@ impl<T: 'static> EventLoop<T> {
             );
         }
 
-        if attributes.dpi_aware {
-            become_dpi_aware();
-        }
-
-        let thread_msg_target = create_event_target_window();
+        // A successfully initialized live loop must already own its wake ID.
+        // In particular, a worker's unwind completion must never perform the
+        // first fallible native message registration from its Drop path.
+        let thread_msg_target = create_event_target_after_registration(
+            || USER_EVENT_MSG_ID.try_get().map(|_| ()),
+            || {
+                if attributes.dpi_aware {
+                    become_dpi_aware();
+                }
+                create_event_target_window()
+            },
+        )?;
 
         let runner_shared = Rc::new(EventLoopRunner::new(thread_msg_target));
 
@@ -949,35 +956,53 @@ impl LazyMessageId {
         }
     }
 
-    /// Get the message ID.
+    /// Compatibility entry point for existing fixed internal message IDs. The
+    /// USER_EVENT ID is initialized through try_get before a live loop exists.
     pub fn get(&self) -> u32 {
-        // Load the ID.
+        self.try_get().unwrap_or_else(|error| {
+            panic!(
+                "RegisterWindowMessageA returned zero for '{}': {}",
+                self.name, error
+            )
+        })
+    }
+
+    fn try_get(&self) -> std::io::Result<u32> {
+        self.try_get_with(|name| {
+            // SAFETY: try_get_with validates the trailing NUL before invoking
+            // this callback. The immutable static name remains alive throughout
+            // this call; RegisterWindowMessageA reads it without retaining it.
+            let id = unsafe { RegisterWindowMessageA(name.as_ptr()) };
+            if id == INVALID_ID {
+                Err(std::io::Error::last_os_error())
+            } else {
+                Ok(id)
+            }
+        })
+    }
+
+    fn try_get_with(
+        &self,
+        register: impl FnOnce(&'static str) -> std::io::Result<u32>,
+    ) -> std::io::Result<u32> {
         let id = self.id.load(Ordering::Relaxed);
-
         if id != INVALID_ID {
-            return id;
+            return Ok(id);
         }
-
-        // Register the message.
-        // SAFETY: We are sure that the pointer is a valid C string ending with '\0'.
-        assert!(self.name.ends_with('\0'));
-        let new_id = unsafe { RegisterWindowMessageA(self.name.as_ptr()) };
-
-        assert_ne!(
-            new_id,
-            0,
-            "RegisterWindowMessageA returned zero for '{}': {}",
-            self.name,
-            std::io::Error::last_os_error()
-        );
-
-        // Store the new ID. Since `RegisterWindowMessageA` returns the same value for any given
-        // string, the target value will always either be a). `INVALID_ID` or b). the
-        // correct ID. Therefore a compare-and-swap operation here (or really any
-        // consideration) is never necessary.
+        if !self.name.ends_with('\0') {
+            return Err(std::io::ErrorKind::InvalidInput.into());
+        }
+        let new_id = register(self.name)?;
+        if new_id == INVALID_ID {
+            return Err(std::io::Error::other(
+                "Window message registration returned zero",
+            ));
+        }
+        // Windows returns the same ID for a given name throughout the session.
+        // Only this scalar is published; it carries no other memory ownership.
+        // A failed registration never poisons the cache and can be retried.
         self.id.store(new_id, Ordering::Relaxed);
-
-        new_id
+        Ok(new_id)
     }
 }
 
@@ -1001,6 +1026,14 @@ static THREAD_EVENT_TARGET_WINDOW_CLASS: Lazy<Vec<u16>> =
 /// When the taskbar is created, it registers a message with the "TaskbarCreated" string and then
 /// broadcasts this message to all top-level windows <https://docs.microsoft.com/en-us/windows/win32/shell/taskbar#taskbar-creation-notification>
 pub(crate) static TASKBAR_CREATED: LazyMessageId = LazyMessageId::new("TaskbarCreated\0");
+
+fn create_event_target_after_registration(
+    register: impl FnOnce() -> std::io::Result<()>,
+    create_target: impl FnOnce() -> HWND,
+) -> Result<HWND, EventLoopError> {
+    register().map_err(|error| EventLoopError::Os(os_error!(error)))?;
+    Ok(create_target())
+}
 
 fn create_event_target_window() -> HWND {
     use windows_sys::Win32::UI::WindowsAndMessaging::{CS_HREDRAW, CS_VREDRAW};
@@ -2943,4 +2976,78 @@ unsafe fn confirm_close_native(hwnd: HWND) -> bool {
         )
     };
     response == IDYES
+}
+
+#[cfg(test)]
+mod wake_registration_tests {
+    use super::*;
+    use std::cell::Cell;
+    use std::io;
+
+    #[test]
+    fn user_wake_registration_failure_never_allocates_an_event_target() {
+        for native_error in [false, true] {
+            let message = LazyMessageId::new("Automexia::Test::WakeFailure\0");
+            let created = Cell::new(0);
+            let result = create_event_target_after_registration(
+                || {
+                    message
+                        .try_get_with(|_| {
+                            if native_error {
+                                Err(io::Error::from_raw_os_error(8))
+                            } else {
+                                Ok(0)
+                            }
+                        })
+                        .map(|_| ())
+                },
+                || {
+                    created.set(created.get() + 1);
+                    ptr::null_mut()
+                },
+            );
+            assert!(matches!(result, Err(EventLoopError::Os(_))));
+            assert_eq!(created.get(), 0);
+            assert_eq!(message.id.load(Ordering::Relaxed), INVALID_ID);
+        }
+    }
+
+    #[test]
+    fn user_wake_registration_retries_failure_and_never_repeats_cached_registration() {
+        let message = LazyMessageId::new("Automexia::Test::WakeRetry\0");
+        assert!(message.try_get_with(|_| Ok(0)).is_err());
+        assert_eq!(message.try_get_with(|_| Ok(0xC123)).unwrap(), 0xC123);
+        assert_eq!(
+            message
+                .try_get_with(|_| panic!("cached message re-registered"))
+                .unwrap(),
+            0xC123
+        );
+        assert_eq!(message.get(), 0xC123);
+    }
+
+    #[test]
+    fn user_wake_registration_rejects_unterminated_names_before_native_call() {
+        let message = LazyMessageId::new("Automexia::Test::Unterminated");
+        assert!(message
+            .try_get_with(|_| panic!("invalid name reached native call"))
+            .is_err());
+    }
+
+    #[test]
+    fn user_wake_real_native_registration_is_stable_and_cached() {
+        const NAME: &str = "Automexia::Test::WakeBootstrap\0";
+        let first = LazyMessageId::new(NAME);
+        let second = LazyMessageId::new(NAME);
+        let registered = first.try_get().unwrap();
+        assert!((0xC000..=0xFFFF).contains(&registered));
+        assert_eq!(second.try_get().unwrap(), registered);
+        assert_eq!(
+            first
+                .try_get_with(|_| panic!("cached native message re-registered"))
+                .unwrap(),
+            registered
+        );
+        assert_eq!(first.get(), registered);
+    }
 }

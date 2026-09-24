@@ -23,6 +23,12 @@ compinit -i -D
 # `compinit -i` must remove an insecure ambient fpath entry rather than loading
 # its registrations. The native Python regression injects this exact canary.
 (( ! ${+_comps[automexia-test-insecure-canary]} ))
+if [[ ${AUTOMEXIA_TEST_COMPINIT_ONLY:-0} == 1 ]]; then
+  # Keep the hostile-fpath regression independent from the latency samples
+  # below: host contention must not hide a compinit security regression.
+  print 'PASS: Zsh non-interactive compinit ignored the insecure ambient fpath'
+  exit 0
+fi
 compdef _files docker
 alias_generation=$(
   python3 "$root/tools/ci/create_cp31_alias_fixture.py" \

@@ -12,6 +12,29 @@ The source may contain optional internal components. Their names and scaffolding
 do not announce a public feature. Public behavior is limited to
 [the feature catalog](FEATURES.md).
 
+## Signed settings metadata source contract
+
+The local verifier can decode optional `settings.v1.json` declarations from an
+already verified package. The existing content signature covers that member;
+manifest v1, signature framing, receipts, required members and release gates are
+unchanged. This source API does not install settings, execute components or
+promise that a declared option has an active consumer.
+
+Schema 1 binds the verified publisher, extension and version. It accepts plain
+feature labels and descriptions, Boolean enable defaults, and Boolean, Choice
+or Integer options. Metadata is bounded to 64 KiB, 16 features, 8 options per
+feature and 64 total controls including enable rows. Labels, descriptions,
+local IDs and choices have separate limits. Defaults must match the declared
+type, choices and integer range/step; unknown fields, duplicate identities and
+unsafe text are rejected as a whole. The pure decoder reuses strict JSON parsing.
+
+A package without declarations retains its previous behavior. Invalid optional
+metadata returns a bounded typed Settings error without changing acceptance of
+an otherwise valid legacy package. Signature, publisher or revocation failures
+still reject the package. Call this projection on the verification worker, not
+on terminal input or rendering paths. The literal example is maintained in
+[`settings-metadata-v1.json`](../tests/fixtures/ecosystem/settings-metadata-v1.json).
+
 ## Ownership rules
 
 1. Core owns terminal input, PTY/process lifecycle, VT state, rendering,

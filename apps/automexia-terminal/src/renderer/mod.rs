@@ -8,11 +8,17 @@ pub mod connection_hub;
 pub mod custom_cursor;
 pub mod devops_status;
 pub mod helpers;
+#[cfg(test)]
+mod inline_table_tests;
+mod inline_tables;
 pub mod island;
 pub mod responsive;
 pub mod scrollbar;
 pub mod search;
 pub mod session_footer;
+pub(crate) mod session_metadata;
+#[cfg(test)]
+mod session_metadata_tests;
 mod suggestion_text;
 pub mod suggestions;
 pub(crate) mod text_fit;
@@ -245,6 +251,71 @@ fn sync_optional_metadata(target: &mut Option<String>, source: Option<&String>) 
     }
 }
 
+/// Publish the terminal's shell facts into the renderer-owned session snapshot.
+fn sync_session_metadata<T: rio_backend::event::EventListener>(
+    content: &mut RenderableContent,
+    terminal: &rio_backend::crosswords::Crosswords<T>,
+) {
+    // Shell identity and location hints form one discovery input. Retain the
+    // last complete snapshot while a bounded OSC frame is still arriving, so
+    // a nested shell cannot borrow the previous shell's paths or credentials.
+    // Legacy integrations without the framing marker still publish normally.
+    if terminal
+        .user_vars
+        .get("automexia_env_pending")
+        .is_some_and(|value| value != "0")
+    {
+        return;
+    }
+    let live_shell_integration = terminal
+        .user_vars
+        .get("automexia_shell")
+        .is_some_and(|value| value == "1");
+    let retain_seed = content.seeded_session_metadata && !live_shell_integration;
+    if (!retain_seed || terminal.current_directory.is_some())
+        && content.current_directory.as_ref() != terminal.current_directory.as_ref()
+    {
+        content
+            .current_directory
+            .clone_from(&terminal.current_directory);
+    }
+    if (!retain_seed || !terminal.title.trim().is_empty())
+        && content.terminal_title != terminal.title
+    {
+        content.terminal_title.clone_from(&terminal.title);
+    }
+    if !retain_seed {
+        sync_optional_metadata(
+            &mut content.shell_distro,
+            terminal.user_vars.get("automexia_distro"),
+        );
+        sync_optional_metadata(
+            &mut content.shell_os_version,
+            terminal.user_vars.get("automexia_os_version"),
+        );
+        sync_optional_metadata(
+            &mut content.shell_name,
+            terminal.user_vars.get("automexia_shell_name"),
+        );
+        sync_optional_metadata(
+            &mut content.shell_user,
+            terminal.user_vars.get("automexia_shell_user"),
+        );
+        sync_optional_metadata(
+            &mut content.shell_path,
+            terminal.user_vars.get("automexia_shell_path"),
+        );
+        content.shell_integration = live_shell_integration;
+        automexia_devops::sync_location_hints(
+            &mut content.shell_environment,
+            |name| terminal.user_vars.get(name).map(String::as_str),
+            live_shell_integration,
+            content.shell_name.as_deref(),
+        );
+        content.seeded_session_metadata = false;
+    }
+}
+
 /// Renderer-neutral data needed to paint one pane's operational context.
 /// Keeping this snapshot per route prevents the active pane from lending its
 /// Git/cloud/user state to another visible split.
@@ -254,6 +325,7 @@ struct SemanticPaneRenderState {
     cell_height: f32,
     completion_labels: Vec<crate::automexia::ui::command_info::CompletionLabel>,
     session: crate::automexia::api::SessionFacts,
+    metadata_readiness: session_metadata::MetadataReadiness,
     prompt_active: bool,
     historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
     live_anchor: Option<crate::automexia::ui::PromptAnchor>,
@@ -722,6 +794,7 @@ fn semantic_snapshot(
             shell_integration: rc.shell_integration,
             shell_pid: identity.1,
         },
+        metadata_readiness: session_metadata::MetadataReadiness::Complete,
         prompt_active: rc.shell_prompt_active,
         origin_y,
         bottom_y: origin_y + rc.screen_lines as f32 * cell_height,
@@ -749,13 +822,17 @@ pub struct Renderer {
     pub command_palette: command_palette::CommandPalette,
     pub compatibility_inspector: compatibility_inspector::CompatibilityInspector,
     pub connection_hub: connection_hub::ConnectionHub,
+    /// Installed classifier availability, independent of prompt-context settings.
     pub devops_enabled: bool,
+    pub devops_context_enabled: bool,
+    pub presentation: rio_backend::config::presentation::Presentation,
     extension_generation: u32,
     /// Operational prompt state for the selected route.
     pub devops_status: devops_status::DevOpsStatus,
-    /// Independent operational state for every inactive visible route. A
-    /// single shared status object made those splits disappear and could lend
-    /// the selected pane's context to their prompt history.
+    /// The public active status and inactive map are two storage locations for
+    /// one status per live route; focus changes transfer ownership between them.
+    devops_status_route: Option<usize>,
+    /// Retained status for open inactive panes and hidden tabs in this window.
     devops_statuses: FxHashMap<usize, devops_status::DevOpsStatus>,
     /// Core command-result state for the selected route; independent of extensions.
     pub command_results: command_results::CommandResults,
@@ -807,7 +884,7 @@ pub struct Renderer {
 
 impl Renderer {
     pub fn new(config: &Config) -> Renderer {
-        let named_colors = crate::automexia::theme::effective_colors(config.colors);
+        let named_colors = config.colors;
         let colors = List::from(&named_colors);
 
         // Window-bg target alpha. Cached here at init and re-applied
@@ -862,9 +939,12 @@ impl Renderer {
             compatibility_inspector:
                 compatibility_inspector::CompatibilityInspector::default(),
             connection_hub: connection_hub::ConnectionHub::default(),
-            devops_enabled: crate::automexia::runtime::context_status_enabled(),
+            devops_enabled: crate::automexia::runtime::output_highlighting_available(),
+            devops_context_enabled: crate::automexia::runtime::context_status_enabled(),
+            presentation: config.presentation,
             extension_generation: crate::automexia::runtime::generation(),
             devops_status: devops_status::DevOpsStatus::default(),
+            devops_status_route: None,
             devops_statuses: FxHashMap::default(),
             command_results: command_results::CommandResults::default(),
             command_result_states: FxHashMap::default(),
@@ -896,7 +976,7 @@ impl Renderer {
     /// config reload must update only config-owned fields and deliberately
     /// preserve transient interaction state.
     pub fn update_config(&mut self, config: &Config) {
-        let named_colors = crate::automexia::theme::effective_colors(config.colors);
+        let named_colors = config.colors;
         let colors = List::from(&named_colors);
         let custom_chrome = matches!(
             config.window.decorations,
@@ -938,6 +1018,7 @@ impl Renderer {
         self.colors = colors;
         self.navigation = config.navigation.clone();
         self.margin = config.margin;
+        self.presentation = config.presentation;
         self.named_colors = named_colors;
         self.dynamic_background = dynamic_background_for(config, &self.named_colors);
         self.opacity_cells = config.window.opacity_cells;
@@ -966,6 +1047,47 @@ impl Renderer {
         self.last_window_bg = None;
     }
 
+    fn sync_devops_routes<
+        T: rio_backend::event::EventListener + Clone + Send + 'static,
+    >(
+        &mut self,
+        context_manager: &ContextManager<T>,
+    ) {
+        if !self.devops_context_enabled {
+            return;
+        }
+        let active_route = context_manager.current().route_id;
+        // With no inactive state and no ownership change, there is nothing to
+        // transfer or prune. Keep the ordinary single-session frame allocation-free.
+        if self.devops_statuses.is_empty()
+            && (self.devops_status_route.is_none()
+                || self.devops_status_route == Some(active_route))
+        {
+            self.devops_status_route = Some(active_route);
+            return;
+        }
+        // Include hidden top-level and pane-local tabs, but never keep status
+        // for routes removed from the window's authoritative live inventory.
+        let live_routes: rustc_hash::FxHashSet<_> =
+            context_manager.route_ids().into_iter().collect();
+        self.devops_statuses
+            .retain(|route, _| live_routes.contains(route));
+        if self.devops_status_route != Some(active_route) {
+            let previous = std::mem::take(&mut self.devops_status);
+            if let Some(previous_route) = self
+                .devops_status_route
+                .filter(|route| live_routes.contains(route))
+            {
+                self.devops_statuses.insert(previous_route, previous);
+            }
+            self.devops_status = self
+                .devops_statuses
+                .remove(&active_route)
+                .unwrap_or_default();
+            self.devops_status_route = Some(active_route);
+        }
+    }
+
     /// Synchronize the cached extension activation state. The fast path is one
     /// atomic generation load; filesystem state is never checked per frame.
     pub fn sync_extension_state(&mut self) -> bool {
@@ -974,11 +1096,15 @@ impl Renderer {
             return false;
         }
         self.extension_generation = generation;
-        let enabled = crate::automexia::runtime::context_status_enabled();
-        let changed = enabled != self.devops_enabled;
-        self.devops_enabled = enabled;
-        if !enabled {
+        let available = crate::automexia::runtime::output_highlighting_available();
+        let context_enabled = crate::automexia::runtime::context_status_enabled();
+        let changed = available != self.devops_enabled
+            || context_enabled != self.devops_context_enabled;
+        self.devops_enabled = available;
+        self.devops_context_enabled = context_enabled;
+        if !context_enabled {
             self.devops_status.clear();
+            self.devops_status_route = None;
             self.devops_statuses.clear();
         }
         changed
@@ -1187,6 +1313,7 @@ impl Renderer {
                 .take_terminal_damage();
             context.renderable_content.pending_update.reset();
 
+            let inline_snapshot;
             {
                 let mut terminal = context.terminal.lock();
 
@@ -1265,59 +1392,7 @@ impl Renderer {
                     &mut context.renderable_content.extras,
                 );
                 context.renderable_content.term_colors = terminal.colors;
-                let live_shell_integration = terminal
-                    .user_vars
-                    .get("automexia_shell")
-                    .is_some_and(|value| value == "1");
-                let retain_seed = context.renderable_content.seeded_session_metadata
-                    && !live_shell_integration;
-                if (!retain_seed || terminal.current_directory.is_some())
-                    && context.renderable_content.current_directory.as_ref()
-                        != terminal.current_directory.as_ref()
-                {
-                    context
-                        .renderable_content
-                        .current_directory
-                        .clone_from(&terminal.current_directory);
-                }
-                if (!retain_seed || !terminal.title.trim().is_empty())
-                    && context.renderable_content.terminal_title != terminal.title
-                {
-                    context
-                        .renderable_content
-                        .terminal_title
-                        .clone_from(&terminal.title);
-                }
-                if !retain_seed {
-                    sync_optional_metadata(
-                        &mut context.renderable_content.shell_distro,
-                        terminal.user_vars.get("automexia_distro"),
-                    );
-                    sync_optional_metadata(
-                        &mut context.renderable_content.shell_os_version,
-                        terminal.user_vars.get("automexia_os_version"),
-                    );
-                    sync_optional_metadata(
-                        &mut context.renderable_content.shell_name,
-                        terminal.user_vars.get("automexia_shell_name"),
-                    );
-                    sync_optional_metadata(
-                        &mut context.renderable_content.shell_user,
-                        terminal.user_vars.get("automexia_shell_user"),
-                    );
-                    sync_optional_metadata(
-                        &mut context.renderable_content.shell_path,
-                        terminal.user_vars.get("automexia_shell_path"),
-                    );
-                    context.renderable_content.shell_integration = live_shell_integration;
-                    automexia_devops::sync_location_hints(
-                        &mut context.renderable_content.shell_environment,
-                        |name| terminal.user_vars.get(name).map(String::as_str),
-                        live_shell_integration,
-                        context.renderable_content.shell_name.as_deref(),
-                    );
-                    context.renderable_content.seeded_session_metadata = false;
-                }
+                sync_session_metadata(&mut context.renderable_content, &*terminal);
                 context.renderable_content.shell_prompt_active = terminal
                     .user_vars
                     .get("automexia_prompt_active")
@@ -1358,8 +1433,34 @@ impl Renderer {
                 } else {
                     context.renderable_content.kitty_graphics_dirty = false;
                 }
+                inline_snapshot = (!matches!(
+                    damage,
+                    TerminalDamage::Noop | TerminalDamage::CursorOnly
+                ) || (self.presentation.inline_tables
+                    && context
+                        .renderable_content
+                        .inline_tables
+                        .needs_snapshot(&*terminal)))
+                .then(|| {
+                    if context.renderable_content.hint_labels.is_some()
+                        || context.renderable_content.hint_matches.is_some()
+                    {
+                        crate::automexia::inline_tables::Snapshot::default()
+                    } else {
+                        crate::automexia::inline_tables::Snapshot::capture_for(
+                            &*terminal,
+                            self.presentation.inline_tables,
+                        )
+                    }
+                });
                 context.renderable_content.frame_damage = damage;
                 drop(terminal);
+            }
+
+            if let Some(snapshot) = inline_snapshot {
+                if context.renderable_content.inline_tables.refresh(snapshot) {
+                    context.renderable_content.frame_damage = TerminalDamage::Full;
+                }
             }
 
             context.renderable_content.has_blinking_enabled =
@@ -1525,12 +1626,11 @@ impl Renderer {
             .iter()
             .map(|pane| pane.session.session_id)
             .collect::<Vec<_>>();
-        self.devops_statuses
-            .retain(|route, _| visible_inactive_routes.contains(route));
+        self.sync_devops_routes(context_manager);
         self.command_result_states
             .retain(|route, _| visible_inactive_routes.contains(route));
 
-        if self.devops_enabled {
+        if self.devops_context_enabled {
             let refresh_pending = self
                 .devops_status
                 .refresh_session_context(&active_pane.session, || {
@@ -1600,7 +1700,7 @@ impl Renderer {
                 };
                 pane
             };
-            let status = if !self.devops_enabled {
+            let status = if !self.devops_context_enabled {
                 None
             } else if context.route_id == active_route {
                 Some(&self.devops_status)
@@ -1613,10 +1713,45 @@ impl Renderer {
                 &mut context.renderable_content,
                 sugarloaf,
                 self.named_colors,
+                self.presentation.command_timestamps,
             ) {
                 context.renderable_content.frame_damage = TerminalDamage::Full;
                 any_panel_dirty = true;
             }
+            inline_tables::draw(
+                sugarloaf,
+                &context.renderable_content,
+                [
+                    (panel_rect[0] + grid_scaled_margin.left).round() / scale_factor,
+                    (panel_rect[1] + grid_scaled_margin.top).round() / scale_factor,
+                    context.dimension.cell.cell_width as f32 / scale_factor,
+                    context.dimension.cell.cell_height as f32 / scale_factor,
+                ],
+                context.dimension.scaled_font_size / scale_factor,
+                scale_factor,
+                inline_tables::PaintOptions {
+                    colors: self.named_colors,
+                    preserve_selection_foreground: self.ignore_selection_fg_color,
+                    active: context.route_id == active_route,
+                },
+                |style| {
+                    let mut style = *style;
+                    if style.flags.contains(StyleFlags::INVERSE) {
+                        std::mem::swap(&mut style.fg, &mut style.bg);
+                    }
+                    (
+                        self.compute_color(
+                            &style.fg,
+                            style.flags,
+                            &context.renderable_content.term_colors,
+                        ),
+                        self.compute_bg_color(
+                            &style,
+                            &context.renderable_content.term_colors,
+                        ),
+                    )
+                },
+            );
             // Image positions follow the newly published row projection.
             // Rebuild on content/geometry damage, retaining idle quads.
             let rc = &context.renderable_content;
@@ -1770,8 +1905,13 @@ impl Renderer {
             sugarloaf,
             self.named_colors,
             &active_pane.command_results,
-            result_animation_enabled(active_pane.allow_result_animation),
-            prefer_untagged_results,
+            command_results::ResultOptions {
+                allow_animation: result_animation_enabled(
+                    active_pane.allow_result_animation,
+                ),
+                prefer_untagged: prefer_untagged_results,
+                show_timestamps: self.presentation.command_timestamps,
+            },
             (
                 &active_pane.completion_labels,
                 [active_pane.origin_y, active_pane.bottom_y],
@@ -1792,8 +1932,13 @@ impl Renderer {
                     sugarloaf,
                     self.named_colors,
                     &pane.command_results,
-                    result_animation_enabled(pane.allow_result_animation),
-                    prefer_untagged_results,
+                    command_results::ResultOptions {
+                        allow_animation: result_animation_enabled(
+                            pane.allow_result_animation,
+                        ),
+                        prefer_untagged: prefer_untagged_results,
+                        show_timestamps: self.presentation.command_timestamps,
+                    },
                     (&pane.completion_labels, [pane.origin_y, pane.bottom_y]),
                 );
         }
@@ -2199,6 +2344,46 @@ mod prompt_visual_anchor_tests {
     }
 
     #[test]
+    fn configured_palette_survives_construction_reload_and_session_overrides() {
+        let mut config = Config::default();
+        config.colors.red = [0.1, 0.2, 0.3, 1.0];
+        config.colors.foreground = [1.0; 4];
+        let mut renderer = Renderer::new(&config);
+        assert_eq!(renderer.named_colors, config.colors);
+        assert_eq!(
+            renderer.color(NamedColor::Red as usize, &TermColors::default()),
+            config.colors.red
+        );
+        config.colors.red = [0.3, 0.2, 0.1, 1.0];
+        renderer.update_config(&config);
+        assert_eq!(renderer.named_colors, config.colors);
+        let mut session_colors = TermColors::default();
+        let override_red = [0.7, 0.8, 0.9, 1.0];
+        session_colors[NamedColor::Red] = Some(override_red);
+        assert_eq!(
+            renderer.color(NamedColor::Red as usize, &session_colors),
+            override_red
+        );
+        assert_eq!(
+            renderer.color(NamedColor::Red as usize, &TermColors::default()),
+            config.colors.red
+        );
+        let rgb = ColorRgb {
+            r: 12,
+            g: 34,
+            b: 56,
+        };
+        assert_eq!(
+            renderer.compute_color(
+                &AnsiColor::Spec(rgb),
+                StyleFlags::empty(),
+                &session_colors
+            ),
+            rgb.to_arr()
+        );
+    }
+
+    #[test]
     fn live_config_update_preserves_transient_renderer_state() {
         let mut renderer = Renderer::new(&Config::default());
         renderer.command_palette.set_enabled(true);
@@ -2233,6 +2418,171 @@ mod prompt_visual_anchor_tests {
         assert!(renderer.draw_bold_text_with_light_colors);
         assert!(renderer.ignore_selection_fg_color);
         assert!(renderer.custom_mouse_cursor);
+    }
+
+    #[test]
+    fn context_ownership_fragmented_shell_frame_publishes_identity_and_hints_together() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(96, 10),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        let mut processor = Processor::default();
+        let mut content =
+            RenderableContent::new(crate::context::renderable::Cursor::default());
+        let initial = b"\x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_user=aG9zdA==\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_path=aG9zdC1zaGVsbA==\x07\
+                        \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07\
+                        \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=L2ZpeHR1cmUvaG9zdC9rdWJl\x07";
+        processor.advance(&mut terminal, initial);
+        sync_session_metadata(&mut content, &terminal);
+        assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
+        let previous_hints = content.shell_environment.clone();
+        let pending = b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07\
+                        \x1b]1337;SetUserVar=automexia_distro=VWJ1bnR1\x07\
+                        \x1b]1337;SetUserVar=automexia_os_version=MjQuMDQ=\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_user=Z3Vlc3Q=\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_path=L2Jpbi9iYXNo\x07\
+                        \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvZ3Vlc3Q=\x07\
+                        \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=\x07";
+        for byte in pending {
+            processor.advance(&mut terminal, std::slice::from_ref(byte));
+            sync_session_metadata(&mut content, &terminal);
+            assert_eq!(
+                content.shell_distro, None,
+                "partial frame changed shell identity"
+            );
+            assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
+            assert_eq!(content.shell_user.as_deref(), Some("host"));
+            assert_eq!(content.shell_path.as_deref(), Some("host-shell"));
+            assert_eq!(content.shell_environment, previous_hints);
+        }
+        let commit = b"\x1b]1337;SetUserVar=automexia_env_pending=MA==\x07";
+        for byte in &commit[..commit.len() - 1] {
+            processor.advance(&mut terminal, std::slice::from_ref(byte));
+            sync_session_metadata(&mut content, &terminal);
+            assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
+        }
+        processor.advance(&mut terminal, &commit[commit.len() - 1..]);
+        sync_session_metadata(&mut content, &terminal);
+        assert_eq!(content.shell_distro.as_deref(), Some("Ubuntu"));
+        assert_eq!(content.shell_os_version.as_deref(), Some("24.04"));
+        assert_eq!(content.shell_name.as_deref(), Some("bash"));
+        assert_eq!(content.shell_user.as_deref(), Some("guest"));
+        assert_eq!(content.shell_path.as_deref(), Some("/bin/bash"));
+        assert_eq!(content.shell_environment["HOME"], "/fixture/guest");
+        assert_eq!(content.shell_environment["KUBECONFIG"], "");
+        let guest_hints = content.shell_environment.clone();
+        let return_to_host = b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07\
+                              \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
+                              \x1b]1337;SetUserVar=automexia_shell_user=aG9zdA==\x07\
+                              \x1b]1337;SetUserVar=automexia_shell_path=aG9zdC1zaGVsbA==\x07\
+                              \x1b]1337;SetUserVar=automexia_distro=\x07\
+                              \x1b]1337;SetUserVar=automexia_os_version=\x07\
+                              \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07";
+        for byte in return_to_host {
+            processor.advance(&mut terminal, std::slice::from_ref(byte));
+            sync_session_metadata(&mut content, &terminal);
+            assert_eq!(content.shell_distro.as_deref(), Some("Ubuntu"));
+            assert_eq!(content.shell_environment, guest_hints);
+        }
+        processor.advance(&mut terminal, commit);
+        sync_session_metadata(&mut content, &terminal);
+        assert_eq!(content.shell_distro, None);
+        assert_eq!(content.shell_os_version, None);
+        assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
+        assert_eq!(content.shell_user.as_deref(), Some("host"));
+        assert_eq!(content.shell_environment["HOME"], "/fixture/host");
+        assert_eq!(terminal.grid.cursor.pos.row.0, 0);
+        assert_eq!(terminal.grid.cursor.pos.col.0, 0);
+    }
+
+    #[test]
+    fn context_ownership_malformed_shell_frame_marker_retains_complete_snapshot() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(96, 10),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        let mut processor = Processor::default();
+        let mut content =
+            RenderableContent::new(crate::context::renderable::Cursor::default());
+        let initial = b"\x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+                        \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
+                        \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07";
+        let partial = b"\x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07\
+                        \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvZ3Vlc3Q=\x07";
+        // Literal wire payloads independently encode "invalid", "", and "00".
+        for marker in [
+            b"\x1b]1337;SetUserVar=automexia_env_pending=aW52YWxpZA==\x07".as_slice(),
+            b"\x1b]1337;SetUserVar=automexia_env_pending=\x07".as_slice(),
+            b"\x1b]1337;SetUserVar=automexia_env_pending=MDA=\x07".as_slice(),
+        ] {
+            terminal.user_vars.remove("automexia_env_pending");
+            processor.advance(&mut terminal, initial);
+            sync_session_metadata(&mut content, &terminal);
+            assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
+            let complete_hints = content.shell_environment.clone();
+            processor.advance(&mut terminal, marker);
+            for byte in partial {
+                processor.advance(&mut terminal, std::slice::from_ref(byte));
+                sync_session_metadata(&mut content, &terminal);
+                assert_eq!(
+                    content.shell_name.as_deref(),
+                    Some("PowerShell"),
+                    "malformed marker exposed partial identity"
+                );
+                assert_eq!(content.shell_environment, complete_hints);
+            }
+            processor.advance(
+                &mut terminal,
+                b"\x1b]1337;SetUserVar=automexia_env_pending=MA==\x07",
+            );
+            sync_session_metadata(&mut content, &terminal);
+            assert_eq!(content.shell_name.as_deref(), Some("bash"));
+            assert_eq!(content.shell_environment["HOME"], "/fixture/guest");
+        }
+    }
+
+    #[test]
+    fn context_ownership_legacy_unframed_metadata_and_incomplete_seed_frame() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(96, 10),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        let mut processor = Processor::default();
+        let mut content =
+            RenderableContent::new(crate::context::renderable::Cursor::default());
+        content.seeded_session_metadata = true;
+        content.shell_name = Some("seed-shell".to_string());
+        processor.advance(
+            &mut terminal,
+            b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07\
+            \x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+            \x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07",
+        );
+        sync_session_metadata(&mut content, &terminal);
+        assert!(content.seeded_session_metadata);
+        assert_eq!(content.shell_name.as_deref(), Some("seed-shell"));
+        // Older integrations omit the framing marker entirely.
+        terminal.user_vars.remove("automexia_env_pending");
+        sync_session_metadata(&mut content, &terminal);
+        assert!(!content.seeded_session_metadata);
+        assert_eq!(content.shell_name.as_deref(), Some("bash"));
+        assert!(content.shell_integration);
     }
 
     #[test]

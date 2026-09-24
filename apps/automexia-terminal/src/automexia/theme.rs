@@ -1,88 +1,144 @@
-//! Automexia unified visual palette.
-//!
-//! The terminal maps the standard ANSI/named-color vocabulary through one
-//! application palette so PowerShell, Bash, Zsh, WSL and macOS shells share
-//! the same color language whenever they use terminal colors. Applications
-//! that intentionally emit explicit RGB colors remain in control of those
-//! colors; Automexia does not rewrite arbitrary truecolor payloads.
+//! Application configuration context for the product palette.
+//! Explicit palettes, named/adaptive themes and session colors remain authoritative.
+use rio_backend::config::{colors::Colors, Config, ConfigError};
 
-use rio_backend::config::colors::{hex_to_color_arr, hex_to_color_wgpu, Colors};
-
-/// Return the user-configured colors with Automexia's cross-shell palette
-/// applied. Set `AUTOMEXIA_UNIFIED_COLORS=0` to opt out for troubleshooting or
-/// for users who intentionally want a shell/application-specific ANSI palette.
-pub fn effective_colors(mut colors: Colors) -> Colors {
-    if std::env::var("AUTOMEXIA_UNIFIED_COLORS")
-        .ok()
-        .is_some_and(|value| matches!(value.trim(), "0" | "false" | "off" | "no"))
-    {
-        return colors;
+fn default_colors_for_setting(setting: Option<&str>) -> Colors {
+    if setting.is_some_and(|value| matches!(value.trim(), "0" | "false" | "off" | "no")) {
+        Colors::default()
+    } else {
+        rio_backend::config::defaults::unified_colors()
     }
-
-    // Liquid-hacker palette sampled from the product mockup: a neutral
-    // blue-black canvas with bright, role-specific accents. Keeping the base
-    // free of green tint makes cyan, purple, amber and failure red read cleanly.
-    colors.background = (hex_to_color_arr("#020B16"), hex_to_color_wgpu("#020B16"));
-    colors.foreground = color("#D8DEE9");
-    colors.black = color("#07111F");
-    colors.red = color("#FF4757");
-    colors.green = color("#39FF88");
-    colors.yellow = color("#FFD43B");
-    colors.blue = color("#35A7FF");
-    colors.magenta = color("#D27CFF");
-    colors.cyan = color("#16E0FF");
-    colors.white = color("#DDE7F3");
-
-    colors.light_black = color("#607089");
-    colors.light_red = color("#FF7B86");
-    colors.light_green = color("#7AFFAE");
-    colors.light_yellow = color("#FFE47C");
-    colors.light_blue = color("#77C7FF");
-    colors.light_magenta = color("#E4A8FF");
-    colors.light_cyan = color("#75F1FF");
-    colors.light_white = color("#FFFFFF");
-    colors.light_foreground = Some(color("#FFFFFF"));
-
-    colors.dim_black = Some(color("#020B16"));
-    colors.dim_red = Some(color("#9F3440"));
-    colors.dim_green = Some(color("#249957"));
-    colors.dim_yellow = Some(color("#9D842D"));
-    colors.dim_blue = Some(color("#276E9E"));
-    colors.dim_magenta = Some(color("#82529D"));
-    colors.dim_cyan = Some(color("#168A9A"));
-    colors.dim_white = Some(color("#758297"));
-    colors.dim_foreground = Some(color("#8793A6"));
-
-    colors.cursor = color("#39FF88");
-    colors.vi_cursor = color("#D27CFF");
-    colors.selection_background = color("#103356");
-    colors.selection_foreground = color("#FFFFFF");
-    colors.search_match_background = color("#5D4B18");
-    colors.search_match_foreground = color("#FFF5C2");
-    colors.search_focused_match_background = color("#7A4D15");
-    colors.search_focused_match_foreground = color("#FFFFFF");
-    colors.hint_background = color("#0D3048");
-    colors.hint_foreground = color("#75F1FF");
-    colors.tabs = color("#8A98AD");
-    colors.tabs_active = color("#DDE7F3");
-    colors.split = color("#173653");
-    colors.split_active = color("#16E0FF");
-
-    colors
 }
 
+fn default_colors_for_config(
+    config: &Config,
+    inherited: Option<&str>,
+) -> Result<Colors, ConfigError> {
+    let mut setting = inherited.map(str::to_owned);
+    let platform = config
+        .active_platform_config()
+        .and_then(|platform| platform.env_vars.as_deref());
+    for entries in [Some(config.env_vars.as_slice()), platform]
+        .into_iter()
+        .flatten()
+    {
+        let entries = rio_backend::config::environment::parse_environment(entries)
+            .map_err(|error| ConfigError::ErrLoadingConfig(error.to_string()))?;
+        for (name, value) in entries {
+            let is_setting = if cfg!(windows) {
+                name.eq_ignore_ascii_case("AUTOMEXIA_UNIFIED_COLORS")
+            } else {
+                name == "AUTOMEXIA_UNIFIED_COLORS"
+            };
+            if is_setting {
+                setting = Some(value);
+            }
+        }
+    }
+    Ok(default_colors_for_setting(setting.as_deref()))
+}
+
+pub fn load_config() -> Result<Config, ConfigError> {
+    let inherited = std::env::var("AUTOMEXIA_UNIFIED_COLORS").ok();
+    Config::try_load_with_palette_defaults(|config| {
+        default_colors_for_config(config, inherited.as_deref())
+    })
+}
+
+/// Startup recovery uses the inherited palette choice if the candidate is invalid.
+pub fn load_config_or_default() -> (Config, Option<ConfigError>) {
+    let inherited = std::env::var("AUTOMEXIA_UNIFIED_COLORS").ok();
+    match Config::try_load_with_palette_defaults(|config| {
+        default_colors_for_config(config, inherited.as_deref())
+    }) {
+        Ok(config) => (config, None),
+        Err(error) => (
+            Config {
+                colors: default_colors_for_setting(inherited.as_deref()),
+                ..Config::default()
+            },
+            Some(error),
+        ),
+    }
+}
+
+/// Compatibility forwarding: the prepared configuration already owns the palette.
 #[inline]
-fn color(hex: &str) -> [f32; 4] {
-    hex_to_color_arr(hex)
+pub fn effective_colors(colors: Colors) -> Colors {
+    colors
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rio_backend::config::colors::hex_to_color_arr as color;
+
+    #[test]
+    fn explicit_palette_survives_application_resolution() {
+        let mut selected = Colors::default();
+        selected.foreground = color("#FFFFFF");
+        selected.red = color("#123456");
+        selected.selection_background = color("#234567");
+        selected.search_match_foreground = color("#345678");
+        assert_eq!(effective_colors(selected), selected);
+    }
+
+    #[test]
+    fn opt_out_changes_only_the_injected_default() {
+        for setting in ["0", "false", "off", "no", " off "] {
+            assert_eq!(default_colors_for_setting(Some(setting)), Colors::default());
+        }
+        for setting in [None, Some("1"), Some("true"), Some("False")] {
+            assert_eq!(
+                default_colors_for_setting(setting),
+                rio_backend::config::defaults::unified_colors()
+            );
+        }
+    }
+
+    #[test]
+    fn effective_config_environment_overrides_inherited_default_without_mutation() {
+        let mut config = Config::default();
+        assert_eq!(
+            default_colors_for_config(&config, Some("off")).unwrap(),
+            Colors::default()
+        );
+        config.env_vars = vec![
+            "AUTOMEXIA_UNIFIED_COLORS=off".into(),
+            "AUTOMEXIA_UNIFIED_COLORS=on".into(),
+        ];
+        assert_eq!(
+            default_colors_for_config(&config, Some("off")).unwrap(),
+            rio_backend::config::defaults::unified_colors()
+        );
+        let platform = rio_backend::config::platform::PlatformConfig {
+            env_vars: Some(vec![" AUTOMEXIA_UNIFIED_COLORS =off".into()]),
+            ..Default::default()
+        };
+        config.platform.windows = Some(platform.clone());
+        config.platform.linux = Some(platform.clone());
+        config.platform.macos = Some(platform);
+        assert_eq!(
+            default_colors_for_config(&config, Some("on")).unwrap(),
+            Colors::default()
+        );
+        assert_eq!(config.env_vars.len(), 2);
+        config.platform = Default::default();
+        config.env_vars = vec!["automexia_unified_colors=off".into()];
+        let expected = if cfg!(windows) {
+            Colors::default()
+        } else {
+            rio_backend::config::defaults::unified_colors()
+        };
+        assert_eq!(
+            default_colors_for_config(&config, Some("on")).unwrap(),
+            expected
+        );
+    }
 
     #[test]
     fn unified_palette_has_distinct_semantic_roles() {
-        let colors = effective_colors(Colors::default());
+        let colors = rio_backend::config::defaults::unified_colors();
         assert_ne!(colors.red, colors.green);
         assert_ne!(colors.yellow, colors.cyan);
         assert_ne!(colors.blue, colors.magenta);

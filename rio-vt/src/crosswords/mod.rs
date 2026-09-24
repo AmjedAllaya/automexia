@@ -23,6 +23,11 @@ pub mod square;
 pub mod style;
 pub mod vi_mode;
 
+#[cfg(test)]
+mod user_var_chronology_tests;
+#[cfg(test)]
+mod user_vars_tests;
+
 use crate::ansi::graphics::Graphics;
 use crate::ansi::graphics::KittyPlacement;
 use crate::ansi::graphics::UpdateQueues;
@@ -41,7 +46,10 @@ use crate::crosswords::grid::{Dimensions, Grid, Scroll};
 use crate::crosswords::square::{CellFlags, Wide};
 use crate::event::WindowId;
 use crate::event::{EventListener, RioEvent, TerminalDamage};
-use crate::performer::handler::Handler;
+use crate::performer::handler::{
+    Handler, MAX_USER_VARS, MAX_USER_VAR_NAME_BYTES, MAX_USER_VAR_TOTAL_BYTES,
+    MAX_USER_VAR_VALUE_BYTES,
+};
 use crate::performer::parser::Params;
 use crate::selection::{Selection, SelectionRange, SelectionType};
 use crate::simd_utf8;
@@ -55,6 +63,7 @@ use pos::{
 use rio_graphics::{GraphicData, MAX_GRAPHIC_DIMENSIONS};
 use square::{Hyperlink, LineLength, Square};
 use std::mem;
+use std::num::NonZeroU64;
 use std::ops::{Index, IndexMut, Range};
 use std::option::Option;
 use std::ptr;
@@ -633,6 +642,14 @@ pub enum ResizePolicy {
     Conpty,
 }
 
+/// Successful writes to one user-variable name, ordered only within its terminal.
+/// Equal and empty writes advance these stamps; rejected writes never do.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct UserVarWriteStamp {
+    pub latest: NonZeroU64,
+    pub previous: Option<NonZeroU64>,
+}
+
 #[derive(Debug)]
 pub struct Crosswords<U>
 where
@@ -673,6 +690,12 @@ where
     pub current_directory: Option<std::path::PathBuf>,
     /// Shell state from `OSC 1337 ; SetUserVar` (iTerm2 style).
     pub user_vars: rustc_hash::FxHashMap<String, String>,
+    // At most MAX_USER_VARS bounded names plus two serials per retained name.
+    // Direct trusted map edits do not acquire accepted-write provenance.
+    user_var_write_stamps: rustc_hash::FxHashMap<String, UserVarWriteStamp>,
+    user_var_clock: u64,
+    user_var_chronology_valid: bool,
+    last_user_var_rejection: Option<NonZeroU64>,
 
     /// Latest prompt identity, B-marked compatibility candidate, and in-flight
     /// command timer from OSC 133. The nested candidate option distinguishes
@@ -758,6 +781,10 @@ impl<U: EventListener> Crosswords<U> {
             title_stack: Default::default(),
             current_directory: None,
             user_vars: rustc_hash::FxHashMap::default(),
+            user_var_write_stamps: rustc_hash::FxHashMap::default(),
+            user_var_clock: 0,
+            user_var_chronology_valid: true,
+            last_user_var_rejection: None,
             semantic_prompt_id: None,
             active_semantic_prompt: None,
             semantic_command_candidate: None,
@@ -772,6 +799,46 @@ impl<U: EventListener> Crosswords<U> {
             inactive_keyboard_mode_stack: Default::default(),
             inactive_keyboard_mode_idx: 0,
         }
+    }
+
+    fn next_user_var_serial(&mut self) -> Option<NonZeroU64> {
+        if !self.user_var_chronology_valid {
+            return None;
+        }
+        let Some(serial) = self.user_var_clock.checked_add(1).and_then(NonZeroU64::new)
+        else {
+            // Never reuse a serial or mutate metadata without representable
+            // provenance. Existing values remain unavailable for framed use.
+            self.user_var_chronology_valid = false;
+            return None;
+        };
+        self.user_var_clock = serial.get();
+        self.user_var_write_stamps
+            .retain(|name, _| self.user_vars.contains_key(name));
+        Some(serial)
+    }
+
+    /// Copy successful-write chronology without allocating or mutating state.
+    /// Trusted direct map mutation is not accepted-write provenance. In
+    /// particular, embedders must not remove/reinsert the same name behind
+    /// this owner and then treat its old stamp as provenance of the new value.
+    pub fn user_var_write_stamp(&self, name: &str) -> Option<UserVarWriteStamp> {
+        if !self.user_var_chronology_valid || !self.user_vars.contains_key(name) {
+            return None;
+        }
+        self.user_var_write_stamps.get(name).copied()
+    }
+
+    /// False after the per-terminal event counter is exhausted. A new terminal
+    /// is required to establish a fresh chronology; resetting cells does not.
+    pub fn user_var_chronology_valid(&self) -> bool {
+        self.user_var_chronology_valid
+    }
+
+    /// Last representable rejected attempt. Check chronology validity before
+    /// comparing this serial; serials from different terminals are unrelated.
+    pub fn last_user_var_rejection(&self) -> Option<NonZeroU64> {
+        self.last_user_var_rejection
     }
 
     pub fn mark_fully_damaged(&mut self) {
@@ -4311,7 +4378,65 @@ impl<U: EventListener> Handler for Crosswords<U> {
         }
     }
 
+    fn reject_user_var(&mut self) {
+        if let Some(serial) = self.next_user_var_serial() {
+            self.last_user_var_rejection = Some(serial);
+        }
+    }
+
     fn set_user_var(&mut self, name: String, value: String) {
+        let Some(serial) = self.next_user_var_serial() else {
+            return;
+        };
+        // Keep direct Handler callers under the same policy as OSC dispatch.
+        // The public map can also be edited by a trusted embedder, so derive
+        // accounting from at most MAX_USER_VARS entries instead of keeping a
+        // counter that could become stale after such an edit.
+        if name.is_empty()
+            || name.len() > MAX_USER_VAR_NAME_BYTES
+            || value.len() > MAX_USER_VAR_VALUE_BYTES
+            || self.user_vars.len() > MAX_USER_VARS
+            || (self.user_vars.len() == MAX_USER_VARS
+                && !self.user_vars.contains_key(&name))
+        {
+            self.last_user_var_rejection = Some(serial);
+            return;
+        }
+        let other_bytes = self.user_vars.iter().try_fold(
+            0usize,
+            |total, (stored_name, stored_value)| {
+                if stored_name == &name {
+                    return Some(total);
+                }
+                let total = total
+                    .checked_add(stored_name.len())?
+                    .checked_add(stored_value.len())?;
+                (total <= MAX_USER_VAR_TOTAL_BYTES).then_some(total)
+            },
+        );
+        if other_bytes
+            .and_then(|total| total.checked_add(name.len()))
+            .and_then(|total| total.checked_add(value.len()))
+            .is_none_or(|total| total > MAX_USER_VAR_TOTAL_BYTES)
+        {
+            self.last_user_var_rejection = Some(serial);
+            return;
+        }
+        // Publish value and provenance under the same terminal owner before
+        // scheduling metadata damage. Existing-name updates allocate no key.
+        if let Some(stamp) = self.user_var_write_stamps.get_mut(&name) {
+            stamp.previous = Some(stamp.latest);
+            stamp.latest = serial;
+        } else {
+            self.user_var_write_stamps.insert(
+                name.clone(),
+                UserVarWriteStamp {
+                    latest: serial,
+                    previous: None,
+                },
+            );
+        }
+        // Rejected metadata must neither end a prompt nor request a redraw.
         if name == "automexia_prompt_active" && value == "0" {
             self.active_semantic_prompt = None;
         }

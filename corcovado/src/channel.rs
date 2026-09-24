@@ -3,7 +3,7 @@ use crate::lazycell::{AtomicLazyCell, LazyCell};
 use crate::{event::Evented, Poll, PollOpt, Ready, Registration, SetReadiness, Token};
 use std::any::Any;
 use std::error;
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{fence, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
 use std::{fmt, io};
 
@@ -46,6 +46,8 @@ fn ctl_pair() -> (SenderCtl, ReceiverCtl) {
 
     let rx = ReceiverCtl {
         registration: LazyCell::new(),
+        #[cfg(test)]
+        registration_checkpoint: None,
         inner,
     };
 
@@ -62,6 +64,8 @@ struct SenderCtl {
 #[derive(Debug)]
 struct ReceiverCtl {
     registration: LazyCell<Registration>,
+    #[cfg(test)]
+    registration_checkpoint: Option<(mpsc::Sender<()>, mpsc::Receiver<()>)>,
     inner: Arc<Inner>,
 }
 
@@ -216,6 +220,9 @@ impl SenderCtl {
         let cnt = self.inner.pending.fetch_add(1, Ordering::Acquire);
 
         if 0 == cnt {
+            // Pair with register's publication fence: either it observes this
+            // pending transition or this sender observes its readiness handle.
+            fence(Ordering::SeqCst);
             // Toggle readiness to readable
             if let Some(set_readiness) = self.inner.set_readiness.borrow() {
                 set_readiness.set_readiness(Ready::readable())?;
@@ -284,11 +291,6 @@ impl Evented for ReceiverCtl {
         let (registration, set_readiness) = Registration::new2();
         poll.register(&registration, token, interest, opts)?;
 
-        if self.inner.pending.load(Ordering::Relaxed) > 0 {
-            // TODO: Don't drop readiness
-            let _ = set_readiness.set_readiness(Ready::readable());
-        }
-
         self.registration
             .fill(registration)
             .expect("unexpected state encountered");
@@ -296,6 +298,26 @@ impl Evented for ReceiverCtl {
             .set_readiness
             .fill(set_readiness)
             .expect("unexpected state encountered");
+
+        // Publish before observing pending. Together with inc's zero-transition
+        // fence, the two loads cannot both miss the other thread's publication.
+        // Release/acquire on these independent atomics alone is insufficient.
+        fence(Ordering::SeqCst);
+        let pending = self.inner.pending.load(Ordering::Acquire);
+        #[cfg(test)]
+        if let Some((reached, resume)) = &self.registration_checkpoint {
+            reached.send(()).expect("registration checkpoint observer");
+            resume
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .expect("registration checkpoint release");
+        }
+        if pending > 0 {
+            // Preserve existing readiness-error handling; admission/error
+            // semantics are separate from this publication handshake.
+            if let Some(set_readiness) = self.inner.set_readiness.borrow() {
+                let _ = set_readiness.set_readiness(Ready::readable());
+            }
+        }
 
         Ok(())
     }
@@ -450,3 +472,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "channel_registration_tests.rs"]
+mod registration_tests;

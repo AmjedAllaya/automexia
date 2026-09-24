@@ -8,6 +8,7 @@ mod application;
 pub use automexia_terminal::automexia;
 use automexia_terminal::cli;
 mod bindings;
+mod config_creation;
 mod constants;
 mod context;
 mod global_hotkey;
@@ -25,6 +26,8 @@ mod renderer;
 mod router;
 mod scheduler;
 mod screen;
+mod settings_catalog;
+mod settings_view;
 mod table_view;
 mod watcher;
 
@@ -45,7 +48,19 @@ use windows_sys::Win32::System::Console::{
     AttachConsole, FreeConsole, ATTACH_PARENT_PROCESS,
 };
 
-pub fn setup_environment_variables(config: &rio_backend::config::Config) {
+pub fn setup_environment_variables(
+    config: &rio_backend::config::Config,
+) -> Result<(), Box<dyn std::error::Error>> {
+    // Validate the complete effective batch before any process environment mutation.
+    let environment =
+        rio_backend::config::environment::parse_environment(&config.env_vars)?;
+    #[cfg(target_os = "macos")]
+    {
+        let home = dirs::home_dir()
+            .ok_or_else(|| std::io::Error::other("Home directory is unavailable"))?;
+        std::env::set_current_dir(home)
+            .map_err(|_| std::io::Error::other("Could not select the home directory"))?;
+    }
     #[cfg(unix)]
     {
         let terminfo = match (
@@ -92,21 +107,17 @@ pub fn setup_environment_variables(config: &rio_backend::config::Config) {
     #[cfg(target_os = "macos")]
     {
         platform::macos::set_locale_environment();
-        std::env::set_current_dir(dirs::home_dir().unwrap()).unwrap();
     }
 
-    // Set env vars from config.
-    for env_config in config.env_vars.iter() {
-        let env_vec: Vec<&str> = env_config.split('=').collect();
-
-        if env_vec.len() == 2 {
-            std::env::set_var(env_vec[0], env_vec[1]);
-        }
+    // Apply only the validated batch, preserving values containing '='.
+    for (name, value) in environment {
+        std::env::set_var(name, value);
     }
 
     // Resolve signed/package-owned resources after user environment settings
     // so the trust boundary cannot be redirected by terminal configuration.
     automexia::shell_integration::prepare_session_environment();
+    Ok(())
 }
 
 fn execute_cli_command(
@@ -591,14 +602,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let write_config_path = args.window_options.terminal_options.write_config.clone();
     if let Some(config_path) = write_config_path {
         let _ = setup_logs_by_filter_level("TRACE", false);
-        rio_backend::config::create_config_file(config_path);
+        match rio_backend::config::create_config_file(config_path)? {
+            rio_backend::config::CreateConfigOutcome::Created => {
+                println!("Configuration file created.");
+            }
+            rio_backend::config::CreateConfigOutcome::AlreadyExists => {
+                println!("Existing configuration file preserved.");
+            }
+        }
         return Ok(());
     }
 
-    let (mut config, config_error) = match rio_backend::config::Config::try_load() {
-        Ok(config) => (config, None),
-        Err(err) => (rio_backend::config::Config::default(), Some(err)),
-    };
+    let (mut config, config_error) = automexia::theme::load_config_or_default();
 
     // Read platform property and overwrite values per OS
     //
@@ -672,7 +687,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     }
 
-    setup_environment_variables(&config);
+    setup_environment_variables(&config)?;
 
     let window_event_loop =
         rio_window::event_loop::EventLoop::<EventPayload>::with_user_event().build()?;

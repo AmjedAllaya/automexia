@@ -38,9 +38,43 @@ fn clear_window_reference(reference: &mut Option<WindowId>, closed: WindowId) {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum RouteKeyIntent {
+    PassThrough,
+    Consumed,
+    CreateConfiguration,
+}
+
+fn welcome_key_intent(
+    welcome: bool,
+    key: &Key,
+    state: rio_window::event::ElementState,
+    repeat: bool,
+    enter_held: &mut bool,
+) -> RouteKeyIntent {
+    let enter = *key == Key::Named(NamedKey::Enter);
+    if enter && *enter_held {
+        if state == rio_window::event::ElementState::Released {
+            *enter_held = false;
+        }
+        return RouteKeyIntent::Consumed;
+    }
+    if !welcome {
+        return RouteKeyIntent::PassThrough;
+    }
+    if enter && state == rio_window::event::ElementState::Pressed && !repeat {
+        *enter_held = true;
+        RouteKeyIntent::CreateConfiguration
+    } else {
+        RouteKeyIntent::Consumed
+    }
+}
+
 pub struct Route<'a> {
     pub assistant: assistant::Assistant,
     pub path: RoutePath,
+    pub(crate) welcome_identity: Arc<()>,
+    welcome_enter_held: bool,
     pub window: RouteWindow<'a>,
 }
 
@@ -55,6 +89,8 @@ impl Route<'_> {
         Route {
             assistant,
             path,
+            welcome_identity: Arc::new(()),
+            welcome_enter_held: false,
             window,
         }
     }
@@ -133,6 +169,7 @@ impl Route<'_> {
     #[inline]
     pub fn report_error(&mut self, error: &RioError) {
         if error.report == RioErrorType::ConfigurationNotFound {
+            self.welcome_identity = Arc::new(());
             self.path = RoutePath::Welcome;
             return;
         }
@@ -149,6 +186,7 @@ impl Route<'_> {
     pub fn clear_errors(&mut self) {
         self.assistant.clear();
         self.window.screen.renderer.assistant.clear();
+        self.welcome_identity = Arc::new(());
         self.path = RoutePath::Terminal;
     }
 
@@ -174,8 +212,21 @@ impl Route<'_> {
         &mut self,
         key_event: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
-    ) -> bool {
+    ) -> RouteKeyIntent {
         use rio_window::event::ElementState;
+
+        // Completion can switch to Terminal before Enter is released. Retain
+        // that key's ownership until release, so it cannot leak to the PTY.
+        if self.welcome_enter_held && key_event.logical_key == Key::Named(NamedKey::Enter)
+        {
+            return welcome_key_intent(
+                false,
+                &key_event.logical_key,
+                key_event.state,
+                key_event.repeat,
+                &mut self.welcome_enter_held,
+            );
+        }
 
         // Handle island color picker / rename input
         if let Some(ref mut island) = self.window.screen.renderer.island {
@@ -188,7 +239,7 @@ impl Route<'_> {
                 );
                 if consumed {
                     self.request_overlay_redraw();
-                    return true;
+                    return RouteKeyIntent::Consumed;
                 }
             }
         }
@@ -214,13 +265,13 @@ impl Route<'_> {
                         self.window.screen.context_manager.request_shortcut_edit();
                     }
                     self.request_overlay_redraw();
-                    return true;
+                    return RouteKeyIntent::Consumed;
                 }
                 match &key_event.logical_key {
                     Key::Named(NamedKey::Escape) => {
                         if self.window.screen.leave_action_detail() {
                             self.request_overlay_redraw();
-                            return true;
+                            return RouteKeyIntent::Consumed;
                         }
                         self.window
                             .screen
@@ -318,7 +369,7 @@ impl Route<'_> {
                     }
                 }
             }
-            return true; // Block all input when command palette is active
+            return RouteKeyIntent::Consumed; // Block all input when command palette is active
         }
 
         if self.window.screen.renderer.confirm_quit.is_active() {
@@ -334,12 +385,12 @@ impl Route<'_> {
                     }
                     Key::Character(c) if c.as_str() == "y" || c.as_str() == "Y" => {
                         self.quit();
-                        return true;
+                        return RouteKeyIntent::Consumed;
                     }
                     _ => {}
                 }
             }
-            return true;
+            return RouteKeyIntent::Consumed;
         }
 
         if self
@@ -349,7 +400,7 @@ impl Route<'_> {
         {
             self.choose_connection_hub_files();
             self.request_overlay_redraw();
-            return true;
+            return RouteKeyIntent::Consumed;
         }
 
         if self
@@ -358,7 +409,7 @@ impl Route<'_> {
             .handle_connection_hub_key(key_event, clipboard)
         {
             self.request_overlay_redraw();
-            return true;
+            return RouteKeyIntent::Consumed;
         }
 
         // Diagnostic dialogs are modal in every route. Consume all keyboard
@@ -377,7 +428,7 @@ impl Route<'_> {
                     _ => {}
                 }
             }
-            return true;
+            return RouteKeyIntent::Consumed;
         }
 
         if self
@@ -397,26 +448,30 @@ impl Route<'_> {
                     .set_visibility("hide");
                 self.request_overlay_redraw();
             }
-            return true;
+            return RouteKeyIntent::Consumed;
         }
 
         if self.path == RoutePath::Terminal {
-            return false;
+            return RouteKeyIntent::PassThrough;
         }
 
-        let is_enter = key_event.logical_key == Key::Named(NamedKey::Enter);
-
-        if self.path == RoutePath::Welcome && is_enter {
-            rio_backend::config::create_config_file(None);
-            self.path = RoutePath::Terminal;
+        if self.path == RoutePath::Welcome {
+            return welcome_key_intent(
+                true,
+                &key_event.logical_key,
+                key_event.state,
+                key_event.repeat,
+                &mut self.welcome_enter_held,
+            );
         }
 
-        false
+        RouteKeyIntent::PassThrough
     }
 }
 
 pub struct Router<'a> {
     pub routes: FxHashMap<WindowId, Route<'a>>,
+    pub(crate) config_creation: crate::config_creation::ConfigCreation,
     propagated_report: Option<RioError>,
     pub font_library: Box<rio_backend::sugarloaf::font::FontLibrary>,
     pub config_route: Option<WindowId>,
@@ -456,6 +511,7 @@ impl Router<'_> {
 
         Router {
             routes: FxHashMap::default(),
+            config_creation: crate::config_creation::ConfigCreation::new(),
             propagated_report,
             config_route: None,
             quake_window_id: None,
@@ -484,6 +540,7 @@ impl Router<'_> {
     }
 
     pub fn shutdown_services(&self) {
+        self.quick_actions.request_shutdown();
         let cancelled = self.external_tool_runner.shutdown_now();
         self.connection_hub.shutdown();
         let audit_count = self.external_tool_runner.recent_audits().len();
@@ -532,6 +589,7 @@ impl Router<'_> {
     /// Remove exactly one OS window and invalidate identities that point to
     /// it. The caller owns application-level timer teardown.
     pub fn remove_window(&mut self, window_id: WindowId) -> Option<Route<'_>> {
+        self.config_creation.cancel_window(window_id);
         clear_window_reference(&mut self.config_route, window_id);
         clear_window_reference(&mut self.quake_window_id, window_id);
         self.routes.remove(&window_id)
@@ -652,11 +710,7 @@ impl Router<'_> {
         );
         let id: WindowId = window.winit_window.id().into();
 
-        let mut route = Route {
-            window,
-            path: RoutePath::Terminal,
-            assistant: Assistant::new(),
-        };
+        let mut route = Route::new(Assistant::new(), RoutePath::Terminal, window);
 
         if let Some(err) = &self.propagated_report {
             route.report_error(err);
@@ -693,11 +747,7 @@ impl Router<'_> {
         let id: WindowId = window.winit_window.id().into();
         self.routes.insert(
             id,
-            Route {
-                window,
-                path: RoutePath::Terminal,
-                assistant: Assistant::new(),
-            },
+            Route::new(Assistant::new(), RoutePath::Terminal, window),
         );
         self.quake_window_id = Some(id);
     }
@@ -729,11 +779,7 @@ impl Router<'_> {
         );
         self.routes.insert(
             window.winit_window.id().into(),
-            Route {
-                window,
-                path: RoutePath::Terminal,
-                assistant: Assistant::new(),
-            },
+            Route::new(Assistant::new(), RoutePath::Terminal, window),
         );
     }
 }
@@ -1199,6 +1245,68 @@ mod grid_size_tests {
                 win(50, 50)
             ),
             (300, 200)
+        );
+    }
+}
+
+#[cfg(test)]
+mod welcome_input_tests {
+    use super::{welcome_key_intent, RouteKeyIntent};
+    use rio_window::event::ElementState;
+    use rio_window::keyboard::{Key, NamedKey};
+
+    #[test]
+    fn welcome_key_intent_consumes_enter_release_repeat_and_other_keys() {
+        let enter = Key::Named(NamedKey::Enter);
+        let mut held = false;
+        assert_eq!(
+            welcome_key_intent(true, &enter, ElementState::Pressed, false, &mut held),
+            RouteKeyIntent::CreateConfiguration
+        );
+        assert_eq!(
+            welcome_key_intent(true, &enter, ElementState::Pressed, true, &mut held),
+            RouteKeyIntent::Consumed
+        );
+        assert_eq!(
+            welcome_key_intent(true, &enter, ElementState::Released, false, &mut held),
+            RouteKeyIntent::Consumed
+        );
+        assert!(!held);
+        assert_eq!(
+            welcome_key_intent(
+                true,
+                &Key::Named(NamedKey::Space),
+                ElementState::Pressed,
+                false,
+                &mut held
+            ),
+            RouteKeyIntent::Consumed
+        );
+        assert_eq!(
+            welcome_key_intent(true, &enter, ElementState::Pressed, true, &mut held),
+            RouteKeyIntent::Consumed
+        );
+    }
+
+    #[test]
+    fn welcome_enter_remains_consumed_after_completion_changes_route() {
+        let enter = Key::Named(NamedKey::Enter);
+        let mut held = false;
+        assert_eq!(
+            welcome_key_intent(true, &enter, ElementState::Pressed, false, &mut held),
+            RouteKeyIntent::CreateConfiguration
+        );
+        assert_eq!(
+            welcome_key_intent(false, &enter, ElementState::Pressed, true, &mut held),
+            RouteKeyIntent::Consumed
+        );
+        assert_eq!(
+            welcome_key_intent(false, &enter, ElementState::Released, false, &mut held),
+            RouteKeyIntent::Consumed
+        );
+        assert_eq!(
+            welcome_key_intent(false, &enter, ElementState::Pressed, false, &mut held),
+            RouteKeyIntent::PassThrough
         );
     }
 }

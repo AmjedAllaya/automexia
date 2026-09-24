@@ -1423,6 +1423,8 @@ fn verify_phase_zero_assurance() -> TaskResult {
             )
             && ci.contains("cargo test --workspace --all-features --doc --locked")
             && ci.contains("loom_channel_readiness")
+            && ci.contains("--test loom_channel_registration")
+            && qa.contains("\"loom_channel_registration\"")
             && ci.contains("RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)")
             && ci.contains("python3 -m unittest discover -s tools/ci -p 'test_*.py'")
             && qa.contains("python-contract-mutations")
@@ -1626,6 +1628,9 @@ fn verify_phase_zero_assurance() -> TaskResult {
                 .is_file()
             && root()
                 .join("corcovado/tests/loom_channel_readiness.rs")
+                .is_file()
+            && root()
+                .join("corcovado/tests/loom_channel_registration.rs")
                 .is_file(),
         "Phase 0 property/snapshot/model dependencies or persisted regressions are missing",
     )?;
@@ -2674,6 +2679,36 @@ fn verify_devops_test_dependency(dependency: &serde_json::Value) -> TaskResult {
     )
 }
 
+const EXTENSION_WORKER_CONTRACTS: &[&str] = &[
+    "sync_channel",
+    "try_send",
+    "MAX_WORKER_OWNERS: usize = 64",
+    "struct RegistrationLease",
+    "job.handle.join()",
+    "job.completion.finish()",
+    "pub fn request_shutdown",
+    "pub fn shutdown_timeout",
+    "pub fn shutdown_status",
+    "WorkerShutdownStatus::CleanupFailed",
+    "pub trait WakeRoute",
+    "pub struct CoalescingSlot",
+    "pub fn try_submit_then",
+    "registration_ready",
+    "pub fn plan_rebind",
+];
+
+fn verify_extension_worker_contract(source: &str) -> TaskResult {
+    require(
+        EXTENSION_WORKER_CONTRACTS.iter().all(|contract| source.contains(*contract))
+            && !source.contains("handle.is_finished()"),
+        "private extension runtime lacks bounded admission, actual join acknowledgement, registration lifetime, explicit retirement status, or existing shared primitives",
+    )?;
+    require(
+        source.find("job.handle.join()") < source.find("job.completion.finish()"),
+        "extension worker completion must follow the actual native join",
+    )
+}
+
 fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_prompt_discovery.py")?;
     run_python("tools/ci/test_prompt_discovery.py")?;
@@ -2960,17 +2995,7 @@ fn verify_architecture() -> TaskResult {
     }
     let runtime = read(&app.join("src/automexia/runtime.rs"))?;
     let extension_runtime = read(&root().join("automexia-extension-runtime/src/lib.rs"))?;
-    require(
-        extension_runtime.contains("sync_channel")
-            && extension_runtime.contains("try_send")
-            && extension_runtime.contains("handle.is_finished()")
-            && extension_runtime.contains("pub trait WakeRoute")
-            && extension_runtime.contains("pub struct CoalescingSlot")
-            && extension_runtime.contains("pub fn try_submit_then")
-            && extension_runtime.contains("registration_ready")
-            && extension_runtime.contains("pub fn plan_rebind"),
-        "private extension runtime lacks bounded queue, restart, injected wake, registration ordering, coalescing, or rebind primitives",
-    )?;
+    verify_extension_worker_contract(&extension_runtime)?;
     require(
         runtime.contains("MAX_SESSION_TITLE_BYTES")
             && runtime.contains("shutdown_background_services")
@@ -2987,9 +3012,11 @@ fn verify_architecture() -> TaskResult {
         "current_directory",
         "terminal_title",
         "shell_distro",
+        "shell_os_version",
         "shell_name",
         "shell_user",
         "shell_path",
+        "shell_environment",
         "shell_integration",
         "shell_prompt_active",
     ] {
@@ -3785,18 +3812,74 @@ fn pane_shortcut_defaults_present(bindings: &str) -> bool {
 /// snapshots. Whitespace is deliberately ignored so rustfmt layout changes do
 /// not weaken or spuriously break this architecture invariant.
 fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
-    let compact: String = renderer
+    let normalized = renderer.replace("\r\n", "\n");
+    let renderer = normalized.as_str();
+    let production = renderer
+        .split("\n#[cfg(test)]\nmod tests")
+        .next()
+        .unwrap_or(renderer);
+    let compact: String = production
         .chars()
         .filter(|character| !character.is_whitespace())
         .collect();
     let destination = format!("renderable_content.{field}");
-
-    compact.contains(&format!("{destination}="))
+    if compact.contains(&format!("{destination}="))
         || compact.contains(&format!("{destination}.clone_from("))
         || compact.contains(&format!(
             "sync_optional_metadata(&mutcontext.{destination},"
         ))
         || compact.contains(&format!("sync_optional_metadata(&mut{destination},"))
+    {
+        return true;
+    }
+
+    // Follow the actual shared snapshot owner, never a dead helper or test copy.
+    if !compact
+        .contains("sync_session_metadata(&mutcontext.renderable_content,&*terminal);")
+    {
+        return false;
+    }
+    let Some((_, helper)) = production.split_once("fn sync_session_metadata<") else {
+        return false;
+    };
+    let Some((helper, _)) = helper.split_once("\n}\n") else {
+        return false;
+    };
+    let helper: String = helper.chars().filter(|c| !c.is_whitespace()).collect();
+    let guard =
+        ".get(\"automexia_env_pending\").is_some_and(|value|value!=\"0\"){return;}";
+    let Some(guard_end) = helper.find(guard).map(|index| index + guard.len()) else {
+        return false;
+    };
+    let write = match field {
+        "current_directory" => {
+            "content.current_directory.clone_from(&terminal.current_directory);"
+                .to_owned()
+        }
+        "terminal_title" => {
+            "content.terminal_title.clone_from(&terminal.title);".to_owned()
+        }
+        "shell_integration" => {
+            "content.shell_integration=live_shell_integration;".to_owned()
+        }
+        "shell_environment" => {
+            "automexia_devops::sync_location_hints(&mutcontent.shell_environment,"
+                .to_owned()
+        }
+        "shell_distro" | "shell_os_version" | "shell_name" | "shell_user"
+        | "shell_path" => {
+            let key = match field {
+                "shell_distro" => "automexia_distro",
+                "shell_os_version" => "automexia_os_version",
+                "shell_name" => "automexia_shell_name",
+                "shell_user" => "automexia_shell_user",
+                _ => "automexia_shell_path",
+            };
+            format!("sync_optional_metadata(&mutcontent.{field},terminal.user_vars.get(\"{key}\"),)")
+        }
+        _ => return false,
+    };
+    helper.find(&write).is_some_and(|index| index >= guard_end)
 }
 
 fn verify_identity() -> TaskResult {
@@ -5157,6 +5240,28 @@ mod tests {
     }
 
     #[test]
+    fn extension_worker_retirement_contract_rejects_missing_or_reordered_proof() {
+        let source =
+            read(&root().join("automexia-extension-runtime/src/lib.rs")).unwrap();
+        verify_extension_worker_contract(&source).unwrap();
+        for &contract in EXTENSION_WORKER_CONTRACTS {
+            let altered = source.replace(contract, "removed worker contract");
+            assert!(
+                verify_extension_worker_contract(&altered).is_err(),
+                "missing {contract}"
+            );
+        }
+        let reversed = source
+            .replace("job.handle.join()", "ORDER_PLACEHOLDER")
+            .replace("job.completion.finish()", "job.handle.join()")
+            .replace("ORDER_PLACEHOLDER", "job.completion.finish()");
+        assert!(verify_extension_worker_contract(&reversed).is_err());
+        assert!(
+            verify_extension_worker_contract(&(source + "handle.is_finished()")).is_err()
+        );
+    }
+
+    #[test]
     fn architecture_contract_self_verifies() {
         verify_architecture().unwrap();
     }
@@ -5374,6 +5479,58 @@ mod tests {
             "let current_directory = terminal.current_directory.clone();",
             "current_directory"
         ));
+    }
+
+    #[test]
+    fn metadata_snapshot_check_tracks_called_guarded_session_owner() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        for field in [
+            "current_directory",
+            "terminal_title",
+            "shell_distro",
+            "shell_os_version",
+            "shell_name",
+            "shell_user",
+            "shell_path",
+            "shell_environment",
+            "shell_integration",
+            "shell_prompt_active",
+        ] {
+            assert!(
+                snapshots_renderable_field(renderer, field),
+                "missing {field}"
+            );
+            let crlf = renderer.replace("\r\n", "\n").replace('\n', "\r\n");
+            assert!(
+                snapshots_renderable_field(&crlf, field),
+                "CRLF snapshot missing {field}"
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_rejects_disconnected_or_unguarded_owner() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        for broken in [
+            renderer.replace(
+                "sync_session_metadata(&mut context.renderable_content, &*terminal);",
+                "/* disconnected metadata owner */",
+            ),
+            renderer.replace("fn sync_session_metadata<", "fn unused_session_metadata<"),
+            renderer.replace(
+                ".is_some_and(|value| value != \"0\")",
+                ".is_some_and(|_| false)",
+            ),
+            renderer.replace(
+                ".clone_from(&terminal.current_directory)",
+                ".clone_from(&None)",
+            ),
+        ] {
+            assert_ne!(broken, renderer, "mutation must change its intended source");
+            assert!(!snapshots_renderable_field(&broken, "current_directory"));
+        }
     }
 
     #[test]

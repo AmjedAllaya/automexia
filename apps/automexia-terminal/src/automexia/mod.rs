@@ -21,6 +21,8 @@ pub mod export;
 pub mod ghostty_migration;
 pub mod google;
 #[doc(hidden)]
+pub mod inline_tables;
+#[doc(hidden)]
 pub mod local_tools;
 pub mod marketplace;
 pub mod migration;
@@ -35,6 +37,7 @@ pub mod repository_open;
 pub mod runtime;
 #[doc(hidden)]
 pub mod semantic_surfaces;
+pub mod settings_extensions;
 #[cfg(target_os = "windows")]
 pub mod shell;
 pub mod shell_integration;

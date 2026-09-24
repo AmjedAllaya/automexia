@@ -528,3 +528,29 @@ fn wrapped_completion_status_never_turns_green() {
         assert_eq!(terminal.selection_to_string().as_deref(), Some(source));
     }
 }
+
+#[test]
+fn presentation_highlighting_toggle_preserves_extension_and_native_output() {
+    let mut terminal = terminal("[ERROR] fixture failed\r\n");
+    let (rows, _, _) = snapshot(&mut terminal);
+    let config: Config =
+        toml::from_str("[presentation]\noutput-highlighting = false\n").unwrap();
+    let mut renderer = Renderer::new(&config);
+    renderer.devops_enabled = true;
+    assert_eq!(
+        semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
+        None
+    );
+    assert!(renderer.devops_enabled);
+    renderer.update_config(&Config::default());
+    renderer.devops_enabled = true;
+    assert_eq!(
+        semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
+        Some(crate::automexia::api::SemanticSeverity::Error)
+    );
+    renderer.devops_enabled = false;
+    assert_eq!(
+        semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
+        None
+    );
+}

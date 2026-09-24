@@ -264,6 +264,32 @@ fn core_table_view(c: &mut Criterion) {
             black_box(viewport);
         })
     });
+    let mut headed = source.clone();
+    headed[0] = format!("{:<11}{:<16}{}", "NAME", "VALUE", "DETAIL");
+    let headed = Table::detect(headed, cell_width).unwrap();
+    group.bench_function("inline_wrap_checked", |b| {
+        b.iter(|| {
+            for width in [9, 37, 80, 256] {
+                let wrapped = headed.wrap(black_box(width), cell_width).unwrap();
+                assert_eq!(wrapped.rows.len(), 256);
+                assert!(wrapped.width <= width);
+                assert!(wrapped.rows.iter().map(|row| row.height).sum::<usize>() <= 4096);
+                for (column, expected) in ["row001", "value-001", "detail-001"]
+                    .into_iter()
+                    .enumerate()
+                {
+                    let actual: String = wrapped.rows[1].cells[column]
+                        .fragments
+                        .iter()
+                        .map(|fragment| &headed.source()[1][fragment.bytes.clone()])
+                        .collect();
+                    assert_eq!(actual, expected);
+                }
+                black_box(wrapped);
+            }
+            assert_eq!(headed.source()[1], source[1]);
+        })
+    });
     group.finish();
 }
 
@@ -345,13 +371,6 @@ fn command_information(c: &mut Criterion) {
 }
 
 fn palette_setup(c: &mut Criterion) {
-    use rio_backend::config::colors::Colors;
-    assert!(
-        !std::env::var("AUTOMEXIA_UNIFIED_COLORS")
-            .ok()
-            .is_some_and(|value| matches!(value.trim(), "0" | "false" | "off" | "no")),
-        "The effective palette benchmark requires the unified palette enabled"
-    );
     let mut group = c.benchmark_group("color_setup");
     group
         .sample_size(30)
@@ -359,8 +378,9 @@ fn palette_setup(c: &mut Criterion) {
         .measurement_time(std::time::Duration::from_secs(2));
     group.bench_function("effective_app_palette", |b| {
         b.iter(|| {
-            let colors =
-                automexia_terminal::automexia::theme::effective_colors(Colors::default());
+            let colors = automexia_terminal::automexia::theme::effective_colors(
+                rio_backend::config::defaults::unified_colors(),
+            );
             assert_eq!(
                 colors.foreground,
                 [216.0 / 255.0, 222.0 / 255.0, 233.0 / 255.0, 1.0]

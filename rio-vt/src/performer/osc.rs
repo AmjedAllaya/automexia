@@ -101,17 +101,38 @@ pub(super) fn parse_semantic_command(params: &[&[u8]]) -> Option<SemanticCommand
     }
 }
 
+/// Recognize the exact user-variable command without decoding its payload.
+/// A missing command delimiter is a recognized malformed attempt, while
+/// similarly named and unrelated commands remain outside this owner.
+pub(super) fn is_set_user_var(params: &[&[u8]]) -> bool {
+    params.get(1).is_some_and(|command| {
+        *command == b"SetUserVar" || command.starts_with(b"SetUserVar=")
+    })
+}
+
 /// Parse `OSC 1337 ; SetUserVar=name=<base64 value>`. The value is
 /// base64 per iTerm2's spec; anything undecodable is dropped.
 pub(super) fn parse_set_user_var(params: &[&[u8]]) -> Option<(String, String)> {
     let payload = params.get(1)?.strip_prefix(b"SetUserVar=")?;
     let mut parts = payload.splitn(2, |byte| *byte == b'=');
-    let name = simd_utf8::from_utf8_fast(parts.next()?).ok()?;
-    if name.is_empty() {
+    let name = parts.next()?;
+    if name.is_empty() || name.len() > super::handler::MAX_USER_VAR_NAME_BYTES {
         return None;
     }
+    let name = simd_utf8::from_utf8_fast(name).ok()?;
     let encoded = parts.next()?;
+    // Reject before the decoder allocates from an attacker-selected length.
+    // Padding can give adjacent decoded lengths the same encoded size, so the
+    // decoded byte limit must also be checked before constructing the value.
+    const MAX_ENCODED_BYTES: usize =
+        super::handler::MAX_USER_VAR_VALUE_BYTES.div_ceil(3) * 4;
+    if encoded.len() > MAX_ENCODED_BYTES {
+        return None;
+    }
     let decoded = crate::simd_base64::decode(encoded)?;
+    if decoded.len() > super::handler::MAX_USER_VAR_VALUE_BYTES {
+        return None;
+    }
     let value = String::from_utf8(decoded).ok()?;
     Some((name.to_string(), value))
 }
@@ -127,50 +148,52 @@ pub(super) fn xparse_color(color: &[u8]) -> Option<ColorRgb> {
     }
 }
 
-/// Parse colors in `rgb:r(rrr)/g(ggg)/b(bbb)` format.
-fn parse_rgb_color(color: &[u8]) -> Option<ColorRgb> {
-    let colors = simd_utf8::from_utf8_fast(color)
-        .ok()?
-        .split('/')
-        .collect::<Vec<_>>();
-
-    if colors.len() != 3 {
+/// Parse one component with the protocol's one-to-four ASCII hex digits.
+fn parse_hex_color_component(component: &[u8]) -> Option<u32> {
+    if !(1..=4).contains(&component.len()) || !component.iter().all(u8::is_ascii_hexdigit)
+    {
         return None;
     }
 
-    // Scale values instead of filling with `0`s.
-    let scale = |input: &str| {
-        if input.len() > 4 {
-            None
-        } else {
-            let max = u32::pow(16, input.len() as u32) - 1;
-            let value = u32::from_str_radix(input, 16).ok()?;
-            Some((255 * value / max) as u8)
-        }
-    };
-
-    Some(ColorRgb {
-        r: scale(colors[0])?,
-        g: scale(colors[1])?,
-        b: scale(colors[2])?,
-    })
+    u32::from_str_radix(std::str::from_utf8(component).ok()?, 16).ok()
 }
 
-/// Parse colors in `#r(rrr)g(ggg)b(bbb)` format.
-fn parse_legacy_color(color: &[u8]) -> Option<ColorRgb> {
-    let item_len = color.len() / 3;
-
-    // Truncate/Fill to two byte precision.
-    let color_from_slice = |slice: &[u8]| {
-        let col =
-            usize::from_str_radix(simd_utf8::from_utf8_fast(slice).ok()?, 16).ok()? << 4;
-        Some((col >> (4 * slice.len().saturating_sub(1))) as u8)
+/// Parse three slash-separated RGB components, scaling each precision to a byte.
+fn parse_rgb_color(color: &[u8]) -> Option<ColorRgb> {
+    let mut components = color.split(|byte| *byte == b'/');
+    let scale = |component: &[u8]| {
+        let value = parse_hex_color_component(component)?;
+        // Validation limits the shift to 4..=16 and makes the divisor nonzero.
+        let maximum = (1_u32 << (4 * component.len())) - 1;
+        Some((255 * value / maximum) as u8)
     };
+    let r = scale(components.next()?)?;
+    let g = scale(components.next()?)?;
+    let b = scale(components.next()?)?;
+    if components.next().is_some() {
+        return None;
+    }
+
+    Some(ColorRgb { r, g, b })
+}
+
+/// Parse equal-width legacy RGB components, keeping their high eight bits.
+fn parse_legacy_color(color: &[u8]) -> Option<ColorRgb> {
+    if !matches!(color.len(), 3 | 6 | 9 | 12) {
+        return None;
+    }
+
+    let width = color.len() / 3;
+    let mut components = color.chunks_exact(width).map(|component| {
+        let value = parse_hex_color_component(component)?;
+        // Width is 1..=4: pad to 16 bits, then take the high byte.
+        Some(((value << (4 * (4 - width))) >> 8) as u8)
+    });
 
     Some(ColorRgb {
-        r: color_from_slice(&color[0..item_len])?,
-        g: color_from_slice(&color[item_len..item_len * 2])?,
-        b: color_from_slice(&color[item_len * 2..])?,
+        r: components.next()??,
+        g: components.next()??,
+        b: components.next()??,
     })
 }
 
@@ -493,6 +516,66 @@ pub(super) fn parse_palette_reset(params: &[&[u8]]) -> PaletteReset {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn osc_color_rejects_unsupported_component_widths() {
+        for length in 0..=16 {
+            if [3, 6, 9, 12].contains(&length) {
+                continue;
+            }
+            let color = format!("#{}", "0".repeat(length));
+            assert_eq!(xparse_color(color.as_bytes()), None, "length {length}");
+        }
+    }
+
+    #[test]
+    fn osc_color_rejects_overlong_zero_components() {
+        let color = format!("#{}", "0".repeat(51));
+        assert_eq!(xparse_color(color.as_bytes()), None);
+    }
+
+    #[test]
+    fn osc_color_rejects_non_hex_or_incomplete_components() {
+        for color in [
+            "#+10+20+30",
+            "#12 456",
+            "#12g456",
+            "rgb:+f/f/f",
+            "rgb:/f/f",
+            "rgb:f//f",
+            "rgb:f/f/",
+            "rgb:f/f/f/f",
+            "rgb:fffff/0/0",
+            "rgb:f/f/ f",
+            "rgb:ff/ff/é",
+            "rgb:ff/ff/0x10",
+        ] {
+            assert_eq!(xparse_color(color.as_bytes()), None, "{color}");
+        }
+    }
+
+    #[test]
+    fn osc_color_preserves_supported_precision() {
+        for (color, expected) in [
+            ("#aBc", [0xa0, 0xb0, 0xc0]),
+            ("#123456", [0x12, 0x34, 0x56]),
+            ("#123456789", [0x12, 0x45, 0x78]),
+            ("#123456789aBc", [0x12, 0x56, 0x9a]),
+            ("#000000000001", [0, 0, 0]),
+            ("rgb:a/B/c", [0xaa, 0xbb, 0xcc]),
+            ("rgb:12/34/56", [0x12, 0x34, 0x56]),
+            ("rgb:800/fff/000", [127, 255, 0]),
+            ("rgb:8000/ffff/0000", [127, 255, 0]),
+            ("rgb:f/00/ffff", [255, 0, 255]),
+        ] {
+            let [r, g, b] = expected;
+            assert_eq!(
+                xparse_color(color.as_bytes()),
+                Some(ColorRgb { r, g, b }),
+                "{color}"
+            );
+        }
+    }
 
     fn cwd(payload: &str) -> Option<String> {
         parse_current_directory(payload.as_bytes())

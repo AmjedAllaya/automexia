@@ -25,6 +25,22 @@ For every public behavior:
 
 ### identity-config-migration
 
+Environment tests reject a whole invalid batch before startup mutation or launch,
+including every platform override. Preserve empty values, Unicode, additional
+equals signs and duplicate ordering. Creation tests require exact complete bytes,
+concurrent no-overwrite publication, relative targets, missing parents, existing
+sentinels, linked/directory destinations, failure cleanup and isolated fixture
+ownership. Native links/private modes and macOS startup errors require their
+actual platforms; a privilege-skipped branch is not passing native evidence.
+
+Welcome creation must use one bounded application worker, with a checked operation
+number, weak route identity and cancellation. Cover close before and after result
+publication, stale replacement, siblings, exhausted IDs, held Enter and release
+after completion, handler failure and closed wake targets. Require result-before-
+wake and completion drain even after target closure. Native busy/error rendering,
+focus and assistive technology remain distinct from model and source-policy tests.
+
+
 Colour setup assurance exercises the public helpers, literal defaults and serde
 palette path. Independent channel and ASCII-grammar oracles cover RGB/RGBA,
 all channel values, malformed Unicode, controls, markers and oversized input.
@@ -49,6 +65,16 @@ coexistence. Assert that real profile paths and environment values never enter
 fixtures or reports.
 
 ### terminal-protocols-grid-history
+
+Inline header tables preserve authoritative VT scalar widths, source bytes and
+ANSI styles while wrapping complete graphemes within aligned cells. Exercise
+actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
+hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
+Shared borders and clipped glyph quads need independent raster bounds at
+fractional scales; selected substrings must paint only their source cells.
+The bounded model and snapshot benchmarks do not establish native compositor,
+physical input or assistive-technology delivery. See
+[the protocol](TESTING.md#inline-header-tables).
 
 Keyboard hyperlink review must retain exact OSC 8 targets over history, soft
 wraps, CJK and combining cells, with one label per contiguous anchor. Enforce
@@ -125,6 +151,38 @@ compare stable IDs, timestamps, boundaries, visible rows, and unchanged PTY
 bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
+
+Channel readiness must survive first registration racing each send API and final
+sender destruction, without a later message or disconnect masking the result.
+Gate the actual native poller with bounded per-receiver checkpoints. Run both Loom
+models with the Loom configuration enabled; retain canaries for old snapshot order
+and either missing fence. Source publication order alone is insufficient. Queue
+admission, accounting and channel-transition performance require separate evidence.
+See [ADR 0074](adr/0074-channel-registration-publication.md).
+
+Unix native boundaries require status/no-record/retry/invalid-field lookup
+oracles, concurrent caller-owned terminal names, failed-launch descriptor recovery,
+argument/environment/cwd and executable-script compatibility. Child probes must
+check controlling-terminal/session/foreground group identity and closed standard
+streams. Retain exact-launch early-error cleanup and distinguish model-only macOS
+argv checks from native host evidence. See
+[ADR 0069](adr/0069-transactional-unix-pty-launch.md).
+
+Windows pipe storage must retain a fixed capacity and safe cross-thread
+ownership without manual Send/Sync or overlapping whole-buffer borrows. Cover
+zero capacity, saturation, contiguous wraparound, empty operations and unchanged
+destination suffixes against an independent FIFO. Gate cross-thread publication
+with bounded acknowledgments and join both endpoints. Native pipe/ConPTY tests
+must retain exact final bytes, EOF and cleanup; compare the existing PTY startup
+and sustained-output benchmark with a same-host baseline. See
+[ADR 0068](adr/0068-safe-windows-pipe-buffer.md).
+Windows launch tests also require native ordinal environment-name ordering,
+last-override values, empty double terminators and rejection before child lookup.
+Use independent exact/over-limit UTF-16, quoting-expansion, entry-count and signed
+geometry oracles. A public-constructor allocation observer with its own canary
+must reject oversized explicit batches before wide copies. Native inherited
+snapshots and total process memory remain distinct bounds. See
+[ADR 0071](adr/0071-validated-windows-launch-boundaries.md).
 
 
 Multi-column WSL listing coverage must execute both raw native and real worker
@@ -247,9 +305,19 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Inline header tables preserve authoritative VT scalar widths, source bytes and
+ANSI styles while wrapping complete graphemes within aligned cells. Exercise
+actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
+hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
+Shared borders and clipped glyph quads need independent raster bounds at
+fractional scales; selected substrings must paint only their source cells.
+The bounded model and snapshot benchmarks do not establish native compositor,
+physical input or assistive-technology delivery. See
+[the protocol](TESTING.md#inline-header-tables).
+
 Keyboard hyperlink preview uses real parser targets and the production font
 fitter. Compare exact restored pixels, mutate one channel, and cover tiny through
-8K geometry plus 100–400% scale. Full destinations stay separate from shortened
+8K geometry plus 100Ã¢â‚¬â€œ400% scale. Full destinations stay separate from shortened
 labels; native desktop and screen-reader delivery remain external evidence.
 
 Shared command-information wrapping must preserve every supplied context label
@@ -397,6 +465,16 @@ live editor input at a fixed unsent sentinel so cursor-line drift cannot
 masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
+
+Inline header tables preserve authoritative VT scalar widths, source bytes and
+ANSI styles while wrapping complete graphemes within aligned cells. Exercise
+actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
+hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
+Shared borders and clipped glyph quads need independent raster bounds at
+fractional scales; selected substrings must paint only their source cells.
+The bounded model and snapshot benchmarks do not establish native compositor,
+physical input or assistive-technology delivery. See
+[the protocol](TESTING.md#inline-header-tables).
 
 Exercise the actual classic hyperlink binding on every platform table and the
 shared key-intent owner: Tab/Back, labels, Enter, copy, Escape, repeats and
@@ -551,6 +629,14 @@ network authority.
 
 ### extension-contract-runtime
 
+Worker tests must gate full queues, blocked handlers, reentrant and panicking
+registration, native thread-local destruction and callback lifetime beyond join.
+Require actual join before acknowledgement, no stale replacement, reuse of one
+cleanup service, charged owner admission after drop, failure isolation and bounded
+shutdown waits. Exercise the application review-owner drop while its handler is
+blocked. See [ADR 0073](adr/0073-bounded-extension-worker-retirement.md); no test
+may equate a finished Rust function with native thread cleanup.
+
 Reinforce version negotiation, strict message schemas and ceilings, exact
 capability denial, session isolation, cancellation, queue saturation, stale
 generation rejection, crash/restart, disable, uninstall, and shutdown. Optional
@@ -592,6 +678,12 @@ time. Keep raw shell capture bounds unchanged. Models are not native input,
 screen-reader, compositor, clipboard, provider or sustained RSS evidence.
 
 ### image-protocols-local-preview
+
+Kitty size declarations cannot allocate unreceived bytes. Test pre-decode
+rejection, exact/over-limit actual payload accumulation, checked length overflow,
+transfer isolation, inherited quiet/identifier replies and recovery after
+rejection. Test graphics-enabled and minimal feature configurations. These
+per-transfer tests do not certify aggregate retention or decoder peak memory.
 
 Inline image quads use the same command-row projection and crop texture slices
 around inserted rows. Regressions check exact coordinates and UV preservation;
@@ -876,6 +968,13 @@ success/failure cleanup, and the dormant pre-push hook. Compare the generated
 tree and hashes independently. Exercise native process ownership on each
 claimed platform and keep unexecuted hosts external.
 
+Cache regressions also require new-name admission during deletion, retained
+named locks, concurrent collectors, native subprocess exclusion, iterator
+consumption and closure, queued-directory limits, lease-handle overflow, and
+lock release after inventory or deletion failure. An independent temporary
+storage tree checks forbidden deletion and unchanged bytes. Older clients that
+introduce unseen lease names remain outside the admission protocol.
+
 The summarized workspace-test owner must also keep its 30-minute deadline,
 16 MiB stdout ceiling, live compiler diagnostics, Unix process group or Windows
 Job Object, and real success/deadline/overflow child-process tests. Mutation
@@ -1009,6 +1108,16 @@ checks verify separation from credential, provider, approval, remote-execution,
 and terminal hot-path authority; detailed future planning remains private.
 
 ### ecosystem-d7-cp6-proposal
+
+Optional signed settings metadata uses independent schema-1 declarations while
+preserving manifest v1, accepted digest, receipt/signature framing and release
+denial. Cover literal Boolean/Choice/Integer defaults, exact byte/count/text/range
+bounds, duplicate/unknown members, Unicode, identity and receipt relabeling.
+Signed-member tampering must fail package verification; malformed optional metadata
+must remain unavailable without retroactively rejecting a valid legacy package.
+The fuzz target reaches the pure decoder directly because its hostile package
+path has no trusted publishers. Real signed fixtures prove projection integrity;
+fuzz compilation does not establish an executed campaign or installed Settings.
 
 All-feature host assurance must cover pre-arming interrupts, shared-engine ticks,
 reused cancellation tokens and worker-unwind cleanup. Require invocation-local

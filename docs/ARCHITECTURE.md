@@ -27,6 +27,17 @@ for terminal cells, process lifetime, routes, focus, or persisted settings.
 
 ## Terminal and session ownership
 
+Unix launch entry points share the existing transactional process adapter with
+explicit compatibility policies. Native account/name buffers and PTY descriptors
+have bounded, owned lifetimes; failed execution returns to the parent without
+publishing a PTY. See [ADR 0069](adr/0069-transactional-unix-pty-launch.md).
+Windows pipe storage uses safe shared ownership and fixed-capacity transfers;
+see [ADR 0068](adr/0068-safe-windows-pipe-buffer.md).
+The Windows launch adapter validates signed geometry and bounded native strings
+before PTY allocation. Explicit environment batches are checked before wide
+copies and use native ordinal name identity with last-override precedence;
+see [ADR 0071](adr/0071-validated-windows-launch-boundaries.md).
+
 The native PTY adapter selects the core grid's resize policy before output is
 served. ConPTY (including WSL on Windows) retains its history-free mutable
 viewport origin; Unix PTYs retain their native reflow behavior. Wrapped history
@@ -131,6 +142,13 @@ Current capability-free shared contracts are owned by
 `automexia-connectivity` and `automexia-command-productivity` where required
 by existing source consumers. These package names are maintenance facts, not
 public product announcements.
+
+The capability-free `automexia-extension-runtime` owns bounded worker admission,
+registration and retirement. Native join acknowledgement and outstanding
+registration leases prevent premature replacement; cleanup retains its charged
+owner through blocked work. Application consumers own request identity, result
+publication and cancellation. See
+[ADR 0073](adr/0073-bounded-extension-worker-retirement.md).
 
 `automexia-extension-api::surface` owns bounded, versioned semantic table data.
 The application-owned surface slot validates trusted grant binding, frame size,
@@ -279,6 +297,14 @@ ownership, compatibility and validation boundaries.
 
 ## VT control-string trust boundary
 
+The existing Kitty image ingress retains received bytes only. Declared transfer
+size is validated before decoding and never used as a reservation hint.
+Continuation accumulation checks arithmetic and the per-image ceiling before
+fallible bounded growth. Rejection retires the affected upload, preserves other
+uploads and respects its original response identifiers and quiet policy.
+These are per-transfer guarantees; aggregate retention and decoder peak memory
+remain separate resource evidence.
+
 Terminal output is untrusted input. CSI, OSC, DCS, APC, image protocols,
 hyperlinks, titles, clipboard requests, and private control sequences are parsed
 with explicit byte, dimension, nesting, and state limits.
@@ -289,6 +315,12 @@ bypass user confirmation. Terminal and parser fuzz corpora include fragmented,
 oversized, Unicode, control-character, and historical failure cases.
 
 ## PTY and process lifecycle
+
+Corcovado publishes registration before sampling pending work, paired with a
+fence on the sender's empty-to-nonempty path. This prevents the first message or
+final disconnect from falling between two missed observations. Native poller
+regressions and an independent model own this contract; queue admission and
+accounting remain separate. See [ADR 0074](adr/0074-channel-registration-publication.md).
 
 PTY input channels retain a dedicated cancellation wakeup shared by their sender
 clones. Closing a pane can therefore retire its worker even while a partial
@@ -420,6 +452,18 @@ decoding. App branding and persistence remain separate owners. See
 Configuration is read with bounded size and parsing depth. A candidate is
 validated completely before publication. Invalid reloads keep the
 last-known-good configuration and return a redacted error.
+
+The backend owns whole-batch environment parsing for configuration and child
+launch. Global and platform batches are validated before candidate publication;
+startup validates the effective batch before mutating process environment.
+Package-owned shell integration trust is resolved after configured assignments.
+Starter creation reuses the workspace's native `tempfile` staging primitive,
+synchronizes complete bytes, and publishes without clobbering another creator.
+The application owns CLI status and UI error presentation. Welcome input emits a
+typed intent to one Router-owned bounded worker. Operation and weak route identity
+prevent stale completion; the result precedes the renderer wake. Window closure
+cancels publication and final shutdown retains timed-out cleanup ownership. See
+[ADR 0070](adr/0070-validated-startup-configuration.md) for compatibility and limits.
 
 Runtime appearance preferences are application-owned and layered over
 hand-edited configuration. Writes use private permissions, temporary files,
@@ -673,7 +717,13 @@ Focused table output follows [ADR 0060](adr/0060-focused-core-table-output.md):
 the capability-free UI model recognizes bounded grid text, VT remains the only
 terminal owner, and the application owns the route-scoped read-only snapshot,
 input containment and drawing. It does not invoke provider extensions or mutate
-normal scrollback. The [guide](user-guide/table-output.md) describes limits.
+normal scrollback. [ADR 0078](adr/0078-inline-header-table-presentation.md)
+extends that model with conservative inline header-table recognition, bounded
+cell wrapping and source-preserving pointer projection. Its extra display space
+shares the existing pane row projection with command information. Sugarloaf
+clips the emitted glyph quads before every backend consumes them; shared borders
+remain geometry rather than terminal characters. Native program modes retain
+ordinary VT presentation. The [guide](user-guide/table-output.md) describes limits.
 
 D0 follows ADR 0012: the terminal owns the local session and PTY while system
 OpenSSH owns networking, authentication, credentials, host trust, and proxy

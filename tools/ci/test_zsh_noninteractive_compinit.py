@@ -43,6 +43,7 @@ class ZshNoninteractiveCompinitTests(unittest.TestCase):
             environment = os.environ.copy()
             environment["FPATH"] = f"{insecure}:{discovered}"
             environment["AUTOMEXIA_TEST_ROOT"] = str(ROOT)
+            environment["AUTOMEXIA_TEST_COMPINIT_ONLY"] = "1"
             source = ZSH_CONTRACT.read_text(encoding="utf-8")
 
             completed = subprocess.run(
@@ -56,7 +57,7 @@ class ZshNoninteractiveCompinitTests(unittest.TestCase):
                 check=False,
             )
             self.assertEqual(completed.returncode, 0, completed.stderr)
-            self.assertIn("PASS: Zsh integration", completed.stdout)
+            self.assertIn("PASS: Zsh non-interactive compinit", completed.stdout)
 
             # This mutation is the exact hosted failure: without safe-ignore
             # mode, compinit tries to ask about the hostile directory through a

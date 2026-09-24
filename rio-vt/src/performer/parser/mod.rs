@@ -841,8 +841,8 @@ impl Parser {
     fn osc_end<P: Perform>(&mut self, performer: &mut P, byte: u8) {
         if !self.osc_overflowed {
             self.action_osc_put_param();
-            self.osc_dispatch(performer, byte);
         }
+        self.osc_dispatch(performer, byte);
         self.osc_cancel();
     }
 
@@ -875,7 +875,24 @@ impl Parser {
         {
             *slice = self.osc_raw.slice(start, end);
         }
-        performer.osc_dispatch(&slices[..self.osc_num_params], byte == 0x07);
+        if self.osc_overflowed {
+            let mut count = self.osc_num_params;
+            if count < MAX_OSC_PARAMS {
+                // Overflow froze the final parameter before its separator.
+                // Borrow that retained prefix only for rejection notification;
+                // it must never be executed as a truncated command.
+                let start = if count == 0 {
+                    0
+                } else {
+                    self.osc_params[count - 1].1
+                };
+                slices[count] = self.osc_raw.slice(start, self.osc_raw.len());
+                count += 1;
+            }
+            performer.osc_rejected(&slices[..count]);
+        } else {
+            performer.osc_dispatch(&slices[..self.osc_num_params], byte == 0x07);
+        }
     }
 
     /// Advance the parser state from ground.
@@ -954,7 +971,7 @@ impl Parser {
                 // is the validated UTF-8 view of those bytes, so it has at least
                 // one character.
                 let c = unsafe { parsed.chars().next().unwrap_unchecked() };
-                performer.print(c);
+                Self::dispatch_codepoints(performer, &[c as u32]);
 
                 self.partial_utf8_len = 0;
                 c.len_utf8() - old_bytes
@@ -964,7 +981,7 @@ impl Parser {
 
                 // If we have any valid bytes, that means we partially copied another
                 // utf8 character into `partial_utf8`. Since we only care about the
-                // first character, we just ignore the rest.
+                // first character, leave the rest for the normal parsing loop.
                 if valid_bytes > 0 {
                     // SAFETY: `valid_bytes > 0` and the slice up to `valid_bytes` was
                     // reported as valid UTF-8, so it contains at least one full
@@ -975,10 +992,10 @@ impl Parser {
                         parsed.chars().next().unwrap_unchecked()
                     };
 
-                    performer.print(c);
+                    Self::dispatch_codepoints(performer, &[c as u32]);
 
                     self.partial_utf8_len = 0;
-                    return valid_bytes - old_bytes;
+                    return c.len_utf8() - old_bytes;
                 }
 
                 match err.error_len() {
@@ -1493,6 +1510,10 @@ pub trait Perform {
 
     /// Dispatch an operating system command.
     fn osc_dispatch(&mut self, _params: &[&[u8]], _bell_terminated: bool) {}
+
+    /// A terminated OSC exceeded the parser buffer. Parameters are borrowed
+    /// bounded prefixes for classification only; never execute their contents.
+    fn osc_rejected(&mut self, _params: &[&[u8]]) {}
 
     /// A final character has arrived for a CSI sequence
     ///
@@ -2546,6 +2567,91 @@ mod tests {
         assert_eq!(dispatcher.dispatched[0], Sequence::Print('a'));
         assert_eq!(dispatcher.dispatched[1], Sequence::Print('�'));
         assert_eq!(dispatcher.dispatched[2], Sequence::Print('b'));
+    }
+
+    #[test]
+    fn fragmented_utf8_preserves_independent_control_and_text_actions() {
+        let cases = [
+            (
+                b"\xc3\xa9A\xe3\x81\x82Z".as_slice(),
+                vec![
+                    Sequence::Print('é'),
+                    Sequence::Print('A'),
+                    Sequence::Print('あ'),
+                    Sequence::Print('Z'),
+                ],
+            ),
+            (
+                b"A\xc2\x85B".as_slice(),
+                vec![
+                    Sequence::Print('A'),
+                    Sequence::Execute(0x85),
+                    Sequence::Print('B'),
+                ],
+            ),
+            (
+                b"\xc2\x85A\xe3\x81\x82Z".as_slice(),
+                vec![
+                    Sequence::Execute(0x85),
+                    Sequence::Print('A'),
+                    Sequence::Print('あ'),
+                    Sequence::Print('Z'),
+                ],
+            ),
+            (
+                b"\xc3\xa9\n\xf0\x9f\x9a\x80\x7f\x85Z".as_slice(),
+                vec![
+                    Sequence::Print('é'),
+                    Sequence::Execute(b'\n'),
+                    Sequence::Print('🚀'),
+                    Sequence::Execute(0x7f),
+                    Sequence::Execute(0x85),
+                    Sequence::Print('Z'),
+                ],
+            ),
+            (
+                b"A\xe1\x80B\xc2\x85Z".as_slice(),
+                vec![
+                    Sequence::Print('A'),
+                    Sequence::Print('�'),
+                    Sequence::Print('B'),
+                    Sequence::Execute(0x85),
+                    Sequence::Print('Z'),
+                ],
+            ),
+        ];
+        for (input, expected) in cases {
+            for split in 0..=input.len() {
+                let mut dispatcher = Dispatcher::default();
+                let mut parser = Parser::default();
+                parser.advance(&mut dispatcher, &input[..split]);
+                parser.advance(&mut dispatcher, b"");
+                parser.advance(&mut dispatcher, &input[split..]);
+                assert_eq!(
+                    dispatcher.dispatched, expected,
+                    "split {split} in {input:?}"
+                );
+            }
+            let mut dispatcher = Dispatcher::default();
+            let mut parser = Parser::default();
+            for byte in input {
+                parser.advance(&mut dispatcher, std::slice::from_ref(byte));
+                parser.advance(&mut dispatcher, b"");
+            }
+            assert_eq!(dispatcher.dispatched, expected, "bytewise {input:?}");
+        }
+    }
+
+    #[test]
+    fn fragmented_utf8_preserves_every_encoded_c1_control() {
+        for control in 0x80..=0x9f {
+            let mut dispatcher = Dispatcher::default();
+            let mut parser = Parser::default();
+            parser.advance(&mut dispatcher, b"\xc2");
+            parser.advance(&mut dispatcher, b"");
+            parser.advance(&mut dispatcher, &[control]);
+            assert_eq!(dispatcher.dispatched, [Sequence::Execute(control)]);
+        }
     }
 
     #[test]
