@@ -111,6 +111,8 @@ pub struct DevOpsStatus {
 }
 
 impl DevOpsStatus {
+    pub(super) fn set_metadata_readiness(&mut self, _session_id: usize, _readiness: super::session_metadata::MetadataReadiness) {}
+
     pub fn clear(&mut self) {
         *self = Self::default();
     }
@@ -819,6 +821,245 @@ mod tests {
         .unwrap()
     }
 
+    fn history_anchor() -> PromptAnchor {
+        PromptAnchor {
+            generation: Some(7),
+            key: 3,
+            x: 0.0,
+            y: 0.0,
+            width: 400.0,
+            height: 24.0,
+        }
+    }
+
+    fn history_status(route: usize, historical: &str, live: &str) -> DevOpsStatus {
+        let mut facts = session("", Some("Ubuntu"));
+        facts.session_id = route;
+        let mut status = DevOpsStatus::default();
+        for (revision, value) in [(1, historical), (2, live)] {
+            status.contribution = Some(
+                ContextContribution::new(
+                    ExtensionId::new("automexia.devops").unwrap(),
+                    SessionId::new(route as u64),
+                    1,
+                    revision,
+                    Freshness::Current,
+                    vec![status_segment(
+                        "kubernetes",
+                        value,
+                        SegmentRole::Kubernetes,
+                        IconKind::Kubernetes,
+                        100,
+                    )],
+                )
+                .unwrap(),
+            );
+            status.snapshot_revision = revision as u32;
+            if revision == 1 {
+                status.prepare_prompt_rows(&facts, true, &[], Some(history_anchor()));
+                status.prepare_prompt_rows(&facts, false, &[history_anchor()], None);
+            } else {
+                status.ensure_live_segments(&facts);
+            }
+        }
+        status.last_session = Some(facts);
+        status.last_refresh_request = Some(Instant::now());
+        status.request_in_flight = true;
+        status
+    }
+
+    fn historical_value(status: &DevOpsStatus, route: usize) -> Option<&str> {
+        status
+            .segments_for_prompt(route, &history_anchor())
+            .iter()
+            .find(|segment| segment.role == SegmentRole::Kubernetes)
+            .map(|segment| segment.value.as_str())
+    }
+
+    fn dead_history_context(
+        route: usize,
+    ) -> crate::context::Context<rio_backend::event::VoidListener> {
+        crate::context::create_dead_context(
+            rio_backend::event::VoidListener {},
+            rio_backend::event::WindowId::from(0),
+            route,
+            route,
+            crate::context::ContextDimension::default(),
+        )
+    }
+
+    fn history_manager(
+    ) -> crate::context::ContextManager<rio_backend::event::VoidListener> {
+        let mut manager = crate::context::ContextManager::start_with_capacity(
+            4,
+            rio_backend::event::VoidListener {},
+            rio_backend::event::WindowId::from(0),
+        )
+        .unwrap();
+        manager.contexts_mut().clear();
+        manager.contexts_mut().push(history_grid(10));
+        manager.select_route_from_current_grid();
+        manager
+    }
+
+    fn history_grid(
+        route: usize,
+    ) -> crate::context::ContextGrid<rio_backend::event::VoidListener> {
+        crate::context::ContextGrid::new(
+            dead_history_context(route),
+            rio_backend::config::layout::Margin::default(),
+            [0.0; 4],
+            [0.0; 4],
+            rio_backend::config::layout::Panel::default(),
+        )
+    }
+
+    #[test]
+    fn context_ownership_disabled_feature_keeps_route_state_empty() {
+        let mut manager = history_manager();
+        let mut renderer =
+            super::super::Renderer::new(&rio_backend::config::Config::default());
+        renderer.devops_context_enabled = false;
+        renderer.sync_devops_routes(&manager);
+        assert!(renderer.devops_status_route.is_none());
+        manager.contexts_mut().push(history_grid(20));
+        manager.set_current(1);
+        renderer.sync_devops_routes(&manager);
+        assert!(renderer.devops_status_route.is_none());
+        assert!(renderer.devops_statuses.is_empty());
+    }
+
+    #[test]
+    fn context_ownership_unchanged_active_route_retains_history_and_refresh_lease() {
+        let manager = history_manager();
+        let mut renderer =
+            super::super::Renderer::new(&rio_backend::config::Config::default());
+        renderer.devops_context_enabled = true;
+        renderer.sync_devops_routes(&manager);
+        renderer.devops_status = history_status(10, "alpha-old", "alpha-now");
+        let original_request = renderer.devops_status.last_refresh_request;
+        for _ in 0..3 {
+            renderer.sync_devops_routes(&manager);
+            assert_eq!(
+                historical_value(&renderer.devops_status, 10),
+                Some("alpha-old")
+            );
+            assert_eq!(
+                renderer.devops_status.last_refresh_request,
+                original_request
+            );
+            assert!(renderer.devops_status.request_in_flight);
+            assert!(renderer.devops_statuses.is_empty());
+        }
+    }
+
+    #[test]
+    fn context_ownership_split_focus_round_trip_retains_each_prompt_and_refresh_lease() {
+        let mut manager = history_manager();
+        assert!(manager
+            .current_grid_mut()
+            .split_right_core(dead_history_context(20)));
+        assert!(manager.current_grid_mut().select_active_route(10));
+        let mut renderer =
+            super::super::Renderer::new(&rio_backend::config::Config::default());
+        renderer.devops_context_enabled = true;
+        renderer.sync_devops_routes(&manager);
+        renderer.devops_status = history_status(10, "alpha-old", "alpha-now");
+        renderer
+            .devops_statuses
+            .insert(20, history_status(20, "beta-old", "beta-now"));
+        let original_request = renderer.devops_status.last_refresh_request;
+        assert!(manager.current_grid_mut().select_active_route(20));
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_status, 20),
+            Some("beta-old")
+        );
+        assert!(manager.current_grid_mut().select_active_route(10));
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_status, 10),
+            Some("alpha-old")
+        );
+        assert_eq!(
+            historical_value(&renderer.devops_statuses[&20], 20),
+            Some("beta-old")
+        );
+        assert_eq!(
+            renderer.devops_status.last_refresh_request,
+            original_request
+        );
+        assert!(renderer.devops_status.request_in_flight);
+        assert_eq!(renderer.devops_statuses.len(), 1);
+    }
+
+    #[test]
+    fn context_ownership_hidden_local_tab_retains_history_and_closed_tab_is_pruned() {
+        let mut manager = history_manager();
+        let mut renderer =
+            super::super::Renderer::new(&rio_backend::config::Config::default());
+        renderer.devops_context_enabled = true;
+        renderer.sync_devops_routes(&manager);
+        renderer.devops_status = history_status(10, "alpha-old", "alpha-now");
+        manager
+            .current_grid_mut()
+            .contexts_mut()
+            .values_mut()
+            .next()
+            .unwrap()
+            .push_tab_core(dead_history_context(20));
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_statuses[&10], 10),
+            Some("alpha-old")
+        );
+        renderer.devops_status = history_status(20, "beta-old", "beta-now");
+        assert!(manager.current_grid_mut().remove_parked_route(20));
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_status, 10),
+            Some("alpha-old")
+        );
+        assert!(renderer.devops_statuses.is_empty());
+    }
+
+    #[test]
+    fn context_ownership_hidden_top_level_tab_retained_only_while_route_is_live() {
+        let mut manager = history_manager();
+        manager.contexts_mut().push(history_grid(20));
+        let mut renderer =
+            super::super::Renderer::new(&rio_backend::config::Config::default());
+        renderer.devops_context_enabled = true;
+        renderer.sync_devops_routes(&manager);
+        renderer.devops_status = history_status(10, "alpha-old", "alpha-now");
+        renderer
+            .devops_statuses
+            .insert(20, history_status(20, "beta-old", "beta-now"));
+        renderer
+            .devops_statuses
+            .insert(99, history_status(99, "closed", "closed"));
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_statuses[&20], 20),
+            Some("beta-old")
+        );
+        assert!(!renderer.devops_statuses.contains_key(&99));
+        manager.set_current(1);
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_status, 20),
+            Some("beta-old")
+        );
+        manager.set_current(0);
+        manager.contexts_mut().pop();
+        renderer.sync_devops_routes(&manager);
+        assert_eq!(
+            historical_value(&renderer.devops_status, 10),
+            Some("alpha-old")
+        );
+        assert!(renderer.devops_statuses.is_empty());
+    }
+
     #[test]
     fn renderer_adapter_uses_the_shared_brand_anchors_and_contrast() {
         let backgrounds = [
@@ -1117,5 +1358,8 @@ mod tests {
         assert!(!same_prompt_identity(Some(7), 12, Some(8), 12));
         assert!(same_prompt_identity(None, 12, None, 12));
         assert!(!same_prompt_identity(None, 12, None, 99));
+    }
+    mod metadata_readiness {
+        include!("devops_metadata_readiness_tests.rs");
     }
 }

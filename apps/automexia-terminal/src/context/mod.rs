@@ -1334,6 +1334,18 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn open_settings(&self) {
+        self.event_proxy
+            .send_event(RioEvent::OpenSettings, self.window_id);
+    }
+
+    #[inline]
+    pub fn extension_inventory_changed(&self) {
+        self.event_proxy
+            .send_event(RioEvent::ExtensionInventoryChanged, self.window_id);
+    }
+
+    #[inline]
     pub fn switch_to_settings(&mut self) {
         self.event_proxy
             .send_event(RioEvent::CreateConfigEditor, self.window_id);
@@ -2298,6 +2310,19 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         config: rio_backend::config::Config,
         sugarloaf: &mut Sugarloaf,
     ) {
+        let environment = match launch::environment_overrides(&config.env_vars) {
+            Ok(environment) => environment,
+            Err(error) => {
+                self.event_proxy.send_event(
+                    RioEvent::ReportToAssistant(RioError {
+                        report: RioErrorType::InitializationError(error.to_string()),
+                        level: RioErrorLevel::Error,
+                    }),
+                    self.window_id,
+                );
+                return;
+            }
+        };
         let (shell, working_dir) = process_open_url(
             config.shell.to_owned(),
             config.working_dir.to_owned(),
@@ -2311,7 +2336,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
             shell,
-            environment: launch::environment_overrides(&config.env_vars),
+            environment,
             profile_identity: config.shell.program.clone(),
             working_dir,
             spawn_performer: true,

@@ -59,6 +59,12 @@ class PromptDiscoveryTests(unittest.TestCase):
         for owner, before, after in [
             ("runtime", "same_devops_context(&capsule.session, session)", "capsule.session == *session"),
             ("runtime", "self.devops_snapshot(session_id).is_some()", "false"),
+            ("runtime", "!self.accepts_refresh(request)", "false"),
+            ("runtime", "self.context_status_enabled()", "true"),
+            ("runtime", "&& self.context_revision == request.context_revision", ""),
+            ("runtime", "&& !request.cancellation.is_cancelled()", ""),
+            ("runtime", "&& self.accepts(", "&& removed_acceptance("),
+            ("runtime", "fn accepts_refresh(", "fn unchecked_refresh("),
             ("runtime", "publish_devops_progress(&request, &snapshot);", ""),
             ("renderer", "self.request_in_flight = self.refresh_pending", "self.request_in_flight = false"),
             ("renderer", "runtime::same_devops_context(previous, session)", "previous == session"),
@@ -69,6 +75,17 @@ class PromptDiscoveryTests(unittest.TestCase):
                 sources[owner] = sources[owner].replace(before, after)
                 with self.assertRaises(ValueError):
                     policy.validate(sources)
+
+    def test_progress_guard_must_precede_snapshot_publication(self):
+        sources = policy.sources()
+        prefix, progress = sources["runtime"].split("fn put_devops_progress(", 1)
+        guard, publish = "!self.accepts_refresh(request)", "self.put_devops_snapshot("
+        self.assertIn(guard, progress)
+        self.assertIn(publish, progress)
+        progress = progress.replace(guard, "ORDER_PLACEHOLDER", 1).replace(publish, guard, 1).replace("ORDER_PLACEHOLDER", publish, 1)
+        sources["runtime"] = prefix + "fn put_devops_progress(" + progress
+        with self.assertRaises(ValueError):
+            policy.validate(sources)
 
 
 if __name__ == "__main__":

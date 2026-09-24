@@ -156,7 +156,10 @@ class FeatureTestReinforcementTests(unittest.TestCase):
             ("table_view", "self.viewport.horizontal_thumb("),
             ("table_pixels", "assert_eq!(pixels, after.pixels(760, 260));"),
             ("table_pixels", "line.0.y += 1.0;"),
-            ("screen", "self.consume_table_key_release(key)"),
+            ("screen", "self.consume_overlay_key_release(event)"),
+            ("screen", "self.handle_settings_key(key, clipboard)"),
+            ("screen_settings", "self.consume_overlay_key_release(key)"),
+            ("screen_settings", "self.dispatch_settings_key(key, clipboard, true)"),
             ("application_bench", "    core_table_view,"),
         ):
             with self.subTest(owner=owner, contract=fragment):
@@ -165,6 +168,38 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 sources[owner] = sources[owner].replace(fragment, "removed contract")
                 with self.assertRaises(REINFORCEMENT.ReinforcementError):
                     REINFORCEMENT._validate_table_sources(sources)
+
+    def test_shared_modal_release_must_precede_settings_dispatch(self) -> None:
+        REINFORCEMENT._validate_table_sources(self.native_sources)
+        owner = self.native_sources["screen_settings"]
+        release = "self.consume_overlay_key_release(key)"
+        dispatch = "self.dispatch_settings_key(key, clipboard, true)"
+        self.assertIn(release, owner)
+        self.assertIn(dispatch, owner)
+        mutation = owner.replace(release, "ORDER_PLACEHOLDER", 1).replace(dispatch, release, 1).replace("ORDER_PLACEHOLDER", dispatch, 1)
+        with self.assertRaises(REINFORCEMENT.ReinforcementError):
+            REINFORCEMENT._validate_table_sources(dict(self.native_sources, screen_settings=mutation))
+
+    def test_inline_tables_keep_bounded_capture_projection_and_glyph_evidence(self) -> None:
+        REINFORCEMENT._validate_inline_table_sources(self.native_sources)
+        for owner, fragment in (
+            ("inline_capture", "MAX_SCAN_CELLS: usize = 64 * 1024"),
+            ("inline_capture", "pub fn source_position"),
+            ("inline_renderer", "canvas.text().draw_cells_clipped("),
+            ("inline_renderer", "selection.contains(cell)"),
+            ("inline_pixels", "fn inline_table_visual_scroll_round_trip_preserves_partial_soft_wrapped_rows()"),
+            ("text_clip_tests", "fn cell_clipping_contains_real_glyph_ink_at_fractional_scales()"),
+            ("renderer", ".needs_snapshot(&*terminal)"),
+            ("command_wrap_renderer", "content.inline_tables.bands()"),
+            ("screen", "self.native_mouse_position(display_offset)"),
+            ("application_bench", '"inline_wrap_checked"'),
+        ):
+            with self.subTest(owner=owner, contract=fragment):
+                sources = self.native_sources.copy()
+                self.assertIn(fragment, sources[owner])
+                sources[owner] = sources[owner].replace(fragment, "removed contract")
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_inline_table_sources(sources)
 
     def test_command_wrapping_scenarios_remain_cross_owner(self) -> None:
         for feature_id in REINFORCEMENT.WRAPPING_FEATURES:
@@ -334,6 +369,34 @@ class FeatureTestReinforcementTests(unittest.TestCase):
                 for field in ["needed_tests", "verification_reinforcements", "checker_reinforcements"]:
                     feature[field] = [text.replace(phrase, "removed assurance") for text in feature[field]]
                 with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    self.validate(document)
+
+    def test_configuration_batch_and_creation_scenarios_cannot_disappear(self) -> None:
+        for phrase in ["Whole-batch environment rejection", "every platform override", "Concurrent no-overwrite publication", "isolated fixture ownership"]:
+            with self.subTest(phrase=phrase):
+                document = copy.deepcopy(self.document)
+                feature = next(row for row in document["features"] if row["id"] == "identity-config-migration")
+                self.assertTrue(any(phrase in text for text in feature["needed_tests"]))
+                feature["needed_tests"] = [text.replace(phrase, "removed assurance") for text in feature["needed_tests"]]
+                with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                    self.validate(document)
+
+    def test_cache_admission_and_streaming_scenarios_cannot_disappear(self) -> None:
+        for phrase in ["native child admission during deletion", "retained named locks", "iterator closure", "128-lease overflow"]:
+            with self.subTest(phrase=phrase):
+                document = copy.deepcopy(self.document)
+                feature = next(row for row in document["features"] if row["id"] == "contributor-automation-quality-policy")
+                feature["needed_tests"] = [text.replace(phrase, "removed assurance") for text in feature["needed_tests"]]
+                with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
+                    self.validate(document)
+
+    def test_windows_pipe_storage_scenarios_cannot_disappear(self) -> None:
+        for phrase in ["Windows pipe storage", "independent FIFO model", "bounded cross-thread publication", "joined endpoint drops"]:
+            with self.subTest(phrase=phrase):
+                document = copy.deepcopy(self.document)
+                feature = next(row for row in document["features"] if row["id"] == "pty-scheduler-process-lifecycle")
+                feature["needed_tests"] = [text.replace(phrase, "removed assurance") for text in feature["needed_tests"]]
+                with self.assertRaisesRegex(REINFORCEMENT.ReinforcementError, "required scenario detail"):
                     self.validate(document)
 
     def test_native_editor_cursor_and_deadline_scenarios_cannot_disappear(self) -> None:

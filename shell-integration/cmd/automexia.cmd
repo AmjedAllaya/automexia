@@ -31,9 +31,11 @@ for /F "delims=#" %%E in ('"prompt #$E# & for %%E in (1) do rem"') do set "AUTOM
 rem Cache clone-safe shell identity once and embed it into PROMPT below. CMD's
 rem prompt is repainted after every command, so this also restores CMD metadata
 rem after a nested shell exits. Empty WSL fields deliberately clear stale data.
+rem Begin and commit the cached identity together, recovering incomplete frames
+rem left by a previous shell without launching work on subsequent prompts.
 rem A bare OSC 133 D closes the preceding A/B region without claiming an exit
 rem code CMD cannot expose through PROMPT. The terminal renders it neutrally.
-set "AUTOMEXIA_CMD_IDENTITY=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_name=Q01E%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_user=%AUTOMEXIA_CMD_USER_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_path=%AUTOMEXIA_CMD_PATH_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_distro=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_os_version=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell=MQ==%AUTOMEXIA_ESC%\"
+set "AUTOMEXIA_CMD_IDENTITY=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_env_pending=MQ==%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_name=Q01E%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_user=%AUTOMEXIA_CMD_USER_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_path=%AUTOMEXIA_CMD_PATH_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_distro=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_os_version=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell=MQ==%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_env_pending=MA==%AUTOMEXIA_ESC%\"
 set "AUTOMEXIA_CMD_DONE=%AUTOMEXIA_ESC%]133;D%AUTOMEXIA_ESC%\"
 <nul set /p "=%AUTOMEXIA_CMD_IDENTITY%"
 

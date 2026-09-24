@@ -89,6 +89,7 @@ pub struct RenderableContent {
     /// one terminal lock + one materialize pass per frame per panel.
     pub visible_rows: Vec<Row<Square>>,
     pub command_rows: crate::automexia::ui::command_info::RowProjection,
+    pub inline_tables: crate::automexia::inline_tables::InlineTables,
     pub style_table: Vec<rio_backend::crosswords::style::Style>,
     /// Per-frame snapshot of extras (zero-width chars, hyperlinks,
     /// sixel/iterm graphics) actually referenced by visible cells —
@@ -116,6 +117,7 @@ pub struct RenderableContent {
     pub shell_user: Option<String>,
     pub shell_path: Option<String>,
     pub shell_environment: std::collections::BTreeMap<String, String>,
+    pub(crate) session_metadata: crate::renderer::session_metadata::ShellMetadataState,
     /// Strictly equivalent source metadata retained only until a cloned PTY
     /// publishes its own integration marker.
     pub seeded_session_metadata: bool,
@@ -198,6 +200,7 @@ impl RenderableContent {
             frame_damage: TerminalDamage::Full,
             visible_rows: Vec::new(),
             command_rows: Default::default(),
+            inline_tables: Default::default(),
             style_table: Vec::new(),
             extras: rustc_hash::FxHashMap::default(),
             term_colors: TermColors::default(),
@@ -209,6 +212,7 @@ impl RenderableContent {
             shell_user: None,
             shell_path: None,
             shell_environment: Default::default(),
+            session_metadata: Default::default(),
             seeded_session_metadata: false,
             shell_integration: false,
             shell_prompt_active: false,

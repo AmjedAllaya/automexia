@@ -121,7 +121,7 @@ Native acceptance checklist (not established by a model or cross-platform table)
    For an incompatible startup overlay, expect a warning and base bindings,
    not a failed terminal launch or silent deletion of the stored preferences.
 7. Resize before clicking, scroll between clicks, switch focus and return. Check
-   tiny, narrow and maximized windows at 100–400% scale on CPU and WGPU. Compare
+   tiny, narrow and maximized windows at 100ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ400% scale on CPU and WGPU. Compare
    frozen full-frame pixels with zero tolerance and inspect both images; model
    rectangles and literal CPU badge glyph tests are not full-dialog evidence.
 8. With Narrator/NVDA, VoiceOver and Orca on their native platforms, check the
@@ -134,7 +134,7 @@ from library tests. No native editor acceptance is implied by these commands.
 
 Shortcut coverage includes all classic catalog actions against actual platform
 tables, exact mode/override guards, source-free labels, palette-only Enter, and
-literal CPU glyph pixels at 100–400%. The palette model benchmark is separate
+literal CPU glyph pixels at 100ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ400%. The palette model benchmark is separate
 from native desktop input latency. See ADR 0051 for remaining native gates.
 
 ## QA diagnostic privacy
@@ -251,7 +251,7 @@ changing shared colours or palette typography. The theme tests use an independen
 f64 sRGB oracle after byte quantization, dark/light/custom configuration inputs,
 all shared surfaces, literal RGBA tokens and a one-channel mutation. Palette
 tests retain navigation/hit geometry and measure real bundled-font key labels at
-100–400% scale, including Unicode, long shortcuts and bounded trailing widths.
+100ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ400% scale, including Unicode, long shortcuts and bounded trailing widths.
 
 The `chrome_controlled_style_specimen` test rasterizes fictional labels using
 production theme tokens and the bundled font. Set `AUTOMEXIA_CHROME_PREVIEW` to an
@@ -268,6 +268,24 @@ The xtask modal ownership guard checks the shared scrim import and finite opaque
 surface literals; mutations reject removed imports, competing declarations,
 transparent, malformed, duplicate and nonfinite tokens. It complements, rather
 than replaces, runtime drawing and input/compositor tests.
+
+## Interactive PowerShell startup
+
+`cargo test -p automexia-terminal --lib automexia::shell::tests --locked`
+checks the actual startup bootstrap with real integration scripts, including
+repository and flattened resource layouts, literal paths, repeated sourcing,
+input/prompt/helper lifetime, and execution-policy fallback. Optional PowerShell 7
+scope cases run with the `powershell_core_session_keeps` filter and `-- --ignored`.
+
+`cargo test -p automexia-terminal --test powershell_startup --locked` runs the
+native Windows PowerShell ConsoleHost and PSReadLine input loop. It checks idle
+output before input, exactly one submitted command/result, then stable idle input.
+PowerShell 7 uses the same test with `-- --ignored`. Both suites isolate config
+and history, retain deadlines and cleanup ownership, and avoid logging shell
+content. Linux Bash/Zsh/Fish use the existing native shell integration gates;
+these checks do not substitute for unavailable native macOS or desktop evidence.
+A host without a PowerShell profile path reports native profile-directory
+metadata as external; the isolated profile and reparse-safety cases still run.
 
 ## Live resize preservation
 
@@ -599,6 +617,13 @@ dead process owners, current and dirty worktrees, grace periods, dry-run versus
 apply, failure cleanup, and storage de-duplication. The independent oracles are
 the generated storage tree and file digests, not cache self-reporting.
 
+Cache regressions also require new-name admission during deletion, retained
+named locks, concurrent collectors, native subprocess exclusion, iterator
+consumption and closure, queued-directory limits, lease-handle overflow, and
+lock release after inventory or deletion failure. An independent temporary
+storage tree checks forbidden deletion and unchanged bytes. Older clients that
+introduce unseen lease names remain outside the admission protocol.
+
 Run the focused owners first:
 
 ```text
@@ -775,6 +800,15 @@ Independent oracles compare exact bytes, cells, cursor state, modes, visible
 rows, semantic events, and final images where appropriate.
 
 ## PTY and process lifecycle
+
+Run `cargo test --locked -p corcovado --lib` and
+`cargo test --locked -p corcovado --test test test_custom_evented` for native readiness.
+Run both `loom_channel_readiness` and `loom_channel_registration` integration
+targets with `RUSTFLAGS="--cfg loom --check-cfg=cfg(loom)"`. Verify seven executed
+model tests, including four intentional invalid-order canaries. A zero-test run
+without that configuration is not validation. Native Windows/Linux evidence does
+not certify macOS/BSD, ARM, queue admission or controlled channel throughput.
+
 
 PTY tests exercise real supported adapters with exact executable and argument
 arrays. They cover launch, ordered input, resize storms, output storms,
@@ -1057,7 +1091,7 @@ successfully presented frame may be cached. Backend-to-backend equality is
 evaluated only after each frame independently passes the automated checks.
 Manual and independent visual review remains a separate release gate.
 
-Cover small through high-resolution viewports, 100–300% scale,
+Cover small through high-resolution viewports, 100ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬ÃƒÂ¢Ã¢â€šÂ¬Ã…â€œ300% scale,
 light/dark/high-contrast themes, long and localized text, Unicode, IME, empty
 and error states, modal stacking, keyboard and pointer input, focus restoration,
 and motion enabled/disabled.
@@ -1530,6 +1564,30 @@ shell/backend combinations on actual desktops before claiming their native
 visual or accessibility coverage. Finish with the full contributor readiness
 and privacy gates; focused tests are not full-product certification.
 
+## Inline header tables
+
+Run `cargo test --locked -p automexia-ui-model --test tables`,
+`cargo test --locked -p automexia-terminal --lib automexia::inline_tables`,
+`cargo test --locked -p automexia-terminal --bin automexia renderer::inline_table_tests`,
+and `cargo test --locked -p sugarloaf --lib text::`.
+The fixtures preserve actual VT source and scalar widths through narrow reflow,
+scrolling across a soft-wrapped row, mixed Unicode and source selection. Raster
+oracles independently check shared borders, actual glyph ink, ANSI colors and
+partial selection at fractional scales. Generic fixtures cover typed mixed-case
+and lowercase headers, empty columns, rulers, Markdown and ASCII/Unicode frames,
+including adjacent pipeline text. Contextual font runs retain ligatures and
+wide-cell selection, with native macOS color/joining tests gated to that OS.
+Mouse-reporting programs keep native
+coordinates. Run the unchanged focused-table and command-information suites to
+cover coexistence, then the owning targets and required readiness profile.
+
+`cargo bench --locked -p automexia-terminal --bench automexia_services -- core_table_view`
+also exercises bounded inline wrapping with literal source checks. These model
+and controlled-raster results are separate from native window/compositor,
+physical input, clipboard and screen-reader evidence. Native Windows, Linux and
+macOS checks must use fictional data and verify pane isolation, resize/scroll,
+prompt editing, selection/copy, ANSI styles, program modes and theme/scale changes.
+
 ## Focused core table view
 
 Run `cargo test -p automexia-ui-model --test tables --locked`,
@@ -1550,3 +1608,77 @@ readiness suites. Native validation must exercise opening from selection and
 history, live output underneath, route closure, ordinary and modified key-up,
 paste/IME containment, physical wheel/trackpad/scrollbar interaction, small and
 large windows, multiple themes/scales and assistive-technology focus delivery.
+
+## Configuration startup and creation
+
+Run `cargo test --locked -p rio-backend --lib config::` and
+`cargo test --locked -p automexia-terminal --bin automexia context::launch::`.
+The environment cases preserve Unicode, empty values and embedded equals signs,
+reject the whole malformed batch, and validate every platform override. Creation
+cases use owned temporary roots and independent expected bytes; race two creators,
+preserve sentinels, reject missing parents and linked/directory destinations, and
+verify staging cleanup. Run actual `--write-config` exit-code checks against the
+fresh binary with isolated absolute and relative targets. Never use a real profile.
+
+The Windows run could not create its symlink fixture without additional privilege;
+that branch is external evidence despite the enclosing test's success. Run it on
+native Linux along with private-mode assertions, and test macOS startup failures
+on macOS. CLI persistence tests do not establish input responsiveness. Also run
+`cargo test --locked -p automexia-terminal --bin automexia welcome_creation` and
+`cargo test --locked -p automexia-terminal --bin automexia router::tests::welcome_`.
+Worker regressions cover one-slot admission, origin replacement, cancellation
+before/after publication, unrelated closure, operation exhaustion, handler failure,
+closed wake targets and bounded shutdown. Input tests retain Enter ownership across
+fast completion. Run the Welcome pending-text test, inspect native busy/error
+states at tiny and normal sizes, and verify physical key/focus and assistive-
+technology behavior separately. Startup trust mutations must reject absent or
+reordered validation, direct Welcome I/O and wake-before-publication drift.
+
+## Extension worker retirement
+
+Run `cargo test --locked -p automexia-extension-runtime --lib` and
+`cargo test --locked -p automexia-terminal --bin automexia openssh_review_worker_tests`.
+Channel-gated regressions distinguish handler return, native thread-local cleanup,
+registration return and actual join acknowledgement. Cover queue saturation,
+reentry, callback unwind, blocked drop, owner capacity, restart, panic-payload
+cleanup and rejected stale work. The architecture mutation test must reject
+missing retirement contracts and acknowledgement before join. Record executed
+counts on each native platform; Windows/Linux evidence does not certify other
+hosts, desktop latency or arbitrary blocking/destructive Rust handlers.
+
+## Native Settings and presentation controls
+
+Run the model owner with `cargo test --locked -p automexia-ui-model --test settings`.
+The application library filters `automexia::preferences`,
+`automexia::settings_extensions`, `automexia::runtime::tests::context_settings` and
+`presentation_table_toggle` cover migration, installed descriptors, cancelled
+work and source-preserving table disablement. Run the backend configuration
+owner and the full application library after integration.
+
+Binary filters `settings_catalog::`, `settings_view::`, `presentation_`,
+`screen::settings::tests` and `settings_command_` cover current-catalogue revalidation,
+Reset, uninstall versus feature disable, real parser-to-label composition,
+all-local-tab invalidation, menu/window input parity and the additive palette
+entry. Verify nonzero executed counts. View fixtures render actual bundled-font
+text with both base and modal layers, test clipping and selected search text,
+and cover insufficient-space recovery without shrinking the chosen font.
+
+The runtime fixture uses isolated native subprocesses and a temporary marker
+store to exercise inventory publication and actual uninstall/reinstall. It
+rejects work captured before feature disable or membership removal, including
+lease exhaustion; callback publication is checked independently of timing.
+
+These tests do not establish native screen-reader delivery, compositor pixels,
+or real platform IME behavior. Exercise menu and keyboard paste, composition,
+focus, save failure/restart, font changes and multiwindow removal on every native
+platform claimed. Preserve earlier failures and identify oracle corrections;
+do not count compile failures or empty filters as test results.
+
+Font and adaptive-appearance controls add the binary filter `appearance_`:
+fractional font values and labels, current/configured reset, unsupported font
+configuration, fixed-palette unavailability, preloaded adaptive colors and
+inactive local tabs. The shared model distinguishes continuous increments from
+strict discrete-number validation. Controlled appearance-sheet rasters use the
+actual catalogue; they do not prove native terminal palette presentation. The
+restart fixture persists fractional font values and restores a configured
+forced theme after Reset.

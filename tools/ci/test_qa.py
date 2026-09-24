@@ -206,6 +206,10 @@ class QaRunnerTests(unittest.TestCase):
                 self.assertEqual(result, 0 if status == "pass" else 1)
                 self.assertEqual(observed_commands["component-host"],
                                  ["cargo", "nextest", "run", "-p", "automexia-ecosystem-runtime", "--all-features", "--locked", "--profile", "default", "--no-fail-fast"])
+                self.assertEqual(observed_commands["loom-channel"], [
+                    "cargo", "test", "-p", "corcovado", "--test", "loom_channel_readiness",
+                    "--test", "loom_channel_registration", "--locked",
+                ])
                 self.assertIn('--no-fail-fast', observed_commands['nextest'])
                 self.assertIn('-v', observed_commands['python-contract-mutations'], 'timeouts must identify the active Python test')
                 self.assertEqual(observed_commands['benchmark-smoke'], ['cargo', 'test', '--workspace', '--all-features', '--benches', '--locked'])

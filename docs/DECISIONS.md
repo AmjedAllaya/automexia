@@ -49,6 +49,17 @@ listed or summarized here.
 | [0065](adr/0065-explicit-directory-handoff.md) | Explicit directory-only desktop handoff and supervised WSL resolution |
 | [0066](adr/0066-explicit-editor-file-handoff.md) | Explicit file-and-position handoff to a configured desktop editor |
 | [0067](adr/0067-local-repository-browser-navigation.md) | Offline Git remote resolution and explicit repository browser navigation |
+| [0068](adr/0068-safe-windows-pipe-buffer.md) | Safe bounded Windows pipe buffer ownership |
+| [0069](adr/0069-transactional-unix-pty-launch.md) | Transactional Unix PTY launch and owned native records |
+| [0070](adr/0070-validated-startup-configuration.md) | Validated startup environment and no-overwrite starter creation |
+| [0071](adr/0071-validated-windows-launch-boundaries.md) | Checked Windows launch geometry, arguments and environment |
+| [0072](adr/0072-resolved-terminal-palette.md) | Resolve configured terminal colors before rendering |
+| [0073](adr/0073-bounded-extension-worker-retirement.md) | Bounded extension worker retirement and native join acknowledgement |
+| [0074](adr/0074-channel-registration-publication.md) | Channel registration publication and pending wakeup ordering |
+| [0075](adr/0075-owned-bundled-conpty-loader.md) | Restricted bundled ConPTY loading and owned module lifetime |
+| [0076](adr/0076-quick-actions-owned-retirement.md) | Quick Actions cancellation and owned worker retirement |
+| [0078](adr/0078-inline-header-table-presentation.md) | Inline header tables with bounded cell wrapping and source mapping |
+| [0079](adr/0079-shared-settings-and-presentation-preferences.md) | Shared Settings catalogue and application-owned presentation preferences |
 
 ## When an ADR is required
 

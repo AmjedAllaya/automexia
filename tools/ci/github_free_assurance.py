@@ -954,7 +954,7 @@ def run_step(policy: dict[str, Any], step: str) -> None:
     elif step == "fuzz":
         require_linux_deep_profile()
         for target in ("vt_parser", "osc_metadata", "control_string_bounds", "image_decoder", "openssh_inventory", "config_migration", "semantic_classification", "label_sanitization", "quick_action_projection", "quick_action_packs", "quick_action_imports", "connection_planning", "ecosystem_bundle", "ghostty_keybindings", "ghostty_migration", "semantic_surfaces"):
-            corpora = ["fuzz/corpus/semantic_surfaces", "fuzz/seeds/semantic_surfaces"] if target == "semantic_surfaces" else []
+            corpora = [f"fuzz/corpus/{target}", f"fuzz/seeds/{target}"] if target in ("semantic_surfaces", "vt_parser") else []
             if corpora:
                 (ROOT / corpora[0]).mkdir(parents=True, exist_ok=True)
             run(["cargo", "+nightly-2026-08-25", "fuzz", "run", target, *corpora, "--target", "x86_64-unknown-linux-gnu", "--", "-max_total_time=120", "-rss_limit_mb=768", "-timeout=15"], f"bounded fuzz {target}", policy, timeout=10 * 60)

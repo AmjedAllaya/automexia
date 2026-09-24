@@ -43,6 +43,13 @@ class GitHubFreeAssuranceTests(unittest.TestCase):
             self.assertIn("-rss_limit_mb=768", surface)
             self.assertIn("-timeout=15", surface)
             self.assertTrue((Path(temporary) / "fuzz/corpus/semantic_surfaces").is_dir())
+            parser = next(command for command in commands if command[4] == "vt_parser")
+            self.assertEqual(parser[5:7], ["fuzz/corpus/vt_parser", "fuzz/seeds/vt_parser"])
+            for command in commands:
+                self.assertIn("-max_total_time=120", command)
+                self.assertIn("-rss_limit_mb=768", command)
+                self.assertIn("-timeout=15", command)
+            self.assertTrue((Path(temporary) / "fuzz/corpus/vt_parser").is_dir())
 
     def setUp(self) -> None:
         self.policy = ASSURANCE.load_policy()

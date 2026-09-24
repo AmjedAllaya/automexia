@@ -26,6 +26,58 @@ class RuntimeTrustTests(unittest.TestCase):
         # text; they are not substitutes for runtime tests of the owning adapters.
         return (ROOT / path).read_text(encoding="utf-8")
 
+    def test_welcome_input_defers_configuration_file_io(self) -> None:
+        source = self.read("apps/automexia-terminal/src/router/mod.rs")
+        input_handler = TRUST.section(source, "pub fn has_key_wait(", "pub struct Router")
+        self.assertFalse(
+            "create_config_file(" in input_handler,
+            "Welcome key handling must publish an intent instead of writing configuration",
+        )
+
+    def test_welcome_worker_ownership_mutations_are_rejected(self) -> None:
+        router = self.read("apps/automexia-terminal/src/router/mod.rs")
+        application = self.read("apps/automexia-terminal/src/application.rs")
+        worker = self.read("apps/automexia-terminal/src/config_creation.rs")
+        TRUST.validate_welcome_input(router, application, worker)
+        mutations = [
+            (router.replace("return welcome_key_intent(", "create_config_file(None); return welcome_key_intent(", 1), application, worker),
+            (router.replace("RouteKeyIntent::CreateConfiguration", "RouteKeyIntent::Consumed", 1), application, worker),
+            (router, application.replace("let intent = route.has_key_wait(", "create_config_file(None); let intent = route.has_key_wait(", 1), worker),
+            (router, application.replace("self.router.config_creation.submit(", "other_worker.submit(", 1), worker),
+            (router, application.replace("self.finish_configuration_creation();", "", 1), worker),
+            (router, application.replace("completion.applies_to(", "always_publish(", 1), worker),
+            (router, application, worker.replace("mpsc::sync_channel(1)", "mpsc::channel()", 1)),
+            (router, application, worker.replace('BoundedWorker::new("starter-config", 1,', 'BoundedWorker::new("starter-config", 2,', 1)),
+            (router, application, worker.replace("completed.try_send(completion).is_ok()", "true", 1)),
+            (router, application, worker.replace("wake.wake(window);", "", 1)),
+        ]
+        for index, sources in enumerate(mutations):
+            with self.subTest(mutation=index), self.assertRaises(TRUST.RuntimeTrustError):
+                TRUST.validate_welcome_input(*sources)
+
+    def test_windows_event_loop_registers_wake_before_creating_target(self) -> None:
+        source = self.read("rio-window/src/platform_impl/windows/event_loop.rs")
+        constructor = TRUST.section(source, "pub(crate) fn new(", "pub fn window_target(")
+        self.assertTrue(
+            "create_event_target_after_registration(" in constructor,
+            "Windows wake registration must fail before creating a live event target",
+        )
+
+    def test_windows_wake_registration_order_mutations_are_rejected(self) -> None:
+        source = self.read("rio-window/src/platform_impl/windows/event_loop.rs")
+        TRUST.validate_windows_wake_registration(source)
+        statement = "register().map_err(|error| EventLoopError::Os(os_error!(error)))?;"
+        mutations = [
+            source.replace("USER_EVENT_MSG_ID.try_get()", "OTHER_MSG_ID.try_get()", 1),
+            source.replace("let thread_msg_target = create_event_target_after_registration(", "let thread_msg_target = unchecked_target(", 1),
+            source.replace(statement, "", 1),
+            source.replace(statement, "Ok(create_target()); " + statement, 1),
+            source.replace(statement, statement.replace("?;", ";"), 1),
+        ]
+        for index, altered in enumerate(mutations):
+            with self.subTest(mutation=index), self.assertRaises(TRUST.RuntimeTrustError):
+                TRUST.validate_windows_wake_registration(altered)
+
     def test_current_repository_satisfies_the_contract(self) -> None:
         TRUST.validate_repository()
 
@@ -57,6 +109,39 @@ class RuntimeTrustTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(TRUST.RuntimeTrustError, "QA PowerShell"):
             TRUST.validate_qa_runner(source)
+
+    def test_environment_validation_and_trust_order_cannot_disappear_or_move(self) -> None:
+        source = self.read("apps/automexia-terminal/src/main.rs")
+        validation = "rio_backend::config::environment::parse_environment(&config.env_vars)?;"
+        assignment = "std::env::set_var(name, value);"
+        trust = "automexia::shell_integration::prepare_session_environment();"
+        first_write = 'std::env::set_var("TERM_PROGRAM", product::TERM_PROGRAM);'
+        self.assertEqual(source.count(validation), 1)
+        self.assertEqual(source.count(assignment), 1)
+        self.assertEqual(source.count(trust), 1)
+        TRUST.validate_application(
+            source,
+            self.read("apps/automexia-terminal/src/automexia/shell.rs"),
+            self.read("apps/automexia-terminal/src/automexia/shell_integration.rs"),
+            self.read("shell-integration/cmd/automexia-ls.cmd"),
+        )
+        mutations = {
+            "missing validation": source.replace(validation, "Vec::new();", 1),
+            "validation after first write": source.replace(validation, "Vec::new();", 1).replace(first_write, first_write + validation, 1),
+            "missing application loop": source.replace("for (name, value) in environment {", "for (name, value) in other_batch {", 1),
+            "missing trust resolution": source.replace(trust, "", 1),
+            "trust before configured values": source.replace(trust, "", 1).replace(assignment, trust + assignment, 1),
+        }
+        for name, altered in mutations.items():
+            with self.subTest(mutation=name), self.assertRaisesRegex(
+                TRUST.RuntimeTrustError, "environment validation|session integration"
+            ):
+                TRUST.validate_application(
+                    altered,
+                    self.read("apps/automexia-terminal/src/automexia/shell.rs"),
+                    self.read("apps/automexia-terminal/src/automexia/shell_integration.rs"),
+                    self.read("shell-integration/cmd/automexia-ls.cmd"),
+                )
 
     def test_verbatim_windows_integration_root_is_rejected(self) -> None:
         integration = self.read(

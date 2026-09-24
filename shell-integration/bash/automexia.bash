@@ -41,7 +41,12 @@ __automexia_prompt_is_active=0
 # startup with portable base64 output normalization (GNU/BSD compatible).
 __automexia_set_user_var() {
   local name=$1 value=$2 encoded
-  [[ -n $value ]] || return 0
+  # Empty values are explicit clears, including cached identity fields. They
+  # require no encoder process and must not leave a nested shell's value behind.
+  if [[ -z $value ]]; then
+    printf '\e]1337;SetUserVar=%s=\a' "$name"
+    return 0
+  fi
   if command -v base64 >/dev/null 2>&1 && command -v tr >/dev/null 2>&1; then
     # Portable across GNU/BSD base64: remove any implementation-specific
     # line wrapping instead of relying on GNU-only `-w0`.
@@ -67,7 +72,6 @@ __automexia_publish_static_metadata() {
   printf '\e]1337;SetUserVar=automexia_shell_name=YmFzaA==\a'
 }
 __automexia_identity_frame=$(__automexia_publish_static_metadata)
-printf '%s' "$__automexia_identity_frame"
 unset -f __automexia_publish_static_metadata
 
 # Only these two local paths cross the prompt metadata boundary. Cache bounded
@@ -106,6 +110,13 @@ __automexia_publish_location_hints() {
   printf '%s' "${__automexia_home_frame:-$'\e]1337;SetUserVar=automexia_env_HOME=\a'}"
   printf '%s' "${__automexia_config_frame:-$'\e]1337;SetUserVar=automexia_env_KUBECONFIG=\a'}"
 }
+
+# Startup uses the same complete metadata transaction as prompt replay. The
+# cached identity and locations stay together even if the PTY splits the bytes.
+printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
+printf '%s' "$__automexia_identity_frame"
+__automexia_publish_location_hints
+printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
 
 # Match the liquid-hacker reference experience without parsing or rewriting
 # terminal output. eza owns the listing and emits Nerd Font codepoints before

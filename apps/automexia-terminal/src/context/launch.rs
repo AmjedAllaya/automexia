@@ -364,18 +364,12 @@ impl SessionLaunchDescriptor {
     }
 }
 
-/// Parse `NAME=value` configuration entries without losing additional `=`
-/// characters from values such as tokens or URLs. Invalid/empty names are
-/// ignored consistently instead of leaking malformed entries into child PTYs.
-pub fn environment_overrides(entries: &[String]) -> Vec<(String, String)> {
-    entries
-        .iter()
-        .filter_map(|entry| {
-            let (name, value) = entry.split_once('=')?;
-            let name = name.trim();
-            (!name.is_empty()).then(|| (name.to_string(), value.to_string()))
-        })
-        .collect()
+/// Share strict configuration parsing with startup; a malformed batch cannot
+/// publish a partial environment to a new child session.
+pub fn environment_overrides(
+    entries: &[String],
+) -> Result<Vec<(String, String)>, rio_backend::config::environment::EnvironmentError> {
+    rio_backend::config::environment::parse_environment(entries)
 }
 
 /// Reject a stale/uninstalled WSL profile before opening a pane that would
@@ -824,15 +818,26 @@ mod tests {
     }
 
     #[test]
+    fn environment_overrides_reject_a_whole_batch_before_launch() {
+        let entries = vec![
+            "FIRST=value".into(),
+            "BAD=value\0suffix".into(),
+            "LAST=value".into(),
+        ];
+        assert!(
+            environment_overrides(&entries).is_err(),
+            "malformed environment batch reached the launch descriptor"
+        );
+    }
+
+    #[test]
     fn environment_overrides_preserve_unicode_spaces_and_equals() {
         let entries = vec![
             "TOKEN=left=right".to_string(),
             "GREETING=hello 世界".to_string(),
-            "=invalid".to_string(),
-            "missing".to_string(),
         ];
         assert_eq!(
-            environment_overrides(&entries),
+            environment_overrides(&entries).unwrap(),
             [
                 ("TOKEN".to_string(), "left=right".to_string()),
                 ("GREETING".to_string(), "hello 世界".to_string()),

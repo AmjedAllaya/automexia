@@ -273,6 +273,7 @@ impl From<String> for Action {
             "closesplitortab" => Some(Action::CloseCurrentSplitOrTab),
             "closeunfocusedtabs" => Some(Action::TabCloseUnfocused),
             "openconfigeditor" => Some(Action::ConfigEditor),
+            "opensettings" => Some(Action::OpenSettings),
             "selectprevtab" => Some(Action::SelectPrevTab),
             "selectnexttab" => Some(Action::SelectNextTab),
             "selectprevlocaltab" => Some(Action::SelectPrevLocalTab),
@@ -469,6 +470,7 @@ pub enum Action {
 
     /// Create config editor.
     ConfigEditor,
+    OpenSettings,
 
     /// Create a new Automexia tab.
     TabCreateNew,
@@ -1279,6 +1281,7 @@ fn automexia_macos_key_bindings(
         "n", ModifiersState::SUPER; Action::WindowCreateNew;
         ",", ModifiersState::SUPER; Action::ConfigEditor;
         "p", ModifiersState::SUPER | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "s", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSettings;
         "h", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
         "o", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
         "m", ModifiersState::SUPER | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
@@ -1383,6 +1386,7 @@ fn automexia_windows_key_bindings(
         "-", ModifiersState::CONTROL; Action::DecreaseFontSize;
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "s", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSettings;
         "h", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
         "o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
         "m", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
@@ -1488,6 +1492,7 @@ fn automexia_unix_key_bindings(
         "n", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::WindowCreateNew;
         ",", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::ConfigEditor;
         "p", ModifiersState::CONTROL | ModifiersState::SHIFT; Action::OpenCommandPalette;
+        "s", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenSettings;
         "h", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenConnectionHub;
         "o", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenActionCenter;
         "m", ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN, ~BindingMode::SEARCH, ~BindingMode::VI; Action::OpenExtensionMarketplace;
@@ -1864,6 +1869,65 @@ mod tests {
             mods,
             &t
         ));
+    }
+
+    #[test]
+    fn settings_defaults_are_distinct_from_config_editor_and_leave_application_modes() {
+        use automexia_keybindings::PlatformFamily::{LinuxBsd, Macos, Windows};
+        for (platform, modifiers, editor_modifiers) in [
+            (Windows, ModifiersState::CONTROL, ModifiersState::CONTROL),
+            (
+                LinuxBsd,
+                ModifiersState::CONTROL,
+                ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ),
+            (Macos, ModifiersState::SUPER, ModifiersState::SUPER),
+        ] {
+            let bindings =
+                test_platform_defaults(&rio_backend::config::Config::default(), platform);
+            let settings: Vec<_> = bindings
+                .iter()
+                .filter(|binding| binding.action == Action::OpenSettings)
+                .collect();
+            assert_eq!(settings.len(), 1, "{platform:?}");
+            let binding = settings[0];
+            assert_eq!(binding.mods, modifiers | ModifiersState::SHIFT);
+            assert!(matches!(&binding.trigger, BindingKey::Keycode {
+                key: Key::Character(value), ..
+            } if value == "s"));
+            assert!(binding.is_triggered_by(
+                BindingMode::empty(),
+                binding.mods,
+                &binding.trigger
+            ));
+            for mode in [
+                BindingMode::ALT_SCREEN,
+                BindingMode::SEARCH,
+                BindingMode::VI,
+            ] {
+                assert!(!binding.is_triggered_by(mode, binding.mods, &binding.trigger));
+            }
+            assert!(bindings.iter().any(|binding| binding.action
+                == Action::ConfigEditor
+                && binding.mods == editor_modifiers
+                && matches!(&binding.trigger, BindingKey::Keycode {
+                    key: Key::Character(value), ..
+                } if value == ",")));
+            assert_eq!(
+                bindings
+                    .iter()
+                    .filter(|candidate| {
+                        candidate.is_triggered_by(
+                            BindingMode::empty(),
+                            binding.mods,
+                            &binding.trigger,
+                        )
+                    })
+                    .count(),
+                1,
+                "Settings must not share a trigger with another default"
+            );
+        }
     }
 
     #[test]

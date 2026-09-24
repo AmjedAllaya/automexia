@@ -9,8 +9,11 @@ separate from its label. No context suffix or decorative separator is appended.
 Discovery refreshes on the existing three-second background schedule. A normal
 `kubectl config set-context --current --namespace=sandbox` change to the selected
 configuration does not require changing directories or reopening the pane.
-Historical prompt ownership, terminal cells, selection and command input are
-unchanged. In narrow panes badges may be omitted when they do not fit.
+Each open session retains its prompt history across pane and tab focus changes,
+including hidden tabs. Closing a session removes its context state; disabling
+context status clears that state and skips route tracking. Terminal cells,
+selection and command input are unchanged. In narrow panes badges may be omitted
+when they do not fit.
 
 The distribution and validated shell username are projected immediately from
 shell metadata without waiting for discovery. Window-title changes no longer
@@ -25,7 +28,13 @@ No additional worker, persistent cache or faster idle polling is introduced.
 On Windows, integrated WSL sessions use their distribution and shell identity to
 locate the guest configuration. Bash, Zsh, Fish and PowerShell publish bounded
 local HOME and exported KUBECONFIG hints, including changes without a directory
-change. Old hooks without hints use the conventional guest home fallback.
+change. Native Windows PowerShell also publishes exported HOMEDRIVE, HOMEPATH
+and USERPROFILE. Its Kubernetes lookup follows the first existing local
+configuration in HOME, HOMEDRIVE+HOMEPATH, then USERPROFILE, instead of assuming
+PowerShell's immutable home matches the Kubernetes client. Candidate inspection
+runs on the discovery worker; prompts only encode bounded values. Older two-value
+hooks keep their existing HOME contract. Old guest hooks without hints use the
+conventional guest home fallback.
 Guest reads are isolated in a
 short-lived application helper with a 1.5-second deadline, cancellation, a 4 KiB
 reply limit and native child reaping. A slow/unavailable guest never selects the
@@ -42,10 +51,15 @@ leave the parser. This is deliberately different from managed import review.
 ## Current limitations
 
 Set `AUTOMEXIA_CONTEXT_PATH_HINTS=0` in the shell to stop sharing these paths; the
-next prompt clears both fields. Removing that setting restores publication.
-Invalid/oversized values clear the pair, and incomplete metadata frames retain
-the previous pair until its commit marker. Only two values are retained, and
-generic serialization/debug output excludes them. Normal prompts replay cached
+next prompt clears every published location field. Removing that setting restores
+publication. Invalid/oversized values clear the complete snapshot, and incomplete
+metadata frames retain the previous complete identity, location, directory and
+title snapshot until the exact completion marker arrives. Malformed markers
+cannot publish mixed shell facts; older unframed hooks remain compatible. Two values
+are retained for Unix/guest shells; native Windows PowerShell retains five bounded
+location values. Windows candidates are dropped when a guest or older hook resumes,
+and are never forwarded to the guest helper. Generic serialization/debug output
+excludes these values. Normal prompts replay cached
 frames without new encoder processes; Unix encoding needs the existing base64
 and tr utilities when a value changes. Bash 3.2 has an export-attribute subshell
 fallback; native macOS execution of that fallback remains a separate gate.
@@ -75,6 +89,7 @@ python tools/ci/check_prompt_discovery.py
 python tools/ci/test_prompt_discovery.py
 python tools/ci/test_shell_location_hints.py
 cargo test --locked -p automexia-terminal --bin automexia fragmented_location_metadata
+cargo test --locked -p automexia-terminal --bin automexia context_ownership_
 cargo test --locked -p automexia-terminal --lib automexia::runtime::tests
 cargo test --locked -p automexia-terminal --bin automexia title_change_accepts_progress
 cargo bench --locked -p automexia-terminal --bench automexia_services -- prompt_identity_before_discovery

@@ -105,14 +105,14 @@ function __automexia_fish_prompt --on-event fish_prompt
     printf '\e]1337;SetUserVar=automexia_shell_path=%s\a' "$__automexia_fish_shell"
     printf '\e]1337;SetUserVar=automexia_os_version=\a'
     __automexia_publish_location_hints
+    printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
+    printf '\e]1337;SetUserVar=automexia_shell_name=ZmlzaA==\a'
     printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
     set -g __automexia_fish_prompt_generation \
         (math --scale 0 "$__automexia_fish_prompt_generation + 1")
     printf '\e]133;A;aid=%s\a' "$__automexia_fish_prompt_generation"
     set -l encoded_path (string replace -a ' ' '%20' -- "$PWD")
     printf '\e]7;file://localhost%s\a' "$encoded_path"
-    printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
-    printf '\e]1337;SetUserVar=automexia_shell_name=ZmlzaA==\a'
 end
 
 function __automexia_fish_preexec --on-event fish_preexec

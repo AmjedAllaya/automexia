@@ -32,6 +32,8 @@ pub enum StoreErrorCode {
     State,
     NotInstalled,
     PrivatePermissions,
+    GenerationExhausted,
+    RecoveryRequired,
 }
 
 #[derive(Debug)]
@@ -101,10 +103,23 @@ pub struct CleanupReceipt {
     pub fallback_available: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum StoreAvailability {
+    Ready,
+    RecoveryRequired,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct CommittedStoreSnapshot<'a> {
+    pub revision: u64,
+    pub installed: &'a [InstalledGeneration],
+}
+
 #[derive(Debug)]
 pub struct PackageStore {
     root: PathBuf,
     state: StoreState,
+    availability: StoreAvailability,
 }
 
 impl PackageStore {
@@ -122,11 +137,32 @@ impl PackageStore {
         ensure_directory(&root.join("staging"))?;
         let state = read_state(&root)?.unwrap_or_default();
         validate_store_state(&state)?;
-        let mut store = Self { root, state };
+        let mut store = Self {
+            root,
+            state,
+            availability: StoreAvailability::Ready,
+        };
         store.recover()?;
         Ok(store)
     }
 
+    /// Cached commit status; this getter performs no filesystem work.
+    pub fn availability(&self) -> StoreAvailability {
+        self.availability
+    }
+
+    /// Borrow the last acknowledged state only when recovery is not required.
+    /// Rows describe installed inventory, not renewed signature or Settings trust.
+    pub fn committed_snapshot(&self) -> Result<CommittedStoreSnapshot<'_>, StoreError> {
+        self.ensure_ready()?;
+        Ok(CommittedStoreSnapshot {
+            revision: self.state.global_generation,
+            installed: &self.state.installed,
+        })
+    }
+
+    /// Last acknowledged inventory, historical when recovery is required.
+    /// New consumers must use `committed_snapshot` before admitting changes.
     pub fn installed(&self) -> &[InstalledGeneration] {
         &self.state.installed
     }
@@ -137,6 +173,9 @@ impl PackageStore {
         available_bytes: u64,
         now_unix: u64,
     ) -> Result<InstalledGeneration, StoreError> {
+        self.ensure_ready()?;
+        let revision = next_revision(self.state.global_generation)?;
+        validate_receipt(&bundle.receipt)?;
         let required = u64::try_from(bundle.expanded_bytes()).unwrap_or(u64::MAX);
         if available_bytes < required.saturating_add(Limits::MANIFEST_BYTES as u64) {
             return Err(StoreError::new(StoreErrorCode::DiskPreflight, "available disk space is below the bounded extraction and receipt requirement"));
@@ -146,8 +185,8 @@ impl PackageStore {
                 .installed
                 .iter()
                 .try_fold(required, |total, installed| {
-                    let path = self.generation_path(installed);
-                    directory_bytes(&path).map(|size| total.saturating_add(size))
+                    directory_bytes(&self.generation_path(installed))
+                        .map(|size| total.saturating_add(size))
                 })?;
         if total_cache > Limits::CACHE_BYTES as u64 {
             return Err(StoreError::new(
@@ -160,7 +199,7 @@ impl PackageStore {
             .installed
             .iter()
             .map(|item| item.extension_id.as_str())
-            .collect::<std::collections::BTreeSet<_>>();
+            .collect::<BTreeSet<_>>();
         if !unique_extensions.contains(bundle.receipt.extension_id.as_str())
             && unique_extensions.len() >= Limits::INSTALLED_EXTENSIONS
         {
@@ -169,8 +208,30 @@ impl PackageStore {
                 "installed extension limit reached",
             ));
         }
-        validate_receipt(&bundle.receipt)?;
-
+        let mut candidate = self.state.clone();
+        for item in candidate
+            .installed
+            .iter_mut()
+            .filter(|item| item.extension_id == bundle.receipt.extension_id)
+        {
+            item.last_known_good = false;
+        }
+        let generation = InstalledGeneration {
+            extension_id: bundle.receipt.extension_id.clone(),
+            version: bundle.receipt.version.clone(),
+            package_sha256: bundle.receipt.package_sha256.clone(),
+            installed_at_unix: now_unix,
+            lifecycle: LifecycleState::InstalledDisabled,
+            grant_generation: revision,
+            last_known_good: true,
+        };
+        candidate
+            .installed
+            .retain(|item| item.package_sha256 != generation.package_sha256);
+        candidate.installed.push(generation.clone());
+        candidate.global_generation = revision;
+        let retired = plan_retained_versions(&mut candidate, &generation.extension_id);
+        let state_bytes = serialize_state(&candidate)?;
         let staging = self.root.join("staging").join(format!(
             ".install-{}-{}-{}",
             &bundle.receipt.package_sha256[..12],
@@ -178,18 +239,17 @@ impl PackageStore {
             STAGING_SEQUENCE.fetch_add(1, Ordering::Relaxed)
         ));
         fs::create_dir(&staging).map_err(StoreError::io)?;
-        apply_private_permissions(&staging, true)?;
         let result = (|| {
+            apply_private_permissions(&staging, true)?;
             for (name, bytes) in bundle.entries() {
                 write_entry(&staging, name, bytes)?;
             }
             let receipt_bytes =
-                serde_json::to_vec_pretty(&bundle.receipt).map_err(|error| {
-                    StoreError::new(StoreErrorCode::State, error.to_string())
+                serde_json::to_vec_pretty(&bundle.receipt).map_err(|_| {
+                    StoreError::new(StoreErrorCode::State, "receipt serialization failed")
                 })?;
             write_entry(&staging, "verification-receipt.json", &receipt_bytes)?;
             sync_directory(&staging)?;
-
             let extension = self
                 .root
                 .join("packages")
@@ -208,87 +268,77 @@ impl PackageStore {
                 }
                 remove_owned_tree(&staging, &self.root.join("staging"))?;
             } else {
+                // An error after promotion cannot promise the old disk inventory.
+                self.availability = StoreAvailability::RecoveryRequired;
                 fs::rename(&staging, &final_path).map_err(StoreError::io)?;
                 sync_directory(&version)?;
             }
-
-            for item in self
-                .state
-                .installed
-                .iter_mut()
-                .filter(|item| item.extension_id == bundle.receipt.extension_id)
-            {
-                item.last_known_good = false;
+            if !retired.is_empty() {
+                self.availability = StoreAvailability::RecoveryRequired;
+                self.remove_retired_generations(&retired)?;
             }
-            let generation = InstalledGeneration {
-                extension_id: bundle.receipt.extension_id.clone(),
-                version: bundle.receipt.version.clone(),
-                package_sha256: bundle.receipt.package_sha256.clone(),
-                installed_at_unix: now_unix,
-                lifecycle: LifecycleState::InstalledDisabled,
-                grant_generation: self.state.global_generation.saturating_add(1),
-                last_known_good: true,
-            };
-            self.state
-                .installed
-                .retain(|item| item.package_sha256 != generation.package_sha256);
-            self.state.installed.push(generation.clone());
-            self.state.global_generation = generation.grant_generation;
-            self.prune_retained_versions(&generation.extension_id)?;
-            write_state(&self.root, &self.state)?;
+            self.commit_candidate(candidate, &state_bytes)?;
             Ok(generation)
         })();
         if result.is_err() && staging.exists() {
-            let _ = remove_owned_tree(&staging, &self.root.join("staging"));
+            // Cleanup remains owned by the bounded recovery path if it fails.
+            if remove_owned_tree(&staging, &self.root.join("staging")).is_err() {
+                self.availability = StoreAvailability::RecoveryRequired;
+            }
         }
         result
     }
 
     pub fn disable(&mut self, extension_id: &str) -> Result<CleanupReceipt, StoreError> {
-        let mut affected = 0;
-        self.state.global_generation = self.state.global_generation.saturating_add(1);
-        for item in self
+        self.ensure_ready()?;
+        let affected = self
             .state
             .installed
-            .iter_mut()
+            .iter()
             .filter(|item| item.extension_id == extension_id)
-        {
-            item.lifecycle = LifecycleState::Disabled;
-            item.grant_generation = self.state.global_generation;
-            affected += 1;
-        }
+            .count();
         if affected == 0 {
             return Err(StoreError::new(
                 StoreErrorCode::NotInstalled,
                 "extension is not installed",
             ));
         }
-        write_state(&self.root, &self.state)?;
-        Ok(cleanup_receipt(
-            affected,
-            self.state.global_generation,
-            true,
-        ))
+        let revision = next_revision(self.state.global_generation)?;
+        let mut candidate = self.state.clone();
+        for item in candidate
+            .installed
+            .iter_mut()
+            .filter(|item| item.extension_id == extension_id)
+        {
+            item.lifecycle = LifecycleState::Disabled;
+            item.grant_generation = revision;
+        }
+        candidate.global_generation = revision;
+        let bytes = serialize_state(&candidate)?;
+        self.commit_candidate(candidate, &bytes)?;
+        Ok(cleanup_receipt(affected, revision, true))
     }
 
     pub fn kill_switch(&mut self) -> Result<CleanupReceipt, StoreError> {
-        self.state.global_generation = self.state.global_generation.saturating_add(1);
-        for item in &mut self.state.installed {
+        self.ensure_ready()?;
+        let revision = next_revision(self.state.global_generation)?;
+        let mut candidate = self.state.clone();
+        for item in &mut candidate.installed {
             item.lifecycle = LifecycleState::Disabled;
-            item.grant_generation = self.state.global_generation;
+            item.grant_generation = revision;
         }
-        write_state(&self.root, &self.state)?;
-        Ok(cleanup_receipt(
-            self.state.installed.len(),
-            self.state.global_generation,
-            true,
-        ))
+        candidate.global_generation = revision;
+        let affected = candidate.installed.len();
+        let bytes = serialize_state(&candidate)?;
+        self.commit_candidate(candidate, &bytes)?;
+        Ok(cleanup_receipt(affected, revision, true))
     }
 
     pub fn uninstall(
         &mut self,
         extension_id: &str,
     ) -> Result<CleanupReceipt, StoreError> {
+        self.ensure_ready()?;
         if !portable_identifier(extension_id) {
             return Err(StoreError::new(
                 StoreErrorCode::InvalidRoot,
@@ -302,56 +352,57 @@ impl PackageStore {
                 "extension is not installed",
             ));
         }
+        let revision = next_revision(self.state.global_generation)?;
         let affected = self
             .state
             .installed
             .iter()
             .filter(|item| item.extension_id == extension_id)
             .count();
-        remove_owned_tree(&extension_path, &self.root.join("packages"))?;
-        self.state
+        let mut candidate = self.state.clone();
+        candidate
             .installed
             .retain(|item| item.extension_id != extension_id);
-        self.state.global_generation = self.state.global_generation.saturating_add(1);
-        write_state(&self.root, &self.state)?;
-        Ok(cleanup_receipt(
-            affected,
-            self.state.global_generation,
-            false,
-        ))
+        candidate.global_generation = revision;
+        let bytes = serialize_state(&candidate)?;
+        self.availability = StoreAvailability::RecoveryRequired;
+        remove_owned_tree(&extension_path, &self.root.join("packages"))?;
+        self.commit_candidate(candidate, &bytes)?;
+        Ok(cleanup_receipt(affected, revision, false))
     }
 
     pub fn recover(&mut self) -> Result<(), StoreError> {
+        // Recovery is the only operation permitted after an uncertain write.
+        // Reload disk to reconcile a replacement whose sync acknowledgement failed.
+        self.availability = StoreAvailability::RecoveryRequired;
+        let mut candidate = read_state(&self.root)?.unwrap_or_default();
+        validate_store_state(&candidate)?;
+        let revision = next_revision(
+            candidate
+                .global_generation
+                .max(self.state.global_generation),
+        )?;
         let staging = self.root.join("staging");
-        let mut staging_entries = 0usize;
+        let mut pending_staging = Vec::new();
         for entry in fs::read_dir(&staging).map_err(StoreError::io)? {
             let entry = entry.map_err(StoreError::io)?;
-            staging_entries = staging_entries.saturating_add(1);
-            if staging_entries > Limits::QUEUED_CALLS_PER_EXTENSION {
+            if pending_staging.len() >= Limits::QUEUED_CALLS_PER_EXTENSION {
                 return Err(StoreError::new(
                     StoreErrorCode::ExtensionLimit,
                     "staging entry count exceeds its bounded recovery limit",
                 ));
             }
-            let name = entry
-                .file_name()
-                .to_str()
-                .ok_or_else(|| {
-                    StoreError::new(
-                        StoreErrorCode::LinkRejected,
-                        "staging name is not UTF-8",
-                    )
-                })?
-                .to_owned();
+            let name = entry.file_name().into_string().map_err(|_| {
+                StoreError::new(StoreErrorCode::LinkRejected, "staging name is not UTF-8")
+            })?;
             if !name.starts_with(".install-") {
                 return Err(StoreError::new(
                     StoreErrorCode::LinkRejected,
                     "staging contains an entry not owned by an interrupted install",
                 ));
             }
-            remove_owned_tree(&entry.path(), &staging)?;
+            pending_staging.push(entry.path());
         }
-
         let mut receipts = BTreeMap::new();
         let mut generation_counts = BTreeMap::<String, usize>::new();
         let packages = self.root.join("packages");
@@ -405,78 +456,110 @@ impl PackageStore {
                 }
             }
         }
-        self.state
+        for item in &candidate.installed {
+            if let Some(receipt) = receipts.get(&item.package_sha256) {
+                if item.extension_id != receipt.extension_id
+                    || item.version != receipt.version
+                {
+                    return Err(StoreError::new(
+                        StoreErrorCode::UnsafeReceipt,
+                        "saved generation and recovered receipt identity differ",
+                    ));
+                }
+            }
+        }
+        candidate
             .installed
             .retain(|item| receipts.contains_key(&item.package_sha256));
         for receipt in receipts.values() {
-            if self
-                .state
+            if candidate
                 .installed
                 .iter()
                 .all(|item| item.package_sha256 != receipt.package_sha256)
             {
-                self.state.global_generation =
-                    self.state.global_generation.saturating_add(1);
-                self.state.installed.push(InstalledGeneration {
+                candidate.installed.push(InstalledGeneration {
                     extension_id: receipt.extension_id.clone(),
                     version: receipt.version.clone(),
                     package_sha256: receipt.package_sha256.clone(),
                     installed_at_unix: receipt.verified_at_unix,
                     lifecycle: LifecycleState::InstalledDisabled,
-                    grant_generation: self.state.global_generation,
+                    grant_generation: revision,
                     last_known_good: false,
                 });
             }
         }
-        let extension_ids = self
-            .state
+        let extension_ids = candidate
             .installed
             .iter()
             .map(|item| item.extension_id.clone())
             .collect::<BTreeSet<_>>();
+        let mut retired = Vec::new();
         for extension_id in extension_ids {
-            self.prune_retained_versions(&extension_id)?;
+            retired.extend(plan_retained_versions(&mut candidate, &extension_id));
         }
-
+        // Retain the existing v1 timestamp selection behavior; this is inventory,
+        // not a new authoritative selected-generation persistence contract.
         let mut newest = BTreeMap::<String, (usize, u64)>::new();
-        for (index, item) in self.state.installed.iter().enumerate() {
-            let candidate = (index, item.installed_at_unix);
+        for (index, item) in candidate.installed.iter().enumerate() {
+            let selection = (index, item.installed_at_unix);
             newest
                 .entry(item.extension_id.clone())
                 .and_modify(|current| {
-                    if candidate.1 > current.1 {
-                        *current = candidate;
+                    if selection.1 > current.1 {
+                        *current = selection;
                     }
                 })
-                .or_insert(candidate);
+                .or_insert(selection);
         }
-        for item in &mut self.state.installed {
+        for item in &mut candidate.installed {
             item.last_known_good = false;
         }
         for (index, _) in newest.into_values() {
-            self.state.installed[index].last_known_good = true;
+            candidate.installed[index].last_known_good = true;
         }
-        write_state(&self.root, &self.state)
+        if candidate != self.state {
+            candidate.global_generation = revision;
+        }
+        let bytes = serialize_state(&candidate)?;
+        for path in pending_staging {
+            remove_owned_tree(&path, &staging)?;
+        }
+        self.remove_retired_generations(&retired)?;
+        self.commit_candidate(candidate, &bytes)
     }
 
-    fn prune_retained_versions(&mut self, extension_id: &str) -> Result<(), StoreError> {
-        let mut indices = self
-            .state
-            .installed
-            .iter()
-            .enumerate()
-            .filter(|(_, item)| item.extension_id == extension_id)
-            .map(|(index, item)| (index, item.installed_at_unix))
-            .collect::<Vec<_>>();
-        indices.sort_by_key(|(_, installed)| std::cmp::Reverse(*installed));
-        let remove = indices
-            .into_iter()
-            .skip(Limits::RETAINED_VERSIONS)
-            .map(|(index, _)| index)
-            .collect::<Vec<_>>();
-        for index in remove.into_iter().rev() {
-            let generation = self.state.installed.remove(index);
-            let path = self.generation_path(&generation);
+    fn ensure_ready(&self) -> Result<(), StoreError> {
+        if self.availability == StoreAvailability::RecoveryRequired {
+            return Err(StoreError::new(
+                StoreErrorCode::RecoveryRequired,
+                "store recovery is required before another mutation",
+            ));
+        }
+        Ok(())
+    }
+
+    fn commit_candidate(
+        &mut self,
+        candidate: StoreState,
+        bytes: &[u8],
+    ) -> Result<(), StoreError> {
+        if let Err(error) = write_state_bytes(&self.root, bytes) {
+            if error.code == StoreErrorCode::RecoveryRequired {
+                self.availability = StoreAvailability::RecoveryRequired;
+            }
+            return Err(error);
+        }
+        self.state = candidate;
+        self.availability = StoreAvailability::Ready;
+        Ok(())
+    }
+
+    fn remove_retired_generations(
+        &self,
+        retired: &[InstalledGeneration],
+    ) -> Result<(), StoreError> {
+        for generation in retired {
+            let path = self.generation_path(generation);
             let version_path = path.parent().map(Path::to_path_buf);
             remove_owned_tree(&path, &self.root.join("packages"))?;
             if let Some(version_path) = version_path {
@@ -493,6 +576,38 @@ impl PackageStore {
             .join(&generation.version)
             .join(&generation.package_sha256)
     }
+}
+
+fn next_revision(current: u64) -> Result<u64, StoreError> {
+    current.checked_add(1).ok_or_else(|| {
+        StoreError::new(
+            StoreErrorCode::GenerationExhausted,
+            "store generation is exhausted",
+        )
+    })
+}
+
+fn plan_retained_versions(
+    state: &mut StoreState,
+    extension_id: &str,
+) -> Vec<InstalledGeneration> {
+    let mut generations = state
+        .installed
+        .iter()
+        .filter(|item| item.extension_id == extension_id)
+        .cloned()
+        .collect::<Vec<_>>();
+    generations.sort_by_key(|item| std::cmp::Reverse(item.installed_at_unix));
+    let retired = generations
+        .into_iter()
+        .skip(Limits::RETAINED_VERSIONS)
+        .collect::<Vec<_>>();
+    state.installed.retain(|item| {
+        !retired
+            .iter()
+            .any(|retired| retired.package_sha256 == item.package_sha256)
+    });
+    retired
 }
 
 fn cleanup_receipt(
@@ -547,6 +662,14 @@ fn validate_store_state(state: &StoreState) -> Result<(), StoreError> {
             "store state schema or generation is invalid",
         ));
     }
+    if state.installed.len()
+        > Limits::INSTALLED_EXTENSIONS.saturating_mul(Limits::RETAINED_VERSIONS)
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::State,
+            "store state exceeds its generation limit",
+        ));
+    }
     let mut digests = BTreeSet::new();
     for item in &state.installed {
         if !portable_identifier(&item.extension_id)
@@ -586,16 +709,51 @@ fn read_state(root: &Path) -> Result<Option<StoreState>, StoreError> {
         .map_err(|error| StoreError::new(StoreErrorCode::State, error.to_string()))
 }
 
+fn serialize_state(state: &StoreState) -> Result<Vec<u8>, StoreError> {
+    validate_store_state(state)?;
+    let bytes = serde_json::to_vec_pretty(state).map_err(|_| {
+        StoreError::new(StoreErrorCode::State, "store state serialization failed")
+    })?;
+    if bytes.len() > Limits::MANIFEST_BYTES {
+        return Err(StoreError::new(
+            StoreErrorCode::State,
+            "serialized store state exceeds its read limit",
+        ));
+    }
+    Ok(bytes)
+}
+
+#[cfg(test)]
 fn write_state(root: &Path, state: &StoreState) -> Result<(), StoreError> {
-    let bytes = serde_json::to_vec_pretty(state)
-        .map_err(|error| StoreError::new(StoreErrorCode::State, error.to_string()))?;
+    write_state_bytes(root, &serialize_state(state)?)
+}
+
+fn write_state_bytes(root: &Path, bytes: &[u8]) -> Result<(), StoreError> {
     let temporary = root.join(format!(".{STATE_FILE}.next"));
     if temporary.exists() {
         fs::remove_file(&temporary).map_err(StoreError::io)?;
     }
-    write_new_file(&temporary, &bytes)?;
+    write_new_file(&temporary, bytes)?;
     let destination = root.join(STATE_FILE);
-    replace_file(&temporary, &destination)?;
+    // Replacement adapters can combine the rename with durability work. Treat
+    // a failed attempt conservatively instead of promising an unchanged file.
+    replace_file(&temporary, &destination).map_err(|_| {
+        StoreError::new(
+            StoreErrorCode::RecoveryRequired,
+            "state replacement failed; recovery is required",
+        )
+    })?;
+    synchronize_state_replacement(root).map_err(|_| {
+        StoreError::new(
+            StoreErrorCode::RecoveryRequired,
+            "state replacement was not acknowledged; recovery is required",
+        )
+    })
+}
+
+fn synchronize_state_replacement(root: &Path) -> Result<(), StoreError> {
+    #[cfg(test)]
+    tests::committed::fail_after_replace()?;
     sync_directory(root)
 }
 
@@ -1122,6 +1280,10 @@ mod tests {
     };
 
     use super::*;
+
+    pub(crate) mod committed {
+        include!("store_commit_tests.rs");
+    }
 
     fn verified(
         id: &str,

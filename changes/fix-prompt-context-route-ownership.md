@@ -1,0 +1,1 @@
+Keep prompt context history and pending refresh state with each open session when focus moves between panes or tabs. Hidden tabs retain their own tags, while closing a session removes its renderer state. Publish framed shell identity and location hints together after the complete update arrives, preserving compatibility with older unframed shell integrations.

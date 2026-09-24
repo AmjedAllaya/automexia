@@ -569,7 +569,8 @@ impl OpenSshReviewRuntime {
 
 impl Drop for OpenSshReviewRuntime {
     fn drop(&mut self) {
-        self.worker.shutdown();
+        self.latest_requested.store(0, Ordering::Release);
+        self.worker.request_shutdown();
     }
 }
 
@@ -1215,6 +1216,49 @@ mod openssh_review_worker_tests {
             last_used_at_ms: None,
         })
         .unwrap()
+    }
+
+    #[test]
+    fn dropping_review_runtime_does_not_wait_for_a_blocked_handler() {
+        let (entered, started) = mpsc::channel();
+        let (release, gate) = mpsc::channel();
+        let (finished, completion) = mpsc::channel();
+        let gate = Mutex::new(gate);
+        let worker = BoundedWorker::new(
+            "review-drop-fixture",
+            1,
+            move |_: OpenSshReviewRequest| {
+                entered.send(()).unwrap();
+                gate.lock()
+                    .unwrap()
+                    .recv_timeout(Duration::from_secs(5))
+                    .unwrap();
+                finished.send(()).unwrap();
+            },
+        );
+        let latest_requested = Arc::new(AtomicU64::new(0));
+        let runtime = OpenSshReviewRuntime {
+            worker,
+            latest_requested: Arc::clone(&latest_requested),
+            completion: Arc::new(Mutex::new(None)),
+            next_request: AtomicU64::new(1),
+        };
+        runtime
+            .submit(preparation(), 1_700_000_000_000, Box::new(|| {}))
+            .unwrap();
+        started.recv_timeout(Duration::from_secs(2)).unwrap();
+        let before = std::time::Instant::now();
+        drop(runtime);
+        let elapsed = before.elapsed();
+        // Always release the owned fixture before assertions, including on the
+        // old synchronous-drop path. This completion is not a native join claim.
+        release.send(()).unwrap();
+        completion.recv_timeout(Duration::from_secs(2)).unwrap();
+        assert!(
+            elapsed < Duration::from_millis(500),
+            "review drop waited for foreign work"
+        );
+        assert_eq!(latest_requested.load(Ordering::Acquire), 0);
     }
 
     #[test]

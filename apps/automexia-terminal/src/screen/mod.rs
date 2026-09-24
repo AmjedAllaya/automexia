@@ -10,6 +10,7 @@ pub(crate) mod action_surface;
 mod compatibility;
 mod connection_hub;
 pub mod hint;
+mod settings;
 pub(crate) mod suggestions;
 pub mod touch;
 
@@ -904,7 +905,8 @@ pub struct Screen<'screen> {
     hint_route: Option<usize>,
     image_preview: crate::image_preview::ImagePreview,
     pub(crate) table_view: crate::table_view::TableView,
-    table_key_releases: Vec<PhysicalKey>,
+    pub(crate) settings_view: crate::settings_view::SettingsView,
+    overlay_key_releases: Vec<PhysicalKey>,
     action_surface: action_surface::Controller,
     suggestions: crate::automexia::suggestions::SuggestionUiController,
     connection_hub: crate::automexia::connections::ConnectionHubController,
@@ -971,6 +973,7 @@ impl Screen<'_> {
         open_url: Option<String>,
         services: ScreenServices,
     ) -> Result<Screen<'screen>, Box<dyn Error>> {
+        let environment = context::launch::environment_overrides(&config.env_vars)?;
         let size = window_properties.size;
         let scale = window_properties.scale;
         let raw_window_handle = window_properties.raw_window_handle;
@@ -1091,7 +1094,7 @@ impl Screen<'_> {
             dead_pty: false,
             cwd: config.navigation.current_working_directory,
             shell,
-            environment: context::launch::environment_overrides(&config.env_vars),
+            environment,
             profile_identity: config.shell.program.clone(),
             working_dir,
             spawn_performer: true,
@@ -1174,7 +1177,8 @@ impl Screen<'_> {
             hint_route: None,
             image_preview: crate::image_preview::ImagePreview::default(),
             table_view: crate::table_view::TableView::default(),
-            table_key_releases: Vec::new(),
+            settings_view: crate::settings_view::SettingsView::default(),
+            overlay_key_releases: Vec::new(),
             action_surface,
             suggestions: crate::automexia::suggestions::SuggestionUiController::new(
                 suggestions,
@@ -1632,13 +1636,13 @@ impl Screen<'_> {
     }
 
     #[inline]
-    pub fn mouse_position(&self, display_offset: usize) -> Pos {
+    fn native_mouse_position(&self, display_offset: usize) -> Pos {
         let current_grid = self.context_manager.current_grid();
         let (context, margin) = current_grid.current_context_with_computed_dimension();
         let context_dimension = context.dimension;
-        let mut position = calculate_mouse_position(
+        calculate_mouse_position(
             &self.mouse,
-            0,
+            display_offset,
             (context_dimension.columns, context_dimension.lines),
             margin.left,
             margin.top,
@@ -1646,7 +1650,24 @@ impl Screen<'_> {
                 context_dimension.cell.cell_width,
                 context_dimension.cell.cell_height,
             ),
-        );
+        )
+    }
+
+    pub fn mouse_position(&self, display_offset: usize) -> Pos {
+        let current_grid = self.context_manager.current_grid();
+        let (context, _) = current_grid.current_context_with_computed_dimension();
+        let mut position = self.native_mouse_position(0);
+        if let Some((row, column)) =
+            context.renderable_content.inline_tables.source_position(
+                &context.renderable_content.command_rows,
+                position.row.0.max(0) as usize,
+                position.col.0,
+            )
+        {
+            position.row = Line(row - display_offset as i32);
+            position.col = Column(column);
+            return position;
+        }
         position.row = Line(
             context
                 .renderable_content
@@ -1765,11 +1786,11 @@ impl Screen<'_> {
             // "reset" target so the next change_font_size(Reset)
             // returns to the new config size.
             for current_context in context_grid.contexts_mut().values_mut() {
-                let current_context = current_context.context_mut();
-                current_context
-                    .dimension
-                    .rebaseline_font_size(config.fonts.size);
-                current_context.dimension.line_height = config.line_height;
+                settings::rebaseline_preference_item(
+                    current_context,
+                    config.fonts.size,
+                    config.line_height,
+                );
             }
 
             context_grid.update_dimensions(&mut self.sugarloaf);
@@ -1793,6 +1814,8 @@ impl Screen<'_> {
 
         // Update keyboard config in context manager
         self.context_manager.config.keyboard = config.keyboard.clone();
+        self.fit_settings_view();
+        self.last_ime_cursor_pos = None;
 
         // Re-evaluate the opaque flag — toggling `window.opacity` /
         // `window.blur` at runtime should flip the compositor mode.
@@ -1853,6 +1876,8 @@ impl Screen<'_> {
 
         self.context_manager
             .resize_all_grids(width, height, &mut self.sugarloaf);
+        self.fit_settings_view();
+        self.last_ime_cursor_pos = None;
 
         self
     }
@@ -1928,6 +1953,8 @@ impl Screen<'_> {
 
         self.context_manager
             .resize_all_grids(width, height, &mut self.sugarloaf);
+        self.fit_settings_view();
+        self.last_ime_cursor_pos = None;
         self.mark_dirty();
 
         self
@@ -1940,13 +1967,15 @@ impl Screen<'_> {
         // the wakeup from pty it will also trigger a sugarloaf.render()
         // and then eventually a render with the new layout computation.
         for context_grid in self.context_manager.contexts_mut() {
-            for context in context_grid.contexts_mut().values_mut() {
-                let ctx = context.context_mut();
-                let mut terminal = ctx.terminal.lock();
-                terminal.resize::<ContextDimension>(ctx.dimension);
-                drop(terminal);
-                let winsize = crate::renderer::utils::terminal_dimensions(&ctx.dimension);
-                let _ = ctx.messenger.send_resize(winsize);
+            for item in context_grid.contexts_mut().values_mut() {
+                for ctx in item.contexts_mut() {
+                    let mut terminal = ctx.terminal.lock();
+                    terminal.resize::<ContextDimension>(ctx.dimension);
+                    drop(terminal);
+                    let winsize =
+                        crate::renderer::utils::terminal_dimensions(&ctx.dimension);
+                    let _ = ctx.messenger.send_resize(winsize);
+                }
             }
         }
     }
@@ -2007,7 +2036,8 @@ impl Screen<'_> {
         key: &rio_window::event::KeyEvent,
         clipboard: &mut Clipboard,
     ) {
-        if self.consume_table_key_release(key) {
+        // Native Edit menu hooks and physical keys share the same modal owner.
+        if self.handle_settings_key(key, clipboard) {
             return;
         }
         if self.process_hint_key(key, clipboard) {
@@ -2587,6 +2617,7 @@ impl Screen<'_> {
                     Act::MoveDividerRight => {
                         self.move_divider_right();
                     }
+                    Act::OpenSettings => self.context_manager.open_settings(),
                     Act::ConfigEditor => {
                         self.context_manager.switch_to_settings();
                         self.resize_top_or_bottom_line();
@@ -4078,10 +4109,12 @@ impl Screen<'_> {
             self.renderer.command_palette.set_enabled(false);
         } else if let Some(id) = self.renderer.command_palette.get_selected_market_id() {
             match crate::automexia::runtime::toggle(&id) {
-                Ok(_) => self
-                    .renderer
-                    .command_palette
-                    .enter_market_mode(crate::automexia::runtime::market_items()),
+                Ok(_) => {
+                    self.renderer
+                        .command_palette
+                        .enter_market_mode(crate::automexia::runtime::market_items());
+                    self.context_manager.extension_inventory_changed();
+                }
                 Err(_) => tracing::warn!("extension activation change failed"),
             }
         } else {
@@ -5710,7 +5743,7 @@ impl Screen<'_> {
         let mode = terminal.mode();
         drop(terminal);
 
-        let pos = self.mouse_position(display_offset);
+        let pos = self.native_mouse_position(display_offset);
 
         // Assure the mouse pos is not in the scrollback.
         if pos.row < 0 {
@@ -5935,6 +5968,12 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
         source: ClipboardType,
     ) -> bool {
+        if self.settings_view.is_open() {
+            let content = clipboard.get(source);
+            let changed = self.settings_view.paste(&content);
+            self.mark_dirty();
+            return changed;
+        }
         if self.renderer.command_palette.is_enabled() {
             return false;
         }
@@ -5971,6 +6010,11 @@ impl Screen<'_> {
 
     #[inline]
     pub fn paste(&mut self, text: &str, bracketed: bool) {
+        if self.settings_view.is_open() {
+            self.settings_view.paste(text);
+            self.mark_dirty();
+            return;
+        }
         if self.renderer.command_palette.is_enabled() {
             return;
         }
@@ -5990,10 +6034,11 @@ impl Screen<'_> {
         self.finish_paste(target, text, bracketed);
     }
 
-    pub(crate) fn render_welcome(&mut self) {
+    pub(crate) fn render_welcome(&mut self, creating: bool) {
         crate::router::routes::welcome::screen(
             &mut self.sugarloaf,
             &self.renderer.named_colors,
+            creating,
         );
         self.sugarloaf.render();
     }
@@ -6088,6 +6133,7 @@ impl Screen<'_> {
                 }
             }
             PaletteAction::CloseCurrentSplitOrTab => self.close_split_or_tab(clipboard),
+            PaletteAction::OpenSettings => self.context_manager.open_settings(),
             PaletteAction::ConfigEditor => {
                 self.context_manager.switch_to_settings();
                 self.resize_top_or_bottom_line();
@@ -6165,6 +6211,7 @@ impl Screen<'_> {
     }
 
     fn open_table_view(&mut self) {
+        self.close_settings_view();
         self.stop_hint_mode_if_active();
         self.dismiss_suggestions(
             crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
@@ -6228,10 +6275,10 @@ impl Screen<'_> {
     ) {
         // Retain ownership across view closure for Kitty as well as Win32.
         if key.state == ElementState::Pressed
-            && !self.table_key_releases.contains(&key.physical_key)
-            && self.table_key_releases.len() < 512
+            && !self.overlay_key_releases.contains(&key.physical_key)
+            && self.overlay_key_releases.len() < 512
         {
-            self.table_key_releases.push(key.physical_key);
+            self.overlay_key_releases.push(key.physical_key);
         }
         // Retain ownership of key-up even when Escape just closed the view.
         #[cfg(windows)]
@@ -6253,7 +6300,7 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
     ) -> bool {
         if let rio_window::event::WindowEvent::KeyboardInput { event, .. } = event {
-            if self.consume_table_key_release(event) {
+            if self.consume_overlay_key_release(event) {
                 return true;
             }
         }
@@ -6283,18 +6330,18 @@ impl Screen<'_> {
         effect != crate::table_view::Effect::Pass
     }
 
-    fn consume_table_key_release(&mut self, key: &rio_window::event::KeyEvent) -> bool {
+    fn consume_overlay_key_release(&mut self, key: &rio_window::event::KeyEvent) -> bool {
         if key.state != ElementState::Released {
             return false;
         }
         let Some(index) = self
-            .table_key_releases
+            .overlay_key_releases
             .iter()
             .position(|pressed| *pressed == key.physical_key)
         else {
             return false;
         };
-        self.table_key_releases.swap_remove(index);
+        self.overlay_key_releases.swap_remove(index);
         #[cfg(windows)]
         self.consumed_win32_key_releases
             .take_release(&key.physical_key);
@@ -6654,13 +6701,15 @@ impl Screen<'_> {
         );
         self.table_view.draw(&mut self.sugarloaf, table_theme);
         crate::hints::preview::draw(&mut self.sugarloaf, &self.hint_state, table_theme);
+        self.fit_settings_view();
+        self.settings_view.draw(&mut self.sugarloaf, table_theme);
         let has_animation = self.renderer.needs_redraw();
         let should_present =
             any_panel_dirty || has_animation || preview_changed || preview_visible;
         #[cfg(feature = "native-gui-test-hooks")]
         let should_present = should_present || force_present_for_control;
 
-        if self.renderer.custom_mouse_cursor {
+        if self.renderer.custom_mouse_cursor && !self.settings_view.is_open() {
             let scale = self.sugarloaf.scale_factor();
             crate::renderer::custom_cursor::draw(
                 &mut self.sugarloaf,
@@ -6758,6 +6807,7 @@ impl Screen<'_> {
                 cursor_col: u16,
                 cursor_row: u16,
                 command_rows: crate::automexia::ui::command_info::RowProjection,
+                inline_tables: crate::automexia::inline_tables::InlineTables,
                 cursor_visible: bool,
                 /// Terminal-side cursor shape (block / underline /
                 /// beam / hidden). Driven by DECSCUSR + the
@@ -6957,6 +7007,9 @@ impl Screen<'_> {
                         && projected_cursor
                             < ctx.renderable_content.screen_lines as isize,
                     command_rows,
+                    inline_tables: std::mem::take(
+                        &mut ctx.renderable_content.inline_tables,
+                    ),
                     cursor_shape,
                     cursor_blinking,
                     cursor_blink_visible,
@@ -7056,7 +7109,7 @@ impl Screen<'_> {
                      y: usize,
                      grid: &mut rio_backend::sugarloaf::grid::GridRenderer,
                      rasterizer: &mut crate::grid_emit::GridGlyphRasterizer| {
-                        let Some(source_y) = p.command_rows.source_row(y) else {
+                        let Some(source_y) = p.command_rows.source_row(y).filter(|row| !p.inline_tables.hides_native(*row)) else {
                             row_scratch.backgrounds.resize(cols, Default::default());
                             row_scratch.backgrounds.fill(Default::default());
                             grid.write_row(y as u32, &row_scratch.backgrounds, &[]);
@@ -7373,6 +7426,7 @@ impl Screen<'_> {
                     }
                     item.val.renderable_content.visible_rows = p.visible_rows;
                     item.val.renderable_content.command_rows = p.command_rows;
+                    item.val.renderable_content.inline_tables = p.inline_tables;
                     item.val.renderable_content.style_table = style_table;
                     item.val.renderable_content.extras = p.extras;
                     item.val.renderable_content.hint_labels = p.hint_labels;
@@ -7693,7 +7747,12 @@ impl Screen<'_> {
         &mut self,
         window: &rio_window::window::Window,
     ) {
-        // Check if IME cursor positioning is enabled in config
+        // Settings is native text input; the terminal cursor workaround does
+        // not disable placement for its search composition window.
+        if self.settings_view.is_open() {
+            self.update_settings_ime_cursor(window);
+            return;
+        }
         if !self.context_manager.config.keyboard.ime_cursor_positioning {
             return;
         }
@@ -7768,10 +7827,10 @@ impl Screen<'_> {
 
     fn remember_hint_key(&mut self, key: &rio_window::event::KeyEvent) {
         if key.state == ElementState::Pressed
-            && !self.table_key_releases.contains(&key.physical_key)
-            && self.table_key_releases.len() < 512
+            && !self.overlay_key_releases.contains(&key.physical_key)
+            && self.overlay_key_releases.len() < 512
         {
-            self.table_key_releases.push(key.physical_key);
+            self.overlay_key_releases.push(key.physical_key);
         }
     }
 
@@ -7861,7 +7920,7 @@ impl Screen<'_> {
     ) -> bool {
         use rio_window::event::WindowEvent;
         if let WindowEvent::KeyboardInput { event, .. } = event {
-            if self.consume_table_key_release(event) {
+            if self.consume_overlay_key_release(event) {
                 return true;
             }
             return self.process_hint_key(event, clipboard);

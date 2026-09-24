@@ -35,6 +35,8 @@ use crate::automexia::preferences::{
     MAX_FONT_POINTS, MIN_FONT_POINTS,
 };
 
+mod settings;
+
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
 enum RuntimeConfigReload {
@@ -86,6 +88,22 @@ fn preference_warning(
             "saved terminal settings could not be applied ({error:?}).{recovery}"
         )),
     }
+}
+
+/// Compose a runtime preference from already-loaded configuration only.
+fn resolve_runtime_preference_config(
+    base: &rio_backend::config::Config,
+    preferences: &UserPreferences,
+    system_theme: Option<rio_window::window::Theme>,
+) -> rio_backend::config::Config {
+    let mut config = preferences.apply_to(base);
+    crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
+    let theme = config
+        .force_theme
+        .map(|theme| theme.to_window_theme())
+        .or(system_theme);
+    update_colors_based_on_theme(&mut config, theme);
+    config
 }
 
 fn apply_font_size_request(
@@ -202,6 +220,7 @@ pub struct Application<'a> {
     config: rio_backend::config::Config,
     user_preferences: UserPreferences,
     preference_writer: PreferenceWriter,
+    settings_revision: u64,
     event_proxy: EventProxy,
     router: Router<'a>,
     scheduler: Scheduler,
@@ -245,7 +264,11 @@ impl Application<'_> {
         if let Some(error) = preference_load.warning {
             router.propagate_error_to_next_route(preference_warning(
                 error,
-                preference_load.source == runtime_preferences::PreferenceSource::Previous,
+                matches!(
+                    preference_load.source,
+                    runtime_preferences::PreferenceSource::Previous
+                        | runtime_preferences::PreferenceSource::LegacyPrevious
+                ),
             ));
         }
 
@@ -263,7 +286,8 @@ impl Application<'_> {
 
         rio_notifier::request_authorization();
 
-        Application {
+        let mut application = Application {
+            settings_revision: 1,
             base_config,
             config,
             user_preferences,
@@ -285,35 +309,32 @@ impl Application<'_> {
             global_hotkey: None,
             #[cfg(target_os = "macos")]
             quake_previous_app: None,
-        }
+        };
+        application.initialize_extension_inventory();
+        application
     }
 
     fn publish_user_preferences(
         &mut self,
         event_loop: &ActiveEventLoop,
         has_font_updates: bool,
-    ) {
-        let mut config = self.user_preferences.apply_to(&self.base_config);
-        crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
-        let theme = config
-            .force_theme
-            .map(|theme| theme.to_window_theme())
-            .or_else(|| event_loop.system_theme());
-        update_colors_based_on_theme(&mut config, theme);
-        self.config = config;
+    ) -> u64 {
+        self.config = resolve_runtime_preference_config(
+            &self.base_config,
+            &self.user_preferences,
+            event_loop.system_theme(),
+        );
 
         for route in self.router.routes.values_mut() {
-            route.update_config(
-                &self.config,
-                &self.router.font_library,
-                has_font_updates,
-                None,
-                false,
-            );
+            route
+                .window
+                .screen
+                .update_runtime_preferences(&self.config, has_font_updates);
             route.window.configure_window(&self.config);
             route.request_redraw();
         }
-        self.preference_writer.submit(self.user_preferences.clone());
+        self.refresh_settings_catalogs();
+        self.preference_writer.submit(self.user_preferences.clone())
     }
 
     fn apply_shortcut_edit(&mut self, window_id: rio_backend::event::WindowId) {
@@ -360,6 +381,7 @@ impl Application<'_> {
                 .update_bindings(&self.config, snapshot.clone());
             route.request_redraw();
         }
+        self.refresh_settings_catalogs();
         let revision = self.preference_writer.submit(self.user_preferences.clone());
         if let Some(route) = self.router.routes.get_mut(&window_id) {
             let palette = &mut route.window.screen.renderer.command_palette;
@@ -376,6 +398,14 @@ impl Application<'_> {
     fn finish_shortcut_writes(&mut self) {
         if let Some((revision, result)) = self.preference_writer.completion() {
             for route in self.router.routes.values_mut() {
+                route
+                    .window
+                    .screen
+                    .settings_view
+                    .save_completed(revision, result.is_ok());
+                if route.window.screen.settings_view.is_open() {
+                    route.request_overlay_redraw();
+                }
                 if route
                     .window
                     .screen
@@ -403,6 +433,7 @@ impl Application<'_> {
                 .renderer
                 .command_palette
                 .is_editing_shortcut()
+                || route.window.screen.settings_view.is_open()
             {
                 continue;
             }
@@ -511,7 +542,38 @@ impl Application<'_> {
         true
     }
 
+    fn finish_configuration_creation(&mut self) {
+        let Some(completion) = self.router.config_creation.take_completion() else {
+            return;
+        };
+        if let Some(route) = self.router.routes.get_mut(&completion.window) {
+            if completion.applies_to(
+                completion.window,
+                &route.welcome_identity,
+                route.path == RoutePath::Welcome,
+            ) {
+                route.clear_errors();
+                if let Some(Err(error)) = completion.outcome {
+                    route.report_error(&rio_backend::error::RioError {
+                        report: rio_backend::error::RioErrorType::InitializationError(
+                            error.to_string(),
+                        ),
+                        level: rio_backend::error::RioErrorLevel::Error,
+                    });
+                }
+                route.request_overlay_redraw();
+            }
+        }
+        // Other Welcome windows may have displayed the shared busy state.
+        for route in self.router.routes.values_mut() {
+            if route.path == RoutePath::Welcome {
+                route.request_overlay_redraw();
+            }
+        }
+    }
+
     fn request_application_exit(&mut self, event_loop: &ActiveEventLoop) {
+        self.router.config_creation.request_shutdown();
         self.router.hide_windows_for_exit();
         let shutdown_requests = self.router.request_pty_shutdown();
         tracing::debug!(
@@ -751,6 +813,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     }
 
     fn user_event(&mut self, event_loop: &ActiveEventLoop, event: EventPayload) {
+        // Drain before window lookup: a closed target must not strand the one
+        // app-wide operation or prevent another Welcome route from retrying.
+        self.finish_configuration_creation();
         let window_id = event.window_id;
         match event.payload {
             RioEventType::Rio(RioEvent::Render) => {
@@ -931,7 +996,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
             RioEventType::Rio(RioEvent::UpdateConfig) => {
                 let base_config = match prepare_runtime_config_reload(
-                    rio_backend::config::Config::try_load(),
+                    crate::automexia::theme::load_config(),
                 ) {
                     RuntimeConfigReload::Apply(config) => *config,
                     RuntimeConfigReload::KeepLastGood(error) => {
@@ -1047,6 +1112,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.clear_errors();
                     route.request_redraw();
                 }
+                self.refresh_settings_catalogs();
             }
             RioEventType::Rio(RioEvent::Exit | RioEvent::Quit) => {
                 let should_exit =
@@ -1268,6 +1334,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             RioEventType::Rio(RioEvent::MouseCursorDirty) => {
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
                     route.window.screen.reset_mouse();
+                    route.window.screen.mark_dirty();
+                    route.request_redraw();
                 }
             }
             RioEventType::Rio(RioEvent::Scroll(scroll)) => {
@@ -1494,6 +1562,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
             }
+            RioEventType::Rio(RioEvent::OpenSettings) => self.open_settings(window_id),
+            RioEventType::Rio(RioEvent::ExtensionInventoryChanged) => {
+                self.extension_inventory_changed();
+            }
             RioEventType::Rio(RioEvent::ApplyShortcutEdit) => {
                 self.apply_shortcut_edit(window_id)
             }
@@ -1623,6 +1695,17 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             Some(window) => window,
             None => return,
         };
+
+        if route
+            .window
+            .screen
+            .handle_settings_window_event(&event, &mut self.router.clipboard)
+        {
+            let typing_release = matches!(&event, WindowEvent::KeyboardInput { event, .. }
+                if event.state == ElementState::Released);
+            self.finish_settings_input(event_loop, window_id, typing_release);
+            return;
+        }
 
         if route
             .window
@@ -2875,11 +2958,29 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 event: key_event,
                 ..
             } => {
-                if route.has_key_wait(&key_event, &mut self.router.clipboard) {
+                let intent = route.has_key_wait(&key_event, &mut self.router.clipboard);
+                if intent == crate::router::RouteKeyIntent::CreateConfiguration {
+                    let proxy = self.event_proxy.clone();
+                    let result = self.router.config_creation.submit(
+                        window_id,
+                        &route.welcome_identity,
+                        crate::config_creation::CompletionSignal::Event(proxy),
+                    );
+                    if result
+                        == automexia_extension_runtime::RefreshSubmission::Unavailable
+                    {
+                        route.clear_errors();
+                        route.report_error(&rio_backend::error::RioError {
+                            report: rio_backend::error::RioErrorType::InitializationError("Configuration creation is unavailable. Try creating the configuration with the command line.".into()),
+                            level: rio_backend::error::RioErrorLevel::Error,
+                        });
+                    }
+                    route.request_overlay_redraw();
+                }
+                if intent != crate::router::RouteKeyIntent::PassThrough {
                     if route.path != RoutePath::Terminal
                         && key_event.state == ElementState::Released
                     {
-                        // Scheduler must be cleaned after leave the terminal route
                         self.scheduler.unschedule(TimerId::new(
                             Topic::Render,
                             route.window.screen.ctx().current_route(),
@@ -3106,14 +3207,15 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
                 update_colors_based_on_theme(&mut self.config, Some(new_theme));
-                route.window.screen.update_config(
-                    &self.config,
-                    &self.router.font_library,
-                    false,
-                    None,
-                    false,
-                );
+                route
+                    .window
+                    .screen
+                    .update_runtime_preferences(&self.config, false);
                 route.window.configure_window(&self.config);
+                if route.window.screen.settings_view.is_open() {
+                    route.window.winit_window.set_cursor(CursorIcon::Default);
+                    route.window.winit_window.set_cursor_visible(true);
+                }
                 route.request_redraw();
             }
 
@@ -3175,7 +3277,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
                 match route.path {
                     RoutePath::Welcome => {
-                        route.window.screen.render_welcome();
+                        route
+                            .window
+                            .screen
+                            .render_welcome(self.router.config_creation.is_pending());
                     }
                     RoutePath::Terminal => {
                         if let Some(window_update) = route.window.screen.render() {
@@ -3291,7 +3396,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
     fn hook_event(
         &mut self,
-        _event_loop: &ActiveEventLoop,
+        event_loop: &ActiveEventLoop,
         key: &rio_window::event::KeyEvent,
         modifiers: &rio_window::event::Modifiers,
     ) {
@@ -3312,14 +3417,28 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // Use the modifiers passed from the menu action
         route.window.screen.set_modifiers(*modifiers);
 
-        // Process the key event
-        route
+        // Native menus share the view key adapter without acquiring physical
+        // release latches: a clicked menu item need not produce a key-up event.
+        let settings_handled = route
             .window
             .screen
-            .process_key_event(key, &mut self.router.clipboard);
+            .handle_settings_menu_key(key, &mut self.router.clipboard);
+        if !settings_handled {
+            route
+                .window
+                .screen
+                .process_key_event(key, &mut self.router.clipboard);
+        }
 
         // Restore the original modifiers
         route.window.screen.set_modifiers(original_modifiers);
+        if settings_handled {
+            self.finish_settings_input(
+                event_loop,
+                window_id,
+                key.state == ElementState::Released,
+            );
+        }
     }
 
     // Emitted when the event loop is being shut down.
@@ -3329,12 +3448,20 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // OS-driven termination may bypass the explicit Quit event. Start every
         // owned PTY concurrently before waiting on settings, services, or route
         // destructors in that path as well.
+        self.router.config_creation.request_shutdown();
         self.router.hide_windows_for_exit();
         let shutdown_requests = self.router.request_pty_shutdown();
         tracing::debug!(shutdown_requests, "final PTY shutdown broadcast completed");
         // Destroy native surfaces before service waits, including backends
         // without visibility control. Context drops only retire worker leases.
         self.router.routes.clear();
+        if !self
+            .router
+            .config_creation
+            .shutdown_timeout(Duration::from_secs(2))
+        {
+            tracing::warn!("configuration creation did not finish before shutdown");
+        }
         if !self.preference_writer.shutdown(Duration::from_secs(2)) {
             tracing::warn!(
                 "saved terminal settings did not finish flushing before shutdown"
@@ -3485,6 +3612,26 @@ mod custom_chrome_tests {
             let decision = prepare_runtime_config_reload(Err(error));
             assert!(matches!(decision, RuntimeConfigReload::KeepLastGood(_)));
         }
+    }
+
+    #[test]
+    fn runtime_reload_appends_platform_environment_once() {
+        let mut loaded = rio_backend::config::Config::default();
+        loaded.env_vars = vec!["BASE=value".into()];
+        let platform = rio_backend::config::platform::PlatformConfig {
+            env_vars: Some(vec!["PLATFORM=value".into()]),
+            ..Default::default()
+        };
+        loaded.platform.windows = Some(platform.clone());
+        loaded.platform.linux = Some(platform.clone());
+        loaded.platform.macos = Some(platform);
+        let RuntimeConfigReload::Apply(prepared) =
+            prepare_runtime_config_reload(Ok(loaded))
+        else {
+            panic!("valid candidate must apply");
+        };
+        #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
+        assert_eq!(prepared.env_vars, ["BASE=value", "PLATFORM=value"]);
     }
 
     #[test]

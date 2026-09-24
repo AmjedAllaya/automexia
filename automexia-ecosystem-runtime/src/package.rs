@@ -83,6 +83,29 @@ pub struct VerifiedBundle {
 }
 
 impl VerifiedBundle {
+    /// Decode optional signed declarations without changing package acceptance.
+    /// Call on the verification worker; this never starts services or grants rights.
+    pub fn settings_metadata(
+        &self,
+    ) -> Result<
+        Option<automexia_ecosystem::ValidatedSettingsMetadata>,
+        automexia_ecosystem::SettingsMetadataError,
+    > {
+        let Some(bytes) = self.entry(automexia_ecosystem::SETTINGS_METADATA_ENTRY) else {
+            return Ok(None);
+        };
+        // The receipt is public for inspection, so reject relabeling before
+        // projecting declarations whose identity is signed inside the package.
+        if self.receipt.publisher_id != self.receipt.manifest.publisher_id
+            || self.receipt.extension_id != self.receipt.manifest.extension_id
+            || self.receipt.version != self.receipt.manifest.version
+        {
+            return Err(automexia_ecosystem::SettingsMetadataError::IdentityMismatch);
+        }
+        automexia_ecosystem::decode_settings_metadata(bytes, &self.receipt.manifest)
+            .map(Some)
+    }
+
     pub fn entry(&self, name: &str) -> Option<&[u8]> {
         self.entries.get(name).map(Vec::as_slice)
     }
@@ -823,5 +846,8 @@ mod tests {
             verify(&traversal).unwrap_err().code,
             BundleErrorCode::UnsafeEntry
         );
+    }
+    mod settings_metadata {
+        include!("package_settings_tests.rs");
     }
 }

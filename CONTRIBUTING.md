@@ -68,14 +68,13 @@ cargo xtask cache status # inventory shared and per-worktree generated caches
 cargo purge     # remove Cargo artifacts after closing Automexia windows
 ```
 
-The two launching commands automatically provision the repository-owned shell
-support before spawning Automexia. This includes PowerShell, CMD, and WSL on
-Windows, or Bash, Zsh, and user-local terminfo on Unix. The operation is
-source-aware and idempotent, so contributors never need to run an integration
-installer or restart a just-launched window. A provisioning error fails the
-launch instead of silently dropping prompt, context, or listing features.
-Non-launching `cargo ready`, `cargo check`, and CI intentionally do not change
-user profiles.
+The two launching commands pass the repository-owned integration resources to
+Automexia for the new child session. Normal launch does not install integration
+or rewrite shell profiles. Missing resources leave the native shell available;
+PowerShell's effective execution policy remains authoritative. Persistent
+integration for shells outside Automexia is an explicit maintenance operation
+(see [shell integration](docs/SHELL-INTEGRATION.md)). Non-launching `cargo ready`,
+`cargo check`, and CI likewise do not change user profiles.
 
 `cargo ready` is the required contributor command. It includes tool and
 structured-file validation, all Automexia verification scopes, package metadata,

@@ -24,6 +24,7 @@ pub enum PaletteAction {
     SelectPaneUp,
     SelectPaneDown,
     ConfigEditor,
+    OpenSettings,
     WindowCreateNew,
     IncreaseFontSize,
     DecreaseFontSize,

@@ -55,29 +55,35 @@ pub fn wsl_paths(
     if !safe_component(distro) {
         return None;
     }
-    let home = match session.environment.get("HOME") {
-        Some(home) => home.clone(),
-        None => {
-            let user = session.shell_user.as_deref()?;
-            if !safe_component(user) {
-                return None;
-            }
-            if user == "root" {
-                "/root".to_owned()
-            } else {
-                format!("/home/{user}")
-            }
-        }
-    };
-    let default = format!("{home}/.kube/config");
     let configured = session
         .environment
         .get("KUBECONFIG")
         .filter(|value| !value.is_empty());
-    if configured.is_none() && (!home.starts_with('/') || home.len() > 4096) {
-        return None;
-    }
-    let raw = configured.map(String::as_str).unwrap_or(&default);
+    // An explicit override does not depend on HOME or a conventional username.
+    let default;
+    let raw = if let Some(configured) = configured {
+        configured.as_str()
+    } else {
+        let home = match session.environment.get("HOME") {
+            Some(home) => home.clone(),
+            None => {
+                let user = session.shell_user.as_deref()?;
+                if !safe_component(user) {
+                    return None;
+                }
+                if user == "root" {
+                    "/root".to_owned()
+                } else {
+                    format!("/home/{user}")
+                }
+            }
+        };
+        if !home.starts_with('/') || home.len() > 4096 {
+            return None;
+        }
+        default = format!("{home}/.kube/config");
+        &default
+    };
     if raw.len() > 4096 {
         return None;
     }
@@ -130,34 +136,109 @@ pub(crate) fn local_paths(
         .map(std::ffi::OsString::from)
         .or_else(|| std::env::var_os("KUBECONFIG"));
     if let Some(configured) = configured.filter(|value| !value.is_empty()) {
-        let paths = std::env::split_paths(&configured)
-            .filter(|path| !path.as_os_str().is_empty())
-            .take(MAX_FILES + 1)
-            .map(|path| {
-                if path.is_relative() {
-                    session
-                        .cwd
-                        .as_ref()
-                        .map_or_else(|| path.clone(), |cwd| cwd.join(&path))
-                } else {
-                    path
+        if configured.len() > 4096 {
+            return Vec::new();
+        }
+        let mut paths = Vec::new();
+        for path in
+            std::env::split_paths(&configured).filter(|path| !path.as_os_str().is_empty())
+        {
+            let path = if path.is_relative() {
+                let Some(cwd) = session.cwd.as_ref() else {
+                    return Vec::new();
+                };
+                cwd.join(path)
+            } else {
+                path
+            };
+            if !bounded_local_path(&path) {
+                return Vec::new();
+            }
+            // Native client-go de-duplicates the configured list before loading.
+            // Repeated files must not consume the unique-source budget.
+            if !paths.contains(&path) {
+                paths.push(path);
+                if paths.len() > MAX_FILES {
+                    return Vec::new();
                 }
-            })
-            .collect::<Vec<_>>();
-        return if paths.iter().all(|path| local_config_path(path)) {
-            paths
-        } else {
-            Vec::new()
-        };
+            }
+        }
+        return paths;
+    }
+    #[cfg(windows)]
+    if windows_location_hints(session) || !session.environment.contains_key("HOME") {
+        return windows_default_paths(session, host_home);
     }
     let home = session
         .environment
         .get("HOME")
         .map(std::path::Path::new)
         .or(host_home);
-    home.filter(|path| !path.as_os_str().is_empty() && local_config_path(path))
+    home.filter(|path| bounded_local_path(path))
         .map(|home| vec![home.join(".kube/config")])
         .unwrap_or_default()
+}
+
+#[cfg(windows)]
+pub(crate) fn windows_location_hints(
+    session: &automexia_extension_api::SessionFacts,
+) -> bool {
+    ["HOMEDRIVE", "HOMEPATH", "USERPROFILE"]
+        .iter()
+        .all(|name| session.environment.contains_key(*name))
+}
+
+#[cfg(windows)]
+fn windows_default_paths(
+    session: &automexia_extension_api::SessionFacts,
+    host_home: Option<&std::path::Path>,
+) -> Vec<std::path::PathBuf> {
+    use std::ffi::OsString;
+    let published = windows_location_hints(session);
+    let value = |name: &str| {
+        if published {
+            session.environment.get(name).map(OsString::from)
+        } else {
+            std::env::var_os(name)
+        }
+        .filter(|value| !value.is_empty())
+    };
+    let drive_path =
+        value("HOMEDRIVE")
+            .zip(value("HOMEPATH"))
+            .map(|(mut drive, path)| {
+                drive.push(path);
+                drive
+            });
+    let profile = value("USERPROFILE").or_else(|| {
+        (!published)
+            .then(|| host_home.map(|home| home.as_os_str().to_owned()))
+            .flatten()
+    });
+    // Match the client-go existing-config order, without shell hot-path I/O.
+    // Do not merge default homes; the first existing config is authoritative.
+    let homes = [value("HOME"), drive_path, profile]
+        .into_iter()
+        .flatten()
+        .map(std::path::PathBuf::from)
+        .collect::<Vec<_>>();
+    if homes.iter().any(|home| !bounded_local_path(home)) {
+        return Vec::new();
+    }
+    homes
+        .into_iter()
+        .map(|home| home.join(".kube/config"))
+        .find(|path| path.exists())
+        .map(|path| vec![path])
+        .unwrap_or_default()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub(crate) fn bounded_local_path(path: &std::path::Path) -> bool {
+    path.is_absolute()
+        && path.as_os_str().len() <= 4096
+        && !path.to_string_lossy().chars().any(char::is_control)
+        && local_config_path(path)
 }
 
 #[cfg(not(target_arch = "wasm32"))]

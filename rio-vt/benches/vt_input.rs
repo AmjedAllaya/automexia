@@ -147,6 +147,68 @@ impl rio_vt::performer::parser::Perform for NoopPerform {
     }
 }
 
+/// Character/control counts are an independent oracle for the benchmark
+/// fixture. The production Processor still performs framing and dispatch.
+#[derive(Default)]
+struct FragmentedInputSink {
+    printed: usize,
+    checksum: u64,
+    linefeeds: usize,
+    carriage_returns: usize,
+}
+
+impl rio_vt::performer::handler::Handler for FragmentedInputSink {
+    fn input(&mut self, character: char) {
+        self.printed += 1;
+        self.checksum += character as u64;
+    }
+
+    fn linefeed(&mut self) {
+        self.linefeeds += 1;
+    }
+
+    fn carriage_return(&mut self) {
+        self.carriage_returns += 1;
+    }
+}
+
+fn fragmented_utf8(c: &mut Criterion) {
+    const REPETITIONS: usize = 4096;
+    let bytes = "\x1b[31méあ🚀Z\x1b[0m\r\n".repeat(REPETITIONS).into_bytes();
+    let run = |bytewise: bool| {
+        let mut processor = Processor::default();
+        let mut sink = FragmentedInputSink::default();
+        if bytewise {
+            for byte in &bytes {
+                processor.advance(&mut sink, std::slice::from_ref(byte));
+            }
+        } else {
+            processor.advance(&mut sink, &bytes);
+        }
+        sink
+    };
+    // All expected values come from the fixed fixture, not a parser baseline.
+    for bytewise in [false, true] {
+        let sink = run(bytewise);
+        assert_eq!(sink.printed, 4 * REPETITIONS);
+        assert_eq!(sink.checksum, 141_317 * REPETITIONS as u64);
+        assert_eq!(sink.linefeeds, REPETITIONS);
+        assert_eq!(sink.carriage_returns, REPETITIONS);
+    }
+
+    let mut group = c.benchmark_group("fragmented_utf8");
+    group.sample_size(30);
+    group.warm_up_time(std::time::Duration::from_secs(1));
+    group.measurement_time(std::time::Duration::from_secs(2));
+    group.throughput(Throughput::Bytes(bytes.len() as u64));
+    for (name, bytewise) in [("processor_whole", false), ("processor_bytewise", true)] {
+        group.bench_function(name, |b| {
+            b.iter(|| std::hint::black_box(run(bytewise)));
+        });
+    }
+    group.finish();
+}
+
 fn bench(c: &mut Criterion) {
     c.bench_function("processor_default_lazy_control_buffers", |b| {
         b.iter(Processor::default);
@@ -810,6 +872,7 @@ fn pane_close_repaint(c: &mut Criterion) {
 criterion_group!(
     benches,
     color_setup,
+    fragmented_utf8,
     bench,
     grid_resize,
     table_resize_roundtrip,

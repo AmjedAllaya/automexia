@@ -40,8 +40,16 @@ def validate(sources: dict[str, str]) -> None:
     if runtime.index("publish_devops_progress(&request, &snapshot)") > runtime.index("super::prompt_discovery::refresh("):
         raise ValueError("guest reads block initial context publication")
     progress = runtime.split("fn put_devops_progress(", 1)[1].split("fn publish_devops_failure", 1)[0]
-    if any(token not in progress for token in ["request.cancellation.is_cancelled()", "self.accepts(", "self.devops_snapshot(session_id).is_some()", "Freshness::Refreshing"]):
+    if any(token not in progress for token in ["!self.accepts_refresh(request)", "self.devops_snapshot(session_id).is_some()", "Freshness::Refreshing"]):
         raise ValueError("intermediate context lost stale-result or anti-flicker guards")
+    if "fn accepts_refresh(" not in runtime:
+        raise ValueError("context refresh lost its shared acceptance owner")
+    acceptance = runtime.split("fn accepts_refresh(", 1)[1].split("fn register_refresh(", 1)[0]
+    required_acceptance = ["self.context_status_enabled()", "&& self.context_revision == request.context_revision", "&& !request.cancellation.is_cancelled()", "&& self.accepts(", "request.session.session_id", "request.operation_id", "request.capsule_revision"]
+    if any(token not in acceptance for token in required_acceptance):
+        raise ValueError("context refresh lost feature, revision, cancellation or session ownership")
+    if progress.index("!self.accepts_refresh(request)") >= progress.index("self.put_devops_snapshot("):
+        raise ValueError("context progress publication must follow request acceptance")
     renderer = sources["renderer"].split("#[cfg(test)]\nmod tests", 1)[0]
     if "self.request_in_flight = self.refresh_pending" not in renderer or "runtime::same_devops_context(previous, session)" not in renderer:
         raise ValueError("renderer discards progress or restarts title-only discovery")

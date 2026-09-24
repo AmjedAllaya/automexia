@@ -17,13 +17,16 @@ use std::{
 };
 use tempfile::Builder;
 
-const SCHEMA_VERSION: u16 = 1;
+const SCHEMA_VERSION: u16 = 2;
 const STATE_DIRECTORY: &str = "state";
-const PRIMARY_FILE: &str = "user-preferences-v1.toml";
-const PREVIOUS_FILE: &str = "user-preferences-v1.previous.toml";
-const LOCK_FILE: &str = "user-preferences-v1.lock";
+const PRIMARY_FILE: &str = "user-preferences-v2.toml";
+const LEGACY_PRIMARY_FILE: &str = "user-preferences-v1.toml";
+const PREVIOUS_FILE: &str = "user-preferences-v2.previous.toml";
+const LEGACY_PREVIOUS_FILE: &str = "user-preferences-v1.previous.toml";
+const LOCK_FILE: &str = "user-preferences-v2.lock";
 const STAGING_PREFIX: &str = ".user-preferences-";
 pub const MAX_PREFERENCE_BYTES: usize = 16 * 1024;
+pub const MAX_EXTENSION_FEATURE_OVERRIDES: usize = 64;
 pub const MIN_FONT_POINTS: f32 = 6.0;
 pub const MAX_FONT_POINTS: f32 = 100.0;
 
@@ -78,11 +81,80 @@ impl From<crate::automexia::private_fs::PrivateFsError> for PreferenceError {
     }
 }
 
+/// Optional runtime choices; omitted fields inherit the hand-edited config.
+#[derive(Clone, Debug, Default, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields, rename_all = "kebab-case")]
+pub struct PresentationPreferences {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inline_tables: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_highlighting: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub command_timestamps: Option<bool>,
+}
+
+impl PresentationPreferences {
+    fn is_empty(&self) -> bool {
+        self.inline_tables.is_none()
+            && self.output_highlighting.is_none()
+            && self.command_timestamps.is_none()
+    }
+
+    fn apply_to(&self, base: &mut rio_backend::config::presentation::Presentation) {
+        if let Some(value) = self.inline_tables {
+            base.inline_tables = value;
+        }
+        if let Some(value) = self.output_highlighting {
+            base.output_highlighting = value;
+        }
+        if let Some(value) = self.command_timestamps {
+            base.command_timestamps = value;
+        }
+    }
+}
+
+/// Desired feature state only; installation and authority remain runtime-owned.
+#[derive(Clone, Debug, PartialEq, Eq, Deserialize, Serialize)]
+#[serde(deny_unknown_fields)]
+pub struct ExtensionFeaturePreference {
+    pub id: String,
+    pub enabled: bool,
+}
+
+fn validate_extension_id(id: &str) -> Result<(), PreferenceError> {
+    use automexia_ui_model::settings::{SettingId, MAX_ID_BYTES};
+    if id.len() > MAX_ID_BYTES
+        || SettingId::new(id).is_err()
+        || !crate::automexia::settings_extensions::is_known_boolean_feature(id)
+    {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    Ok(())
+}
+
+fn validate_extension_features(
+    records: &[ExtensionFeaturePreference],
+) -> Result<(), PreferenceError> {
+    if records.len() > MAX_EXTENSION_FEATURE_OVERRIDES {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    let mut seen = std::collections::HashSet::with_capacity(records.len());
+    for record in records {
+        validate_extension_id(&record.id)?;
+        if !seen.insert(record.id.as_str()) {
+            return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+        }
+    }
+    Ok(())
+}
+
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UserPreferences {
     pub font_size: Option<f32>,
     pub appearance_theme: Option<AppearanceTheme>,
     pub shortcuts: Vec<rio_backend::config::bindings::UiShortcut>,
+    pub presentation: PresentationPreferences,
+    pub extension_features: Vec<ExtensionFeaturePreference>,
 }
 
 impl UserPreferences {
@@ -94,11 +166,56 @@ impl UserPreferences {
         if let Some(theme) = self.appearance_theme {
             effective.force_theme = Some(theme);
         }
+        self.presentation.apply_to(&mut effective.presentation);
         effective.bindings.ui_shortcuts = self.shortcuts.clone();
         effective
     }
 
+    /// This lookup never implies that an extension is installed or authorized.
+    pub fn extension_feature_enabled(&self, id: &str) -> Option<bool> {
+        if !crate::automexia::settings_extensions::is_known_boolean_feature(id) {
+            return None;
+        }
+        self.extension_features
+            .iter()
+            .find(|record| record.id == id)
+            .map(|record| record.enabled)
+    }
+
+    pub fn set_extension_feature_enabled(
+        &mut self,
+        id: &str,
+        enabled: bool,
+    ) -> Result<(), PreferenceError> {
+        self.validate()?;
+        validate_extension_id(id)?;
+        if let Some(record) = self
+            .extension_features
+            .iter_mut()
+            .find(|record| record.id == id)
+        {
+            record.enabled = enabled;
+        } else {
+            if self.extension_features.len() == MAX_EXTENSION_FEATURE_OVERRIDES {
+                return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+            }
+            self.extension_features.push(ExtensionFeaturePreference {
+                id: id.to_owned(),
+                enabled,
+            });
+        }
+        Ok(())
+    }
+
+    pub fn reset_extension_feature(&mut self, id: &str) -> Result<(), PreferenceError> {
+        self.validate()?;
+        validate_extension_id(id)?;
+        self.extension_features.retain(|record| record.id != id);
+        Ok(())
+    }
+
     fn validate(&self) -> Result<(), PreferenceError> {
+        validate_extension_features(&self.extension_features)?;
         crate::automexia::shortcut_preferences::validate_records(&self.shortcuts)
             .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
         if self.font_size.is_some_and(|value| {
@@ -125,6 +242,28 @@ struct StoredPreferences {
         skip_serializing_if = "Option::is_none"
     )]
     appearance_theme: Option<AppearanceTheme>,
+    #[serde(default, skip_serializing_if = "PresentationPreferences::is_empty")]
+    presentation: PresentationPreferences,
+    #[serde(
+        default,
+        rename = "extension-features",
+        skip_serializing_if = "Vec::is_empty"
+    )]
+    extension_features: Vec<ExtensionFeaturePreference>,
+}
+
+/// The predecessor codec deliberately cannot accept v2 fields.
+#[derive(Debug, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct LegacyPreferences {
+    #[serde(rename = "schema-version")]
+    schema_version: u16,
+    #[serde(default)]
+    shortcuts: Vec<rio_backend::config::bindings::UiShortcut>,
+    #[serde(default, rename = "font-size")]
+    font_size: Option<f32>,
+    #[serde(default, rename = "appearance-theme")]
+    appearance_theme: Option<AppearanceTheme>,
 }
 
 impl TryFrom<StoredPreferences> for UserPreferences {
@@ -138,6 +277,8 @@ impl TryFrom<StoredPreferences> for UserPreferences {
             font_size: stored.font_size,
             appearance_theme: stored.appearance_theme,
             shortcuts: stored.shortcuts,
+            presentation: stored.presentation,
+            extension_features: stored.extension_features,
         };
         preferences.validate()?;
         Ok(preferences)
@@ -151,6 +292,8 @@ impl From<&UserPreferences> for StoredPreferences {
             shortcuts: preferences.shortcuts.clone(),
             font_size: preferences.font_size,
             appearance_theme: preferences.appearance_theme,
+            presentation: preferences.presentation.clone(),
+            extension_features: preferences.extension_features.clone(),
         }
     }
 }
@@ -160,6 +303,8 @@ pub enum PreferenceSource {
     Defaults,
     Primary,
     Previous,
+    Legacy,
+    LegacyPrevious,
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -207,6 +352,66 @@ fn read_snapshot(path: &Path) -> Result<Option<UserPreferences>, PreferenceError
         .and_then(|bytes| bytes.map(|bytes| parse_snapshot(&bytes)).transpose())
 }
 
+fn read_legacy_snapshot(path: &Path) -> Result<Option<UserPreferences>, PreferenceError> {
+    let Some(bytes) = private_fs::read_bounded_regular(path, MAX_PREFERENCE_BYTES)?
+    else {
+        return Ok(None);
+    };
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    let stored: LegacyPreferences = toml::from_str(text)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    if stored.schema_version != 1 {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    let preferences = UserPreferences {
+        font_size: stored.font_size,
+        appearance_theme: stored.appearance_theme,
+        shortcuts: stored.shortcuts,
+        ..UserPreferences::default()
+    };
+    preferences.validate()?;
+    Ok(Some(preferences))
+}
+
+/// None means both files were absent, which is the only migration entry point.
+fn load_pair(
+    primary: &Path,
+    previous: &Path,
+    read: fn(&Path) -> Result<Option<UserPreferences>, PreferenceError>,
+    primary_source: PreferenceSource,
+    previous_source: PreferenceSource,
+) -> Option<LoadOutcome> {
+    let warning = match read(primary) {
+        Ok(Some(preferences)) => {
+            return Some(LoadOutcome {
+                preferences,
+                source: primary_source,
+                warning: None,
+            })
+        }
+        Ok(None) => None,
+        Err(error) => Some(error.code()),
+    };
+    match read(previous) {
+        Ok(Some(preferences)) => Some(LoadOutcome {
+            preferences,
+            source: previous_source,
+            warning: warning.or(Some(PreferenceErrorCode::InvalidData)),
+        }),
+        Ok(None) => warning.map(|warning| LoadOutcome {
+            preferences: UserPreferences::default(),
+            source: PreferenceSource::Defaults,
+            warning: Some(warning),
+        }),
+        Err(error) => Some(LoadOutcome {
+            preferences: UserPreferences::default(),
+            source: PreferenceSource::Defaults,
+            warning: warning.or(Some(error.code())),
+        }),
+    }
+}
+
 pub fn load_from_root(root: &Path) -> LoadOutcome {
     match fs::symlink_metadata(state_root(root)) {
         Ok(_) => {
@@ -229,42 +434,27 @@ pub fn load_from_root(root: &Path) -> LoadOutcome {
             };
         }
     }
-    match read_snapshot(&primary_path(root)) {
-        Ok(Some(preferences)) => LoadOutcome {
-            preferences,
-            source: PreferenceSource::Primary,
-            warning: None,
-        },
-        Ok(None) => match read_snapshot(&previous_path(root)) {
-            Ok(Some(preferences)) => LoadOutcome {
-                preferences,
-                source: PreferenceSource::Previous,
-                warning: Some(PreferenceErrorCode::InvalidData),
-            },
-            Ok(None) => LoadOutcome {
-                preferences: UserPreferences::default(),
-                source: PreferenceSource::Defaults,
-                warning: None,
-            },
-            Err(error) => LoadOutcome {
-                preferences: UserPreferences::default(),
-                source: PreferenceSource::Defaults,
-                warning: Some(error.code()),
-            },
-        },
-        Err(primary_error) => match read_snapshot(&previous_path(root)) {
-            Ok(Some(preferences)) => LoadOutcome {
-                preferences,
-                source: PreferenceSource::Previous,
-                warning: Some(primary_error.code()),
-            },
-            Ok(None) | Err(_) => LoadOutcome {
-                preferences: UserPreferences::default(),
-                source: PreferenceSource::Defaults,
-                warning: Some(primary_error.code()),
-            },
-        },
-    }
+    load_pair(
+        &primary_path(root),
+        &previous_path(root),
+        read_snapshot,
+        PreferenceSource::Primary,
+        PreferenceSource::Previous,
+    )
+    .or_else(|| {
+        load_pair(
+            &state_root(root).join(LEGACY_PRIMARY_FILE),
+            &state_root(root).join(LEGACY_PREVIOUS_FILE),
+            read_legacy_snapshot,
+            PreferenceSource::Legacy,
+            PreferenceSource::LegacyPrevious,
+        )
+    })
+    .unwrap_or(LoadOutcome {
+        preferences: UserPreferences::default(),
+        source: PreferenceSource::Defaults,
+        warning: None,
+    })
 }
 
 fn ensure_state_root(root: &Path) -> Result<PathBuf, PreferenceError> {
@@ -324,6 +514,7 @@ pub fn write_to_root(
     root: &Path,
     preferences: &UserPreferences,
 ) -> Result<(), PreferenceError> {
+    let candidate = serialize(preferences)?;
     let state = ensure_state_root(root)?;
     let lock = private_fs::open_private_lock(&lock_path(root))?;
     match lock.try_lock() {
@@ -334,11 +525,14 @@ pub fn write_to_root(
         Err(TryLockError::Error(error)) => return Err(PreferenceError::io(error)),
     }
     let primary = primary_path(root);
-    if let Ok(Some(current)) = read_snapshot(&primary) {
+    let current = read_snapshot(&primary)?;
+    // Preserve corrupt or unsupported v2 files for explicit recovery. A v1
+    // snapshot must never hide a failed v2 transaction or receive new writes.
+    read_snapshot(&previous_path(root))?;
+    if let Some(current) = current {
         let previous = serialize(&current)?;
         persist_bytes(&state, &previous_path(root), &previous)?;
     }
-    let candidate = serialize(preferences)?;
     persist_bytes(&state, &primary, &candidate)
 }
 
@@ -595,7 +789,7 @@ mod tests {
         write_to_root(root.path(), &second).unwrap();
         std::fs::write(
             primary_path(root.path()),
-            b"schema-version = 1\nfont-size = nan",
+            b"schema-version = 2\nfont-size = nan",
         )
         .unwrap();
 
@@ -611,10 +805,10 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         let cases = [
             b"not toml".to_vec(),
-            b"schema-version = 2".to_vec(),
-            b"schema-version = 1\nunknown = true".to_vec(),
-            b"schema-version = 1\nfont-size = 5.99".to_vec(),
-            b"schema-version = 1\nfont-size = 100.01".to_vec(),
+            b"schema-version = 3".to_vec(),
+            b"schema-version = 2\nunknown = true".to_vec(),
+            b"schema-version = 2\nfont-size = 5.99".to_vec(),
+            b"schema-version = 2\nfont-size = 100.01".to_vec(),
             vec![b'x'; MAX_PREFERENCE_BYTES + 1],
         ];
 
@@ -804,7 +998,7 @@ mod tests {
         let root = tempfile::tempdir().unwrap();
         ensure_state_root(root.path()).unwrap();
         let outside = root.path().join("outside.toml");
-        std::fs::write(&outside, b"schema-version = 1\nfont-size = 42.0").unwrap();
+        std::fs::write(&outside, b"schema-version = 2\nfont-size = 42.0").unwrap();
         symlink(&outside, primary_path(root.path())).unwrap();
 
         let outcome = load_from_root(root.path());
@@ -821,7 +1015,7 @@ mod tests {
         let outside = tempfile::tempdir().unwrap();
         std::fs::write(
             outside.path().join(PRIMARY_FILE),
-            b"schema-version = 1\nfont-size = 42.0",
+            b"schema-version = 2\nfont-size = 42.0",
         )
         .unwrap();
         symlink(outside.path(), state_root(root.path())).unwrap();
@@ -841,3 +1035,7 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+#[path = "preferences_migration_tests.rs"]
+mod migration_tests;

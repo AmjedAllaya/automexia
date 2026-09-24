@@ -354,6 +354,85 @@ fn encode_response_quiet(
     }
 }
 
+fn transfer_error_response(
+    cmd: &KittyGraphicsCommand,
+    error: GraphicError,
+) -> KittyGraphicsResponse {
+    KittyGraphicsResponse {
+        graphic_data: None,
+        placement_request: None,
+        delete_request: None,
+        response: if cmd.implicit_id {
+            None
+        } else {
+            encode_response_quiet(
+                cmd.image_id,
+                cmd.image_number,
+                cmd.placement_id,
+                error.message(),
+                cmd.quiet,
+                true,
+            )
+        },
+        error_response: None,
+        incomplete: false,
+    }
+}
+
+fn reject_transfer(
+    state: &mut KittyGraphicsState,
+    cmd: &KittyGraphicsCommand,
+    error: GraphicError,
+) -> KittyGraphicsResponse {
+    let key = if cmd.image_id != 0 {
+        cmd.image_id
+    } else if cmd.image_number != 0 {
+        cmd.image_number
+    } else {
+        state.current_transmission_key
+    };
+    let stored = state.incomplete_images.remove(&key);
+    if state.current_transmission_key == key {
+        state.current_transmission_key = 0;
+    }
+    // Continuations inherit the first chunk's identifiers and reply policy.
+    transfer_error_response(stored.as_ref().unwrap_or(cmd), error)
+}
+
+fn bounded_payload_len(
+    current: usize,
+    additional: usize,
+    limit: usize,
+) -> Result<usize, GraphicError> {
+    current
+        .checked_add(additional)
+        .filter(|size| *size <= limit)
+        .ok_or(GraphicError::TooLarge)
+}
+
+fn append_payload(
+    payload: &mut SmallVec<[u8; 64]>,
+    bytes: &[u8],
+    limit: usize,
+) -> Result<(), GraphicError> {
+    let required = bounded_payload_len(payload.len(), bytes.len(), limit)?;
+    if required > payload.capacity() {
+        // Keep amortized growth without SmallVec's power-of-two rounding
+        // overshooting the byte limit. Allocation failure preserves the payload.
+        let capacity = payload
+            .capacity()
+            .saturating_mul(2)
+            .max(required)
+            .min(limit);
+        payload
+            .try_reserve_exact(capacity - payload.len())
+            .map_err(|_| GraphicError::AllocationFailed)?;
+    }
+    // The fallible reservation above guarantees this append cannot allocate.
+    payload.extend_from_slice(bytes);
+    Ok(())
+}
+
 pub fn parse(
     params: &[&[u8]],
     state: &mut KittyGraphicsState,
@@ -366,15 +445,6 @@ pub fn parse(
         "Kitty graphics parse: starting with {} params",
         params.len()
     );
-    for (i, param) in params.iter().enumerate() {
-        debug!(
-            "  param[{}] length={}, preview={:?}",
-            i,
-            param.len(),
-            std::str::from_utf8(&param[..param.len().min(50)])
-                .unwrap_or("(invalid utf8)")
-        );
-    }
 
     let mut cmd = KittyGraphicsCommand::default();
 
@@ -384,6 +454,31 @@ pub fn parse(
             let control_data = std::str::from_utf8(control).ok()?;
             parse_control_data(&mut cmd, control_data);
         }
+    }
+
+    // Terminal output grants no authority to read or delete external resources.
+    // Reject before resource decoding or chunk retention; a future application
+    // broker must own explicit permission and native resource access.
+    if matches!(
+        cmd.action,
+        Action::Transmit | Action::TransmitAndDisplay | Action::Query
+    ) && cmd.medium != TransmissionMedium::Direct
+    {
+        return Some(reject_transfer(
+            state,
+            &cmd,
+            GraphicError::PermissionRequired,
+        ));
+    }
+
+    // A declaration must never reserve bytes that have not arrived. Reject
+    // oversized declarations before decoding, including on continuations.
+    if matches!(
+        cmd.action,
+        Action::Transmit | Action::TransmitAndDisplay | Action::Query
+    ) && cmd.size as usize > MAX_SIZE
+    {
+        return Some(reject_transfer(state, &cmd, GraphicError::TooLarge));
     }
 
     // Decode payload if present. We always decode base64 up front
@@ -397,6 +492,10 @@ pub fn parse(
             let decoded = decode_payload_base64(payload)?;
             cmd.payload = SmallVec::from_vec(decoded);
         }
+    }
+
+    if cmd.payload.len() > MAX_SIZE {
+        return Some(reject_transfer(state, &cmd, GraphicError::TooLarge));
     }
 
     // Validation: `i=` and `I=` are mutually exclusive per kitty spec
@@ -475,11 +574,6 @@ pub fn parse(
     evict_stale_chunks(state);
 
     if cmd.more {
-        // Pin the key for continuation chunks. Only chunked commands
-        // touch `current_transmission_key` so non-chunked commands
-        // don't leak state into subsequent transmissions.
-        state.current_transmission_key = image_key;
-
         // Store chunk for later - preserve all metadata from first chunk.
         // Payload is already base64-decoded at this point, so subsequent
         // chunks can simply append their bytes.
@@ -487,25 +581,13 @@ pub fn parse(
 
         match state.incomplete_images.entry(image_key) {
             Entry::Vacant(e) => {
-                // First chunk - move cmd into storage (no clone!)
-                // Pre-allocate capacity if size is known to avoid reallocations
-                let expected_size = cmd.size as usize;
-                if expected_size > 0 && cmd.payload.capacity() < expected_size {
-                    cmd.payload
-                        .reserve(expected_size.saturating_sub(cmd.payload.len()));
-                    debug!(
-                        "First chunk for image key {}: {} bytes, reserved {} bytes total",
-                        image_key,
-                        cmd.payload.len(),
-                        expected_size
-                    );
-                } else {
-                    debug!(
-                        "First chunk for image key {}: {} bytes",
-                        image_key,
-                        cmd.payload.len()
-                    );
-                }
+                // Only received bytes are retained. The untrusted S= declaration
+                // is not an allocation hint, even when it is within the limit.
+                debug!(
+                    "First chunk for image key {}: {} bytes",
+                    image_key,
+                    cmd.payload.len()
+                );
                 cmd.last_touched = Instant::now();
                 e.insert(cmd);
             }
@@ -513,18 +595,15 @@ pub fn parse(
                 // Subsequent chunk - append decoded bytes, refusing if
                 // the accumulated size would exceed our cap.
                 let stored_cmd = e.get_mut();
-                if stored_cmd.payload.len().saturating_add(cmd.payload.len()) > MAX_SIZE {
-                    debug!(
-                        "Dropping chunked upload {}: would exceed MAX_SIZE ({})",
-                        image_key, MAX_SIZE
-                    );
-                    // Evict the abandoned upload so it can't be resumed
-                    // into an oversized state.
-                    e.remove();
-                    state.current_transmission_key = 0;
-                    return None;
+                if let Err(error) =
+                    append_payload(&mut stored_cmd.payload, &cmd.payload, MAX_SIZE)
+                {
+                    let rejected = e.remove();
+                    if state.current_transmission_key == image_key {
+                        state.current_transmission_key = 0;
+                    }
+                    return Some(transfer_error_response(&rejected, error));
                 }
-                stored_cmd.payload.extend_from_slice(&cmd.payload);
                 stored_cmd.last_touched = Instant::now();
                 debug!(
                     "Appended chunk for image key {}: {} bytes accumulated",
@@ -533,6 +612,9 @@ pub fn parse(
                 );
             }
         }
+        // Publish the continuation key only after accepting the chunk.
+        state.current_transmission_key = image_key;
+
         // Tell the dispatcher this is an in-progress chunked
         // transmission, not an error. Returning None here would have
         // been logged as "Failed to parse" — yazi sends hundreds of
@@ -543,23 +625,24 @@ pub fn parse(
         if let Some(mut stored_cmd) = state.incomplete_images.remove(&image_key) {
             // Final chunk: append this chunk's decoded bytes to the
             // already-accumulated stored payload.
-            if stored_cmd.payload.len().saturating_add(cmd.payload.len()) > MAX_SIZE {
-                debug!(
-                    "Dropping final chunk {}: would exceed MAX_SIZE ({})",
-                    image_key, MAX_SIZE
-                );
-                state.current_transmission_key = 0;
-                return None;
+            if let Err(error) =
+                append_payload(&mut stored_cmd.payload, &cmd.payload, MAX_SIZE)
+            {
+                if state.current_transmission_key == image_key {
+                    state.current_transmission_key = 0;
+                }
+                return Some(transfer_error_response(&stored_cmd, error));
             }
-            stored_cmd.payload.extend_from_slice(&cmd.payload);
             cmd = stored_cmd; // Use stored metadata
             debug!(
                 "Retrieved accumulated image key {}: total {} bytes",
                 image_key,
                 cmd.payload.len()
             );
-            // Reset current transmission key after completing this transmission
-            state.current_transmission_key = 0;
+            // Completing an explicit transfer must not unpin another upload.
+            if state.current_transmission_key == image_key {
+                state.current_transmission_key = 0;
+            }
         }
     }
 
@@ -977,19 +1060,19 @@ fn decode_payload_base64(payload: &[u8]) -> Option<Vec<u8>> {
 }
 
 /// Error emitted from `create_graphic_data`. Maps directly to kitty
-/// protocol EINVAL/ENOENT/E2BIG message strings so the caller can
+/// protocol error message strings so the caller can
 /// surface them in a response.
 #[derive(Debug)]
-#[allow(dead_code)] // UnsupportedFormat/Medium are platform-gated
+#[allow(dead_code)] // UnsupportedFormat is feature-gated
 enum GraphicError {
     DimensionsTooLarge,
     DimensionsRequired,
     TooLarge,
+    AllocationFailed,
     UnsupportedFormat,
-    UnsupportedMedium,
+    PermissionRequired,
     InvalidData,
     DecompressionFailed,
-    FileNotFound,
 }
 
 impl GraphicError {
@@ -998,16 +1081,23 @@ impl GraphicError {
             GraphicError::DimensionsTooLarge => "EINVAL: dimensions too large",
             GraphicError::DimensionsRequired => "EINVAL: dimensions required",
             GraphicError::TooLarge => "E2BIG: image too large",
+            GraphicError::AllocationFailed => "ENOMEM: image allocation failed",
             GraphicError::UnsupportedFormat => "EINVAL: unsupported format",
-            GraphicError::UnsupportedMedium => "EINVAL: unsupported medium",
+            GraphicError::PermissionRequired => {
+                "EACCES: external transport requires permission"
+            }
             GraphicError::InvalidData => "EINVAL: invalid data",
             GraphicError::DecompressionFailed => "EINVAL: decompression failed",
-            GraphicError::FileNotFound => "ENOENT: file not found",
         }
     }
 }
 
 fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, GraphicError> {
+    // Keep the decoder capability-free even if command metadata is inherited.
+    if cmd.medium != TransmissionMedium::Direct {
+        return Err(GraphicError::PermissionRequired);
+    }
+
     // Early dimension guard — applies to every non-PNG path. PNG
     // commands may transmit without declaring width/height (we pick
     // them up after decoding); we re-check post-decode.
@@ -1021,296 +1111,11 @@ fn create_graphic_data(cmd: &KittyGraphicsCommand) -> Result<GraphicData, Graphi
         return Err(GraphicError::DimensionsTooLarge);
     }
 
-    // Payload is already base64-decoded by parse(). Pick up the bytes
-    // based on the transmission medium — direct means they're the image
-    // bytes, file/shm means they're a path/name.
-    let raw_data = match cmd.medium {
-        TransmissionMedium::Direct => {
-            if cmd.payload.len() > MAX_SIZE {
-                return Err(GraphicError::TooLarge);
-            }
-            debug!("Using decoded Direct payload: {} bytes", cmd.payload.len());
-            cmd.payload.to_vec()
-        }
-        TransmissionMedium::File | TransmissionMedium::TempFile => {
-            // Read from file
-            use std::fs::File;
-            use std::io::Read;
-            use std::path::Path;
-
-            // Payload is already base64-decoded by parse(); the bytes
-            // directly represent the file path.
-            debug!("File path payload: {} bytes", cmd.payload.len());
-            let path_str = std::str::from_utf8(&cmd.payload)
-                .map_err(|_| GraphicError::InvalidData)?;
-            debug!("File path: {}", path_str);
-            let path = Path::new(path_str);
-
-            // Security checks
-            if !path.is_file() {
-                return Err(GraphicError::FileNotFound);
-            }
-
-            // Check for sensitive paths
-            let path_str_lower = path_str.to_lowercase();
-            if path_str_lower.contains("/proc/")
-                || path_str_lower.contains("/sys/")
-                || path_str_lower.contains("/dev/")
-            {
-                return Err(GraphicError::InvalidData);
-            }
-
-            // For temp files, verify it contains "tty-graphics-protocol"
-            if cmd.medium == TransmissionMedium::TempFile
-                && !path_str.contains("tty-graphics-protocol")
-            {
-                return Err(GraphicError::InvalidData);
-            }
-
-            // Cap the explicit `S=` read size before we allocate. Keeps
-            // a malicious `S=<huge>` from exploding our heap.
-            if cmd.size as usize > MAX_SIZE {
-                return Err(GraphicError::TooLarge);
-            }
-
-            let mut file = File::open(path).map_err(|_| GraphicError::FileNotFound)?;
-            let mut data = Vec::new();
-
-            if cmd.size > 0 {
-                // Read specific size from offset
-                if cmd.offset > 0 {
-                    use std::io::Seek;
-                    file.seek(std::io::SeekFrom::Start(cmd.offset as u64))
-                        .map_err(|_| GraphicError::InvalidData)?;
-                }
-                data.resize(cmd.size as usize, 0);
-                file.read_exact(&mut data)
-                    .map_err(|_| GraphicError::InvalidData)?;
-            } else {
-                // Read entire file. Cap the total so a huge file on disk
-                // can't be silently loaded through this channel.
-                let limit = (MAX_SIZE as u64).saturating_add(1);
-                file.take(limit)
-                    .read_to_end(&mut data)
-                    .map_err(|_| GraphicError::InvalidData)?;
-                if data.len() > MAX_SIZE {
-                    return Err(GraphicError::TooLarge);
-                }
-            }
-
-            // Delete temp file if requested
-            if cmd.medium == TransmissionMedium::TempFile {
-                let _ = std::fs::remove_file(path);
-            }
-
-            data
-        }
-        TransmissionMedium::SharedMemory => {
-            #[cfg(unix)]
-            {
-                use std::ffi::CString;
-                use std::os::unix::io::RawFd;
-
-                // Payload is already base64-decoded by parse(); the bytes
-                // directly represent the shared memory name.
-                debug!("Shared memory name payload: {} bytes", cmd.payload.len());
-                let shm_name_str = std::str::from_utf8(&cmd.payload)
-                    .map_err(|_| GraphicError::InvalidData)?;
-                let shm_name =
-                    CString::new(shm_name_str).map_err(|_| GraphicError::InvalidData)?;
-
-                debug!(
-                    "Opening shared memory: {}, expected size: {}",
-                    shm_name_str,
-                    cmd.width as usize * cmd.height as usize * 3 // RGB24
-                );
-
-                unsafe {
-                    // Open shared memory
-                    let fd: RawFd = libc::shm_open(shm_name.as_ptr(), libc::O_RDONLY, 0);
-
-                    if fd < 0 {
-                        let err = std::io::Error::last_os_error();
-                        let errno = err.raw_os_error().unwrap_or(-1);
-                        debug!(
-                            "Failed to open shared memory '{}': {} (errno: {})",
-                            shm_name_str, err, errno
-                        );
-                        return Err(GraphicError::FileNotFound);
-                    }
-
-                    // Get size of shared memory
-                    let mut stat: libc::stat = std::mem::zeroed();
-                    if libc::fstat(fd, &mut stat) < 0 {
-                        libc::close(fd);
-                        libc::shm_unlink(shm_name.as_ptr());
-                        debug!("Failed to fstat shared memory");
-                        return Err(GraphicError::InvalidData);
-                    }
-
-                    let shm_size = stat.st_size as usize;
-                    debug!("Shared memory size: {} bytes", shm_size);
-
-                    // Use cmd.size if specified, otherwise use the full shm size
-                    let data_size = if cmd.size > 0 {
-                        cmd.size as usize
-                    } else {
-                        shm_size
-                    };
-
-                    if data_size > shm_size {
-                        libc::close(fd);
-                        libc::shm_unlink(shm_name.as_ptr());
-                        debug!(
-                            "Requested size {} exceeds shared memory size {}",
-                            data_size, shm_size
-                        );
-                        return Err(GraphicError::InvalidData);
-                    }
-
-                    if data_size > MAX_SIZE {
-                        libc::close(fd);
-                        libc::shm_unlink(shm_name.as_ptr());
-                        return Err(GraphicError::TooLarge);
-                    }
-
-                    // Map shared memory
-                    let ptr = libc::mmap(
-                        std::ptr::null_mut(),
-                        data_size,
-                        libc::PROT_READ,
-                        libc::MAP_SHARED,
-                        fd,
-                        cmd.offset as libc::off_t,
-                    );
-
-                    if ptr == libc::MAP_FAILED {
-                        libc::close(fd);
-                        debug!("Failed to mmap shared memory");
-                        return Err(GraphicError::InvalidData);
-                    }
-
-                    // Copy data from shared memory
-                    let data =
-                        std::slice::from_raw_parts(ptr as *const u8, data_size).to_vec();
-
-                    // Cleanup
-                    libc::munmap(ptr, data_size);
-                    libc::close(fd);
-                    libc::shm_unlink(shm_name.as_ptr());
-
-                    debug!("Successfully read {} bytes from shared memory", data.len());
-                    data
-                }
-            }
-            #[cfg(windows)]
-            {
-                use std::ffi::OsStr;
-                use std::os::windows::ffi::OsStrExt;
-                use windows_sys::Win32::Foundation::CloseHandle;
-                use windows_sys::Win32::System::Memory::OpenFileMappingW;
-                use windows_sys::Win32::System::Memory::{
-                    MapViewOfFile, UnmapViewOfFile, VirtualQuery, FILE_MAP_READ,
-                    MEMORY_BASIC_INFORMATION,
-                };
-
-                // Payload is already base64-decoded by parse(); the bytes
-                // directly represent the shared memory name.
-                debug!("Shared memory name payload: {} bytes", cmd.payload.len());
-                let shm_name_str = std::str::from_utf8(&cmd.payload)
-                    .map_err(|_| GraphicError::InvalidData)?;
-
-                debug!("Opening shared memory: {}", shm_name_str);
-
-                unsafe {
-                    // Convert to wide string for Windows API
-                    let wide_name: Vec<u16> = OsStr::new(shm_name_str)
-                        .encode_wide()
-                        .chain(std::iter::once(0))
-                        .collect();
-
-                    // Open the file mapping
-                    let handle = OpenFileMappingW(FILE_MAP_READ, 0, wide_name.as_ptr());
-
-                    if handle.is_null() {
-                        let err = std::io::Error::last_os_error();
-                        debug!(
-                            "Failed to open shared memory '{}': {}",
-                            shm_name_str, err
-                        );
-                        return Err(GraphicError::FileNotFound);
-                    }
-
-                    // Map view of file
-                    let base_ptr = MapViewOfFile(handle, FILE_MAP_READ, 0, 0, 0);
-
-                    if base_ptr.Value.is_null() {
-                        let err = std::io::Error::last_os_error();
-                        debug!("Failed to map view of file: {}", err);
-                        CloseHandle(handle);
-                        return Err(GraphicError::InvalidData);
-                    }
-
-                    // Query memory to get size
-                    let mut mem_info: MEMORY_BASIC_INFORMATION = std::mem::zeroed();
-                    if VirtualQuery(
-                        base_ptr.Value,
-                        &mut mem_info,
-                        std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
-                    ) == 0
-                    {
-                        debug!("Failed to query memory information");
-                        UnmapViewOfFile(base_ptr);
-                        CloseHandle(handle);
-                        return Err(GraphicError::InvalidData);
-                    }
-
-                    let shm_size = mem_info.RegionSize;
-                    debug!("Shared memory size: {} bytes", shm_size);
-
-                    // Use cmd.size if specified, otherwise use the full shm size
-                    let data_size = if cmd.size > 0 {
-                        cmd.size as usize
-                    } else {
-                        shm_size
-                    };
-
-                    // Validate offset and size
-                    if cmd.offset as usize + data_size > shm_size {
-                        debug!(
-                            "Requested offset {} + size {} exceeds shared memory size {}",
-                            cmd.offset, data_size, shm_size
-                        );
-                        UnmapViewOfFile(base_ptr);
-                        CloseHandle(handle);
-                        return Err(GraphicError::InvalidData);
-                    }
-
-                    if data_size > MAX_SIZE {
-                        UnmapViewOfFile(base_ptr);
-                        CloseHandle(handle);
-                        return Err(GraphicError::TooLarge);
-                    }
-
-                    // Copy data from shared memory
-                    let data_ptr = (base_ptr.Value as *const u8).add(cmd.offset as usize);
-                    let data = std::slice::from_raw_parts(data_ptr, data_size).to_vec();
-
-                    // Cleanup
-                    UnmapViewOfFile(base_ptr);
-                    CloseHandle(handle);
-
-                    debug!("Successfully read {} bytes from shared memory", data.len());
-                    data
-                }
-            }
-            #[cfg(not(any(unix, windows)))]
-            {
-                debug!("SharedMemory transmission not supported on this platform");
-                return Err(GraphicError::UnsupportedMedium);
-            }
-        }
-    };
+    // Direct payload bytes are already base64-decoded by the parser.
+    if cmd.payload.len() > MAX_SIZE {
+        return Err(GraphicError::TooLarge);
+    }
+    let raw_data = cmd.payload.to_vec();
 
     // Decompress if needed
     let pixel_data = match cmd.compression {
@@ -1827,6 +1632,146 @@ mod tests {
     }
 
     #[test]
+    fn test_first_chunk_size_hint_does_not_reserve_unreceived_bytes() {
+        let mut state = KittyGraphicsState::default();
+        let response = parse(
+            &[b"G", b"a=t,f=32,s=1,v=1,S=1048576,m=1,i=901", b"/wAA"],
+            &mut state,
+        )
+        .expect("valid first chunk");
+        assert!(response.incomplete);
+        let pending = state.incomplete_images.get(&901).expect("pending transfer");
+        assert_eq!(pending.payload.as_slice(), &[255, 0, 0]);
+        // A small safe fixture detects declared-size amplification without
+        // requesting the production ceiling or exhausting the allocator.
+        assert!(pending.payload.capacity() <= 4096);
+    }
+
+    #[test]
+    fn test_oversized_chunk_declaration_is_rejected_before_decode() {
+        let mut state = KittyGraphicsState::default();
+        let response = parse(&[b"G", b"a=t,S=4294967295,m=1,i=902", b"!"], &mut state)
+            .expect("size admission must precede the invalid base64 payload");
+        assert!(!response.incomplete);
+        assert!(response.graphic_data.is_none());
+        assert_eq!(
+            response.response.as_deref(),
+            Some("\x1b_Gi=902;E2BIG: image too large\x1b\\")
+        );
+        assert!(state.incomplete_images.is_empty());
+        assert_eq!(state.current_transmission_key, 0);
+    }
+
+    #[test]
+    fn test_rejected_chunk_declaration_retires_only_its_transfer() {
+        let mut state = KittyGraphicsState::default();
+        for control in [b"a=t,m=1,i=903".as_slice(), b"a=t,m=1,i=904"] {
+            assert!(
+                parse(&[b"G", control, b"AAAA"], &mut state)
+                    .expect("accepted first chunk")
+                    .incomplete
+            );
+        }
+        let response = parse(&[b"G", b"S=4294967295,m=1,i=903", b"!"], &mut state)
+            .expect("rejected existing transfer");
+        assert!(!response.incomplete);
+        assert!(!state.incomplete_images.contains_key(&903));
+        assert!(state.incomplete_images.contains_key(&904));
+        assert_eq!(state.current_transmission_key, 904);
+    }
+
+    #[test]
+    fn test_chunk_declaration_rejection_respects_quiet_and_implicit_ids() {
+        for (control, expected_reply) in [
+            ("a=t,S=4294967295,m=1,i=905,q=0", true),
+            ("a=t,S=4294967295,m=1,i=905,q=1", true),
+            ("a=t,S=4294967295,m=1,i=905,q=2", false),
+            ("a=t,S=4294967295,m=1", false),
+        ] {
+            let mut state = KittyGraphicsState::default();
+            let response = parse(&[b"G", control.as_bytes(), b"!"], &mut state)
+                .expect("bounded rejection");
+            assert_eq!(response.response.is_some(), expected_reply);
+            assert!(!response.incomplete);
+            assert!(state.incomplete_images.is_empty());
+        }
+    }
+
+    #[test]
+    fn test_received_payload_growth_is_bounded_and_atomic() {
+        let mut payload = SmallVec::<[u8; 64]>::new();
+        append_payload(&mut payload, &[7; 64], 150).expect("inline payload");
+        assert_eq!(payload.capacity(), 64);
+        append_payload(&mut payload, &[8; 65], 150).expect("bounded spill");
+        assert_eq!(payload.len(), 129);
+        assert_eq!(payload.capacity(), 129);
+        append_payload(&mut payload, &[9; 21], 150).expect("exact byte limit");
+        assert_eq!(payload.len(), 150);
+        assert_eq!(payload.capacity(), 150);
+        assert!(matches!(
+            append_payload(&mut payload, &[10], 150),
+            Err(GraphicError::TooLarge)
+        ));
+        assert_eq!(payload.len(), 150);
+        assert_eq!(&payload[..64], &[7; 64]);
+        assert_eq!(&payload[64..129], &[8; 65]);
+        assert_eq!(&payload[129..], &[9; 21]);
+        assert_eq!(payload.capacity(), 150);
+    }
+
+    #[test]
+    fn test_received_payload_length_rejects_overflow_and_limit() {
+        assert_eq!(bounded_payload_len(0, 0, 0).expect("empty limit"), 0);
+        assert_eq!(bounded_payload_len(64, 86, 150).expect("exact limit"), 150);
+        assert!(matches!(
+            bounded_payload_len(64, 87, 150),
+            Err(GraphicError::TooLarge)
+        ));
+        assert!(matches!(
+            bounded_payload_len(usize::MAX, 1, usize::MAX),
+            Err(GraphicError::TooLarge)
+        ));
+    }
+
+    #[test]
+    fn test_allowed_chunk_declarations_do_not_allocate_the_hint() {
+        for size in [0, MAX_SIZE - 1, MAX_SIZE] {
+            let mut state = KittyGraphicsState::default();
+            let control = format!("a=t,f=32,s=1,v=1,S={size},m=1,i=906");
+            assert!(
+                parse(&[b"G", control.as_bytes(), b"/wAA"], &mut state)
+                    .expect("admitted declaration")
+                    .incomplete
+            );
+            let pending = state.incomplete_images.get(&906).expect("pending transfer");
+            assert_eq!(pending.payload.as_slice(), &[255, 0, 0]);
+            assert!(pending.payload.capacity() <= 4096);
+        }
+    }
+
+    #[test]
+    fn test_rejected_continuation_preserves_first_chunk_reply_policy_and_recovers() {
+        for first_control in ["a=t,m=1,i=907,q=2", "a=t,m=1"] {
+            let mut state = KittyGraphicsState::default();
+            assert!(
+                parse(&[b"G", first_control.as_bytes(), b"AAAA"], &mut state)
+                    .expect("first chunk")
+                    .incomplete
+            );
+            let rejected = parse(&[b"G", b"S=4294967295,m=0", b"!"], &mut state)
+                .expect("bounded rejection");
+            assert!(rejected.response.is_none());
+            assert!(!rejected.incomplete);
+            assert!(state.incomplete_images.is_empty());
+            assert_eq!(state.current_transmission_key, 0);
+            let recovered =
+                parse(&[b"G", b"a=t,f=32,s=1,v=1,i=908", b"/wAA/w=="], &mut state)
+                    .expect("subsequent valid image");
+            assert!(recovered.graphic_data.is_some());
+        }
+    }
+
+    #[test]
     fn test_incomplete_image_accumulation() {
         // Use a single state instance across all chunks.
         // Per kitty spec each chunk must be a multiple of 4 base64 chars
@@ -2236,7 +2181,7 @@ mod tests {
         // Regression for the yazi log spam: an in-progress chunked
         // transmission must be distinguishable from a real parse error.
         // Pending chunks return `Some { incomplete: true }`; real
-        // errors return a response with an EINVAL/ENOENT message
+        // errors return a response with a protocol error message
         // instead of a graphic.
         let mut state = KittyGraphicsState::default();
 
@@ -2246,10 +2191,7 @@ mod tests {
         assert!(resp.incomplete);
         assert!(resp.response.is_none());
 
-        // Real error path: blocked path → error response addressed to
-        // i=99. The exact error varies by platform — on Linux the
-        // `/proc/` sensitive-path match triggers EINVAL, on macOS the
-        // missing file triggers ENOENT. Either is correct.
+        // External resources require permission regardless of the host path.
         let proc_path = BASE64.encode("/proc/self/environ".as_bytes());
         let bad = vec![
             b"G".as_ref(),
@@ -2265,74 +2207,177 @@ mod tests {
             body.contains("i=99"),
             "error must be addressed to i=99: {body}"
         );
-        assert!(
-            body.contains("EINVAL") || body.contains("ENOENT"),
-            "blocked path should surface EINVAL or ENOENT: {body}"
+        assert_eq!(
+            body,
+            "\x1b_Gi=99;EACCES: external transport requires permission\x1b\\"
         );
     }
 
     #[test]
-    fn test_file_transmission_medium() {
-        // Create a temporary file
-        use std::io::Write;
-        let temp_path = std::env::temp_dir().join("test_kitty_image.rgba");
-        let temp_path = temp_path.to_str().unwrap();
-        let mut file = std::fs::File::create(temp_path).unwrap();
-        file.write_all(&[255, 0, 0, 255]).unwrap(); // 1x1 red pixel
-        drop(file);
+    fn external_transports_require_explicit_broker() {
+        let resource = BASE64.encode(b"tty-graphics-protocol-fixture");
+        for medium in ["f", "t", "s"] {
+            for action in ["t", "T", "q"] {
+                for quiet in 0..=2 {
+                    let keys =
+                        format!("a={action},t={medium},f=32,s=1,v=1,i=41,p=7,q={quiet}");
+                    let response = parse_kitty_graphics_protocol(&keys, &resource)
+                        .expect("external request must have a protocol outcome");
+                    assert!(response.graphic_data.is_none());
+                    assert!(response.placement_request.is_none());
+                    assert!(response.delete_request.is_none());
+                    assert!(!response.incomplete);
+                    let expected = (quiet != 2).then(|| {
+                        "\x1b_Gi=41,p=7;EACCES: external transport requires permission\x1b\\"
+                            .to_owned()
+                    });
+                    assert_eq!(response.response, expected, "{medium}/{action}/{quiet}");
+                }
+            }
+        }
+        let implicit = parse_kitty_graphics_protocol("a=t,t=f,f=32,s=1,v=1", &resource)
+            .expect("implicit external request must fail closed");
+        assert!(implicit.graphic_data.is_none());
+        assert!(implicit.response.is_none());
 
-        // Encode the file path as base64 (as kitty does)
-        let encoded_path = BASE64.encode(temp_path.as_bytes());
-        let result =
-            parse_kitty_graphics_protocol("a=t,t=f,f=32,s=1,v=1,i=1", &encoded_path);
-        assert!(result.is_some());
-
-        let response = result.unwrap();
-        assert!(response.graphic_data.is_some());
-
-        // Cleanup
-        let _ = std::fs::remove_file(temp_path);
+        let inline =
+            parse_kitty_graphics_protocol("a=t,t=d,f=32,s=1,v=1,i=42", "/wAA/w==")
+                .expect("inline transfer remains usable");
+        assert_eq!(
+            inline.graphic_data.expect("inline pixels").pixels,
+            [255, 0, 0, 255]
+        );
+        assert_eq!(inline.response.as_deref(), Some("\x1b_Gi=42;OK\x1b\\"));
     }
 
     #[test]
-    fn test_temp_file_transmission_medium() {
-        // Create a temporary file with required naming
-        use std::io::Write;
-        let temp_path = std::env::temp_dir().join("tty-graphics-protocol-test.rgba");
-        let temp_path = temp_path.to_str().unwrap();
-        let mut file = std::fs::File::create(temp_path).unwrap();
-        file.write_all(&[255, 0, 0, 255]).unwrap(); // 1x1 red pixel
-        drop(file);
+    fn external_denial_preserves_unrelated_continuation_and_retires_exact_transfer() {
+        let mut state = KittyGraphicsState::default();
+        let first = [b"G".as_slice(), b"a=t,f=32,s=1,v=1,i=77,m=1,q=1", b"/wAA"];
+        assert!(
+            parse(&first, &mut state)
+                .expect("first inline chunk")
+                .incomplete
+        );
+        let resource = BASE64.encode(b"tty-graphics-protocol-fixture");
+        let denied = [
+            b"G".as_slice(),
+            b"a=t,t=f,f=32,s=1,v=1,i=42,m=1",
+            resource.as_bytes(),
+        ];
+        let response = parse(&denied, &mut state).expect("explicit denial");
+        assert_eq!(
+            response.response.as_deref(),
+            Some("\x1b_Gi=42;EACCES: external transport requires permission\x1b\\")
+        );
+        assert_eq!(state.incomplete_images.len(), 1);
+        assert!(state.incomplete_images.contains_key(&77));
+        assert_eq!(state.current_transmission_key, 77);
 
-        // Encode the file path as base64 (as kitty does)
-        let encoded_path = BASE64.encode(temp_path.as_bytes());
-        let result =
-            parse_kitty_graphics_protocol("a=t,t=t,f=32,s=1,v=1,i=1", &encoded_path);
+        let replace = [
+            b"G".as_slice(),
+            b"a=t,t=s,f=32,s=1,v=1,i=77",
+            resource.as_bytes(),
+        ];
+        let response = parse(&replace, &mut state).expect("replacement denied");
+        assert_eq!(
+            response.response.as_deref(),
+            Some("\x1b_Gi=77;EACCES: external transport requires permission\x1b\\")
+        );
+        assert!(state.incomplete_images.is_empty());
+        assert_eq!(state.current_transmission_key, 0);
+        let inline = [b"G".as_slice(), b"a=t,f=32,s=1,v=1,i=88", b"/wAA/w=="];
+        let response = parse(&inline, &mut state).expect("next transfer recovers");
+        assert_eq!(
+            response.graphic_data.expect("inline pixels").pixels,
+            [255, 0, 0, 255]
+        );
+    }
 
-        // File should be deleted after reading
-        assert!(!std::path::Path::new(temp_path).exists());
+    #[cfg(windows)]
+    #[test]
+    fn external_denial_neither_reads_nor_deletes_existing_file() {
+        let directory = tempfile::tempdir().expect("isolated test directory");
+        let path = directory.path().join("tty-graphics-protocol-fixture.rgba");
+        let original = [255, 0, 0, 255];
+        std::fs::write(&path, original).expect("fixture write");
+        let resource = BASE64.encode(path.to_str().expect("UTF-8 test path").as_bytes());
+        for medium in ["f", "t"] {
+            for action in ["t", "T", "q"] {
+                let keys = format!("a={action},t={medium},f=32,s=1,v=1,i=41");
+                let response = parse_kitty_graphics_protocol(&keys, &resource)
+                    .expect("external request must have a protocol outcome");
+                assert!(response.graphic_data.is_none());
+                assert!(response.placement_request.is_none());
+                assert_eq!(
+                    response.response.as_deref(),
+                    Some(
+                        "\x1b_Gi=41;EACCES: external transport requires permission\x1b\\"
+                    )
+                );
+                assert_eq!(std::fs::read(&path).expect("fixture remains"), original);
+            }
+        }
+    }
 
-        assert!(result.is_some());
-        let response = result.unwrap();
-        assert!(response.graphic_data.is_some());
+    #[test]
+    fn external_denial_precedes_resource_decode_and_size_reservation() {
+        for medium in ["f", "t", "s"] {
+            for payload in ["", "%%%", "/wAA/w=="] {
+                let mut state = KittyGraphicsState::default();
+                let keys = format!("a=t,t={medium},f=32,s=1,v=1,i=41,S=4294967295,m=1");
+                let params = [b"G".as_slice(), keys.as_bytes(), payload.as_bytes()];
+                let response = parse(&params, &mut state).expect("permission denial");
+                assert_eq!(
+                    response.response.as_deref(),
+                    Some(
+                        "\x1b_Gi=41;EACCES: external transport requires permission\x1b\\"
+                    )
+                );
+                assert!(response.graphic_data.is_none());
+                assert!(!response.incomplete);
+                assert!(state.incomplete_images.is_empty());
+                assert_eq!(state.current_transmission_key, 0);
+            }
+        }
+    }
+
+    #[test]
+    fn external_denial_inherits_quiet_on_implicit_continuation() {
+        for quiet in 0..=2 {
+            let mut state = KittyGraphicsState::default();
+            let keys = format!("a=t,f=32,s=1,v=1,i=31,p=7,m=1,q={quiet}");
+            let first = [b"G".as_slice(), keys.as_bytes(), b"/wAA"];
+            assert!(parse(&first, &mut state).expect("inline chunk").incomplete);
+            let denied = [b"G".as_slice(), b"a=t,t=t,m=1", b"%%%"];
+            let response = parse(&denied, &mut state).expect("permission denial");
+            let expected = (quiet != 2).then(|| {
+                "\x1b_Gi=31,p=7;EACCES: external transport requires permission\x1b\\"
+                    .to_owned()
+            });
+            assert_eq!(response.response, expected);
+            assert!(response.graphic_data.is_none());
+            assert!(!response.incomplete);
+            assert!(state.incomplete_images.is_empty());
+            assert_eq!(state.current_transmission_key, 0);
+        }
     }
 
     #[test]
     fn test_security_checks() {
-        // Commands with no i=/I= get an implicit id, which suppresses
-        // the response entirely — but we still must NOT load the file.
-        // Include i=1 so we can assert on the EINVAL response.
+        // Resource names do not change the default-denial policy.
+        // Include i=1 so the failure has a protocol response.
         for path in &["/proc/self/environ", "/sys/class/net", "/dev/null"] {
             let encoded = BASE64.encode(path.as_bytes());
             let response =
                 parse_kitty_graphics_protocol("a=t,t=f,f=32,s=1,v=1,i=1", &encoded)
-                    .expect("must return a response carrying the EINVAL");
+                    .expect("must return a response carrying the denial");
             assert!(response.graphic_data.is_none(), "{path} must not load");
             let body = response.response.expect("error message expected");
             assert!(body.contains("i=1"));
-            assert!(
-                body.contains("EINVAL") || body.contains("ENOENT"),
-                "blocked path should surface EINVAL/ENOENT: {body}"
+            assert_eq!(
+                body,
+                "\x1b_Gi=1;EACCES: external transport requires permission\x1b\\"
             );
         }
     }

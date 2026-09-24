@@ -105,8 +105,10 @@ pub(super) fn layout(
     content: &mut RenderableContent,
     sugarloaf: &mut Sugarloaf,
     colors: Colors,
+    show_timestamps: bool,
 ) -> bool {
-    let (changed, prompts) = prepare(pane, status, content, sugarloaf.text_mut());
+    let (changed, prompts) =
+        prepare(pane, status, content, sugarloaf.text_mut(), show_timestamps);
     if let Some(status) = status {
         for (anchor, fragment) in prompts {
             status.draw_prompt_fragment(
@@ -126,6 +128,7 @@ fn prepare(
     status: Option<&devops_status::DevOpsStatus>,
     content: &mut RenderableContent,
     text_engine: &mut rio_backend::sugarloaf::text::Text,
+    show_timestamps: bool,
 ) -> (bool, Vec<(PromptAnchor, Fragment)>) {
     let mut prompts = Vec::new();
     let height = pane.cell_height;
@@ -172,7 +175,8 @@ fn prepare(
                 band: Band::default(),
             });
             header.result = Some(*anchor);
-            header.completion = command_results::complete_result_label(anchor);
+            header.completion =
+                command_results::complete_result_label(anchor, show_timestamps);
         }
     }
     let metrics = devops_status::prompt_tag_metrics(height);
@@ -222,6 +226,8 @@ fn prepare(
             header.band = band;
         }
     }
+    spans.extend(content.inline_tables.bands());
+    spans.sort_unstable();
     let previous_top = content.command_rows.top();
     let changed = content
         .command_rows
@@ -464,7 +470,8 @@ mod tests {
             pane.live_anchor,
         );
         let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
-        let (_, initial) = prepare(&mut pane, Some(&status), &mut content, &mut text);
+        let (_, initial) =
+            prepare(&mut pane, Some(&status), &mut content, &mut text, true);
         assert_eq!(terminal.history_size(), 0);
         assert!(content.command_rows.top() > 0);
         assert_eq!(content.command_rows.visual_row(2), 2);
@@ -475,7 +482,8 @@ mod tests {
         for _ in 0..8 {
             content.scroll_lines(&mut terminal, 1);
             pane = snapshot(&mut terminal, &mut content);
-            let (_, prompts) = prepare(&mut pane, Some(&status), &mut content, &mut text);
+            let (_, prompts) =
+                prepare(&mut pane, Some(&status), &mut content, &mut text, true);
             for (_, fragment) in prompts {
                 seen.insert(fragment.item);
             }
@@ -486,7 +494,7 @@ mod tests {
         assert_eq!(terminal.history_size(), 0);
         let before = content.visible_rows.clone();
         pane = snapshot(&mut terminal, &mut content);
-        prepare(&mut pane, None, &mut content, &mut text);
+        prepare(&mut pane, None, &mut content, &mut text, true);
         assert!(!content.command_rows.expanded());
         assert_eq!(content.visible_rows, before);
     }
@@ -582,6 +590,53 @@ mod tests {
     }
 
     #[test]
+    fn presentation_timestamp_toggle_recomposes_parser_owned_labels_at_each_width() {
+        let stream = b"\x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07/work\r\n\x1b]133;P;k=c;aid=1\x07lambda one\x1b]133;B\x07\r\n\x1b]133;C\x07output\r\n\x1b]133;D;0\x07\x1b]133;A;aid=2\x07 \r\n\x1b]133;P;k=c;aid=2\x07/work\r\n\x1b]133;P;k=c;aid=2\x07lambda \x1b]133;B\x07";
+        for cols in [80, 24, 12] {
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(cols, 32),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                256,
+            );
+            let mut parser = Processor::default();
+            for chunk in stream.chunks(3) {
+                parser.advance(&mut terminal, chunk);
+            }
+            let mut content = RenderableContent::default();
+            let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
+            text.init_cpu();
+            for show in [true, false, true] {
+                let mut pane = snapshot(&mut terminal, &mut content);
+                assert_eq!(pane.command_results.len(), 1);
+                let result = pane.command_results[0];
+                let expected = command_results::complete_result_label(&result, show);
+                let source = content.visible_rows.clone();
+                let cursor = terminal.grid.cursor.pos;
+                let history = terminal.history_size();
+                prepare(&mut pane, None, &mut content, &mut text, show);
+                assert_eq!(pane.completion_labels.len(), 1);
+                let label = &pane.completion_labels[0];
+                let restored: String = label
+                    .fragments
+                    .iter()
+                    .map(|fragment| &label.text[fragment.bytes.clone()])
+                    .collect();
+                assert_eq!(restored, expected);
+                assert_eq!(restored.contains("2026-01-01 12:00:00"), show);
+                assert_eq!(terminal.grid.cursor.pos, cursor);
+                assert_eq!(terminal.history_size(), history);
+                assert_eq!(content.visible_rows, source);
+                assert_eq!(pane.command_results[0].completed_at, result.completed_at);
+                assert_eq!(pane.command_results[0].elapsed_ms, result.elapsed_ms);
+                assert_eq!(pane.command_results[0].exit_code, result.exit_code);
+            }
+        }
+    }
+
+    #[test]
     fn narrow_prompt_band_cannot_give_all_its_width_to_the_timestamp() {
         let mut terminal = Crosswords::new(
             CrosswordsSize::new(80, 16),
@@ -614,7 +669,8 @@ mod tests {
             let source = content.visible_rows.clone();
             let cursor = terminal.grid.cursor.pos;
             let history = terminal.history_size();
-            let (_, paints) = prepare(&mut pane, Some(&status), &mut content, &mut text);
+            let (_, paints) =
+                prepare(&mut pane, Some(&status), &mut content, &mut text, true);
             assert_eq!(terminal.grid.cursor.pos, cursor);
             assert_eq!(terminal.history_size(), history);
             assert_eq!(content.visible_rows, source);

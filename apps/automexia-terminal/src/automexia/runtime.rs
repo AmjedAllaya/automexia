@@ -26,6 +26,28 @@ static DEVOPS_GENERATION: Generation = Generation::new(1);
 static DEVOPS_COMPLETION_COUNTER: Generation = Generation::new(1);
 static OPERATION_COUNTER: AtomicU32 = AtomicU32::new(1);
 const DEVOPS_CONTEXT_CACHE_LIMIT: usize = 32;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ContextStatusError {
+    RevisionExhausted,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InventoryStatus {
+    Uninitialized,
+    Loading,
+    Ready,
+    Unavailable,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum InventoryInitialization {
+    Queued,
+    Ready,
+    Pending,
+    Unavailable,
+}
+
 const MAX_SESSION_TITLE_BYTES: usize = 4 * 1024;
 #[cfg(not(target_arch = "wasm32"))]
 const DEVOPS_REUSE_MAX_AGE: Duration = Duration::from_secs(5);
@@ -50,24 +72,165 @@ struct CapsuleState {
 #[derive(Debug)]
 struct RuntimeState {
     installed: BTreeSet<String>,
+    context_status_preference: bool,
+    context_revision: u64,
+    inventory_status: InventoryStatus,
+    inventory_revision: u64,
+    inventory_cancellation: Option<CancellationToken>,
+    stopping: bool,
     devops_snapshots: BoundedCache<CacheKey, DevOpsCacheEntry>,
     capsules: BTreeMap<usize, CapsuleState>,
     pending: BTreeMap<usize, (OperationId, CancellationToken)>,
 }
 
 impl RuntimeState {
-    fn load() -> Self {
-        let installed = marketplace::descriptors()
-            .iter()
-            .filter(|manifest| state::is_installed(manifest))
-            .map(|manifest| manifest.id.to_owned())
-            .collect();
+    fn new() -> Self {
         Self {
-            installed,
+            installed: BTreeSet::new(),
+            context_status_preference: true,
+            context_revision: 1,
+            inventory_status: InventoryStatus::Uninitialized,
+            inventory_revision: 0,
+            inventory_cancellation: None,
+            stopping: false,
             devops_snapshots: BoundedCache::new(DEVOPS_CONTEXT_CACHE_LIMIT),
             capsules: BTreeMap::new(),
             pending: BTreeMap::new(),
         }
+    }
+
+    fn set_context_status_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<bool, ContextStatusError> {
+        if self.context_status_preference == enabled {
+            return Ok(false);
+        }
+        let Some(revision) = self.context_revision.checked_add(1) else {
+            self.context_status_preference = false;
+            self.clear_context();
+            return Err(ContextStatusError::RevisionExhausted);
+        };
+        self.context_revision = revision;
+        self.context_status_preference = enabled;
+        if !enabled {
+            self.clear_context();
+        }
+        Ok(true)
+    }
+
+    fn invalidate_devops_session(&mut self, _session_id: usize) -> bool {
+        false
+    }
+
+    fn clear_context(&mut self) {
+        self.cancel_all();
+        self.devops_snapshots.clear();
+        self.capsules.clear();
+    }
+
+    fn revoke_context(&mut self) -> Result<(), ContextStatusError> {
+        self.clear_context();
+        let Some(revision) = self.context_revision.checked_add(1) else {
+            self.context_status_preference = false;
+            return Err(ContextStatusError::RevisionExhausted);
+        };
+        self.context_revision = revision;
+        Ok(())
+    }
+
+    fn context_status_enabled(&self) -> bool {
+        !self.stopping
+            && self.inventory_status == InventoryStatus::Ready
+            && self.context_status_preference
+            && self.installed.contains(devops::ID)
+    }
+
+    fn accepts_refresh(&self, request: &RefreshRequest) -> bool {
+        self.context_status_enabled()
+            && self.context_revision == request.context_revision
+            && !request.cancellation.is_cancelled()
+            && self.accepts(
+                request.session.session_id,
+                request.operation_id,
+                request.capsule_revision,
+            )
+    }
+
+    fn register_refresh(
+        &mut self,
+        session_id: usize,
+        operation_id: OperationId,
+        capsule_revision: u64,
+        context_revision: u64,
+        cancellation: CancellationToken,
+    ) -> bool {
+        if !self.context_status_enabled()
+            || self.context_revision != context_revision
+            || cancellation.is_cancelled()
+            || self
+                .capsules
+                .get(&session_id)
+                .is_none_or(|capsule| capsule.revision != capsule_revision)
+        {
+            cancellation.cancel();
+            return false;
+        }
+        self.register_operation(session_id, operation_id, cancellation);
+        true
+    }
+
+    fn begin_inventory(&mut self, cancellation: CancellationToken) -> Option<u64> {
+        if self.stopping
+            || matches!(
+                self.inventory_status,
+                InventoryStatus::Loading | InventoryStatus::Ready
+            )
+        {
+            return None;
+        }
+        let Some(revision) = self.inventory_revision.checked_add(1) else {
+            self.inventory_status = InventoryStatus::Unavailable;
+            return None;
+        };
+        self.inventory_revision = revision;
+        self.inventory_cancellation = Some(cancellation);
+        self.inventory_status = InventoryStatus::Loading;
+        Some(revision)
+    }
+
+    fn finish_inventory(
+        &mut self,
+        revision: u64,
+        installed: Option<BTreeSet<String>>,
+    ) -> bool {
+        if self.stopping
+            || self.inventory_status != InventoryStatus::Loading
+            || self.inventory_revision != revision
+            || self
+                .inventory_cancellation
+                .as_ref()
+                .is_none_or(CancellationToken::is_cancelled)
+        {
+            return false;
+        }
+        self.inventory_cancellation = None;
+        if let Some(installed) = installed {
+            self.installed = installed;
+            self.inventory_status = InventoryStatus::Ready;
+        } else {
+            self.inventory_status = InventoryStatus::Unavailable;
+        }
+        true
+    }
+
+    fn stop(&mut self) {
+        self.stopping = true;
+        if let Some(cancellation) = self.inventory_cancellation.take() {
+            cancellation.cancel();
+        }
+        self.inventory_status = InventoryStatus::Unavailable;
+        self.clear_context();
     }
 
     fn devops_snapshot(&self, session_id: usize) -> Option<(CacheKey, DevOpsCacheEntry)> {
@@ -214,7 +377,7 @@ pub fn same_devops_context(left: &SessionFacts, right: &SessionFacts) -> bool {
 
 fn runtime() -> &'static RwLock<RuntimeState> {
     static RUNTIME: OnceLock<RwLock<RuntimeState>> = OnceLock::new();
-    RUNTIME.get_or_init(|| RwLock::new(RuntimeState::load()))
+    RUNTIME.get_or_init(|| RwLock::new(RuntimeState::new()))
 }
 
 fn read_runtime() -> RwLockReadGuard<'static, RuntimeState> {
@@ -272,22 +435,78 @@ pub fn generation() -> u32 {
     ACTIVATION_GENERATION.current()
 }
 
-pub fn context_status_enabled() -> bool {
+/// Cached membership only: this does not initialize filesystem state or workers.
+pub fn output_highlighting_available() -> bool {
     is_installed(devops::ID)
 }
 
-pub fn is_installed(id: &str) -> bool {
-    let installed = read_runtime().installed.contains(id);
-    if installed && id == devops::ID {
-        ensure_background_services();
+pub fn inventory_status() -> InventoryStatus {
+    read_runtime().inventory_status
+}
+
+/// Queue the single bounded inventory load after publishing desired preferences.
+/// Completion is global and runs only after the corresponding state is published.
+pub fn schedule_initialize(completion: CompletionWake) -> InventoryInitialization {
+    let cancellation = CancellationToken::default();
+    let revision = {
+        let mut runtime = write_runtime();
+        if runtime.stopping {
+            return InventoryInitialization::Unavailable;
+        }
+        match runtime.inventory_status {
+            InventoryStatus::Ready => return InventoryInitialization::Ready,
+            InventoryStatus::Loading => return InventoryInitialization::Pending,
+            _ => {}
+        }
+        let Some(revision) = runtime.begin_inventory(cancellation.clone()) else {
+            return InventoryInitialization::Unavailable;
+        };
+        revision
+    };
+    let request = InventoryRequest {
+        revision,
+        cancellation,
+        completion,
+    };
+    if worker().try_submit(RuntimeWork::Inventory(request)) == RefreshSubmission::Queued {
+        InventoryInitialization::Queued
+    } else {
+        let _ = write_runtime().finish_inventory(revision, None);
+        InventoryInitialization::Unavailable
     }
-    installed
+}
+
+/// Publish only the presentation choice; installation membership is unchanged.
+pub fn set_context_status_enabled(enabled: bool) -> Result<bool, ContextStatusError> {
+    let result = write_runtime().set_context_status_enabled(enabled);
+    if !matches!(result, Ok(false)) {
+        DEVOPS_GENERATION.advance();
+        ACTIVATION_GENERATION.advance();
+    }
+    result
+}
+
+pub fn context_status_enabled() -> bool {
+    read_runtime().context_status_enabled()
+}
+
+pub fn is_installed(id: &str) -> bool {
+    let runtime = read_runtime();
+    !runtime.stopping
+        && runtime.inventory_status == InventoryStatus::Ready
+        && runtime.installed.contains(id)
 }
 
 pub fn toggle(id: &str) -> Result<bool, String> {
     let manifest =
         marketplace::descriptor(id).ok_or_else(|| format!("unknown extension: {id}"))?;
-    let next = !read_runtime().installed.contains(id);
+    let next = {
+        let runtime = read_runtime();
+        if runtime.stopping || runtime.inventory_status != InventoryStatus::Ready {
+            return Err("extension inventory is not ready".into());
+        }
+        !runtime.installed.contains(id)
+    };
 
     state::set_installed(manifest, next)?;
 
@@ -298,9 +517,9 @@ pub fn toggle(id: &str) -> Result<bool, String> {
     } else {
         runtime.installed.remove(id);
         if id == devops::ID {
-            runtime.cancel_all();
-            runtime.devops_snapshots.clear();
-            runtime.capsules.clear();
+            if runtime.revoke_context().is_err() {
+                tracing::warn!("Local context disabled after revision exhaustion");
+            }
             true
         } else {
             false
@@ -310,7 +529,7 @@ pub fn toggle(id: &str) -> Result<bool, String> {
     if cleared_devops {
         DEVOPS_GENERATION.advance();
     }
-    if next && id == devops::ID {
+    if next && id == devops::ID && context_status_enabled() {
         ensure_background_services();
     }
     ACTIVATION_GENERATION.advance();
@@ -368,6 +587,7 @@ pub fn context_contribution(
 pub type DevOpsRefreshCompletion = CompletionWake;
 
 struct RefreshRequest {
+    context_revision: u64,
     operation_id: OperationId,
     session: SessionFacts,
     capsule_revision: u64,
@@ -377,9 +597,7 @@ struct RefreshRequest {
 }
 
 fn process_refresh(mut request: RefreshRequest) {
-    if request.cancellation.is_cancelled()
-        || !read_runtime().installed.contains(devops::ID)
-    {
+    if request.cancellation.is_cancelled() || !read_runtime().accepts_refresh(&request) {
         return;
     }
 
@@ -412,7 +630,7 @@ fn process_refresh(mut request: RefreshRequest) {
                 "Automexia local context discovery completed"
             );
             if request.cancellation.is_cancelled()
-                || !read_runtime().installed.contains(devops::ID)
+                || !read_runtime().accepts_refresh(&request)
             {
                 return;
             }
@@ -428,11 +646,47 @@ fn process_refresh(mut request: RefreshRequest) {
     }
 }
 
-fn worker() -> &'static BoundedWorker<RefreshRequest> {
-    static WORKER: OnceLock<BoundedWorker<RefreshRequest>> = OnceLock::new();
-    WORKER.get_or_init(|| {
-        BoundedWorker::new("automexia-extension-worker", 1, process_refresh)
-    })
+struct InventoryRequest {
+    revision: u64,
+    cancellation: CancellationToken,
+    completion: CompletionWake,
+}
+
+enum RuntimeWork {
+    Inventory(InventoryRequest),
+    Refresh(Box<RefreshRequest>),
+}
+
+fn process_inventory(request: InventoryRequest) {
+    if request.cancellation.is_cancelled() {
+        return;
+    }
+    let installed = catch_unwind(AssertUnwindSafe(|| {
+        marketplace::descriptors()
+            .iter()
+            .filter(|manifest| state::is_installed(manifest))
+            .map(|manifest| manifest.id.to_owned())
+            .collect()
+    }))
+    .ok();
+    let published = write_runtime().finish_inventory(request.revision, installed);
+    if published {
+        ACTIVATION_GENERATION.advance();
+        request.completion.wake();
+    }
+}
+
+fn process_work(request: RuntimeWork) {
+    match request {
+        RuntimeWork::Inventory(request) => process_inventory(request),
+        RuntimeWork::Refresh(request) => process_refresh(*request),
+    }
+}
+
+fn worker() -> &'static BoundedWorker<RuntimeWork> {
+    static WORKER: OnceLock<BoundedWorker<RuntimeWork>> = OnceLock::new();
+    WORKER
+        .get_or_init(|| BoundedWorker::new("automexia-extension-worker", 1, process_work))
 }
 
 fn publish_devops_snapshot(request: RefreshRequest, snapshot: DevOpsSnapshot) {
@@ -445,7 +699,7 @@ fn publish_devops_snapshot(request: RefreshRequest, snapshot: DevOpsSnapshot) {
     );
     {
         let mut runtime = write_runtime();
-        if !runtime.accepts(session_id, request.operation_id, request.capsule_revision) {
+        if !runtime.accepts_refresh(&request) {
             return;
         }
         runtime.put_devops_snapshot(
@@ -467,9 +721,6 @@ fn publish_devops_snapshot(request: RefreshRequest, snapshot: DevOpsSnapshot) {
 #[cfg(target_os = "windows")]
 fn publish_devops_progress(request: &RefreshRequest, snapshot: &DevOpsSnapshot) {
     let mut runtime = write_runtime();
-    if !runtime.installed.contains(devops::ID) || request.cancellation.is_cancelled() {
-        return;
-    }
     if runtime.put_devops_progress(request, snapshot) {
         // The existing 100 ms pending-context timer observes this progress.
         // Keep the one-shot route wake for completion, not intermediate state.
@@ -485,10 +736,7 @@ impl RuntimeState {
         snapshot: &DevOpsSnapshot,
     ) -> bool {
         let session_id = request.session.session_id;
-        if request.cancellation.is_cancelled()
-            || !self.accepts(session_id, request.operation_id, request.capsule_revision)
-            || self.devops_snapshot(session_id).is_some()
-        {
+        if !self.accepts_refresh(request) || self.devops_snapshot(session_id).is_some() {
             // Refreshing an existing result must never clear its namespace.
             return false;
         }
@@ -513,7 +761,7 @@ fn publish_devops_failure(request: &mut RefreshRequest) {
     let revision = DEVOPS_COMPLETION_COUNTER.advance();
     {
         let mut runtime = write_runtime();
-        if !runtime.accepts(session_id, request.operation_id, request.capsule_revision) {
+        if !runtime.accepts_refresh(request) {
             return;
         }
         let (snapshot, observed_at_ms) = runtime
@@ -546,10 +794,18 @@ fn seed_devops_snapshot(
     session: &SessionFacts,
     capsule_revision: u64,
     source_revision: u64,
+    context_revision: u64,
 ) -> bool {
     {
         let mut runtime = write_runtime();
-        if runtime.devops_snapshot(session.session_id).is_some() {
+        if !runtime.context_status_enabled()
+            || runtime.context_revision != context_revision
+            || runtime
+                .capsules
+                .get(&session.session_id)
+                .is_none_or(|capsule| capsule.revision != capsule_revision)
+            || runtime.devops_snapshot(session.session_id).is_some()
+        {
             return false;
         }
         let Some((snapshot, observed_at_ms)) = runtime.reusable_devops_snapshot(session)
@@ -576,20 +832,28 @@ fn seed_devops_snapshot(
     _session: &SessionFacts,
     _capsule_revision: u64,
     _source_revision: u64,
+    _context_revision: u64,
 ) -> bool {
     false
 }
 
 pub fn ensure_background_services() {
-    let _ = worker().ensure_started();
+    if context_status_enabled() {
+        let _ = worker().ensure_started();
+    }
 }
 
 pub fn shutdown_background_services() {
     {
         let mut runtime = write_runtime();
-        runtime.cancel_all();
+        runtime.stop();
     }
-    worker().shutdown();
+    if !worker().shutdown_timeout(std::time::Duration::from_secs(2)) {
+        tracing::warn!(
+            "Background service cleanup did not complete: {:?}",
+            worker().shutdown_status()
+        );
+    }
 }
 
 pub fn request_devops_refresh(
@@ -604,14 +868,23 @@ pub fn request_devops_refresh(
         );
         return RefreshSubmission::Rejected;
     }
-
+    if !context_status_enabled() {
+        return RefreshSubmission::Rejected;
+    }
     let source_revision = source_revision(session);
-    let capsule_revision = {
+    let (capsule_revision, context_revision) = {
         let mut runtime = write_runtime();
-        runtime.capsule_revision(session)
+        if !runtime.context_status_enabled() {
+            return RefreshSubmission::Rejected;
+        }
+        (runtime.capsule_revision(session), runtime.context_revision)
     };
-    let _ = seed_devops_snapshot(session, capsule_revision, source_revision);
-
+    let _ = seed_devops_snapshot(
+        session,
+        capsule_revision,
+        source_revision,
+        context_revision,
+    );
     let operation_id = OperationId::new(u64::from(
         OPERATION_COUNTER
             .fetch_add(1, Ordering::AcqRel)
@@ -619,6 +892,7 @@ pub fn request_devops_refresh(
     ));
     let cancellation = CancellationToken::default();
     let request = RefreshRequest {
+        context_revision,
         operation_id,
         session: session.clone(),
         capsule_revision,
@@ -626,13 +900,16 @@ pub fn request_devops_refresh(
         cancellation: cancellation.clone(),
         completion,
     };
-    let submission = worker().try_submit_then(request, || {
-        write_runtime().register_operation(
-            session.session_id,
-            operation_id,
-            cancellation.clone(),
-        );
-    });
+    let submission =
+        worker().try_submit_then(RuntimeWork::Refresh(Box::new(request)), || {
+            write_runtime().register_refresh(
+                session.session_id,
+                operation_id,
+                capsule_revision,
+                context_revision,
+                cancellation.clone(),
+            );
+        });
     if submission != RefreshSubmission::Queued {
         cancellation.cancel();
     }
@@ -645,7 +922,13 @@ mod tests {
 
     fn state() -> RuntimeState {
         RuntimeState {
-            installed: BTreeSet::new(),
+            installed: BTreeSet::from([devops::ID.to_owned()]),
+            context_status_preference: true,
+            context_revision: 1,
+            inventory_status: InventoryStatus::Ready,
+            inventory_revision: 1,
+            inventory_cancellation: None,
+            stopping: false,
             devops_snapshots: BoundedCache::new(DEVOPS_CONTEXT_CACHE_LIMIT),
             capsules: BTreeMap::new(),
             pending: BTreeMap::new(),
@@ -834,6 +1117,7 @@ mod tests {
         let capsule_revision = state.capsule_revision(&facts);
         let cancellation = CancellationToken::default();
         let request = RefreshRequest {
+            context_revision: 1,
             operation_id: OperationId::new(2),
             source_revision: source_revision(&facts),
             session: facts.clone(),
@@ -878,6 +1162,7 @@ mod tests {
             let facts = session(63, "fixture");
             let capsule_revision = state.capsule_revision(&facts);
             let request = RefreshRequest {
+                context_revision: 1,
                 operation_id: OperationId::new(3),
                 source_revision: source_revision(&facts),
                 session: facts,
@@ -988,5 +1273,17 @@ mod tests {
         let mut expired = entry.session;
         expired.session_id = 404;
         assert!(state.reusable_devops_snapshot(&expired).is_none());
+    }
+
+    mod context_settings {
+        include!("runtime_context_settings_tests.rs");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    mod inventory_process {
+        include!("runtime_inventory_process_tests.rs");
+    }
+    mod metadata_readiness {
+        include!("runtime_metadata_readiness_tests.rs");
     }
 }

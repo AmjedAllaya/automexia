@@ -10,6 +10,7 @@ mod lifecycle;
 mod manifest;
 mod model_suggestion;
 mod package;
+mod settings;
 mod strict_json;
 mod ui;
 
@@ -19,6 +20,7 @@ pub use lifecycle::*;
 pub use manifest::*;
 pub use model_suggestion::*;
 pub use package::*;
+pub use settings::*;
 pub use strict_json::*;
 pub use ui::*;
 

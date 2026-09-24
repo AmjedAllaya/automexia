@@ -168,6 +168,62 @@ pub fn default_config_file_content() -> String {
     )
 }
 
+/// Product palette used only when no user palette or theme was selected.
+/// Literal conversion stays stack-only; environment policy belongs to callers.
+pub fn unified_colors() -> crate::config::colors::Colors {
+    use crate::config::colors::{hex_to_color_arr, hex_to_color_wgpu, Colors};
+    // Liquid-hacker palette sampled from the product mockup: a neutral
+    // blue-black canvas with bright, role-specific accents. Keeping the base
+    // free of green tint makes cyan, purple, amber and failure red read cleanly.
+    Colors {
+        background: (hex_to_color_arr("#020B16"), hex_to_color_wgpu("#020B16")),
+        foreground: hex_to_color_arr("#D8DEE9"),
+        black: hex_to_color_arr("#07111F"),
+        red: hex_to_color_arr("#FF4757"),
+        green: hex_to_color_arr("#39FF88"),
+        yellow: hex_to_color_arr("#FFD43B"),
+        blue: hex_to_color_arr("#35A7FF"),
+        magenta: hex_to_color_arr("#D27CFF"),
+        cyan: hex_to_color_arr("#16E0FF"),
+        white: hex_to_color_arr("#DDE7F3"),
+
+        light_black: hex_to_color_arr("#607089"),
+        light_red: hex_to_color_arr("#FF7B86"),
+        light_green: hex_to_color_arr("#7AFFAE"),
+        light_yellow: hex_to_color_arr("#FFE47C"),
+        light_blue: hex_to_color_arr("#77C7FF"),
+        light_magenta: hex_to_color_arr("#E4A8FF"),
+        light_cyan: hex_to_color_arr("#75F1FF"),
+        light_white: hex_to_color_arr("#FFFFFF"),
+        light_foreground: Some(hex_to_color_arr("#FFFFFF")),
+
+        dim_black: Some(hex_to_color_arr("#020B16")),
+        dim_red: Some(hex_to_color_arr("#9F3440")),
+        dim_green: Some(hex_to_color_arr("#249957")),
+        dim_yellow: Some(hex_to_color_arr("#9D842D")),
+        dim_blue: Some(hex_to_color_arr("#276E9E")),
+        dim_magenta: Some(hex_to_color_arr("#82529D")),
+        dim_cyan: Some(hex_to_color_arr("#168A9A")),
+        dim_white: Some(hex_to_color_arr("#758297")),
+        dim_foreground: Some(hex_to_color_arr("#8793A6")),
+
+        cursor: hex_to_color_arr("#39FF88"),
+        vi_cursor: hex_to_color_arr("#D27CFF"),
+        selection_background: hex_to_color_arr("#103356"),
+        selection_foreground: hex_to_color_arr("#FFFFFF"),
+        search_match_background: hex_to_color_arr("#5D4B18"),
+        search_match_foreground: hex_to_color_arr("#FFF5C2"),
+        search_focused_match_background: hex_to_color_arr("#7A4D15"),
+        search_focused_match_foreground: hex_to_color_arr("#FFFFFF"),
+        hint_background: hex_to_color_arr("#0D3048"),
+        hint_foreground: hex_to_color_arr("#75F1FF"),
+        tabs: hex_to_color_arr("#8A98AD"),
+        tabs_active: hex_to_color_arr("#DDE7F3"),
+        split: hex_to_color_arr("#173653"),
+        split_active: hex_to_color_arr("#16E0FF"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

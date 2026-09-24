@@ -203,7 +203,7 @@ jobs:
         run: python3 tools/ci/test_qa.py
 
       - name: Deterministic Loom channel model
-        run: cargo test -p corcovado --test loom_channel_readiness --locked
+        run: cargo test -p corcovado --test loom_channel_readiness --test loom_channel_registration --locked
         env:
           RUSTFLAGS: --cfg loom --check-cfg=cfg(loom)
 

@@ -60,7 +60,9 @@ pub fn create_pty(
     columns: u16,
     rows: u16,
 ) -> Result<Pty, std::io::Error> {
-    let exec = shell.map(|shell| build_command_line(shell, &args));
+    let exec = shell
+        .map(|shell| build_command_line(shell, &args))
+        .transpose()?;
     conpty::new(
         None,
         exec.as_deref(),
@@ -92,7 +94,7 @@ pub fn create_exact_pty(
             "the exact executable path is not valid Unicode",
         )
     })?;
-    let command_line = build_command_line(program, &args);
+    let command_line = build_command_line(program, &args)?;
     let _replacement_guard = &executable.file;
     conpty::new(
         Some(program),
@@ -106,16 +108,69 @@ pub fn create_exact_pty(
     )
 }
 
+fn invalid_command_line() -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, "invalid Windows launch string")
+}
+
+fn quoted_argument_units(argument: &str, limit: usize) -> io::Result<usize> {
+    let mut units = 0usize;
+    let mut needs_quotes = argument.is_empty();
+    let mut extra_escapes = 0usize;
+    let mut backslashes = 0usize;
+    for character in argument.chars() {
+        units = units
+            .checked_add(character.len_utf16())
+            .filter(|units| *units <= limit)
+            .ok_or_else(invalid_command_line)?;
+        match character {
+            '\0' => return Err(invalid_command_line()),
+            '\\' => backslashes += 1,
+            '"' => {
+                needs_quotes = true;
+                extra_escapes += backslashes + 1;
+                backslashes = 0;
+            }
+            _ => {
+                needs_quotes |= character.is_whitespace();
+                backslashes = 0;
+            }
+        }
+    }
+    // Counts above are bounded by the native string limit. A quoted argument
+    // adds one escape per quote/backslash before a quote, doubles trailing
+    // backslashes, and adds its two surrounding quotes.
+    if needs_quotes {
+        units += extra_escapes + backslashes + 2;
+    }
+    if units > limit {
+        Err(invalid_command_line())
+    } else {
+        Ok(units)
+    }
+}
+
 /// Build the single UTF-16 command line consumed by CreateProcessW using the
 /// documented CommandLineToArgvW/MSVC escaping rules. Joining argv with spaces
 /// corrupts paths, commands, and Unicode-adjacent quoting as soon as an
 /// argument contains whitespace or a literal quote.
-fn build_command_line(program: &str, args: &[String]) -> String {
-    std::iter::once(program)
+fn build_command_line(program: &str, args: &[String]) -> io::Result<String> {
+    let mut remaining = conpty::MAX_NATIVE_STRING_UNITS - 1;
+    for (index, argument) in std::iter::once(program)
+        .chain(args.iter().map(String::as_str))
+        .enumerate()
+    {
+        if index != 0 {
+            remaining = remaining.checked_sub(1).ok_or_else(invalid_command_line)?;
+        }
+        remaining -= quoted_argument_units(argument, remaining)?;
+    }
+    // Keep the established quoting contract. Only bounded arguments reach its
+    // allocations; validation includes expansion, separators and final NUL.
+    Ok(std::iter::once(program)
         .chain(args.iter().map(String::as_str))
         .map(quote_windows_argument)
         .collect::<Vec<_>>()
-        .join(" ")
+        .join(" "))
 }
 
 fn quote_windows_argument(argument: &str) -> String {
@@ -412,7 +467,7 @@ mod command_line_tests {
             String::new(),
         ];
         assert_eq!(
-            build_command_line(r"C:\Program Files\PowerShell\7\pwsh.exe", &args),
+            build_command_line(r"C:\Program Files\PowerShell\7\pwsh.exe", &args).unwrap(),
             r#""C:\Program Files\PowerShell\7\pwsh.exe" --cd "/home/alice/work tree/项目" "say \"hello\"" "C:\trailing path\\" """#
         );
     }
@@ -420,9 +475,37 @@ mod command_line_tests {
     #[test]
     fn leaves_simple_arguments_unquoted() {
         assert_eq!(
-            build_command_line("wsl.exe", &["--distribution".into(), "Ubuntu".into()]),
+            build_command_line("wsl.exe", &["--distribution".into(), "Ubuntu".into()])
+                .unwrap(),
             "wsl.exe --distribution Ubuntu"
         );
+    }
+}
+
+#[cfg(test)]
+mod command_boundary_tests {
+    use super::*;
+
+    #[test]
+    fn command_limit_counts_utf16_and_all_argument_separators() {
+        let accepted = build_command_line("p", &["a".repeat(32_764)]).unwrap();
+        assert_eq!(accepted.encode_utf16().count(), 32_766);
+        assert!(build_command_line("p", &["a".repeat(32_765)]).is_err());
+        let accepted = build_command_line("p", &["🙂".repeat(16_382)]).unwrap();
+        assert_eq!(accepted.encode_utf16().count(), 32_766);
+        assert!(build_command_line("p", &["🙂".repeat(16_383)]).is_err());
+        assert!(build_command_line("p", &vec![String::new(); 10_921]).is_ok());
+        assert!(build_command_line("p", &vec![String::new(); 10_922]).is_err());
+    }
+
+    #[test]
+    fn quoted_expansion_is_included_at_the_exact_native_boundary() {
+        let accepted_argument = format!("z {}", "\\".repeat(16_380));
+        let accepted = build_command_line("p", &[accepted_argument]).unwrap();
+        assert_eq!(accepted.encode_utf16().count(), 32_766);
+        let rejected_argument = format!("z {}", "\\".repeat(16_381));
+        assert!(build_command_line("p", &[rejected_argument]).is_err());
+        assert!(build_command_line("p", &["\0".into()]).is_err());
     }
 }
 

@@ -1,0 +1,1 @@
+Respect configured terminal palettes during construction and reload, resolve the active platform theme before loading its colors, and prepare complete adaptive palettes before publishing a configuration candidate. Keep the product palette as a default and preserve existing theme merge and session color override behavior.

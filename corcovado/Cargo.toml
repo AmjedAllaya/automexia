@@ -24,7 +24,9 @@ tracing = { workspace = true }
 libc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-windows-sys = "0.61.2"
+# miow exposes OVERLAPPED_ENTRY and OVERLAPPED from windows-sys 0.60.
+# Keep this exact so corcovado's direct Win32 calls use the same nominal types.
+windows-sys = "=0.60.2"
 miow = "0.6.1"
 
 [dev-dependencies]

@@ -86,7 +86,7 @@ pub struct Renderer {
     command_result_states: FxHashMap<usize, command_results::CommandResults>,
 }
 fn render() {
-        if self.devops_enabled {
+        if self.devops_context_enabled {
             self.devops_status.render();
         }
         if self.command_result_route != Some(active_route) {
