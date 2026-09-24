@@ -18,24 +18,42 @@ pub fn sync_location_hints<'a>(
     if source("automexia_env_pending").is_some_and(|value| value != "0") {
         return;
     }
-    if ["automexia_env_HOME", "automexia_env_KUBECONFIG"]
+    let base = [
+        ("HOME", "automexia_env_HOME"),
+        ("KUBECONFIG", "automexia_env_KUBECONFIG"),
+    ];
+    let windows = [
+        base[0],
+        base[1],
+        ("HOMEDRIVE", "automexia_env_HOMEDRIVE"),
+        ("HOMEPATH", "automexia_env_HOMEPATH"),
+        ("USERPROFILE", "automexia_env_USERPROFILE"),
+    ];
+    // New native Windows PowerShell frames publish all default-home candidates.
+    // Older hooks retain the two-value contract. Guest shells cannot inherit
+    // Windows-only candidates retained in the terminal's user-variable map.
+    let complete_windows_frame = cfg!(windows)
+        && shell_name.is_some_and(|name| name.eq_ignore_ascii_case("PowerShell"))
+        && windows[2..].iter().all(|(_, key)| source(key).is_some());
+    let hints: &[(&str, &str)] = if complete_windows_frame {
+        &windows
+    } else {
+        &base
+    };
+    if hints
         .iter()
-        .filter_map(|key| source(key))
+        .filter_map(|(_, key)| source(key))
         .any(|value| value.len() > 4096 || value.chars().any(char::is_control))
     {
-        // Reject the pair, not just KUBECONFIG: clearing only that override
-        // could misleadingly select the default cluster from a valid HOME.
-        for name in ["HOME", "KUBECONFIG"] {
-            target.entry(name.to_owned()).or_default().clear();
+        // Reject the complete snapshot: a partial clear could select a different
+        // default cluster from a remaining home candidate.
+        for (name, _) in hints {
+            target.entry((*name).to_owned()).or_default().clear();
         }
-        target.retain(|name, _| matches!(name.as_str(), "HOME" | "KUBECONFIG"));
+        target.retain(|name, _| hints.iter().any(|(allowed, _)| name == allowed));
         return;
     }
-    for name in ["HOME", "KUBECONFIG"] {
-        let key = match name {
-            "HOME" => "automexia_env_HOME",
-            _ => "automexia_env_KUBECONFIG",
-        };
+    for &(name, key) in hints {
         match source(key) {
             Some(value) => {
                 if target.get(name).map(String::as_str) != Some(value) {
@@ -47,7 +65,7 @@ pub fn sync_location_hints<'a>(
             }
         }
     }
-    target.retain(|name, _| matches!(name.as_str(), "HOME" | "KUBECONFIG"));
+    target.retain(|name, _| hints.iter().any(|(allowed, _)| name == allowed));
 }
 
 #[cfg(test)]
@@ -156,6 +174,123 @@ mod tests {
                     "/fixture/old"
                 }
             );
+        }
+    }
+}
+
+#[cfg(test)]
+mod candidate_tests {
+    use super::*;
+
+    fn frame() -> BTreeMap<&'static str, &'static str> {
+        BTreeMap::from([
+            ("automexia_env_pending", "0"),
+            ("automexia_env_HOME", "C:/fixture/exported"),
+            ("automexia_env_KUBECONFIG", ""),
+            ("automexia_env_HOMEDRIVE", "D:"),
+            ("automexia_env_HOMEPATH", "/fixture/drive"),
+            ("automexia_env_USERPROFILE", "C:/fixture/profile"),
+        ])
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn windows_candidates_publish_together_and_clear_without_host_fallback() {
+        let mut source = frame();
+        let mut hints = BTreeMap::new();
+        sync_location_hints(
+            &mut hints,
+            |key| source.get(key).copied(),
+            true,
+            Some("PowerShell"),
+        );
+        assert_eq!(hints.len(), 5);
+        assert_eq!(hints["HOMEPATH"], "/fixture/drive");
+        source.insert("automexia_env_HOME", "");
+        source.insert("automexia_env_USERPROFILE", "C:/fixture/new");
+        source.insert("automexia_env_pending", "1");
+        sync_location_hints(
+            &mut hints,
+            |key| source.get(key).copied(),
+            true,
+            Some("PowerShell"),
+        );
+        assert_eq!(hints["USERPROFILE"], "C:/fixture/profile");
+        source.insert("automexia_env_pending", "0");
+        sync_location_hints(
+            &mut hints,
+            |key| source.get(key).copied(),
+            true,
+            Some("PowerShell"),
+        );
+        assert!(hints["HOME"].is_empty());
+        assert_eq!(hints["USERPROFILE"], "C:/fixture/new");
+        for (key, value) in &mut source {
+            if *key != "automexia_env_pending" {
+                *value = "";
+            }
+        }
+        sync_location_hints(
+            &mut hints,
+            |key| source.get(key).copied(),
+            true,
+            Some("PowerShell"),
+        );
+        assert_eq!(hints.len(), 5);
+        assert!(hints.values().all(String::is_empty));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn each_invalid_candidate_rejects_the_whole_snapshot() {
+        let oversized = "x".repeat(4097);
+        for key in [
+            "automexia_env_HOME",
+            "automexia_env_KUBECONFIG",
+            "automexia_env_HOMEDRIVE",
+            "automexia_env_HOMEPATH",
+            "automexia_env_USERPROFILE",
+        ] {
+            for invalid in ["bad\nvalue", oversized.as_str()] {
+                let mut source = frame();
+                source.insert(key, invalid);
+                let mut hints = BTreeMap::new();
+                sync_location_hints(
+                    &mut hints,
+                    |name| source.get(name).copied(),
+                    true,
+                    Some("PowerShell"),
+                );
+                assert_eq!(hints.len(), 5);
+                assert!(hints.values().all(String::is_empty));
+            }
+        }
+    }
+
+    #[test]
+    fn guest_and_legacy_frames_drop_windows_candidate_state() {
+        for shell in ["bash", "zsh", "fish", "PowerShell"] {
+            let mut source = frame();
+            let mut hints =
+                BTreeMap::from([("USERPROFILE".to_owned(), "C:/fixture/old".to_owned())]);
+            if shell == "PowerShell" {
+                for key in [
+                    "automexia_env_HOMEDRIVE",
+                    "automexia_env_HOMEPATH",
+                    "automexia_env_USERPROFILE",
+                ] {
+                    source.remove(key);
+                }
+            }
+            sync_location_hints(
+                &mut hints,
+                |key| source.get(key).copied(),
+                true,
+                Some(shell),
+            );
+            assert_eq!(hints.len(), 2);
+            assert_eq!(hints["HOME"], "C:/fixture/exported");
+            assert!(!hints.contains_key("USERPROFILE"));
         }
     }
 }

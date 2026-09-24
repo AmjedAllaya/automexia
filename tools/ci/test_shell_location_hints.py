@@ -13,7 +13,9 @@ import time
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-FRAME = re.compile(rb"\x1b\]1337;SetUserVar=automexia_env_(HOME|KUBECONFIG)=([A-Za-z0-9+/=]*)\x07")
+HINT_NAMES = ["HOME", "KUBECONFIG"]
+WINDOWS_HINTS = {"HOMEDRIVE": "C:", "HOMEPATH": "\\fixture\\drive-home", "USERPROFILE": "C:\\fixture\\profile"}
+FRAME = re.compile(rb"\x1b\]1337;SetUserVar=automexia_env_(HOME|KUBECONFIG|HOMEDRIVE|HOMEPATH|USERPROFILE)=([A-Za-z0-9+/=]*)\x07")
 HOME_FIXTURE = "/fixture/home"
 CONFIG_FIXTURE = "/fixture/one:/fixture/two"
 
@@ -23,7 +25,7 @@ def native_shells():
     return [name for name in candidates if shutil.which(name)]
 
 
-def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False):
+def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None):
     """Run real hooks in one shell so cache invalidation cannot hide behind restart."""
     powershell = shell in ("powershell", "pwsh")
     adapter = "powershell" if powershell else shell
@@ -62,11 +64,19 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             remove = lambda key: f"unset {key}"
             loop = lambda body: f"for ((i=0;i<{repeat};i++)); do {body}; done"
             args = [shutil.which(shell), "--noprofile", "--norc"] if shell == "bash" else [shutil.which(shell), "-f"]
-        if not powershell:
-            script += assign("HOME", HOME_FIXTURE) + "\n"
+        script += assign("HOME", HOME_FIXTURE) + "\n"
+        if powershell:
+            for key, value in WINDOWS_HINTS.items():
+                script += assign(key, value) + "\n"
         if disabled:
             script += assign("AUTOMEXIA_CONTEXT_PATH_HINTS", "0") + "\n"
-        for value in changes:
+        if location_changes is not None and len(location_changes) != len(changes):
+            raise ValueError("location changes must match prompt fixture steps")
+        for step, value in enumerate(changes):
+            for key, hint in (location_changes[step] if location_changes else {}).items():
+                if key not in ["HOME", *WINDOWS_HINTS]:
+                    raise ValueError("unsupported location fixture key")
+                script += (remove(key) if hint is None else assign(key, hint)) + "\n"
             script += (remove("KUBECONFIG") if value is None else assign("KUBECONFIG", value)) + "\n"
             if unexport:
                 script += {"bash": "export -n KUBECONFIG", "zsh": "typeset +x KUBECONFIG",
@@ -77,8 +87,16 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             # proves repeated prompts do not depend on another base64 process.
             script += assign("PATH", "/fixture/no-executables") + "\n"
         script += marker + "\n" + loop(prompt) + "\n"
+        payload = script.encode("utf-8")
+        if powershell:
+            # Windows PowerShell decodes redirected stdin using the console code
+            # page. A BOM-bearing fixture exercises Unicode values themselves.
+            fixture = Path(temporary) / "prompt-fixture.ps1"
+            fixture.write_text(script, encoding="utf-8-sig")
+            args[-2:] = ["-File", str(fixture)]
+            payload = None
         started = time.perf_counter()
-        result = subprocess.run(args, input=script.encode("utf-8"), env=env, cwd=temporary,
+        result = subprocess.run(args, input=payload, env=env, cwd=temporary,
                                 stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=30, check=False)
         if result.returncode:
             raise AssertionError(f"{shell}: native prompt fixture failed (output withheld)")
@@ -86,12 +104,14 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             raise AssertionError(f"{shell}: prompt output exceeded fixture budget")
         chunks = result.stdout.split(b"\x1e")[1:]
         for chunk in chunks:
-            wire = re.findall(rb"\x1b\]1337;SetUserVar=automexia_env_(pending|HOME|KUBECONFIG)=([A-Za-z0-9+/=]*)\x07", chunk)
-            if len(wire) % 4 or not wire:
+            names = HINT_NAMES + (list(WINDOWS_HINTS) if powershell else [])
+            wire = re.findall(rb"\x1b\]1337;SetUserVar=automexia_env_(pending|HOME|KUBECONFIG|HOMEDRIVE|HOMEPATH|USERPROFILE)=([A-Za-z0-9+/=]*)\x07", chunk)
+            width = len(names) + 2
+            if len(wire) % width or not wire:
                 raise AssertionError(f"{shell}: missing path-pair commit markers")
-            for offset in range(0, len(wire), 4):
-                group = wire[offset:offset + 4]
-                if [name for name, _ in group] != [b"pending", b"HOME", b"KUBECONFIG", b"pending"] or group[0][1] != b"MQ==" or group[3][1] != b"MA==":
+            for offset in range(0, len(wire), width):
+                group = wire[offset:offset + width]
+                if [name.decode("ascii") for name, _ in group] != ["pending", *names, "pending"] or group[0][1] != b"MQ==" or group[-1][1] != b"MA==":
                     raise AssertionError(f"{shell}: unordered path-pair commit markers")
         frames = [[(name.decode("ascii"), base64.b64decode(value, validate=True).decode("utf-8"))
                    for name, value in FRAME.findall(chunk)] for chunk in chunks]
@@ -106,15 +126,15 @@ class ShellLocationHintTests(unittest.TestCase):
         return available
 
     def assert_pair(self, shell, frames, configured, home=HOME_FIXTURE):
-        self.assertEqual([name for name, _ in frames], ["HOME", "KUBECONFIG"], f"{shell}: exact hint pair/order")
+        windows = shell in ("powershell", "pwsh")
+        self.assertEqual([name for name, _ in frames], HINT_NAMES + (list(WINDOWS_HINTS) if windows else []), f"{shell}: exact location hint order")
         values = dict(frames)
-        # PowerShell's immutable HOME is validated for shape only here; no live
-        # home value is used in assertion diagnostics or recorded fixtures.
         self.assertEqual(values["KUBECONFIG"], configured, f"{shell}: configuration hint mismatch")
-        if shell not in ("powershell", "pwsh"):
-            self.assertEqual(values["HOME"], home, f"{shell}: home hint mismatch")
-        else:
-            self.assertTrue(bool(values["HOME"]) == bool(home), "native home hint presence mismatch")
+        # Never include an accidentally inherited host value in diagnostics.
+        self.assertTrue(values["HOME"] == home, f"{shell}: exported home hint mismatch")
+        if windows:
+            for key, expected in WINDOWS_HINTS.items():
+                self.assertTrue(values[key] == (expected if home else ""), f"{shell}: Windows home candidate mismatch")
 
     def test_actual_prompt_updates_clears_and_restores_same_directory(self):
         for shell in self.shells():
@@ -147,9 +167,36 @@ class ShellLocationHintTests(unittest.TestCase):
             with self.subTest(shell=shell):
                 chunks, _ = run_prompt_fixture(shell, [CONFIG_FIXTURE], repeat=200, no_encoder=True)
                 self.assert_pair(shell, chunks[0], CONFIG_FIXTURE)
-                self.assertEqual(len(chunks[1]), 400)
-                for offset in range(0, 400, 2):
-                    self.assert_pair(shell, chunks[1][offset:offset + 2], CONFIG_FIXTURE)
+                width = 5 if shell in ("powershell", "pwsh") else 2
+                self.assertEqual(len(chunks[1]), 200 * width)
+                for offset in range(0, 200 * width, width):
+                    self.assert_pair(shell, chunks[1][offset:offset + width], CONFIG_FIXTURE)
+
+    def test_windows_candidates_update_clear_and_restore_without_restart(self):
+        shells = [shell for shell in self.shells() if shell in ("powershell", "pwsh")]
+        if not shells:
+            self.skipTest("Windows candidate publication requires native PowerShell")
+        expected = [dict(HOME=HOME_FIXTURE, **WINDOWS_HINTS),
+                    dict(HOME="", HOMEDRIVE="D:", HOMEPATH=r"\fixture\changed", USERPROFILE=""),
+                    dict(HOME=HOME_FIXTURE, **WINDOWS_HINTS)]
+        for shell in shells:
+            with self.subTest(shell=shell):
+                chunks, _ = run_prompt_fixture(shell, ["", "", ""], location_changes=expected)
+                for chunk, values in zip(chunks, expected + expected[-1:]):
+                    actual = dict(chunk)
+                    for key, value in values.items():
+                        self.assertTrue(actual.get(key) == value, f"{shell}: live candidate update mismatch")
+
+    def test_each_invalid_windows_candidate_clears_the_complete_snapshot(self):
+        shells = [shell for shell in self.shells() if shell in ("powershell", "pwsh")]
+        if not shells:
+            self.skipTest("Windows candidate publication requires native PowerShell")
+        for shell in shells:
+            for key in ["HOME", *WINDOWS_HINTS]:
+                with self.subTest(shell=shell, key=key):
+                    chunks, _ = run_prompt_fixture(shell, [CONFIG_FIXTURE], location_changes=[{key: "invalid\nvalue"}])
+                    for chunk in chunks:
+                        self.assert_pair(shell, chunk, "", "")
 
     def test_opt_out_clears_both_hints(self):
         for shell in self.shells():
@@ -231,9 +278,10 @@ def benchmark(report):
             startup_samples.append(startup_elapsed * 1000)
             chunks, elapsed = run_prompt_fixture(shell, [CONFIG_FIXTURE], repeat=1000, no_encoder=True)
             oracle.assertEqual(len(chunks), 2)
-            oracle.assertEqual(len(chunks[1]), 2000)
-            for offset in range(0, 2000, 2):
-                oracle.assert_pair(shell, chunks[1][offset:offset + 2], CONFIG_FIXTURE)
+            width = 5 if shell in ("powershell", "pwsh") else 2
+            oracle.assertEqual(len(chunks[1]), 1000 * width)
+            for offset in range(0, 1000 * width, width):
+                oracle.assert_pair(shell, chunks[1][offset:offset + width], CONFIG_FIXTURE)
             samples.append(elapsed * 1000)
         rows.append({"shell": shell, "samples": 5, "prompts_per_sample": 1000,
                      "median_startup_and_two_prompts_ms": statistics.median(startup_samples),

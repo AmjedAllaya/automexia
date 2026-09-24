@@ -110,24 +110,39 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         [Text.Encoding]::UTF8.GetBytes($script:AutomexiaShellExecutable)
     )
     function script:Publish-AutomexiaLocationHints {
-        $hintHome = [string]$HOME
-        $hintConfig = [string]$env:KUBECONFIG
-        if ($env:AUTOMEXIA_CONTEXT_PATH_HINTS -eq '0' -or
-            [Text.Encoding]::UTF8.GetByteCount($hintHome) -gt 4096 -or
-            [Text.Encoding]::UTF8.GetByteCount($hintConfig) -gt 4096 -or
-            $hintHome -match '\p{Cc}' -or $hintConfig -match '\p{Cc}') {
-            $hintHome = ''; $hintConfig = ''
+        # kubectl consumes exported HOME, not PowerShell's immutable $HOME.
+        # Publish candidates only; existence checks belong to the background
+        # discovery worker and never run on the prompt/input path.
+        $nativeWindows = [Environment]::OSVersion.Platform -eq [PlatformID]::Win32NT
+        $hintHome = if ($nativeWindows) { [string]$env:HOME } else { [string]$HOME }
+        $hintNames = @('HOME', 'KUBECONFIG', 'HOMEDRIVE', 'HOMEPATH', 'USERPROFILE')
+        $hintValues = @($hintHome, [string]$env:KUBECONFIG, '', '', '')
+        if ($nativeWindows) {
+            $hintValues[2] = [string]$env:HOMEDRIVE
+            $hintValues[3] = [string]$env:HOMEPATH
+            $hintValues[4] = [string]$env:USERPROFILE
         }
-        # In-process encoding only when a bounded value changes. Re-emitting the
-        # pair on every prompt retires a nested shell's stale discovery location.
+        $invalid = $env:AUTOMEXIA_CONTEXT_PATH_HINTS -eq '0'
+        foreach ($hintValue in $hintValues) {
+            if ([Text.Encoding]::UTF8.GetByteCount($hintValue) -gt 4096 -or
+                $hintValue -match '\p{Cc}') {
+                $invalid = $true
+                break
+            }
+        }
+        if ($invalid) { $hintValues = @('', '', '', '', '') }
+        # Controls were rejected above, so a NUL separator is unambiguous.
+        # Cached frames restore the parent after a nested guest shell exits.
+        $hintKey = $hintValues -join [char]0
         if (-not $script:AutomexiaLocationReady -or
-            $hintHome -cne $script:AutomexiaLocationHome -or
-            $hintConfig -cne $script:AutomexiaLocationConfig) {
-            $script:AutomexiaLocationHome = $hintHome
-            $script:AutomexiaLocationConfig = $hintConfig
-            $encodedHome = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($hintHome))
-            $encodedConfig = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($hintConfig))
-            $script:AutomexiaLocationFrames = "$script:AutomexiaEsc]1337;SetUserVar=automexia_env_HOME=$encodedHome$script:AutomexiaBel$script:AutomexiaEsc]1337;SetUserVar=automexia_env_KUBECONFIG=$encodedConfig$script:AutomexiaBel"
+            $hintKey -cne $script:AutomexiaLocationKey) {
+            $frames = New-Object Text.StringBuilder
+            for ($hintIndex = 0; $hintIndex -lt $hintNames.Length; $hintIndex++) {
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($hintValues[$hintIndex]))
+                [void]$frames.Append("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_$($hintNames[$hintIndex])=$encoded$script:AutomexiaBel")
+            }
+            $script:AutomexiaLocationKey = $hintKey
+            $script:AutomexiaLocationFrames = $frames.ToString()
             $script:AutomexiaLocationReady = $true
         }
         [Console]::Write($script:AutomexiaLocationFrames)

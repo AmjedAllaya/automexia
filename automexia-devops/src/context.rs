@@ -57,8 +57,8 @@ struct SessionView {
 fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
     let host_home = dirs::home_dir();
     let view = session_view(session, host_home.as_deref());
-    let cwd = view.cwd.as_deref().or(session.cwd.as_deref());
-    let home = view.home.as_deref().or(host_home.as_deref());
+    let cwd = view.cwd.as_deref();
+    let home = view.home.as_deref();
     let project_context = project_automexia_context(cwd);
     let legacy_context = legacy_automexia_context(home, view.use_process_env);
 
@@ -85,35 +85,18 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
 
     let docker = docker_context(home, view.use_process_env)
         .or_else(|| {
-            if view.wsl.is_some() {
-                docker_context(host_home.as_deref(), true)
-            } else {
-                None
-            }
-        })
-        .or_else(|| {
             project_context
                 .as_ref()
                 .and_then(docker_from_automexia_json)
         })
         .or_else(|| legacy_context.as_ref().and_then(docker_from_automexia_json));
 
-    let mut clouds = cloud_contexts(
+    let clouds = cloud_contexts(
         home,
         project_context.as_ref(),
         legacy_context.as_ref(),
         view.use_process_env,
     );
-    if view.wsl.is_some() {
-        for host_cloud in cloud_contexts(host_home.as_deref(), None, None, true) {
-            if !clouds
-                .iter()
-                .any(|candidate| candidate.provider == host_cloud.provider)
-            {
-                clouds.push(host_cloud);
-            }
-        }
-    }
 
     let terraform = terraform_workspace(cwd, view.use_process_env)
         .or_else(|| {
@@ -131,10 +114,12 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         .or_else(|| project_context.as_ref().and_then(git_from_automexia_json))
         .or_else(|| legacy_context.as_ref().and_then(git_from_automexia_json));
 
-    let user = view
-        .wsl
-        .as_ref()
-        .map(|context| context.user.clone())
+    let user = session
+        .shell_integration
+        .then(|| session.shell_user.clone())
+        .flatten()
+        .filter(|value| !value.trim().is_empty())
+        .or_else(|| view.wsl.as_ref().map(|context| context.user.clone()))
         .or_else(|| {
             view.use_process_env
                 .then(|| env::var("USERNAME").ok().or_else(|| env::var("USER").ok()))
@@ -195,20 +180,76 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
 #[cfg(not(target_arch = "wasm32"))]
 fn session_view(session: &SessionFacts, host_home: Option<&Path>) -> SessionView {
     #[cfg(target_os = "windows")]
-    if let Some(view) = windows_wsl_session_view(session) {
-        return view;
+    {
+        if let Some(view) = windows_wsl_session_view(session) {
+            return view;
+        }
+        if crate::kubernetes::is_wsl_candidate(session) {
+            // Partial guest identity cannot authorize host home/provider reads.
+            return SessionView {
+                cwd: None,
+                home: None,
+                wsl: None,
+                use_process_env: false,
+            };
+        }
     }
-
+    let home = native_session_home(session, host_home);
+    // Inherited provider variables belong to the application's initial user.
+    // A published different/cleared home must not borrow that user's context.
+    let use_process_env = !session.environment.contains_key("HOME")
+        || (home.is_some() && home.as_deref() == host_home);
     SessionView {
-        cwd: session.cwd.clone(),
-        home: host_home.map(Path::to_path_buf),
+        cwd: session
+            .cwd
+            .clone()
+            .filter(|path| crate::kubernetes::bounded_local_path(path)),
+        home,
         wsl: None,
-        use_process_env: true,
+        use_process_env,
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn native_session_home(
+    session: &SessionFacts,
+    host_home: Option<&Path>,
+) -> Option<PathBuf> {
+    #[cfg(windows)]
+    if crate::kubernetes::windows_location_hints(session) {
+        let value = |name: &str| {
+            session
+                .environment
+                .get(name)
+                .filter(|value| !value.is_empty())
+        };
+        // The Windows user home is separate from kubectl's first-existing-config
+        // search. An unset exported HOME is normal in PowerShell.
+        let home = value("USERPROFILE")
+            .cloned()
+            .or_else(|| {
+                value("HOMEDRIVE")
+                    .zip(value("HOMEPATH"))
+                    .map(|(drive, path)| format!("{drive}{path}"))
+            })
+            .or_else(|| value("HOME").cloned());
+        return home
+            .map(PathBuf::from)
+            .filter(|path| crate::kubernetes::bounded_local_path(path));
+    }
+    session
+        .environment
+        .get("HOME")
+        .map(PathBuf::from)
+        .or_else(|| host_home.map(Path::to_path_buf))
+        .filter(|path| crate::kubernetes::bounded_local_path(path))
 }
 
 #[cfg(target_os = "windows")]
 fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
+    if !session.shell_integration {
+        return None;
+    }
     // `WSL_DISTRO_NAME` is published by the Bash/Zsh integration. Requiring it
     // avoids treating Git Bash or another POSIX-looking Windows shell as WSL.
     let distro = session
@@ -237,8 +278,8 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
     // lookup can inherit unbounded provider/filesystem latency and stall the
     // single bounded extension worker. Shell-published distro/version metadata
     // provides the visible OS identity, /mnt/<drive> paths map directly to the
-    // host filesystem for Git/project discovery. Docker/cloud keep their existing
-    // host fallback; Kubernetes uses isolated guest discovery, never host context.
+    // host filesystem for Git/project discovery. Unmapped guest locations and
+    // unavailable provider context never fall back to the host's identity.
     let distro_label = session
         .os_version
         .as_ref()
@@ -252,7 +293,7 @@ fn windows_wsl_session_view(session: &SessionFacts) -> Option<SessionView> {
         .cloned()
         .unwrap_or_else(|| distro.clone());
 
-    let cwd = windows_path_from_wsl_mount(&linux_cwd).or_else(|| session.cwd.clone());
+    let cwd = windows_path_from_wsl_mount(&linux_cwd);
 
     Some(SessionView {
         cwd,
@@ -276,7 +317,10 @@ fn windows_path_from_wsl_mount(linux_path: &str) -> Option<PathBuf> {
     let letter = (drive.as_bytes()[0] as char).to_ascii_uppercase();
     let mut out = PathBuf::from(format!("{letter}:\\"));
     for part in parts.filter(|part| !part.is_empty() && *part != ".") {
-        if part == ".." {
+        if part == ".."
+            || part.contains(['\\', ':'])
+            || part.chars().any(char::is_control)
+        {
             return None;
         }
         out.push(part);
