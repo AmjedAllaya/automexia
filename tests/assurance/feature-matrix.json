@@ -273,7 +273,7 @@
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh"]},
-        "correctness": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh"]},
+        "correctness": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_integration.sh", "tools/ci/test_zsh_integration.zsh", "apps/automexia-terminal/src/automexia/shell.rs", "apps/automexia-terminal/tests/powershell_startup.rs"]},
         "security": {"level": "pr", "evidence": ["tools/ci/test_powershell.ps1", "tools/ci/test_shell_sources.sh", "tools/ci/check_runtime_trust.py", "tools/ci/test_runtime_trust.py"]},
         "performance": {"level": "external", "evidence": ["docs/STABILIZATION-ROADMAP.md#performance-proof-plan"]},
         "resource_lifetime": {"level": "pr", "evidence": ["tools/ci/test_shell_sources.sh", "tools/ci/test_shell_integration.ps1"]},

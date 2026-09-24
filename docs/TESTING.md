@@ -269,6 +269,24 @@ surface literals; mutations reject removed imports, competing declarations,
 transparent, malformed, duplicate and nonfinite tokens. It complements, rather
 than replaces, runtime drawing and input/compositor tests.
 
+## Interactive PowerShell startup
+
+`cargo test -p automexia-terminal --lib automexia::shell::tests --locked`
+checks the actual startup bootstrap with real integration scripts, including
+repository and flattened resource layouts, literal paths, repeated sourcing,
+input/prompt/helper lifetime, and execution-policy fallback. Optional PowerShell 7
+scope cases run with the `powershell_core_session_keeps` filter and `-- --ignored`.
+
+`cargo test -p automexia-terminal --test powershell_startup --locked` runs the
+native Windows PowerShell ConsoleHost and PSReadLine input loop. It checks idle
+output before input, exactly one submitted command/result, then stable idle input.
+PowerShell 7 uses the same test with `-- --ignored`. Both suites isolate config
+and history, retain deadlines and cleanup ownership, and avoid logging shell
+content. Linux Bash/Zsh/Fish use the existing native shell integration gates;
+these checks do not substitute for unavailable native macOS or desktop evidence.
+A host without a PowerShell profile path reports native profile-directory
+metadata as external; the isolated profile and reparse-safety cases still run.
+
 ## Live resize preservation
 
 `cargo xtask test resize-stress` runs the library stress tests **and** the

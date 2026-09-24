@@ -12,6 +12,11 @@ WSL distribution, or create persistent files.
 If integration resources are missing or invalid, Automexia starts the ordinary
 shell and reports a bounded redacted diagnostic.
 
+PowerShell integration is dot-sourced into the interactive child session. Its
+prompt, input callback, completion state, and nested CMD helpers must remain
+available after startup returns. Both development and packaged launches use this
+same session bootstrap; execution-policy denial still leaves the native shell.
+
 ## Supported behavior
 
 Session-local hooks may publish:

@@ -607,6 +607,15 @@ both root and fuzz metadata with locked full dependency graphs. Metadata with
 
 ### shell-integration-listings
 
+Exercise the actual application bootstrap with the real PowerShell integration
+in repository and flattened resource layouts. Prompt, input, completion and CMD
+helpers must survive bootstrap return and repeated loading, including literal
+space/bracket paths. Native ConsoleHost/PSReadLine must remain idle without user
+input, execute one explicitly submitted command once, and return to stable input.
+Use isolated configuration/history, bounded child cleanup, and content-free
+diagnostics. Windows PowerShell and explicitly selected PowerShell 7 are separate
+native evidence; unexecuted operating systems remain external.
+
 Google command reinforcement: exact fixed-origin query encoding, argument/byte
 boundaries, control rejection, content-free failure/debug, preview with no
 browser/config side effects and correctness-checked encoding timing. Native
