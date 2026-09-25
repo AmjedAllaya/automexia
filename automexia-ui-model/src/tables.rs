@@ -960,3 +960,6 @@ impl TableViewport {
         Some((start, thumb))
     }
 }
+
+// AUTOMEXIA_INLINE_PIPELINE_V1
+include!("tables_pipeline.rs");

@@ -46,6 +46,11 @@ pub struct Snapshot {
     cursor_row: i32,
     display_offset: usize,
     eligible: bool,
+    capture_outcome: CaptureOutcome,
+    incomplete_prefix: bool,
+    incomplete_suffix: bool,
+    physical_rows: usize,
+    captured_cells: usize,
 }
 
 impl Snapshot {
@@ -57,7 +62,10 @@ impl Snapshot {
         if enabled {
             Self::capture(terminal)
         } else {
-            Self::default()
+            Self {
+                capture_outcome: CaptureOutcome::Disabled,
+                ..Self::default()
+            }
         }
     }
     fn eligible<T: EventListener>(terminal: &Crosswords<T>) -> bool {
@@ -80,6 +88,11 @@ impl Snapshot {
             cursor_row: terminal.cursor().pos.row.0,
             display_offset: terminal.display_offset(),
             eligible,
+            capture_outcome: if eligible {
+                CaptureOutcome::Complete
+            } else {
+                CaptureOutcome::UnsupportedMode
+            },
             ..Self::default()
         };
         if columns == 0 || !eligible {
@@ -87,7 +100,10 @@ impl Snapshot {
         }
         let scan_rows = (MAX_SCAN_CELLS / columns).min(MAX_SCAN_ROWS);
         if scan_rows < 2 {
-            return empty();
+            return Self {
+                capture_outcome: CaptureOutcome::BudgetExceeded,
+                ..empty()
+            };
         }
         let offset = terminal.display_offset() as i32;
         let completed_end = terminal
@@ -95,9 +111,6 @@ impl Snapshot {
             .bottommost_line()
             .min(terminal.cursor().pos.row - 1i32);
         let mut end = (terminal.grid.bottommost_line() - offset).min(completed_end);
-        // Complete the one logical row intersecting the bottom edge. Keep this
-        // lookahead inside the same native-cell budget and never read the
-        // editable cursor row; earlier history yields room to the visible tail.
         let lookahead_end = (end + scan_rows.saturating_sub(1)).min(completed_end);
         while end < lookahead_end
             && terminal.grid[end][terminal.grid.last_column()].wrapline()
@@ -106,7 +119,6 @@ impl Snapshot {
         }
         let first = (end - scan_rows.saturating_sub(1)).max(terminal.grid.topmost_line());
         let mut start = first;
-        // Never interpret the tail of an already-clipped logical line as a header.
         while start <= end
             && start > terminal.grid.topmost_line()
             && terminal.grid[start - 1i32][terminal.grid.last_column()].wrapline()
@@ -114,6 +126,7 @@ impl Snapshot {
             start += 1;
         }
         let mut result = empty();
+        result.incomplete_prefix = start != first;
         let mut bytes = 0usize;
         while start <= end {
             let mut last = start;
@@ -122,8 +135,8 @@ impl Snapshot {
             {
                 last += 1;
             }
-            // No incomplete output row or editable prompt enters this snapshot.
             if terminal.grid[last][terminal.grid.last_column()].wrapline() {
+                result.incomplete_suffix = true;
                 break;
             }
             let prompt = (start.0..=last.0)
@@ -137,30 +150,45 @@ impl Snapshot {
                     MAX_TABLE_BYTES.saturating_sub(bytes),
                 ) {
                     Ok(s) => s,
-                    Err(_) => return empty(),
+                    Err(_) => {
+                        return Self {
+                            capture_outcome: CaptureOutcome::BudgetExceeded,
+                            ..empty()
+                        }
+                    }
                 }
             };
             bytes = bytes.saturating_add(text.len());
             if bytes > MAX_TABLE_BYTES {
-                return empty();
+                return Self {
+                    capture_outcome: CaptureOutcome::BudgetExceeded,
+                    ..empty()
+                };
             }
+            let physical = (last.0 - start.0 + 1) as usize;
+            result.physical_rows += physical;
+            result.captured_cells += physical * columns;
             let mut cell = 0usize;
             let mut styles: Vec<(usize, Style)> = Vec::new();
-            let mut segments = Vec::with_capacity((last.0 - start.0 + 1) as usize);
-            for r in start.0..=last.0 {
-                segments.push(cell);
-                let leading = matches!(
-                    terminal.grid[Line(r)][terminal.grid.last_column()].wide(),
-                    Wide::LeadingSpacer
-                );
-                for c in 0..columns - usize::from(leading) {
-                    let style =
-                        terminal.grid.style_of(&terminal.grid[Line(r)][Column(c)]);
-                    if styles.last().is_none_or(|(_, previous)| *previous != style) {
-                        styles.push((cell + c, style));
+            let mut segments = Vec::with_capacity(physical);
+            // Prompt text is an explicit candidate separator. Do not traverse
+            // every prompt cell a second time to collect unused styles.
+            if !prompt {
+                for r in start.0..=last.0 {
+                    segments.push(cell);
+                    let leading = matches!(
+                        terminal.grid[Line(r)][terminal.grid.last_column()].wide(),
+                        Wide::LeadingSpacer
+                    );
+                    for c in 0..columns - usize::from(leading) {
+                        let style =
+                            terminal.grid.style_of(&terminal.grid[Line(r)][Column(c)]);
+                        if styles.last().is_none_or(|(_, previous)| *previous != style) {
+                            styles.push((cell + c, style));
+                        }
                     }
+                    cell += columns - usize::from(leading);
                 }
-                cell += columns - usize::from(leading);
             }
             result.lines.push(SourceLine {
                 text,
@@ -184,6 +212,9 @@ pub struct Surface {
 pub struct InlineTables {
     snapshot: Snapshot,
     pub surfaces: Vec<Surface>,
+    diagnostics: InlineDiagnostics,
+    #[cfg(not(target_arch = "wasm32"))]
+    last_diagnostic_log: Option<std::time::Instant>,
 }
 
 impl InlineTables {
@@ -195,114 +226,7 @@ impl InlineTables {
             || self.snapshot.eligible != Snapshot::eligible(terminal)
     }
     pub fn refresh(&mut self, snapshot: Snapshot) -> bool {
-        if self.snapshot == snapshot {
-            return false;
-        }
-        self.surfaces.clear();
-        let mut candidates = Vec::new();
-        let mut start = 0;
-        let mut single_column_ruled = false;
-        for end in 0..=snapshot.lines.len() {
-            let continues = snapshot.lines.get(end).is_some_and(|line| {
-                if line.text.trim().is_empty() {
-                    return false;
-                }
-                let ordinary = is_candidate_line(&line.text);
-                let followed_by_rule = !is_rule_line(&line.text)
-                    && snapshot
-                        .lines
-                        .get(end + 1)
-                        .is_some_and(|next| is_rule_line(&next.text));
-                if followed_by_rule && !ordinary {
-                    single_column_ruled = true;
-                }
-                ordinary || followed_by_rule || single_column_ruled
-            });
-            if continues {
-                continue;
-            }
-            if end > start + 1 {
-                candidates.push(start..end);
-            }
-            start = end + 1;
-            single_column_ruled = false;
-        }
-        for range in candidates.into_iter().rev() {
-            // A shell pipeline can contain the same delimiter as the following
-            // table. Explicit rulers supply bounded alternative header starts;
-            // no shell command names or producer schemas enter this decision.
-            let mut starts = vec![range.start];
-            for ruler in (range.start + 1..range.end).rev() {
-                if !is_rule_line(&snapshot.lines[ruler].text)
-                    || is_rule_line(&snapshot.lines[ruler - 1].text)
-                {
-                    continue;
-                }
-                let mut header = ruler - 1;
-                if header > range.start && is_rule_line(&snapshot.lines[header - 1].text)
-                {
-                    header -= 1;
-                }
-                if !starts.contains(&header) {
-                    starts.push(header);
-                    if starts.len() == MAX_DETECTION_ATTEMPTS {
-                        break;
-                    }
-                }
-            }
-            // Mixed prose/delimiter prefixes need no command interpretation.
-            // Try only a small bounded prefix of remaining row starts after
-            // giving explicit ruler/header boundaries priority.
-            for first in range.start + 1..range.end {
-                if starts.len() == MAX_DETECTION_ATTEMPTS {
-                    break;
-                }
-                if !is_rule_line(&snapshot.lines[first].text) && !starts.contains(&first)
-                {
-                    starts.push(first);
-                }
-            }
-            for first in starts {
-                let trial = first..range.end;
-                let source = &snapshot.lines[trial.clone()];
-                if source.iter().all(|line| {
-                    line.native.end <= 0 || line.native.start >= snapshot.rows as i32
-                }) {
-                    continue;
-                }
-                // Unsupported text decorations keep their original native rendering.
-                if source.iter().any(|line| {
-                    line.styles.iter().any(|(_, style)| {
-                        style.flags.intersects(
-                            StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES,
-                        )
-                    })
-                }) {
-                    continue;
-                }
-                let Ok(table) = Table::detect(
-                    source.iter().map(|line| line.text.clone()).collect(),
-                    cell_width,
-                ) else {
-                    continue;
-                };
-                let Ok(layout) = table.wrap(snapshot.columns, cell_width) else {
-                    continue;
-                };
-                self.surfaces.push(Surface {
-                    table,
-                    layout,
-                    sources: trial,
-                });
-                break;
-            }
-            if self.surfaces.len() == MAX_SURFACES {
-                break;
-            }
-        }
-        self.surfaces.reverse();
-        self.snapshot = snapshot;
-        true
+        self.refresh_pipeline(snapshot)
     }
     pub fn bands(&self) -> Vec<(usize, usize)> {
         let mut bands = Vec::new();
@@ -578,3 +502,6 @@ mod tests {
         assert!(state.surfaces.is_empty());
     }
 }
+
+// AUTOMEXIA_INLINE_PIPELINE_V1
+include!("inline_pipeline.rs");

@@ -218,6 +218,7 @@ criterion_group!(
     semantic_statuses,
     semantic_surface_admission,
     core_table_view,
+    inline_pipeline,
     command_information
 );
 criterion_main!(benches);
@@ -392,5 +393,72 @@ fn palette_setup(c: &mut Criterion) {
             black_box(colors)
         })
     });
+    group.finish();
+}
+
+// AUTOMEXIA_INLINE_PIPELINE_V1
+// Added to the existing benchmark target; no new benchmark binary or dependency.
+fn inline_pipeline(c: &mut Criterion) {
+    use automexia_terminal::automexia::inline_tables::{InlineTables, Snapshot};
+    use rio_backend::{
+        ansi::CursorShape,
+        crosswords::{Crosswords, CrosswordsSize},
+        event::{VoidListener, WindowId},
+        performer::handler::Processor,
+    };
+    mod fixture {
+        include!(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/../../automexia-ui-model/tests/support/inline_pipeline_fixture.rs"
+        ));
+    }
+    let output = format!("{}\r\n\r\nprompt ", fixture::pipeline_rows().join("\r\n"));
+    let mut group = c.benchmark_group("inline_pipeline");
+    group
+        .sample_size(20)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    for columns in [31, 80, 320] {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(columns, 64),
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            2000,
+        );
+        Processor::default().advance(&mut terminal, output.as_bytes());
+        let mut ready = InlineTables::default();
+        ready.refresh(Snapshot::capture(&terminal));
+        assert_eq!(ready.surfaces.len(), 1);
+        assert_eq!(
+            ready.surfaces[0].table.column_starts(),
+            fixture::PIPELINE_STARTS
+        );
+        group.bench_function(format!("capture/{columns}"), |b| {
+            b.iter(|| black_box(Snapshot::capture(black_box(&terminal))))
+        });
+        group.bench_function(format!("prepare/{columns}"), |b| {
+            b.iter_batched(
+                || Snapshot::capture(&terminal),
+                |snapshot| {
+                    let mut state = InlineTables::default();
+                    state.refresh(snapshot);
+                    black_box(state)
+                },
+                criterion::BatchSize::SmallInput,
+            )
+        });
+        group.bench_function(format!("unchanged/{columns}"), |b| {
+            b.iter_batched(
+                || Snapshot::capture(&terminal),
+                |snapshot| black_box(ready.refresh(snapshot)),
+                criterion::BatchSize::SmallInput,
+            )
+        });
+        group.bench_function(format!("disabled/{columns}"), |b| {
+            b.iter(|| black_box(Snapshot::capture_for(black_box(&terminal), false)))
+        });
+    }
     group.finish();
 }

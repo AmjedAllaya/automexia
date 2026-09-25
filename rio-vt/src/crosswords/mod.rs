@@ -2708,19 +2708,98 @@ impl<U: EventListener> Crosswords<U> {
         end: Pos,
         max_bytes: usize,
     ) -> Result<String, SelectionTextError> {
-        // Count every native cell before expanding tabs, including empty cells.
-        let rows = (end.row.0 as i64 - start.row.0 as i64 + 1).max(0) as usize;
-        if rows.saturating_mul(self.columns()) > max_bytes {
+        // Validate before indexing, including pathological public range input.
+        if start > end
+            || start.row < self.grid.topmost_line()
+            || end.row > self.grid.bottommost_line()
+            || start.col >= self.grid.columns()
+            || end.col >= self.grid.columns()
+        {
             return Err(SelectionTextError::CapacityExceeded);
         }
-        self.bounds_to_string_bounded(start, end, max_bytes)?;
-        let text = self.bounds_to_string_impl(start, end, true);
-        if text.len() > max_bytes {
+        let rows = (end.row.0 as i64 - start.row.0 as i64 + 1) as usize;
+        if rows
+            .checked_mul(self.columns())
+            .is_none_or(|cells| cells > max_bytes)
+        {
             return Err(SelectionTextError::CapacityExceeded);
         }
+        fn append(
+            text: &mut String,
+            c: char,
+            limit: usize,
+        ) -> Result<(), SelectionTextError> {
+            if c.len_utf8() > limit.saturating_sub(text.len()) {
+                return Err(SelectionTextError::CapacityExceeded);
+            }
+            text.push(c);
+            Ok(())
+        }
+        // One presentation serialization; do not allocate and discard the
+        // ordinary clipboard representation first. Clipboard behavior is unchanged.
+        let mut text = String::new();
+        let mut spaces = 0usize;
+        let mut newlines = 0usize;
+        let last_col = self.grid.last_column();
+        for r in start.row.0..=end.row.0 {
+            let line = Line(r);
+            let mut first_col = if line == start.row {
+                start.col
+            } else {
+                Column(0)
+            };
+            let end_col = if line == end.row { end.col } else { last_col };
+            if matches!(self.grid[line][first_col].wide(), Wide::Spacer) && first_col > 0
+            {
+                first_col -= 1;
+            }
+            // Inspect the selected physical span, not only nonblank occupancy.
+            // In particular, all-blank soft-wrap segments still carry column
+            // offsets. Buffer their spaces until actual content follows.
+            for c in first_col.0..=end_col.0 {
+                let pos = Pos::new(line, Column(c));
+                let square = &self.grid[line][Column(c)];
+                if matches!(square.wide(), Wide::Spacer | Wide::LeadingSpacer) {
+                    continue;
+                }
+                if square.extras_id().is_none() && matches!(square.c(), '\0' | ' ' | '\t')
+                {
+                    spaces += 1;
+                    continue;
+                }
+                if newlines.saturating_add(spaces) > max_bytes.saturating_sub(text.len())
+                {
+                    return Err(SelectionTextError::CapacityExceeded);
+                }
+                for _ in 0..newlines {
+                    text.push('\n');
+                }
+                newlines = 0;
+                for _ in 0..spaces {
+                    text.push(' ');
+                }
+                spaces = 0;
+                for character in self.grid.cell_text(pos) {
+                    // A tab is one occupied grid position plus its actual blank
+                    // cells, not a guessed fixed-size substitution.
+                    append(
+                        &mut text,
+                        if character == '\t' { ' ' } else { character },
+                        max_bytes,
+                    )?;
+                }
+            }
+            if end_col >= last_col && !self.grid[line][last_col].wrapline() {
+                spaces = 0;
+                if line != end.row {
+                    newlines += 1;
+                }
+            }
+        }
+        // Only trailing padding is discarded. Never synthesize joins at a hard
+        // line boundary or alter terminal flags to obtain a successful table.
         Ok(text)
     }
-
     fn bounds_to_string_impl(&self, start: Pos, end: Pos, expand_tabs: bool) -> String {
         let mut text = String::new();
         let mut blank_rows: usize = 0;
@@ -11958,3 +12037,5 @@ mod tests {
         assert_eq!(replies(&events), vec!["\x1b[?9;1$y".to_string()]);
     }
 }
+
+// AUTOMEXIA_INLINE_PIPELINE_V1

@@ -1127,3 +1127,6 @@ fn inline_table_selection_includes_wide_trailing_and_emoji_internal_cells() {
         }
     }
 }
+
+// AUTOMEXIA_INLINE_PIPELINE_V1
+include!("inline_pipeline_render_tests.rs");
