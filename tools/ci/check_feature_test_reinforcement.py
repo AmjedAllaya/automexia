@@ -350,6 +350,7 @@ NATIVE_CONTRACT_SOURCES = {
     "table_view": "apps/automexia-terminal/src/table_view.rs",
     "table_pixels": "apps/automexia-terminal/src/table_view_tests.rs",
     "inline_capture": "apps/automexia-terminal/src/automexia/inline_tables.rs",
+    "inline_pipeline": "apps/automexia-terminal/src/automexia/inline_pipeline.rs",
     "inline_renderer": "apps/automexia-terminal/src/renderer/inline_tables.rs",
     "inline_pixels": "apps/automexia-terminal/src/renderer/inline_table_tests.rs",
     "text_clip": "sugarloaf/src/text.rs",
@@ -647,10 +648,43 @@ def _validate_table_sources(sources: dict[str, str]) -> None:
         raise ReinforcementError("shared modal release must be consumed before view dispatch")
 
 
+# INLINE_TABLE_OWNER_CHAIN_V1: source guards supplement behavioral Rust tests.
+def _validate_inline_style_source_chain(sources: dict[str, str]) -> None:
+    # The style rejection moved to the included pipeline; terminal capture still
+    # owns the grid/source mapping. Do not accept a token in an unrelated file.
+    capture = re.sub(r"/\*.*?\*/|//[^\n]*", "", sources["inline_capture"], flags=re.DOTALL)
+    if not re.search(r'\}\s*include!\("inline_pipeline\.rs"\);\s*\Z', capture):
+        raise ReinforcementError("inline style fallback requires the top-level pipeline include")
+    dispatch = _source_slice(capture, "pub fn refresh(", "pub fn bands(", "inline refresh dispatch")
+    if re.sub(r"\s+", "", dispatch) != "pubfnrefresh(&mutself,snapshot:Snapshot)->bool{self.refresh_pipeline(snapshot)}":
+        raise ReinforcementError("inline refresh must delegate to the checked pipeline")
+    pipeline = sources.get("inline_pipeline")
+    if not isinstance(pipeline, str):
+        raise ReinforcementError("inline style fallback is missing its pipeline source owner")
+    body = _source_slice(pipeline, "    fn refresh_pipeline(", "\nfn pipeline_detect(", "inline pipeline")
+    # This is a conservative source-shape check, not a Rust parser or a proof of
+    # runtime semantics. Ignore comments and ordinary literals so a copied
+    # message/comment cannot stand in for the executable rejection branch.
+    body = re.sub(r'//[^\n]*|/\*.*?\*/|"(?:\\.|[^"\\])*"', "", body, flags=re.DOTALL)
+    body = re.sub(r"\s+", "", body)
+    body = re.sub(r",(?=\))", "", body)  # rustfmt's optional trailing call comma
+    guard = (
+        "ifsource.iter().any(|line|{line.styles.iter().any(|(_,style)|{"
+        "style.flags.intersects(StyleFlags::STRIKEOUT|StyleFlags::ALL_UNDERLINES)"
+        "})}){diagnostics.last_fallback=Some(InlineFallbackReason::UnsupportedStyle);continue;}"
+    )
+    detection = "letSome(table)=pipeline_detect(source,&mutdiagnostics)else{continue;};"
+    if body.count(guard) != 1 or body.count(detection) != 1:
+        raise ReinforcementError("inline pipeline must reject both unsupported style classes before detection")
+    _require_order(body, (guard, detection, "letlayout=matchtable.wrap(",
+                         "next_surfaces.push(Surface{", "self.surfaces=next_surfaces;"),
+                   "inline style rejection and publication")
+
+
 def _validate_inline_table_sources(sources: dict[str, str]) -> None:
     # Read-only VT capture, one projection and actual glyph tests form one owner chain.
     for owner, fragments in {
-        "inline_capture": ("MAX_SCAN_CELLS: usize = 64 * 1024", "MAX_SCAN_ROWS: usize = 512", "MAX_SURFACES: usize = 4", ".bounds_to_display_string_bounded(", "pub fn needs_snapshot", "pub fn source_position", "StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES"),
+        "inline_capture": ("MAX_SCAN_CELLS: usize = 64 * 1024", "MAX_SCAN_ROWS: usize = 512", "MAX_SURFACES: usize = 4", ".bounds_to_display_string_bounded(", "pub fn needs_snapshot", "pub fn source_position"),
         "inline_renderer": (".row_geometry(si, ri, &content.command_rows)", "canvas.text().draw_cells_clipped(", "selection.contains(cell)", "value.grapheme_indices(true)"),
         "inline_pixels": ("fn inline_table_pixels_have_single_shared_edges_at_wide_narrow_and_fractional_sizes()", "fn inline_table_real_glyphs_cannot_escape_their_cells_or_pane()", "fn inline_table_visual_scroll_round_trip_preserves_partial_soft_wrapped_rows()", "fn inline_table_finishes_a_visible_soft_wrapped_row_below_the_viewport()"),
         "text_clip": ("pub fn draw_clipped(", "pub fn draw_cells_clipped("),
@@ -661,6 +695,7 @@ def _validate_inline_table_sources(sources: dict[str, str]) -> None:
         "application_bench": ('"inline_wrap_checked"', "assert_eq!(wrapped.rows.len(), 256);"),
     }.items():
         _require_fragments(sources[owner], fragments, "inline header table " + owner)
+    _validate_inline_style_source_chain(sources)
 
 
 def _validate_hyperlink_sources(sources: dict[str, str]) -> None:

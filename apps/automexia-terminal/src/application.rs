@@ -3616,8 +3616,10 @@ mod custom_chrome_tests {
 
     #[test]
     fn runtime_reload_appends_platform_environment_once() {
-        let mut loaded = rio_backend::config::Config::default();
-        loaded.env_vars = vec!["BASE=value".into()];
+        let mut loaded = rio_backend::config::Config {
+            env_vars: vec!["BASE=value".into()],
+            ..Default::default()
+        };
         let platform = rio_backend::config::platform::PlatformConfig {
             env_vars: Some(vec!["PLATFORM=value".into()]),
             ..Default::default()

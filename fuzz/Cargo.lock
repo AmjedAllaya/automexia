@@ -519,6 +519,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "automexia-ssh-integration"
+version = "0.4.0"
+dependencies = [
+ "automexia-connectivity",
+ "base64",
+]
+
+[[package]]
 name = "automexia-terminal"
 version = "0.4.0"
 dependencies = [
@@ -539,6 +547,7 @@ dependencies = [
  "automexia-extension-runtime",
  "automexia-image",
  "automexia-keybindings",
+ "automexia-ssh-integration",
  "automexia-ui-model",
  "base64",
  "bitflags 2.13.1",

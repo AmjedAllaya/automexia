@@ -165,6 +165,9 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             keybindings::generate(generate_args)
         }
         [command, scope] if command == "verify" && scope == "all" => verify_all(),
+        [command, scope] if command == "test" && scope == "ssh-integration" => {
+            test_ssh_integration()
+        }
         [command, scope] if command == "test" && scope == "conformance" => {
             test_conformance()
         }
@@ -227,7 +230,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|cache <status [--warn-gib N]|gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]>|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|cache <status [--warn-gib N]|gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]>|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test ssh-integration|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn cache(arguments: &[String]) -> TaskResult {
@@ -1348,6 +1351,8 @@ fn pre_compile_checks() -> TaskResult {
 }
 
 fn verify_all() -> TaskResult {
+    #[cfg(target_os = "linux")]
+    test_ssh_integration()?;
     verify_identity()?;
     verify_provenance()?;
     verify_architecture()?;
@@ -2710,6 +2715,7 @@ fn verify_extension_worker_contract(source: &str) -> TaskResult {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_ssh_boundaries.py")?;
     run_python("tools/ci/check_prompt_discovery.py")?;
     run_python("tools/ci/test_prompt_discovery.py")?;
     run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
@@ -2747,7 +2753,11 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 17] = [
+    let private_crates: [(&str, &[&str]); 18] = [
+        (
+            "automexia-ssh-integration",
+            &["automexia-connectivity", "base64", "proptest"],
+        ),
         (
             "automexia-keybindings",
             &["criterion", "proptest", "serde", "serde_json", "sha2"],
@@ -2951,6 +2961,9 @@ fn verify_architecture() -> TaskResult {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
+            if name == "automexia-ssh-integration" {
+                verify_ssh_planning_dependency(dependency)?;
+            }
             if matches!(name, "automexia-extension-api" | "automexia-ui-model") {
                 verify_benchmark_dependency(dependency)?;
             }
@@ -3846,8 +3859,10 @@ fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
         return false;
     };
     let helper: String = helper.chars().filter(|c| !c.is_whitespace()).collect();
-    let guard =
-        ".get(\"automexia_env_pending\").is_some_and(|value|value!=\"0\"){return;}";
+    // The shared owner now admits a chronology-validated frame. A raw pending
+    // value is no longer sufficient. This is a source-wiring sentinel; the
+    // parser/readiness tests establish the admission behavior.
+    let guard = "letSome(frame)=content.session_metadata.observe(terminal)else{return;};";
     let Some(guard_end) = helper.find(guard).map(|index| index + guard.len()) else {
         return false;
     };
@@ -3862,10 +3877,12 @@ fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
         "shell_integration" => {
             "content.shell_integration=live_shell_integration;".to_owned()
         }
-        "shell_environment" => {
-            "automexia_devops::sync_location_hints(&mutcontent.shell_environment,"
-                .to_owned()
-        }
+        "shell_environment" => concat!(
+            "automexia_devops::sync_location_hints(&mutcontent.shell_environment,",
+            "|name|frame.value(terminal,name).map(String::as_str),",
+            "live_shell_integration,content.shell_name.as_deref(),);"
+        )
+        .to_owned(),
         "shell_distro" | "shell_os_version" | "shell_name" | "shell_user"
         | "shell_path" => {
             let key = match field {
@@ -3875,7 +3892,7 @@ fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
                 "shell_user" => "automexia_shell_user",
                 _ => "automexia_shell_path",
             };
-            format!("sync_optional_metadata(&mutcontent.{field},terminal.user_vars.get(\"{key}\"),)")
+            format!("sync_optional_metadata(&mutcontent.{field},frame.value(terminal,\"{key}\"),);")
         }
         _ => return false,
     };
@@ -5513,6 +5530,7 @@ mod tests {
     fn metadata_snapshot_check_rejects_disconnected_or_unguarded_owner() {
         let renderer =
             include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        assert!(snapshots_renderable_field(renderer, "current_directory"));
         for broken in [
             renderer.replace(
                 "sync_session_metadata(&mut context.renderable_content, &*terminal);",
@@ -5520,8 +5538,8 @@ mod tests {
             ),
             renderer.replace("fn sync_session_metadata<", "fn unused_session_metadata<"),
             renderer.replace(
-                ".is_some_and(|value| value != \"0\")",
-                ".is_some_and(|_| false)",
+                "content.session_metadata.observe(terminal)",
+                "content.session_metadata.unchecked(terminal)",
             ),
             renderer.replace(
                 ".clone_from(&terminal.current_directory)",
@@ -5531,6 +5549,106 @@ mod tests {
             assert_ne!(broken, renderer, "mutation must change its intended source");
             assert!(!snapshots_renderable_field(&broken, "current_directory"));
         }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_requires_frame_scoped_optional_values() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        for (field, key) in [
+            ("shell_distro", "automexia_distro"),
+            ("shell_os_version", "automexia_os_version"),
+            ("shell_name", "automexia_shell_name"),
+            ("shell_user", "automexia_shell_user"),
+            ("shell_path", "automexia_shell_path"),
+        ] {
+            assert!(snapshots_renderable_field(renderer, field));
+            let admitted = format!("frame.value(terminal, \"{key}\")");
+            for replacement in [
+                format!("terminal.user_vars.get(\"{key}\")"),
+                "frame.value(terminal, \"fixture_wrong_key\")".to_owned(),
+            ] {
+                let broken = renderer.replace(&admitted, &replacement);
+                assert_ne!(broken, renderer, "missing mutation anchor for {field}");
+                assert!(
+                    !snapshots_renderable_field(&broken, field),
+                    "unadmitted or wrong-key value accepted for {field}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_requires_frame_scoped_location_hints() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        assert!(snapshots_renderable_field(renderer, "shell_environment"));
+        for replacement in [
+            "terminal.user_vars.get(name)",
+            "frame.value(terminal, \"fixture_wrong_key\")",
+        ] {
+            let broken = renderer.replace("frame.value(terminal, name)", replacement);
+            assert_ne!(broken, renderer, "mutation must change the location reader");
+            assert!(!snapshots_renderable_field(&broken, "shell_environment"));
+        }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_rejects_admission_after_snapshot_writes() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs")
+                .replace("\r\n", "\n");
+        let guard = concat!(
+            "    let Some(frame) = content.session_metadata.observe(terminal) else {\n",
+            "        return;\n",
+            "    };"
+        );
+        let start = renderer.find("fn sync_session_metadata<").unwrap();
+        let end = start + renderer[start..].find("\n}\n").unwrap();
+        let body = &renderer[start..end];
+        assert_eq!(body.matches(guard).count(), 1);
+        let moved = format!("{}\n{guard}", body.replace(guard, ""));
+        let broken = format!("{}{}{}", &renderer[..start], moved, &renderer[end..]);
+        for field in [
+            "current_directory",
+            "terminal_title",
+            "shell_distro",
+            "shell_os_version",
+            "shell_name",
+            "shell_user",
+            "shell_path",
+            "shell_environment",
+            "shell_integration",
+        ] {
+            assert!(snapshots_renderable_field(&renderer, field));
+            assert!(
+                !snapshots_renderable_field(&broken, field),
+                "admission must precede {field} snapshot"
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_rejects_return_to_value_only_pending_guard() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs")
+                .replace("\r\n", "\n");
+        assert!(snapshots_renderable_field(&renderer, "current_directory"));
+        let guard = concat!(
+            "    let Some(frame) = content.session_metadata.observe(terminal) else {\n",
+            "        return;\n",
+            "    };"
+        );
+        let legacy = concat!(
+            "    if terminal.user_vars.get(\"automexia_env_pending\")",
+            ".is_some_and(|value| value != \"0\") { return; }"
+        );
+        let broken = renderer.replace(guard, legacy);
+        assert_ne!(
+            broken, renderer,
+            "mutation must replace the admission guard"
+        );
+        assert!(!snapshots_renderable_field(&broken, "current_directory"));
     }
 
     #[test]
@@ -5762,5 +5880,71 @@ mod tests {
             normalize_canonical_path(PathBuf::from(r"\\?\UNC\server\share\target")),
             PathBuf::from(r"\\server\share\target")
         );
+    }
+}
+
+fn test_ssh_integration() -> TaskResult {
+    run_python_args(
+        "tools/ci/check_ssh_library.py",
+        &["--shell-only", "--require-bash"],
+    )
+}
+
+// Normal and target-specific declarations are all present in Cargo metadata.
+// Keep this check in the canonical architecture owner, not the SSH library.
+fn verify_ssh_planning_dependency(dependency: &serde_json::Value) -> TaskResult {
+    let name = dependency["name"].as_str().unwrap_or("");
+    let kind = dependency["kind"].as_str();
+    let accepted = matches!(
+        (name, kind),
+        ("automexia-connectivity" | "base64", None) | ("proptest", Some("dev"))
+    );
+    require(
+        accepted
+            && dependency["target"].is_null()
+            && dependency["rename"].is_null()
+            && dependency["optional"].as_bool() == Some(false),
+        "SSH planning dependency changed kind, target, identity, or authority",
+    )
+}
+
+#[cfg(test)]
+mod ssh_planning_dependency_tests {
+    use super::*;
+    fn dependency(name: &str, kind: Option<&str>) -> serde_json::Value {
+        serde_json::json!({"name":name,"kind":kind,"target":null,"rename":null,"optional":false})
+    }
+    #[test]
+    fn reviewed_normal_and_test_dependencies_are_accepted() {
+        for (name, kind) in [
+            ("base64", None),
+            ("automexia-connectivity", None),
+            ("proptest", Some("dev")),
+        ] {
+            assert!(verify_ssh_planning_dependency(&dependency(name, kind)).is_ok());
+        }
+    }
+    #[test]
+    fn runtime_test_tool_and_build_dependencies_are_rejected() {
+        assert!(verify_ssh_planning_dependency(&dependency("proptest", None)).is_err());
+        assert!(
+            verify_ssh_planning_dependency(&dependency("base64", Some("build"))).is_err()
+        );
+        assert!(verify_ssh_planning_dependency(&dependency("reqwest", None)).is_err());
+    }
+    #[test]
+    fn platform_condition_does_not_hide_dependency_authority() {
+        let mut value = dependency("base64", None);
+        value["target"] = "cfg(windows)".into();
+        assert!(verify_ssh_planning_dependency(&value).is_err());
+    }
+    #[test]
+    fn renames_and_optional_flags_are_rejected() {
+        let mut value = dependency("base64", None);
+        value["rename"] = "opaque".into();
+        assert!(verify_ssh_planning_dependency(&value).is_err());
+        value["rename"] = serde_json::Value::Null;
+        value["optional"] = true.into();
+        assert!(verify_ssh_planning_dependency(&value).is_err());
     }
 }

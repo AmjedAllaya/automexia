@@ -216,6 +216,9 @@ jobs:
       - name: Shell integration syntax and contract smoke
         run: bash tools/ci/test_shell_sources.sh
 
+      - name: SSH actual-generator controlling-PTY regression
+        run: python3 tools/ci/check_ssh_library.py --shell-only --require-bash
+
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
         run: sccache --show-stats

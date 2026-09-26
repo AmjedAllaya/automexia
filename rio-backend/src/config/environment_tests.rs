@@ -50,8 +50,10 @@ fn environment_batch_rejects_every_invalid_entry_without_returning_partial_state
 #[test]
 fn configuration_environment_validation_includes_each_platform_override() {
     for platform in ["linux", "windows", "macos"] {
-        let mut config = Config::default();
-        config.env_vars = vec!["GLOBAL=value".into()];
+        let mut config = Config {
+            env_vars: vec!["GLOBAL=value".into()],
+            ..Config::default()
+        };
         let overrides = PlatformConfig {
             env_vars: Some(vec!["GOOD=value".into(), "BAD=value\0suffix".into()]),
             ..PlatformConfig::default()

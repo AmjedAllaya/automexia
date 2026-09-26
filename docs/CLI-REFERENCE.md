@@ -230,3 +230,27 @@ displays offline tealdeer examples without executing them. Each accepts
 are never installed automatically. Integrated shells expose these through `amx`.
 See [limits, privacy, cancellation and WSL
 requirements](user-guide/local-tools.md).
+
+## SSH integration planning
+
+`automexia ssh-integration status` reports the existing managed-SSH gate and the
+separate, disabled enhanced-execution state. It performs no SSH or config probe.
+`automexia ssh-integration inspect -- host-alias` classifies a proposed invocation
+and prints a redacted JSON preview, not an executable command or authorization.
+
+Inspect options are `--mode auto|off|required`, `--shell unknown|bash|zsh|fish|powershell`,
+`--startup login|interactive`, `--tty`, `--posix-account-shell`,
+`--permit-session-files`, and `--assume-compatible-config`. These describe preview
+assumptions only; they do not observe a remote server, grant capabilities, or
+activate execution. Native SSH arguments follow the `--` separator unchanged.
+
+Only the explicit, experimental non-login Bash candidate is implemented. Unknown
+shells/configuration, login startup, remote commands, tunnels, control operations,
+non-TTY input/output, and unsupported options retain non-enhanced classifications.
+There is no `--execute`, `--apply`, or security-gate override on this command.
+
+See [SSH integration library](SSH-INTEGRATION-LIBRARY.md) for scope, contracts,
+current limitations and the distinction between candidate and live features.
+
+`cargo xtask test ssh-integration` runs the Unix actual-generator shell scope.
+It is a development test command, not a connection or activation command.

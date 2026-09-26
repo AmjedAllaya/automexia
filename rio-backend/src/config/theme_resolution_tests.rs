@@ -76,8 +76,10 @@ fn failed_adaptive_pair_cannot_publish_any_new_colors() {
 #[cfg(any(windows, target_os = "linux", target_os = "macos"))]
 fn inactive_platform_missing_theme_is_not_loaded_and_empty_active_clears_base() {
     let root = tempfile::tempdir().unwrap();
-    let mut config = Config::default();
-    config.theme = "missing-base".into();
+    let mut config = Config {
+        theme: "missing-base".into(),
+        ..Config::default()
+    };
     let empty = PlatformConfig {
         theme: Some(String::new()),
         ..Default::default()

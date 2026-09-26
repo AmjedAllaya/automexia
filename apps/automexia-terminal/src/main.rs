@@ -152,6 +152,10 @@ fn execute_cli_command(
         CliCommand::Repo(command) => {
             automexia::repository_open::execute(command, session).map_err(Into::into)
         }
+        CliCommand::SshIntegration(command) => automexia::ssh_integration::execute(
+            command,
+            crate::context::launch_broker::MANAGED_SESSION_LAUNCH_ENABLED,
+        ),
         CliCommand::ShellIntegration(command) => match &command.action {
             ShellIntegrationAction::Doctor => {
                 println!("{}", shell_integration::status());
@@ -711,4 +715,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod ssh_library_gate {
+    #[test]
+    fn enhanced_ssh_addition_does_not_enable_the_existing_broker() {
+        assert!(!std::hint::black_box(
+            crate::context::launch_broker::MANAGED_SESSION_LAUNCH_ENABLED
+        ));
+    }
 }

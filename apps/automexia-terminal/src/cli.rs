@@ -87,6 +87,8 @@ pub enum CliCommand {
     Repo(RepoCommand),
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
+    /// Inspect non-executing SSH integration plans; does not enable managed SSH.
+    SshIntegration(crate::automexia::ssh_integration::Command),
     /// Search and manage typed Quick Actions without opening a window.
     Actions(ActionsCommand),
     /// Preview, publish, reload, diagnose, or roll back opt-in aliases.

@@ -80,3 +80,49 @@ fn metadata_readiness_unknown_route_does_not_create_a_capsule() {
     assert!(state.capsules.is_empty());
     assert!(state.pending.is_empty());
 }
+#[test]
+fn metadata_readiness_invalidation_never_reuses_revision_after_repeated_recovery() {
+    let mut state = state();
+    let facts = session(406, "fixture");
+    let mut previous = state.capsule_revision(&facts);
+    for operation in 1..=32 {
+        let token = CancellationToken::default();
+        assert!(state.register_refresh(
+            406, OperationId::new(operation), previous, 1, token.clone()
+        ));
+        assert!(state.invalidate_devops_session(406));
+        assert!(token.is_cancelled());
+        let next = state.capsule_revision(&facts);
+        assert_eq!(next, previous + 1);
+        assert!(!state.accepts(406, OperationId::new(operation), previous));
+        previous = next;
+    }
+}
+
+#[test]
+fn metadata_readiness_context_change_at_max_revision_is_permanently_exhausted() {
+    let mut state = state();
+    let facts = session(407, "fixture");
+    state.capsule_revision(&facts);
+    state.capsules.get_mut(&407).unwrap().revision = u64::MAX;
+    let mut changed = facts.clone();
+    changed.cwd = Some("/fixture/changed".into());
+    assert_eq!(state.capsule_revision(&changed), 0);
+    assert_eq!(state.capsule_revision(&facts), 0);
+    let token = CancellationToken::default();
+    assert!(!state.register_refresh(407, OperationId::new(1), 0, 1, token.clone()));
+    assert!(token.is_cancelled());
+    state.register_operation(407, OperationId::new(2), CancellationToken::default());
+    assert!(!state.accepts(407, OperationId::new(2), 0));
+}
+
+#[test]
+fn metadata_readiness_invalidation_clears_orphaned_work_without_creating_identity() {
+    let mut state = state();
+    let token = CancellationToken::default();
+    state.register_operation(408, OperationId::new(1), token.clone());
+    assert!(state.invalidate_devops_session(408));
+    assert!(token.is_cancelled());
+    assert!(state.capsules.is_empty());
+    assert!(!state.invalidate_devops_session(408));
+}

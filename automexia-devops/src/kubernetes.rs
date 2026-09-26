@@ -130,6 +130,16 @@ pub(crate) fn local_paths(
     session: &automexia_extension_api::SessionFacts,
     host_home: Option<&std::path::Path>,
 ) -> Vec<std::path::PathBuf> {
+    // Any published home hint belongs to this session, including an explicit
+    // empty value. Missing KUBECONFIG makes that location snapshot incomplete;
+    // neither the process override nor a default home may fill the gap.
+    if !session.environment.contains_key("KUBECONFIG")
+        && ["HOME", "HOMEDRIVE", "HOMEPATH", "USERPROFILE"]
+            .iter()
+            .any(|name| session.environment.contains_key(*name))
+    {
+        return Vec::new();
+    }
     let configured = session
         .environment
         .get("KUBECONFIG")

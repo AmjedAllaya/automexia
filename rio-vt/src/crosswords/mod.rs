@@ -650,6 +650,14 @@ pub struct UserVarWriteStamp {
     pub previous: Option<NonZeroU64>,
 }
 
+/// Compact previous-value evidence for boolean transaction delimiters. The
+/// public stamp remains two serials; no previous arbitrary string is retained.
+#[derive(Debug, Clone, Copy)]
+struct UserVarWriteRecord {
+    stamp: UserVarWriteStamp,
+    previous_was_one: bool,
+}
+
 #[derive(Debug)]
 pub struct Crosswords<U>
 where
@@ -690,9 +698,10 @@ where
     pub current_directory: Option<std::path::PathBuf>,
     /// Shell state from `OSC 1337 ; SetUserVar` (iTerm2 style).
     pub user_vars: rustc_hash::FxHashMap<String, String>,
-    // At most MAX_USER_VARS bounded names plus two serials per retained name.
+    // At most MAX_USER_VARS bounded names, two serials and one previous-value
+    // bit per retained name. The public stamp remains content-free.
     // Direct trusted map edits do not acquire accepted-write provenance.
-    user_var_write_stamps: rustc_hash::FxHashMap<String, UserVarWriteStamp>,
+    user_var_write_stamps: rustc_hash::FxHashMap<String, UserVarWriteRecord>,
     user_var_clock: u64,
     user_var_chronology_valid: bool,
     last_user_var_rejection: Option<NonZeroU64>,
@@ -826,7 +835,21 @@ impl<U: EventListener> Crosswords<U> {
         if !self.user_var_chronology_valid || !self.user_vars.contains_key(name) {
             return None;
         }
-        self.user_var_write_stamps.get(name).copied()
+        self.user_var_write_stamps
+            .get(name)
+            .map(|record| record.stamp)
+    }
+
+    /// Whether the preceding accepted write to this name was exactly "1".
+    /// This supplements write order when a begin/end pair arrives between
+    /// renderer snapshots; arbitrary previous values are not retained.
+    pub fn user_var_previous_was_one(&self, name: &str) -> bool {
+        self.user_var_chronology_valid
+            && self.user_vars.contains_key(name)
+            && self
+                .user_var_write_stamps
+                .get(name)
+                .is_some_and(|record| record.previous_was_one)
     }
 
     /// False after the per-terminal event counter is exhausted. A new terminal
@@ -4503,15 +4526,20 @@ impl<U: EventListener> Handler for Crosswords<U> {
         }
         // Publish value and provenance under the same terminal owner before
         // scheduling metadata damage. Existing-name updates allocate no key.
-        if let Some(stamp) = self.user_var_write_stamps.get_mut(&name) {
-            stamp.previous = Some(stamp.latest);
-            stamp.latest = serial;
+        let previous_was_one = self.user_vars.get(&name).is_some_and(|v| v == "1");
+        if let Some(record) = self.user_var_write_stamps.get_mut(&name) {
+            record.previous_was_one = previous_was_one;
+            record.stamp.previous = Some(record.stamp.latest);
+            record.stamp.latest = serial;
         } else {
             self.user_var_write_stamps.insert(
                 name.clone(),
-                UserVarWriteStamp {
-                    latest: serial,
-                    previous: None,
+                UserVarWriteRecord {
+                    stamp: UserVarWriteStamp {
+                        latest: serial,
+                        previous: None,
+                    },
+                    previous_was_one: false,
                 },
             );
         }
@@ -12039,3 +12067,42 @@ mod tests {
 }
 
 // AUTOMEXIA_INLINE_PIPELINE_V1
+
+#[cfg(test)]
+mod metadata_boolean_history_tests {
+    use super::*;
+    use crate::event::VoidListener;
+
+    #[test]
+    fn metadata_boolean_history_preserves_exact_previous_value_without_strings() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(80, 8),
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        assert_eq!(std::mem::size_of::<UserVarWriteStamp>(), 16);
+        assert!(std::mem::size_of::<UserVarWriteRecord>() <= 24);
+        for value in ["1", "0", "00", "true", "", "arbitrary"] {
+            terminal.set_user_var("fixture_boolean".into(), value.into());
+            terminal.set_user_var("fixture_boolean".into(), "0".into());
+            assert_eq!(
+                terminal.user_var_previous_was_one("fixture_boolean"),
+                value == "1"
+            );
+        }
+        terminal.set_user_var("fixture_boolean".into(), "1".into());
+        terminal.set_user_var("fixture_boolean".into(), "0".into());
+        let accepted = terminal.user_var_write_stamp("fixture_boolean");
+        terminal.set_user_var("fixture_boolean".into(), "x".repeat(8193));
+        assert_eq!(terminal.user_var_write_stamp("fixture_boolean"), accepted);
+        assert!(terminal.user_var_previous_was_one("fixture_boolean"));
+        assert!(terminal.last_user_var_rejection().is_some());
+        terminal.user_vars.remove("fixture_boolean");
+        assert!(!terminal.user_var_previous_was_one("fixture_boolean"));
+        terminal.set_user_var("fixture_boolean".into(), "0".into());
+        assert!(!terminal.user_var_previous_was_one("fixture_boolean"));
+    }
+}

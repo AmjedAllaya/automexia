@@ -247,6 +247,11 @@ impl RenderableContent {
     }
 
     pub fn session_metadata_seed(&self) -> SessionMetadataSeed {
+        if self.session_metadata.readiness()
+            != crate::renderer::session_metadata::MetadataReadiness::Complete
+        {
+            return SessionMetadataSeed::default();
+        }
         SessionMetadataSeed {
             current_directory: self.current_directory.clone(),
             terminal_title: self.terminal_title.clone(),

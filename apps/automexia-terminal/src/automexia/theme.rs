@@ -75,11 +75,14 @@ mod tests {
 
     #[test]
     fn explicit_palette_survives_application_resolution() {
-        let mut selected = Colors::default();
-        selected.foreground = color("#FFFFFF");
-        selected.red = color("#123456");
-        selected.selection_background = color("#234567");
-        selected.search_match_foreground = color("#345678");
+        let selected = Colors {
+            foreground: color("#FFFFFF"),
+            red: color("#123456"),
+            selection_background: color("#234567"),
+            search_match_foreground: color("#345678"),
+            ..Colors::default()
+        };
+
         assert_eq!(effective_colors(selected), selected);
     }
 

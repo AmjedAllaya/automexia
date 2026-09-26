@@ -213,6 +213,7 @@ fn semantic_surface_admission(c: &mut Criterion) {
 
 criterion_group!(
     benches,
+    ssh_integration,
     palette_setup,
     services,
     semantic_statuses,
@@ -460,5 +461,103 @@ fn inline_pipeline(c: &mut Criterion) {
             b.iter(|| black_box(Snapshot::capture_for(black_box(&terminal), false)))
         });
     }
+    group.finish();
+}
+
+// Pure SSH preparation only: these benchmarks never connect to a server.
+fn ssh_integration(c: &mut Criterion) {
+    use automexia_ssh_integration::{self as ssh, session::RemoteDirectoryUpdate, *};
+    let key = GenerationKey::new(3, 7).unwrap();
+    let invocation =
+        Invocation::new(vec!["-p".into(), "2222".into(), "fixture.invalid".into()])
+            .unwrap();
+    let mut group = c.benchmark_group("ssh_integration");
+    group
+        .sample_size(20)
+        .warm_up_time(std::time::Duration::from_secs(1))
+        .measurement_time(std::time::Duration::from_secs(2));
+    group.bench_function("classify_native_arguments", |b| {
+        b.iter(|| {
+            let decision = black_box(&invocation).classify(true, true);
+            assert!(matches!(
+                decision,
+                InvocationClass::Interactive {
+                    destination_index: 2
+                }
+            ));
+            black_box(decision)
+        })
+    });
+    group.bench_function("disabled_passthrough", |b| {
+        b.iter(|| {
+            let mut options = Options::conservative(key);
+            options.mode = Mode::Off;
+            let result = plan(invocation.clone(), options).unwrap();
+            assert!(matches!(&result, Decision::Passthrough { .. }));
+            black_box(result)
+        })
+    });
+    group.bench_function("denied_no_bootstrap", |b| {
+        b.iter(|| {
+            let mut options = Options::conservative(key);
+            options.policy_denied = true;
+            assert!(matches!(
+                black_box(plan(invocation.clone(), options).unwrap()),
+                Decision::Denied
+            ));
+        })
+    });
+    group.bench_function("bounded_bootstrap", |b| {
+        b.iter(|| {
+            let source =
+                ssh::bootstrap::bash_interactive_candidate(black_box(key)).unwrap();
+            assert!(source.len() <= MAX_BOOTSTRAP_BYTES);
+            assert!(!source.contains("@@"));
+            black_box(source)
+        })
+    });
+    for (label, frame) in [
+        ("accept_scoped_receipt", b"AMXSSH1|3|7|1|3".as_slice()),
+        ("reject_wrong_pane", b"AMXSSH1|4|7|1|3".as_slice()),
+        (
+            "reject_unimplemented_capability",
+            b"AMXSSH1|3|7|1|4".as_slice(),
+        ),
+    ] {
+        group.bench_function(label, |b| {
+            b.iter(|| {
+                let mut state = Negotiation::new(key, 0, 1000).unwrap();
+                let result = state.receive(black_box(frame), 1);
+                if label == "accept_scoped_receipt" {
+                    assert_eq!(state.capabilities().bits(), 3);
+                } else {
+                    assert_eq!(state.capabilities().bits(), 0);
+                }
+                black_box((result, state))
+            })
+        });
+    }
+    let path = format!("AMXSSHCWD1|3|7|/{}", "x".repeat(3999));
+    group.bench_function("maximum_remote_path", |b| {
+        b.iter(|| {
+            let result = RemoteDirectoryUpdate::decode(key, black_box(&path))
+                .unwrap()
+                .unwrap();
+            assert_eq!(result.path.as_ref().unwrap().remote_text().len(), 4000);
+            black_box(result)
+        })
+    });
+    group.bench_function("reconnect_and_close", |b| {
+        b.iter(|| {
+            let mut state = Negotiation::new(key, 0, 1000).unwrap();
+            state.receive(b"AMXSSH1|3|7|1|3", 1).unwrap();
+            state
+                .reconnect(GenerationKey::new(3, 8).unwrap(), 2, 1000)
+                .unwrap();
+            state.close();
+            assert_eq!(state.capabilities().bits(), 0);
+            black_box(state)
+        })
+    });
     group.finish();
 }

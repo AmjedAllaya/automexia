@@ -629,6 +629,13 @@ network authority.
 
 ### extension-contract-runtime
 
+SSH planning remains non-activated. Its canonical dependency/source mutations,
+model/property scope and actual-generator controlling-PTY tests preserve native
+review ownership, permission masks, prompt hooks, redirection and scoped remote
+metadata. The existing application Criterion group measures only bounded local
+planning operations. Live SSH/native GUI and controlled latency are not established
+by these tests. See [current evidence commands](SSH-INTEGRATION-LIBRARY.md#verification).
+
 Worker tests must gate full queues, blocked handlers, reentrant and panicking
 registration, native thread-local destruction and callback lifetime beyond join.
 Require actual join before acknowledgement, no stale replacement, reuse of one

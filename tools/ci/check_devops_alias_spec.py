@@ -9,6 +9,8 @@ import re
 import sys
 from typing import Any
 
+import check_command_productivity_cp22 as cp22
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT_PATH = ROOT / "tests/fixtures/command-productivity/cp2-cp3-alias-spec-v1.json"
@@ -471,7 +473,7 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         PERSISTENCE_FILES[4]: {"actions.previous.toml", "try_lock", "MAX_CACHED_ACTION_BYTES", "recover_previous"},
         PERSISTENCE_FILES[5]: {"ActionsAction", "expected_revision", "read_single_action"},
         PERSISTENCE_FILES[6]: {"source_digest", "apply_import", "preview_import"},
-        PERSISTENCE_FILES[7]: {"SEARCH_COALESCE_INTERVAL", "forget_route", "handle.join()"},
+        PERSISTENCE_FILES[7]: {"SEARCH_COALESCE_INTERVAL", "forget_route"},
         PERSISTENCE_FILES[8]: {"AliasProjectionStore", "prepare_transition", "recover_pending", "current_exact_overrides"},
         PERSISTENCE_FILES[9]: {"AliasesAction::Preview", "AliasesAction::Test", "prepare_transition", "activate_prepared"},
         PERSISTENCE_FILES[10]: {"PacksAction::List", "PacksAction::Doctor", "materialize_pack_action", "expected_revision"},
@@ -489,6 +491,19 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
             raise AliasSpecError(
                 f"{relative} is missing CP2-CP3.3 application tokens: {missing}"
             )
+        if relative == PERSISTENCE_FILES[7]:
+            # Reuse the CP2.2 lifecycle owner; do not demand a second app join.
+            validate_worker = getattr(cp22, "_validate_worker_lifecycle_sources", None)
+            if not callable(validate_worker):
+                raise AliasSpecError(
+                    "CP2.2 shared lifecycle checker is unavailable; "
+                    "the reviewed CP2.2 checker repair is required"
+                )
+            try:
+                runtime = cp22.bounded_text(root / cp22.WORKER_RUNTIME_SOURCE)
+                validate_worker(text, runtime)
+            except cp22.Cp22Error as error:
+                raise AliasSpecError(str(error)) from error
     return {"hostile_cases": len(actual)}
 
 

@@ -61,6 +61,7 @@ from check_documentation_coverage import validate as validate_documentation_cove
 from check_documentation_hygiene import validate as validate_documentation_hygiene
 from check_devops_alias_spec import validate_repository as validate_devops_alias_spec
 from check_feature_assurance import load_and_validate as validate_feature_assurance
+from check_ssh_boundaries import validate_repository as validate_ssh_boundaries
 from check_feature_test_reinforcement import (
     load_and_validate as validate_feature_test_reinforcement,
 )
@@ -330,6 +331,7 @@ def validate() -> None:
     validate_stable_release_workflow(stable_release_policy)
     counts["stable release policy"] = 1
 
+    counts["SSH planning boundaries"] = validate_ssh_boundaries()["source_files"]
     feature_counts = validate_feature_assurance()
     counts["feature assurance entries"] = feature_counts["features"]
     reinforcement_counts = validate_feature_test_reinforcement()

@@ -43,6 +43,7 @@ pub mod shell;
 pub mod shell_integration;
 #[doc(hidden)]
 pub mod shortcut_preferences;
+pub mod ssh_integration;
 mod state;
 pub mod suggestions;
 pub mod table_output;

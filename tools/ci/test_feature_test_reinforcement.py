@@ -180,6 +180,81 @@ class FeatureTestReinforcementTests(unittest.TestCase):
         with self.assertRaises(REINFORCEMENT.ReinforcementError):
             REINFORCEMENT._validate_table_sources(dict(self.native_sources, screen_settings=mutation))
 
+    def test_inline_style_owner_chain_accepts_live_refactored_source(self) -> None:
+        REINFORCEMENT._validate_inline_table_sources(self.native_sources)
+        self.assertEqual(
+            REINFORCEMENT.NATIVE_CONTRACT_SOURCES["inline_pipeline"],
+            "apps/automexia-terminal/src/automexia/inline_pipeline.rs",
+        )
+
+    def test_inline_style_owner_chain_preserves_formatted_equivalents(self) -> None:
+        for newline in ("\n", "\r\n"):
+            source = self.native_sources["inline_pipeline"].replace("\r\n", "\n")
+            self.assertIn("StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES", source)
+            source = source.replace("StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES",
+                                    "StyleFlags::STRIKEOUT\n                            | StyleFlags::ALL_UNDERLINES")
+            if newline == "\r\n":
+                source = source.replace("\n", "\r\n")
+            with self.subTest(newline=repr(newline)):
+                REINFORCEMENT._validate_inline_style_source_chain(dict(self.native_sources, inline_pipeline=source))
+
+    def test_inline_style_owner_chain_rejects_guard_mutations(self) -> None:
+        original = self.native_sources["inline_pipeline"]
+        flags = "StyleFlags::STRIKEOUT | StyleFlags::ALL_UNDERLINES"
+        self.assertIn(flags, original)
+        replacements = (
+            (flags, "StyleFlags::STRIKEOUT"),
+            (flags, "StyleFlags::ALL_UNDERLINES"),
+            (flags, "StyleFlags::STRIKEOUT & StyleFlags::ALL_UNDERLINES"),
+            ("if source.iter().any(|line| {", "if !source.iter().any(|line| {"),
+            ("line.styles.iter().any(|(_, style)| {", "line.styles.iter().all(|(_, style)| {"),
+            ("Some(InlineFallbackReason::UnsupportedStyle);", "Some(InlineFallbackReason::NotTable);"),
+            ("style.flags.intersects(", "style.flags.contains("),
+        )
+        for old, new in replacements:
+            self.assertIn(old, original)
+            changed = original.replace(old, new, 1)
+            with self.subTest(old=old, new=new):
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_inline_style_source_chain(dict(self.native_sources, inline_pipeline=changed))
+        first = original.index("                if source.iter().any(|line| {")
+        end = original.index("                let Some(table) = pipeline_detect(", first)
+        guard = original[first:end]
+        self.assertIn("continue;", guard)
+        variants = {
+            "removed": original[:first] + original[end:],
+            "no-continue": original[:first] + guard.replace("continue;", "", 1) + original[end:],
+            "comment-only": original[:first] + "/*" + guard + "*/\n" + original[end:],
+            "literal-only": original[:first] + "let unused = " + json.dumps(guard) + ";\n" + original[end:],
+            "outside-refresh": original[:first] + original[end:] + "\nfn unrelated() {\n" + guard + "}\n",
+        }
+        without = original[:first] + original[end:]
+        insert = without.index("                let layout = match table.wrap(", first)
+        variants["after-detection"] = without[:insert] + guard + without[insert:]
+        for kind, changed in variants.items():
+            with self.subTest(kind=kind):
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_inline_style_source_chain(dict(self.native_sources, inline_pipeline=changed))
+
+    def test_inline_style_owner_chain_rejects_disconnected_dispatch(self) -> None:
+        source = self.native_sources["inline_capture"]
+        mutations = (
+            ('include!("inline_pipeline.rs");', ''),
+            ('include!("inline_pipeline.rs");', '// include!("inline_pipeline.rs");'),
+            ('include!("inline_pipeline.rs");', '#[cfg(test)]\ninclude!("inline_pipeline.rs");'),
+            ('self.refresh_pipeline(snapshot)', 'false'),
+            ('self.refresh_pipeline(snapshot)', 'self.other_pipeline(snapshot)'),
+        )
+        for old, new in mutations:
+            self.assertIn(old, source)
+            with self.subTest(new=new):
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_inline_style_source_chain(dict(self.native_sources, inline_capture=source.replace(old, new, 1)))
+        missing = dict(self.native_sources)
+        del missing["inline_pipeline"]
+        with self.assertRaises(REINFORCEMENT.ReinforcementError):
+            REINFORCEMENT._validate_inline_style_source_chain(missing)
+
     def test_inline_tables_keep_bounded_capture_projection_and_glyph_evidence(self) -> None:
         REINFORCEMENT._validate_inline_table_sources(self.native_sources)
         for owner, fragment in (

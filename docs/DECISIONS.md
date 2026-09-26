@@ -74,3 +74,9 @@ documentation tree until an explicit publication decision.
 
 D0 is governed by ADR 0012 and preserves the split between application-owned
 terminal sessions and system OpenSSH-owned network and credential authority.
+
+## SSH planning boundary record
+
+[ADR 0080](adr/0080-nonexecuting-ssh-planning-boundary.md) records the current
+non-executing implementation and is proposed for review. It does not approve
+managed SSH activation or change structured-action execution policy.

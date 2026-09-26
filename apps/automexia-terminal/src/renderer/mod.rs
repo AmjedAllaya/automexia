@@ -256,17 +256,12 @@ fn sync_session_metadata<T: rio_backend::event::EventListener>(
     content: &mut RenderableContent,
     terminal: &rio_backend::crosswords::Crosswords<T>,
 ) {
-    // Shell identity and location hints form one discovery input. Retain the
-    // last complete snapshot while a bounded OSC frame is still arriving, so
-    // a nested shell cannot borrow the previous shell's paths or credentials.
-    // Legacy integrations without the framing marker still publish normally.
-    if terminal
-        .user_vars
-        .get("automexia_env_pending")
-        .is_some_and(|value| value != "0")
-    {
+    // Validate one accepted-write interval before publishing any discovery
+    // fact. Pending/unavailable input retains the last admitted snapshot, but
+    // its readiness prevents that snapshot from authorizing new discovery.
+    let Some(frame) = content.session_metadata.observe(terminal) else {
         return;
-    }
+    };
     let live_shell_integration = terminal
         .user_vars
         .get("automexia_shell")
@@ -287,28 +282,28 @@ fn sync_session_metadata<T: rio_backend::event::EventListener>(
     if !retain_seed {
         sync_optional_metadata(
             &mut content.shell_distro,
-            terminal.user_vars.get("automexia_distro"),
+            frame.value(terminal, "automexia_distro"),
         );
         sync_optional_metadata(
             &mut content.shell_os_version,
-            terminal.user_vars.get("automexia_os_version"),
+            frame.value(terminal, "automexia_os_version"),
         );
         sync_optional_metadata(
             &mut content.shell_name,
-            terminal.user_vars.get("automexia_shell_name"),
+            frame.value(terminal, "automexia_shell_name"),
         );
         sync_optional_metadata(
             &mut content.shell_user,
-            terminal.user_vars.get("automexia_shell_user"),
+            frame.value(terminal, "automexia_shell_user"),
         );
         sync_optional_metadata(
             &mut content.shell_path,
-            terminal.user_vars.get("automexia_shell_path"),
+            frame.value(terminal, "automexia_shell_path"),
         );
         content.shell_integration = live_shell_integration;
         automexia_devops::sync_location_hints(
             &mut content.shell_environment,
-            |name| terminal.user_vars.get(name).map(String::as_str),
+            |name| frame.value(terminal, name).map(String::as_str),
             live_shell_integration,
             content.shell_name.as_deref(),
         );
@@ -794,7 +789,7 @@ fn semantic_snapshot(
             shell_integration: rc.shell_integration,
             shell_pid: identity.1,
         },
-        metadata_readiness: session_metadata::MetadataReadiness::Complete,
+        metadata_readiness: rc.session_metadata.readiness(),
         prompt_active: rc.shell_prompt_active,
         origin_y,
         bottom_y: origin_y + rc.screen_lines as f32 * cell_height,
@@ -1631,6 +1626,8 @@ impl Renderer {
             .retain(|route, _| visible_inactive_routes.contains(route));
 
         if self.devops_context_enabled {
+            self.devops_status
+                .set_metadata_readiness(active_route, active_pane.metadata_readiness);
             let refresh_pending = self
                 .devops_status
                 .refresh_session_context(&active_pane.session, || {
@@ -1654,6 +1651,7 @@ impl Renderer {
                 debug_assert!(!pane.is_active);
                 let route = pane.session.session_id;
                 let status = self.devops_statuses.entry(route).or_default();
+                status.set_metadata_readiness(route, pane.metadata_readiness);
                 inactive_refresh_pending |= status
                     .refresh_visible_session(&pane.session, || {
                         context_manager.devops_refresh_completion(route)
@@ -2485,7 +2483,8 @@ mod prompt_visual_anchor_tests {
                               \x1b]1337;SetUserVar=automexia_shell_path=aG9zdC1zaGVsbA==\x07\
                               \x1b]1337;SetUserVar=automexia_distro=\x07\
                               \x1b]1337;SetUserVar=automexia_os_version=\x07\
-                              \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07";
+                              \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07\
+                              \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=\x07";
         for byte in return_to_host {
             processor.advance(&mut terminal, std::slice::from_ref(byte));
             sync_session_metadata(&mut content, &terminal);
@@ -2505,42 +2504,37 @@ mod prompt_visual_anchor_tests {
 
     #[test]
     fn context_ownership_malformed_shell_frame_marker_retains_complete_snapshot() {
-        let mut terminal = Crosswords::new(
-            CrosswordsSize::new(96, 10),
-            rio_backend::ansi::CursorShape::Block,
-            VoidListener {},
-            WindowId::from(0),
-            0,
-            128,
-        );
-        let mut processor = Processor::default();
-        let mut content =
-            RenderableContent::new(crate::context::renderable::Cursor::default());
-        let initial = b"\x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
-                        \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
-                        \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07";
-        let partial = b"\x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07\
-                        \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvZ3Vlc3Q=\x07";
-        // Literal wire payloads independently encode "invalid", "", and "00".
+        // An invalid begin must not become valid merely because it is followed
+        // by a zero. Each case starts from an independent legacy terminal.
         for marker in [
             b"\x1b]1337;SetUserVar=automexia_env_pending=aW52YWxpZA==\x07".as_slice(),
             b"\x1b]1337;SetUserVar=automexia_env_pending=\x07".as_slice(),
             b"\x1b]1337;SetUserVar=automexia_env_pending=MDA=\x07".as_slice(),
         ] {
-            terminal.user_vars.remove("automexia_env_pending");
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(96, 10),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                128,
+            );
+            let mut processor = Processor::default();
+            let mut content =
+                RenderableContent::new(crate::context::renderable::Cursor::default());
+            let initial = b"\x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+                            \x1b]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==\x07\
+                            \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvaG9zdA==\x07";
+            let partial = b"\x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07\
+                            \x1b]1337;SetUserVar=automexia_env_HOME=L2ZpeHR1cmUvZ3Vlc3Q=\x07";
             processor.advance(&mut terminal, initial);
             sync_session_metadata(&mut content, &terminal);
-            assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
             let complete_hints = content.shell_environment.clone();
             processor.advance(&mut terminal, marker);
             for byte in partial {
                 processor.advance(&mut terminal, std::slice::from_ref(byte));
                 sync_session_metadata(&mut content, &terminal);
-                assert_eq!(
-                    content.shell_name.as_deref(),
-                    Some("PowerShell"),
-                    "malformed marker exposed partial identity"
-                );
+                assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
                 assert_eq!(content.shell_environment, complete_hints);
             }
             processor.advance(
@@ -2548,6 +2542,28 @@ mod prompt_visual_anchor_tests {
                 b"\x1b]1337;SetUserVar=automexia_env_pending=MA==\x07",
             );
             sync_session_metadata(&mut content, &terminal);
+            assert_eq!(
+                content.session_metadata.readiness(),
+                session_metadata::MetadataReadiness::Unavailable
+            );
+            assert_eq!(content.shell_name.as_deref(), Some("PowerShell"));
+            assert_eq!(content.shell_environment, complete_hints);
+
+            processor.advance(
+                &mut terminal,
+                b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07",
+            );
+            processor.advance(&mut terminal, partial);
+            processor.advance(
+                &mut terminal,
+                b"\x1b]1337;SetUserVar=automexia_env_KUBECONFIG=\x07\
+                  \x1b]1337;SetUserVar=automexia_env_pending=MA==\x07",
+            );
+            sync_session_metadata(&mut content, &terminal);
+            assert_eq!(
+                content.session_metadata.readiness(),
+                session_metadata::MetadataReadiness::Complete
+            );
             assert_eq!(content.shell_name.as_deref(), Some("bash"));
             assert_eq!(content.shell_environment["HOME"], "/fixture/guest");
         }
@@ -2577,8 +2593,25 @@ mod prompt_visual_anchor_tests {
         sync_session_metadata(&mut content, &terminal);
         assert!(content.seeded_session_metadata);
         assert_eq!(content.shell_name.as_deref(), Some("seed-shell"));
-        // Older integrations omit the framing marker entirely.
+        // A genuinely legacy terminal remains supported, but removing a
+        // framing marker after begin cannot turn an incomplete frame into one.
         terminal.user_vars.remove("automexia_env_pending");
+        sync_session_metadata(&mut content, &terminal);
+        assert_eq!(
+            content.session_metadata.readiness(),
+            session_metadata::MetadataReadiness::Unavailable
+        );
+        assert!(content.seeded_session_metadata);
+        assert_eq!(content.shell_name.as_deref(), Some("seed-shell"));
+        processor.advance(
+            &mut terminal,
+            b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07\
+              \x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+              \x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07\
+              \x1b]1337;SetUserVar=automexia_env_HOME=\x07\
+              \x1b]1337;SetUserVar=automexia_env_KUBECONFIG=\x07\
+              \x1b]1337;SetUserVar=automexia_env_pending=MA==\x07",
+        );
         sync_session_metadata(&mut content, &terminal);
         assert!(!content.seeded_session_metadata);
         assert_eq!(content.shell_name.as_deref(), Some("bash"));

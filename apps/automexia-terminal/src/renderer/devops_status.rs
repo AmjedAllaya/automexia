@@ -15,6 +15,7 @@ use rio_backend::sugarloaf::Sugarloaf;
 use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, SessionFacts};
 use automexia_ui_model::{self, IconOptics, Segment};
 
+use super::session_metadata::MetadataReadiness;
 use crate::automexia::runtime;
 use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
 
@@ -92,6 +93,9 @@ enum SnapshotCandidate {
 #[derive(Default)]
 pub struct DevOpsStatus {
     contribution: Option<ContextContribution>,
+    metadata_session: Option<usize>,
+    metadata_readiness: MetadataReadiness,
+    hide_active_metadata: bool,
     /// Materialized segment labels shared by live and historical prompt rows.
     /// Rebuilt only when session facts or the async discovery revision change.
     live_segments: Vec<Segment>,
@@ -111,7 +115,61 @@ pub struct DevOpsStatus {
 }
 
 impl DevOpsStatus {
-    pub(super) fn set_metadata_readiness(&mut self, _session_id: usize, _readiness: super::session_metadata::MetadataReadiness) {}
+    pub(super) fn set_metadata_readiness(
+        &mut self,
+        session_id: usize,
+        readiness: MetadataReadiness,
+    ) {
+        if self.metadata_session == Some(session_id)
+            && self.metadata_readiness == readiness
+        {
+            return;
+        }
+        // A status normally remains route-owned across focus changes. Never
+        // lend another route its active labels if a caller reuses the owner.
+        if self
+            .metadata_session
+            .is_some_and(|previous| previous != session_id)
+        {
+            self.clear();
+        }
+        let revoke = readiness != MetadataReadiness::Complete
+            && (self.metadata_session != Some(session_id)
+                || self.metadata_readiness == MetadataReadiness::Complete);
+        self.metadata_session = Some(session_id);
+        self.metadata_readiness = readiness;
+        if readiness == MetadataReadiness::Complete {
+            self.hide_active_metadata = false;
+            return;
+        }
+        if readiness == MetadataReadiness::Unavailable {
+            self.hide_active_metadata = true;
+        }
+        if revoke {
+            runtime::invalidate_devops_session(session_id);
+        }
+        self.contribution = None;
+        self.live_segments.clear();
+        self.live_segments_session = None;
+        self.live_segments_snapshot_revision = 0;
+        self.live_segments_revision = self.live_segments_revision.wrapping_add(1);
+        self.snapshot_revision = 0;
+        self.observed_global_generation = 0;
+        self.last_session = None;
+        self.last_refresh_request = None;
+        self.refresh_pending = false;
+        self.request_in_flight = false;
+        // Keep the last admitted active labels for historical archival. Pending
+        // may freeze that exact prompt; unavailable hides it without rewriting
+        // completed prompt history or lending it to a new prompt.
+    }
+
+    fn metadata_allows(&self, session_id: usize) -> bool {
+        self.metadata_readiness == MetadataReadiness::Complete
+            && self
+                .metadata_session
+                .is_none_or(|owner| owner == session_id)
+    }
 
     pub fn clear(&mut self) {
         *self = Self::default();
@@ -177,7 +235,7 @@ impl DevOpsStatus {
             historical_anchors,
         );
 
-        if prompt_active {
+        if prompt_active && self.metadata_allows(session.session_id) {
             if let Some(anchor) = live_anchor {
                 let segments_revision = self.live_segments_revision;
                 match self.active_prompt.as_mut() {
@@ -349,6 +407,12 @@ impl DevOpsStatus {
         session_id: usize,
         anchor: &PromptAnchor,
     ) -> &[Segment] {
+        if self
+            .metadata_session
+            .is_some_and(|owner| owner != session_id)
+        {
+            return &[];
+        }
         if let Some(active) = self.active_prompt.as_ref().filter(|active| {
             active.session_id == session_id
                 && same_prompt_identity(
@@ -358,7 +422,11 @@ impl DevOpsStatus {
                     anchor.key,
                 )
         }) {
-            return &active.segments;
+            return if self.hide_active_metadata {
+                &[]
+            } else {
+                &active.segments
+            };
         }
         self.cached_segments(session_id, anchor)
             .unwrap_or(&self.live_segments)
@@ -466,6 +534,9 @@ impl DevOpsStatus {
     ) where
         F: FnOnce() -> runtime::DevOpsRefreshCompletion,
     {
+        if !self.metadata_allows(session.session_id) {
+            return;
+        }
         let session_changed = self
             .last_session
             .as_ref()
@@ -517,6 +588,9 @@ impl DevOpsStatus {
     }
 
     fn sync_cached_snapshot(&mut self, session: &SessionFacts) {
+        if !self.metadata_allows(session.session_id) {
+            return;
+        }
         let global_generation = runtime::devops_generation();
         if global_generation == self.observed_global_generation {
             return;
@@ -540,6 +614,9 @@ impl DevOpsStatus {
         cached_session: Option<&SessionFacts>,
         contribution: ContextContribution,
     ) {
+        if !self.metadata_allows(session.session_id) {
+            return;
+        }
         match snapshot_candidate(
             self.snapshot_revision,
             revision,
@@ -566,6 +643,9 @@ impl DevOpsStatus {
     }
 
     fn ensure_live_segments(&mut self, session: &SessionFacts) {
+        if !self.metadata_allows(session.session_id) {
+            return;
+        }
         if self.live_segments_session.as_ref() == Some(session)
             && self.live_segments_snapshot_revision == self.snapshot_revision
         {
@@ -1359,6 +1439,27 @@ mod tests {
         assert!(same_prompt_identity(None, 12, None, 12));
         assert!(!same_prompt_identity(None, 12, None, 99));
     }
+    #[test]
+    fn metadata_readiness_other_route_cannot_borrow_live_segments() {
+        let mut status = history_status(417, "historic", "live");
+        status.set_metadata_readiness(417, MetadataReadiness::Complete);
+        assert!(status
+            .segments_for_prompt(418, &history_anchor())
+            .is_empty());
+        assert_eq!(historical_value(&status, 417), Some("historic"));
+    }
+
+    #[test]
+    fn metadata_readiness_repeated_pending_does_not_revoke_each_frame() {
+        let mut status = history_status(419, "historic", "live");
+        status.set_metadata_readiness(419, MetadataReadiness::Pending);
+        let revision = status.live_segments_revision;
+        for _ in 0..128 {
+            status.set_metadata_readiness(419, MetadataReadiness::Pending);
+            assert_eq!(status.live_segments_revision, revision);
+        }
+    }
+
     mod metadata_readiness {
         include!("devops_metadata_readiness_tests.rs");
     }

@@ -119,8 +119,24 @@ impl RuntimeState {
         Ok(true)
     }
 
-    fn invalidate_devops_session(&mut self, _session_id: usize) -> bool {
-        false
+    fn invalidate_devops_session(&mut self, session_id: usize) -> bool {
+        // Retain the capsule as a generation tombstone. Removing it would let
+        // unchanged facts recreate revision 1 and admit a delayed registration.
+        let mut changed = false;
+        if let Some(capsule) = self.capsules.get_mut(&session_id) {
+            if capsule.revision != 0 {
+                capsule.revision = capsule.revision.checked_add(1).unwrap_or(0);
+                changed = true;
+            }
+        }
+        if let Some((_, token)) = self.pending.remove(&session_id) {
+            token.cancel();
+            changed = true;
+        }
+        let before = self.devops_snapshots.len();
+        let id = SessionId::new(session_id as u64);
+        self.devops_snapshots.retain(|key, _| key.session_id != id);
+        changed || before != self.devops_snapshots.len()
     }
 
     fn clear_context(&mut self) {
@@ -165,7 +181,8 @@ impl RuntimeState {
         context_revision: u64,
         cancellation: CancellationToken,
     ) -> bool {
-        if !self.context_status_enabled()
+        if capsule_revision == 0
+            || !self.context_status_enabled()
             || self.context_revision != context_revision
             || cancellation.is_cancelled()
             || self
@@ -265,11 +282,14 @@ impl RuntimeState {
 
     fn capsule_revision(&mut self, session: &SessionFacts) -> u64 {
         match self.capsules.get_mut(&session.session_id) {
+            // Zero is a permanent exhausted revision for this route, not an
+            // initial value. Neither equal nor changed facts may revive it.
+            Some(capsule) if capsule.revision == 0 => 0,
             Some(capsule) if same_devops_context(&capsule.session, session) => {
                 capsule.revision
             }
             Some(capsule) => {
-                capsule.revision = capsule.revision.wrapping_add(1).max(1);
+                capsule.revision = capsule.revision.checked_add(1).unwrap_or(0);
                 capsule.session = session.clone();
                 let revision = capsule.revision;
                 if let Some((_, token)) = self.pending.remove(&session.session_id) {
@@ -299,9 +319,11 @@ impl RuntimeState {
         operation_id: OperationId,
         capsule_revision: u64,
     ) -> bool {
-        self.capsules
-            .get(&session_id)
-            .is_some_and(|capsule| capsule.revision == capsule_revision)
+        capsule_revision != 0
+            && self
+                .capsules
+                .get(&session_id)
+                .is_some_and(|capsule| capsule.revision == capsule_revision)
             && self
                 .pending
                 .get(&session_id)
@@ -557,6 +579,17 @@ pub fn devops_generation() -> u32 {
     DEVOPS_GENERATION.current()
 }
 
+/// Revoke one route's cached and in-flight discovery without starting a worker.
+/// Called after releasing the terminal snapshot lock. Other routes and
+/// completed prompt history remain owned by their existing components.
+pub fn invalidate_devops_session(session_id: usize) -> bool {
+    let changed = write_runtime().invalidate_devops_session(session_id);
+    if changed {
+        DEVOPS_GENERATION.advance();
+    }
+    changed
+}
+
 pub fn context_contribution(
     session_id: usize,
 ) -> (u32, Option<SessionFacts>, ContextContribution) {
@@ -798,7 +831,8 @@ fn seed_devops_snapshot(
 ) -> bool {
     {
         let mut runtime = write_runtime();
-        if !runtime.context_status_enabled()
+        if capsule_revision == 0
+            || !runtime.context_status_enabled()
             || runtime.context_revision != context_revision
             || runtime
                 .capsules
@@ -879,6 +913,9 @@ pub fn request_devops_refresh(
         }
         (runtime.capsule_revision(session), runtime.context_revision)
     };
+    if capsule_revision == 0 {
+        return RefreshSubmission::Rejected;
+    }
     let _ = seed_devops_snapshot(
         session,
         capsule_revision,

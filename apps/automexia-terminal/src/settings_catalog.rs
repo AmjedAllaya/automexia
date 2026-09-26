@@ -434,15 +434,21 @@ mod appearance_tests {
         let mut base = adaptive_base();
         base.fonts.size = 18.25;
         base.force_theme = Some(AppearanceTheme::Light);
-        let mut prefs = UserPreferences::default();
-        prefs.font_size = Some(21.5);
+
+        let prefs = UserPreferences {
+            font_size: Some(21.5),
+            ..UserPreferences::default()
+        };
+
         let catalog = catalog(9, &base, &prefs, &[]).unwrap();
+
         let font = catalog
             .get(&settings::SettingId::new(FONT).unwrap())
             .unwrap();
         assert_eq!(font.value, SettingValue::Number(21.5));
         assert_eq!(font.default, SettingValue::Number(18.25));
         assert_eq!(font.origin, ValueOrigin::User);
+
         let theme = catalog
             .get(&settings::SettingId::new(THEME).unwrap())
             .unwrap();
