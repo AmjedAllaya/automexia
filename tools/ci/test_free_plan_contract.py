@@ -20,6 +20,26 @@ CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RU
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_cargo_updates_keep_shared_manifests_and_lockfiles_together(self) -> None:
+        import yaml
+
+        config = yaml.safe_load((ROOT / ".github/dependabot.yml").read_text(encoding="utf-8"))
+        cargo = [entry for entry in config["updates"] if entry["package-ecosystem"] == "cargo"]
+        # Fuzz targets consume path crates with workspace-inherited dependencies.
+        # Separate jobs can update the shared Cargo.toml but only one Cargo.lock.
+        self.assertEqual(len(cargo), 1, "Cargo workspaces must share an update job")
+        self.assertNotIn("directory", cargo[0])
+        self.assertEqual(set(cargo[0]["directories"]), {"/", "/fuzz"})
+        for update_type in ("version-updates", "security-updates"):
+            with self.subTest(update_type=update_type):
+                groups = [
+                    group for group in cargo[0]["groups"].values()
+                    if group.get("applies-to", "version-updates") == update_type
+                ]
+                self.assertEqual(len(groups), 1)
+                self.assertEqual(groups[0]["patterns"], ["*"])
+                self.assertNotIn("dependency-type", groups[0])
+
     def test_compiler_selection_matches_repository_pin(self) -> None:
         import yaml
 

@@ -77,9 +77,13 @@ struct Session {
 }
 impl Session {
     fn close(mut self) {
-        self.sender
-            .send(Msg::Shutdown)
-            .expect("request fixture shutdown");
+        // A finite fixture can exit after publishing all verified rows and
+        // readiness. Disconnection is already-stopped, not failed cleanup;
+        // still require the worker's bounded join and reject real I/O errors.
+        match self.sender.send(Msg::Shutdown) {
+            Ok(()) | Err(corcovado::channel::SendError::Disconnected(_)) => {}
+            Err(error) => panic!("request fixture shutdown: {error:?}"),
+        }
         let mut handle = self.handle.take().unwrap();
         assert!(
             handle.join_timeout(Duration::from_secs(10)),

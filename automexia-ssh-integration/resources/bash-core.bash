@@ -26,6 +26,7 @@ __amx_ssh_active=1
 command -v base64 >/dev/null 2>&1 && __amx_ssh_can_cwd=1
 function __amx_ssh_prompt {
     local __amx_status=$? __amx_path=${PWD:-} __amx_encoded=''
+    local __amx_ssh_path_limit='@@PATH_LIMIT@@'
     local LC_ALL=C
     # Bash writes its prompt to stderr. Keep metadata on that same terminal;
     # stdout redirection must never capture control sequences from this hook.
@@ -42,7 +43,7 @@ function __amx_ssh_prompt {
         return "$__amx_status"
     fi
     if (( __amx_ssh_can_cwd )); then
-        if [[ ${#__amx_path} -gt @@PATH_LIMIT@@ || $__amx_path != /* ||
+        if [[ ${#__amx_path} -gt $__amx_ssh_path_limit || $__amx_path != /* ||
               $__amx_path == *[[:cntrl:]]* ]]; then
             __amx_path=''
         fi

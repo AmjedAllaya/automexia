@@ -4,6 +4,461 @@
 [cargo-vet]
 version = "0.10"
 
+[imports.bytecode-alliance]
+url = "https://raw.githubusercontent.com/bytecodealliance/wasmtime/f543666f4c59adbc8d22eabb975215fb78595b61/supply-chain/audits.toml"
+exclude = [
+    "addr2line",
+    "adler",
+    "adler2",
+    "ahash",
+    "aho-corasick",
+    "allocator-api2",
+    "ambient-authority",
+    "anes",
+    "ansi_term",
+    "anstream",
+    "anstyle",
+    "anstyle-parse",
+    "anstyle-query",
+    "anstyle-wincon",
+    "anyhow",
+    "arbitrary",
+    "arbtest",
+    "arrayref",
+    "arrayvec",
+    "async-task",
+    "async-trait",
+    "atomic-waker",
+    "atty",
+    "auditable-serde",
+    "backtrace",
+    "base64",
+    "beef",
+    "bitflags",
+    "bitmaps",
+    "block-buffer",
+    "bstr",
+    "bumpalo",
+    "byteorder",
+    "bytes",
+    "bytesize",
+    "bzip2",
+    "bzip2-sys",
+    "camino",
+    "cap-fs-ext",
+    "cap-net-ext",
+    "cap-primitives",
+    "cap-rand",
+    "cap-std",
+    "cap-tempfile",
+    "cap-time-ext",
+    "capstone",
+    "capstone-sys",
+    "cargo-platform",
+    "cargo_metadata",
+    "cast",
+    "castaway",
+    "cc",
+    "cfg-if",
+    "ciborium",
+    "ciborium-io",
+    "ciborium-ll",
+    "cipher",
+    "clap",
+    "clap_builder",
+    "clap_complete",
+    "clap_derive",
+    "clap_lex",
+    "cobs",
+    "codespan-reporting",
+    "colorchoice",
+    "compact_str",
+    "console",
+    "constant_time_eq",
+    "core-foundation-sys",
+    "cpp_demangle",
+    "cpufeatures",
+    "cranelift",
+    "cranelift-interpreter",
+    "cranelift-jit",
+    "cranelift-module",
+    "cranelift-object",
+    "cranelift-reader",
+    "cranelift-serde",
+    "cranelift-wasm",
+    "criterion",
+    "criterion-plot",
+    "crossbeam-channel",
+    "crossbeam-epoch",
+    "crossbeam-utils",
+    "crypto-common",
+    "der",
+    "derive_arbitrary",
+    "digest",
+    "displaydoc",
+    "dlmalloc",
+    "easy-smt",
+    "ed25519",
+    "either",
+    "embedded-io",
+    "encode_unicode",
+    "env_filter",
+    "env_logger",
+    "equivalent",
+    "errno",
+    "errno-dragonfly",
+    "escape8259",
+    "fallible-iterator",
+    "fastrand",
+    "fd-lock",
+    "file-per-thread-logger",
+    "filecheck",
+    "filetime",
+    "find-msvc-tools",
+    "fixedbitset",
+    "flate2",
+    "foldhash",
+    "foreign-types",
+    "foreign-types-shared",
+    "form_urlencoded",
+    "fs-set-times",
+    "fslock",
+    "futures",
+    "futures-channel",
+    "futures-core",
+    "futures-executor",
+    "futures-io",
+    "futures-lite",
+    "futures-macro",
+    "futures-sink",
+    "futures-task",
+    "futures-util",
+    "fxprof-processed-profile",
+    "gdbstub",
+    "gdbstub_arch",
+    "getrandom",
+    "gimli",
+    "glob",
+    "h2",
+    "hashbrown",
+    "heck",
+    "hermit-abi",
+    "home",
+    "http",
+    "http-body",
+    "http-body-util",
+    "httparse",
+    "httpdate",
+    "hyper",
+    "iana-time-zone",
+    "iana-time-zone-haiku",
+    "icu_properties",
+    "id-arena",
+    "idna",
+    "im-rc",
+    "indexmap",
+    "indexmap-nostd",
+    "inout",
+    "instant",
+    "io-extras",
+    "io-lifetimes",
+    "is-terminal",
+    "is_terminal_polyfill",
+    "itertools",
+    "itoa",
+    "ittapi",
+    "ittapi-sys",
+    "jiff",
+    "jiff-static",
+    "jobserver",
+    "js-sys",
+    "json-from-wast",
+    "leb128",
+    "leb128fmt",
+    "libc",
+    "libfuzzer-sys",
+    "libloading",
+    "libm",
+    "libtest-mimic",
+    "linux-raw-sys",
+    "litemap",
+    "lock_api",
+    "log",
+    "mach2",
+    "macro-string",
+    "managed",
+    "matchers",
+    "memchr",
+    "memfd",
+    "memmap2",
+    "memoffset",
+    "memory_units",
+    "miniz_oxide",
+    "mio",
+    "mutatis",
+    "mutatis-derive",
+    "native-tls",
+    "nu-ansi-term",
+    "num-conv",
+    "num-traits",
+    "num_cpus",
+    "object",
+    "once_cell",
+    "once_cell_polyfill",
+    "openssl",
+    "openssl-macros",
+    "openssl-probe",
+    "openssl-sys",
+    "openvino",
+    "openvino-finder",
+    "openvino-sys",
+    "ort",
+    "ort-sys",
+    "overload",
+    "parking",
+    "parking_lot",
+    "parking_lot_core",
+    "paste",
+    "pastey",
+    "peeking_take_while",
+    "pem-rfc7468",
+    "percent-encoding",
+    "pin-project-lite",
+    "pin-utils",
+    "pkg-config",
+    "postcard",
+    "pretty_env_logger",
+    "prettyplease",
+    "proc-macro-error",
+    "proc-macro2",
+    "pulldown-cmark",
+    "quote",
+    "rand",
+    "rand_xorshift",
+    "raw-cpuid",
+    "regalloc2",
+    "regex",
+    "regex-automata",
+    "regex-syntax",
+    "region",
+    "rustc-demangle",
+    "rustc-hash",
+    "rustc_version",
+    "rustix",
+    "rustix-linux-procfs",
+    "rustls",
+    "rustls-pki-types",
+    "rustls-webpki",
+    "ryu",
+    "safetensors",
+    "same-file",
+    "schannel",
+    "scopeguard",
+    "sct",
+    "semver",
+    "serde",
+    "serde_core",
+    "serde_derive",
+    "serde_json",
+    "serde_spanned",
+    "serde_yaml",
+    "sha1",
+    "sha1_smol",
+    "sha2",
+    "sharded-slab",
+    "shlex",
+    "shuffling-allocator",
+    "signal-hook-registry",
+    "similar",
+    "sized-chunks",
+    "slab",
+    "slice-group-by",
+    "smallvec",
+    "socket2",
+    "socks",
+    "souper-ir",
+    "spin",
+    "sptr",
+    "static_assertions",
+    "strsim",
+    "structopt",
+    "structopt-derive",
+    "syn",
+    "system-interface",
+    "tar",
+    "target-lexicon",
+    "tch",
+    "tempfile",
+    "termcolor",
+    "terminal_size",
+    "test-log",
+    "test-log-macros",
+    "textwrap",
+    "thiserror",
+    "thiserror-impl",
+    "thread_local",
+    "tinyvec",
+    "tinyvec_macros",
+    "tokio",
+    "tokio-macros",
+    "tokio-native-tls",
+    "tokio-openssl",
+    "tokio-rustls",
+    "tokio-util",
+    "toml",
+    "toml_datetime",
+    "toml_edit",
+    "toml_parser",
+    "toml_write",
+    "toml_writer",
+    "topological-sort",
+    "torch-sys",
+    "tracing",
+    "tracing-attributes",
+    "tracing-core",
+    "tracing-log",
+    "tracing-subscriber",
+    "try-lock",
+    "unarray",
+    "unicase",
+    "unicode-bidi",
+    "unicode-ident",
+    "unicode-normalization",
+    "unicode-width",
+    "unsafe-libyaml",
+    "ureq",
+    "ureq-proto",
+    "url",
+    "utf-8",
+    "vcpkg",
+    "waker-fn",
+    "walkdir",
+    "want",
+    "wasi",
+    "wasi-cap-std-sync",
+    "wasi-common",
+    "wasi-nn",
+    "wasi-tokio",
+    "wasip1",
+    "wasip2",
+    "wasip3",
+    "wasm-bindgen",
+    "wasm-bindgen-backend",
+    "wasm-bindgen-macro",
+    "wasm-bindgen-macro-support",
+    "wasm-bindgen-shared",
+    "wasm-compose",
+    "wasm-coredump-builder",
+    "wasm-coredump-encoder",
+    "wasm-coredump-types",
+    "wasm-encoder",
+    "wasm-metadata",
+    "wasm-mutate",
+    "wasm-smith",
+    "wasm-wave",
+    "wasmi",
+    "wasmi_arena",
+    "wasmi_core",
+    "wasmparser",
+    "wasmparser-nostd",
+    "wasmprinter",
+    "wasmtime-asm-macros",
+    "wasmtime-c-api-impl",
+    "wasmtime-c-api-macros",
+    "wasmtime-cache",
+    "wasmtime-cli",
+    "wasmtime-cli-flags",
+    "wasmtime-component-macro",
+    "wasmtime-component-util",
+    "wasmtime-cranelift",
+    "wasmtime-cranelift-shared",
+    "wasmtime-explorer",
+    "wasmtime-fiber",
+    "wasmtime-internal-asm-macros",
+    "wasmtime-internal-c-api-macros",
+    "wasmtime-internal-cache",
+    "wasmtime-internal-debugger",
+    "wasmtime-internal-error",
+    "wasmtime-internal-explorer",
+    "wasmtime-internal-gdbstub-component-artifact",
+    "wasmtime-internal-math",
+    "wasmtime-internal-slab",
+    "wasmtime-internal-winch",
+    "wasmtime-internal-wmemcheck",
+    "wasmtime-jit",
+    "wasmtime-jit-debug",
+    "wasmtime-jit-icache-coherence",
+    "wasmtime-math",
+    "wasmtime-runtime",
+    "wasmtime-slab",
+    "wasmtime-types",
+    "wasmtime-wasi",
+    "wasmtime-wasi-config",
+    "wasmtime-wasi-crypto",
+    "wasmtime-wasi-http",
+    "wasmtime-wasi-io",
+    "wasmtime-wasi-keyvalue",
+    "wasmtime-wasi-nn",
+    "wasmtime-wasi-runtime-config",
+    "wasmtime-wasi-threads",
+    "wasmtime-wasi-tls",
+    "wasmtime-wasi-tls-nativetls",
+    "wasmtime-wasi-tls-openssl",
+    "wasmtime-wast",
+    "wasmtime-winch",
+    "wasmtime-wit-bindgen",
+    "wasmtime-wizer",
+    "wasmtime-wmemcheck",
+    "wast",
+    "wat",
+    "web-sys",
+    "webpki-root-certs",
+    "webpki-roots",
+    "which",
+    "wiggle",
+    "wiggle-generate",
+    "wiggle-macro",
+    "wiggle-test",
+    "winapi-util",
+    "winch-codegen",
+    "windows",
+    "windows-core",
+    "windows-implement",
+    "windows-interface",
+    "windows-link",
+    "windows-sys",
+    "windows-targets",
+    "windows_aarch64_gnullvm",
+    "windows_aarch64_msvc",
+    "windows_i686_gnu",
+    "windows_i686_gnullvm",
+    "windows_i686_msvc",
+    "windows_x86_64_gnu",
+    "windows_x86_64_gnullvm",
+    "windows_x86_64_msvc",
+    "winnow",
+    "winx",
+    "wit-bindgen",
+    "wit-bindgen-core",
+    "wit-bindgen-rt",
+    "wit-bindgen-rust",
+    "wit-bindgen-rust-lib",
+    "wit-bindgen-rust-macro",
+    "wit-component",
+    "wit-parser",
+    "witx",
+    "wstd",
+    "wstd-macro",
+    "xattr",
+    "yoke",
+    "yoke-derive",
+    "zerofrom",
+    "zerofrom-derive",
+    "zeroize",
+    "zstd",
+    "zstd-safe",
+]
+
 [policy.corcovado]
 audit-as-crates-io = true
 
@@ -492,58 +947,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.cpufeatures]]
 version = "0.3.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-assembler-x64]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-assembler-x64-meta]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-bforest]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-bitset]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-codegen]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-codegen-meta]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-codegen-shared]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-control]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-entity]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-frontend]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-isle]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-native]]
-version = "0.135.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.cranelift-srcgen]]
-version = "0.135.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.crc]]
@@ -1695,8 +2098,9 @@ version = "1.0.107"
 criteria = "safe-to-deploy"
 
 [[exemptions.process-wrap]]
-version = "9.1.0"
+version = "10.0.0"
 criteria = "safe-to-deploy"
+notes = "Version-specific compatibility review; see reviews/2026-10-ci-dependencies.md. Not an independent full audit."
 
 [[exemptions.profiling]]
 version = "1.0.18"
@@ -1705,14 +2109,6 @@ criteria = "safe-to-deploy"
 [[exemptions.proptest]]
 version = "1.11.0"
 criteria = "safe-to-run"
-
-[[exemptions.pulley-interpreter]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.pulley-macros]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
 
 [[exemptions.pxfm]]
 version = "0.1.30"
@@ -2404,54 +2800,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.wasmprinter]]
 version = "0.254.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-environ]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-component-macro]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-component-util]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-core]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-cranelift]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-fiber]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-jit-debug]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-jit-icache-coherence]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-unwinder]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-versioned-export-macros]]
-version = "48.0.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmtime-internal-wit-bindgen]]
-version = "48.0.1"
 criteria = "safe-to-deploy"
 
 [[exemptions.wast]]

@@ -239,13 +239,19 @@ fn windows_default_paths(
 
 #[cfg(not(target_arch = "wasm32"))]
 pub(crate) fn bounded_local_path(path: &std::path::Path) -> bool {
+    // Check the original spelling before components() erases leading double
+    // slashes or a parent traversal removes a component containing controls.
+    // Normalization must never turn rejected provider input into local authority.
+    if path.as_os_str().len() > 4096
+        || path.to_string_lossy().chars().any(char::is_control)
+        || !local_config_path(path)
+    {
+        return false;
+    }
     let Some(path) = normalized_local_path(path) else {
         return false;
     };
-    path.as_os_str().len() <= 4096
-        && !path.to_string_lossy().chars().any(char::is_control)
-        && local_config_path(&path)
-        && local_volume(&path)
+    local_config_path(&path) && local_volume(&path)
 }
 
 fn normalized_local_path(path: &std::path::Path) -> Option<std::path::PathBuf> {
@@ -466,6 +472,42 @@ fn local_config_path(path: &std::path::Path) -> bool {
     #[cfg(not(windows))]
     {
         !path.to_string_lossy().starts_with("//")
+    }
+}
+
+#[cfg(all(test, not(target_arch = "wasm32")))]
+#[test]
+fn passive_paths_reject_controls_before_normalizing_components() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config");
+    assert!(bounded_local_path(&config));
+    assert!(bounded_local_path(&root.path().join("child/../config")));
+    for component in ["bad\npath", "bad\rpath", "bad\tpath", "bad\0path"] {
+        let path = root.path().join(component).join("..").join("config");
+        assert!(!bounded_local_path(&path), "discarded control component");
+        assert!(matches!(local_entry(&path), LocalEntry::Rejected));
+        assert!(open_local_file(&path).is_none());
+    }
+}
+
+#[cfg(all(test, unix))]
+#[test]
+fn passive_paths_reject_double_slash_authority_before_normalizing() {
+    let root = tempfile::tempdir().unwrap();
+    let config = root.path().join("config");
+    std::fs::write(
+        &config,
+        "current-context: fixture\ncontexts:\n  - name: fixture\n    context:\n      namespace: demo\n",
+    )
+    .unwrap();
+    assert!(open_local_file(&config).is_some());
+    assert!(from_files(std::slice::from_ref(&config)).is_some());
+    for prefix in ["/", "//"] {
+        let path = std::path::PathBuf::from(format!("{prefix}{}", config.display()));
+        assert!(!bounded_local_path(&path));
+        assert!(matches!(local_entry(&path), LocalEntry::Rejected));
+        assert!(open_local_file(&path).is_none());
+        assert!(from_files(&[path]).is_none());
     }
 }
 

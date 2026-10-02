@@ -1274,7 +1274,18 @@ fn powershell_wsl_roundtrip_keeps_fresh_sessions_and_panes_independent() {
     assert!(changing.shell_os_version.is_none());
     assert_eq!(changing.shell_user.as_deref(), Some("host"));
     assert_eq!(changing.shell_environment["HOME"], "/fixture/host");
-    assert_eq!(changing.shell_environment["USERPROFILE"], "C:/fixture/host");
+    // Only a native Windows frame admits Windows default-home candidates.
+    // Unix still exercises the whole roundtrip, but must discard those hints.
+    assert_eq!(
+        changing
+            .shell_environment
+            .get("USERPROFILE")
+            .map(String::as_str),
+        cfg!(windows).then_some("C:/fixture/host")
+    );
+    for name in ["HOMEDRIVE", "HOMEPATH"] {
+        assert_eq!(changing.shell_environment.contains_key(name), cfg!(windows));
+    }
     assert_eq!(sibling.shell_user.as_deref(), Some("sibling"));
     assert_eq!(fresh.shell_distro.as_deref(), Some("Fixture-Distro"));
 }

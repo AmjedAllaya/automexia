@@ -1,15 +1,20 @@
 version: 2
 updates:
   - package-ecosystem: cargo
-    directory: /
+    # Fuzz path dependencies inherit the root workspace manifest. Update both
+    # lockfiles in one PR whenever that shared manifest changes.
+    directories:
+      - /
+      - /fuzz
     schedule:
       interval: weekly
       day: monday
     groups:
-      cargo-production:
-        dependency-type: production
-      cargo-development:
-        dependency-type: development
+      cargo:
+        patterns: ['*']
+      cargo-security:
+        applies-to: security-updates
+        patterns: ['*']
     open-pull-requests-limit: 10
   - package-ecosystem: github-actions
     directory: /
@@ -18,14 +23,5 @@ updates:
       day: monday
     groups:
       github-actions:
-        patterns: ['*']
-    open-pull-requests-limit: 5
-  - package-ecosystem: cargo
-    directory: /fuzz
-    schedule:
-      interval: weekly
-      day: monday
-    groups:
-      fuzzing:
         patterns: ['*']
     open-pull-requests-limit: 5
