@@ -484,7 +484,7 @@ mod projection_tests {
             .iter()
             .find(|segment| segment.role == SegmentRole::Kubernetes)
             .expect("sanitized namespace remains visible");
-        assert_eq!(badge.label.as_str(), "demospace?");
+        assert_eq!(badge.label.as_str(), "demospace");
         assert!(badge
             .accessibility_label
             .as_str()
