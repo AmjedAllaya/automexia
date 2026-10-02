@@ -242,7 +242,7 @@
           "docs/adr/0073-bounded-extension-worker-retirement.md",
           "docs/adr/0079-shared-settings-and-presentation-preferences.md",
           "docs/SSH-INTEGRATION-LIBRARY.md#architecture",
-          "docs/adr/0080-nonexecuting-ssh-planning-boundary.md"
+          "docs/adr/0086-nonexecuting-ssh-planning-boundary.md"
         ]
       },
       "quality": {

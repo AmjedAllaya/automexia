@@ -78,6 +78,6 @@ terminal sessions and system OpenSSH-owned network and credential authority.
 
 ## SSH planning boundary record
 
-[ADR 0080](adr/0080-nonexecuting-ssh-planning-boundary.md) records the current
+[ADR 0086](adr/0086-nonexecuting-ssh-planning-boundary.md) records the current
 non-executing implementation and is proposed for review. It does not approve
 managed SSH activation or change structured-action execution policy.

@@ -735,4 +735,4 @@ behavior. Optional discovery or review cannot become a second launch owner.
 read-only application CLI. Existing connectivity contracts, native launch review,
 PTY lifetime and VT framing remain authoritative. Its candidate shell resource
 is embedded once and does not create an execution capability. See
-[ADR 0080](adr/0080-nonexecuting-ssh-planning-boundary.md).
+[ADR 0086](adr/0086-nonexecuting-ssh-planning-boundary.md).

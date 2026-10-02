@@ -32,7 +32,7 @@ failure revokes that capability. No C/D execution timing or command status is cl
 
 ## Architecture
 
-See [ADR 0080](adr/0080-nonexecuting-ssh-planning-boundary.md). The crate is
+See [ADR 0086](adr/0086-nonexecuting-ssh-planning-boundary.md). The crate is
 registered in the existing xtask dependency boundary, repository validator and
 coupled feature-assurance records. There is no second review facade, transport,
 process supervisor, terminal engine or scaffolding framework.

@@ -1,4 +1,4 @@
-# ADR 0080: Non-executing SSH planning library
+# ADR 0086: Non-executing SSH planning library
 
 Status: proposed for maintainer review; implementation is non-activating.
 This record grants no remote execution permission and does not amend the

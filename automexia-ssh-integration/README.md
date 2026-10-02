@@ -14,4 +14,4 @@ to the existing QA process owner and controlling-PTY shell tests. It is not a
 packaged application command and never executes SSH.
 
 See [current scope and verification](../docs/SSH-INTEGRATION-LIBRARY.md) and
-[ADR 0080](../docs/adr/0080-nonexecuting-ssh-planning-boundary.md).
+[ADR 0086](../docs/adr/0086-nonexecuting-ssh-planning-boundary.md).
