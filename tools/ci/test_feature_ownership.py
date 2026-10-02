@@ -85,10 +85,14 @@ pub struct Renderer {
     command_results: command_results::CommandResults,
     command_result_states: FxHashMap<usize, command_results::CommandResults>,
 }
-fn render() {
-        if self.devops_context_enabled {
+    fn prepare_prompt_context<T>() {
+        if discovery_enabled {
             self.devops_status.render();
         }
+    }
+    fn prompt_status_for_route() {}
+fn render() {
+        self.prepare_prompt_context(context_manager, &active_pane, &inactive_panes);
         if self.command_result_route != Some(active_route) {
             self.command_results.clear();
         }

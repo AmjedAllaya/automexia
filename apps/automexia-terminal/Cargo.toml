@@ -31,6 +31,7 @@ icons = [
 resources = ["../../LICENSE", "../../NOTICE.md", "../../THIRD_PARTY_NOTICES.md", "../../README.md", "../../shell-integration"]
 binaries = [
     { path = "automexia", main = true },
+    { path = "amx" },
     { path = "automexia-suggestion-helper" },
 ]
 
@@ -46,6 +47,10 @@ name = "automexia"
 path = "src/main.rs"
 
 [[bin]]
+name = "amx"
+path = "src/bin/amx.rs"
+
+[[bin]]
 name = "automexia-suggestion-helper"
 path = "src/bin/automexia-suggestion-helper.rs"
 
@@ -55,6 +60,7 @@ automexia-extension-api = { workspace = true }
 automexia-extension-runtime = { workspace = true }
 automexia-devops = { workspace = true }
 automexia-connectivity = { workspace = true }
+automexia-ssh-integration = { workspace = true }
 automexia-command-productivity = { workspace = true }
 automexia-image = { workspace = true }
 automexia-ui-model = { workspace = true }
@@ -65,6 +71,7 @@ wgpu = { workspace = true }
 rio-backend = { workspace = true }
 
 [dev-dependencies]
+base64 = { workspace = true }
 pretty_assertions = "1.4.1"
 criterion = { workspace = true }
 image_rs = { workspace = true }

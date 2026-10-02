@@ -589,6 +589,15 @@ impl Sugarloaf<'_> {
         );
     }
 
+    /// Paint a terminal background above cell backgrounds and below glyphs.
+    /// This bounded, rectangle-only frame layer never affects UI/modal ordering.
+    #[inline]
+    pub fn under_text_rect(&mut self, rect: [f32; 4], color: [f32; 4]) {
+        let scale = self.state.style.scale_factor;
+        self.renderer
+            .under_text_rect(rect.map(|value| value * scale), color);
+    }
+
     /// Add a rounded rectangle. Always immediate-mode now — see `rect`.
     #[inline]
     #[allow(clippy::too_many_arguments)]
@@ -705,6 +714,29 @@ impl Sugarloaf<'_> {
         self.renderer.polygon(&scaled, depth, color);
     }
 
+    /// Draw a polygon in the same painter layer as its surrounding UI surface.
+    /// Three-point contours use stack storage for allocation-free tag strips.
+    #[inline]
+    pub fn polygon_with_order(
+        &mut self,
+        points: &[(f32, f32)],
+        depth: f32,
+        color: [f32; 4],
+        order: u8,
+    ) {
+        let scale = self.state.style.scale_factor;
+        if let [a, b, c] = points {
+            let scaled = [a, b, c].map(|p| (p.0 * scale, p.1 * scale));
+            self.renderer
+                .polygon_with_order(&scaled, depth, color, order);
+        } else {
+            let scaled: Vec<_> =
+                points.iter().map(|p| (p.0 * scale, p.1 * scale)).collect();
+            self.renderer
+                .polygon_with_order(&scaled, depth, color, order);
+        }
+    }
+
     /// Draw a triangle.
     /// Coordinates are in logical pixels (scaled internally).
     #[inline]
@@ -806,6 +838,16 @@ impl Sugarloaf<'_> {
         self.text.begin_modal_layer();
     }
 
+    /// Begin the exclusive topmost dialog, replacing both primitives and labels
+    /// queued by covered overlays in this frame. Call before frame finalization,
+    /// as the final modal producer, then pair with `end_modal_layer`.
+    /// This does not dismiss or mutate the covered application's UI state.
+    #[inline]
+    pub fn replace_modal_layer(&mut self) {
+        self.renderer.replace_modal_layer();
+        self.text.replace_modal_layer();
+    }
+
     #[inline]
     pub fn end_modal_layer(&mut self) {
         self.renderer.end_modal_layer();
@@ -883,6 +925,23 @@ impl Sugarloaf<'_> {
     pub fn remove_image(&mut self, key: u64) {
         self.image_data.remove(&key);
         self.renderer.evict_image_texture(key);
+    }
+
+    /// Actual initialized rendering context, never the requested configuration.
+    /// Available only to the native assurance harness.
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub fn native_renderer_backend(&self) -> &'static str {
+        match &self.ctx.inner {
+            #[cfg(feature = "wgpu")]
+            crate::context::ContextType::Wgpu(_) => "wgpu",
+            #[cfg(target_os = "macos")]
+            crate::context::ContextType::Metal(_) => "metal",
+            #[cfg(target_os = "linux")]
+            crate::context::ContextType::Vulkan(_) => "vulkan",
+            crate::context::ContextType::Cpu(_) => "cpu",
+            #[cfg(not(feature = "wgpu"))]
+            crate::context::ContextType::_Phantom(_) => "unavailable",
+        }
     }
 
     #[cfg(feature = "native-gui-test-hooks")]
@@ -1127,12 +1186,15 @@ impl Sugarloaf<'_> {
             device.cmd_set_scissor(cmd, 0, &[scissor]);
         }
 
-        // Per-panel grid passes — draw cell backgrounds + grid text
-        // underneath everything else. Vulkan doesn't yet interleave
-        // kitty image layers around the bg/text split — same as the
-        // wgpu path; follow-up.
+        self.renderer.render_background_vulkan(cmd, &frame);
+
+        // Terminal backgrounds sit between cell fill and glyphs, independently
+        // of ordinary UI primitive order. Pane rectangles are already clipped.
         for (grid, uniforms) in grids.iter_mut() {
             grid.render_bg_vulkan(ctx, cmd, frame.slot, uniforms);
+        }
+        self.renderer.render_under_text_vulkan(cmd, &frame);
+        for (grid, uniforms) in grids.iter_mut() {
             grid.render_text_vulkan(ctx, cmd, frame.slot, uniforms);
         }
 
@@ -1197,6 +1259,8 @@ impl Sugarloaf<'_> {
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
 
+        self.renderer.upload_wgpu_primitives(ctx);
+
         {
             let load = if let Some(background_color) = self.background_color {
                 wgpu::LoadOp::Clear(background_color.into())
@@ -1221,19 +1285,15 @@ impl Sugarloaf<'_> {
                 multiview_mask: None,
             });
 
-            // Grid passes first — cell bg/text composite under
-            // the rich-text UI overlays drawn below. Wgpu
-            // doesn't yet interleave kitty image layers with
-            // the grid bg/text split (BrushRenderer::render
-            // owns kitty image draws inline), so for now the
-            // bg+text passes run back-to-back per panel —
-            // same visual result as the prior single render
-            // call. Re-ordering kitty layers around the
-            // bg/text split would require pulling image
-            // draws out of BrushRenderer::render — Metal
-            // already does that; wgpu follow-up.
+            self.renderer.render_background_wgpu(ctx, &mut rpass);
+
+            // Optional terminal backgrounds use the existing bg/text split;
+            // ordinary UI geometry still composites above the complete grid.
             for (grid, uniforms) in grids.iter_mut() {
                 grid.render_bg_wgpu(&mut rpass, uniforms);
+            }
+            self.renderer.render_under_text_wgpu(ctx, &mut rpass);
+            for (grid, uniforms) in grids.iter_mut() {
                 grid.render_text_wgpu(&mut rpass, uniforms);
             }
 

@@ -94,51 +94,21 @@ define_class!(
     unsafe impl NSApplicationDelegate for ApplicationDelegate {
         #[unsafe(method(applicationShouldTerminate:))]
         fn should_terminate(&self, _sender: Option<&AnyObject>) -> u64 {
-            if !self.ivars().set_confirm_before_quit.get() {
+            if !self.ivars().set_confirm_before_quit.get()
+                || !self.is_running()
+                || self.exiting()
+            {
                 return NSApplicationTerminateReply::Now as u64;
             }
-
-            use objc::runtime::Object;
-            use objc::msg_send;
-            use objc::sel;
-            use objc::class;
-            use objc::sel_impl;
-            unsafe {
-                let panel: *mut Object = msg_send![class!(NSAlert), new];
-
-                let prompt = "All sessions will be closed";
-                let title = "Quit Automexia Terminal?";
-                let yes = "Yes";
-                let no = "No";
-                let cancel = "Cancel";
-
-                let prompt_string: *mut Object = msg_send![class!(NSString), alloc];
-                let prompt_allocated_string: *mut Object = msg_send![prompt_string, initWithBytes:prompt.as_ptr() length:prompt.len() encoding:UTF8_ENCODING];
-
-                let title_string: *mut Object = msg_send![class!(NSString), alloc];
-                let title_allocated_string: *mut Object = msg_send![title_string, initWithBytes:title.as_ptr() length:title.len() encoding:UTF8_ENCODING];
-
-                let yes_string: *mut Object = msg_send![class!(NSString), alloc];
-                let yes_allocated_string: *mut Object = msg_send![yes_string, initWithBytes:yes.as_ptr() length:yes.len() encoding:UTF8_ENCODING];
-
-                let no_string: *mut Object = msg_send![class!(NSString), alloc];
-                let no_allocated_string: *mut Object = msg_send![no_string, initWithBytes:no.as_ptr() length:no.len() encoding:UTF8_ENCODING];
-
-                let cancel_string: *mut Object = msg_send![class!(NSString), alloc];
-                let cancel_allocated_string: *mut Object = msg_send![cancel_string, initWithBytes:cancel.as_ptr() length:cancel.len() encoding:UTF8_ENCODING];
-
-                let _: () = msg_send![panel, setMessageText: title_allocated_string];
-                let _: () = msg_send![panel, setInformativeText: prompt_allocated_string];
-                let _: () = msg_send![panel, addButtonWithTitle: yes_allocated_string];
-                let _: () = msg_send![panel, addButtonWithTitle: no_allocated_string];
-                let _: () = msg_send![panel, addButtonWithTitle: cancel_allocated_string];
-                let response: std::ffi::c_long = msg_send![panel, runModal];
-                match response {
-                    1000 => NSApplicationTerminateReply::Now as u64,
-                    1001 => NSApplicationTerminateReply::Cancel as u64,
-                    _ => NSApplicationTerminateReply::Cancel as u64,
-                }
+            // AppKit can invoke this while a menu action is being dispatched.
+            // Queue it to avoid re-entering the application's event handler.
+            let mut pending = self.ivars().pending_events.borrow_mut();
+            if !pending.iter().any(|event| matches!(event, QueuedEvent::ApplicationQuit)) {
+                pending.push_back(QueuedEvent::ApplicationQuit);
             }
+            drop(pending);
+            unsafe { RunLoop::get() }.wakeup();
+            NSApplicationTerminateReply::Cancel as u64
         }
 
         #[unsafe(method(applicationDockMenu:))]
@@ -719,6 +689,9 @@ impl ApplicationDelegate {
         let events = mem::take(&mut *self.ivars().pending_events.borrow_mut());
         for event in events {
             match event {
+                QueuedEvent::ApplicationQuit => {
+                    self.handle_event(Event::NewEvents(StartCause::MacOSQuit));
+                }
                 QueuedEvent::WindowEvent(window_id, event) => {
                     self.handle_event(Event::WindowEvent {
                         window_id: RootWindowId(window_id),
@@ -801,6 +774,7 @@ impl ApplicationDelegate {
 
 #[derive(Debug)]
 pub(crate) enum QueuedEvent {
+    ApplicationQuit,
     WindowEvent(WindowId, WindowEvent),
     DeviceEvent(DeviceEvent),
     ScaleFactorChanged {

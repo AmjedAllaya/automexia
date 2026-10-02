@@ -10,9 +10,26 @@ completion pulse, terminal-owned completion datetime, route-isolated state,
 and native hooks are owned by
 `apps/automexia-terminal/src/renderer/command_results.rs`. They are core
 application-renderer feedback and remain active when the optional DevOps context
-extension is disabled. `renderer/devops_status.rs` owns only optional prompt
-context and semantic status. ADR 0035 and the feature-ownership mutation suite
+extension is disabled, subject to the independent Terminal output colors switch.
+`renderer/devops_status.rs` owns optional prompt context. Output status colors
+remain in the core renderer. ADR 0035 and the feature-ownership mutation suite
 enforce this separation.
+
+Command backgrounds, detected log colors and Kubernetes status colors have
+independent controls. Completed-command bands exclude semantic status rows,
+ANSI background/foreground regions, selection/search, and inline table surfaces.
+The table and grid owners preserve those colors even when the command exits
+successfully. Disabling backgrounds cancels their pulse immediately while keeping
+completion labels and timestamps. Native `command_result_backgrounds` records
+actual issued rectangles/colors; the older opacity fields describe defaults.
+
+The focused Windows `-OutputColorsOnly` native mode uses isolated configuration,
+the real PowerShell session, pointer/keyboard settings controls, retained output
+and resize. It exercises both independent switches and shutdown. Repeat with
+`-UseCpuRenderer` and `-ResultCapture` for a second native backend and captures.
+Composed raster tests also draw command bands after tables and assert that
+Kubernetes, ANSI and selection pixels are unchanged. This guards the layer
+interaction that isolated classifier or table-only tests cannot cover.
 
 ## Validation incident
 
@@ -104,7 +121,8 @@ threshold:
    borrowing the preceding result;
 11. a native glyph-only region, excluding divider/status decoration, must
    contain real output paint;
-12. blank surface pixels must visibly differ from adjacent blank gutter pixels;
+12. blank surface pixels must visibly differ from blank pixels in the following
+    reserved prompt row;
 13. WGPU and the independent CPU fallback must pass the same release contract;
 14. native readiness is published only after the matching frame presents, and
     retained frames require two identical full-pixel captures with no native
@@ -139,10 +157,36 @@ at 100/125/200/300/400 percent scale, invalid/extreme geometry, scrollback and
 resize/navigation. Silent commands keep status feedback without an output fill.
 The fictional parser-derived specimen uses the bundled font; its software
 geometry raster is not an actual desktop or GPU capture. The native Windows
-driver checks short, inset geometry and retains its original gutter, opacity,
-identity, text and cleanup checks. Current native frames and screen-reader
-review remain external; older full-width native captures do not validate this
-new appearance.
+driver checks short, inset geometry, full output-cell coverage, opacity,
+identity, text and cleanup. The normal row gap separates bands; breathing room
+belongs to the following reserved prompt row, never the last output cell.
+Command bands use Sugarloaf's bounded rectangle phase between cell backgrounds
+and glyphs, so even opaque custom colors preserve the source foreground.
+
+On 2026-10-01, focused native Windows runs passed on the actual WGPU and CPU
+backends at 150% display scale. Both used an isolated PowerShell session and
+real settings pointer/keyboard input to apply a custom RGBA background, switch
+command and Kubernetes colors independently, retain the same command output,
+resize a status table, and shut down. Physical pixel checks found 182 bright
+custom-band glyph samples versus 190 without the band on WGPU, and 179 versus
+176 on CPU. The blank-band blue-channel difference was 88 and 101 respectively.
+All three completed rows had full-height bands. An opaque fixture wallpaper
+remained visible as RGB 123/77/49 behind the WGPU terminal while its bands and
+glyphs stayed visible; CPU wallpaper rendering is unsupported and was not
+claimed by that run. Editing the Kubernetes success text to RGB 255/0/255
+produced 516 matching table glyph samples on WGPU and 520 on CPU, versus zero
+with Kubernetes coloring disabled. The retained command identity and exclusion
+of command bands from the table stayed unchanged.
+
+The full Windows interaction driver also passed on both actual backends after
+renderer-cache cleanup. Its inactive-tab close regression first reproduced one
+retired renderer for two live routes; the final run retained none. Background
+tabs, inactive local tabs and parked undo sessions retain their renderer while
+the context manager owns them. Existing resource ceilings remained unchanged:
+final handle growth was 316 on WGPU and 109 on CPU, below the 384 limit.
+The captured color and close-dialog frames were visually inspected. Other
+native platforms, the full theme/accessibility matrix, and independent
+screen-reader review remain separate requirements.
 
 ```text
 cargo test -p automexia-terminal --bin automexia --locked renderer::command_results

@@ -7,6 +7,7 @@
 use std::time::{Duration, Instant};
 
 use rio_backend::config::colors::Colors;
+use rio_backend::config::presentation::CommandOutputAppearance;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
@@ -15,10 +16,152 @@ use crate::automexia::ui::{CommandResultAnchor, COMMAND_RESULT_PROMPT_RESERVE};
 
 mod rows;
 
-pub(super) struct ResultOptions {
+pub(super) struct ResultOptions<'a> {
     pub allow_animation: bool,
     pub prefer_untagged: bool,
     pub show_timestamps: bool,
+    pub background: Option<CommandOutputAppearance>,
+    pub protected_rows: &'a [bool],
+}
+
+/// Record source-owned color/style regions once per damaged snapshot. A whole
+/// row is protected for explicit backgrounds, inverse, hidden and image content.
+/// Foreground colors, graphemes and links do not own a background. Blank rows
+/// are not command output, even if included in a shell's completion extent.
+pub(super) fn protect_source_rows(
+    content: &mut crate::context::renderable::RenderableContent,
+) {
+    use rio_backend::config::colors::{AnsiColor, NamedColor};
+    use rio_backend::crosswords::style::StyleFlags;
+    let mut budget = 64usize * 1024;
+    content.output_background_protected.clear();
+    for (index, row) in content.visible_rows.iter().enumerate().take(8192) {
+        let count = row.len().min(content.columns);
+        let protected =
+            count > budget
+                || content.output_classifications.get(index).is_none_or(
+                    |classification| {
+                        crate::automexia::output_semantics::protects_command_background(
+                            *classification,
+                            false,
+                        )
+                    },
+                )
+                || row.kitty_virtual_placeholder
+                || !row.inner.iter().take(count).any(|sq| {
+                    !sq.is_bg_only() && !sq.c().is_whitespace() && sq.c() != '\0'
+                })
+                || row.inner.iter().take(count).any(|sq| {
+                    let style =
+                        crate::grid_emit::resolve_style(&content.style_table, *sq);
+                    sq.is_bg_only()
+                        || !matches!(style.bg, AnsiColor::Named(NamedColor::Background))
+                        || style
+                            .flags
+                            .intersects(StyleFlags::INVERSE | StyleFlags::HIDDEN)
+                });
+        budget = budget.saturating_sub(count);
+        content.output_background_protected.push(protected);
+    }
+}
+
+/// Map source ownership through the existing projection. Inserted table/header
+/// rows and offscreen source rows fail closed; no second table recognition pass.
+pub(super) fn project_protected_rows(
+    content: &crate::context::renderable::RenderableContent,
+    output: &mut Vec<bool>,
+    logs_enabled: bool,
+) {
+    output.clear();
+    let search_active = content.hint_matches.is_some() || content.hint_labels.is_some();
+    for visual in 0..content.screen_lines.min(8192) {
+        let protected = content
+            .command_rows
+            .source_row(visual)
+            .is_none_or(|source| {
+                search_active
+                    || content.inline_tables.hides_native(source)
+                    || content.output_classifications.get(source).is_none_or(|classification| {
+                        crate::automexia::output_semantics::protects_command_background(*classification, logs_enabled)
+                    })
+                    || content
+                        .output_background_protected
+                        .get(source)
+                        .copied()
+                        .unwrap_or(true)
+                    || crate::grid_emit::row_selection_for(
+                        content.selection_range,
+                        source,
+                        content.columns,
+                        content.display_offset as i32,
+                    )
+                    .is_some()
+            });
+        output.push(protected);
+    }
+}
+
+fn background_surface_visible(
+    rect: [f32; 4],
+    origin_y: f32,
+    row_height: f32,
+    protected: &[bool],
+) -> bool {
+    if !origin_y.is_finite()
+        || !row_height.is_finite()
+        || row_height < 1.0
+        || rect[1] < origin_y
+    {
+        return false;
+    }
+    let first = ((rect[1] - origin_y) / row_height).floor() as usize;
+    let end = ((rect[1] + rect[3] - origin_y) / row_height).ceil() as usize;
+    first < end
+        && end <= protected.len()
+        && protected[first..end].iter().all(|value| !*value)
+}
+
+/// Final rectangles consumed by the real painter, after domain/style ownership,
+/// clipping, user configuration and animation. Tests inspect this same output.
+pub(super) fn command_background_paints<'a>(
+    anchor: &CommandResultAnchor,
+    background: Option<CommandOutputAppearance>,
+    colors: &Colors,
+    pulse_alpha: f32,
+    bounds: [f32; 2],
+    protected: &'a [bool],
+) -> impl Iterator<Item = ([f32; 4], [f32; 4])> + 'a {
+    let color = background.map(|appearance| {
+        command_background_color(anchor, appearance, colors, pulse_alpha)
+    });
+    let surface = command_result_visual(anchor).map_or([0.0; 4], |v| v.surface);
+    let row_height = anchor.height;
+    rows::surfaces(surface, row_height).filter_map(move |rect| {
+        let color = color.filter(|color| color[3] > 0.0)?;
+        let rect = clip_vertical_rect(rect, bounds)?;
+        background_surface_visible(rect, bounds[0], row_height, protected)
+            .then_some((rect, color))
+    })
+}
+
+pub(super) fn command_background_color(
+    anchor: &CommandResultAnchor,
+    appearance: CommandOutputAppearance,
+    colors: &Colors,
+    pulse_alpha: f32,
+) -> [f32; 4] {
+    use crate::automexia::presentation::{command_output_background, CommandOutputKind};
+    let kind = match anchor.exit_code {
+        Some(0) => CommandOutputKind::Success,
+        Some(_) => CommandOutputKind::Failure,
+        None => CommandOutputKind::Neutral,
+    };
+    let mut color = command_output_background(&appearance, colors, kind);
+    // A deliberately transparent user color remains transparent.
+    if color[3] > 0.0 && appearance.pulse {
+        color[3] = (color[3] + pulse_alpha).min(1.0);
+    }
+    color
 }
 
 const ORDER: u8 = 19;
@@ -26,6 +169,7 @@ const RESULT_LABEL_FONT_ROW_RATIO: f32 = 0.62;
 const RESULT_LABEL_MAX_FONT_SIZE: f32 = 14.0;
 const RESULT_LABEL_MIN_FONT_SIZE: f32 = 4.0;
 const RESULT_DIVIDER_ALPHA: f32 = 0.42;
+#[cfg(any(test, feature = "native-gui-test-hooks"))]
 const RESULT_SURFACE_ALPHA: f32 = 0.099;
 const RESULT_PULSE_ALPHA: f32 = 0.14;
 const RESULT_PULSE_DURATION: Duration = Duration::from_millis(540);
@@ -88,8 +232,9 @@ struct CommandResultVisual {
 }
 
 /// Build the envelope for row-band fills inside proven output bounds. The fill
-/// ends before the following reserved prompt row, leaving a visible 4-8 px
-/// breathing gutter without adding rows or changing PTY bytes.
+/// covers every output cell through the following reserved prompt boundary.
+/// Normal row gaps and the prompt reserve provide separation without clipping
+/// the final output line or adding rows/changing PTY bytes.
 fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVisual> {
     if !anchor.separates_next_prompt {
         return None;
@@ -97,10 +242,7 @@ fn command_result_visual(anchor: &CommandResultAnchor) -> Option<CommandResultVi
     let output_top = anchor.output_top?;
     let divider = command_result_divider(anchor)?;
     let inset = (anchor.height * 0.1).clamp(1.0, 2.0);
-    let gutter = (anchor.height * 0.36)
-        .clamp(6.0, 10.0)
-        .min(anchor.height * 0.45);
-    let surface_bottom = anchor.y - gutter;
+    let surface_bottom = anchor.y;
     let surface_height = surface_bottom - output_top;
     let surface_width = anchor.width - inset * 2.0;
     if surface_height < anchor.height * 0.35 || surface_width < 4.0 {
@@ -186,6 +328,9 @@ impl CommandResultPulse {
     ) {
         let latest = latest_paintable_command_result(anchors, prefer_untagged)
             .map(CommandResultIdentity::from);
+        if !allow_animation {
+            self.active = None;
+        }
         if !self.initialized {
             self.initialized = true;
             self.last_seen = latest;
@@ -257,9 +402,18 @@ pub struct CommandResults {
     native_label: Option<String>,
     #[cfg(feature = "native-gui-test-hooks")]
     native_paints: Vec<NativeCommandResultPaint>,
+    #[cfg(feature = "native-gui-test-hooks")]
+    native_backgrounds: Vec<([f32; 4], [f32; 4])>,
 }
 
 impl CommandResults {
+    pub(super) fn pulse_alpha_for(
+        &self,
+        anchor: &CommandResultAnchor,
+        now: Instant,
+    ) -> f32 {
+        self.pulse.alpha_for(anchor, now)
+    }
     pub fn clear(&mut self) {
         *self = Self::default();
     }
@@ -304,24 +458,34 @@ impl CommandResults {
     pub(crate) fn native_test_result_paints(&self) -> &[NativeCommandResultPaint] {
         &self.native_paints
     }
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_result_backgrounds(&self) -> &[([f32; 4], [f32; 4])] {
+        &self.native_backgrounds
+    }
     /// Draw completion state on the semantic row that owns the command.
     pub(super) fn render_command_results(
         &mut self,
         sugarloaf: &mut Sugarloaf,
         colors: Colors,
         anchors: &[CommandResultAnchor],
-        options: ResultOptions,
+        options: ResultOptions<'_>,
         planned: (&[CompletionLabel], [f32; 2]),
     ) {
         let ResultOptions {
             allow_animation,
             prefer_untagged,
             show_timestamps,
+            background,
+            protected_rows,
         } = options;
         let (planned_labels, vertical_bounds) = planned;
         let now = Instant::now();
-        self.pulse
-            .observe(anchors, allow_animation, prefer_untagged, now);
+        self.pulse.observe(
+            anchors,
+            allow_animation && background.is_some_and(|value| value.pulse),
+            prefer_untagged,
+            now,
+        );
         #[cfg(feature = "native-gui-test-hooks")]
         let native_label_target =
             latest_paintable_command_result(anchors, prefer_untagged)
@@ -340,6 +504,7 @@ impl CommandResults {
             });
             self.native_label = None;
             self.native_paints.clear();
+            self.native_backgrounds.clear();
         }
         for anchor in anchors {
             let timestamp = show_timestamps
@@ -370,23 +535,18 @@ impl CommandResults {
             };
 
             let visual = command_result_visual(anchor);
-            if let Some(visual) = visual {
-                let pulse_alpha = self.pulse.alpha_for(anchor, now);
-                let mut surface_color = accent_color;
-                surface_color[3] = RESULT_SURFACE_ALPHA + pulse_alpha;
-                for [x, y, width, height] in rows::surfaces(visual.surface, anchor.height)
-                {
-                    sugarloaf.rect(
-                        None,
-                        x,
-                        y,
-                        width,
-                        height,
-                        surface_color,
-                        0.0,
-                        ORDER - 4,
-                    );
-                }
+            for ([x, y, width, height], surface_color) in command_background_paints(
+                anchor,
+                background,
+                &colors,
+                self.pulse.alpha_for(anchor, now),
+                vertical_bounds,
+                protected_rows,
+            ) {
+                sugarloaf.under_text_rect([x, y, width, height], surface_color);
+                #[cfg(feature = "native-gui-test-hooks")]
+                self.native_backgrounds
+                    .push(([x, y, width, height], surface_color));
             }
             let divider = visual
                 .map(|visual| visual.divider)
@@ -828,7 +988,7 @@ mod tests {
     }
 
     #[test]
-    fn result_surface_adds_bounded_tint_and_breathing_gutter_without_a_rail() {
+    fn result_surface_covers_last_output_cell_and_reserves_prompt_marker() {
         let anchor = CommandResultAnchor {
             generation: Some(7),
             key: 42,
@@ -836,7 +996,7 @@ mod tests {
             y: 160.0,
             width: 720.0,
             height: 24.0,
-            output_top: Some(80.0),
+            output_top: Some(88.0),
             separates_next_prompt: true,
             exit_code: Some(0),
             elapsed_ms: Some(18),
@@ -845,12 +1005,22 @@ mod tests {
 
         let visual = command_result_visual(&anchor).expect("visible output surface");
         let surface_bottom = visual.surface[1] + visual.surface[3];
-        let gutter = anchor.y - surface_bottom;
         assert!(visual.surface[0] >= anchor.x);
-        assert!(visual.surface[1] >= 80.0);
+        assert_eq!(visual.surface[1], 88.0);
         assert!(visual.surface[0] + visual.surface[2] <= anchor.x + anchor.width);
-        assert!((8.0..=10.0).contains(&gutter));
+        assert_eq!(surface_bottom, anchor.y);
         assert!(visual.divider[1] >= anchor.y);
+        assert!(visual.divider[1] + visual.divider[3] <= anchor.y + anchor.height);
+        let bands: Vec<_> = rows::surfaces(visual.surface, anchor.height).collect();
+        assert_eq!(bands.len(), 3);
+        for (index, band) in bands.iter().enumerate() {
+            assert_eq!(band[1], 89.0 + index as f32 * anchor.height);
+            assert_eq!(
+                band[3], 22.0,
+                "the last output line has the same fill as earlier lines"
+            );
+        }
+        assert_eq!(bands[2][1] + bands[2][3], anchor.y - 1.0);
     }
 
     #[test]

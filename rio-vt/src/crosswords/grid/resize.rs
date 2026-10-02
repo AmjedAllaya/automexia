@@ -632,7 +632,7 @@ impl Grid<Square> {
 
         let mut new_raw = Vec::with_capacity(self.raw.len());
         let mut point_remap = PointReflow::new(*points, self.history_size());
-        let mut buffered: Option<(Vec<Square>, SemanticPrompt, Option<u64>)> = None;
+        let mut buffered: Option<Row<Square>> = None;
 
         let mut rows = self.raw.take_all();
         let old_len = rows.len();
@@ -658,10 +658,7 @@ impl Grid<Square> {
                     .then_some(self.cursor.pos.col.0);
                 trim_native_row_padding(&mut row, cursor);
             }
-            point_remap.begin_row(
-                old_len - 1 - i,
-                buffered.as_ref().map_or(0, |(cells, _, _)| cells.len()),
-            );
+            point_remap.begin_row(old_len - 1 - i, buffered.as_ref().map_or(0, Row::len));
             let continuation_mark = match row.semantic_prompt {
                 SemanticPrompt::None => SemanticPrompt::None,
                 SemanticPrompt::Prompt | SemanticPrompt::PromptContinuation => {
@@ -670,13 +667,12 @@ impl Grid<Square> {
             };
             let continuation_id = row.semantic_prompt_id;
             if remap.is_some() {
-                let own_first =
-                    buffered.as_ref().map_or(0, |(cells, _, _)| cells.len()) as i64;
+                let own_first = buffered.as_ref().map_or(0, Row::len) as i64;
                 trackers.push((old_len - 1 - i, own_first));
             }
 
             // Append lines left over from the previous row.
-            if let Some((buffered, buffered_mark, buffered_id)) = buffered.take() {
+            if let Some(buffered) = buffered.take() {
                 // Add a column for every cell added before the cursor, if it goes beyond the new
                 // width it is then later reflown.
                 let cursor_buffer_line = self.lines - self.cursor.pos.row.0 as usize - 1;
@@ -684,10 +680,13 @@ impl Grid<Square> {
                     self.cursor.pos.col += buffered.len();
                 }
 
-                row.append_front(buffered);
-                if buffered_mark != SemanticPrompt::None {
-                    row.semantic_prompt = buffered_mark;
-                    row.semantic_prompt_id = buffered_id;
+                row.append_front(buffered.inner);
+                if buffered.semantic_input.is_some() {
+                    row.semantic_input = buffered.semantic_input;
+                }
+                if buffered.semantic_prompt != SemanticPrompt::None {
+                    row.semantic_prompt = buffered.semantic_prompt;
+                    row.semantic_prompt_id = buffered.semantic_prompt_id;
                 }
             }
 
@@ -787,6 +786,9 @@ impl Grid<Square> {
                     }
                 }
 
+                let continuation_input = row
+                    .semantic_input
+                    .map(|input| input.after_prefix(columns - displaced as usize));
                 point_remap.emit(new_raw.len(), 0, columns - displaced as usize);
                 new_raw.push(row);
                 if let Some(r) = remap.as_mut() {
@@ -825,7 +827,12 @@ impl Grid<Square> {
                     }
 
                     // Add removed cells to start of next row.
-                    buffered = Some((wrapped, continuation_mark, continuation_id));
+                    let occ = wrapped.len();
+                    let mut tail = Row::from_vec(wrapped, occ);
+                    tail.semantic_prompt = continuation_mark;
+                    tail.semantic_prompt_id = continuation_id;
+                    tail.semantic_input = continuation_input;
+                    buffered = Some(tail);
                     break;
                 } else {
                     // Reflow cursor if a line below it is deleted.
@@ -852,6 +859,7 @@ impl Grid<Square> {
                     row = Row::from_vec(wrapped, occ);
                     row.semantic_prompt = continuation_mark;
                     row.semantic_prompt_id = continuation_id;
+                    row.semantic_input = continuation_input;
 
                     if i < self.display_offset {
                         // Since we added a new line, rotate up the viewport.

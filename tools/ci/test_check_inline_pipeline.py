@@ -180,5 +180,152 @@ class VerificationResultTests(unittest.TestCase):
             self.assertEqual(dict(os.environ), before)
 
 
+class NativeVerificationTests(unittest.TestCase):
+    def exercise(self, *, inbox=False, build_code=0, preparation_error=None, native_error=None,
+                 native_count=1, cleanup_error=None):
+        calls, prepared = [], []
+        with tempfile.TemporaryDirectory() as temporary:
+            root = Path(temporary)
+            executable = root / 'native-source.exe'
+            executable.write_bytes(b'unchanged-test-binary')
+            report_dir = root / 'reports'
+            def run(argv, **kwargs):
+                calls.append(list(argv))
+                code, error = 0, None
+                if argv[0] == runner.sys.executable:
+                    raw = b'Ran 1 test in 0.001s\nOK\n'
+                elif '--no-run' in argv:
+                    raw = NativeArtifactTests().artifact(executable).encode()
+                    code = build_code
+                else:
+                    raw = f'test result: ok. {native_count} passed; 0 failed; 0 ignored;\n'.encode()
+                    error = native_error
+                    if not inbox:
+                        self.assertTrue(Path(argv[0]).is_file())
+                        self.assertNotEqual(Path(argv[0]), executable)
+                kwargs['consume'](raw)
+                return SimpleNamespace(return_code=code, timed_out=False, error=error)
+            def prepare(destination, architecture, *, offline):
+                prepared.append((destination, architecture, offline))
+                if preparation_error:
+                    raise preparation_error
+                (destination / 'conpty.dll').write_bytes(b'fixed-vendor-fixture')
+            fake_runtime = SimpleNamespace(prepare_runtime=prepare,
+                pe_architecture=lambda path: 'x64', runtime_version=lambda: '1.2.3')
+            stack = contextlib.ExitStack()
+            with stack, mock.patch.object(runner, 'os', SimpleNamespace(name='nt', environ={'CARGO_NET_OFFLINE':'true'})), \
+                 mock.patch.dict(runner.sys.modules, windows_conpty_runtime=fake_runtime), \
+                 mock.patch.object(runner.shutil, 'which', return_value='cargo'), \
+                 mock.patch.object(runner, 'load_process_owner', return_value=SimpleNamespace(run=run)), \
+                 mock.patch.object(runner, 'groups', return_value=[('native-host', ['test'], True)]), \
+                 contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()):
+                if cleanup_error:
+                    stack.enter_context(mock.patch.object(runner.NativeTestStage, 'close', side_effect=cleanup_error))
+                caught = None
+                try:
+                    result = runner.verify(root, report_dir, inbox_conpty=inbox)
+                except OSError as error:
+                    result, caught = False, error
+            report = json.loads((report_dir / 'report.json').read_text())
+            retained = bool(prepared and prepared[0][0].exists())
+            self.assertEqual(executable.read_bytes(), b'unchanged-test-binary')
+            self.assertFalse((root / 'conpty.dll').exists(), 'shared source directory was modified')
+            return result, report, calls, prepared, retained, caught
+
+    def test_bundled_native_uses_isolated_copy_and_cleans_it(self):
+        ok, report, calls, prepared, retained, _ = self.exercise()
+        self.assertTrue(ok)
+        self.assertTrue(report['complete'])
+        self.assertEqual(report['native_backend'], 'bundled-conpty')
+        self.assertEqual(report['conpty_version'], '1.2.3')
+        self.assertEqual(len(calls), 3)
+        self.assertIn('--no-run', calls[1])
+        self.assertEqual(prepared[0][1:], ('x64', True))
+        self.assertFalse(retained)
+
+    def test_inbox_diagnostic_remains_explicit_and_unstaged(self):
+        ok, report, calls, prepared, _, _ = self.exercise(inbox=True)
+        self.assertTrue(ok)
+        self.assertEqual(report['native_backend'], 'inbox-conpty')
+        self.assertIsNone(report['conpty_version'])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(prepared, [])
+
+    def test_build_failure_cannot_use_a_stale_test_binary(self):
+        ok, report, calls, prepared, _, _ = self.exercise(build_code=1)
+        self.assertFalse(ok)
+        self.assertFalse(report['complete'])
+        self.assertEqual(len(calls), 2)
+        self.assertEqual(prepared, [])
+
+    def test_failed_offline_preparation_never_runs_native_fixture(self):
+        ok, report, calls, _, retained, _ = self.exercise(preparation_error=ValueError('offline miss'))
+        self.assertFalse(ok)
+        self.assertEqual(len(calls), 2)
+        self.assertFalse(retained)
+        self.assertIn('offline miss', report['checks'][-1]['reason'])
+
+    def test_unretired_process_keeps_owned_fixture_files(self):
+        ok, report, _, _, retained, _ = self.exercise(native_error='QA cleanup remains unresolved')
+        self.assertFalse(ok)
+        self.assertFalse(report['complete'])
+        self.assertTrue(retained)
+
+    def test_zero_native_tests_fail_even_after_successful_preparation(self):
+        ok, report, _, _, retained, _ = self.exercise(native_count=0)
+        self.assertFalse(ok)
+        self.assertFalse(report['complete'])
+        self.assertFalse(retained)
+
+    def test_failed_directory_cleanup_invalidates_report(self):
+        ok, report, _, _, _, caught = self.exercise(cleanup_error=OSError('fixture in use'))
+        self.assertFalse(ok)
+        self.assertFalse(report['complete'])
+        self.assertIsNotNone(caught)
+        self.assertIn('cleanup_error', report)
+
+
+class NativeArtifactTests(unittest.TestCase):
+    def artifact(self, path, **changes):
+        value = dict(reason='compiler-artifact', target=dict(name='inline_pipeline_native', kind=['test']),
+                     profile=dict(test=True), executable=str(path))
+        value.update(changes)
+        return json.dumps(value)
+
+    def test_selects_exact_native_test_from_cargo_stream(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / 'fixture.exe'
+            executable.write_bytes(b'fixture')
+            stream = '\n'.join([json.dumps(dict(reason='build-finished', success=True)),
+                                self.artifact(executable),
+                                self.artifact(executable, target=dict(name='unrelated', kind=['test']))])
+            self.assertEqual(runner.native_test_artifact(stream), executable)
+
+    def test_rejects_missing_duplicate_or_non_test_artifacts(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / 'fixture.exe'
+            executable.write_bytes(b'fixture')
+            for stream in ['', self.artifact(executable) + '\n' + self.artifact(executable),
+                           self.artifact(executable, profile=dict(test=False)),
+                           self.artifact(executable, target=dict(name='inline_pipeline_native', kind=['bin']))]:
+                with self.subTest(stream=stream), self.assertRaises(ValueError):
+                    runner.native_test_artifact(stream)
+
+    def test_rejects_malformed_json_or_non_regular_paths(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            directory = Path(temporary)
+            for stream in ['{broken', '[]', self.artifact(directory), self.artifact(directory / 'missing'),
+                           self.artifact('relative.exe')]:
+                with self.subTest(stream=stream), self.assertRaises(ValueError):
+                    runner.native_test_artifact(stream)
+
+    def test_rejects_oversized_executable(self):
+        with tempfile.TemporaryDirectory() as temporary:
+            executable = Path(temporary) / 'fixture.exe'
+            executable.write_bytes(b'fixture')
+            with mock.patch.object(runner, 'MAX_NATIVE_EXECUTABLE_BYTES', 1), self.assertRaises(ValueError):
+                runner.native_test_artifact(self.artifact(executable))
+
+
 if __name__ == '__main__':
     unittest.main()

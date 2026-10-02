@@ -8,6 +8,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
     $script:AutomexiaEsc = [char]27
     $script:AutomexiaBel = [char]7
     [uint64]$script:AutomexiaPromptGeneration = 0
+    $script:AutomexiaCommandAwaitingCompletion = $false
     $script:AutomexiaCachedPromptPath = $null
     $script:AutomexiaCachedStyledPromptPath = ''
     $script:AutomexiaWrappedNativeExitCode = $null
@@ -22,18 +23,54 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
             # Application discovery is deferred until the user invokes amx.
             $existing = Get-Command amx -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
             $program = if ($existing) { $existing.Source } else { $env:AUTOMEXIA_CLI }
+            $consoleLauncher = $null -ne $existing
             if (-not $program) {
                 $installed = Get-Command automexia -CommandType Application -ErrorAction SilentlyContinue | Select-Object -First 1
                 if ($installed) { $program = $installed.Source }
             }
-            if (-not $program -or -not (Test-Path -LiteralPath $program -PathType Leaf)) {
+            # Native verbatim paths must bypass PowerShell provider drives.
+            if (-not $program -or -not ([System.IO.File]::Exists($program))) {
                 $global:LASTEXITCODE = 127
                 Write-Error 'amx: Automexia command unavailable; reopen a current Automexia session.'
                 return
             }
-            # Wait for the GUI-subsystem CLI without consuming its output:
-            # callers can still capture or redirect it like any native command.
-            & $program @args | ForEach-Object { $_ }
+            if (-not $consoleLauncher) {
+                $programDirectory = [System.IO.Path]::GetDirectoryName($program)
+                if ($programDirectory) {
+                    $candidate = [System.IO.Path]::Combine($programDirectory, 'amx.exe')
+                    if ([System.IO.File]::Exists($candidate)) {
+                        $program = $candidate
+                        $consoleLauncher = $true
+                    }
+                }
+            }
+            if ($consoleLauncher) {
+                # A console executable waits synchronously and inherits the real
+                # stdout handle, including PowerShell redirects and pipelines.
+                & $program @args
+                return
+            }
+            # Older installations have only the GUI executable. Keep their
+            # synchronous, capturable forwarding path until they are upgraded.
+            $wantsHelp = $args -contains '-h' -or $args -contains '--help' -or
+                ($args.Count -eq 1 -and $args[0] -eq 'help')
+            $addedColumns = $false
+            try {
+                # The compatibility pipeline hides the console width from the
+                # GUI executable. Supply a bounded hint only for help.
+                if ($wantsHelp -and -not (Test-Path Env:COLUMNS)) {
+                    try { $columns = [int]$Host.UI.RawUI.WindowSize.Width } catch { $columns = 0 }
+                    if ($columns -ge 24 -and $columns -le 240) {
+                        $env:COLUMNS = [string]$columns
+                        $addedColumns = $true
+                    }
+                }
+                & $program @args | ForEach-Object { $_ }
+            } finally {
+                if ($addedColumns) {
+                    Remove-Item Env:COLUMNS
+                }
+            }
         }
     }
 
@@ -73,8 +110,33 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         # and returns to the existing PowerShell session when the user types exit.
         $startup = 'chcp 65001>nul & set "AUTOMEXIA_CMD_PROMPT_GLYPH={0}" & call "{1}"' -f
             ([char]0x03BB), $script:AutomexiaCmdIntegration.Replace('"', '""')
-        & $script:AutomexiaCmdExecutable /D /K $startup
-        $script:AutomexiaWrappedNativeExitCode = [int]$global:LASTEXITCODE
+        # Refresh only at nested CMD launch, never from a prompt. Preserve the
+        # parent environment when this CMD (and any nested guest) returns.
+        $cmdIdentityNames = @('AUTOMEXIA_CMD_USER_BASE64', 'AUTOMEXIA_CMD_PATH_BASE64',
+            'AUTOMEXIA_CMD_REFERENCE', 'AUTOMEXIA_CMD_REFERENCE_BASE64')
+        $previousCmdIdentity = @{}
+        foreach ($name in $cmdIdentityNames) {
+            $previousCmdIdentity[$name] = [Environment]::GetEnvironmentVariable($name, 'Process')
+        }
+        try {
+            if ($env:AUTOMEXIA_CMD_REFERENCE_V1 -eq '1') {
+                $cmdUser = [Environment]::UserName
+                $env:AUTOMEXIA_CMD_USER_BASE64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($cmdUser))
+                $env:AUTOMEXIA_CMD_PATH_BASE64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($script:AutomexiaCmdExecutable))
+                $cmdHash = [Security.Cryptography.SHA256]::Create()
+                try {
+                    $bytes = [Text.Encoding]::UTF8.GetBytes($cmdUser + [char]0 + $script:AutomexiaCmdExecutable)
+                    $env:AUTOMEXIA_CMD_REFERENCE = ([BitConverter]::ToString($cmdHash.ComputeHash($bytes))).Replace('-', '').Substring(0, 32).ToLowerInvariant()
+                    $env:AUTOMEXIA_CMD_REFERENCE_BASE64 = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($env:AUTOMEXIA_CMD_REFERENCE))
+                } finally { $cmdHash.Dispose() }
+            }
+            & $script:AutomexiaCmdExecutable /D /K $startup
+            $script:AutomexiaWrappedNativeExitCode = [int]$global:LASTEXITCODE
+        } finally {
+            foreach ($name in $cmdIdentityNames) {
+                [Environment]::SetEnvironmentVariable($name, $previousCmdIdentity[$name], 'Process')
+            }
+        }
     }
     Set-Alias -Name cmd -Value Invoke-AutomexiaCmd -Scope Global -Force
     Set-Alias -Name cmd.exe -Value Invoke-AutomexiaCmd -Scope Global -Force
@@ -147,6 +209,42 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         }
         [Console]::Write($script:AutomexiaLocationFrames)
     }
+    function script:Publish-AutomexiaSelectorHints {
+        # Publish public selectors only. Never serialize Docker's endpoint,
+        # provider paths, credentials, or arbitrary process environment.
+        $names = @(
+            'DOCKER_CONTEXT', 'DOCKER_HOST_PRESENT',
+            'AWS_PROFILE', 'AWS_DEFAULT_PROFILE', 'AWS_REGION', 'AWS_DEFAULT_REGION',
+            'AZURE_CLOUD_NAME', 'CLOUDSDK_ACTIVE_CONFIG_NAME',
+            'CLOUDSDK_CORE_PROJECT', 'CLOUDSDK_COMPUTE_REGION', 'TF_WORKSPACE',
+            'AUTOMEXIA_ENV', 'ENVIRONMENT', 'APP_ENV', 'NODE_ENV'
+        )
+        $values = foreach ($name in $names) {
+            $value = if ($name -eq 'DOCKER_HOST_PRESENT') {
+                if ([Environment]::GetEnvironmentVariable('DOCKER_HOST', 'Process')) { '1' } else { '0' }
+            } else {
+                [string][Environment]::GetEnvironmentVariable($name, 'Process')
+            }
+            if ([Text.Encoding]::UTF8.GetByteCount($value) -gt 256 -or
+                $value -match '\p{Cc}') {
+                $value = ''
+            }
+            $value
+        }
+        $key = $values -join [char]0
+        if (-not $script:AutomexiaSelectorReady -or
+            $key -cne $script:AutomexiaSelectorKey) {
+            $frames = New-Object Text.StringBuilder
+            for ($index = 0; $index -lt $names.Length; $index++) {
+                $encoded = [Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($values[$index]))
+                [void]$frames.Append("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_$($names[$index])=$encoded$script:AutomexiaBel")
+            }
+            $script:AutomexiaSelectorKey = $key
+            $script:AutomexiaSelectorFrames = $frames.ToString()
+            $script:AutomexiaSelectorReady = $true
+        }
+        [Console]::Write($script:AutomexiaSelectorFrames)
+    }
     function script:Publish-AutomexiaPowerShellIdentity {
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_pending=MQ==$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell_name=UG93ZXJTaGVsbA==$script:AutomexiaBel")
@@ -158,6 +256,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_distro=$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_os_version=$script:AutomexiaBel")
         Publish-AutomexiaLocationHints
+        Publish-AutomexiaSelectorHints
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_shell=MQ==$script:AutomexiaBel")
         [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_env_pending=MA==$script:AutomexiaBel")
     }
@@ -193,6 +292,7 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
                     [Console]::Write("$script:AutomexiaEsc[0J")
                     [Console]::Write("$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MA==$script:AutomexiaBel")
                     [Console]::Write("$script:AutomexiaEsc]133;C$script:AutomexiaBel")
+                    $script:AutomexiaCommandAwaitingCompletion = $true
                 }
                 return $line
             }
@@ -275,7 +375,13 @@ if (($env:TERM_PROGRAM -eq 'Automexia' -or $env:AUTOMEXIA_SHELL_INTEGRATION -eq 
         $osc7 = "$script:AutomexiaEsc]7;file://localhost/$path$script:AutomexiaBel"
         $titleText = "PowerShell - {0}" -f $path
         $title = "$script:AutomexiaEsc]2;$titleText$script:AutomexiaBel"
-        $done = "$script:AutomexiaEsc]133;D;$exitCode$script:AutomexiaBel"
+        # PSReadLine may invoke prompt again for Ctrl+L without accepting a
+        # command. Only pair D with a preceding C; otherwise a repaint looks
+        # like a completed command and leaves a stale status badge behind.
+        $done = if ($script:AutomexiaCommandAwaitingCompletion) {
+            "$script:AutomexiaEsc]133;D;$exitCode$script:AutomexiaBel"
+        } else { '' }
+        $script:AutomexiaCommandAwaitingCompletion = $false
         $ready = "$script:AutomexiaEsc]1337;SetUserVar=automexia_prompt_active=MQ==$script:AutomexiaBel"
         $start = "$script:AutomexiaEsc]133;A;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"
         $continuation = "$script:AutomexiaEsc]133;P;k=c;aid=$script:AutomexiaPromptGeneration$script:AutomexiaBel"

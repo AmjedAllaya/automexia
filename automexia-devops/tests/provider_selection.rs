@@ -390,3 +390,56 @@ fn terraform_unreadable_or_invalid_workspace_is_unavailable() {
         &[("TF_WORKSPACE", ""), ("TF_DATA_DIR", "")],
     );
 }
+
+#[test]
+fn aws_empty_profile_selection_never_restores_default_or_alias() {
+    let fixture = Fixture::new();
+    for overrides in [
+        vec![("AWS_PROFILE", "")],
+        vec![("AWS_DEFAULT_PROFILE", "")],
+        vec![("AWS_PROFILE", ""), ("AWS_DEFAULT_PROFILE", "alternate")],
+        vec![("AWS_PROFILE", "   ")],
+    ] {
+        fixture.check(json!({"AWS":null}), &overrides);
+    }
+}
+
+#[test]
+fn aws_explicit_empty_region_does_not_restore_file_or_alias() {
+    let fixture = Fixture::new();
+    for overrides in [
+        vec![("AWS_REGION", "")],
+        vec![("AWS_DEFAULT_REGION", "")],
+        vec![("AWS_REGION", ""), ("AWS_DEFAULT_REGION", "alias-region")],
+        vec![("AWS_REGION", "   ")],
+    ] {
+        fixture.check(json!({"AWS":["default",""]}), &overrides);
+    }
+}
+
+#[test]
+fn aws_profile_and_region_aliases_remain_independent() {
+    let fixture = Fixture::new();
+    fixture.write("config/aws/config", "[default]\nregion = file-region\n[profile alternate]\nregion = alternate-file-region\n");
+    fixture.check(
+        json!({"AWS":["primary","primary-region"]}),
+        &[
+            ("AWS_PROFILE", "primary"),
+            ("AWS_DEFAULT_PROFILE", "alternate"),
+            ("AWS_REGION", "primary-region"),
+            ("AWS_DEFAULT_REGION", "alias-region"),
+        ],
+    );
+    fixture.check(
+        json!({"AWS":["alternate","alias-region"]}),
+        &[
+            ("AWS_DEFAULT_PROFILE", "alternate"),
+            ("AWS_DEFAULT_REGION", "alias-region"),
+        ],
+    );
+    fixture.check(
+        json!({"AWS":["alternate","alternate-file-region"]}),
+        &[("AWS_DEFAULT_PROFILE", "alternate")],
+    );
+    fixture.check(json!({"AWS":["default","file-region"]}), &[]);
+}

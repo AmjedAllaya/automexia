@@ -26,6 +26,475 @@ fn opened() -> SettingsView {
     view.open(catalog(1));
     view
 }
+
+#[test]
+fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_editing() {
+    use automexia_ui_model::settings::{
+        Section, COMMAND_OUTPUT_HIGHLIGHTING, OUTPUT_HIGHLIGHTING,
+    };
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Status coloring".into(),
+        installed: true,
+    }];
+    let snapshot =
+        crate::settings_catalog::catalog(1, &base, &preferences, &market).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(720.0, 560.0, 14.0);
+    view.open(snapshot.clone());
+    assert!(view
+        .view
+        .as_ref()
+        .unwrap()
+        .filtered_ids()
+        .iter()
+        .any(|id| id.as_str() == COMMAND_OUTPUT_HIGHLIGHTING));
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::ArrowDown);
+    assert_eq!(
+        view.view.as_ref().unwrap().focused().unwrap().as_str(),
+        COMMAND_OUTPUT_HIGHLIGHTING
+    );
+    named(&mut view, NamedKey::Space);
+    let edit = view.take_edit().unwrap();
+    assert_eq!(edit.id.as_str(), COMMAND_OUTPUT_HIGHLIGHTING);
+    assert_eq!(edit.change, Change::Set(SettingValue::Boolean(false)));
+    let changed =
+        crate::settings_catalog::apply_edit(1, &base, &preferences, &market, &edit)
+            .unwrap();
+    assert_eq!(
+        changed.presentation.command_output_highlighting,
+        Some(false)
+    );
+
+    view.open_with_section(snapshot, Some(Section::Customizations));
+    assert!(view.accessibility_summary().starts_with("Customizations."));
+    let categories = view.catalog.as_ref().unwrap();
+    let labels: Vec<_> = categories
+        .entries()
+        .iter()
+        .map(|entry| entry.label.as_str())
+        .collect();
+    assert!(labels.contains(&"Information tags"));
+    assert!(labels.contains(&"Terminal output colors"));
+    assert!(labels.contains(&"Kubernetes status colors"));
+    assert!(labels.contains(&"Inline tables"));
+    assert!(labels.contains(&"Command timestamps"));
+    assert!(labels.contains(&"Theme"));
+    assert!(labels.contains(&"Font size"));
+    assert!(!labels.iter().any(|label| label.contains("DevOps")));
+    assert!(!labels.contains(&"Git branch tag"));
+    assert!(categories
+        .entries()
+        .iter()
+        .all(|entry| entry.kind == SettingKind::Action));
+    let output_category = categories
+        .entries()
+        .iter()
+        .find(|entry| entry.label == "Terminal output colors")
+        .unwrap()
+        .id
+        .clone();
+    view.view.as_mut().unwrap().focus(&output_category);
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(
+        view.take_edit().is_none(),
+        "opening a category must never queue a setting edit"
+    );
+    let output_page = view.view.as_ref().unwrap().filtered_ids();
+    assert_eq!(
+        output_page.first().unwrap().as_str(),
+        COMMAND_OUTPUT_HIGHLIGHTING
+    );
+    assert!(output_page
+        .iter()
+        .any(|id| id.as_str() == OUTPUT_HIGHLIGHTING));
+    assert!(output_page.iter().any(|id| id.as_str() == "output.style"));
+    assert!(!output_page
+        .iter()
+        .any(|id| id.as_str().starts_with("tags.")));
+    assert_eq!(view.title(), "Terminal output colors");
+    named(&mut view, NamedKey::Space);
+    let detail_edit = view.take_edit().unwrap();
+    assert_eq!(detail_edit.id.as_str(), COMMAND_OUTPUT_HIGHLIGHTING);
+    assert_eq!(
+        detail_edit.change,
+        Change::Set(SettingValue::Boolean(false))
+    );
+    named(&mut view, NamedKey::Escape);
+    assert!(
+        view.is_open(),
+        "Escape from a feature page returns to categories"
+    );
+    assert_eq!(
+        view.view.as_ref().unwrap().focused(),
+        Some(&output_category)
+    );
+    let information_tags = view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .entries()
+        .iter()
+        .find(|entry| entry.label == "Information tags")
+        .unwrap()
+        .id
+        .clone();
+    view.view.as_mut().unwrap().focus(&information_tags);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.view.as_ref().unwrap().filtered_ids().iter().any(|id| {
+        id.as_str() == crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID
+    }));
+    let uninstalled = [crate::automexia::marketplace::MarketItem {
+        installed: false,
+        ..market[0].clone()
+    }];
+    view.refresh(
+        crate::settings_catalog::catalog(2, &base, &preferences, &uninstalled).unwrap(),
+    );
+    assert_eq!(view.title(), "Information tags");
+    assert!(view.take_edit().is_none());
+    assert!(
+        !view.view.as_ref().unwrap().filtered_ids().iter().any(|id| {
+            id.as_str() == crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID
+        })
+    );
+    named(&mut view, NamedKey::Escape);
+    assert!(view.is_category_root());
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn git_preview_tag_edits_only_the_git_feature_and_repaints_its_saved_value() {
+    use crate::automexia::settings_extensions::{
+        DEVOPS_CONTEXT_STATUS_ID, DEVOPS_GIT_STATUS_ID,
+    };
+
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Local context".into(),
+        installed: true,
+    }];
+    let full = crate::settings_catalog::catalog(1, &base, &preferences, &market).unwrap();
+    let git_id = SettingId::new(DEVOPS_GIT_STATUS_ID).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(720.0, 560.0, 14.0);
+    view.open_customizations_with_slots(
+        full,
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.start_preview_edit();
+    view.enter_preview_item(SettingId::new("tags.slot.git.page").unwrap());
+    assert_eq!(view.title(), "Tag slot: Git");
+    assert!(view.view.as_mut().unwrap().focus(&git_id));
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&git_id).unwrap().value,
+        SettingValue::Boolean(true)
+    );
+    named(&mut view, NamedKey::Space);
+    let edit = view.take_edit().unwrap();
+    assert_eq!(edit.id, git_id);
+    assert_eq!(edit.change, Change::Set(SettingValue::Boolean(false)));
+    let changed =
+        crate::settings_catalog::apply_edit(1, &base, &preferences, &market, &edit)
+            .unwrap();
+    assert_eq!(
+        changed.extension_feature_enabled(DEVOPS_GIT_STATUS_ID),
+        Some(false)
+    );
+    assert_eq!(
+        changed.extension_feature_enabled(DEVOPS_CONTEXT_STATUS_ID),
+        None
+    );
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &changed, &market).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &changed,
+            &changed.apply_to(&base),
+        )),
+    );
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&git_id).unwrap().value,
+        SettingValue::Boolean(false)
+    );
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(3, &base, &changed, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &changed,
+            &changed.apply_to(&base),
+        )),
+    );
+    assert_eq!(view.title(), "Tag slot: Git");
+    assert!(view.catalog.as_ref().unwrap().get(&git_id).is_none());
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn signed_package_feature_uses_bounded_nested_pages_and_uninstall_closes_stale_detail() {
+    use automexia_ecosystem::{
+        decode_settings_metadata, Compatibility, EcosystemManifest, ExtensionKind,
+        WIT_WORLD,
+    };
+    use automexia_ecosystem_runtime::{
+        CommittedSettingsSnapshot, InstalledPackageSettings,
+    };
+    let manifest = EcosystemManifest {
+        schema_version: 1,
+        publisher_id: "example.publisher".into(),
+        extension_id: "example.inspect".into(),
+        version: "1.0.0".into(),
+        display_name: "Example Inspect".into(),
+        description: String::new(),
+        kind: ExtensionKind::Component,
+        compatibility: Compatibility {
+            sdk_major: 1,
+            sdk_minor_minimum: 0,
+            sdk_minor_maximum: 0,
+        },
+        world: WIT_WORLD.into(),
+        imports: vec![],
+        capabilities: vec![],
+        action_pack_entry: None,
+    };
+    let metadata = decode_settings_metadata(
+        include_bytes!("../../../tests/fixtures/ecosystem/settings-metadata-v1.json"),
+        &manifest,
+    )
+    .unwrap();
+    let committed = CommittedSettingsSnapshot {
+        revision: 4,
+        packages: vec![InstalledPackageSettings {
+            extension_id: manifest.extension_id.clone(),
+            publisher_id: manifest.publisher_id.clone(),
+            version: manifest.version.clone(),
+            package_sha256: "a".repeat(64),
+            metadata: Ok(Some(metadata)),
+        }],
+    };
+    let pages = crate::automexia::package_customizations::PackageCustomizationPages::from_committed(
+        7,
+        &committed,
+        &[],
+    )
+    .unwrap();
+    let base = rio_backend::config::Config::default();
+    let prefs = crate::automexia::preferences::UserPreferences::default();
+    let source = crate::settings_catalog::catalog(7, &base, &prefs, &[]).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(420.0, 440.0, 14.0);
+    view.open_customizations(source, Some(pages));
+    let package_key = view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .entries()
+        .iter()
+        .find(|entry| entry.label == "example.inspect")
+        .unwrap()
+        .id
+        .clone();
+    assert!(view.paste("example.inspect"));
+    view.view.as_mut().unwrap().focus(&package_key);
+    let refreshed = crate::automexia::package_customizations::PackageCustomizationPages::from_committed(
+        8,
+        &committed,
+        &[],
+    )
+    .unwrap();
+    view.refresh_with_packages(
+        crate::settings_catalog::catalog(8, &base, &prefs, &[]).unwrap(),
+        Some(refreshed),
+    );
+    assert_eq!(view.query(), "example.inspect");
+    assert_eq!(view.view.as_ref().unwrap().focused(), Some(&package_key));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 1);
+    assert_eq!(view.catalog.as_ref().unwrap().entries()[0].label, "Summary");
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 4);
+    assert!(view
+        .accessibility_summary()
+        .contains("execution is unavailable"));
+    named(&mut view, NamedKey::Space);
+    assert!(view.take_edit().is_some());
+    let removed = CommittedSettingsSnapshot {
+        revision: 5,
+        packages: Vec::new(),
+    };
+    let pages = crate::automexia::package_customizations::PackageCustomizationPages::from_committed(
+        9,
+        &removed,
+        &[],
+    )
+    .unwrap();
+    let source = crate::settings_catalog::catalog(9, &base, &prefs, &[]).unwrap();
+    view.refresh_with_packages(source, Some(pages));
+    assert!(view.is_category_root());
+    assert!(view.take_edit().is_none());
+    assert!(!view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .entries()
+        .iter()
+        .any(|entry| entry.label == "example.inspect"));
+}
+
+#[test]
+fn maximum_installed_package_pages_leave_core_customizations_available() {
+    use automexia_ui_model::settings::{ChangeScope, SettingOwner};
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let source = crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap();
+    let pages = crate::automexia::package_customizations::PackageCustomizationPages {
+        revision: 1,
+        store_revision: 1,
+        packages: (0..128)
+            .map(|index| {
+                let alias = format!("pkg_{index}");
+                let key = SettingId::new(format!("extension.{alias}.package")).unwrap();
+                crate::automexia::package_customizations::PackagePage {
+                    publisher_id: "example.publisher".into(),
+                    extension_id: format!("example.extension-{index}"),
+                    key: key.clone(),
+                    action: SettingDescriptor {
+                        id: key,
+                        owner: SettingOwner::Extension(alias),
+                        section: Section::Customizations,
+                        label: format!("example.package{index}"),
+                        description: "Saved preferences only".into(),
+                        keywords: Vec::new(),
+                        kind: SettingKind::Action,
+                        value: SettingValue::Action,
+                        default: SettingValue::Action,
+                        origin: ValueOrigin::Extension,
+                        availability: Availability::Available,
+                        scope: ChangeScope::Immediate,
+                    },
+                    features: Vec::new(),
+                }
+            })
+            .collect(),
+    };
+    let mut view = SettingsView::default();
+    view.open_customizations(source, Some(pages));
+    let root = view.catalog.as_ref().unwrap();
+    assert_eq!(
+        root.entries()
+            .iter()
+            .filter(|row| row.label.starts_with("example.package"))
+            .count(),
+        128
+    );
+    assert!(root
+        .entries()
+        .iter()
+        .any(|row| row.label == "Information tags"));
+    assert!(root
+        .entries()
+        .iter()
+        .any(|row| row.label == "Terminal output colors"));
+    assert_ne!(view.status, "Customizations are temporarily unavailable.");
+}
+
+#[test]
+fn customization_search_is_scoped_to_each_level_and_back_restores_category_focus() {
+    let base = rio_backend::config::Config::default();
+    let mut view = SettingsView::default();
+    view.fit(480.0, 420.0, 16.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    assert!(view.paste("output"));
+    assert_eq!(view.view.as_ref().unwrap().filtered_ids().len(), 1);
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.is_category_detail());
+    assert_eq!(view.query(), "");
+    view.focus = Focus::Search;
+    assert!(view.paste("logs"));
+    assert!(view
+        .view
+        .as_ref()
+        .unwrap()
+        .filtered_ids()
+        .iter()
+        .all(|id| id.as_str() == automexia_ui_model::settings::OUTPUT_HIGHLIGHTING));
+    view.key(
+        &Key::Named(NamedKey::ArrowLeft),
+        None,
+        ModifiersState::ALT,
+        false,
+    );
+    assert!(view.is_category_root());
+    assert_eq!(view.query(), "output");
+    assert_eq!(view.view.as_ref().unwrap().filtered_ids().len(), 1);
+    assert!(view.accessibility_summary().contains("Enter: open"));
+    named(&mut view, NamedKey::Escape);
+    assert!(!view.is_open());
+}
+
+#[test]
+fn customization_root_search_finds_categories_by_their_controls() {
+    let base = rio_backend::config::Config::default();
+    let mut view = SettingsView::default();
+    view.fit(480.0, 420.0, 16.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    for (query, expected) in crate::automexia::presentation::TAG_COLOR_BINDINGS
+        .iter()
+        .map(|binding| (binding.label, "Information tags"))
+        .chain([
+            ("gcp", "Information tags"),
+            ("unknown cloud", "Information tags"),
+            ("opacity", "Information tags"),
+            ("Docker", "Terminal output colors"),
+        ])
+    {
+        view.key(
+            &Key::Character("a".into()),
+            None,
+            ModifiersState::CONTROL,
+            false,
+        );
+        assert!(view.paste(query));
+        let visible = view.view.as_ref().unwrap().filtered_ids();
+        assert!(
+            visible.iter().any(|id| view
+                .catalog
+                .as_ref()
+                .unwrap()
+                .get(id)
+                .is_some_and(|entry| entry.label == expected)),
+            "query {query} must still find {expected}"
+        );
+    }
+}
 fn named(view: &mut SettingsView, key: NamedKey) {
     view.key(&Key::Named(key), None, ModifiersState::empty(), false);
 }
@@ -40,7 +509,124 @@ fn settings_keyboard_changes_one_option_and_reset_is_an_explicit_separate_intent
     assert_eq!(edit.change, Change::Set(SettingValue::Boolean(false)));
     named(&mut view, NamedKey::Tab);
     named(&mut view, NamedKey::Enter);
+    confirm_requested_settings_action(&mut view);
     assert_eq!(view.take_edit().unwrap().change, Change::Reset);
+}
+
+#[test]
+fn customization_root_reset_does_not_open_the_focused_category() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(720.0, 560.0, 14.0);
+    view.open_customizations(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+    );
+    assert!(view.is_category_root());
+    view.focus = Focus::Reset;
+    named(&mut view, NamedKey::Enter);
+    assert!(
+        view.is_category_root(),
+        "Reset all must not navigate into a category"
+    );
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(
+        view.take_customization_intent(),
+        Some(CustomizationIntent::Reset {
+            revision: 1,
+            scope: CustomizationResetScope::All,
+        })
+    );
+}
+
+#[test]
+fn customization_reset_targets_current_category_and_restore_is_a_separate_action() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(720.0, 560.0, 14.0);
+    view.open_customizations(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+    );
+    let output =
+        SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+            .unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&output));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(view.is_category_detail());
+    view.focus = Focus::Reset;
+    named(&mut view, NamedKey::Enter);
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(
+        view.take_customization_intent(),
+        Some(CustomizationIntent::Reset {
+            revision: 1,
+            scope: CustomizationResetScope::Group(output),
+        })
+    );
+    assert!(
+        view.take_edit().is_none(),
+        "category reset must not reset only a focused row"
+    );
+    view.set_temporary_customizations(true);
+    view.focus = Focus::Restore;
+    named(&mut view, NamedKey::Enter);
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(
+        view.take_customization_intent(),
+        Some(CustomizationIntent::RestoreSaved)
+    );
+    view.activate_target(Target::Restore);
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(
+        view.take_customization_intent(),
+        Some(CustomizationIntent::RestoreSaved)
+    );
+    view.set_temporary_customizations(false);
+    assert_eq!(view.focus, Focus::Reset);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(view.focus, Focus::Close);
+}
+
+#[test]
+fn reset_restore_and_close_have_separate_mouse_targets_in_narrow_and_wide_sheets() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    for (width, height) in [(320.0, 420.0), (960.0, 620.0)] {
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+        );
+        view.set_temporary_customizations(true);
+        view.paint(&mut Raster::new(1.0), theme());
+        let g = view.geometry;
+        assert!(g.reset.x + g.reset.width <= g.restore.x);
+        assert!(g.restore.x + g.restore.width <= g.close.x);
+        assert!(g.close.x + g.close.width <= g.card.x + g.card.width);
+        for (rect, target) in [
+            (g.reset, Target::Reset),
+            (g.restore, Target::Restore),
+            (g.close, Target::Close),
+        ] {
+            assert_eq!(
+                view.target_at(rect.x + rect.width * 0.5, rect.y + rect.height * 0.5),
+                Some(target),
+            );
+        }
+        view.set_temporary_customizations(false);
+        assert_eq!(
+            view.target_at(
+                g.restore.x + g.restore.width * 0.5,
+                g.restore.y + g.restore.height * 0.5
+            ),
+            None,
+        );
+    }
 }
 
 #[test]
@@ -160,9 +746,61 @@ fn save_status_ignores_old_receipts_and_reports_session_only_failures() {
     assert!(view.accessibility_summary().contains("session"));
 }
 
+#[test]
+fn earlier_save_receipts_never_label_a_temporary_preview_as_saved() {
+    let mut view = opened();
+    view.save_started(8);
+    view.set_temporary_customizations(true);
+    view.set_status("Temporary preview only. Restore saved to return.");
+    view.save_completed(8, true);
+    assert!(view.saving.is_none());
+    assert!(!view.accessibility_summary().contains(". Saved"));
+    assert!(view.accessibility_summary().contains("Temporary preview"));
+    view.save_started(9);
+    view.save_completed(9, false);
+    assert!(view.accessibility_summary().contains("Temporary preview"));
+    view.save_failed();
+    assert!(view.accessibility_summary().contains("Temporary preview"));
+    view.set_temporary_customizations(false);
+    view.set_status("Previous choices restored. Saved files were unchanged.");
+    view.save_completed(8, true);
+    assert!(view
+        .accessibility_summary()
+        .contains("Previous choices restored"));
+    assert_ne!(view.status, "Saved");
+    view.set_temporary_customizations(true);
+    view.layout_dirty = false;
+    view.set_temporary_customizations(true);
+    assert!(
+        !view.layout_dirty,
+        "unchanged preview state must not trigger layout work"
+    );
+
+    let mut delayed = opened();
+    delayed.save_started(10);
+    delayed.set_temporary_customizations(true);
+    assert!(
+        delayed.saving.is_none(),
+        "only the view receipt token is retired"
+    );
+    delayed.set_temporary_customizations(false);
+    delayed.set_status("Previous choices restored. Saved files were unchanged.");
+    delayed.save_completed(10, true);
+    assert_ne!(delayed.status, "Saved");
+}
+
+#[derive(Clone, Debug, PartialEq)]
+enum ShapeCall {
+    Rounded([f32; 4], f32),
+    Polygon(Vec<(f32, f32)>),
+    Line((f32, f32), (f32, f32), f32),
+    Arc((f32, f32), f32, (f32, f32), f32),
+}
+
 struct Raster {
     text: Text,
     rects: Vec<([f32; 4], [f32; 4])>,
+    shapes: Vec<ShapeCall>,
     scale: f32,
 }
 impl Raster {
@@ -183,21 +821,33 @@ impl Raster {
         Self {
             text,
             rects: Vec::new(),
+            shapes: Vec::new(),
             scale,
         }
     }
     fn pixels(&mut self, width: u32, height: u32, glyphs: bool) -> Vec<u32> {
         let mut pixels = vec![0x00112233; width as usize * height as usize];
         for ([left, top, w, h], color) in &self.rects {
-            let p = ((color[0] * 255.0) as u32) << 16
-                | ((color[1] * 255.0) as u32) << 8
-                | (color[2] * 255.0) as u32;
+            let alpha = color[3].clamp(0.0, 1.0);
+            let source = [color[0], color[1], color[2]]
+                .map(|channel| channel.clamp(0.0, 1.0) * 255.0);
             for y in 0..height {
                 for x in 0..width {
                     let px = (x as f32 + 0.5) / self.scale;
                     let py = (y as f32 + 0.5) / self.scale;
                     if px >= *left && px < left + w && py >= *top && py < top + h {
-                        pixels[(y * width + x) as usize] = p;
+                        let index = (y * width + x) as usize;
+                        let prior = pixels[index];
+                        let red = (source[0] * alpha
+                            + ((prior >> 16) & 0xff) as f32 * (1.0 - alpha))
+                            .round() as u32;
+                        let green = (source[1] * alpha
+                            + ((prior >> 8) & 0xff) as f32 * (1.0 - alpha))
+                            .round() as u32;
+                        let blue = (source[2] * alpha
+                            + (prior & 0xff) as f32 * (1.0 - alpha))
+                            .round() as u32;
+                        pixels[index] = (red << 16) | (green << 8) | blue;
                     }
                 }
             }
@@ -216,6 +866,62 @@ impl Canvas for Raster {
     fn rect(&mut self, bounds: [f32; 4], color: [f32; 4]) {
         self.rects.push((bounds, color));
     }
+    fn rounded_rect(&mut self, bounds: [f32; 4], radius: f32, color: [f32; 4]) {
+        self.shapes.push(ShapeCall::Rounded(bounds, radius));
+        self.rect(bounds, color);
+    }
+    fn polygon(&mut self, points: &[(f32, f32)], color: [f32; 4]) {
+        self.shapes.push(ShapeCall::Polygon(points.to_vec()));
+        let left = points
+            .iter()
+            .map(|point| point.0)
+            .fold(f32::INFINITY, f32::min);
+        let right = points
+            .iter()
+            .map(|point| point.0)
+            .fold(f32::NEG_INFINITY, f32::max);
+        let top = points
+            .iter()
+            .map(|point| point.1)
+            .fold(f32::INFINITY, f32::min);
+        let bottom = points
+            .iter()
+            .map(|point| point.1)
+            .fold(f32::NEG_INFINITY, f32::max);
+        self.rect([left, top, right - left, bottom - top], color);
+    }
+    fn line(&mut self, from: (f32, f32), to: (f32, f32), width: f32, color: [f32; 4]) {
+        self.shapes.push(ShapeCall::Line(from, to, width));
+        self.rect(
+            [
+                from.0.min(to.0) - width * 0.5,
+                from.1.min(to.1) - width * 0.5,
+                (from.0 - to.0).abs() + width,
+                (from.1 - to.1).abs() + width,
+            ],
+            color,
+        );
+    }
+    fn arc(
+        &mut self,
+        center: (f32, f32),
+        radius: f32,
+        angles: (f32, f32),
+        width: f32,
+        color: [f32; 4],
+    ) {
+        self.shapes
+            .push(ShapeCall::Arc(center, radius, angles, width));
+        self.rect(
+            [
+                center.0 - radius,
+                center.1 - radius,
+                radius * 2.0 + width,
+                radius * 2.0 + width,
+            ],
+            color,
+        );
+    }
 }
 fn theme() -> UiTheme {
     UiTheme::resolve(
@@ -223,6 +929,2087 @@ fn theme() -> UiTheme {
         [0.95, 0.97, 1.0, 1.0],
         [0.7, 0.75, 0.8, 1.0],
     )
+}
+
+#[test]
+fn tag_preview_dispatches_each_shared_shape_geometry_in_filled_and_plain_modes() {
+    let bounds = Rect {
+        x: 23.0,
+        y: 41.0,
+        width: 92.0,
+        height: 20.0,
+    };
+    let styles = BarVisualStyle::ALL;
+    for style in styles {
+        let expected = tag_surface_geometry(style, bounds.width, bounds.height).unwrap();
+        for alpha in [0, 75] {
+            let colors = automexia_ui_model::context_tag_colors(
+                [0.02, 0.04, 0.06, 1.0],
+                [60, 190, 240],
+                alpha,
+            );
+            let mut raster = Raster::new(1.0);
+            paint_sample_tag_surface(&mut raster, bounds, style, colors);
+            match (expected, alpha) {
+                (TagSurfaceGeometry::Connected(shape), 0) => {
+                    assert_eq!(raster.shapes.len(), shape.points().len());
+                    assert!(raster
+                        .shapes
+                        .iter()
+                        .all(|call| matches!(call, ShapeCall::Line(..))));
+                }
+                (TagSurfaceGeometry::Connected(shape), _) => {
+                    assert_eq!(
+                        raster.shapes.len(),
+                        shape.triangles().count() + usize::from(shape.fold.is_some())
+                    );
+                    assert!(raster.shapes.iter().all(|call| matches!(call, ShapeCall::Polygon(points) if points.len() == 3)));
+                }
+                (TagSurfaceGeometry::Capsule { radius, .. }, 0) => {
+                    assert_eq!(raster.shapes.iter().filter(|shape| matches!(shape, ShapeCall::Arc(_, actual, _, _) if (*actual - radius).abs() < 0.001)).count(), 4);
+                }
+                (TagSurfaceGeometry::Capsule { radius, .. }, _) => assert!(raster
+                    .shapes
+                    .contains(&ShapeCall::Rounded(bounds.array(), radius))),
+                (TagSurfaceGeometry::Flat { .. }, 0) => assert_eq!(
+                    raster
+                        .shapes
+                        .iter()
+                        .filter(|shape| matches!(shape, ShapeCall::Line(..)))
+                        .count(),
+                    4
+                ),
+                (TagSurfaceGeometry::Flat { .. }, _) => {
+                    assert!(raster.rects.iter().any(|(rect, _)| *rect == bounds.array()))
+                }
+                (
+                    TagSurfaceGeometry::Chevron { points, .. }
+                    | TagSurfaceGeometry::Hexagon { points, .. },
+                    0,
+                ) => {
+                    let start = (bounds.x + points[0].0, bounds.y + points[0].1);
+                    let next = (bounds.x + points[1].0, bounds.y + points[1].1);
+                    assert!(raster.shapes.iter().any(|shape| matches!(shape,
+                        ShapeCall::Line(a, b, _) if *a == start && *b == next)));
+                    assert_eq!(raster.shapes.len(), 6);
+                }
+                (
+                    TagSurfaceGeometry::Chevron { points, .. }
+                    | TagSurfaceGeometry::Hexagon { points, .. },
+                    _,
+                ) => {
+                    let absolute = points.map(|(x, y)| (bounds.x + x, bounds.y + y));
+                    assert_eq!(
+                        raster.shapes,
+                        vec![ShapeCall::Polygon(absolute.to_vec())]
+                    );
+                }
+                (TagSurfaceGeometry::Card { radius, .. }, 0) => {
+                    assert_eq!(raster.shapes.iter().filter(|shape| matches!(shape, ShapeCall::Arc(_, actual, _, _) if (*actual - radius).abs() < 0.001)).count(), 4);
+                }
+                (TagSurfaceGeometry::Card { radius, .. }, _) => {
+                    assert!(raster
+                        .shapes
+                        .contains(&ShapeCall::Rounded(bounds.array(), radius)));
+                    assert!(raster
+                        .shapes
+                        .iter()
+                        .any(|shape| matches!(shape, ShapeCall::Arc(..))));
+                }
+                (TagSurfaceGeometry::Underline { .. }, _) => assert_eq!(
+                    raster
+                        .shapes
+                        .iter()
+                        .filter(|shape| matches!(shape, ShapeCall::Line(..)))
+                        .count(),
+                    1
+                ),
+            }
+        }
+    }
+}
+
+#[test]
+fn joined_preview_tips_sockets_and_gaps_select_only_the_painted_tag() {
+    let base = rio_backend::config::Config::default();
+    for style in BarVisualStyle::ALL
+        .into_iter()
+        .filter(|style| !style.is_legacy())
+    {
+        let initial = crate::automexia::preferences::UserPreferences::default();
+        let selected = crate::settings_catalog::apply_edit(
+            1,
+            &base,
+            &initial,
+            &[],
+            &Edit {
+                revision: 1,
+                id: SettingId::new("tags.bar-style").unwrap(),
+                change: Change::Set(SettingValue::Choice(style.id().into())),
+            },
+        )
+        .unwrap();
+        for gap in [0.0, 300.0] {
+            let saved = crate::settings_catalog::apply_edit(
+                1,
+                &base,
+                &selected,
+                &[],
+                &Edit {
+                    revision: 1,
+                    id: SettingId::new("tags.spacing").unwrap(),
+                    change: Change::Set(SettingValue::Number(gap)),
+                },
+            )
+            .unwrap();
+            let mut view = SettingsView::default();
+            view.fit(960.0, 620.0, 16.0);
+            view.open_customizations_with_slots(
+                crate::settings_catalog::catalog(1, &base, &saved, &[]).unwrap(),
+                None,
+                Some(crate::settings_catalog::slot_page_snapshot(&saved, &base)),
+            );
+            view.view
+                .as_mut()
+                .unwrap()
+                .focus(&SettingId::new("tags.enabled").unwrap());
+            view.focus = Focus::List;
+            named(&mut view, NamedKey::Enter);
+            view.paint(&mut Raster::new(1.0), theme());
+            assert!(view.preview_tag_shapes.len() >= 3);
+            let mut checked = 0;
+            // Scan the real overlapping preview bounds, including concave sockets
+            // and empty corners. A rectangular hit test fails on these points.
+            for (bounds, shape) in &view.preview_tag_shapes {
+                for y in [1.25, bounds.height * 0.5, bounds.height - 1.25] {
+                    for x in (0..bounds.width.ceil() as usize).map(|x| x as f32 + 0.25) {
+                        let point = (bounds.x + x, bounds.y + y);
+                        let owners: Vec<_> = view
+                            .preview_tag_shapes
+                            .iter()
+                            .filter(|(area, polygon)| {
+                                area.contains(point.0, point.1)
+                                    && polygon
+                                        .contains((point.0 - area.x, point.1 - area.y))
+                            })
+                            .collect();
+                        assert!(
+                            owners.len() <= 1,
+                            "{style:?} overlaps filled tag surfaces"
+                        );
+                        let expected = owners
+                            .first()
+                            .and_then(|(area, _)| {
+                                view.preview_targets
+                                    .iter()
+                                    .find(|(_, target)| target == area)
+                            })
+                            .map(|(id, _)| id);
+                        match (view.target_at(point.0, point.1), expected) {
+                            (Some(Target::PreviewItem(actual)), Some(expected)) => assert_eq!(&actual, expected),
+                            (None, None) => (),
+                            (actual, expected) => panic!("{style:?} incorrect hit at {point:?}: {actual:?}, {expected:?}"),
+                        }
+                        if !shape.contains((x, y)) {
+                            checked += 1;
+                        }
+                    }
+                }
+            }
+            assert!(checked > 0, "must exercise cutout points");
+        }
+    }
+}
+
+#[test]
+fn live_preview_lists_all_tags_and_selects_disabled_tags() {
+    let base = rio_backend::config::Config::default();
+    let mut preferences = crate::automexia::preferences::UserPreferences::default();
+    preferences = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &preferences,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.slot.windows.enabled").unwrap(),
+            change: Change::Set(SettingValue::Boolean(false)),
+        },
+    )
+    .unwrap();
+    for (width, height) in [(960.0, 620.0), (320.0, 420.0)] {
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &preferences,
+                &preferences.apply_to(&base),
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.enabled").unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        assert!(view
+            .catalog
+            .as_ref()
+            .unwrap()
+            .entries()
+            .iter()
+            .all(|entry| !entry.id.as_str().starts_with("tags.slot.")
+                && !entry.id.as_str().starts_with("tags.colors.")));
+        let mut raster = Raster::new(1.0);
+        view.paint(&mut raster, theme());
+        assert!(view
+            .preview_order
+            .iter()
+            .any(|id| id.as_str() == "tags.slot.windows.page"));
+        assert!(!view
+            .preview_targets
+            .iter()
+            .any(|(id, _)| id.as_str() == "tags.colors.gcp"));
+        view.focus = Focus::PreviewButton;
+        named(&mut view, NamedKey::Enter);
+        let mut raster = Raster::new(1.0);
+        view.paint(&mut raster, theme());
+        assert!(view.preview_tag_list_area.height > 0.0);
+        assert!(view
+            .preview_order
+            .iter()
+            .any(|id| id.as_str() == "tags.slot.gcp.page"));
+        assert!(view
+            .preview_order
+            .iter()
+            .any(|id| id.as_str() == "tags.slot.terraform.page"));
+        let windows_id = SettingId::new("tags.slot.windows.page").unwrap();
+        for _ in 0..view.preview_order.len() {
+            if view.preview_selected.as_ref() == Some(&windows_id) {
+                break;
+            }
+            view.focus = Focus::Preview;
+            named(&mut view, NamedKey::ArrowDown);
+        }
+        assert_eq!(view.preview_selected.as_ref(), Some(&windows_id));
+        let mut raster = Raster::new(1.0);
+        view.paint(&mut raster, theme());
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let pixels = raster.pixels(width as u32, height as u32, true);
+            image_rs::RgbImage::from_fn(width as u32, height as u32, |x, y| {
+                let pixel = pixels[(y * width as u32 + x) as usize];
+                image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+            })
+            .save(
+                directory
+                    .join(format!("tag-edit-{}x{}.png", width as u32, height as u32)),
+            )
+            .unwrap();
+        }
+        let hidden_row = view
+            .preview_targets
+            .iter()
+            .find(|(id, _)| id.as_str() == "tags.slot.windows.page")
+            .map(|(_, bounds)| *bounds)
+            .expect("the hidden tag has a muted selectable chip");
+        assert!(
+            hidden_row.height >= view.font.max(10.0) * 1.1,
+            "the narrow hidden chip remains tall enough to select"
+        );
+        pointer_event(&mut view, hidden_row, 1.0, ElementState::Pressed);
+        pointer_event(&mut view, hidden_row, 1.0, ElementState::Released);
+        assert_eq!(view.title(), "Tag slot: Windows");
+        assert!(view
+            .catalog
+            .as_ref()
+            .unwrap()
+            .get(&SettingId::new("tags.colors.windows").unwrap())
+            .is_some());
+        assert!(view
+            .catalog
+            .as_ref()
+            .unwrap()
+            .entries()
+            .iter()
+            .any(|entry| entry.label == "Default role color"));
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(view.focus, Focus::List);
+        assert!(
+            view.preview_selected.as_ref().unwrap().as_str() == "tags.slot.windows.page"
+        );
+    }
+
+    let mut view = SettingsView::default();
+    view.fit(320.0, 420.0, 16.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    assert!(view.view.as_mut().unwrap().focus(
+        &SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+            .unwrap()
+    ));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 4);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    assert_eq!(view.preview_items().len(), 8);
+    view.start_preview_edit();
+    named(&mut view, NamedKey::End);
+    assert_eq!(
+        view.preview_selected.as_ref().unwrap().as_str(),
+        "output.severity.debug"
+    );
+    view.paint(&mut raster, theme());
+    assert!(
+        view.preview_scroll > 0,
+        "short panes scroll the rendered rows"
+    );
+    assert!(view
+        .preview_targets
+        .iter()
+        .any(|(id, _)| id.as_str() == "output.severity.debug"));
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 3);
+    assert_eq!(view.title(), "Debug output colors");
+}
+
+#[test]
+fn color_editor_graphic_tracks_valid_unsaved_draft_and_keeps_last_valid_on_error() {
+    let base = rio_backend::config::Config::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    assert!(view.view.as_mut().unwrap().focus(
+        &SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+            .unwrap()
+    ));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.enter_preview_item(SettingId::new("output.severity.error").unwrap());
+    let color_id = SettingId::new("output.backgrounds.error").unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&color_id));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(replace_color(&mut view, "#0AC81EB4"));
+    let mut valid = Raster::new(1.0);
+    view.paint(&mut valid, theme());
+    let expected = [10.0 / 255.0, 200.0 / 255.0, 30.0 / 255.0, 180.0 / 255.0];
+    let preview = view.color_geometry.preview;
+    let has_draft = |raster: &Raster| {
+        raster.rects.iter().any(|(bounds, color)| {
+            bounds[0] >= preview.x
+                && bounds[1] >= preview.y
+                && color
+                    .iter()
+                    .zip(expected)
+                    .all(|(actual, expected)| (actual - expected).abs() < 0.001)
+        })
+    };
+    assert!(
+        has_draft(&valid),
+        "graphic preview paints the exact unsaved RGBA draft"
+    );
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&color_id).unwrap().value,
+        SettingValue::Color([105, 12, 25, 86])
+    );
+    assert!(replace_color(&mut view, "#123"));
+    let mut invalid = Raster::new(1.0);
+    view.paint(&mut invalid, theme());
+    assert!(
+        has_draft(&invalid),
+        "invalid input keeps the last valid graphic"
+    );
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn plain_tag_color_draft_uses_an_outline_in_both_current_and_draft_samples() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &Default::default(),
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.style").unwrap(),
+            change: Change::Set(SettingValue::Choice("plain".into())),
+        },
+    )
+    .unwrap();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &preferences.apply_to(&base),
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.enter_preview_item(SettingId::new("tags.colors.windows").unwrap());
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(replace_color(&mut view, "#55AAFF"));
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    assert!(raster
+        .shapes
+        .iter()
+        .any(|shape| matches!(shape, ShapeCall::Arc(..))));
+    assert!(
+        !raster
+            .shapes
+            .iter()
+            .any(|shape| matches!(shape, ShapeCall::Rounded(..))),
+        "Plain keeps the shared capsule outline without a filled rounded surface"
+    );
+}
+
+#[test]
+fn every_information_bar_preset_has_a_bounded_live_sample_and_shared_arrangement() {
+    use automexia_ui_model::information_bar::InformationBarPreset;
+    let base = rio_backend::config::Config::default();
+    for preset in InformationBarPreset::ALL {
+        let preferences = crate::settings_catalog::apply_edit(
+            1,
+            &base,
+            &Default::default(),
+            &[],
+            &Edit {
+                revision: 1,
+                id: SettingId::new("tags.format").unwrap(),
+                change: Change::Set(SettingValue::Choice(preset.id().into())),
+            },
+        )
+        .unwrap();
+        let mut view = SettingsView::default();
+        view.fit(960.0, 620.0, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &preferences,
+                &preferences.apply_to(&base),
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.enabled").unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        let mut raster = Raster::new(1.0);
+        view.paint(&mut raster, theme());
+        assert!(
+            !view.preview_targets.is_empty(),
+            "preset {} has sample fragments",
+            preset.id()
+        );
+        for (_, bounds) in &view.preview_targets {
+            assert!(
+                bounds.x >= view.geometry.preview.x
+                    && bounds.y >= view.geometry.preview.y
+            );
+            assert!(
+                bounds.x + bounds.width
+                    <= view.geometry.preview.x + view.geometry.preview.width + 0.001
+            );
+            assert!(
+                bounds.y + bounds.height
+                    <= view.geometry.preview.y + view.geometry.preview.height + 0.001
+            );
+        }
+        if preset == InformationBarPreset::LeftRightSplit {
+            let user = view
+                .preview_targets
+                .iter()
+                .find(|(id, _)| id.as_str() == "tags.slot.user.page")
+                .unwrap()
+                .1;
+            let windows = view
+                .preview_targets
+                .iter()
+                .find(|(id, _)| id.as_str() == "tags.slot.windows.page")
+                .unwrap()
+                .1;
+            assert!(
+                user.x > windows.x + windows.width,
+                "shared split packer places trailing lane after leading tags"
+            );
+        }
+        if preset == InformationBarPreset::TwoLinePrompt {
+            let min_y = view
+                .preview_targets
+                .iter()
+                .map(|(_, bounds)| bounds.y)
+                .min_by(f32::total_cmp)
+                .unwrap();
+            let max_y = view
+                .preview_targets
+                .iter()
+                .map(|(_, bounds)| bounds.y)
+                .max_by(f32::total_cmp)
+                .unwrap();
+            assert!(
+                max_y > min_y,
+                "shared two-line break produces separate tag rows"
+            );
+        }
+    }
+}
+
+#[test]
+fn table_preview_keeps_borders_but_obeys_only_the_kubernetes_highlighting_switch() {
+    let base = rio_backend::config::Config::default();
+    let mut original = crate::automexia::preferences::UserPreferences::default();
+    original.presentation.output_highlighting = Some(false);
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &original, &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new(INLINE_TABLES).unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut on = Raster::new(1.0);
+    view.paint(&mut on, theme());
+    let tinted = |raster: &Raster| {
+        raster.rects.iter().any(|(_, color)| {
+            color
+                .iter()
+                .zip([96.0 / 255.0, 69.0 / 255.0, 0.0, 78.0 / 255.0])
+                .all(|(actual, expected)| (actual - expected).abs() < 0.001)
+        })
+    };
+    assert!(tinted(&on));
+    let borders = |raster: &Raster| {
+        raster
+            .rects
+            .iter()
+            .filter(|(bounds, _)| bounds[2] == 1.0 && bounds[3] > 10.0)
+            .count()
+    };
+    assert!(borders(&on) >= 3);
+    let disabled = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new(automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING)
+                .unwrap(),
+            change: Change::Set(SettingValue::Boolean(false)),
+        },
+    )
+    .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &disabled, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &disabled,
+            &disabled.apply_to(&base),
+        )),
+    );
+    let mut off = Raster::new(1.0);
+    view.paint(&mut off, theme());
+    assert!(!tinted(&off));
+    assert!(borders(&off) >= 3);
+
+    let mut logs_only = disabled;
+    logs_only.presentation.output_highlighting = Some(true);
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(3, &base, &logs_only, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &logs_only,
+            &logs_only.apply_to(&base),
+        )),
+    );
+    let mut logs = Raster::new(1.0);
+    view.paint(&mut logs, theme());
+    assert!(!tinted(&logs), "log colors cannot color a Kubernetes table");
+    assert!(borders(&logs) >= 3);
+}
+
+#[test]
+fn table_preview_rows_have_the_same_kubernetes_meaning_as_terminal_output() {
+    use crate::automexia::output_semantics::{classify_row, OutputDomain};
+    use automexia_extension_api::SemanticSeverity;
+    for (row, expected) in TABLE_PREVIEW_ROWS.into_iter().zip([
+        SemanticSeverity::Info,
+        SemanticSeverity::Warning,
+        SemanticSeverity::Success,
+    ]) {
+        let actual = classify_row(&row.join("  ")).unwrap();
+        assert_eq!(actual.domain, OutputDomain::Kubernetes);
+        assert_eq!(actual.severity, Some(expected));
+    }
+}
+
+#[test]
+fn preview_tag_mouse_activation_is_direct_and_keyboard_uses_edit_button() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let (live_id, live_tag) = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id.as_str() == "tags.slot.windows.page")
+        .unwrap()
+        .clone();
+    let x = live_tag.x + live_tag.width * 0.5;
+    let y = live_tag.y + live_tag.height * 0.5;
+    assert_eq!(view.target_at(x, y), Some(Target::PreviewItem(live_id)));
+    pointer_event(&mut view, live_tag, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, live_tag, 1.0, ElementState::Released);
+    assert_eq!(view.title(), "Tag slot: Windows");
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Information tags");
+    view.paint(&mut raster, theme());
+    let button = view.preview_button;
+    pointer_event(&mut view, button, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, button, 1.0, ElementState::Released);
+    assert!(view.preview_edit_mode);
+    view.paint(&mut raster, theme());
+    let (selected, target) = view.preview_targets[0].clone();
+    assert!(view.preview_tag_list_area.height > 0.0);
+    assert!(view.preview_targets.iter().any(|(id, _)| id == &selected));
+    pointer_event(&mut view, target, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, target, 1.0, ElementState::Released);
+    assert_eq!(
+        view.customizations.as_ref().unwrap().active_slot.as_ref(),
+        Some(&selected)
+    );
+}
+
+#[test]
+fn every_enabled_tag_has_sample_data_without_live_detection() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(1200.0, 1000.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap());
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    for role in automexia_ui_model::information_bar::STANDARD_ROLES {
+        let id = format!(
+            "tags.slot.{}.page",
+            automexia_ui_model::information_bar::role_id(role)
+        );
+        assert!(
+            view.preview_item_rows
+                .iter()
+                .any(|(key, _)| key.as_str() == id),
+            "enabled {id} needs a graphic sample even with detection unavailable"
+        );
+    }
+}
+
+#[test]
+fn tag_keyboard_selection_keeps_roster_order_and_reveals_add_action() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(320.0, 420.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap());
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    let button = view.preview_button;
+    pointer_event(&mut view, button, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, button, 1.0, ElementState::Released);
+    named(&mut view, NamedKey::Home);
+    for role in automexia_ui_model::information_bar::STANDARD_ROLES {
+        view.paint(&mut Raster::new(1.0), theme());
+        let id = format!(
+            "tags.slot.{}.page",
+            automexia_ui_model::information_bar::role_id(role)
+        );
+        assert_eq!(
+            view.preview_selected.as_ref().unwrap().as_str(),
+            id,
+            "navigation must not reorder as the selected sample changes"
+        );
+        assert!(
+            view.preview_targets
+                .iter()
+                .any(|(key, rect)| key.as_str() == id
+                    && rect.y >= view.preview_tag_list_area.y),
+            "the selected roster row must scroll into view"
+        );
+        named(&mut view, NamedKey::ArrowRight);
+    }
+    view.paint(&mut Raster::new(1.0), theme());
+    assert_eq!(
+        view.preview_selected.as_ref().unwrap().as_str(),
+        "tags.add-slot"
+    );
+    assert!(view
+        .preview_targets
+        .iter()
+        .any(|(key, _)| key.as_str() == "tags.add-slot"));
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.take_edit().unwrap().id.as_str(), "tags.add-slot");
+}
+
+#[test]
+fn every_tag_roster_row_opens_its_editor_across_redraws_and_scales() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    for scale in [1.0, 1.25, 2.0] {
+        let mut view = SettingsView::default();
+        view.fit(1200.0, 1000.0, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &preferences,
+                &base,
+            )),
+        );
+        view.view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.enabled").unwrap());
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        for role in automexia_ui_model::information_bar::STANDARD_ROLES {
+            let id = SettingId::new(format!(
+                "tags.slot.{}.page",
+                automexia_ui_model::information_bar::role_id(role)
+            ))
+            .unwrap();
+            view.paint(&mut Raster::new(1.0), theme());
+            let bounds = view
+                .preview_targets
+                .iter()
+                .find(|(key, rect)| key == &id && rect.y >= view.preview_tag_list_area.y)
+                .unwrap()
+                .1;
+            pointer_event(&mut view, bounds, scale, ElementState::Pressed);
+            view.fit(1200.0, 1000.0, 16.0);
+            view.paint(&mut Raster::new(1.0), theme());
+            pointer_event(&mut view, bounds, scale, ElementState::Released);
+            assert_eq!(
+                view.customizations.as_ref().unwrap().active_slot.as_ref(),
+                Some(&id),
+                "failed to open {id:?} at scale {scale}"
+            );
+            named(&mut view, NamedKey::Escape);
+        }
+    }
+}
+
+#[test]
+fn all_tag_roster_exposes_optional_tags_and_adds_a_custom_tag() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    for role in ["kubernetes", "terraform"] {
+        let id = SettingId::new(format!("tags.slot.{role}.page")).unwrap();
+        assert!(
+            view.preview_order.contains(&id),
+            "{role} must be listed even without sample data"
+        );
+    }
+    let snapshot = view
+        .customizations
+        .as_ref()
+        .unwrap()
+        .slot_pages
+        .as_ref()
+        .unwrap();
+    let terraform_index = crate::settings_catalog::slot_page_actions(snapshot)
+        .unwrap()
+        .iter()
+        .position(|entry| entry.id.as_str() == "tags.slot.terraform.page")
+        .unwrap();
+    view.preview_tag_list_scroll = terraform_index;
+    view.paint(&mut Raster::new(1.0), theme());
+    let terraform = view
+        .preview_targets
+        .iter()
+        .find(|(id, bounds)| {
+            id.as_str() == "tags.slot.terraform.page"
+                && bounds.y >= view.preview_tag_list_area.y
+        })
+        .map(|(_, bounds)| *bounds)
+        .unwrap();
+    pointer_event(&mut view, terraform, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, terraform, 1.0, ElementState::Released);
+    assert_eq!(
+        view.customizations
+            .as_ref()
+            .unwrap()
+            .active_slot
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "tags.slot.terraform.page"
+    );
+    assert_eq!(
+        view.catalog
+            .as_ref()
+            .unwrap()
+            .get(&SettingId::new("tags.slot.terraform.enabled").unwrap())
+            .unwrap()
+            .value,
+        SettingValue::Boolean(true)
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.slot.terraform.enabled").unwrap()));
+    named(&mut view, NamedKey::Enter);
+    let toggle = view
+        .take_edit()
+        .expect("the tag toggle reaches the shared settings owner");
+    let disabled =
+        crate::settings_catalog::apply_edit(1, &base, &preferences, &[], &toggle)
+            .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &disabled, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &disabled,
+            &disabled.apply_to(&base),
+        )),
+    );
+    assert_eq!(
+        view.catalog
+            .as_ref()
+            .unwrap()
+            .get(&SettingId::new("tags.slot.terraform.enabled").unwrap())
+            .unwrap()
+            .value,
+        SettingValue::Boolean(false)
+    );
+    named(&mut view, NamedKey::Escape);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert!(!view
+        .preview_item_rows
+        .iter()
+        .any(|(id, _)| id.as_str() == "tags.slot.terraform.page"));
+    let disabled_row = view
+        .preview_targets
+        .iter()
+        .find(|(id, bounds)| {
+            id.as_str() == "tags.slot.terraform.page"
+                && bounds.y >= view.preview_tag_list_area.y
+        })
+        .unwrap()
+        .1;
+    pointer_event(&mut view, disabled_row, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, disabled_row, 1.0, ElementState::Released);
+    assert_eq!(view.title(), "Tag slot: Terraform");
+    named(&mut view, NamedKey::Escape);
+    view.focus = Focus::Search;
+    assert!(view.paste("Kubernetes"));
+    view.preview_tag_list_scroll = usize::MAX;
+    view.paint(&mut Raster::new(1.0), theme());
+    let add = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id.as_str() == "tags.add-slot")
+        .map(|(_, bounds)| *bounds)
+        .expect("add custom tag remains discoverable");
+    pointer_event(&mut view, add, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, add, 1.0, ElementState::Released);
+    let pending = view
+        .take_edit()
+        .expect("add action reaches the shared settings owner");
+    assert_eq!(pending.id.as_str(), "tags.add-slot");
+    let updated =
+        crate::settings_catalog::apply_edit(2, &base, &disabled, &[], &pending).unwrap();
+    assert!(updated
+        .visual
+        .information_bar
+        .recipe()
+        .slots
+        .iter()
+        .any(|slot| slot.id == "custom-1"));
+}
+
+#[test]
+fn narrow_tag_roster_scrolls_with_the_mouse_before_keyboard_edit_mode() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(320.0, 420.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert!(!view.preview_edit_mode);
+    let area = view.preview_tag_list_area;
+    assert!(area.height >= 16.0);
+    view.pointer = Some((area.x + area.width * 0.5, area.y + area.height * 0.5));
+    // SAFETY: this ID is confined to constructing a pure adapter event.
+    let device_id = unsafe { DeviceId::dummy() };
+    let result = view.event(
+        &WindowEvent::MouseWheel {
+            device_id,
+            delta: MouseScrollDelta::LineDelta(0.0, -1.0),
+            phase: TouchPhase::Moved,
+        },
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert!(result.consumed);
+    assert!(view.preview_tag_list_scroll > 0);
+    let mut target = None;
+    for _ in 0..13 {
+        view.paint(&mut Raster::new(1.0), theme());
+        target = view
+            .preview_targets
+            .iter()
+            .find(|(id, bounds)| {
+                id.as_str() == "tags.slot.terraform.page"
+                    && bounds.y >= view.preview_tag_list_area.y
+            })
+            .map(|(_, bounds)| *bounds);
+        if target.is_some() {
+            break;
+        }
+        view.event(
+            &WindowEvent::MouseWheel {
+                device_id,
+                delta: MouseScrollDelta::LineDelta(0.0, -0.25),
+                phase: TouchPhase::Moved,
+            },
+            ModifiersState::empty(),
+            1.0,
+        );
+    }
+    let target = target.expect("wheel scrolling must reach Terraform");
+    pointer_event(&mut view, target, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, target, 1.0, ElementState::Released);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert_eq!(view.title(), "Tag slot: Terraform");
+    assert!(
+        view.preview_targets
+            .iter()
+            .any(|(id, bounds)| id.as_str() == "tags.slot.terraform.page"
+                && bounds.y < view.preview_tag_list_area.y),
+        "selecting a roster row must reveal its graphic sample in a short pane"
+    );
+}
+
+#[test]
+fn selected_tag_controls_replace_the_left_half_while_the_live_tags_remain_clickable() {
+    let base = rio_backend::config::Config::default();
+    let mut preferences = crate::automexia::preferences::UserPreferences::default();
+    preferences
+        .set_extension_feature_enabled(
+            crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
+            true,
+        )
+        .unwrap();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Local context".into(),
+        installed: true,
+    }];
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &market).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    view.start_preview_edit();
+    view.paint(&mut raster, theme());
+    let windows = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id.as_str() == "tags.slot.windows.page")
+        .unwrap()
+        .1;
+    pointer_event(&mut view, windows, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, windows, 1.0, ElementState::Released);
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert!(view.geometry.preview.x > view.geometry.body.x);
+    assert!(view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .entries()
+        .iter()
+        .any(|entry| { entry.label.contains("This tag color") }));
+    assert!(view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .entries()
+        .iter()
+        .any(|entry| { entry.label == "Default role color" }));
+    view.paint(&mut raster, theme());
+    let kubernetes = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id.as_str() == "tags.slot.kubernetes.page")
+        .unwrap()
+        .1;
+    pointer_event(&mut view, kubernetes, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, kubernetes, 1.0, ElementState::Released);
+    assert_eq!(view.title(), "Tag slot: Kubernetes");
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(
+        view.preview_selected.as_ref().unwrap().as_str(),
+        "tags.slot.kubernetes.page"
+    );
+}
+
+#[test]
+fn tag_samples_remain_editable_with_live_devops_detection_on_or_off() {
+    let base = rio_backend::config::Config::default();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Local context".into(),
+        installed: true,
+    }];
+    for (width, height) in [(960_u32, 620_u32), (320, 420)] {
+        for enabled in [true, false] {
+            let mut preferences =
+                crate::automexia::preferences::UserPreferences::default();
+            preferences
+                .set_extension_feature_enabled(
+                    crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
+                    enabled,
+                )
+                .unwrap();
+            let mut view = SettingsView::default();
+            view.fit(width as f32, height as f32, 16.0);
+            view.open_customizations_with_slots(
+                crate::settings_catalog::catalog(1, &base, &preferences, &market)
+                    .unwrap(),
+                None,
+                Some(crate::settings_catalog::slot_page_snapshot(
+                    &preferences,
+                    &base,
+                )),
+            );
+            assert!(view
+                .view
+                .as_mut()
+                .unwrap()
+                .focus(&SettingId::new("tags.enabled").unwrap()));
+            view.focus = Focus::List;
+            named(&mut view, NamedKey::Enter);
+            assert!(view
+                .catalog
+                .as_ref()
+                .unwrap()
+                .get(
+                    &SettingId::new(
+                        crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID
+                    )
+                    .unwrap()
+                )
+                .is_some());
+            let mut raster = Raster::new(1.0);
+            view.paint(&mut raster, theme());
+            assert!(view
+                .preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.kubernetes.page"));
+            assert!(view
+                .preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.terraform.page"));
+            assert!(view
+                .preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.git.page"));
+            if width == 960 {
+                let sample_has = |role: &str| {
+                    view.preview_targets.iter().any(|(id, bounds)| {
+                        id.as_str() == role && bounds.y < view.preview_tag_list_area.y
+                    })
+                };
+                assert!(sample_has("tags.slot.windows.page"));
+                assert!(sample_has("tags.slot.git.page"));
+                assert!(sample_has("tags.slot.user.page"));
+                // This is an appearance editor with sample data. Discovery
+                // controls live terminal context, never the design samples.
+                assert!(sample_has("tags.slot.kubernetes.page"));
+                assert!(sample_has("tags.slot.terraform.page"));
+            }
+            assert!(view.geometry.preview.height > 100.0);
+            if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+                let directory = std::path::PathBuf::from(directory);
+                std::fs::create_dir_all(&directory).unwrap();
+                let pixels = raster.pixels(width, height, true);
+                image_rs::RgbImage::from_fn(width, height, |x, y| {
+                    let pixel = pixels[(y * width + x) as usize];
+                    image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+                })
+                .save(directory.join(format!(
+                    "devops-showcase-{}-{}x{}.png",
+                    if enabled { "on" } else { "off" },
+                    width,
+                    height
+                )))
+                .unwrap();
+            }
+        }
+    }
+}
+
+#[test]
+fn selected_tag_stays_in_preview_when_source_wraps_to_an_optional_role() {
+    let base = rio_backend::config::Config::default();
+    let original = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &original, &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.start_preview_edit();
+    view.paint(&mut Raster::new(1.0), theme());
+    let windows = SettingId::new("tags.slot.windows.page").unwrap();
+    view.enter_preview_item(windows.clone());
+    assert_eq!(view.title(), "Tag slot: Windows");
+
+    // The last text-source choice is icon-only. One more step wraps to the
+    // optional Production role, which the ordinary preview sample omits.
+    let changed = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.slot.windows.text").unwrap(),
+            change: Change::Set(SettingValue::Choice("production".into())),
+        },
+    )
+    .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &changed,
+            &changed.apply_to(&base),
+        )),
+    );
+    view.paint(&mut Raster::new(1.0), theme());
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert!(view.preview_targets.iter().any(|(id, _)| id == &windows));
+}
+
+#[test]
+fn repurposed_tag_does_not_duplicate_its_default_source_in_the_live_preview() {
+    let base = rio_backend::config::Config::default();
+    let original = crate::automexia::preferences::UserPreferences::default();
+    let changed = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.slot.windows.text").unwrap(),
+            change: Change::Set(SettingValue::Choice("aws".into())),
+        },
+    )
+    .unwrap();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &changed,
+            &changed.apply_to(&base),
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.enter_preview_item(SettingId::new("tags.slot.windows.page").unwrap());
+    view.paint(&mut Raster::new(1.0), theme());
+    let sample_ids: Vec<_> = view
+        .preview_targets
+        .iter()
+        .filter(|(_, bounds)| bounds.y < view.preview_tag_list_area.y)
+        .map(|(id, _)| id.as_str())
+        .collect();
+    assert_eq!(
+        sample_ids
+            .iter()
+            .filter(|id| **id == "tags.slot.windows.page")
+            .count(),
+        1
+    );
+    assert!(!sample_ids.contains(&"tags.slot.aws.page"));
+}
+
+#[test]
+fn tag_source_choice_keeps_its_editor_through_cloud_wsl_and_wrap_boundaries() {
+    let base = rio_backend::config::Config::default();
+    let source = SettingId::new("tags.slot.windows.text").unwrap();
+    let page = SettingId::new("tags.slot.windows.page").unwrap();
+    for (initial, expected, by_mouse) in [
+        ("gcp", "unknown-cloud", true),
+        ("production", "ubuntu-wsl", false),
+        ("none", "production", false),
+    ] {
+        let original = crate::automexia::preferences::UserPreferences::default();
+        let prepared = crate::settings_catalog::apply_edit(
+            1,
+            &base,
+            &original,
+            &[],
+            &Edit {
+                revision: 1,
+                id: source.clone(),
+                change: Change::Set(SettingValue::Choice(initial.into())),
+            },
+        )
+        .unwrap();
+        let mut view = SettingsView::default();
+        view.fit(960.0, 620.0, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(2, &base, &prepared, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &prepared,
+                &prepared.apply_to(&base),
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.enabled").unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        view.start_preview_edit();
+        view.paint(&mut Raster::new(1.0), theme());
+        view.enter_preview_item(page.clone());
+        assert_eq!(view.title(), "Tag slot: Windows");
+        assert!(view.view.as_mut().unwrap().focus(&source));
+        view.focus = Focus::List;
+        if by_mouse {
+            view.paint(&mut Raster::new(1.0), theme());
+            let control = view
+                .rows
+                .iter()
+                .find(|row| row.id == source)
+                .unwrap()
+                .control;
+            pointer_event(&mut view, control, 1.0, ElementState::Pressed);
+            pointer_event(&mut view, control, 1.0, ElementState::Released);
+        } else {
+            named(&mut view, NamedKey::ArrowRight);
+        }
+        let edit = view.take_edit().expect("source change must be queued");
+        assert_eq!(edit.id, source);
+        assert_eq!(
+            edit.change,
+            Change::Set(SettingValue::Choice(expected.into()))
+        );
+        let changed =
+            crate::settings_catalog::apply_edit(2, &base, &prepared, &[], &edit).unwrap();
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(3, &base, &changed, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &changed,
+                &changed.apply_to(&base),
+            )),
+        );
+        view.paint(&mut Raster::new(1.0), theme());
+        assert_eq!(view.title(), "Tag slot: Windows", "source {expected}");
+        assert_eq!(
+            view.customizations.as_ref().unwrap().active_slot.as_ref(),
+            Some(&page)
+        );
+        assert_eq!(view.focus, Focus::List);
+        assert!(view.preview_targets.iter().any(|(id, _)| id == &page));
+        assert_eq!(
+            view.catalog.as_ref().unwrap().get(&source).unwrap().value,
+            SettingValue::Choice(expected.into())
+        );
+        assert!(view.view.as_mut().unwrap().focus(&source));
+        named(&mut view, NamedKey::ArrowRight);
+        assert_eq!(
+            view.take_edit().unwrap().id,
+            source,
+            "the next arrow must still edit this tag, not its parent page"
+        );
+    }
+}
+
+#[test]
+fn temporarily_incomplete_tag_color_catalog_keeps_editor_and_recovers() {
+    let base = rio_backend::config::Config::default();
+    let original = crate::automexia::preferences::UserPreferences::default();
+    let page = SettingId::new("tags.slot.windows.page").unwrap();
+    let source = SettingId::new("tags.slot.windows.text").unwrap();
+    let changed = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: source.clone(),
+            change: Change::Set(SettingValue::Choice("unknown-cloud".into())),
+        },
+    )
+    .unwrap();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &original, &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.start_preview_edit();
+    view.paint(&mut Raster::new(1.0), theme());
+    view.enter_preview_item(page.clone());
+
+    let complete = crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap();
+    let incomplete = Catalog::new(
+        2,
+        complete
+            .entries()
+            .iter()
+            .filter(|entry| entry.id.as_str() != "tags.colors.unknown_cloud")
+            .cloned()
+            .collect(),
+    )
+    .unwrap();
+    let snapshot =
+        crate::settings_catalog::slot_page_snapshot(&changed, &changed.apply_to(&base));
+    view.refresh_with_resources(incomplete, None, Some(snapshot));
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert_eq!(
+        view.customizations.as_ref().unwrap().active_slot.as_ref(),
+        Some(&page)
+    );
+    assert!(view.status.contains("unavailable"));
+    named(&mut view, NamedKey::ArrowRight);
+    assert!(
+        view.take_edit().is_none(),
+        "stale controls must not accept edits"
+    );
+
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(3, &base, &changed, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &changed,
+            &changed.apply_to(&base),
+        )),
+    );
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert!(!view.status.contains("unavailable"));
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&source).unwrap().value,
+        SettingValue::Choice("unknown-cloud".into())
+    );
+}
+
+#[test]
+fn inherited_color_graphic_uses_role_labels_for_canonical_setting_ids() {
+    assert_eq!(
+        tag_color_graphic_name("tags.colors.unknown_cloud"),
+        "Other cloud"
+    );
+    assert_eq!(
+        tag_color_graphic_name("tags.colors.ubuntu_wsl"),
+        "Ubuntu / WSL"
+    );
+    assert_eq!(
+        tag_color_graphic_name("tags.slot.unknown-cloud.color"),
+        "Other cloud"
+    );
+    assert_eq!(
+        tag_color_graphic_name("tags.slot.custom-1.color"),
+        "custom 1"
+    );
+}
+
+#[test]
+fn selected_tag_controls_and_live_preview_remain_visible_at_wide_and_narrow_sizes() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    for (width, height) in [(960.0, 620.0), (320.0, 420.0)] {
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &preferences,
+                &base,
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.enabled").unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        view.paint(&mut Raster::new(1.0), theme());
+        view.start_preview_edit();
+        view.paint(&mut Raster::new(1.0), theme());
+        let (selected, bounds) = view.preview_targets.first().cloned().unwrap();
+        pointer_event(&mut view, bounds, 1.0, ElementState::Pressed);
+        pointer_event(&mut view, bounds, 1.0, ElementState::Released);
+        assert_eq!(
+            view.customizations.as_ref().unwrap().active_slot,
+            Some(selected)
+        );
+        let mut raster = Raster::new(1.0);
+        view.paint(&mut raster, theme());
+        assert!(!view.rows.is_empty());
+        assert!(!view.preview_targets.is_empty());
+        assert!(view
+            .geometry
+            .body
+            .intersect(view.geometry.preview)
+            .is_none());
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let pixels = raster.pixels(width as u32, height as u32, true);
+            image_rs::RgbImage::from_fn(width as u32, height as u32, |x, y| {
+                let pixel = pixels[(y * width as u32 + x) as usize];
+                image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+            })
+            .save(directory.join(format!(
+                "tag-selected-{}x{}.png",
+                width as u32, height as u32
+            )))
+            .unwrap();
+        }
+    }
+}
+
+#[test]
+fn selected_preview_tag_has_a_visible_border_on_all_sides() {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    for (width, height) in [(960_u32, 620_u32), (320, 420)] {
+        let mut view = SettingsView::default();
+        view.fit(width as f32, height as f32, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &preferences,
+                &base,
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.enabled").unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        view.paint(&mut Raster::new(1.0), theme());
+        view.start_preview_edit();
+        view.paint(&mut Raster::new(1.0), theme());
+        let id = view.preview_targets.first().unwrap().0.clone();
+        view.preview_selected = Some(id.clone());
+        let mut selected = Raster::new(1.0);
+        view.paint(&mut selected, theme());
+        let bounds = view
+            .preview_targets
+            .iter()
+            .find(|(candidate, _)| candidate == &id)
+            .unwrap()
+            .1;
+        assert_eq!(view.preview_selected.as_ref(), Some(&id));
+        assert!(bounds.height > 8.0 && bounds.width > 8.0);
+        let other = if id.as_str() == "tags.slot.user.page" {
+            SettingId::new("tags.slot.windows.page").unwrap()
+        } else {
+            SettingId::new("tags.slot.user.page").unwrap()
+        };
+        view.preview_selected = Some(other);
+        let mut plain = Raster::new(1.0);
+        view.paint(&mut plain, theme());
+        let plain = plain.pixels(width, height, true);
+        let selected = selected.pixels(width, height, true);
+        let left_x = (bounds.x + 1.0).round() as usize;
+        let top_y = (bounds.y + 3.0).ceil() as usize;
+        let bottom_y = (bounds.y + bounds.height - 3.0).floor() as usize;
+        let changed_left = (top_y..bottom_y)
+            .filter(|y| {
+                plain[y * width as usize + left_x]
+                    != selected[y * width as usize + left_x]
+            })
+            .count();
+        assert!(
+            changed_left * 2 >= bottom_y - top_y,
+            "left border is too subtle"
+        );
+        let right_x = (bounds.x + bounds.width - 2.0).floor() as usize;
+        let changed_right = (top_y..bottom_y)
+            .filter(|y| {
+                plain[y * width as usize + right_x]
+                    != selected[y * width as usize + right_x]
+            })
+            .count();
+        assert!(
+            changed_right * 2 >= bottom_y - top_y,
+            "right border is too subtle: {width}x{height}, {bounds:?}, {changed_right} of {}", bottom_y - top_y
+        );
+        let bottom_y = (bounds.y + bounds.height - 1.0).floor() as usize;
+        let left_x = (bounds.x + 4.0).ceil() as usize;
+        let right_x = (bounds.x + bounds.width - 4.0).floor() as usize;
+        let changed_bottom = (left_x..right_x)
+            .filter(|x| {
+                plain[bottom_y * width as usize + x]
+                    != selected[bottom_y * width as usize + x]
+            })
+            .count();
+        assert!(
+            changed_bottom * 2 >= right_x - left_x,
+            "bottom border is too subtle"
+        );
+    }
+}
+
+#[test]
+fn timestamp_preview_uses_the_runtime_status_duration_separator_spacing() {
+    assert_eq!(
+        timestamp_preview_label(true),
+        "✓  104ms  ·  2026-09-30 12:34:56"
+    );
+    assert_eq!(timestamp_preview_label(false), "✓  104ms");
+}
+
+#[test]
+fn timestamp_preview_paints_the_effective_terminal_success_accent() {
+    let mut base = rio_backend::config::Config::default();
+    base.colors.green = [1.0, 0.0, 1.0, 1.0];
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let snapshot = crate::settings_catalog::slot_page_snapshot(&preferences, &base);
+    assert_eq!(snapshot.preview_success_color(), base.colors.green);
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(snapshot),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new(COMMAND_TIMESTAMPS).unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let preview = view.geometry.preview;
+    let pixels = raster.pixels(960, 620, true);
+    let accent_visible = (preview.y.max(0.0) as u32
+        ..(preview.y + preview.height).min(620.0) as u32)
+        .any(|y| {
+            (preview.x.max(0.0) as u32..(preview.x + preview.width).min(960.0) as u32)
+                .any(|x| {
+                    let pixel = pixels[(y * 960 + x) as usize];
+                    ((pixel >> 16) & 0xff) > 80
+                        && (pixel & 0xff) > 80
+                        && ((pixel >> 8) & 0xff) < 80
+                })
+        });
+    assert!(
+        accent_visible,
+        "sample glyphs use the effective terminal success accent"
+    );
+}
+
+#[test]
+fn customization_preview_splits_wide_sheets_and_stacks_on_narrow_sheets() {
+    let base = rio_backend::config::Config::default();
+    let source =
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap();
+    for (width, height, font, side_by_side) in
+        [(960.0, 620.0, 16.0, true), (320.0, 420.0, 18.0, false)]
+    {
+        let mut view = SettingsView::default();
+        view.fit(width, height, font);
+        view.open_with_section(source.clone(), Some(Section::Customizations));
+        let key =
+            SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+                .unwrap();
+        assert!(view.view.as_mut().unwrap().focus(&key));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        let mut raster = Raster::new(1.0);
+        view.paint(&mut raster, theme());
+        let g = view.geometry;
+        assert!(g.preview.width > 0.0 && g.preview.height > 0.0);
+        assert!(g.body.width > 0.0 && g.body.height > 0.0);
+        assert!(g.body.intersect(g.preview).is_none());
+        if side_by_side {
+            assert!(g.preview.x >= g.body.x + g.body.width);
+            assert!(g.preview.width >= g.body.width * 0.8);
+        } else {
+            assert!(g.preview.y >= g.body.y + g.body.height);
+        }
+        for ([x, y, w, h], _) in &raster.rects {
+            assert!(
+                *x >= 0.0
+                    && *y >= 0.0
+                    && x + w <= width + 0.001
+                    && y + h <= height + 0.001
+            );
+        }
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let pixels = raster.pixels(width as u32, height as u32, true);
+            image_rs::RgbImage::from_fn(width as u32, height as u32, |x, y| {
+                let pixel = pixels[(y * width as u32 + x) as usize];
+                image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+            })
+            .save(directory.join(format!(
+                "customization-preview-{}x{}.png",
+                width as u32, height as u32
+            )))
+            .unwrap();
+        }
+    }
+}
+
+#[test]
+fn information_tag_preview_repaints_spacing_after_saved_edit_without_leaving_the_page() {
+    let base = rio_backend::config::Config::default();
+    let original = crate::automexia::preferences::UserPreferences::default();
+    let source = crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        source,
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &original, &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut before = Raster::new(1.0);
+    view.paint(&mut before, theme());
+    if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+        let directory = std::path::PathBuf::from(directory);
+        std::fs::create_dir_all(&directory).unwrap();
+        let pixels = before.pixels(960, 620, true);
+        image_rs::RgbImage::from_fn(960, 620, |x, y| {
+            let pixel = pixels[(y * 960 + x) as usize];
+            image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+        })
+        .save(directory.join("information-tags-preview-960x620.png"))
+        .unwrap();
+    }
+    let user_left = |view: &SettingsView| -> f32 {
+        view.preview_targets
+            .iter()
+            .find(|(id, bounds)| {
+                id.as_str() == "tags.slot.user.page"
+                    && bounds.y < view.preview_tag_list_area.y
+            })
+            .map(|(_, bounds)| bounds.x)
+            .expect("the user sample tag must be visible")
+    };
+    let first = user_left(&view);
+    let saved = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.spacing").unwrap(),
+            change: Change::Set(SettingValue::Number(300.0)),
+        },
+    )
+    .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &saved, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &saved,
+            &saved.apply_to(&base),
+        )),
+    );
+    let mut after = Raster::new(1.0);
+    view.paint(&mut after, theme());
+    let second = user_left(&view);
+    assert_eq!(view.title(), "Information tags");
+    assert!(
+        second > first,
+        "larger saved spacing moves the next tag in-place: before={first:?}, after={second:?}"
+    );
+    let compact = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.spacing").unwrap(),
+            change: Change::Set(SettingValue::Number(0.0)),
+        },
+    )
+    .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(3, &base, &compact, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &compact,
+            &compact.apply_to(&base),
+        )),
+    );
+    let mut zero = Raster::new(1.0);
+    view.paint(&mut zero, theme());
+    let compact_left = user_left(&view);
+    assert!(compact_left < first, "zero spacing packs tags closer");
+    for raster in [&before, &after, &zero] {
+        for ([x, y, width, height], _) in &raster.rects {
+            assert!(*x >= 0.0 && *y >= 0.0 && x + width <= 960.0 && y + height <= 620.0);
+        }
+    }
+}
+
+#[test]
+fn customization_helper_copy_is_smaller_than_controls_without_changing_hit_targets() {
+    let base = rio_backend::config::Config::default();
+    let source =
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(800.0, 560.0, 24.0);
+    view.open_with_section(source, Some(Section::Customizations));
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let row = view
+        .rows
+        .iter()
+        .find(|row| row.id.as_str() == "tags.enabled")
+        .unwrap();
+    assert!(row.help_line < view.font * 1.45);
+    assert!(row.control.y >= row.bounds.y + view.font * 1.45);
+    let center = (
+        row.control.x + row.control.width * 0.5,
+        row.control.y + row.control.height * 0.5,
+    );
+    assert_eq!(
+        view.target_at(center.0, center.1),
+        Some(Target::Control(row.id.clone(), 1))
+    );
+}
+
+#[test]
+fn output_preview_uses_the_saved_background_color_on_the_same_page() {
+    let base = rio_backend::config::Config::default();
+    let original = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    let category =
+        SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+            .unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&category));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut before = Raster::new(1.0);
+    view.paint(&mut before, theme());
+    let changed = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("output.backgrounds.error").unwrap(),
+            change: Change::Set(SettingValue::Color([10, 200, 30, 180])),
+        },
+    )
+    .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+        None,
+        None,
+    );
+    let mut after = Raster::new(1.0);
+    view.paint(&mut after, theme());
+    assert_eq!(view.title(), "Terminal output colors");
+    let expected = [10.0 / 255.0, 200.0 / 255.0, 30.0 / 255.0, 180.0 / 255.0];
+    assert!(after.rects.iter().any(|(bounds, color)| {
+        bounds[0] >= view.geometry.preview.x
+            && bounds[1] >= view.geometry.preview.y
+            && color
+                .iter()
+                .zip(expected)
+                .all(|(actual, expected)| (actual - expected).abs() < 0.001)
+    }));
+    assert_ne!(before.rects, after.rects);
+}
+
+#[test]
+fn output_color_categories_offer_separate_keyboard_and_pointer_preview_editors() {
+    let base = rio_backend::config::Config::default();
+    let saved = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &saved, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(&saved, &base)),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("terminal.command_output_highlighting").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Terminal output colors");
+    view.paint(&mut Raster::new(1.0), theme());
+    assert!(view
+        .preview_items()
+        .iter()
+        .any(|(id, _)| { id.as_str() == "command_output.band.success" }));
+    assert!(view
+        .preview_items()
+        .iter()
+        .any(|(id, _)| { id.as_str() == "output.severity.error" }));
+    view.start_preview_edit();
+    view.preview_selected = Some(SettingId::new("command_output.band.success").unwrap());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.customizations
+            .as_ref()
+            .unwrap()
+            .active_slot
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "command_output.band.success"
+    );
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Terminal output colors");
+    assert!(!view.preview_edit_mode);
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Customizations");
+
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("terminal.kubernetes_highlighting").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Kubernetes status colors");
+    view.paint(&mut Raster::new(1.0), theme());
+    view.start_preview_edit();
+    view.paint(&mut Raster::new(1.0), theme());
+    let warning = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id.as_str() == "kubernetes.severity.warning")
+        .unwrap()
+        .1;
+    pointer_event(&mut view, warning, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, warning, 1.0, ElementState::Released);
+    assert_eq!(
+        view.customizations
+            .as_ref()
+            .unwrap()
+            .active_slot
+            .as_ref()
+            .unwrap()
+            .as_str(),
+        "kubernetes.severity.warning"
+    );
+    view.focus = Focus::Reset;
+    named(&mut view, NamedKey::Enter);
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(
+        view.take_customization_intent(),
+        Some(CustomizationIntent::Reset {
+            revision: 1,
+            scope: CustomizationResetScope::KubernetesSeverity("warning".into()),
+        })
+    );
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Kubernetes status colors");
+    view.focus = Focus::Reset;
+    named(&mut view, NamedKey::Enter);
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(
+        view.take_customization_intent(),
+        Some(CustomizationIntent::Reset {
+            revision: 1,
+            scope: CustomizationResetScope::Group(
+                SettingId::new("terminal.kubernetes_highlighting").unwrap()
+            ),
+        })
+    );
 }
 
 #[test]
@@ -609,6 +3396,46 @@ fn measured_wrap_never_emits_a_whitespace_only_line_between_words() {
 }
 
 #[test]
+fn long_extension_copy_is_visually_bounded_but_remains_searchable_and_accessible() {
+    use automexia_ui_model::settings::{Section, SettingOwner};
+
+    let description = format!("Currently off. {} searchable-tail", "é ".repeat(150));
+    let mut entry = SettingDescriptor::boolean(
+        SettingId::new("extension.fixture.long").unwrap(),
+        Section::Extensions,
+        "Long extension option",
+        description.clone(),
+        false,
+        false,
+    );
+    entry.owner = SettingOwner::Extension("fixture".into());
+    entry.availability = Availability::Unavailable {
+        reason: "Requires setup.".into(),
+    };
+    let catalog = Catalog::new(1, vec![entry]).unwrap();
+    let mut search = ViewState::new(&catalog, 6);
+    search.set_query("searchable-tail", &catalog).unwrap();
+    assert_eq!(search.filtered_ids().len(), 1);
+
+    for width in [320.0, 720.0] {
+        let mut view = SettingsView::default();
+        view.fit(width, 560.0, 14.0);
+        view.open(catalog.clone());
+        view.paint(&mut Raster::new(1.0), theme());
+        assert!(!view.requires_larger_window());
+        let row = &view.rows[0];
+        assert!(row.lines[row.label_lines].starts_with("Currently off."));
+        assert!(row.lines[row.label_lines + 1].ends_with('…'));
+        assert!(row.lines.iter().any(|line| line == "Requires setup."));
+        assert!(!row
+            .lines
+            .iter()
+            .any(|line| line.contains("searchable-tail")));
+        assert!(view.accessibility_summary().contains(&description));
+    }
+}
+
+#[test]
 fn appearance_continuous_font_control_preserves_fractions_for_keys_and_pointer() {
     let mut rows = catalog(1).entries().to_vec();
     rows[0].kind = SettingKind::ContinuousNumber {
@@ -645,6 +3472,161 @@ fn appearance_continuous_font_control_preserves_fractions_for_keys_and_pointer()
             Change::Set(SettingValue::Number(value))
         );
     }
+}
+
+#[test]
+fn numeric_controls_accept_direct_fractions_without_losing_step_buttons() {
+    let mut rows = catalog(1).entries().to_vec();
+    rows[0].kind = SettingKind::ContinuousNumber {
+        min: 6.0,
+        max: 100.0,
+        step: 1.0,
+    };
+    rows[0].value = SettingValue::Number(21.5);
+    rows[0].default = SettingValue::Number(18.0);
+    let mut view = opened();
+    view.refresh(Catalog::new(2, rows).unwrap());
+    view.paint(&mut Raster::new(1.0), theme());
+    let bounds = view.rows[0].control;
+    let target = view
+        .target_at(
+            bounds.x + bounds.width * 0.5,
+            bounds.y + bounds.height * 0.5,
+        )
+        .unwrap();
+    view.activate_target(target);
+    assert!(view.paste("18.25"));
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Number(18.25))
+    );
+    assert!(view.numeric_editor.is_none());
+    view.paint(&mut Raster::new(1.0), theme());
+    for (fraction, expected) in [(0.1, 20.5), (0.9, 22.5)] {
+        let target = view
+            .target_at(
+                bounds.x + bounds.width * fraction,
+                bounds.y + bounds.height * 0.5,
+            )
+            .unwrap();
+        view.activate_target(target);
+        assert_eq!(
+            view.take_edit().unwrap().change,
+            Change::Set(SettingValue::Number(expected))
+        );
+    }
+}
+
+#[test]
+fn typed_number_rejects_invalid_nonfinite_out_of_range_and_off_step_values() {
+    let mut rows = catalog(1).entries().to_vec();
+    rows[0].kind = SettingKind::Number {
+        min: 0.0,
+        max: 300.0,
+        step: 1.0,
+    };
+    rows[0].value = SettingValue::Number(100.0);
+    rows[0].default = SettingValue::Number(100.0);
+    let mut view = opened();
+    view.refresh(Catalog::new(2, rows).unwrap());
+    view.paint(&mut Raster::new(1.0), theme());
+    let bounds = view.rows[0].control;
+    view.activate_target(
+        view.target_at(
+            bounds.x + bounds.width * 0.5,
+            bounds.y + bounds.height * 0.5,
+        )
+        .unwrap(),
+    );
+    for draft in ["301", "1.5", "NaN", "１２", "1\n2"] {
+        assert!(!view.paste(draft) || matches!(draft, "301" | "1.5"));
+        named(&mut view, NamedKey::Enter);
+        assert!(
+            view.take_edit().is_none(),
+            "invalid draft {draft} queued an edit"
+        );
+        assert!(view.numeric_editor.is_some());
+        let editor = view.numeric_editor.as_mut().unwrap();
+        editor.anchor = Some(0);
+        editor.caret = editor.draft.len();
+    }
+    assert!(view.paste("300"));
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Number(300.0))
+    );
+}
+
+#[test]
+fn numeric_keyboard_and_ime_are_owned_by_settings_until_apply_or_cancel() {
+    let mut rows = catalog(1).entries().to_vec();
+    rows[0].kind = SettingKind::Number {
+        min: 0.0,
+        max: 300.0,
+        step: 1.0,
+    };
+    rows[0].value = SettingValue::Number(100.0);
+    rows[0].default = SettingValue::Number(100.0);
+    let mut view = opened();
+    view.refresh(Catalog::new(2, rows).unwrap());
+    named(&mut view, NamedKey::Tab);
+    view.key(
+        &Key::Character("2".into()),
+        Some("2"),
+        ModifiersState::empty(),
+        false,
+    );
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, "2");
+    assert!(
+        view.event(
+            &WindowEvent::Ime(Ime::Preedit("5".into(), Some((0, 1)))),
+            ModifiersState::empty(),
+            1.0,
+        )
+        .consumed
+    );
+    assert_eq!(view.preedit, "5");
+    assert!(
+        view.event(
+            &WindowEvent::Ime(Ime::Commit("5".into())),
+            ModifiersState::empty(),
+            1.0,
+        )
+        .consumed
+    );
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, "25");
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Number(25.0))
+    );
+    assert!(view.is_open());
+    named(&mut view, NamedKey::Enter);
+    assert!(view.numeric_editor.is_some());
+    assert!(
+        view.event(
+            &WindowEvent::Ime(Ime::Preedit("１２".into(), Some((0, 6)))),
+            ModifiersState::empty(),
+            1.0,
+        )
+        .consumed
+    );
+    assert!(view.preedit.is_empty());
+    assert!(
+        view.event(
+            &WindowEvent::Ime(Ime::Commit("１２".into())),
+            ModifiersState::empty(),
+            1.0,
+        )
+        .consumed
+    );
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, "100");
+    named(&mut view, NamedKey::Escape);
+    assert!(view.numeric_editor.is_none());
+    assert!(view.take_edit().is_none());
+    assert!(view.is_open());
 }
 
 #[test]
@@ -732,5 +3714,2342 @@ fn appearance_actual_catalogue_controls_rasterize_and_keep_values_at_narrow_scal
             )
             .unwrap();
         }
+    }
+}
+
+fn color_catalog(revision: u64, alpha: bool) -> Catalog {
+    let mut entry = SettingDescriptor::boolean(
+        SettingId::new("appearance.test_color").unwrap(),
+        automexia_ui_model::settings::Section::Appearance,
+        "Test color",
+        "Choose an exact color",
+        true,
+        true,
+    );
+    entry.kind = SettingKind::Color { alpha };
+    entry.value = SettingValue::Color([17, 34, 51, 255]);
+    entry.default = SettingValue::Color([255, 128, 0, 255]);
+    Catalog::new(revision, vec![entry]).unwrap()
+}
+
+fn text_catalog(revision: u64) -> Catalog {
+    let mut entry = SettingDescriptor::boolean(
+        SettingId::new("tags.slot.windows.literal").unwrap(),
+        Section::Customizations,
+        "Windows custom text",
+        "Choose display text",
+        true,
+        true,
+    );
+    entry.kind = SettingKind::Text {
+        max_bytes: 128,
+        allow_empty: false,
+    };
+    entry.value = SettingValue::Text("Custom label".into());
+    entry.default = SettingValue::Text("Custom label".into());
+    Catalog::new(revision, vec![entry]).unwrap()
+}
+
+#[test]
+fn information_bar_text_editor_handles_mouse_keyboard_ime_and_unsafe_drafts() {
+    let mut view = opened();
+    view.refresh(text_catalog(2));
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    assert!(view.take_edit().is_none());
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    assert!(view.paste("Nom d'utilisateur"));
+    named(&mut view, NamedKey::ArrowLeft);
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("é".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert!(view.accessibility_summary().contains("Edit text"));
+    assert!(!view.paste("\u{001b}[31m"));
+    assert!(!view.paste(&"x".repeat(129)));
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Text("Nom d'utilisateuér".into()))
+    );
+    assert!(view.color_editor.is_none());
+
+    view.refresh(text_catalog(3));
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, apply, 1.0, ElementState::Released);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Text("Custom label".into()))
+    );
+}
+
+#[test]
+fn information_bar_text_editor_keeps_unicode_graphemes_and_mouse_selection_on_boundaries()
+{
+    let mut view = opened();
+    view.refresh(text_catalog(2));
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::Enter);
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    assert!(view.paste("e\u{301}🙂"));
+    named(&mut view, NamedKey::Home);
+    named(&mut view, NamedKey::ArrowRight);
+    named(&mut view, NamedKey::Backspace);
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, "🙂");
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let input = view.color_geometry.input;
+    pointer_event(&mut view, input, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, input, 1.0, ElementState::Released);
+    assert!(view.paste("日本語"));
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("🧪".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, "日本語🧪");
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Text("日本語🧪".into()))
+    );
+}
+
+#[test]
+fn narrow_information_tag_slot_page_opens_by_keyboard_and_edits_text_by_mouse() {
+    let base = rio_backend::config::Config::default();
+    let snapshot =
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(320.0, 360.0, 18.0);
+    let pages = crate::settings_catalog::slot_page_snapshot(&Default::default(), &base);
+    view.open_customizations_with_slots(snapshot, None, Some(pages));
+    let category = SettingId::new("tags.enabled").unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&category));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Information tags");
+    let page = SettingId::new("tags.slot.windows.page").unwrap();
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(view.focus, Focus::PreviewButton);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.focus, Focus::Preview);
+    view.preview_selected = Some(page.clone());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 12);
+    assert!(view.take_edit().is_none());
+    view.back_to_categories();
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(view.preview_selected.as_ref(), Some(&page));
+    assert_eq!(view.focus, Focus::List);
+    preview_edit_key(&mut view);
+    assert_eq!(view.focus, Focus::Preview);
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Tag slot: Windows");
+    let literal = SettingId::new("tags.slot.windows.literal").unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&literal));
+    view.reveal_focus = true;
+    view.paint(&mut raster, theme());
+    let target = view
+        .rows
+        .iter()
+        .find(|row| row.id == literal)
+        .unwrap()
+        .control;
+    pointer_event(&mut view, target, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, target, 1.0, ElementState::Released);
+    assert!(view.color_editor.is_some());
+    assert!(view.paste("Mon compte"));
+    let mut editor_raster = Raster::new(1.0);
+    view.paint(&mut editor_raster, theme());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, apply, 1.0, ElementState::Released);
+    let edit = view.take_edit().unwrap();
+    assert_eq!(edit.id, literal);
+    assert_eq!(
+        edit.change,
+        Change::Set(SettingValue::Text("Mon compte".into()))
+    );
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(view.focus, Focus::List);
+    named(&mut view, NamedKey::Escape);
+    assert!(view.is_category_root());
+    assert!(view.is_open());
+}
+
+#[test]
+fn information_tag_slot_search_mouse_open_and_back_preserve_parent_query() {
+    let base = rio_backend::config::Config::default();
+    let snapshot =
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap();
+    let mut view = SettingsView::default();
+    view.fit(320.0, 360.0, 18.0);
+    let pages = crate::settings_catalog::slot_page_snapshot(&Default::default(), &base);
+    view.open_customizations_with_slots(snapshot, None, Some(pages));
+    assert!(view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .get(&SettingId::new("tags.slot.windows.page").unwrap())
+        .is_none());
+    let category = SettingId::new("tags.enabled").unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&category));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.focus = Focus::Search;
+    assert!(view.paste("Tag slot: Windows"));
+    let page = SettingId::new("tags.slot.windows.page").unwrap();
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let button = view.preview_button;
+    pointer_event(&mut view, button, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, button, 1.0, ElementState::Released);
+    assert_eq!(view.focus, Focus::Preview);
+    assert!(
+        view.preview_items().len() > 1,
+        "searching controls does not replace or filter the live preview"
+    );
+    view.preview_tag_list_scroll = 2;
+    view.paint(&mut raster, theme());
+    let visible_label = view
+        .preview_targets
+        .iter()
+        .find(|(id, _)| id == &page)
+        .unwrap()
+        .1;
+    pointer_event(&mut view, visible_label, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, visible_label, 1.0, ElementState::Released);
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(view.query(), "Tag slot: Windows");
+    assert_eq!(view.preview_selected.as_ref(), Some(&page));
+    assert_eq!(view.focus, Focus::List);
+    named(&mut view, NamedKey::Escape);
+    assert!(view.is_category_root());
+}
+
+#[test]
+fn active_information_tag_slot_refreshes_its_controls_after_a_saved_edit() {
+    let base = rio_backend::config::Config::default();
+    let original = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(480.0, 480.0, 16.0);
+    let catalog = crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap();
+    let pages = crate::settings_catalog::slot_page_snapshot(&original, &base);
+    view.open_customizations_with_slots(catalog, None, Some(pages));
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    view.start_preview_edit();
+    view.preview_selected = Some(SettingId::new("tags.slot.windows.page").unwrap());
+    named(&mut view, NamedKey::Enter);
+    let literal = SettingId::new("tags.slot.windows.literal").unwrap();
+    let saved = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: literal.clone(),
+            change: Change::Set(SettingValue::Text("Custom Windows".into())),
+        },
+    )
+    .unwrap();
+    let updated = crate::settings_catalog::catalog(2, &base, &saved, &[]).unwrap();
+    let pages =
+        crate::settings_catalog::slot_page_snapshot(&saved, &saved.apply_to(&base));
+    view.refresh_with_resources(updated, None, Some(pages));
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&literal).unwrap().value,
+        SettingValue::Text("Custom Windows".into())
+    );
+}
+
+#[test]
+fn color_editor_keyboard_draft_applies_exact_typed_color_without_changing_search() {
+    let mut view = opened();
+    view.refresh(color_catalog(2, false));
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.take_edit().is_none(), "opening a color is not an edit");
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    assert!(
+        view.paste("#01aBc0"),
+        "the color draft must own text input after opening"
+    );
+    assert_eq!(
+        view.query(),
+        "",
+        "draft color text must not become a search"
+    );
+    named(&mut view, NamedKey::Enter);
+    let edit = view
+        .take_edit()
+        .expect("explicit Apply produces the existing typed intent");
+    assert_eq!(edit.revision, 2);
+    assert_eq!(edit.id.as_str(), "appearance.test_color");
+    assert_eq!(
+        edit.change,
+        Change::Set(SettingValue::Color([1, 171, 192, 255]))
+    );
+    assert!(view.is_open());
+    assert_eq!(view.focus, Focus::List);
+    assert_eq!(
+        view.catalog.as_ref().unwrap().entries()[0].value,
+        SettingValue::Color([17, 34, 51, 255])
+    );
+}
+
+fn opened_color(alpha: bool) -> SettingsView {
+    let mut view = opened();
+    view.refresh(color_catalog(2, alpha));
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    assert!(view.take_edit().is_none());
+    view
+}
+fn replace_color(view: &mut SettingsView, text: &str) -> bool {
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    view.paste(text)
+}
+fn pointer_event(view: &mut SettingsView, bounds: Rect, scale: f64, state: ElementState) {
+    // SAFETY: this ID is confined to constructing pure adapter events.
+    let device = unsafe { DeviceId::dummy() };
+    assert!(
+        view.event(
+            &WindowEvent::CursorMoved {
+                device_id: device,
+                position: rio_window::dpi::PhysicalPosition::new(
+                    f64::from(bounds.x + bounds.width * 0.5) * scale,
+                    f64::from(bounds.y + bounds.height * 0.5) * scale,
+                ),
+            },
+            ModifiersState::empty(),
+            scale
+        )
+        .consumed
+    );
+    assert!(
+        view.event(
+            &WindowEvent::MouseInput {
+                device_id: device,
+                state,
+                button: MouseButton::Left,
+            },
+            ModifiersState::empty(),
+            scale
+        )
+        .consumed
+    );
+}
+
+#[test]
+fn customization_categories_support_mouse_open_and_back_at_narrow_scale() {
+    let base = rio_backend::config::Config::default();
+    for (width, height, font, scale) in
+        [(720.0, 560.0, 14.0, 1.0), (320.0, 360.0, 18.0, 1.25)]
+    {
+        let mut view = SettingsView::default();
+        view.fit(width, height, font);
+        view.open_with_section(
+            crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+            Some(Section::Customizations),
+        );
+        let mut raster = Raster::new(scale as f32);
+        view.paint(&mut raster, theme());
+        assert!(!view.requires_larger_window());
+        let first_row = view.rows[0].bounds;
+        let category = Rect {
+            x: first_row.x + 12.0,
+            y: first_row.y + 12.0,
+            width: 1.0,
+            height: 1.0,
+        };
+        assert!(!view.rows[0].control.contains(category.x, category.y));
+        pointer_event(&mut view, category, scale, ElementState::Pressed);
+        pointer_event(&mut view, category, scale, ElementState::Released);
+        assert!(view.is_category_detail());
+        assert!(view.take_edit().is_none());
+        let mut detail_raster = Raster::new(scale as f32);
+        view.paint(&mut detail_raster, theme());
+        let back = view.geometry.back;
+        assert!(back.width > 0.0 && back.height > 0.0);
+        assert!(back.x + back.width <= width && back.y + back.height <= height);
+        for ([x, y, w, h], _) in &detail_raster.rects {
+            assert!(
+                *x >= 0.0
+                    && *y >= 0.0
+                    && x + w <= width + 0.001
+                    && y + h <= height + 0.001
+            );
+        }
+        pointer_event(&mut view, back, scale, ElementState::Pressed);
+        pointer_event(&mut view, back, scale, ElementState::Released);
+        assert!(view.is_category_root());
+        assert!(view.take_edit().is_none());
+    }
+}
+
+#[test]
+fn compact_customization_detail_returns_to_categories_without_activating_hidden_controls()
+{
+    let base = rio_backend::config::Config::default();
+    let mut view = SettingsView::default();
+    view.fit(720.0, 560.0, 14.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    named(&mut view, NamedKey::Tab);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.is_category_detail());
+    view.fit(80.0, 100.0, 20.0);
+    assert!(view.requires_larger_window());
+    assert!(view
+        .accessibility_summary()
+        .contains("returns to categories"));
+    named(&mut view, NamedKey::Space);
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Escape);
+    assert!(view.is_category_root());
+    assert!(view.is_open());
+}
+
+#[test]
+fn color_editor_repeats_and_invalid_or_oversized_drafts_never_apply() {
+    let mut view = opened_color(false);
+    for _ in 0..8 {
+        view.key(
+            &Key::Named(NamedKey::Enter),
+            Some("\r"),
+            ModifiersState::empty(),
+            true,
+        );
+    }
+    assert!(view.color_editor.is_some());
+    assert!(view.take_edit().is_none());
+    for invalid in ["", "#123", "#GG1122", "112233", "#11223380", "##11223"] {
+        assert!(replace_color(&mut view, invalid));
+        named(&mut view, NamedKey::Enter);
+        assert!(view.take_edit().is_none());
+        assert!(view.color_editor.is_some());
+        assert!(view.accessibility_summary().contains("Apply unavailable"));
+    }
+    for rejected in [
+        "#112233\n",
+        "#112233\u{202e}",
+        "界",
+        "#112233445566",
+        "#112233 ",
+    ] {
+        let before = view.color_editor.as_ref().unwrap().draft.clone();
+        assert!(!replace_color(&mut view, rejected));
+        assert_eq!(view.color_editor.as_ref().unwrap().draft, before);
+        assert!(view.take_edit().is_none());
+    }
+    assert!(replace_color(&mut view, "#00FF80"));
+    view.key(
+        &Key::Named(NamedKey::Enter),
+        None,
+        ModifiersState::empty(),
+        true,
+    );
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Enter);
+    for _ in 0..8 {
+        view.key(
+            &Key::Named(NamedKey::Enter),
+            None,
+            ModifiersState::empty(),
+            true,
+        );
+    }
+    assert!(view.color_editor.is_none());
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Color([0, 255, 128, 255]))
+    );
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn color_editor_alpha_preserves_exact_bytes_and_rgb_defaults_to_opaque() {
+    for (token, expected) in [
+        ("#12345600", [18, 52, 86, 0]),
+        ("#12345601", [18, 52, 86, 1]),
+        ("#abcdefFE", [171, 205, 239, 254]),
+        ("#ABCDEF", [171, 205, 239, 255]),
+    ] {
+        let mut view = opened_color(true);
+        assert!(replace_color(&mut view, token));
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(
+            view.take_edit().unwrap().change,
+            Change::Set(SettingValue::Color(expected))
+        );
+    }
+    // Characterize the existing parser's normalized-alpha adapter at every byte.
+    for alpha in 0..=255 {
+        assert_eq!(
+            parse_color(&format!("#123456{alpha:02X}"), true),
+            Some([18, 52, 86, alpha])
+        );
+    }
+}
+
+#[test]
+fn color_editor_cancel_reset_and_focus_cycle_are_explicit_and_restore_the_list() {
+    let mut view = opened_color(true);
+    assert!(replace_color(&mut view, "#00000000"));
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Apply);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(
+        view.color_editor.as_ref().unwrap().focus,
+        ColorFocus::Cancel
+    );
+    named(&mut view, NamedKey::Enter);
+    assert!(view.is_open());
+    assert!(view.color_editor.is_none());
+    assert_eq!(view.focus, Focus::List);
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Enter);
+    view.key(
+        &Key::Named(NamedKey::Tab),
+        None,
+        ModifiersState::SHIFT,
+        false,
+    );
+    assert_eq!(view.color_editor.as_ref().unwrap().focus, ColorFocus::Reset);
+    named(&mut view, NamedKey::Enter);
+    confirm_requested_settings_action(&mut view);
+    assert_eq!(view.take_edit().unwrap().change, Change::Reset);
+    assert!(view.color_editor.is_none());
+    assert_eq!(
+        view.catalog.as_ref().unwrap().entries()[0].value,
+        SettingValue::Color([17, 34, 51, 255])
+    );
+    named(&mut view, NamedKey::Enter);
+    named(&mut view, NamedKey::Escape);
+    assert!(view.color_editor.is_none());
+    assert!(view.is_open());
+    named(&mut view, NamedKey::Escape);
+    assert!(!view.is_open());
+}
+
+#[test]
+fn color_editor_ime_is_bounded_cancels_composition_before_draft_and_never_edits_search() {
+    let mut view = opened_color(false);
+    for preedit in ["界", "#123456789ABC", "\n", "#445566"] {
+        assert!(
+            view.event(
+                &WindowEvent::Ime(Ime::Preedit(preedit.into(), None)),
+                ModifiersState::empty(),
+                1.0
+            )
+            .consumed
+        );
+        named(&mut view, NamedKey::Enter);
+        assert!(view.take_edit().is_none(), "composition Enter cannot Apply");
+        named(&mut view, NamedKey::Escape);
+        assert!(
+            view.color_editor.is_some(),
+            "first Escape cancels composition"
+        );
+        assert!(view.preedit.is_empty());
+    }
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("界".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, "#112233");
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("#445566".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert_eq!(view.query(), "");
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Color([68, 85, 102, 255]))
+    );
+    // A late commit after cancellation cannot become a search or terminal edit.
+    named(&mut view, NamedKey::Enter);
+    named(&mut view, NamedKey::Escape);
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("#778899".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    assert_eq!(view.query(), "");
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn color_editor_refresh_cancels_revision_removal_unavailable_and_kind_replacement() {
+    for scenario in 0..4 {
+        let mut view = opened_color(false);
+        assert!(replace_color(&mut view, "#445566"));
+        let mut entries = color_catalog(2, false).entries().to_vec();
+        match scenario {
+            1 => entries.clear(),
+            2 => {
+                entries[0].availability = Availability::Unavailable {
+                    reason: "Removed capability".into(),
+                }
+            }
+            3 => {
+                entries[0].kind = SettingKind::Boolean;
+                entries[0].value = SettingValue::Boolean(true);
+                entries[0].default = SettingValue::Boolean(false);
+            }
+            _ => {}
+        }
+        view.refresh(Catalog::new(if scenario == 0 { 3 } else { 2 }, entries).unwrap());
+        assert!(view.color_editor.is_none());
+        assert!(view.preedit.is_empty());
+        assert!(view.take_edit().is_none());
+        assert!(view.pressed.is_none());
+    }
+}
+
+#[test]
+fn color_editor_pointer_requires_current_geometry_and_matching_release_and_cancel() {
+    let mut view = opened();
+    view.refresh(color_catalog(2, true));
+    let mut raster = Raster::new(1.25);
+    view.paint(&mut raster, theme());
+    let control = view.rows[0].control;
+    pointer_event(&mut view, control, 1.25, ElementState::Pressed);
+    pointer_event(&mut view, control, 1.25, ElementState::Released);
+    assert!(view.color_editor.is_some());
+    assert!(view.take_edit().is_none());
+    view.paint(&mut raster, theme());
+    assert!(view.ime_cursor_area().is_some());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.25, ElementState::Pressed);
+    let cancel = view.color_geometry.cancel;
+    pointer_event(&mut view, cancel, 1.25, ElementState::Released);
+    assert!(view.take_edit().is_none());
+    assert!(view.color_editor.is_some());
+    pointer_event(&mut view, apply, 1.25, ElementState::Pressed);
+    view.fit(680.0, 530.0, 14.0);
+    view.paint(&mut raster, theme());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.25, ElementState::Released);
+    assert!(
+        view.take_edit().is_none(),
+        "resize invalidates captured activation"
+    );
+    let cancel = view.color_geometry.cancel;
+    pointer_event(&mut view, cancel, 1.25, ElementState::Pressed);
+    pointer_event(&mut view, cancel, 1.25, ElementState::Released);
+    assert!(view.color_editor.is_none());
+    assert!(view.is_open());
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Enter);
+    view.event(&WindowEvent::Focused(false), ModifiersState::empty(), 1.25);
+    assert!(view.color_editor.is_none());
+    assert!(view.pressed.is_none());
+}
+
+#[test]
+fn color_editor_controlled_draw_and_caret_are_contained_with_exact_hex_semantics() {
+    for (width, height, font, scale) in [
+        (720.0, 560.0, 14.0, 1.0),
+        (320.0, 360.0, 18.0, 1.25),
+        (1100.0, 1100.0, 64.0, 2.0),
+    ] {
+        let mut view = opened_color(true);
+        view.fit(width, height, font);
+        assert!(replace_color(&mut view, "#12345680"));
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        assert!(view.accessibility_summary().contains("#12345680"));
+        let caret = view.ime_cursor_area().unwrap();
+        let input = view.color_geometry.input;
+        assert!(caret[0] >= input.x && caret[0] + caret[2] <= input.x + input.width);
+        assert!(caret[1] >= input.y && caret[1] + caret[3] <= input.y + input.height);
+        for ([x, y, w, h], _) in &raster.rects {
+            assert!(*x >= 0.0 && *y >= 0.0 && *w >= 0.0 && *h >= 0.0);
+            assert!(x + w <= width + 0.001 && y + h <= height + 0.001);
+        }
+        assert!(
+            raster.rects.iter().any(|(_, color)| color
+                == &[18.0 / 255.0, 52.0 / 255.0, 86.0 / 255.0, 128.0 / 255.0]),
+            "draft draw data preserves exact RGBA"
+        );
+        let pw = (width * scale).ceil() as u32 + 8;
+        let ph = (height * scale).ceil() as u32 + 8;
+        let blank = raster.pixels(pw, ph, false);
+        let pixels = raster.pixels(pw, ph, true);
+        assert_ne!(pixels, blank, "popup text must rasterize");
+        for y in 0..ph {
+            for x in 0..pw {
+                if x as f32 >= width * scale || y as f32 >= height * scale {
+                    assert_eq!(pixels[(y * pw + x) as usize], 0x00112233);
+                }
+            }
+        }
+    }
+    let mut view = opened_color(false);
+    assert!(replace_color(&mut view, "#445566"));
+    view.fit(80.0, 100.0, 20.0);
+    assert!(view.color_editor.is_none());
+    assert!(view.take_edit().is_none());
+    assert!(view.ime_cursor_area().is_none());
+}
+
+#[test]
+fn color_editor_pointer_apply_is_typed_and_stale_or_invalid_apply_stays_blocked() {
+    let mut view = opened_color(true);
+    assert!(replace_color(&mut view, "#76543280"));
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, apply, 1.0, ElementState::Released);
+    assert!(view.color_editor.is_none());
+    named(&mut view, NamedKey::Enter);
+    assert!(
+        view.color_editor.is_none(),
+        "the pending edit retains its single owner"
+    );
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Color([118, 84, 50, 128]))
+    );
+    named(&mut view, NamedKey::Enter);
+    assert!(replace_color(&mut view, "#GG0000"));
+    view.paint(&mut raster, theme());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, apply, 1.0, ElementState::Released);
+    assert!(view.color_editor.is_some());
+    assert!(view.take_edit().is_none());
+    assert!(replace_color(&mut view, "#123456"));
+    view.paint(&mut raster, theme());
+    let apply = view.color_geometry.apply;
+    pointer_event(&mut view, apply, 1.0, ElementState::Pressed);
+    view.refresh(color_catalog(3, true));
+    pointer_event(&mut view, apply, 1.0, ElementState::Released);
+    assert!(view.color_editor.is_none());
+    assert!(view.take_edit().is_none());
+}
+
+fn workflow_numeric_view() -> SettingsView {
+    let entries = (0..5)
+        .map(|index| {
+            let mut entry = SettingDescriptor::boolean(
+                SettingId::new(format!("workflow.number.n{index}")).unwrap(),
+                Section::Customizations,
+                format!("Number {index}"),
+                "Enter a value.",
+                true,
+                true,
+            );
+            entry.kind = SettingKind::Number {
+                min: 0.0,
+                max: 300.0,
+                step: 1.0,
+            };
+            entry.value = SettingValue::Number(100.0);
+            entry.default = SettingValue::Number(100.0);
+            entry
+        })
+        .collect();
+    let mut view = SettingsView::default();
+    view.fit(720.0, 560.0, 14.0);
+    view.open(Catalog::new(1, entries).unwrap());
+    view.paint(&mut Raster::new(1.0), theme());
+    view
+}
+
+fn workflow_tag_view() -> SettingsView {
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut view = SettingsView::default();
+    view.fit(320.0, 420.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    view
+}
+
+fn preview_edit_key(view: &mut SettingsView) {
+    view.key(
+        &Key::Character("e".into()),
+        Some("e"),
+        ModifiersState::empty(),
+        false,
+    );
+}
+
+#[test]
+fn preview_keyboard_shortcut_enters_without_traversing_the_sheet() {
+    for focus in [
+        Focus::List,
+        Focus::PreviewButton,
+        Focus::Reset,
+        Focus::Restore,
+        Focus::Close,
+    ] {
+        let mut view = workflow_tag_view();
+        view.focus = focus;
+        preview_edit_key(&mut view);
+        assert_eq!(view.focus, Focus::Preview);
+        assert!(view.preview_edit_mode);
+        assert_eq!(view.title(), "Information tags");
+        assert!(view.take_edit().is_none());
+        assert!(view.take_customization_intent().is_none());
+    }
+}
+
+#[test]
+fn preview_keyboard_tab_wraps_and_reveals_every_tag_without_leaving_preview() {
+    for (width, height) in [(960.0, 620.0), (320.0, 420.0)] {
+        let mut view = workflow_tag_view();
+        view.fit(width, height, 16.0);
+        view.paint(&mut Raster::new(1.0), theme());
+        // Button activation must have exactly the same focus ownership as E.
+        view.focus = Focus::PreviewButton;
+        named(&mut view, NamedKey::Enter);
+        named(&mut view, NamedKey::Home);
+        let mut expected: Vec<_> = automexia_ui_model::information_bar::STANDARD_ROLES
+            .into_iter()
+            .map(|role| {
+                format!(
+                    "tags.slot.{}.page",
+                    automexia_ui_model::information_bar::role_id(role)
+                )
+            })
+            .collect();
+        expected.push("tags.add-slot".into());
+        for id in expected.iter().chain(expected.iter()) {
+            view.paint(&mut Raster::new(1.0), theme());
+            assert_eq!(view.focus, Focus::Preview);
+            assert!(view.preview_edit_mode);
+            assert_eq!(view.preview_selected.as_ref().unwrap().as_str(), id);
+            assert!(view
+                .preview_targets
+                .iter()
+                .any(|(key, _)| key.as_str() == id));
+            named(&mut view, NamedKey::Tab);
+            assert!(
+                view.take_edit().is_none(),
+                "navigation must never activate Add"
+            );
+        }
+        view.key(
+            &Key::Named(NamedKey::Tab),
+            None,
+            ModifiersState::SHIFT,
+            false,
+        );
+        assert_eq!(
+            view.preview_selected.as_ref().unwrap().as_str(),
+            "tags.add-slot"
+        );
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(view.title(), "Information tags");
+        assert_eq!(view.focus, Focus::PreviewButton);
+        assert!(!view.preview_edit_mode);
+        named(&mut view, NamedKey::Tab);
+        assert_eq!(view.focus, Focus::Reset);
+    }
+}
+
+#[test]
+fn preview_keyboard_detail_suspends_selection_and_e_restores_parent_preview() {
+    let mut view = workflow_tag_view();
+    view.start_preview_edit();
+    let selected = SettingId::new("tags.slot.kubernetes.page").unwrap();
+    view.preview_selected = Some(selected.clone());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Tag slot: Kubernetes");
+    assert_eq!(view.focus, Focus::List);
+    assert!(!view.preview_edit_mode);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(view.focus, Focus::PreviewButton);
+    preview_edit_key(&mut view);
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(view.focus, Focus::Preview);
+    assert_eq!(view.preview_selected, Some(selected));
+    named(&mut view, NamedKey::Enter);
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(view.focus, Focus::List);
+    assert!(!view.preview_edit_mode);
+    named(&mut view, NamedKey::Escape);
+    assert!(view.is_category_root());
+}
+
+#[test]
+fn preview_keyboard_e_respects_text_drafts_modifiers_composition_and_repeats() {
+    let mut view = workflow_tag_view();
+    view.focus = Focus::Search;
+    preview_edit_key(&mut view);
+    assert_eq!(view.query(), "e");
+    assert!(!view.preview_edit_mode);
+    view.focus = Focus::List;
+    for modifiers in [
+        ModifiersState::CONTROL,
+        ModifiersState::ALT,
+        ModifiersState::SUPER,
+    ] {
+        view.key(&Key::Character("e".into()), Some("e"), modifiers, false);
+        assert!(!view.preview_edit_mode);
+    }
+    view.key(
+        &Key::Character("e".into()),
+        Some("e"),
+        ModifiersState::empty(),
+        true,
+    );
+    assert!(!view.preview_edit_mode);
+    view.preedit = "compose".into();
+    preview_edit_key(&mut view);
+    assert!(!view.preview_edit_mode);
+    named(&mut view, NamedKey::Escape);
+    assert!(view.preedit.is_empty());
+    assert_eq!(view.title(), "Information tags");
+    view.enter_preview_item(SettingId::new("tags.slot.windows.page").unwrap());
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.slot.windows.literal").unwrap());
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    assert!(view.paste("Nam"));
+    preview_edit_key(&mut view);
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, "Name");
+    assert!(!view.preview_edit_mode);
+}
+
+#[test]
+fn preview_keyboard_preserves_numeric_and_color_editor_input_ownership() {
+    let mut view = workflow_tag_view();
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.spacing").unwrap());
+    named(&mut view, NamedKey::Enter);
+    assert!(view.numeric_editor.is_some());
+    preview_edit_key(&mut view);
+    assert!(view.numeric_editor.is_some());
+    assert!(!view.preview_edit_mode);
+    named(&mut view, NamedKey::Escape);
+    view.enter_preview_item(SettingId::new("tags.slot.windows.page").unwrap());
+    view.view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.slot.windows.color").unwrap());
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    assert!(view.paste("#ABCD"));
+    preview_edit_key(&mut view);
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, "#ABCDe");
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.title(), "Tag slot: Windows");
+    assert!(!view.preview_edit_mode);
+    preview_edit_key(&mut view);
+    assert_eq!(view.title(), "Information tags");
+    assert_eq!(view.focus, Focus::Preview);
+}
+
+#[test]
+fn preview_keyboard_handles_empty_small_and_refreshed_views_without_losing_selection() {
+    let mut view = workflow_tag_view();
+    view.preview_order.clear(); // A feature has opened before its first paint.
+    preview_edit_key(&mut view);
+    named(&mut view, NamedKey::Tab);
+    assert_eq!(view.focus, Focus::Preview);
+    assert!(view.preview_selected.is_none());
+    view.paint(&mut Raster::new(1.0), theme());
+    named(&mut view, NamedKey::Home);
+    named(&mut view, NamedKey::ArrowRight);
+    let selected = view.preview_selected.clone();
+    let base = rio_backend::config::Config::default();
+    let saved = crate::automexia::preferences::UserPreferences::default();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &saved, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(&saved, &base)),
+    );
+    view.fit(960.0, 620.0, 16.0);
+    view.paint(&mut Raster::new(1.0), theme());
+    assert_eq!(view.preview_selected, selected);
+    assert_eq!(view.focus, Focus::Preview);
+    view.fit(50.0, 50.0, 16.0);
+    assert!(view.requires_larger_window());
+    named(&mut view, NamedKey::Escape);
+    assert!(!view.preview_edit_mode);
+    preview_edit_key(&mut view);
+    assert!(
+        !view.preview_edit_mode,
+        "invisible controls must not activate"
+    );
+    view.close();
+    preview_edit_key(&mut view);
+    assert!(!view.is_open());
+}
+
+#[test]
+fn preview_keyboard_same_mode_is_used_for_colors_and_explicit_pointer_focus() {
+    for category in [
+        "terminal.command_output_highlighting",
+        "terminal.kubernetes_highlighting",
+    ] {
+        let mut view = workflow_tag_view();
+        view.back_to_categories();
+        view.view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(category).unwrap());
+        named(&mut view, NamedKey::Enter);
+        view.paint(&mut Raster::new(1.0), theme());
+        preview_edit_key(&mut view);
+        named(&mut view, NamedKey::Home);
+        let first = view.preview_selected.clone();
+        named(&mut view, NamedKey::End);
+        let last = view.preview_selected.clone();
+        assert_ne!(first, last);
+        named(&mut view, NamedKey::Tab);
+        assert_eq!(view.preview_selected, first);
+        view.key(
+            &Key::Named(NamedKey::Tab),
+            None,
+            ModifiersState::SHIFT,
+            false,
+        );
+        assert_eq!(view.preview_selected, last);
+        named(&mut view, NamedKey::Enter);
+        assert!(!view.preview_edit_mode);
+        view.paint(&mut Raster::new(1.0), theme());
+        let button = view.preview_button;
+        pointer_event(&mut view, button, 1.0, ElementState::Pressed);
+        pointer_event(&mut view, button, 1.0, ElementState::Released);
+        assert!(view.customizations.as_ref().unwrap().active_slot.is_none());
+        assert_eq!(view.preview_selected, last);
+        assert_eq!(view.focus, Focus::Preview);
+        view.paint(&mut Raster::new(1.0), theme());
+        let search = view.geometry.search;
+        pointer_event(&mut view, search, 1.0, ElementState::Pressed);
+        pointer_event(&mut view, search, 1.0, ElementState::Released);
+        assert_eq!(view.focus, Focus::Search);
+        assert!(!view.preview_edit_mode);
+        preview_edit_key(&mut view);
+        assert_eq!(view.query(), "e");
+    }
+}
+
+fn workflow_touch(view: &mut SettingsView, phase: TouchPhase, x: f32, y: f32) {
+    // SAFETY: this device identity is confined to pure adapter test events.
+    let device_id = unsafe { DeviceId::dummy() };
+    assert!(
+        view.event(
+            &WindowEvent::Touch(rio_window::event::Touch {
+                device_id,
+                phase,
+                location: rio_window::dpi::PhysicalPosition::new(
+                    f64::from(x),
+                    f64::from(y)
+                ),
+                force: None,
+                id: 7,
+            }),
+            ModifiersState::empty(),
+            1.0,
+        )
+        .consumed
+    );
+}
+
+#[test]
+fn workflow_clicking_another_number_transfers_draft_ownership_to_that_input() {
+    let mut view = workflow_numeric_view();
+    let first = view.rows[0].control;
+    let second_id = view.rows[1].id.clone();
+    pointer_event(&mut view, first, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, first, 1.0, ElementState::Released);
+    assert!(view.paste("25"));
+    view.paint(&mut Raster::new(1.0), theme());
+    let second = view
+        .rows
+        .iter()
+        .find(|row| row.id == second_id)
+        .unwrap()
+        .control;
+    pointer_event(&mut view, second, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, second, 1.0, ElementState::Released);
+    assert_eq!(view.numeric_editor.as_ref().unwrap().id, second_id);
+    assert!(view.paste("75"));
+    named(&mut view, NamedKey::Enter);
+    let edit = view
+        .take_edit()
+        .expect("the second number must accept its own draft");
+    assert_eq!(edit.id, second_id);
+    assert_eq!(edit.change, Change::Set(SettingValue::Number(75.0)));
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn workflow_touch_scrolls_the_tag_roster_without_a_mouse_and_reaches_add() {
+    let mut view = workflow_tag_view();
+    assert!(view.pointer.is_none());
+    let sample_scroll = view.preview_scroll;
+    let area = view.preview_tag_list_area;
+    let x = area.x + area.width * 0.5;
+    let start_y = area.y + area.height * 0.8;
+    let end_y = area.y + area.height * 0.2;
+    workflow_touch(&mut view, TouchPhase::Started, x, start_y);
+    workflow_touch(&mut view, TouchPhase::Moved, x, end_y);
+    workflow_touch(&mut view, TouchPhase::Ended, x, end_y);
+    assert!(
+        view.preview_tag_list_scroll > 0,
+        "touch must scroll the roster under the finger"
+    );
+    assert_eq!(
+        view.preview_scroll, sample_scroll,
+        "the separate graphic sample must stay still"
+    );
+    assert!(
+        view.take_edit().is_none(),
+        "a drag must never activate its starting tag"
+    );
+    let mut add = None;
+    for _ in 0..16 {
+        view.paint(&mut Raster::new(1.0), theme());
+        add = view
+            .preview_targets
+            .iter()
+            .find(|(id, bounds)| {
+                id.as_str() == "tags.add-slot" && bounds.y >= view.preview_tag_list_area.y
+            })
+            .map(|(_, bounds)| *bounds);
+        if add.is_some() {
+            break;
+        }
+        workflow_touch(&mut view, TouchPhase::Started, x, start_y);
+        workflow_touch(&mut view, TouchPhase::Moved, x, end_y);
+        workflow_touch(&mut view, TouchPhase::Ended, x, end_y);
+    }
+    let add = add.expect("all roster entries, including Add, must be reachable by touch");
+    let x = add.x + add.width * 0.5;
+    let y = add.y + add.height * 0.5;
+    workflow_touch(&mut view, TouchPhase::Started, x, y);
+    workflow_touch(&mut view, TouchPhase::Ended, x, y);
+    assert_eq!(view.take_edit().unwrap().id.as_str(), "tags.add-slot");
+}
+
+#[test]
+fn workflow_horizontal_wheel_and_stationary_touch_do_not_scroll_preview_surfaces() {
+    // SAFETY: this ID is used only to construct pure adapter events.
+    let device_id = unsafe { DeviceId::dummy() };
+    for roster in [false, true] {
+        for delta in [
+            MouseScrollDelta::LineDelta(3.0, 0.0),
+            MouseScrollDelta::PixelDelta(rio_window::dpi::PhysicalPosition::new(
+                12.0, 0.0,
+            )),
+        ] {
+            let mut view = workflow_tag_view();
+            let area = if roster {
+                view.preview_tag_list_area
+            } else {
+                view.preview_button
+            };
+            view.pointer = Some((area.x + area.width * 0.5, area.y + area.height * 0.5));
+            let before = (view.preview_scroll, view.preview_tag_list_scroll);
+            view.event(
+                &WindowEvent::MouseWheel {
+                    device_id,
+                    delta,
+                    phase: TouchPhase::Moved,
+                },
+                ModifiersState::empty(),
+                1.0,
+            );
+            assert_eq!((view.preview_scroll, view.preview_tag_list_scroll), before,
+                "horizontal wheel input must not become vertical scrolling (roster={roster})");
+        }
+        let mut view = workflow_tag_view();
+        let area = if roster {
+            view.preview_tag_list_area
+        } else {
+            view.preview_button
+        };
+        let x = area.x + area.width * 0.5;
+        let y = area.y + area.height * 0.5;
+        let before = (view.preview_scroll, view.preview_tag_list_scroll);
+        workflow_touch(&mut view, TouchPhase::Started, x, y);
+        workflow_touch(&mut view, TouchPhase::Moved, x, y);
+        workflow_touch(&mut view, TouchPhase::Cancelled, x, y);
+        assert_eq!((view.preview_scroll, view.preview_tag_list_scroll), before);
+        assert!(view.take_edit().is_none());
+    }
+}
+
+#[test]
+fn workflow_touch_keeps_its_scroll_owner_when_crossing_the_preview_boundary() {
+    let mut view = workflow_tag_view();
+    let area = view.preview_tag_list_area;
+    let x = area.x + area.width * 0.5;
+    workflow_touch(&mut view, TouchPhase::Started, x, area.y + 8.0);
+    // Moving into the sample must still scroll the list where the gesture began.
+    workflow_touch(&mut view, TouchPhase::Moved, x, area.y - 20.0);
+    assert!(view.preview_tag_list_scroll > 0);
+    assert_eq!(view.preview_scroll, 0);
+    workflow_touch(&mut view, TouchPhase::Cancelled, x, area.y - 20.0);
+    assert!(view.touch.is_none());
+    assert!(view.pressed.is_none());
+    workflow_touch(&mut view, TouchPhase::Started, f32::NAN, area.y);
+    assert!(view.touch.is_none());
+}
+
+#[test]
+fn workflow_numeric_escape_cancels_composition_before_the_draft() {
+    for composing in ["6", "１２"] {
+        let mut view = workflow_numeric_view();
+        let input = view.rows[0].control;
+        pointer_event(&mut view, input, 1.0, ElementState::Pressed);
+        pointer_event(&mut view, input, 1.0, ElementState::Released);
+        assert!(view.paste("25"));
+        view.event(
+            &WindowEvent::Ime(Ime::Preedit(composing.into(), None)),
+            ModifiersState::empty(),
+            1.0,
+        );
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(
+            view.numeric_editor
+                .as_ref()
+                .map(|editor| editor.draft.as_str()),
+            Some("25"),
+            "first Escape must retain the numeric draft, including rejected composition"
+        );
+        assert!(view.preedit.is_empty());
+        assert!(view.take_edit().is_none());
+        named(&mut view, NamedKey::Escape);
+        assert!(view.numeric_editor.is_none());
+        assert!(view.is_open());
+        view.event(
+            &WindowEvent::Ime(Ime::Commit("6".into())),
+            ModifiersState::empty(),
+            1.0,
+        );
+        assert!(
+            view.numeric_editor.is_none(),
+            "a late IME commit must not reopen the canceled editor"
+        );
+        assert!(view.take_edit().is_none());
+        view.key(
+            &Key::Character("7".into()),
+            Some("7"),
+            ModifiersState::empty(),
+            false,
+        );
+        assert_eq!(
+            view.numeric_editor.as_ref().unwrap().draft,
+            "7",
+            "new intentional typing must still open a number"
+        );
+    }
+}
+
+#[test]
+fn workflow_same_number_click_preserves_draft_and_clipboard_cut_is_explicit() {
+    let mut view = workflow_numeric_view();
+    let input = view.rows[0].control;
+    pointer_event(&mut view, input, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, input, 1.0, ElementState::Released);
+    assert!(view.paste("25"));
+    view.paint(&mut Raster::new(1.0), theme());
+    pointer_event(&mut view, input, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, input, 1.0, ElementState::Released);
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, "25");
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    assert_eq!(view.clipboard_selection().as_deref(), Some("25"));
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, "25");
+    assert!(view.paste(""));
+    assert!(!view.commit_numeric());
+    assert!(view.take_edit().is_none());
+    named(&mut view, NamedKey::Escape);
+    named(&mut view, NamedKey::Enter);
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("75".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Number(75.0))
+    );
+}
+
+#[test]
+fn workflow_reopened_sheet_restores_writer_feedback_without_overriding_temporary_defaults(
+) {
+    use crate::automexia::preferences::{
+        PreferenceSaveStatus, PreferenceWriter, UserPreferences,
+    };
+    let root = tempfile::tempdir().unwrap();
+    let mut writer = PreferenceWriter::new(root.path().into());
+    assert_eq!(
+        writer.submit(UserPreferences {
+            font_size: Some(0.0),
+            ..Default::default()
+        }),
+        0
+    );
+    assert!(writer.take_error().is_some());
+    let mut view = opened();
+    view.restore_save_status(writer.save_status());
+    let failure = view.status.clone();
+    assert!(failure.contains("session"));
+    view.close();
+    view.open(catalog(2));
+    view.restore_save_status(writer.save_status());
+    assert_eq!(view.status, failure);
+    view.restore_save_status(PreferenceSaveStatus::Pending(7));
+    assert_eq!(view.saving, Some(7));
+    view.save_completed(6, true);
+    assert_eq!(view.saving, Some(7));
+    view.save_completed(7, true);
+    assert_eq!(view.status, "Saved");
+    view.set_temporary_customizations(true);
+    let temporary = view.status.clone();
+    view.restore_save_status(PreferenceSaveStatus::Failed);
+    assert_eq!(view.status, temporary);
+    assert!(view.saving.is_none());
+}
+
+#[test]
+fn workflow_active_numeric_selection_and_ime_stay_clipped_during_scrolling() {
+    let mut view = workflow_numeric_view();
+    let id = view.rows[1].id.clone();
+    let input = view.rows[1].control;
+    pointer_event(&mut view, input, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, input, 1.0, ElementState::Released);
+    view.paint(&mut Raster::new(1.0), theme());
+    let input = view.rows.iter().find(|row| row.id == id).unwrap().control;
+    let delta = input.y - view.geometry.body.y + input.height * 0.5;
+    // SAFETY: this ID is confined to pure adapter wheel events.
+    let device_id = unsafe { DeviceId::dummy() };
+    view.event(
+        &WindowEvent::MouseWheel {
+            device_id,
+            delta: MouseScrollDelta::PixelDelta(rio_window::dpi::PhysicalPosition::new(
+                0.0,
+                -f64::from(delta),
+            )),
+            phase: TouchPhase::Moved,
+        },
+        ModifiersState::empty(),
+        1.0,
+    );
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let input = numeric_zones(
+        view.rows.iter().find(|row| row.id == id).unwrap().control,
+        view.font,
+    )
+    .1;
+    let body = view.geometry.body;
+    assert!(
+        input.y < body.y && input.y + input.height > body.y,
+        "fixture must partly clip the active numeric input"
+    );
+    let decorations: Vec<_> = raster
+        .rects
+        .iter()
+        .filter(|(bounds, color)| {
+            *color == theme().outline
+                && bounds[2] < 40.0
+                && bounds[3] > 4.0
+                && bounds[0] >= input.x
+                && bounds[0] < input.x + input.width
+                && bounds[1] >= input.y
+                && bounds[1] < input.y + input.height
+        })
+        .collect();
+    assert!(
+        !decorations.is_empty(),
+        "the visible numeric selection/caret must be painted"
+    );
+    for (bounds, _) in decorations {
+        assert!(
+            bounds[1] >= body.y && bounds[1] + bounds[3] <= body.y + body.height,
+            "numeric selection or caret escaped list clipping: {bounds:?}, body={body:?}"
+        );
+    }
+    let ime = view
+        .ime_cursor_area()
+        .expect("partially visible input retains an IME anchor");
+    assert!(
+        ime[1] >= body.y && ime[1] + ime[3] <= body.y + body.height,
+        "IME anchor must describe only the visible input: {ime:?}"
+    );
+}
+
+#[test]
+fn workflow_search_shift_selection_replaces_whole_graphemes() {
+    for command in [NamedKey::ArrowLeft, NamedKey::Home, NamedKey::End] {
+        let mut view = opened();
+        assert!(view.paste("界éx"));
+        if command == NamedKey::End {
+            named(&mut view, NamedKey::Home);
+        }
+        view.key(&Key::Named(command), None, ModifiersState::SHIFT, false);
+        assert!(view.paste("Q"));
+        assert_eq!(
+            view.query(),
+            if command == NamedKey::ArrowLeft {
+                "界éQ"
+            } else {
+                "Q"
+            }
+        );
+    }
+}
+
+#[test]
+fn workflow_save_failure_does_not_recommend_resetting_user_choices() {
+    let mut view = opened();
+    view.save_failed();
+    assert!(view.status.contains("could not be saved"));
+    assert!(
+        !view.status.contains("Reset"),
+        "temporary defaults are not a retry-saving action"
+    );
+}
+
+#[test]
+fn workflow_color_editor_shows_clipboard_failure_and_clears_it_after_editing() {
+    let mut view = opened_color(false);
+    let mut before = Raster::new(1.0);
+    view.paint(&mut before, theme());
+    view.set_status("Could not copy. Selection kept; try again.");
+    let mut after = Raster::new(1.0);
+    view.paint(&mut after, theme());
+    assert!(
+        before.pixels(720, 560, true) != after.pixels(720, 560, true),
+        "an editor clipboard error must be visible without closing the modal"
+    );
+    assert_eq!(view.clipboard_selection().as_deref(), Some("#112233"));
+    assert!(view.paste("#112233"));
+    // Reselect the same text to compare the same focus/caret pixels.
+    view.key(
+        &Key::Character("a".into()),
+        None,
+        ModifiersState::CONTROL,
+        false,
+    );
+    let mut recovered = Raster::new(1.0);
+    view.paint(&mut recovered, theme());
+    assert!(
+        before.pixels(720, 560, true) == recovered.pixels(720, 560, true),
+        "successful editing must restore normal help"
+    );
+}
+
+#[test]
+fn workflow_output_severity_footer_names_the_color_reset_action() {
+    let base = rio_backend::config::Config::default();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_with_section(
+        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap(),
+        Some(Section::Customizations),
+    );
+    assert!(view.view.as_mut().unwrap().focus(
+        &SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+            .unwrap()
+    ));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    view.start_preview_edit();
+    view.preview_selected = Some(SettingId::new("output.severity.error").unwrap());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(view.title(), "Error output colors");
+    let mut actual = Raster::new(1.0);
+    view.paint(&mut actual, theme());
+    let bounds = view.geometry.reset;
+    let mut expected = Raster::new(1.0);
+    control(&mut expected, bounds, false, theme(), bounds);
+    label(
+        &mut expected,
+        bounds,
+        "Reset colors",
+        view.font,
+        theme().text,
+        false,
+        bounds,
+    );
+    let key_width = expected.text.measure(
+        "R",
+        &DrawOpts {
+            font_size: view.font * 0.8,
+            bold: true,
+            ..Default::default()
+        },
+    ) + 8.0;
+    label(
+        &mut expected,
+        Rect {
+            x: bounds.x + bounds.width - key_width - 2.0,
+            width: key_width,
+            ..bounds
+        },
+        "R",
+        view.font * 0.8,
+        automexia_ui_model::ensure_contrast(
+            crate::renderer::ui_theme::BRAND_CYAN,
+            theme().raised,
+            automexia_ui_model::MIN_TEXT_CONTRAST + 0.1,
+        ),
+        true,
+        bounds,
+    );
+    let actual = actual.pixels(960, 620, true);
+    let expected = expected.pixels(960, 620, true);
+    for y in bounds.y.ceil() as usize..(bounds.y + bounds.height).floor() as usize {
+        for x in bounds.x.ceil() as usize..(bounds.x + bounds.width).floor() as usize {
+            assert_eq!(
+                actual[y * 960 + x],
+                expected[y * 960 + x],
+                "output color footer must say Reset colors"
+            );
+        }
+    }
+    pointer_event(&mut view, bounds, 1.0, ElementState::Pressed);
+    pointer_event(&mut view, bounds, 1.0, ElementState::Released);
+    confirm_requested_settings_action(&mut view);
+    assert!(
+        matches!(view.take_customization_intent(), Some(CustomizationIntent::Reset {
+        scope: CustomizationResetScope::OutputSeverity(ref severity), ..
+    }) if severity == "error")
+    );
+}
+
+#[test]
+fn workflow_table_preview_uses_the_selected_kubernetes_warning_background_rgba() {
+    let base = rio_backend::config::Config::default();
+    let mut original = crate::automexia::preferences::UserPreferences::default();
+    let log_color = [220, 10, 20, 111];
+    original.visual.highlight.warning_background = Some(
+        rio_backend::config::presentation::Rgba::from_bytes(log_color),
+    );
+    let changed = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &original,
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("kubernetes.backgrounds.warning").unwrap(),
+            change: Change::Set(SettingValue::Color([10, 200, 30, 180])),
+        },
+    )
+    .unwrap();
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &changed,
+            &changed.apply_to(&base),
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new(INLINE_TABLES).unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let expected = [10.0 / 255.0, 200.0 / 255.0, 30.0 / 255.0, 180.0 / 255.0];
+    assert!(
+        raster.rects.iter().any(|(bounds, color)| {
+            bounds[0] >= view.geometry.preview.x
+                && bounds[1] >= view.geometry.preview.y
+                && color
+                    .iter()
+                    .zip(expected)
+                    .all(|(actual, expected)| (actual - expected).abs() < 0.001)
+        }),
+        "table warning row must preview the exact configured RGBA background"
+    );
+    let log_color = log_color.map(|channel| f32::from(channel) / 255.0);
+    assert!(
+        !raster.rects.iter().any(|(_, color)| color
+            .iter()
+            .zip(log_color)
+            .all(|(actual, expected)| (actual - expected).abs() < 0.001)),
+        "the generic log palette must not color the Kubernetes table sample"
+    );
+}
+
+#[test]
+fn workflow_font_preview_labels_and_draws_the_supported_size_boundaries() {
+    let base = rio_backend::config::Config::default();
+    for size in [6.0, 100.0] {
+        let preferences = crate::automexia::preferences::UserPreferences {
+            font_size: Some(size),
+            ..Default::default()
+        };
+        let mut view = SettingsView::default();
+        view.fit(960.0, 620.0, 16.0);
+        view.open_customizations(
+            crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap(),
+            None,
+        );
+        let sample = Rect {
+            x: 10.0,
+            y: 10.0,
+            width: 700.0,
+            height: 240.0,
+        };
+        let mut actual = Raster::new(1.0);
+        view.paint_font_preview(&mut actual, sample, theme());
+        let mut expected = Raster::new(1.0);
+        rect(&mut expected, sample, theme().background, sample);
+        let caption = 11.2;
+        label(
+            &mut expected,
+            Rect {
+                height: caption * 1.6,
+                ..sample
+            },
+            &format!("{size} pt text"),
+            caption,
+            theme().muted_text,
+            false,
+            sample,
+        );
+        label(
+            &mut expected,
+            Rect {
+                y: sample.y + caption * 1.8,
+                height: sample.height - caption * 1.8,
+                ..sample
+            },
+            "Aa 0123 λ",
+            size,
+            theme().text,
+            false,
+            sample,
+        );
+        assert!(actual.pixels(720, 260, true) == expected.pixels(720, 260, true),
+            "the preview must show {size} pt, without silently clamping its text or label");
+    }
+}
+
+fn package_notice_view() -> SettingsView {
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations(
+        crate::settings_catalog::catalog(
+            1,
+            &rio_backend::config::Config::default(),
+            &Default::default(),
+            &[],
+        )
+        .unwrap(),
+        None,
+    );
+    view
+}
+
+fn assert_package_notice_footer(view: &mut SettingsView, message: &str) {
+    let mut actual = Raster::new(1.0);
+    view.paint(&mut actual, theme());
+    let bounds = view.geometry.status;
+    let mut expected = Raster::new(1.0);
+    label(
+        &mut expected,
+        bounds,
+        message,
+        view.font * 0.85,
+        theme().muted_text,
+        false,
+        view.geometry.card,
+    );
+    let mut actual_pixels = vec![0; 960 * 620];
+    let mut expected_pixels = vec![0; 960 * 620];
+    actual.text.render_cpu_base(&mut actual_pixels, 960, 620);
+    actual.text.render_cpu_modal(&mut actual_pixels, 960, 620);
+    expected
+        .text
+        .render_cpu_base(&mut expected_pixels, 960, 620);
+    expected
+        .text
+        .render_cpu_modal(&mut expected_pixels, 960, 620);
+    assert!(expected_pixels.iter().any(|pixel| *pixel != 0));
+    for y in bounds.y.ceil() as usize..(bounds.y + bounds.height).floor() as usize {
+        for x in bounds.x.ceil() as usize..(bounds.x + bounds.width).floor() as usize {
+            assert_eq!(
+                actual_pixels[y * 960 + x],
+                expected_pixels[y * 960 + x],
+                "rendered package status must say {message}"
+            );
+        }
+    }
+}
+
+#[test]
+fn package_notice_async_failure_is_visible_and_core_controls_stay_editable() {
+    let mut view = package_notice_view();
+    view.set_package_inventory_status(PackageInventoryStatus::Loading, false);
+    view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
+    let failure = "Package settings unavailable. Reopen to retry.";
+    assert_package_notice_footer(&mut view, failure);
+    assert!(view.accessibility_summary().contains(failure));
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new(INLINE_TABLES).unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert_package_notice_footer(&mut view, failure);
+    named(&mut view, NamedKey::Space);
+    assert!(
+        matches!(view.take_edit(), Some(Edit { id, change: Change::Set(SettingValue::Boolean(false)), .. }) if id.as_str() == INLINE_TABLES)
+    );
+    view.set_package_inventory_status(PackageInventoryStatus::Ready, false);
+    assert!(!view
+        .accessibility_summary()
+        .contains("Package settings unavailable"));
+    assert_package_notice_footer(&mut view, "Tab: focus | Esc: back | Alt+Left: back");
+}
+
+#[test]
+fn package_notice_loading_and_projection_failure_clear_after_recovery_or_close() {
+    let mut view = package_notice_view();
+    for (status, failed, message) in [
+        (
+            PackageInventoryStatus::Loading,
+            false,
+            "Loading package settings...",
+        ),
+        (
+            PackageInventoryStatus::Ready,
+            true,
+            "Package settings could not be displayed. Reopen to retry.",
+        ),
+    ] {
+        view.set_package_inventory_status(status, failed);
+        assert_package_notice_footer(&mut view, message);
+        assert!(view.accessibility_summary().contains(message));
+    }
+    view.set_package_inventory_status(PackageInventoryStatus::Ready, false);
+    assert_package_notice_footer(&mut view, "Tab: focus | Arrows: navigate | Esc: close");
+    view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
+    view.close();
+    view.open(catalog(2));
+    view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
+    assert!(!view.accessibility_summary().contains("Package settings"));
+    assert_package_notice_footer(&mut view, "Tab: focus | Arrows: navigate | Esc: close");
+}
+
+#[test]
+fn package_notice_preserves_save_failure_pending_receipts_and_temporary_defaults() {
+    let mut view = package_notice_view();
+    view.save_failed();
+    let failure = view.status.clone();
+    for state in [
+        PackageInventoryStatus::Loading,
+        PackageInventoryStatus::Unavailable,
+        PackageInventoryStatus::Ready,
+    ] {
+        view.set_package_inventory_status(state, false);
+        assert_eq!(view.status, failure);
+        assert_package_notice_footer(&mut view, &failure);
+    }
+    view.save_started(7);
+    view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
+    assert_eq!(view.saving, Some(7));
+    assert_package_notice_footer(&mut view, "Saving settings...");
+    view.save_completed(6, true);
+    assert_eq!(view.saving, Some(7));
+    view.save_completed(7, true);
+    assert_package_notice_footer(
+        &mut view,
+        "Package settings unavailable. Reopen to retry.",
+    );
+    view.set_temporary_customizations(true);
+    view.set_status("Temporary preview only. Restore saved to return.");
+    for state in [
+        PackageInventoryStatus::Loading,
+        PackageInventoryStatus::Unavailable,
+        PackageInventoryStatus::Ready,
+    ] {
+        view.set_package_inventory_status(state, false);
+        let expected = match state {
+            PackageInventoryStatus::Loading => {
+                "Preview only. Loading package settings..."
+            }
+            PackageInventoryStatus::Unavailable => {
+                "Preview only. Packages unavailable; reopen to retry."
+            }
+            _ => "Temporary preview only. Restore saved to return.",
+        };
+        assert_package_notice_footer(&mut view, expected);
+        assert!(view.temporary_customizations);
+    }
+}
+
+#[test]
+fn package_notice_does_not_replace_color_editor_feedback_or_draft() {
+    let mut view = package_notice_view();
+    assert!(view.view.as_mut().unwrap().focus(
+        &SettingId::new(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING)
+            .unwrap()
+    ));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    view.start_preview_edit();
+    named(&mut view, NamedKey::Enter);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    view.set_status("Could not copy. Selection kept; try again.");
+    let draft = view.color_editor.as_ref().unwrap().draft.clone();
+    let feedback = view.color_editor.as_ref().unwrap().feedback.clone();
+    let mut before = Raster::new(1.0);
+    view.paint(&mut before, theme());
+    view.set_package_inventory_status(PackageInventoryStatus::Unavailable, false);
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, draft);
+    assert_eq!(view.color_editor.as_ref().unwrap().feedback, feedback);
+    let mut after = Raster::new(1.0);
+    view.paint(&mut after, theme());
+    assert!(before.pixels(960, 620, true) == after.pixels(960, 620, true));
+    assert!(view
+        .accessibility_summary()
+        .contains("Package settings unavailable"));
+    assert!(view.take_edit().is_none());
+}
+
+#[test]
+fn background_opacity_can_be_typed_in_each_preview_detail_without_losing_selection() {
+    let base = rio_backend::config::Config::default();
+    for (category, item, opacity) in [
+        (
+            "terminal.command_output_highlighting",
+            "command_output.band.failure",
+            "command_output.opacity.failure",
+        ),
+        (
+            "terminal.command_output_highlighting",
+            "output.severity.error",
+            "output.opacity.error",
+        ),
+        (
+            "terminal.kubernetes_highlighting",
+            "kubernetes.severity.warning",
+            "kubernetes.opacity.warning",
+        ),
+    ] {
+        let initial = crate::automexia::preferences::UserPreferences::default();
+        let mut view = SettingsView::default();
+        view.fit(960.0, 620.0, 16.0);
+        view.open_with_section(
+            crate::settings_catalog::catalog(1, &base, &initial, &[]).unwrap(),
+            Some(Section::Customizations),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(category).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        view.paint(&mut Raster::new(1.0), theme());
+        view.start_preview_edit();
+        view.preview_selected = Some(SettingId::new(item).unwrap());
+        named(&mut view, NamedKey::Enter);
+        let id = SettingId::new(opacity).unwrap();
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(view.numeric_editor.as_ref().unwrap().id, id);
+        assert!(view.paste("25"));
+        named(&mut view, NamedKey::Enter);
+        let edit = view.take_edit().unwrap();
+        assert_eq!(edit.change, Change::Set(SettingValue::Number(25.0)));
+        let changed =
+            crate::settings_catalog::apply_edit(1, &base, &initial, &[], &edit).unwrap();
+        view.refresh(crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap());
+        view.paint(&mut Raster::new(1.0), theme());
+        assert_eq!(
+            view.catalog.as_ref().unwrap().get(&id).unwrap().value,
+            SettingValue::Number(25.0)
+        );
+        assert_eq!(
+            view.customizations
+                .as_ref()
+                .unwrap()
+                .active_slot
+                .as_ref()
+                .unwrap()
+                .as_str(),
+            item
+        );
+        named(&mut view, NamedKey::Escape);
+        assert!(view.customizations.as_ref().unwrap().active_slot.is_none());
+        assert!(!view.preview_edit_mode);
+        assert_eq!(view.preview_selected.as_ref().unwrap().as_str(), item);
+    }
+}
+
+#[test]
+fn editable_preview_footer_exposes_e_in_shared_and_item_controls_after_saving() {
+    for detail in [false, true] {
+        for saved in [false, true] {
+            let mut view = workflow_tag_view();
+            if detail {
+                view.start_preview_edit();
+                named(&mut view, NamedKey::Enter);
+            }
+            if saved {
+                view.set_status("Saved");
+            }
+            let mut actual = Raster::new(1.0);
+            view.paint(&mut actual, theme());
+            let bounds = view.geometry.status;
+            let accent = automexia_ui_model::ensure_contrast(
+                crate::renderer::ui_theme::BRAND_CYAN,
+                theme().raised,
+                automexia_ui_model::MIN_TEXT_CONTRAST + 0.1,
+            );
+            let mut expected = Raster::new(1.0);
+            label(
+                &mut expected,
+                bounds,
+                "E:",
+                view.font * 0.85,
+                accent,
+                true,
+                view.geometry.card,
+            );
+            let mut actual_pixels = vec![0; 960 * 620];
+            let mut expected_pixels = vec![0; 960 * 620];
+            actual.text.render_cpu_base(&mut actual_pixels, 960, 620);
+            actual.text.render_cpu_modal(&mut actual_pixels, 960, 620);
+            expected
+                .text
+                .render_cpu_base(&mut expected_pixels, 960, 620);
+            expected
+                .text
+                .render_cpu_modal(&mut expected_pixels, 960, 620);
+            let mut compared = 0;
+            for y in bounds.y.ceil() as usize..(bounds.y + bounds.height).floor() as usize
+            {
+                for x in bounds.x.ceil() as usize..(bounds.x + 20.0).floor() as usize {
+                    let index = y * 960 + x;
+                    assert_eq!(
+                        actual_pixels[index], expected_pixels[index],
+                        "E hint missing: detail={detail}, saved={saved}"
+                    );
+                    compared += usize::from(expected_pixels[index] != 0);
+                }
+            }
+            assert!(compared > 0, "compare real shortcut glyph pixels");
+        }
+    }
+}
+
+#[test]
+fn compact_preview_header_keeps_edit_and_done_reachable_without_changing_settings() {
+    for category in [
+        "tags.enabled",
+        "terminal.command_output_highlighting",
+        "terminal.kubernetes_highlighting",
+    ] {
+        for (width, height, scale) in [(320.0, 420.0, 1.25), (960.0, 620.0, 1.0)] {
+            let mut view = workflow_tag_view();
+            view.back_to_categories();
+            assert!(view
+                .view
+                .as_mut()
+                .unwrap()
+                .focus(&SettingId::new(category).unwrap()));
+            view.focus = Focus::List;
+            named(&mut view, NamedKey::Enter);
+            view.fit(width, height, 16.0);
+            view.paint(&mut Raster::new(scale as f32), theme());
+            let panel = view.geometry.preview;
+            let button = view.preview_button;
+            assert!(button.width > 0.0 && button.height > 0.0);
+            assert!(button.y - panel.y < 8.0, "edit belongs in the title row");
+            assert!(button.x + button.width <= panel.x + panel.width);
+            assert!(!view.preview_targets.is_empty());
+            assert!(view
+                .preview_targets
+                .iter()
+                .all(|(_, bounds)| bounds.y >= button.y + button.height));
+            pointer_event(&mut view, button, scale, ElementState::Pressed);
+            pointer_event(&mut view, button, scale, ElementState::Released);
+            assert!(view.preview_edit_mode);
+            assert_eq!(view.focus, Focus::Preview);
+            named(&mut view, NamedKey::Tab);
+            let selected = view.preview_selected.clone();
+            view.paint(&mut Raster::new(scale as f32), theme());
+            let done = view.preview_button;
+            pointer_event(&mut view, done, scale, ElementState::Pressed);
+            // A redraw between press and release must preserve the Done action.
+            view.paint(&mut Raster::new(scale as f32), theme());
+            pointer_event(&mut view, done, scale, ElementState::Released);
+            assert!(!view.preview_edit_mode);
+            assert_eq!(view.focus, Focus::PreviewButton);
+            assert_eq!(view.preview_selected, selected);
+            named(&mut view, NamedKey::Enter);
+            assert!(view.preview_edit_mode);
+            assert_eq!(view.preview_selected, selected);
+            named(&mut view, NamedKey::Escape);
+            assert!(!view.preview_edit_mode);
+            assert!(view.take_edit().is_none());
+            assert!(view.take_customization_intent().is_none());
+        }
+    }
+}
+
+#[test]
+fn preview_shortcuts_do_not_replace_save_or_loading_feedback() {
+    let mut view = workflow_tag_view();
+    for editing in [false, true] {
+        if editing {
+            preview_edit_key(&mut view);
+        }
+        for message in [
+            "Cannot save settings.",
+            "Saving...",
+            "Temporary preview only. Restore saved to return.",
+        ] {
+            view.set_status(message);
+            assert_package_notice_footer(&mut view, message);
+        }
+    }
+}
+
+#[test]
+fn customization_reset_and_restore_wait_for_confirmation_and_escape_cancels() {
+    let mut view = workflow_tag_view();
+    view.back_to_categories();
+    for target in [Target::Reset, Target::Restore] {
+        view.set_temporary_customizations(true);
+        view.activate_target(target.clone());
+        assert!(
+            view.take_customization_intent().is_none(),
+            "request must wait for confirmation"
+        );
+        view.key(
+            &Key::Character("y".into()),
+            Some("y"),
+            ModifiersState::empty(),
+            true,
+        );
+        view.key(
+            &Key::Character("y".into()),
+            Some("y"),
+            ModifiersState::CONTROL,
+            false,
+        );
+        assert!(view.confirmation.is_some());
+        assert!(view.take_customization_intent().is_none());
+        named(&mut view, NamedKey::Escape);
+        assert!(view.is_open() && view.is_category_root());
+        assert!(view.take_customization_intent().is_none());
+        view.activate_target(target.clone());
+        named(&mut view, NamedKey::Tab);
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(
+            view.take_customization_intent(),
+            Some(if target == Target::Reset {
+                CustomizationIntent::Reset {
+                    revision: 1,
+                    scope: CustomizationResetScope::All,
+                }
+            } else {
+                CustomizationIntent::RestoreSaved
+            })
+        );
+        assert!(view.take_edit().is_none());
+    }
+}
+
+fn confirm_requested_settings_action(view: &mut SettingsView) {
+    assert!(view.confirmation.is_some());
+    assert!(!view.confirmation.as_ref().unwrap().accept_selected);
+    assert!(view.take_edit().is_none());
+    assert!(view.take_customization_intent().is_none());
+    named(view, NamedKey::Tab);
+    named(view, NamedKey::Enter);
+    assert!(view.confirmation.is_none());
+}
+
+fn settings_letter(view: &mut SettingsView, letter: &str) {
+    view.key(
+        &Key::Character(letter.into()),
+        Some(letter),
+        ModifiersState::empty(),
+        false,
+    );
+}
+
+#[test]
+fn settings_button_shortcuts_respect_text_modifiers_repeat_and_cancel_focus() {
+    let mut view = workflow_tag_view();
+    for key in ["r", "s", "c"] {
+        view.focus = Focus::List;
+        for (modifiers, repeat) in [
+            (ModifiersState::CONTROL, false),
+            (ModifiersState::ALT, false),
+            (ModifiersState::SUPER, false),
+            (ModifiersState::empty(), true),
+        ] {
+            view.key(&Key::Character(key.into()), Some(key), modifiers, repeat);
+            assert!(view.is_open() && view.confirmation.is_none());
+        }
+    }
+    settings_letter(&mut view, "s");
+    assert!(
+        view.confirmation.is_none(),
+        "Restore is disabled without a temporary preview"
+    );
+    view.start_preview_edit();
+    let selection = view.preview_selected.clone();
+    settings_letter(&mut view, "r");
+    assert!(view.confirmation.is_some());
+    named(&mut view, NamedKey::Enter); // Cancel is the default.
+    assert!(view.confirmation.is_none());
+    assert!(view.take_customization_intent().is_none());
+    assert_eq!(view.focus, Focus::Preview);
+    assert_eq!(view.preview_selected, selection);
+    view.set_temporary_customizations(true);
+    settings_letter(&mut view, "s");
+    assert_eq!(view.confirmation.as_ref().unwrap().accept_label, "Restore");
+    settings_letter(&mut view, "n");
+    assert!(view.confirmation.is_none());
+    assert!(view.take_customization_intent().is_none());
+    view.focus = Focus::Search;
+    for key in ["r", "s", "c"] {
+        settings_letter(&mut view, key);
+    }
+    assert_eq!(view.query(), "rsc");
+    assert!(view.is_open() && view.confirmation.is_none());
+    view.focus = Focus::List;
+    settings_letter(&mut view, "c");
+    assert!(!view.is_open());
+}
+
+#[test]
+fn settings_confirmation_blocks_background_input_and_preserves_numeric_draft_on_cancel() {
+    let mut view = workflow_tag_view();
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.spacing").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(view.paste("12"));
+    view.event(
+        &WindowEvent::Ime(Ime::Preedit("3".into(), None)),
+        ModifiersState::empty(),
+        1.0,
+    );
+    view.activate_target(Target::Reset);
+    assert!(view.confirmation.is_some());
+    let draft = view.numeric_editor.as_ref().unwrap().draft.clone();
+    assert!(!view.paste("99"));
+    assert!(view.clipboard_selection().is_none());
+    assert!(view.ime_cursor_area().is_none());
+    view.event(
+        &WindowEvent::Ime(Ime::Commit("88".into())),
+        ModifiersState::empty(),
+        1.0,
+    );
+    let scroll = view.scroll;
+    view.scroll_by(100.0);
+    view.activate_target(Target::Close);
+    settings_letter(&mut view, "e");
+    assert_eq!(view.scroll, scroll);
+    assert!(view.is_open() && view.confirmation.is_some());
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.numeric_editor.as_ref().unwrap().draft, draft);
+    assert!(!view.numeric_editor.as_ref().unwrap().composing);
+    assert!(view.take_edit().is_none());
+    assert!(view.take_customization_intent().is_none());
+    named(&mut view, NamedKey::Enter);
+    assert_eq!(
+        view.take_edit().unwrap().change,
+        Change::Set(SettingValue::Number(12.0))
+    );
+}
+
+#[test]
+fn settings_confirmation_rejects_stale_refresh_and_tiny_or_resized_clicks() {
+    let mut view = workflow_tag_view();
+    view.activate_target(Target::Reset);
+    let base = rio_backend::config::Config::default();
+    view.refresh(
+        crate::settings_catalog::catalog(2, &base, &Default::default(), &[]).unwrap(),
+    );
+    assert!(view.confirmation.is_none());
+    assert!(view.take_customization_intent().is_none());
+    view.fit(960.0, 620.0, 16.0);
+    view.activate_target(Target::Reset);
+    view.paint(&mut Raster::new(1.0), theme());
+    let accept = view.confirmation_geometry.accept;
+    pointer_event(&mut view, accept, 1.0, ElementState::Pressed);
+    view.fit(320.0, 420.0, 16.0);
+    view.paint(&mut Raster::new(1.0), theme());
+    pointer_event(&mut view, accept, 1.0, ElementState::Released);
+    assert!(view.confirmation.is_some());
+    assert!(view.take_customization_intent().is_none());
+    view.fit(100.0, 100.0, 16.0);
+    view.paint(&mut Raster::new(1.0), theme());
+    settings_letter(&mut view, "y");
+    assert!(view.confirmation.is_some());
+    assert!(view.take_customization_intent().is_none());
+    named(&mut view, NamedKey::Escape);
+    assert!(view.confirmation.is_none() && view.is_open());
+}
+
+#[test]
+fn color_reset_confirmation_cancel_retains_draft_and_y_resets_only_that_value() {
+    let mut view = opened_color(false);
+    assert!(replace_color(&mut view, "#ABCDEF"));
+    view.activate_color(ColorFocus::Reset);
+    assert!(view.confirmation.is_some());
+    named(&mut view, NamedKey::Escape);
+    assert_eq!(view.color_editor.as_ref().unwrap().draft, "#ABCDEF");
+    assert!(view.take_edit().is_none());
+    view.activate_color(ColorFocus::Reset);
+    let id = view.color_editor.as_ref().unwrap().id.clone();
+    settings_letter(&mut view, "y");
+    assert_eq!(
+        view.take_edit(),
+        Some(Edit {
+            revision: 2,
+            id,
+            change: Change::Reset
+        })
+    );
+    assert!(view.color_editor.is_none() && view.confirmation.is_none());
+    assert!(view.take_customization_intent().is_none());
+}
+
+#[test]
+fn settings_confirmation_is_opaque_bounded_and_pointer_confirmation_is_one_shot() {
+    for (width, height, scale) in [(320.0, 420.0, 1.25), (960.0, 620.0, 1.0)] {
+        let mut view = workflow_tag_view();
+        view.fit(width, height, 16.0);
+        view.activate_target(Target::Reset);
+        let mut raster = Raster::new(scale as f32);
+        view.paint(&mut raster, theme());
+        assert!(view.accessibility_summary().contains("Cancel: Escape"));
+        assert!(raster.rects.iter().all(|([x, y, w, h], color)| *x >= 0.0
+            && *y >= 0.0
+            && x + w <= width + 0.001
+            && y + h <= height + 0.001
+            && color[3] == 1.0));
+        let bounds = view.confirmation_geometry.accept;
+        assert!(bounds.width > 0.0 && bounds.height > 0.0);
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            let w = (width * scale as f32) as u32;
+            let h = (height * scale as f32) as u32;
+            let pixels = raster.pixels(w, h, true);
+            image_rs::RgbImage::from_fn(w, h, |x, y| {
+                let p = pixels[(y * w + x) as usize];
+                image_rs::Rgb([(p >> 16) as u8, (p >> 8) as u8, p as u8])
+            })
+            .save(directory.join(format!("settings-confirm-{w}x{h}.png")))
+            .unwrap();
+        }
+        pointer_event(&mut view, bounds, scale, ElementState::Pressed);
+        view.paint(&mut Raster::new(scale as f32), theme());
+        pointer_event(&mut view, bounds, scale, ElementState::Released);
+        assert!(matches!(
+            view.take_customization_intent(),
+            Some(CustomizationIntent::Reset {
+                scope: CustomizationResetScope::Group(_),
+                ..
+            })
+        ));
+        pointer_event(&mut view, bounds, scale, ElementState::Released);
+        assert!(view.take_customization_intent().is_none());
     }
 }

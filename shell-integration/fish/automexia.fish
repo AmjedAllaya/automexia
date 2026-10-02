@@ -92,6 +92,55 @@ function __automexia_publish_location_hints
     printf '\e]1337;SetUserVar=automexia_env_KUBECONFIG=%s\a' "$__automexia_config_encoded"
 end
 
+# Publish only bounded public selectors. The Docker endpoint is represented by
+# a presence bit, never by its value or credentials.
+function __automexia_publish_selector_hints
+    set -l names DOCKER_CONTEXT DOCKER_HOST_PRESENT AWS_PROFILE AWS_DEFAULT_PROFILE AWS_REGION AWS_DEFAULT_REGION AZURE_CLOUD_NAME CLOUDSDK_ACTIVE_CONFIG_NAME CLOUDSDK_CORE_PROJECT CLOUDSDK_COMPUTE_REGION TF_WORKSPACE AUTOMEXIA_ENV ENVIRONMENT APP_ENV NODE_ENV
+    set -l index 1
+    for name in $names
+        set -l value ''
+        if test "$name" = DOCKER_HOST_PRESENT
+            set value 0
+            if set -q -x DOCKER_HOST; and test -n "$DOCKER_HOST"
+                set value 1
+            end
+        else if set -q -x $name
+            set -l selected $$name
+            if test (count $selected) -eq 1
+                set value "$selected[1]"
+            end
+        end
+        if test (string length -- "$value") -gt 256; or \
+                string match -rq '[\x00-\x1f\x7f-\x9f]' -- "$value"
+            set value ''
+        end
+        if not set -q __automexia_selector_ready; or \
+                test "$value" != "$__automexia_selector_values[$index]"
+            set -g __automexia_selector_values[$index] "$value"
+            set -l encoded (__automexia_hint_encode "$value")
+            if test $status -ne 0
+                set encoded ''
+            else
+                # Fish counts Unicode scalars above; base64 independently
+                # enforces the receiver's 256-byte UTF-8 selector limit.
+                set -l size (string length -- "$encoded")
+                if test $size -gt 344; or \
+                        begin
+                            test $size -eq 344; and \
+                                not string match -q '*==' -- "$encoded"
+                        end
+                    set encoded ''
+                end
+            end
+            set -g __automexia_selector_frames[$index] "$encoded"
+        end
+        printf '\e]1337;SetUserVar=automexia_env_%s=%s\a' \
+            "$name" "$__automexia_selector_frames[$index]"
+        set index (math --scale 0 "$index + 1")
+    end
+    set -g __automexia_selector_ready 1
+end
+
 # Fish owns these existing identity fields too. Cache their encoding once, then
 # restore the parent identity after nested Bash/Zsh/WSL sessions on every prompt.
 set -g __automexia_fish_distro (__automexia_hint_encode "$WSL_DISTRO_NAME")
@@ -105,17 +154,26 @@ function __automexia_fish_prompt --on-event fish_prompt
     printf '\e]1337;SetUserVar=automexia_shell_path=%s\a' "$__automexia_fish_shell"
     printf '\e]1337;SetUserVar=automexia_os_version=\a'
     __automexia_publish_location_hints
+    __automexia_publish_selector_hints
     printf '\e]1337;SetUserVar=automexia_shell=MQ==\a'
     printf '\e]1337;SetUserVar=automexia_shell_name=ZmlzaA==\a'
     printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
     set -g __automexia_fish_prompt_generation \
         (math --scale 0 "$__automexia_fish_prompt_generation + 1")
-    printf '\e]133;A;aid=%s\a' "$__automexia_fish_prompt_generation"
     set -l encoded_path (string replace -a ' ' '%20' -- "$PWD")
     printf '\e]7;file://localhost%s\a' "$encoded_path"
+    # Reserve one terminal-owned blank row before Fish paints its native
+    # prompt. Keep Fish in charge of prompt text, editing, and redisplay.
+    printf '\e]1337;SetUserVar=automexia_prompt_active=MQ==\a'
+    printf '\e]133;A;aid=%s\a \n' "$__automexia_fish_prompt_generation"
+    printf '\e]133;P;k=c;aid=%s\a' "$__automexia_fish_prompt_generation"
+    # Fish owns all prompt text and its native highlighter. Mark the boundary
+    # after our spacer so screen-clear recovery retains only that context.
+    printf '\e]133;B\a'
 end
 
 function __automexia_fish_preexec --on-event fish_preexec
+    printf '\e]1337;SetUserVar=automexia_prompt_active=MA==\a'
     printf '\e]133;C\a'
 end
 

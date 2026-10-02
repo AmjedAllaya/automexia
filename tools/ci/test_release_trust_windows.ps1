@@ -9,6 +9,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windows_conpty_trust.ps1')
 $artifactRoot = (Resolve-Path -LiteralPath $ArtifactDirectory).Path
 if ([string]::IsNullOrWhiteSpace($ExpectedPublisher)) {
     throw 'ExpectedPublisher must be the exact subject of the approved public code-signing certificate'
@@ -37,6 +38,7 @@ if ($observedPackageNames -cne $requiredPackageNames) {
 $temporaryRoots = [System.Collections.Generic.List[string]]::new()
 $signatures = [System.Collections.Generic.List[object]]::new()
 $script:embeddedScriptSignatureCount = 0
+$script:vendorSignatureCount = 0
 $scanJob = $null
 $scanRoot = Join-Path ([IO.Path]::GetTempPath()) (
     'automexia-release-scan-{0}' -f [guid]::NewGuid().ToString('N'))
@@ -66,8 +68,10 @@ function Assert-TrustedSignature {
     if ($null -eq $signature.TimeStamperCertificate) {
         throw "RFC 3161 timestamp is missing for $Path"
     }
-    $codeSigningEku = @($signature.SignerCertificate.EnhancedKeyUsageList) |
-        Where-Object { $_.ObjectId.Value -eq '1.3.6.1.5.5.7.3.3' }
+    $codeSigningEku = @($signature.SignerCertificate.Extensions |
+        Where-Object { $_.Oid.Value -eq '2.5.29.37' } |
+        ForEach-Object { $_.EnhancedKeyUsages } |
+        Where-Object { $_.Value -eq '1.3.6.1.5.5.7.3.3' })
     if ($codeSigningEku.Count -eq 0) {
         throw "Signer certificate for $Path has no code-signing extended key usage"
     }
@@ -118,6 +122,11 @@ function Expand-TrustedPortableArchive {
         }
         $expectedFiles = @(
             'automexia.exe',
+            'amx.exe',
+            'automexia-suggestion-helper.exe',
+            'conpty.dll',
+            'x64/OpenConsole.exe',
+            'arm64/OpenConsole.exe',
             'LICENSE',
             'NOTICE.md',
             'README.md',
@@ -157,14 +166,14 @@ function Expand-TrustedPortableArchive {
     [IO.Directory]::CreateDirectory($destination) | Out-Null
     $temporaryRoots.Add($destination)
     [IO.Compression.ZipFile]::ExtractToDirectory($Path, $destination)
-    $binary = @(Get-ChildItem -LiteralPath $destination -Recurse -File -Filter 'automexia.exe')
-    if ($binary.Count -ne 1) {
-        throw 'portable ZIP extraction did not yield exactly one automexia.exe'
-    }
-    $productVersion = $binary[0].VersionInfo.ProductVersion
-    if ($productVersion -cne $Version) {
-        throw "portable executable version mismatch: expected '$Version', found '$productVersion'"
-    }
+    $binaries = @(foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        $binary = Get-Item -LiteralPath (Join-Path $destination $runtime)
+        $productVersion = $binary.VersionInfo.ProductVersion
+        if ($productVersion -cne $Version) {
+            throw "portable executable version mismatch for $runtime`: expected '$Version', found '$productVersion'"
+        }
+        $binary.FullName
+    })
     $signedScripts = @(Get-ChildItem -LiteralPath (Join-Path $destination 'shell-integration') -Recurse -File |
         Where-Object Extension -in @('.ps1', '.ps1xml'))
     if ($signedScripts.Count -ne 8) {
@@ -173,7 +182,16 @@ function Expand-TrustedPortableArchive {
     foreach ($script in $signedScripts) {
         Assert-TrustedSignature -Path $script.FullName -RecordEvidence $false
     }
-    return $binary[0].FullName
+    $architecture = if ([IO.Path]::GetFileName($Path).EndsWith('-aarch64-pc-windows-msvc.zip')) {
+        'arm64'
+    } else { 'x64' }
+    $vendorFiles = @(Assert-ConPtyRuntime -Root $destination -Architecture $architecture)
+    $script:vendorSignatureCount += $vendorFiles.Count
+    foreach ($relative in $vendorFiles) {
+        $scanName = 'vendor-' + $architecture + '-' + $relative.Replace('/', '-')
+        Copy-Item -LiteralPath (Join-Path $destination $relative) -Destination (Join-Path $scanRoot $scanName)
+    }
+    return $binaries
 }
 
 function Find-DefenderScanner {
@@ -197,11 +215,14 @@ try {
     }
     $portableIndex = 0
     foreach ($zip in $zipPackages) {
-        $portableBinary = Expand-TrustedPortableArchive -Path $zip.FullName
-        Assert-TrustedSignature -Path $portableBinary
+        $portableBinaries = @(Expand-TrustedPortableArchive -Path $zip.FullName)
         $portableIndex++
-        Copy-Item -LiteralPath $portableBinary -Destination (
-            Join-Path $scanRoot "automexia-portable-$portableIndex.exe")
+        foreach ($portableBinary in $portableBinaries) {
+            Assert-TrustedSignature -Path $portableBinary
+            $runtime = [IO.Path]::GetFileNameWithoutExtension($portableBinary)
+            Copy-Item -LiteralPath $portableBinary -Destination (
+                Join-Path $scanRoot "$runtime-portable-$portableIndex.exe")
+        }
     }
 
     $subjects = @($signatures | ForEach-Object signer_subject | Sort-Object -Unique)
@@ -242,7 +263,7 @@ try {
     $scanMilliseconds = [int64]((Get-Date) - $startedAt).TotalMilliseconds
 
     $evidence = [ordered]@{
-        schema = 1
+        schema = 3
         version = $Version
         scanner = 'Microsoft Defender Antivirus'
         scanner_version = $defender.AMEngineVersion
@@ -259,6 +280,8 @@ try {
             })
         signature_count = $signatures.Count
         embedded_script_signature_count = $script:embeddedScriptSignatureCount
+        vendor_signature_count = $script:vendorSignatureCount
+        vendor_package = Get-ConPtyPackageIdentity
         publisher = $ExpectedPublisher
         scan_milliseconds = $scanMilliseconds
         scan_timeout_seconds = $ScanTimeoutSeconds

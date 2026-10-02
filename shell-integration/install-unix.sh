@@ -33,7 +33,6 @@ case "$fish_conf_root" in /*) ;; *) printf 'install-unix.sh: Fish config root mu
 state_file=$config_root/install-state-unix.sha256
 marker_start='# >>> AUTOMEXIA SHELL INTEGRATION >>>'
 marker_end='# <<< AUTOMEXIA SHELL INTEGRATION <<<'
-temporary_suffix=.automexia-$$.tmp
 if [ "$system_name" = Darwin ]; then
   bash_source_line='[ -r "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.bash" ] && . "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.bash"'
   zsh_source_line='[ -r "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.zsh" ] && . "${AUTOMEXIA_CONFIG_HOME:-$HOME/Library/Application Support/io.github.AmjedAllaya.AutomexiaTerminal}/shell-integration.zsh"'
@@ -109,20 +108,50 @@ fi
 mkdir -p "$config_root" "$fish_conf_root"
 [ ! -L "$config_root" ] || { printf 'install-unix.sh: config root must not be a symbolic link\n' >&2; exit 1; }
 [ ! -L "$fish_conf_root" ] || { printf 'install-unix.sh: Fish config root must not be a symbolic link\n' >&2; exit 1; }
+stage_dir=
+stage_path=
+stage_identity=
+directory_identity() {
+  stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1"
+}
 cleanup() {
-  rm -f \
-    "$config_root/shell-integration.bash$temporary_suffix" \
-    "$config_root/shell-integration.zsh$temporary_suffix" \
-    "$config_root/automexia-completion.bash$temporary_suffix" \
-    "$config_root/automexia-completion.zsh$temporary_suffix" \
-    "$fish_conf_root/automexia.fish$temporary_suffix" \
-    "$fish_conf_root/automexia-completion.fish$temporary_suffix" \
-    "$config_root/automexia-eza-filter.pl$temporary_suffix" \
-    "$state_file$temporary_suffix" \
-    "$HOME/.bashrc$temporary_suffix" \
-    "$HOME/.zshrc$temporary_suffix"
+  [ -n "$stage_dir" ] || return 0
+  [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || return 0
+  # The pathname can be replaced after staging. Enter and verify the private
+  # directory so a replacement directory's payload is never removed.
+  (
+    cd -P "$stage_dir" 2>/dev/null || exit 0
+    [ "$(directory_identity .)" = "$stage_identity" ] || exit 0
+    rm -f ./payload
+  )
+  [ "$(directory_identity "$stage_dir" 2>/dev/null)" = "$stage_identity" ] || return 0
+  rmdir "$stage_dir"
 }
 trap cleanup EXIT HUP INT TERM
+
+new_stage() {
+  # mktemp creates an unpredictable, private directory in the destination's
+  # filesystem. Noclobber below creates its payload exactly once inside it.
+  stage_dir=$(mktemp -d "$1.automexia.XXXXXXXX")
+  [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || return 1
+  stage_path=$stage_dir/payload
+  stage_identity=$(directory_identity "$stage_dir")
+}
+
+publish_stage() {
+  destination=$1
+  case "$destination" in /*) ;; *) destination=$(pwd -P)/$destination ;; esac
+  (
+    cd -P "$stage_dir"
+    [ "$(directory_identity .)" = "$stage_identity" ] || exit 1
+    mv -f ./payload "$destination"
+  )
+  [ "$(directory_identity "$stage_dir" 2>/dev/null)" = "$stage_identity" ] || return 1
+  rmdir "$stage_dir"
+  stage_dir=
+  stage_path=
+  stage_identity=
+}
 
 install_source() {
   source_path=$1
@@ -132,9 +161,10 @@ install_source() {
     printf 'install-unix.sh: refusing linked destination: %s\n' "$destination_path" >&2
     exit 1
   }
-  cp "$source_path" "$destination_path$temporary_suffix"
-  chmod "$mode" "$destination_path$temporary_suffix"
-  mv -f "$destination_path$temporary_suffix" "$destination_path"
+  new_stage "$destination_path"
+  (set -C; cat "$source_path" >"$stage_path")
+  chmod "$mode" "$stage_path"
+  publish_stage "$destination_path"
 }
 
 append_block() {
@@ -178,22 +208,25 @@ append_block() {
       exit 1
     fi
   fi
-  profile_temporary="$profile_path$temporary_suffix"
+  new_stage "$profile_path"
   if [ "$start_count" -eq 1 ]; then
     permissions=$(stat -c '%a' "$profile_path" 2>/dev/null || stat -f '%Lp' "$profile_path")
-    awk -v start="$marker_start" -v end="$marker_end" '
+    (set -C; awk -v start="$marker_start" -v end="$marker_end" '
       $0 == start { skip=1; next }
       $0 == end { skip=0; next }
       !skip { print }
-    ' "$profile_path" >"$profile_temporary"
-    chmod "$permissions" "$profile_temporary"
+    ' "$profile_path" >"$stage_path")
   elif [ -f "$profile_path" ]; then
-    cp -p "$profile_path" "$profile_temporary"
+    permissions=$(stat -c '%a' "$profile_path" 2>/dev/null || stat -f '%Lp' "$profile_path")
+    (set -C; cat "$profile_path" >"$stage_path")
   else
-    : >"$profile_temporary"
+    (set -C; : >"$stage_path")
   fi
-  printf '\n%s\n%s\n%s\n' "$marker_start" "$source_line" "$marker_end" >>"$profile_temporary"
-  mv -f "$profile_temporary" "$profile_path"
+  printf '\n%s\n%s\n%s\n' "$marker_start" "$source_line" "$marker_end" >>"$stage_path"
+  if [ "$start_count" -eq 1 ] || [ -f "$profile_path" ]; then
+    chmod "$permissions" "$stage_path"
+  fi
+  publish_stage "$profile_path"
 }
 
 install_source "$script_dir/bash/automexia.bash" "$config_root/shell-integration.bash" 0644
@@ -219,6 +252,7 @@ if command -v tic >/dev/null 2>&1; then
   fi
 fi
 
-printf '%s\n' "$source_fingerprint" >"$state_file$temporary_suffix"
-mv -f "$state_file$temporary_suffix" "$state_file"
+new_stage "$state_file"
+(set -C; printf '%s\n' "$source_fingerprint" >"$stage_path")
+publish_stage "$state_file"
 say 'Automexia Bash/Zsh/Fish integration, managed completion adapters, and user terminfo are ready.'

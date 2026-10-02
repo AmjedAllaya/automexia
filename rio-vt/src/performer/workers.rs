@@ -81,6 +81,9 @@ pub struct PtyWorkerLease {
 }
 
 impl PtyWorkerRegistry {
+    /// Maximum live or retiring sessions admitted by this registry.
+    pub const CAPACITY: usize = MAX_WORKERS;
+
     fn state(&self) -> MutexGuard<'_, State> {
         self.0
             .lock()

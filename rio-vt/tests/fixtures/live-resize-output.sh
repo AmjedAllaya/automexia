@@ -3,7 +3,9 @@ set -eu
 stty -echo
 trap 'stty echo' EXIT
 printf '\033]133;A;aid=1\a\r\n\033]133;P;k=c;aid=1\a/example\r\n\033]133;P;k=c;aid=1\alambda \033]133;B\alist\r\n\033]133;C\a'
-if [[ ${1:-} == listing-wide ]]; then
+if [[ ${1:-} == listing-ultrawide ]]; then
+  EZA_COLORS='' LS_COLORS='' eza --icons=always --color=always --width=320 --grid --sort=name -- "$3"
+elif [[ ${1:-} == listing-wide ]]; then
   EZA_COLORS='' LS_COLORS='' eza --icons=always --color=always --width=146 --grid --sort=name -- "$3"
 elif [[ ${1:-} == listing ]]; then
   # The parent owns this isolated directory and its cleanup, even on assertion
@@ -30,6 +32,12 @@ if [[ ${2:-} == scan ]]; then
     IFS= read -r -n 1 probe
     printf '\033]2;RESIZE-BASELINE\a'
     steps=48
+    if [[ ${1:-} == listing-ultrawide ]]; then
+        steps=${4:-}
+        if ! [[ $steps =~ ^([1-9]|[1-3][0-9]|4[0-8])$ ]]; then
+            exit 2
+        fi
+    fi
 fi
 for ((step=0; step<steps; step++)); do
     IFS= read -r -n 1 probe

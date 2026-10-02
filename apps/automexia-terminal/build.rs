@@ -20,11 +20,11 @@ fn main() {
     let manifest_template = include_str!("../../packaging/windows/automexia.manifest");
     let generated_manifest =
         manifest_template.replace("@AUTOMEXIA_VERSION@", &manifest_version);
-    let manifest_path = PathBuf::from(
+    let output_directory = PathBuf::from(
         std::env::var_os("OUT_DIR")
             .expect("Cargo must provide OUT_DIR to the build script"),
-    )
-    .join("automexia.manifest");
+    );
+    let manifest_path = output_directory.join("automexia.manifest");
     std::fs::write(&manifest_path, generated_manifest)
         .expect("failed to generate the Automexia Windows manifest");
     let manifest_path = manifest_path
@@ -42,6 +42,22 @@ fn main() {
     resource
         .compile()
         .expect("failed to embed Automexia Windows resources");
+
+    // winres's link-lib directive attaches resources to the package library.
+    // The lightweight console launcher does not link that library, so attach
+    // the same compiled resource directly to that binary. Other binaries keep
+    // their existing library linkage and must not receive duplicate resources.
+    // Successful winres compilation accepts only MSVC or GNU environments.
+    let resource_file = if std::env::var("CARGO_CFG_TARGET_ENV").as_deref() == Ok("msvc")
+    {
+        "resource.lib"
+    } else {
+        "resource.o"
+    };
+    println!(
+        "cargo:rustc-link-arg-bin=amx={}",
+        output_directory.join(resource_file).display()
+    );
 }
 
 #[cfg(not(windows))]

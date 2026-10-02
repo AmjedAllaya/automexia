@@ -269,6 +269,46 @@ surface literals; mutations reject removed imports, competing declarations,
 transparent, malformed, duplicate and nonfinite tokens. It complements, rather
 than replaces, runtime drawing and input/compositor tests.
 
+Close confirmation replaces both pending modal geometry and labels after all
+other overlay producers. Covered editors keep their state until cancellation.
+The focused native `resize-stress-windows.ps1` modes `-TagCustomizationOnly` and
+`-CloseConfirmationOnly` sample the opaque card and both button fills; they check
+that cancel restores Customizations or search without sending input to the shell.
+Run with Windows PowerShell, using a `visual-test-hooks,wgpu` build, and repeat with
+`-UseCpuRenderer`. Pass `-ModalCaptureDirectory` for before/after native screenshots.
+The tag mode also checks E entry/reentry, Tab and Shift+Tab wrap within the
+preview, item activation, and Escape back to shared controls. Its keyboard and
+pointer paths must leave the terminal prompt and saved settings unchanged.
+These checks supplement the renderer text-replacement and router-priority tests;
+a dialog-active flag or nonblank screenshot alone does not prove modal opacity.
+
+The same harness's `-OutputColorsOnly` mode exercises Terminal output colors and
+Kubernetes status colors through the real settings controls in a fresh isolated
+PowerShell session. It toggles both independently without new output or resize,
+checks actual command background paints, and retains a Kubernetes status table
+through a narrow resize. Use `-ResultCapture` for named before/after capture
+names and repeat with `-UseCpuRenderer`; the Windows native image profile runs
+both backends and verifies the actual initialized renderer, not just the requested
+configuration. The WGPU run also checks an opaque wallpaper under the output;
+wallpaper is currently unsupported by the CPU renderer. Both runs compare glyph
+pixels with command backgrounds enabled and disabled, then edit a Kubernetes
+foreground through the preview and check its actual retained-table pixels.
+Foreground inputs use RGB; backgrounds also support alpha and a direct numeric
+opacity control. The native workflow types 0, 100 and 50 percent, checks retained
+background paints after each, and exercises a real PowerShell ANSI error with log
+highlighting disabled. It compares every ordinary table data row with command
+highlighting on and off, including the last row at fractional display scale.
+Shared renderer tests additionally check custom RGBA palettes, ANSI/inverse text,
+selection, plain versus table output, and watch rewrites. The full native driver
+also checks that closing a local tab releases its retired renderer, and records
+all resource samples within the existing bounded settling period.
+
+The tag customization journey also repeats feature and global Reset, closes and
+reopens the sheet during a temporary preview, and restores the original choices.
+It compares configuration and preference file hashes and terminal input throughout.
+An invalid store in the isolated fixture exercises asynchronous package-inventory
+failure and reopening to retry; core controls and temporary choices remain usable.
+
 ## Interactive PowerShell startup
 
 `cargo test -p automexia-terminal --lib automexia::shell::tests --locked`
@@ -286,6 +326,22 @@ content. Linux Bash/Zsh/Fish use the existing native shell integration gates;
 these checks do not substitute for unavailable native macOS or desktop evidence.
 A host without a PowerShell profile path reports native profile-directory
 metadata as external; the isolated profile and reparse-safety cases still run.
+
+The opt-in native session-metadata roundtrip requires PowerShell 7, a default
+WSL Bash distribution with Automexia shell integration installed, and Windows
+ConPTY. It uses Automexia's normal PowerShell bootstrap and user profile, types
+`wsl` and `exit`, and checks fresh shell, distro, user and directory metadata at
+each prompt without printing private values or changing profiles. In PowerShell:
+
+```powershell
+$env:AUTOMEXIA_TEST_NATIVE_WSL_ROUNDTRIP='1'; cargo test -p automexia-terminal --test native_wsl_metadata_roundtrip --locked -- --ignored --test-threads=1
+```
+
+The test passed 1/1 on Windows build 10.0.26200.0 with PowerShell 7.6.5 and
+WSL Bash 5.2.21: host metadata changed to a guest Bash/distro/path frame and
+returned to the original host identity and path. This is native ConPTY/parser
+evidence, not a GUI pixel or status-bar rendering check; missing installed WSL
+integration remains an environment prerequisite.
 
 ## Live resize preservation
 
@@ -383,13 +439,13 @@ test distribution and `AUTOMEXIA_TEST_WSL_FIXTURE` to that distribution's path t
 `rio-vt/tests/fixtures/live-resize-output.sh`. Then run:
 
 ```text
-cargo test -p rio-vt --test live_resize --locked native_live_wsl -- --ignored
+cargo test -p rio-vt --test live_resize --locked -- --ignored --test-threads=1
 ```
 
 The real-listing case additionally requires eza in that distribution. It creates
 28 varied fictional filenames under a randomly named, workspace-local temporary
 directory and checks cleanup. It does not load user shell profiles or inspect a
-real project. Four WSL tests must execute, not a successful zero-test filter.
+real project. Five WSL tests must execute, not a successful zero-test filter.
 The listing campaign covers widths from 99 down to 2 columns, restoration to
 100 columns, and 8- and 2-row panes. It checks the raw adapter, queued resize
 bursts and each intermediate worker commit. Every final assertion precedes
@@ -404,6 +460,12 @@ Run all raw, burst and intermediate-commit paths. Exact order, spacing, filename
 uniqueness and prompt adjacency must hold at every acknowledgment, not only at
 the final restore. The previous pairwise campaign missed premature live-prefix
 archiving, native printed-space fill and short historical continuation loss.
+
+The completed ultrawide listing starts at 320 by 60 cells and first shrinks to
+96 by 40 without rerunning eza. The direct adapter checks exact retained rows,
+colors, selection copy and prompt through native repaint; both worker schedules
+check retained rows and prompt adjacency. Its fixture takes the transition count
+from the test and exits only after the last assertion and release probe.
 
 Deterministic replays cover wider/shorter and narrower/shorter native redraws,
 space-filled rows below the cursor and a former seam becoming fully historical.
@@ -1192,6 +1254,21 @@ Package verification covers identity, version, license notices, checksums, SBOM,
 provenance, signatures, install, launch, upgrade, rollback, uninstall, startup
 hooks, user-data retention, and final cleanup.
 
+`cargo test -p xtask --locked portable_packages_` builds and extracts real
+archives from fictional runtime inputs, comparing all three executables byte
+for byte and checking missing-input preservation, target suffixes, and Unix
+executable modes. `python tools/ci/test_package_contents.py` checks Linux and
+Windows ARM64 declarations against the frontend's runtime set.
+`python tools/ci/test_release_runtime.py` exercises release staging and rejects
+missing companions. Both Python suites also run in `cargo ready` and CI test
+discovery. Native installer smoke checks cover `amx` and helper presence and
+cleanup. CLI smoke runs `automexia` and `amx`; the helper requires its protocol
+bootstrap.
+On Windows, the `cli_help_presentation` integration target also reads native
+product/version resources from all three built executables. This catches a
+launcher that forwards commands correctly but cannot pass package identity
+verification.
+
 Controlled signing, notarization, store accounts, protected runners, hardware,
 native assistive technology, and long-duration campaigns remain explicit
 external gates when unavailable locally.
@@ -1580,6 +1657,22 @@ wide-cell selection, with native macOS color/joining tests gated to that OS.
 Mouse-reporting programs keep native
 coordinates. Run the unchanged focused-table and command-information suites to
 cover coexistence, then the owning targets and required readiness profile.
+
+The inline pipeline suite captures completed records during fragmented output
+without resizing or scrolling. It covers old-history admission pressure, live
+tables whose headers exceed the copied window, wrapped headers, framed tables,
+and evicted-header/budget fallbacks, without displacing visible rows in tall panes.
+`inline_pipeline_native` exercises the real PTY worker; its opt-in WSL cases cover
+interactive Bash and PowerShell launching WSL, with repository shell integration
+and isolated fictional long cells at initial sizes from 31 by 8 to 320 by 64.
+Select an installed
+distro through `tools/ci/check_inline_pipeline.py --wsl-distro`; these are transport
+and prompt checks, separate from native desktop rendering evidence.
+On Windows this checker stages the exact compiled fixture with the pinned
+Microsoft runtime. `--inbox-conpty` explicitly exercises the older system
+transport without relaxing assertions. See
+[ADR 0082](adr/0082-pinned-windows-console-runtime.md) for the reproduced
+short-pane limitation, deployment contract and remaining native evidence gaps.
 
 `cargo bench --locked -p automexia-terminal --bench automexia_services -- core_table_view`
 also exercises bounded inline wrapping with literal source checks. These model

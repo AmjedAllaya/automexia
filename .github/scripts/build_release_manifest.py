@@ -13,6 +13,9 @@ import shutil
 import stat
 import sys
 
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "tools/ci"))
+from release_trust import ReleaseTrustError, validate_vendor_sboms
+
 
 PACKAGE_SUFFIXES = (".msi", ".zip", ".dmg", ".deb", ".rpm", ".tar.gz", ".tgz")
 SBOM_NAMES = frozenset(
@@ -138,6 +141,7 @@ def _validate_sboms(paths: list[Path]) -> None:
         raise ReleaseManifestError(
             "SBOM allowlist must contain exactly " + ", ".join(sorted(SBOM_NAMES))
         )
+    documents = {}
     for path in paths:
         try:
             document = json.loads(
@@ -153,6 +157,13 @@ def _validate_sboms(paths: list[Path]) -> None:
             raise ReleaseManifestError("SPDX SBOM identity is missing")
         if path.name.endswith(".cdx.json") and document.get("bomFormat") != "CycloneDX":
             raise ReleaseManifestError("CycloneDX SBOM identity is missing")
+        documents[path.name] = document
+    # This owner requires the full package matrix, including both Windows targets.
+    try:
+        validate_vendor_sboms(documents["automexia-terminal.spdx.json"],
+                              documents["automexia-terminal.cdx.json"])
+    except ReleaseTrustError as error:
+        raise ReleaseManifestError(str(error)) from error
 
 
 def _scan_artifacts(

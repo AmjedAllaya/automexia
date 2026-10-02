@@ -10,10 +10,11 @@ Discovery refreshes on the existing three-second background schedule. A normal
 `kubectl config set-context --current --namespace=sandbox` change to the selected
 configuration does not require changing directories or reopening the pane.
 Each open session retains its prompt history across pane and tab focus changes,
-including hidden tabs. Closing a session removes its context state; disabling
-context status clears that state and skips route tracking. Terminal cells,
-selection and command input are unchanged. In narrow panes badges may be omitted
-when they do not fit.
+including hidden tabs and tabs retained for undo. Discarding a retained tab or
+closing a session removes its context state. Disabling context status clears that
+state and skips route tracking. Terminal cells,
+selection and command input are unchanged. In narrow panes accepted badge labels
+wrap within the measured prompt width.
 
 The distribution and validated shell username are projected immediately from
 shell metadata without waiting for discovery. Window-title changes no longer
@@ -52,10 +53,14 @@ leave the parser. This is deliberately different from managed import review.
 
 Set `AUTOMEXIA_CONTEXT_PATH_HINTS=0` in the shell to stop sharing these paths; the
 next prompt clears every published location field. Removing that setting restores
-publication. Invalid/oversized values clear the complete snapshot, and incomplete
-metadata frames retain the previous complete identity, location, directory and
-title snapshot until the exact completion marker arrives. Malformed markers
-cannot publish mixed shell facts; older unframed hooks remain compatible. Two values
+publication. Invalid or oversized metadata is not admitted as live context.
+Incomplete metadata frames retain the previous complete identity, location, directory and
+title snapshot while publication is pending. Newly started prompts wait for a
+complete frame rather than borrowing retained context. Malformed or incomplete
+commits suppress live badges and discovery until a valid complete frame arrives.
+Each required value must belong to that frame; omitted optional values are
+cleared. Older unframed hooks remain compatible, but a session cannot discard its
+frame marker to downgrade to unframed admission after framing has begun. Two values
 are retained for Unix/guest shells; native Windows PowerShell retains five bounded
 location values. Windows candidates are dropped when a guest or older hook resumes,
 and are never forwarded to the guest helper. Generic serialization/debug output
@@ -63,9 +68,18 @@ excludes these values. Normal prompts replay cached
 frames without new encoder processes; Unix encoding needs the existing base64
 and tr utilities when a value changes. Bash 3.2 has an export-attribute subshell
 fallback; native macOS execution of that fallback remains a separate gate.
+
+CMD reference-v1 frames are the explicit exception to copying identity into every
+frame: they resolve a bounded, complete prior registration from the same terminal.
+An unresolved reference is unavailable and clears guest identity and provider hints.
+The native CMD prompt fixture checks actual prompt expansion, not only the stored
+PROMPT variable. See [ADR 0083](adr/0083-bounded-cmd-prompt-identity-reference.md).
 Zsh uses targeted native executable lookups rather than expanding its commands
 table, which can enumerate mounted PATH directories in each cold encoding
 subshell. This preserves command selection and the user's hashing options.
+
+Cloning a pane while metadata is pending or unavailable uses its owned launch
+settings; retained guest identity, directory and title cannot seed the new pane.
 
 CMD cannot dynamically encode changed variables through its native PROMPT alone.
 It uses the environment inherited by the application and discards stale guest

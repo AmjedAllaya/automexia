@@ -274,6 +274,7 @@ impl From<String> for Action {
             "closeunfocusedtabs" => Some(Action::TabCloseUnfocused),
             "openconfigeditor" => Some(Action::ConfigEditor),
             "opensettings" => Some(Action::OpenSettings),
+            "opencustomizations" => Some(Action::OpenCustomizations),
             "selectprevtab" => Some(Action::SelectPrevTab),
             "selectnexttab" => Some(Action::SelectNextTab),
             "selectprevlocaltab" => Some(Action::SelectPrevLocalTab),
@@ -370,6 +371,10 @@ impl From<String> for Action {
 pub enum Action {
     /// Write an escape sequence.
     Esc(String),
+
+    /// Built-in Ctrl+L: let capable shells clear themselves; use the host
+    /// display action only for native CMD. User bindings replace this default.
+    ShellClearScreen,
 
     /// Run given command.
     Run(Program),
@@ -471,6 +476,7 @@ pub enum Action {
     /// Create config editor.
     ConfigEditor,
     OpenSettings,
+    OpenCustomizations,
 
     /// Create a new Automexia tab.
     TabCreateNew,
@@ -778,7 +784,7 @@ fn key_bindings_with_platform(
         Key::Named(ArrowLeft),  ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::WordLeft;
         Key::Named(ArrowRight), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::WordRight;
         Key::Character("l".into()), ModifiersState::CONTROL; Action::ClearLogNotice;
-        "l",  ModifiersState::CONTROL, ~BindingMode::VI; Action::Esc("\x0c".into());
+        "l",  ModifiersState::CONTROL, ~BindingMode::VI; Action::ShellClearScreen;
         Key::Named(Home),     ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollToTop;
         Key::Named(End),      ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollToBottom;
         Key::Named(PageUp),   ModifiersState::SHIFT, ~BindingMode::ALT_SCREEN; Action::ScrollPageUp;
@@ -2130,6 +2136,7 @@ mod tests {
     #[test]
     fn feature_surface_actions_parse_with_stable_configuration_names() {
         for (name, action) in [
+            ("OpenCustomizations", Action::OpenCustomizations),
             ("OpenConnectionHub", Action::OpenConnectionHub),
             ("OpenActionCenter", Action::OpenActionCenter),
             ("OpenExtensionMarketplace", Action::OpenExtensionMarketplace),
@@ -2790,6 +2797,53 @@ mod tests {
             .collect();
         assert_eq!(ctrl_v_bindings.len(), 1);
         assert_eq!(ctrl_v_bindings[0].action, Action::ReceiveChar);
+    }
+
+    #[test]
+    fn default_ctrl_l_is_shell_aware_and_explicit_override_wins() {
+        use automexia_keybindings::PlatformFamily;
+
+        let trigger = BindingKey::Keycode {
+            key: Key::Character("l".into()),
+            location: KeyLocation::Standard,
+        };
+        for platform in [
+            PlatformFamily::Windows,
+            PlatformFamily::LinuxBsd,
+            PlatformFamily::Macos,
+        ] {
+            let defaults =
+                test_platform_defaults(&rio_backend::config::Config::default(), platform);
+            assert!(defaults.iter().any(|binding| {
+                binding.is_triggered_by(
+                    BindingMode::empty(),
+                    ModifiersState::CONTROL,
+                    &trigger,
+                ) && binding.action == Action::ShellClearScreen
+            }));
+            let overridden = config_key_bindings(
+                vec![ConfigKeyBinding {
+                    key: "l".into(),
+                    action: "receivechar".into(),
+                    with: "control".into(),
+                    esc: String::new(),
+                    mode: String::new(),
+                }],
+                defaults,
+            );
+            let matching = overridden
+                .iter()
+                .filter(|binding| {
+                    binding.is_triggered_by(
+                        BindingMode::empty(),
+                        ModifiersState::CONTROL,
+                        &trigger,
+                    )
+                })
+                .collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1);
+            assert_eq!(matching[0].action, Action::ReceiveChar);
+        }
     }
 
     #[test]

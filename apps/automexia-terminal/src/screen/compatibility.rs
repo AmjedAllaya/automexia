@@ -119,7 +119,6 @@ impl Screen<'_> {
             || "automexia".into(),
             |snapshot| snapshot.profile.requested.to_string(),
         );
-        let active_sessions = self.context_manager.route_ids().len();
         let parked_topologies = self
             .context_manager
             .parked_topology_summaries()
@@ -130,6 +129,10 @@ impl Screen<'_> {
                 remaining_seconds: parked.remaining_seconds,
             })
             .collect();
+        // Summarizing parked history can expire a topology. Release only its
+        // retired renderer resources, using the same complete route owner.
+        self.reconcile_grid_renderers();
+        let active_sessions = self.context_manager.route_ids().len();
         let context = self.context_manager.current();
         let terminal = context.terminal.lock();
         let snapshot = InspectorSnapshot {
@@ -888,6 +891,7 @@ impl Screen<'_> {
             }
             "undo" => {
                 if !self.context_manager.undo_topology(&mut self.sugarloaf) {
+                    self.reconcile_grid_renderers();
                     return unavailable(false, "topology_undo_empty");
                 }
                 self.resize_top_or_bottom_line();
@@ -895,6 +899,7 @@ impl Screen<'_> {
             }
             "redo" => {
                 if !self.context_manager.redo_topology(&mut self.sugarloaf) {
+                    self.reconcile_grid_renderers();
                     return unavailable(false, "topology_redo_empty");
                 }
                 self.resize_top_or_bottom_line();

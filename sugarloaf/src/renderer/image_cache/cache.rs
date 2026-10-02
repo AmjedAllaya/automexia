@@ -52,11 +52,18 @@ impl Atlas {
 
         Self {
             alloc: AtlasAllocator::new(size, size),
-            buffer: vec![0; size as usize * size as usize * channels],
-            fresh: true,
+            buffer: Vec::new(),
+            fresh: false,
             dirty: false,
             channels,
         }
+    }
+
+    fn with_storage(kind: AtlasKind, size: u16) -> Self {
+        let mut atlas = Self::new(kind, size);
+        atlas.buffer = vec![0; size as usize * size as usize * atlas.channels];
+        atlas.fresh = true;
+        atlas
     }
 }
 
@@ -93,13 +100,12 @@ enum DeviceQueue {
     Wgpu {
         device: std::sync::Arc<wgpu::Device>,
         queue: std::sync::Arc<wgpu::Queue>,
-        mask_texture: wgpu::Texture,
-        mask_texture_view: wgpu::TextureView,
+        mask: Option<(wgpu::Texture, wgpu::TextureView)>,
     },
     #[cfg(target_os = "macos")]
     Metal {
         device: metal::Device,
-        mask_texture: metal::Texture,
+        mask_texture: Option<metal::Texture>,
     },
     /// CPU backend: no GPU device, no GPU mask texture; mask atlas buffer is sampled directly.
     Cpu,
@@ -113,7 +119,22 @@ pub fn buffer_size(width: u32, height: u32) -> Option<usize> {
 }
 
 impl ImageCache {
-    /// Creates a new image cache with mask atlas + initial color atlas
+    #[cfg(test)]
+    pub(crate) fn empty_cpu_test_cache() -> Self {
+        Self::deferred(64, DeviceQueue::Cpu)
+    }
+
+    fn deferred(max_texture_size: u16, device_queue: DeviceQueue) -> Self {
+        Self {
+            entries: Vec::new(),
+            mask_atlas: Atlas::new(AtlasKind::Mask, max_texture_size),
+            color_atlases: Vec::new(),
+            max_texture_size,
+            device_queue,
+        }
+    }
+
+    /// Creates a cache without allocating legacy image pixels or textures.
     pub fn new(context: &Context) -> Self {
         match &context.inner {
             #[cfg(not(feature = "wgpu"))]
@@ -125,125 +146,30 @@ impl ImageCache {
 
                 let device = std::sync::Arc::new(wgpu_context.device.clone());
                 let queue = std::sync::Arc::new(wgpu_context.queue.clone());
-
-                // Create mask texture (R8 format for alpha masks)
-                let mask_texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("rich_text mask atlas"),
-                    size: wgpu::Extent3d {
-                        // Clamped to the device limit: downlevel GPUs
-                        // (GLES 3.1 class) report 2048 and reject 4096.
-                        width: max_texture_size as u32,
-                        height: max_texture_size as u32,
-                        depth_or_array_layers: 1,
-                    },
-                    view_formats: &[],
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::R8Unorm,
-                    usage: wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::TEXTURE_BINDING,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                });
-                let mask_texture_view =
-                    mask_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-                // Create first color atlas with texture
-                let color_texture = device.create_texture(&wgpu::TextureDescriptor {
-                    label: Some("rich_text color atlas 0"),
-                    size: wgpu::Extent3d {
-                        width: max_texture_size as u32,
-                        height: max_texture_size as u32,
-                        depth_or_array_layers: 1,
-                    },
-                    view_formats: &[],
-                    dimension: wgpu::TextureDimension::D2,
-                    format: wgpu::TextureFormat::Rgba8Unorm,
-                    usage: wgpu::TextureUsages::COPY_DST
-                        | wgpu::TextureUsages::TEXTURE_BINDING,
-                    mip_level_count: 1,
-                    sample_count: 1,
-                });
-                let color_texture_view =
-                    color_texture.create_view(&wgpu::TextureViewDescriptor::default());
-
-                let color_atlases = vec![ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, max_texture_size),
-                    texture: ColorAtlasTexture::Wgpu(color_texture, color_texture_view),
-                }];
-
-                Self {
-                    entries: Vec::new(),
-                    mask_atlas: Atlas::new(AtlasKind::Mask, max_texture_size),
-                    color_atlases,
+                Self::deferred(
                     max_texture_size,
-                    device_queue: DeviceQueue::Wgpu {
+                    DeviceQueue::Wgpu {
                         device,
                         queue,
-                        mask_texture,
-                        mask_texture_view,
+                        mask: None,
                     },
-                }
+                )
             }
             #[cfg(target_os = "macos")]
             ContextType::Metal(metal_context) => {
                 let device = metal_context.device.clone();
                 let max_texture_size = 1024;
-
-                // Create mask texture (R8 format for alpha masks)
-                let mask_descriptor = metal::TextureDescriptor::new();
-                mask_descriptor.set_pixel_format(metal::MTLPixelFormat::R8Unorm);
-                mask_descriptor.set_width(max_texture_size as u64);
-                mask_descriptor.set_height(max_texture_size as u64);
-                mask_descriptor.set_usage(
-                    metal::MTLTextureUsage::ShaderRead
-                        | metal::MTLTextureUsage::ShaderWrite,
-                );
-                let mask_texture = device.new_texture(&mask_descriptor);
-                mask_texture.set_label("Sugarloaf Rich Text Mask Atlas");
-
-                // Create first color atlas with texture
-                let color_descriptor = metal::TextureDescriptor::new();
-                color_descriptor.set_pixel_format(metal::MTLPixelFormat::RGBA8Unorm);
-                color_descriptor.set_width(max_texture_size as u64);
-                color_descriptor.set_height(max_texture_size as u64);
-                color_descriptor.set_usage(
-                    metal::MTLTextureUsage::ShaderRead
-                        | metal::MTLTextureUsage::ShaderWrite,
-                );
-                let color_texture = device.new_texture(&color_descriptor);
-                color_texture.set_label("Sugarloaf Rich Text Color Atlas 0");
-
-                let color_atlases = vec![ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, max_texture_size),
-                    texture: ColorAtlasTexture::Metal(color_texture),
-                }];
-
-                Self {
-                    entries: Vec::new(),
-                    mask_atlas: Atlas::new(AtlasKind::Mask, max_texture_size),
-                    color_atlases,
+                Self::deferred(
                     max_texture_size,
-                    device_queue: DeviceQueue::Metal {
+                    DeviceQueue::Metal {
                         device,
-                        mask_texture,
+                        mask_texture: None,
                     },
-                }
+                )
             }
             ContextType::Cpu(_) => {
-                // CPU backend: no GPU resources. Atlas buffers live in RAM and are sampled
-                // directly by the CPU rasterizer at present time.
                 let max_texture_size: u16 = 2048;
-                let color_atlases = vec![ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, max_texture_size),
-                    texture: ColorAtlasTexture::Cpu,
-                }];
-                Self {
-                    entries: Vec::new(),
-                    mask_atlas: Atlas::new(AtlasKind::Mask, max_texture_size),
-                    color_atlases,
-                    max_texture_size,
-                    device_queue: DeviceQueue::Cpu,
-                }
+                Self::deferred(max_texture_size, DeviceQueue::Cpu)
             }
             // Phase 1 stub: the Vulkan backend doesn't draw rich-text
             // yet, so the image cache has nothing to upload. Mirror
@@ -252,17 +178,7 @@ impl ImageCache {
             #[cfg(target_os = "linux")]
             ContextType::Vulkan(_) => {
                 let max_texture_size: u16 = 2048;
-                let color_atlases = vec![ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, max_texture_size),
-                    texture: ColorAtlasTexture::Cpu,
-                }];
-                Self {
-                    entries: Vec::new(),
-                    mask_atlas: Atlas::new(AtlasKind::Mask, max_texture_size),
-                    color_atlases,
-                    max_texture_size,
-                    device_queue: DeviceQueue::Cpu,
-                }
+                Self::deferred(max_texture_size, DeviceQueue::Cpu)
             }
         }
     }
@@ -275,6 +191,53 @@ impl ImageCache {
     #[inline]
     pub fn cpu_mask_atlas_buffer(&self) -> &[u8] {
         &self.mask_atlas.buffer
+    }
+
+    fn ensure_mask_atlas(&mut self) {
+        if !self.mask_atlas.buffer.is_empty() {
+            return;
+        }
+        self.mask_atlas = Atlas::with_storage(AtlasKind::Mask, self.max_texture_size);
+        match &mut self.device_queue {
+            #[cfg(feature = "wgpu")]
+            DeviceQueue::Wgpu { device, mask, .. } => {
+                let texture = device.create_texture(&wgpu::TextureDescriptor {
+                    label: Some("rich_text mask atlas"),
+                    size: wgpu::Extent3d {
+                        width: self.max_texture_size as u32,
+                        height: self.max_texture_size as u32,
+                        depth_or_array_layers: 1,
+                    },
+                    view_formats: &[],
+                    dimension: wgpu::TextureDimension::D2,
+                    format: wgpu::TextureFormat::R8Unorm,
+                    usage: wgpu::TextureUsages::COPY_DST
+                        | wgpu::TextureUsages::TEXTURE_BINDING,
+                    mip_level_count: 1,
+                    sample_count: 1,
+                });
+                let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+                *mask = Some((texture, view));
+            }
+            #[cfg(target_os = "macos")]
+            DeviceQueue::Metal {
+                device,
+                mask_texture,
+            } => {
+                let descriptor = metal::TextureDescriptor::new();
+                descriptor.set_pixel_format(metal::MTLPixelFormat::R8Unorm);
+                descriptor.set_width(self.max_texture_size as u64);
+                descriptor.set_height(self.max_texture_size as u64);
+                descriptor.set_usage(
+                    metal::MTLTextureUsage::ShaderRead
+                        | metal::MTLTextureUsage::ShaderWrite,
+                );
+                let texture = device.new_texture(&descriptor);
+                texture.set_label("Sugarloaf Rich Text Mask Atlas");
+                *mask_texture = Some(texture);
+            }
+            DeviceQueue::Cpu => {}
+        }
     }
 
     /// Allocates a new image and optionally fills it with the specified data.
@@ -316,6 +279,7 @@ impl ImageCache {
 
         // Handle mask atlas (single atlas)
         if atlas_kind == AtlasKind::Mask {
+            self.ensure_mask_atlas();
             let atlas_data = self.mask_atlas.alloc.allocate(width, height);
             if atlas_data.is_none() {
                 debug!("Mask atlas full for {}x{}", width, height);
@@ -470,7 +434,7 @@ impl ImageCache {
                     texture.create_view(&wgpu::TextureViewDescriptor::default());
 
                 self.color_atlases.push(ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, self.max_texture_size),
+                    atlas: Atlas::with_storage(AtlasKind::Color, self.max_texture_size),
                     texture: ColorAtlasTexture::Wgpu(texture, texture_view),
                 });
                 true
@@ -492,14 +456,14 @@ impl ImageCache {
                 ));
 
                 self.color_atlases.push(ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, self.max_texture_size),
+                    atlas: Atlas::with_storage(AtlasKind::Color, self.max_texture_size),
                     texture: ColorAtlasTexture::Metal(texture),
                 });
                 true
             }
             DeviceQueue::Cpu => {
                 self.color_atlases.push(ColorAtlasWithTexture {
-                    atlas: Atlas::new(AtlasKind::Color, self.max_texture_size),
+                    atlas: Atlas::with_storage(AtlasKind::Color, self.max_texture_size),
                     texture: ColorAtlasTexture::Cpu,
                 });
                 true
@@ -548,64 +512,70 @@ impl ImageCache {
         if let DeviceQueue::Metal { device, .. } = &self.device_queue {
             let device = device.clone();
 
-            // Create new mask atlas and copy old allocator state
-            let mut new_mask_atlas = Atlas::new(AtlasKind::Mask, new_size);
-            // Copy the allocator state to preserve allocated regions
-            new_mask_atlas.alloc = self.mask_atlas.alloc.clone();
+            if self.mask_atlas.buffer.is_empty() {
+                // Color-only use must not create an unused mask atlas.
+                self.mask_atlas = Atlas::new(AtlasKind::Mask, new_size);
+            } else {
+                // Create new mask atlas and copy old allocator state
+                let mut new_mask_atlas = Atlas::new(AtlasKind::Mask, new_size);
+                // Copy the allocator state to preserve allocated regions
+                new_mask_atlas.alloc = self.mask_atlas.alloc.clone();
 
-            // Copy old mask buffer data to new buffer
-            let new_mask_buffer_len = new_size as usize * new_size as usize;
-            let mut new_mask_buffer = vec![0u8; new_mask_buffer_len];
+                // Copy old mask buffer data to new buffer
+                let new_mask_buffer_len = new_size as usize * new_size as usize;
+                let mut new_mask_buffer = vec![0u8; new_mask_buffer_len];
 
-            // Copy row by row from old to new buffer
-            for y in 0..old_size as usize {
-                let old_offset = y * old_size as usize;
-                let new_offset = y * new_size as usize;
-                let row_len = old_size as usize;
-                new_mask_buffer[new_offset..new_offset + row_len].copy_from_slice(
-                    &self.mask_atlas.buffer[old_offset..old_offset + row_len],
+                // Copy row by row from old to new buffer
+                for y in 0..old_size as usize {
+                    let old_offset = y * old_size as usize;
+                    let new_offset = y * new_size as usize;
+                    let row_len = old_size as usize;
+                    new_mask_buffer[new_offset..new_offset + row_len].copy_from_slice(
+                        &self.mask_atlas.buffer[old_offset..old_offset + row_len],
+                    );
+                }
+                new_mask_atlas.buffer = new_mask_buffer;
+                new_mask_atlas.dirty = true;
+
+                // Create new mask texture
+                let mask_descriptor = metal::TextureDescriptor::new();
+                mask_descriptor.set_pixel_format(metal::MTLPixelFormat::R8Unorm);
+                mask_descriptor.set_width(new_size as u64);
+                mask_descriptor.set_height(new_size as u64);
+                mask_descriptor.set_usage(
+                    metal::MTLTextureUsage::ShaderRead
+                        | metal::MTLTextureUsage::ShaderWrite,
                 );
-            }
-            new_mask_atlas.buffer = new_mask_buffer;
-            new_mask_atlas.dirty = true;
+                let new_mask_texture = device.new_texture(&mask_descriptor);
+                new_mask_texture.set_label("Sugarloaf Rich Text Mask Atlas");
 
-            // Create new mask texture
-            let mask_descriptor = metal::TextureDescriptor::new();
-            mask_descriptor.set_pixel_format(metal::MTLPixelFormat::R8Unorm);
-            mask_descriptor.set_width(new_size as u64);
-            mask_descriptor.set_height(new_size as u64);
-            mask_descriptor.set_usage(
-                metal::MTLTextureUsage::ShaderRead | metal::MTLTextureUsage::ShaderWrite,
-            );
-            let new_mask_texture = device.new_texture(&mask_descriptor);
-            new_mask_texture.set_label("Sugarloaf Rich Text Mask Atlas");
+                // Copy old mask texture content to new texture
+                let region = metal::MTLRegion {
+                    origin: metal::MTLOrigin { x: 0, y: 0, z: 0 },
+                    size: metal::MTLSize {
+                        width: new_size as u64,
+                        height: new_size as u64,
+                        depth: 1,
+                    },
+                };
+                new_mask_texture.replace_region(
+                    region,
+                    0,
+                    new_mask_atlas.buffer.as_ptr() as *const std::ffi::c_void,
+                    new_size as u64,
+                );
 
-            // Copy old mask texture content to new texture
-            let region = metal::MTLRegion {
-                origin: metal::MTLOrigin { x: 0, y: 0, z: 0 },
-                size: metal::MTLSize {
-                    width: new_size as u64,
-                    height: new_size as u64,
-                    depth: 1,
-                },
-            };
-            new_mask_texture.replace_region(
-                region,
-                0,
-                new_mask_atlas.buffer.as_ptr() as *const std::ffi::c_void,
-                new_size as u64,
-            );
+                // Replace old mask atlas
+                self.mask_atlas = new_mask_atlas;
 
-            // Replace old mask atlas
-            self.mask_atlas = new_mask_atlas;
-
-            // Update the mask texture in device_queue
-            if let DeviceQueue::Metal {
-                mask_texture,
-                device: _,
-            } = &mut self.device_queue
-            {
-                *mask_texture = new_mask_texture;
+                // Update the mask texture in device_queue
+                if let DeviceQueue::Metal {
+                    mask_texture,
+                    device: _,
+                } = &mut self.device_queue
+                {
+                    *mask_texture = Some(new_mask_texture);
+                }
             }
 
             // Recreate all color atlases with new size, preserving content
@@ -747,11 +717,15 @@ impl ImageCache {
         self.entries.clear();
 
         // Reset mask atlas
-        self.mask_atlas = Atlas::new(AtlasKind::Mask, self.max_texture_size);
+        self.mask_atlas = if self.mask_atlas.buffer.is_empty() {
+            Atlas::new(AtlasKind::Mask, self.max_texture_size)
+        } else {
+            Atlas::with_storage(AtlasKind::Mask, self.max_texture_size)
+        };
 
         // Keep only first color atlas, reset others
         if let Some(first) = self.color_atlases.first_mut() {
-            first.atlas = Atlas::new(AtlasKind::Color, self.max_texture_size);
+            first.atlas = Atlas::with_storage(AtlasKind::Color, self.max_texture_size);
         }
         self.color_atlases.truncate(1);
 
@@ -805,7 +779,7 @@ impl ImageCache {
                 // Process mask atlas
                 if self.mask_atlas.dirty {
                     if let DeviceQueue::Wgpu {
-                        mask_texture,
+                        mask: Some((mask_texture, _)),
                         queue,
                         ..
                     } = &self.device_queue
@@ -902,7 +876,11 @@ impl ImageCache {
             ContextType::Metal(_metal_context) => {
                 // Process mask atlas
                 if self.mask_atlas.dirty {
-                    if let DeviceQueue::Metal { mask_texture, .. } = &self.device_queue {
+                    if let DeviceQueue::Metal {
+                        mask_texture: Some(mask_texture),
+                        ..
+                    } = &self.device_queue
+                    {
                         let region = metal::MTLRegion {
                             origin: metal::MTLOrigin { x: 0, y: 0, z: 0 },
                             size: metal::MTLSize {
@@ -991,9 +969,7 @@ impl ImageCache {
     #[cfg(feature = "wgpu")]
     pub fn get_mask_texture_view(&self) -> Option<&wgpu::TextureView> {
         match &self.device_queue {
-            DeviceQueue::Wgpu {
-                mask_texture_view, ..
-            } => Some(mask_texture_view),
+            DeviceQueue::Wgpu { mask, .. } => mask.as_ref().map(|(_, view)| view),
             _ => None,
         }
     }
@@ -1002,7 +978,7 @@ impl ImageCache {
     #[cfg(target_os = "macos")]
     pub fn get_mask_texture(&self) -> Option<&metal::Texture> {
         match &self.device_queue {
-            DeviceQueue::Metal { mask_texture, .. } => Some(mask_texture),
+            DeviceQueue::Metal { mask_texture, .. } => mask_texture.as_ref(),
             _ => None,
         }
     }
@@ -1047,6 +1023,89 @@ fn fill(params: FillParams, image: &[u8], target: &mut [u8]) -> Option<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unused_legacy_atlas_retains_no_pixel_storage() {
+        // ImageCache::new constructs this atlas for every renderer, even when
+        // no rich-text image is ever allocated.
+        let mask = Atlas::new(AtlasKind::Mask, 2048);
+        let color = Atlas::new(AtlasKind::Color, 2048);
+        assert!(mask.buffer.is_empty());
+        assert!(color.buffer.is_empty());
+        assert_eq!(mask.buffer.capacity(), 0);
+        assert_eq!(color.buffer.capacity(), 0);
+    }
+
+    #[test]
+    fn unused_image_cache_does_not_allocate_on_clear_or_rejected_requests() {
+        let mut cache = ImageCache::deferred(8, DeviceQueue::Cpu);
+        assert!(cache.mask_atlas.buffer.is_empty());
+        assert!(cache.color_atlases.is_empty());
+        assert!(cache.cpu_mask_atlas_buffer().is_empty());
+        cache.clear_atlas();
+        assert!(cache.mask_atlas.buffer.is_empty());
+        assert!(cache.color_atlases.is_empty());
+
+        for (width, height) in [(0, 1), (1, 0), (9, 1)] {
+            assert!(cache
+                .allocate(AddImage {
+                    width,
+                    height,
+                    has_alpha: false,
+                    data: ImageData::Borrowed(&[]),
+                    content_type: ContentType::Mask,
+                })
+                .is_none());
+        }
+        assert!(cache.mask_atlas.buffer.is_empty());
+        assert!(cache.color_atlases.is_empty());
+    }
+
+    #[test]
+    fn first_mask_allocation_does_not_create_color_storage() {
+        let mut cache = ImageCache::deferred(8, DeviceQueue::Cpu);
+        let mask = [31, 47];
+        let id = cache
+            .allocate(AddImage {
+                width: 2,
+                height: 1,
+                has_alpha: true,
+                data: ImageData::Borrowed(&mask),
+                content_type: ContentType::Mask,
+            })
+            .expect("mask must fit");
+        assert_eq!(cache.mask_atlas.buffer.len(), 8 * 8);
+        assert!(cache.color_atlases.is_empty());
+        let entry = &cache.entries[id.index()];
+        let offset = entry.y as usize * 8 + entry.x as usize;
+        assert_eq!(&cache.mask_atlas.buffer[offset..offset + 2], &mask);
+    }
+
+    #[test]
+    fn first_color_allocation_does_not_create_mask_storage() {
+        let mut cache = ImageCache::deferred(8, DeviceQueue::Cpu);
+        let rgba = [2, 3, 4, 5];
+        let id = cache
+            .allocate(AddImage {
+                width: 1,
+                height: 1,
+                has_alpha: true,
+                data: ImageData::Borrowed(&rgba),
+                content_type: ContentType::Color,
+            })
+            .expect("color must fit");
+        assert!(cache.mask_atlas.buffer.is_empty());
+        assert_eq!(cache.color_atlases.len(), 1);
+        let entry = &cache.entries[id.index()];
+        let offset = (entry.y as usize * 8 + entry.x as usize) * 4;
+        assert_eq!(
+            &cache.color_atlases[0].atlas.buffer[offset..offset + 4],
+            &rgba
+        );
+        cache.clear_atlas();
+        assert!(cache.mask_atlas.buffer.is_empty());
+        assert_eq!(cache.color_atlases.len(), 1);
+    }
 
     /// Test that buffer data is correctly copied when growing texture size
     #[test]

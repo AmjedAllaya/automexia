@@ -184,35 +184,99 @@ function Test-StampedInstall([string]$Fingerprint) {
     }
 }
 
+function Get-AutomexiaFileAcl([string]$Path) {
+    if ($PSVersionTable.PSVersion.Major -ge 6) { return (Get-Acl -LiteralPath $Path) }
+    return [IO.File]::GetAccessControl($Path)
+}
+
+function Set-AutomexiaFileAcl([string]$Path, $Acl) {
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        Set-Acl -LiteralPath $Path -AclObject $Acl
+    } else {
+        [IO.File]::SetAccessControl($Path, $Acl)
+    }
+}
+
+function New-AutomexiaStage([string]$Destination) {
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        $temporary = "$Destination.automexia-$([IO.Path]::GetRandomFileName()).tmp"
+        try {
+            $stream = [IO.FileStream]::new(
+                $temporary, [IO.FileMode]::CreateNew,
+                [IO.FileAccess]::Write, [IO.FileShare]::None)
+            return @{ Path = $temporary; Stream = $stream }
+        } catch [IO.IOException] {
+            if (-not (Test-Path -LiteralPath $temporary)) { throw }
+        }
+    }
+    throw 'Could not create a unique shell-integration staging file.'
+}
+
+function Publish-AutomexiaStage($Stage, [string]$Destination, $Acl = $null) {
+    $Stage.Stream.Flush($true)
+    $Stage.Stream.Dispose()
+    $Stage.Stream = $null
+    if ($null -ne $Acl) { Set-AutomexiaFileAcl $Stage.Path $Acl }
+    if ([IO.File]::Exists($Destination)) {
+        # Both paths are in the same directory. File.Replace preserves the
+        # destination's metadata without a delete-then-move gap.
+        [IO.File]::Replace(
+            $Stage.Path, $Destination,
+            [Management.Automation.Language.NullString]::Value)
+    } else {
+        [IO.File]::Move($Stage.Path, $Destination)
+    }
+}
+
+function Remove-AutomexiaStage($Stage) {
+    if ($null -eq $Stage) { return }
+    if ($null -ne $Stage.Stream) { $Stage.Stream.Dispose() }
+    # A path may name someone else's file after our handle closes. Do not
+    # delete by name without a retained identity for the created file.
+}
+
+function Write-AutomexiaStageText($Stage, [string]$Text, [Text.Encoding]$Encoding) {
+    $preamble = $Encoding.GetPreamble()
+    $Stage.Stream.Write($preamble, 0, $preamble.Length)
+    $bytes = $Encoding.GetBytes($Text)
+    $Stage.Stream.Write($bytes, 0, $bytes.Length)
+}
+
 function Copy-Atomically([string]$Source, [string]$Destination) {
+    $acl = $null
     if (Test-Path -LiteralPath $Destination) {
         $destinationItem = Get-Item -LiteralPath $Destination -Force
         if ($destinationItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
             throw "Refusing linked shell-integration destination: $Destination"
         }
+        $acl = Get-AutomexiaFileAcl $Destination
     }
-    $temporary = "$Destination.automexia-$PID.tmp"
+    $stage = New-AutomexiaStage $Destination
     try {
-        Copy-Item -LiteralPath $Source -Destination $temporary -Force
-        Move-Item -LiteralPath $temporary -Destination $Destination -Force
+        $inputStream = [IO.File]::OpenRead($Source)
+        try { $inputStream.CopyTo($stage.Stream) }
+        finally { $inputStream.Dispose() }
+        Publish-AutomexiaStage $stage $Destination $acl
     } finally {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        Remove-AutomexiaStage $stage
     }
 }
 
 function Write-TextAtomically([string]$Destination, [string]$Text, [Text.Encoding]$Encoding) {
+    $acl = $null
     if (Test-Path -LiteralPath $Destination) {
         $destinationItem = Get-Item -LiteralPath $Destination -Force
         if ($destinationItem.Attributes.HasFlag([IO.FileAttributes]::ReparsePoint)) {
             throw "Refusing linked shell-integration destination: $Destination"
         }
+        $acl = Get-AutomexiaFileAcl $Destination
     }
-    $temporary = "$Destination.automexia-$PID.tmp"
+    $stage = New-AutomexiaStage $Destination
     try {
-        [IO.File]::WriteAllText($temporary, $Text, $Encoding)
-        Move-Item -LiteralPath $temporary -Destination $Destination -Force
+        Write-AutomexiaStageText $stage $Text $Encoding
+        Publish-AutomexiaStage $stage $Destination $acl
     } finally {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        Remove-AutomexiaStage $stage
     }
 }
 
@@ -243,7 +307,7 @@ function Add-MarkedBlock([string]$Path, [string]$Body) {
             $encoding = [Text.UTF8Encoding]::new($true)
         }
         $existing = [IO.File]::ReadAllText($Path, $encoding)
-        try { $acl = Get-Acl -LiteralPath $Path } catch {}
+        $acl = Get-AutomexiaFileAcl $Path
     }
     $starts = ([regex]::Matches($existing, [regex]::Escape($MarkerStart))).Count
     $ends = ([regex]::Matches($existing, [regex]::Escape($MarkerEnd))).Count
@@ -259,13 +323,12 @@ function Add-MarkedBlock([string]$Path, [string]$Body) {
         $existing = [regex]::Replace($existing, $pattern, '')
     }
     $updated = $existing.TrimEnd([char[]]"`r`n") + $newline + $MarkerStart + $newline + $Body + $newline + $MarkerEnd + $newline
-    $temporary = "$Path.automexia-$PID.tmp"
+    $stage = New-AutomexiaStage $Path
     try {
-        [IO.File]::WriteAllText($temporary, $updated, $encoding)
-        if ($null -ne $acl) { Set-Acl -LiteralPath $temporary -AclObject $acl }
-        Move-Item -LiteralPath $temporary -Destination $Path -Force
+        Write-AutomexiaStageText $stage $updated $encoding
+        Publish-AutomexiaStage $stage $Path $acl
     } finally {
-        Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue
+        Remove-AutomexiaStage $stage
     }
 }
 
@@ -358,44 +421,72 @@ case "`$fish_cfg" in /*) ;; *) printf 'absolute Fish config root required\n' >&2
 [ ! -L "`$cfg" ] || { printf 'linked Automexia config root refused\n' >&2; exit 1; }
 [ ! -L "`$fish_cfg" ] || { printf 'linked Fish config root refused\n' >&2; exit 1; }
 mkdir -p "`$cfg" "`$fish_cfg"
-suffix=".automexia-`$$.tmp"
+stage_dir=
+stage_file=
+stage_identity=
+directory_identity() {
+  stat -c '%d:%i' "`$1" 2>/dev/null || stat -f '%d:%i' "`$1"
+}
 cleanup_install() {
-  rm -f "`$cfg/shell-integration.bash`$suffix" "`$cfg/shell-integration.zsh`$suffix" \
-    "`$cfg/automexia-completion.bash`$suffix" "`$cfg/automexia-completion.zsh`$suffix" \
-    "`$cfg/automexia-eza-filter.pl`$suffix" "`$fish_cfg/automexia.fish`$suffix" \
-    "`$fish_cfg/automexia-completion.fish`$suffix" \
-    "`$HOME/.bashrc`$suffix" "`$HOME/.zshrc`$suffix"
+  [ -n "`$stage_dir" ] || return 0
+  [ -d "`$stage_dir" ] && [ ! -L "`$stage_dir" ] || return 0
+  (
+    cd -P "`$stage_dir" 2>/dev/null || exit 0
+    [ "`$(directory_identity .)" = "`$stage_identity" ] || exit 0
+    rm -f ./payload
+  )
+  [ "`$(directory_identity "`$stage_dir" 2>/dev/null)" = "`$stage_identity" ] || return 0
+  rmdir "`$stage_dir"
 }
 trap cleanup_install EXIT HUP INT TERM
-cat > "`$cfg/shell-integration.bash`$suffix" <<'AUTOMEXIA_BASH_EOF'
+new_stage() {
+  stage_dir=`$(mktemp -d "`$1.automexia.XXXXXXXX")
+  [ -d "`$stage_dir" ] && [ ! -L "`$stage_dir" ] || return 1
+  stage_file=`$stage_dir/payload
+  stage_identity=`$(directory_identity "`$stage_dir")
+}
+publish_stage() {
+  destination=`$1
+  case "`$destination" in /*) ;; *) destination=`$(pwd -P)/`$destination ;; esac
+  (
+    cd -P "`$stage_dir"
+    [ "`$(directory_identity .)" = "`$stage_identity" ] || exit 1
+    mv -f ./payload "`$destination"
+  )
+  [ "`$(directory_identity "`$stage_dir" 2>/dev/null)" = "`$stage_identity" ] || return 1
+  rmdir "`$stage_dir"
+  stage_dir=
+  stage_file=
+  stage_identity=
+}
+install_blob() {
+  destination=`$1
+  new_stage "`$destination"
+  (set -C; cat >"`$stage_file")
+  chmod 0644 "`$stage_file"
+  publish_stage "`$destination"
+}
+install_blob "`$cfg/shell-integration.bash" <<'AUTOMEXIA_BASH_EOF'
 $bash
 AUTOMEXIA_BASH_EOF
-cat > "`$cfg/shell-integration.zsh`$suffix" <<'AUTOMEXIA_ZSH_EOF'
+install_blob "`$cfg/shell-integration.zsh" <<'AUTOMEXIA_ZSH_EOF'
 $zsh
 AUTOMEXIA_ZSH_EOF
-cat > "`$cfg/automexia-completion.bash`$suffix" <<'AUTOMEXIA_BASH_COMPLETION_EOF'
+install_blob "`$cfg/automexia-completion.bash" <<'AUTOMEXIA_BASH_COMPLETION_EOF'
 $bashCompletion
 AUTOMEXIA_BASH_COMPLETION_EOF
-cat > "`$cfg/automexia-completion.zsh`$suffix" <<'AUTOMEXIA_ZSH_COMPLETION_EOF'
+install_blob "`$cfg/automexia-completion.zsh" <<'AUTOMEXIA_ZSH_COMPLETION_EOF'
 $zshCompletion
 AUTOMEXIA_ZSH_COMPLETION_EOF
-cat > "`$fish_cfg/automexia.fish`$suffix" <<'AUTOMEXIA_FISH_EOF'
+install_blob "`$fish_cfg/automexia.fish" <<'AUTOMEXIA_FISH_EOF'
 $fish
 AUTOMEXIA_FISH_EOF
-cat > "`$fish_cfg/automexia-completion.fish`$suffix" <<'AUTOMEXIA_FISH_COMPLETION_EOF'
+install_blob "`$fish_cfg/automexia-completion.fish" <<'AUTOMEXIA_FISH_COMPLETION_EOF'
 $fishCompletion
 AUTOMEXIA_FISH_COMPLETION_EOF
-cat > "`$cfg/automexia-eza-filter.pl`$suffix" <<'AUTOMEXIA_EZA_FILTER_EOF'
+install_blob "`$cfg/automexia-eza-filter.pl" <<'AUTOMEXIA_EZA_FILTER_EOF'
 $ezaFilter
 AUTOMEXIA_EZA_FILTER_EOF
-for file in shell-integration.bash shell-integration.zsh automexia-completion.bash automexia-completion.zsh automexia-eza-filter.pl; do
-  chmod 0644 "`$cfg/`$file`$suffix"
-  mv -f "`$cfg/`$file`$suffix" "`$cfg/`$file"
-done
-for file in automexia.fish automexia-completion.fish; do
-  chmod 0644 "`$fish_cfg/`$file`$suffix"
-  mv -f "`$fish_cfg/`$file`$suffix" "`$fish_cfg/`$file"
-done
 append_block() {
   file=`$1
   source_line=`$2
@@ -415,14 +506,19 @@ append_block() {
   else
     [ "`$starts" -eq 0 ] && [ "`$ends" -eq 0 ] || { printf 'malformed Automexia profile markers: %s\n' "`$file" >&2; exit 1; }
   fi
-  tmp="`$file`$suffix"
+  new_stage "`$file"
   if [ "`$starts" -eq 1 ]; then
     permissions=`$(stat -c '%a' "`$file" 2>/dev/null || stat -f '%Lp' "`$file")
-    awk -v start='$MarkerStart' -v end='$MarkerEnd' '`$0 == start {skip=1;next} `$0 == end {skip=0;next} !skip {print}' "`$file" >"`$tmp"
-    chmod "`$permissions" "`$tmp"
-  elif [ -f "`$file" ]; then cp -p "`$file" "`$tmp"; else : >"`$tmp"; fi
-  printf '\n$MarkerStart\n%s\n$MarkerEnd\n' "`$source_line" >> "`$tmp"
-  mv -f "`$tmp" "`$file"
+    (set -C; awk -v start='$MarkerStart' -v end='$MarkerEnd' '`$0 == start {skip=1;next} `$0 == end {skip=0;next} !skip {print}' "`$file" >"`$stage_file")
+  elif [ -f "`$file" ]; then
+    permissions=`$(stat -c '%a' "`$file" 2>/dev/null || stat -f '%Lp' "`$file")
+    (set -C; cat "`$file" >"`$stage_file")
+  else
+    (set -C; : >"`$stage_file")
+  fi
+  printf '\n$MarkerStart\n%s\n$MarkerEnd\n' "`$source_line" >> "`$stage_file"
+  if [ -f "`$file" ]; then chmod "`$permissions" "`$stage_file"; fi
+  publish_stage "`$file"
 }
 append_block "`$HOME/.bashrc" '[ -r "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}/shell-integration.bash" ] && . "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}/shell-integration.bash"'
 append_block "`$HOME/.zshrc" '[ -r "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}/shell-integration.zsh" ] && . "`${AUTOMEXIA_CONFIG_HOME:-`${XDG_CONFIG_HOME:-`$HOME/.config}/automexia}/shell-integration.zsh"'
@@ -455,11 +551,5 @@ $state = [ordered]@{
     Files = @($fileState)
     Profiles = @($profiles | Select-Object -Unique)
 }
-$stateTemporary = "$StampPath.automexia-$PID.tmp"
-[IO.File]::WriteAllText(
-    $stateTemporary,
-    ($state | ConvertTo-Json -Depth 4),
-    [Text.UTF8Encoding]::new($false)
-)
-Move-Item -LiteralPath $stateTemporary -Destination $StampPath -Force
+Write-TextAtomically $StampPath ($state | ConvertTo-Json -Depth 4) ([Text.UTF8Encoding]::new($false))
 Write-InstallMessage 'Automexia shell integration is ready for the next launch.' Green

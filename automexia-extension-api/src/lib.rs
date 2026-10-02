@@ -358,7 +358,8 @@ pub struct SessionFacts {
     pub shell_name: Option<String>,
     pub shell_user: Option<String>,
     pub shell_path: Option<String>,
-    /// Bounded, allowlisted shell-published location hints, never credentials.
+    /// Bounded, allowlisted shell-published locations and public selectors,
+    /// never credentials, provider endpoints, or arbitrary environment values.
     /// These are untrusted presentation inputs, not process/network authority.
     /// Generic serialization deliberately omits these local-only values. The
     /// application-owned discovery transport must opt in explicitly.
@@ -374,7 +375,7 @@ impl fmt::Debug for SessionFacts {
             .debug_struct("SessionFacts")
             .field("session_id", &self.session_id)
             .field("shell_integration", &self.shell_integration)
-            .field("location_hint_count", &self.environment.len())
+            .field("public_hint_count", &self.environment.len())
             .finish_non_exhaustive()
     }
 }

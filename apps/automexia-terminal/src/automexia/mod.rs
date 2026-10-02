@@ -22,12 +22,19 @@ pub mod ghostty_migration;
 pub mod google;
 #[doc(hidden)]
 pub mod inline_tables;
+mod kubernetes_probe;
 #[doc(hidden)]
 pub mod local_tools;
 pub mod marketplace;
 pub mod migration;
+#[doc(hidden)]
+pub mod output_semantics;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod package_customizations;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod preferences;
+#[doc(hidden)]
+pub mod presentation;
 pub(crate) mod private_fs;
 #[cfg(target_os = "windows")]
 #[doc(hidden)]
@@ -43,6 +50,7 @@ pub mod shell;
 pub mod shell_integration;
 #[doc(hidden)]
 pub mod shortcut_preferences;
+pub mod ssh_integration;
 mod state;
 pub mod suggestions;
 pub mod table_output;

@@ -71,14 +71,17 @@ pub fn configuration_file_updates<
         // filter notifications to the exact inputs consumed by Config::try_load.
         // This preserves live theme edits without letting logs/actions/state
         // files spuriously rebuild every renderer.
-        if let Err(err_message) = watcher.watch(&config_root, RecursiveMode::Recursive) {
-            tracing::warn!("unable to watch config directory {err_message:?}");
+        if watcher
+            .watch(&config_root, RecursiveMode::Recursive)
+            .is_err()
+        {
+            tracing::warn!("unable to watch config directory");
         };
 
         for res in rx {
             match res {
                 Ok(event) if event_affects_configuration(&config_root, &event) => {
-                    tracing::info!("configuration source changed: {event:?}");
+                    tracing::info!("configuration source changed");
                     event_proxy.send_event(
                         RioEvent::PrepareUpdateConfig,
                         rio_backend::event::WindowId::from(0),
@@ -88,8 +91,8 @@ pub fn configuration_file_updates<
                 // Do not log each ignored event: when file logging is enabled,
                 // logging a log-file event would itself create another event.
                 Ok(_) => {}
-                Err(err_message) => {
-                    tracing::error!("unable to watch config directory: {err_message:?}")
+                Err(_) => {
+                    tracing::error!("unable to watch config directory")
                 }
             }
         }

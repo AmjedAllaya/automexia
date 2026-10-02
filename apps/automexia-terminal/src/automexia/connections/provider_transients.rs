@@ -889,8 +889,8 @@ current-context: context-one
     #[test]
     fn long_local_paths_publish_revalidate_and_revoke_real_provider_transients() {
         let temporary = tempfile::tempdir().unwrap();
-        let long_parent = temporary.path().join("p".repeat(180));
-        fs::create_dir(&long_parent).unwrap();
+        let long_parent = temporary.path().join("p".repeat(140)).join("q".repeat(140));
+        fs::create_dir_all(&long_parent).unwrap();
         let connections = long_parent.join("connections");
         let mut manager = ProviderTransientManager::open(&connections).unwrap();
         let item = binding(41, 500);

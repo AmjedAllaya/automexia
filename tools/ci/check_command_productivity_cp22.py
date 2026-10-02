@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from check_command_productivity import rust_code_without_comments_and_literals
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "tests/fixtures/command-productivity/cp22-contract-v1.json"
@@ -152,6 +154,151 @@ def require_tokens(relative: str, tokens: set[str]) -> str:
     return source
 
 
+QUICK_ACTION_WORKER = "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"
+EXTENSION_WORKER = "automexia-extension-runtime/src/lib.rs"
+ROUTER = "apps/automexia-terminal/src/router/mod.rs"
+
+
+def _rust_item(source: str, declaration: str) -> str:
+    """Extract one known item; ambiguous or incomplete declarations fail closed."""
+    if source.count(declaration) != 1:
+        raise Cp22Error(f"Quick Action lifecycle declaration is ambiguous: {declaration}")
+    start = source.find("{", source.index(declaration) + len(declaration))
+    if start < 0:
+        raise Cp22Error(f"Quick Action lifecycle item has no body: {declaration}")
+    depth = 1
+    for end in range(start + 1, len(source)):
+        depth += (source[end] == "{") - (source[end] == "}")
+        if depth == 0:
+            return source[start + 1:end]
+    raise Cp22Error(f"Quick Action lifecycle item is incomplete: {declaration}")
+
+
+def _compact(source: str) -> str:
+    return "".join(source.split())
+
+
+def _lifecycle_fragment(body: str, fragment: str, owner: str) -> None:
+    if _compact(fragment) not in _compact(body):
+        raise Cp22Error(f"Quick Action lifecycle is disconnected: {owner}")
+
+
+def _lifecycle_body(body: str, expected: str, owner: str) -> None:
+    if _compact(body) != _compact(expected):
+        raise Cp22Error(f"Quick Action lifecycle adapter changed: {owner}")
+
+
+def validate_worker_lifecycle(root: Path | None = None) -> None:
+    """Ratchet ADR 0076's application-to-existing-cleanup-owner handoff.
+
+    The generic retirement gate and native worker tests remain authoritative for
+    admission ceilings, registration lifetime and actual join acknowledgement.
+    This gate connects the Quick Action owner to that implementation and rejects
+    proof left only in comments, tests, or unrelated helper functions.
+    """
+    root = ROOT if root is None else root
+    worker = rust_code_without_comments_and_literals(bounded_text(root / QUICK_ACTION_WORKER))
+    runtime = _rust_item(worker, "impl QuickActionRuntime")
+    inner = _rust_item(worker, "impl RuntimeInner")
+    _lifecycle_fragment(
+        _rust_item(worker, "struct RuntimeInner"),
+        "worker: Option<BoundedWorker<WorkerRun>>", "application worker field",
+    )
+    opened = _rust_item(runtime, "pub fn open(")
+    running = _rust_item(worker, "fn run_worker(")
+    for fragment in (
+        "let worker = spawn_worker(",
+        "WorkerShared { pending: Arc::clone(&pending),",
+        ").ok_or(QuickActionRuntimeErrorCode::WorkerUnavailable)?;",
+        "Ok(Self(Arc::new(RuntimeInner {",
+        "worker: Some(worker),",
+    ):
+        _lifecycle_fragment(opened, fragment, "application worker admission")
+    spawned = _rust_item(worker, "fn spawn_worker(")
+    for fragment in (
+        "let worker = BoundedWorker::new(, 1, run_worker);",
+        "let pending_cleanup = PendingCleanup { pending: Arc::clone(&shared.pending), };",
+        "let run = WorkerRun { monitor, index, shared, _pending_cleanup: pending_cleanup, };",
+        "(worker.try_submit(run) == RefreshSubmission::Queued).then_some(worker)",
+    ):
+        _lifecycle_fragment(spawned, fragment, "capacity-one kickoff ownership")
+    for fragment in (
+        "let WorkerRun { mut monitor, mut index, shared, _pending_cleanup, } = run;",
+        "if lock(&pending.0).shutdown { break; }",
+        "std::mem::take(&mut state.latest_by_route)",
+    ):
+        _lifecycle_fragment(running, fragment, "worker-owned queued callbacks")
+    if _compact(running).count("_pending_cleanup") != 1:
+        raise Cp22Error("Quick Action lifecycle guard no longer stays with the worker")
+    _lifecycle_fragment(
+        _rust_item(_rust_item(worker, "impl Drop for PendingCleanup"), "fn drop("),
+        "let queued = std::mem::take(&mut lock(&self.pending.0).latest_by_route); drop(queued);",
+        "queued callback drain guard",
+    )
+    cancelled = _rust_item(inner, "fn request_shutdown(")
+    _lifecycle_body(cancelled, """
+        { let mut state = lock(&self.pending.0);
+          state.shutdown = true;
+          lock(&self.latest_requested).clear(); lock(&self.results).clear();
+          lock(&self.workspace_authorizations).clear(); lock(&self.provider_snapshots).clear(); }
+        self.pending.1.notify_all();
+        if let Some(worker) = &self.worker { worker.request_shutdown(); }
+    """, "serialized cancellation before worker retirement")
+    if any(token in cancelled for token in ("latest_by_route", "shutdown_timeout", ".join(")):
+        raise Cp22Error("Quick Action cancellation moved foreign cleanup onto the caller")
+    dropped = _rust_item(_rust_item(worker, "impl Drop for RuntimeInner"), "fn drop(")
+    if _compact(dropped) != "self.request_shutdown();":
+        raise Cp22Error("Quick Action Drop must only request owned retirement")
+    _lifecycle_body(
+        _rust_item(runtime, "pub fn request_shutdown("),
+        "self.0.request_shutdown();", "public cancellation owner",
+    )
+    _lifecycle_body(_rust_item(runtime, "pub fn shutdown_timeout("), """
+        let started = Instant::now(); self.request_shutdown();
+        self.0.worker.as_ref().is_none_or(|worker| {
+            worker.shutdown_timeout(timeout.saturating_sub(started.elapsed()))
+        })
+    """, "one-budget native cleanup acknowledgement")
+
+    # Follow this worker's handle and completion into the existing generic owner;
+    # do not add an application join registry or copy runtime retirement logic.
+    extension = rust_code_without_comments_and_literals(bounded_text(root / EXTENSION_WORKER))
+    bounded = _rust_item(extension, "impl<T> BoundedWorker<T>")
+    _lifecycle_fragment(_rust_item(bounded, "fn ensure_thread("), """
+        let Some(cleanup) = slot.cleanup.as_ref() else { return false; };
+        let Some((worker, job)) = self.spawn_thread() else { return false; };
+        cleanup.own(job); slot.worker = Some(worker); true
+    """, "registered native worker cleanup handoff")
+    _lifecycle_fragment(_rust_item(bounded, "fn spawn_thread("), """
+        let job = JoinJob { handle, completion: Arc::clone(&completion), };
+        Some((WorkerThread { sender, stopping, completion, }, job,))
+    """, "same native handle and completion ownership")
+    cleanup = _rust_item(extension, "impl CleanupService")
+    _lifecycle_fragment(_rust_item(cleanup, "fn own("), """
+        let mut pending = self.mailbox.job.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    """, "sole cleanup mailbox")
+    _lifecycle_fragment(_rust_item(cleanup, "fn own("), """
+        *pending = Some(job); self.mailbox.changed.notify_one();
+    """, "native job publication before cleanup wake")
+    joined = _rust_item(cleanup, "fn new(")
+    for fragment in (
+        "let worker_mailbox = Arc::clone(&mailbox);",
+        "spawn(move || { let _permit = permit;",
+        "let guard = worker_mailbox.job.lock()",
+        "guard.take()",
+        "let Some(job) = job else { break };",
+        "match job.handle.join() { Ok(()) => job.completion.finish(),",
+        "Some(Self { mailbox, _handle: handle, })",
+    ):
+        _lifecycle_fragment(joined, fragment, "worker-local native cleanup owner")
+    if _compact(joined).count("job.completion.finish()") != 1:
+        raise Cp22Error("Quick Action lifecycle cleanup acknowledgement precedes native cleanup")
+    router = rust_code_without_comments_and_literals(bounded_text(root / ROUTER))
+    _lifecycle_fragment(
+        _rust_item(router, "pub fn shutdown_services("),
+        "self.quick_actions.request_shutdown();", "application shutdown cancellation",
+    )
+
 def validate_sources(document: dict[str, Any]) -> dict[str, int]:
     for relative in document["model_files"]:
         source = bounded_text(ROOT / relative).casefold()
@@ -159,6 +306,7 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
         if marker:
             raise Cp22Error(f"{relative} crosses the capability-free model boundary: {marker}")
 
+    validate_worker_lifecycle()
     worker = require_tokens(
         "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
         {
@@ -168,7 +316,6 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
             "latest_by_route",
             "RouteCapacity",
             "validate_search_query",
-            "handle.join()",
             "forget_route",
         },
     ).casefold()

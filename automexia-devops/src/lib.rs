@@ -6,7 +6,6 @@ mod context;
 pub mod kubernetes;
 mod locations;
 mod model;
-mod semantics;
 
 use automexia_extension_api::{
     compact_label, compact_middle, Capability, ContextContribution, ContractError,
@@ -17,9 +16,8 @@ use automexia_extension_api::{
 #[cfg(not(target_arch = "wasm32"))]
 pub use context::attach_kubernetes_context;
 pub use context::sanitize_label;
-pub use locations::sync_location_hints;
+pub use locations::{sync_location_hints, SHELL_SELECTOR_HINTS};
 pub use model::{CloudContext, DevOpsSnapshot, KubernetesContext, WslContext};
-pub use semantics::classify_row_text;
 
 pub const ID: &str = "automexia.devops";
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -27,15 +25,10 @@ pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const MANIFEST: ExtensionManifest = ExtensionManifest {
     id: ID,
     name: "Automexia DevOps",
-    description: "Native local DevOps context plus semantic operational highlighting.",
+    description: "Native local DevOps context discovery.",
     version: VERSION,
     default_enabled: true,
-    capabilities: &[
-        Capability::FilesystemRead,
-        Capability::EnvironmentRead,
-        Capability::TerminalOutputRead,
-        Capability::UiOverlay,
-    ],
+    capabilities: &[Capability::FilesystemRead, Capability::EnvironmentRead],
 };
 
 pub trait ContextProvider {
@@ -53,6 +46,16 @@ impl ContextProvider for LocalContextProvider {
 
 pub fn detect(session: &SessionFacts) -> DevOpsSnapshot {
     LocalContextProvider.detect(session)
+}
+
+/// The caller's admitted scope chooses whether Git may be read during full discovery.
+pub fn detect_with_git(session: &SessionFacts, include_git: bool) -> DevOpsSnapshot {
+    context::detect_with_git(session, include_git)
+}
+
+/// Restricted local-read scope for the independent Git branch feature.
+pub fn detect_git_only(session: &SessionFacts) -> DevOpsSnapshot {
+    context::detect_git_only(session)
 }
 
 pub fn contribution(
@@ -74,13 +77,22 @@ pub fn contribution(
                     accessible: String,
                     role: SegmentRole,
                     icon: IconKind,
-                    priority: u16|
+                    priority: u16,
+                    segment_freshness: Freshness|
      -> Result<(), ContractError> {
         let action = DetailsAction::show(format!("devops.{id}"))?;
         segments.push(
-            StatusSegment::new(id, label, accessible, role, icon, priority, freshness)?
-                .observed_at(observed_at_ms)
-                .with_details_action(action),
+            StatusSegment::new(
+                id,
+                label,
+                accessible,
+                role,
+                icon,
+                priority,
+                segment_freshness,
+            )?
+            .observed_at(observed_at_ms)
+            .with_details_action(action),
         );
         Ok(())
     };
@@ -93,6 +105,7 @@ pub fn contribution(
             SegmentRole::Production,
             IconKind::Production,
             0,
+            freshness,
         )?;
     }
     if let Some(wsl) = &snapshot.wsl {
@@ -110,6 +123,7 @@ pub fn contribution(
             SegmentRole::UbuntuWsl,
             IconKind::Wsl,
             10,
+            freshness,
         )?;
     }
     if let Some(branch) = &snapshot.git_branch {
@@ -121,28 +135,43 @@ pub fn contribution(
             SegmentRole::Git,
             IconKind::Git,
             20,
+            freshness,
         )?;
     }
     if let Some(kubernetes) = &snapshot.kubernetes {
         // One badge, one readable value. Context remains in the accessible name
         // instead of adding a separator and a nearly empty truncated suffix.
+        // The public projection also accepts caller-constructed snapshots, so
+        // do not rely solely on kubeconfig's parser to sanitize either field.
+        let context = sanitize_label(&kubernetes.context);
         let namespace = if kubernetes.namespace.is_empty() {
-            "default"
+            "default".to_owned()
         } else {
-            &kubernetes.namespace
+            sanitize_label(&kubernetes.namespace)
         };
-        let value = compact_label(namespace, MAX_CONTEXT_CHARS);
-        push(
-            "kubernetes",
-            value,
-            format!(
-                "Kubernetes context {}, namespace {namespace}",
-                kubernetes.context
-            ),
-            SegmentRole::Kubernetes,
-            IconKind::Kubernetes,
-            30,
-        )?;
+        if !context.is_empty() && !namespace.is_empty() {
+            let value = compact_label(&namespace, MAX_CONTEXT_CHARS);
+            // A kubeconfig read proves only the configured selection. It cannot
+            // prove the namespace still exists in the cluster. Preserve failure
+            // and in-flight states while making a completed local read visibly
+            // unverified until a separately authorized cluster probe exists.
+            let kubernetes_freshness = if freshness == Freshness::Current {
+                Freshness::Stale
+            } else {
+                freshness
+            };
+            push(
+                "kubernetes",
+                format!("{value}?"),
+                format!(
+                    "Configured Kubernetes context {context}, namespace {namespace}; cluster existence unverified"
+                ),
+                SegmentRole::Kubernetes,
+                IconKind::Kubernetes,
+                30,
+                kubernetes_freshness,
+            )?;
+        }
     }
     for (index, cloud) in snapshot.clouds.iter().enumerate() {
         let value = if !cloud.region.trim().is_empty() {
@@ -169,6 +198,7 @@ pub fn contribution(
             role,
             IconKind::Cloud,
             40 + u16::try_from(index).unwrap_or(9).min(9),
+            freshness,
         )?;
     }
     if let Some(context) = &snapshot.docker {
@@ -188,6 +218,7 @@ pub fn contribution(
             SegmentRole::Docker,
             IconKind::Docker,
             60,
+            freshness,
         )?;
     }
     if let Some(workspace) = &snapshot.terraform {
@@ -199,6 +230,7 @@ pub fn contribution(
             SegmentRole::Terraform,
             IconKind::Terraform,
             70,
+            freshness,
         )?;
     }
     if let Some(environment) = &snapshot.environment {
@@ -210,6 +242,7 @@ pub fn contribution(
             SegmentRole::Environment,
             IconKind::Environment,
             80,
+            freshness,
         )?;
     }
     if let Some(user) = snapshot
@@ -225,6 +258,7 @@ pub fn contribution(
             SegmentRole::User,
             IconKind::User,
             90,
+            freshness,
         )?;
     }
 
@@ -365,12 +399,12 @@ mod projection_tests {
                 ),
                 (
                     "kubernetes",
-                    "demo",
-                    "Kubernetes context dev-cluster, namespace demo",
+                    "demo?",
+                    "Configured Kubernetes context dev-cluster, namespace demo; cluster existence unverified",
                     SegmentRole::Kubernetes,
                     IconKind::Kubernetes,
                     30,
-                    Freshness::Current,
+                    Freshness::Stale,
                     1_700_000_000_000,
                     Some("devops.kubernetes")
                 ),
@@ -431,6 +465,37 @@ mod projection_tests {
                 ),
             ]
         );
+    }
+
+    #[test]
+    fn kubernetes_badge_bounds_and_sanitizes_accessible_context_from_any_snapshot() {
+        let snapshot = DevOpsSnapshot {
+            kubernetes: Some(KubernetesContext {
+                context: format!("fixture\u{202e}{}", "x".repeat(5000)),
+                namespace: "demo\n\u{2069}space".into(),
+            }),
+            ..DevOpsSnapshot::default()
+        };
+        let contribution =
+            contribution(&snapshot, &session(), 2, 7, 1, Freshness::Current)
+                .expect("malformed source labels must remain bounded at publication");
+        let badge = contribution
+            .segments
+            .iter()
+            .find(|segment| segment.role == SegmentRole::Kubernetes)
+            .expect("sanitized namespace remains visible");
+        assert_eq!(badge.label.as_str(), "demospace?");
+        assert!(badge
+            .accessibility_label
+            .as_str()
+            .contains("context fixture"));
+        assert!(badge.accessibility_label.as_str().len() < 512);
+        assert!(!badge
+            .accessibility_label
+            .as_str()
+            .chars()
+            .any(|ch| ch.is_control()
+                || matches!(ch, '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')));
     }
 
     #[test]

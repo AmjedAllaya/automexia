@@ -21,12 +21,46 @@ case "$config_root" in /*) ;; *) printf 'uninstall-unix.sh: config root must be 
 case "$fish_conf_root" in /*) ;; *) printf 'uninstall-unix.sh: Fish config root must be absolute\n' >&2; exit 1 ;; esac
 marker_start='# >>> AUTOMEXIA SHELL INTEGRATION >>>'
 marker_end='# <<< AUTOMEXIA SHELL INTEGRATION <<<'
-temporary_suffix=.automexia-$$.tmp
-
+stage_dir=
+stage_path=
+stage_identity=
+directory_identity() {
+  stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1"
+}
 cleanup() {
-  rm -f "$HOME/.bashrc$temporary_suffix" "$HOME/.zshrc$temporary_suffix"
+  [ -n "$stage_dir" ] || return 0
+  [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || return 0
+  (
+    cd -P "$stage_dir" 2>/dev/null || exit 0
+    [ "$(directory_identity .)" = "$stage_identity" ] || exit 0
+    rm -f ./payload
+  )
+  [ "$(directory_identity "$stage_dir" 2>/dev/null)" = "$stage_identity" ] || return 0
+  rmdir "$stage_dir"
 }
 trap cleanup EXIT HUP INT TERM
+
+new_stage() {
+  stage_dir=$(mktemp -d "$1.automexia.XXXXXXXX")
+  [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || return 1
+  stage_path=$stage_dir/payload
+  stage_identity=$(directory_identity "$stage_dir")
+}
+
+publish_stage() {
+  destination=$1
+  case "$destination" in /*) ;; *) destination=$(pwd -P)/$destination ;; esac
+  (
+    cd -P "$stage_dir"
+    [ "$(directory_identity .)" = "$stage_identity" ] || exit 1
+    mv -f ./payload "$destination"
+  )
+  [ "$(directory_identity "$stage_dir" 2>/dev/null)" = "$stage_identity" ] || return 1
+  rmdir "$stage_dir"
+  stage_dir=
+  stage_path=
+  stage_identity=
+}
 
 validate_marked_block() {
   profile=$1
@@ -64,18 +98,19 @@ remove_marked_block() {
   [ -f "$profile" ] || return 0
   starts=$(grep -Fxc "$marker_start" "$profile" || true)
   [ "$starts" -eq 0 ] && return 0
-  awk -v start="$marker_start" -v end="$marker_end" '
+  new_stage "$profile"
+  (set -C; awk -v start="$marker_start" -v end="$marker_end" '
     $0 == start { skip=1; next }
     $0 == end { skip=0; next }
     !skip { print }
-  ' "$profile" >"$profile$temporary_suffix"
+  ' "$profile" >"$stage_path")
   if permissions=$(stat -c '%a' "$profile" 2>/dev/null); then
     :
   else
     permissions=$(stat -f '%Lp' "$profile")
   fi
-  chmod "$permissions" "$profile$temporary_suffix"
-  mv -f "$profile$temporary_suffix" "$profile"
+  chmod "$permissions" "$stage_path"
+  publish_stage "$profile"
 }
 
 assert_real_directory() {

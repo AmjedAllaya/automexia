@@ -2,6 +2,62 @@ use super::*;
 use proptest::prelude::*;
 
 #[test]
+fn kubernetes_domain_survives_disabled_and_unknown_statuses() {
+    use rio_backend::config::presentation::Presentation;
+    for row in [
+        "NAME READY STATUS RESTARTS AGE",
+        "pod/api 0/1 Unknown 0 1m",
+        "pod/api 1/1 FutureState error",
+        "Ready FutureState",
+        "node FutureState worker 1d v1.0",
+        "| api | 0/1 | Unknown | 0 | 1m |",
+    ] {
+        let classification = classify_row(row).expect("recognized Kubernetes row");
+        assert_eq!(classification.domain, OutputDomain::Kubernetes, "{row}");
+        for generic in [false, true] {
+            let presentation = Presentation {
+                output_highlighting: generic,
+                kubernetes_highlighting: false,
+                ..Presentation::default()
+            };
+            assert_eq!(appearance_for(&presentation, classification), None, "{row}");
+        }
+    }
+    assert_eq!(
+        classify_row("pod/api 1/1 FutureState error")
+            .unwrap()
+            .severity,
+        None
+    );
+    for row in ["[ERROR] compilation failed", "web Up 2 minutes (healthy)"] {
+        assert_eq!(classify_row(row).unwrap().domain, OutputDomain::General);
+    }
+}
+
+#[test]
+fn semantic_domains_select_independent_palette_and_style() {
+    use rio_backend::config::presentation::{HighlightStyle, Presentation, Rgb};
+    let mut presentation = Presentation::default();
+    presentation.highlight.colors.warning = Some(Rgb::from_bytes([11, 22, 33]));
+    presentation.kubernetes.colors.warning = Some(Rgb::from_bytes([44, 55, 66]));
+    presentation.kubernetes.style = HighlightStyle::Background;
+    for generic in [false, true] {
+        for kubernetes in [false, true] {
+            presentation.output_highlighting = generic;
+            presentation.kubernetes_highlighting = kubernetes;
+            assert_eq!(
+                appearance_for(&presentation, classify_row("[WARN] retrying").unwrap()),
+                generic.then_some(&presentation.highlight),
+            );
+            assert_eq!(
+                appearance_for(&presentation, classify_row("api 0/1 Running").unwrap()),
+                kubernetes.then_some(&presentation.kubernetes),
+            );
+        }
+    }
+}
+
+#[test]
 fn completion_fragments_never_claim_running_health() {
     for row in ["Completed", "Succeeded", "Completed 0 4h", "Succeeded 0 4h"] {
         assert_eq!(classify_row_text(row), Some(SemanticSeverity::Info));

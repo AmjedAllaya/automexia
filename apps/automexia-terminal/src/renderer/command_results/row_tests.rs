@@ -7,6 +7,405 @@ use rio_backend::event::{TerminalDamage, VoidListener, WindowId};
 use rio_backend::performer::handler::Processor;
 use rio_backend::selection::{Selection, SelectionType};
 
+#[test]
+fn completed_plain_output_backgrounds_toggle_and_use_independent_custom_colors() {
+    use rio_backend::config::presentation::{CommandOutputAppearance, Rgba};
+    let mut anchor = CommandResultAnchor {
+        generation: Some(1),
+        key: 1,
+        x: 0.0,
+        y: 60.0,
+        width: 800.0,
+        height: 20.0,
+        output_top: Some(0.0),
+        separates_next_prompt: true,
+        exit_code: Some(0),
+        elapsed_ms: Some(15),
+        completed_at: None,
+    };
+    let appearance = CommandOutputAppearance {
+        success: Some(Rgba::from_bytes([11, 22, 33, 44])),
+        failure: Some(Rgba::from_bytes([55, 66, 77, 88])),
+        neutral: Some(Rgba::from_bytes([99, 110, 121, 132])),
+        pulse: false,
+    };
+    for (exit, expected) in [
+        (Some(0), [11u8, 22, 33, 44]),
+        (Some(2), [55, 66, 77, 88]),
+        (None, [99, 110, 121, 132]),
+    ] {
+        anchor.exit_code = exit;
+        let palette = Colors::default();
+        let before = anchor;
+        let paints = command_background_paints(
+            &anchor,
+            Some(appearance),
+            &palette,
+            0.14,
+            [0.0, 80.0],
+            &[false; 4],
+        )
+        .collect::<Vec<_>>();
+        assert_eq!(
+            paints.len(),
+            3,
+            "ordinary output needs actual painted bands"
+        );
+        assert_eq!(paints[0].1, expected.map(|v| f32::from(v) / 255.0));
+        assert_eq!(
+            command_background_paints(
+                &anchor,
+                None,
+                &palette,
+                0.14,
+                [0.0, 80.0],
+                &[false; 4]
+            )
+            .count(),
+            0
+        );
+        assert_eq!(anchor, before);
+        assert!(!complete_result_label(&anchor, false).is_empty());
+    }
+    let transparent = CommandOutputAppearance {
+        neutral: Some(Rgba::from_bytes([1, 2, 3, 0])),
+        pulse: true,
+        ..appearance
+    };
+    assert_eq!(
+        command_background_paints(
+            &anchor,
+            Some(transparent),
+            &Colors::default(),
+            0.14,
+            [0.0, 80.0],
+            &[false; 4]
+        )
+        .count(),
+        0
+    );
+}
+
+#[test]
+fn completed_ansi_error_keeps_failure_band_and_skips_empty_rows() {
+    use crate::context::renderable::RenderableContent;
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(80, 8),
+        rio_backend::ansi::CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        1024,
+    );
+    Processor::default().advance(&mut terminal,
+        b"\x1b[31mAn ordinary red diagnostic\r\n+ demo\x1b[0m\r\n\r\n\x1b[41mexplicit background\x1b[0m");
+    let mut content = RenderableContent {
+        columns: 80,
+        screen_lines: 8,
+        ..Default::default()
+    };
+    terminal.snapshot_visible(
+        &TerminalDamage::Full,
+        80,
+        &mut content.visible_rows,
+        &mut content.style_table,
+        &mut content.extras,
+    );
+    let source = content.visible_rows.clone();
+    crate::grid_emit::classify_visible_output(
+        &content.visible_rows,
+        80,
+        false,
+        &mut content.output_classifications,
+        &mut String::new(),
+    );
+    protect_source_rows(&mut content);
+    assert_eq!(
+        &content.output_background_protected[..4],
+        &[false, false, true, true]
+    );
+    assert_eq!(
+        content.visible_rows, source,
+        "decoration cannot rewrite ANSI source"
+    );
+}
+
+#[test]
+fn disabled_logs_allow_command_tints_but_kubernetes_retains_ownership() {
+    use crate::context::renderable::RenderableContent;
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(80, 8),
+        rio_backend::ansi::CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        1024,
+    );
+    Processor::default().advance(&mut terminal,
+        b"\x1b[31merror: operation failed\x1b[0m\r\nworker 0/1 Unknown 0 3m\r\nplain.txt\r\n");
+    let mut content = RenderableContent {
+        columns: 80,
+        screen_lines: 8,
+        ..Default::default()
+    };
+    terminal.snapshot_visible(
+        &TerminalDamage::Full,
+        80,
+        &mut content.visible_rows,
+        &mut content.style_table,
+        &mut content.extras,
+    );
+    crate::grid_emit::classify_visible_output(
+        &content.visible_rows,
+        80,
+        false,
+        &mut content.output_classifications,
+        &mut String::new(),
+    );
+    protect_source_rows(&mut content);
+    content.command_rows.rebuild(8, &[]);
+    let mut projected = Vec::new();
+    for enabled in [false, true, false] {
+        project_protected_rows(&content, &mut projected, enabled);
+        assert_eq!(&projected[..4], &[enabled, true, false, true]);
+    }
+}
+
+#[test]
+fn core_bands_preserve_status_ansi_and_selection_with_both_switch_combinations() {
+    use crate::context::renderable::RenderableContent;
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(80, 12),
+        rio_backend::ansi::CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        1024,
+    );
+    Processor::default().advance(&mut terminal,
+        b"alpha.txt\r\nbeta.txt\r\ndemo  0/1  Running  0  3m\r\n\x1b[35;44mANSI output\x1b[0m\r\nselected.txt\r\nlast.txt");
+    let mut content = RenderableContent {
+        columns: 80,
+        screen_lines: 12,
+        ..Default::default()
+    };
+    terminal.snapshot_visible(
+        &TerminalDamage::Full,
+        80,
+        &mut content.visible_rows,
+        &mut content.style_table,
+        &mut content.extras,
+    );
+    crate::grid_emit::classify_visible_output(
+        &content.visible_rows,
+        80,
+        false,
+        &mut content.output_classifications,
+        &mut content.output_classification_scratch,
+    );
+    content.command_rows.rebuild(12, &[]);
+    content.selection_range = Some(rio_backend::selection::SelectionRange::new(
+        Pos::new(Line(4), Column(0)),
+        Pos::new(Line(4), Column(3)),
+        false,
+    ));
+    protect_source_rows(&mut content);
+    let mut protected = Vec::new();
+    project_protected_rows(&content, &mut protected, true);
+    assert_eq!(&protected[..6], &[false, false, true, true, true, false]);
+    let anchor = CommandResultAnchor {
+        generation: Some(1),
+        key: 1,
+        x: 0.0,
+        y: 120.0,
+        width: 800.0,
+        height: 20.0,
+        output_top: Some(0.0),
+        separates_next_prompt: true,
+        exit_code: Some(0),
+        elapsed_ms: Some(15),
+        completed_at: None,
+    };
+    for core in [false, true] {
+        for kube in [false, true] {
+            let config = rio_backend::config::presentation::Presentation {
+                command_output_highlighting: core,
+                kubernetes_highlighting: kube,
+                ..Default::default()
+            };
+            let paints = command_background_paints(
+                &anchor,
+                core.then_some(config.command_output),
+                &Colors::default(),
+                0.0,
+                [0.0, 240.0],
+                &protected,
+            )
+            .collect::<Vec<_>>();
+            let ys = paints.iter().map(|(rect, _)| rect[1]).collect::<Vec<_>>();
+            assert_eq!(ys, if core { vec![1.0, 21.0, 101.0] } else { vec![] });
+        }
+    }
+    // Projection inserts chrome rows and clips source ownership without lending
+    // another pane's mask or painting unclassified capacity overflow.
+    content.command_rows.rebuild(12, &[(0, 3)]);
+    project_protected_rows(&content, &mut protected, true);
+    assert_eq!(&protected[..5], &[false, true, true, false, true]);
+    assert!(!background_surface_visible(
+        [0.0, 239.0, 5.0, 2.0],
+        0.0,
+        20.0,
+        &protected
+    ));
+}
+
+#[test]
+fn ordinary_unicode_and_hyperlinks_retain_bands_without_changing_source_cells() {
+    use crate::context::renderable::RenderableContent;
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(80, 8),
+        rio_backend::ansi::CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        1024,
+    );
+    Processor::default().advance(
+        &mut terminal,
+        concat!(
+            "cafe\u{301}.txt\r\n",
+            "\u{1f469}\u{200d}\u{1f4bb}.txt\r\n",
+            "\x1b]8;;https://example.invalid/file\x1b\\linked.txt\x1b]8;;\x1b\\\r\n",
+            "\x1b[31m\x1b]8;;https://example.invalid/colored\x1b\\colore\u{301}d.txt\x1b]8;;\x1b\\\x1b[0m\r\n",
+        )
+        .as_bytes(),
+    );
+    let mut content = RenderableContent {
+        columns: 80,
+        screen_lines: 8,
+        ..Default::default()
+    };
+    terminal.snapshot_visible(
+        &TerminalDamage::Full,
+        80,
+        &mut content.visible_rows,
+        &mut content.style_table,
+        &mut content.extras,
+    );
+    assert!(content.visible_rows[..4].iter().all(|row| row.has_extras));
+    assert!(content.visible_rows[0]
+        .inner
+        .iter()
+        .any(|sq| sq.has_grapheme()));
+    assert!(content.visible_rows[1]
+        .inner
+        .iter()
+        .any(|sq| sq.has_grapheme()));
+    assert!(content.visible_rows[2]
+        .inner
+        .iter()
+        .any(|sq| sq.has_hyperlink()));
+    let source_cells = content
+        .visible_rows
+        .iter()
+        .map(|row| row.inner.clone())
+        .collect::<Vec<_>>();
+    let source_styles = content.style_table.clone();
+    let source_extras = content.extras.clone();
+    crate::grid_emit::classify_visible_output(
+        &content.visible_rows,
+        80,
+        false,
+        &mut content.output_classifications,
+        &mut content.output_classification_scratch,
+    );
+    content.command_rows.rebuild(8, &[]);
+    protect_source_rows(&mut content);
+    let mut protected = Vec::new();
+    project_protected_rows(&content, &mut protected, true);
+    assert_eq!(&protected[..4], &[false, false, false, false]);
+    let anchor = CommandResultAnchor {
+        generation: Some(1),
+        key: 1,
+        x: 0.0,
+        y: 80.0,
+        width: 800.0,
+        height: 20.0,
+        output_top: Some(0.0),
+        separates_next_prompt: true,
+        exit_code: Some(0),
+        elapsed_ms: Some(15),
+        completed_at: None,
+    };
+    let paints = command_background_paints(
+        &anchor,
+        Some(CommandOutputAppearance::default()),
+        &Colors::default(),
+        0.0,
+        [0.0, 160.0],
+        &protected,
+    )
+    .collect::<Vec<_>>();
+    assert_eq!(
+        paints.iter().map(|(rect, _)| rect[1]).collect::<Vec<_>>(),
+        [1.0, 21.0, 41.0, 61.0],
+        "graphemes, links and ANSI foregrounds allow backgrounds without source edits"
+    );
+    assert!(paints.iter().all(|(_, color)| color[3] > 0.0));
+    assert_eq!(
+        content
+            .visible_rows
+            .iter()
+            .map(|row| &row.inner)
+            .collect::<Vec<_>>(),
+        source_cells.iter().collect::<Vec<_>>()
+    );
+    assert_eq!(content.style_table, source_styles);
+    assert_eq!(content.extras, source_extras);
+}
+
+#[test]
+fn complete_plain_wrapped_output_allows_bands_but_clipped_context_does_not() {
+    use crate::context::renderable::RenderableContent;
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(12, 8),
+        rio_backend::ansi::CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        1024,
+    );
+    Processor::default().advance(&mut terminal, b"ordinary-file-name.txt\r\nnext.txt");
+    let mut content = RenderableContent {
+        columns: 12,
+        screen_lines: 8,
+        ..Default::default()
+    };
+    terminal.snapshot_visible(
+        &TerminalDamage::Full,
+        12,
+        &mut content.visible_rows,
+        &mut content.style_table,
+        &mut content.extras,
+    );
+    content.command_rows.rebuild(8, &[]);
+    for (first_row_continues, expected) in
+        [(false, [false, false, false]), (true, [true, true, false])]
+    {
+        crate::grid_emit::classify_visible_output(
+            &content.visible_rows,
+            12,
+            first_row_continues,
+            &mut content.output_classifications,
+            &mut content.output_classification_scratch,
+        );
+        protect_source_rows(&mut content);
+        let mut projected = Vec::new();
+        project_protected_rows(&content, &mut projected, true);
+        assert_eq!(&projected[..3], &expected);
+    }
+}
+
 fn project(
     terminal: &mut Crosswords<VoidListener>,
     cell: f32,
@@ -46,6 +445,41 @@ fn project(
         cell,
         &prompts,
     )
+}
+
+#[test]
+fn disabling_an_active_completion_pulse_cancels_without_replaying_on_enable() {
+    let first = CommandResultAnchor {
+        generation: Some(1),
+        key: 1,
+        x: 0.0,
+        y: 60.0,
+        width: 800.0,
+        height: 20.0,
+        output_top: Some(0.0),
+        separates_next_prompt: true,
+        exit_code: Some(0),
+        elapsed_ms: Some(15),
+        completed_at: None,
+    };
+    let now = Instant::now();
+    let mut pulse = CommandResultPulse::default();
+    pulse.observe(&[], true, false, now);
+    pulse.observe(&[first], true, false, now);
+    assert!(pulse.needs_redraw(now));
+    pulse.observe(&[first], false, false, now);
+    assert!(!pulse.needs_redraw(now));
+    assert_eq!(pulse.alpha_for(&first, now), 0.0);
+    pulse.observe(&[first], true, false, now);
+    assert_eq!(pulse.alpha_for(&first, now), 0.0);
+    let next = CommandResultAnchor {
+        generation: Some(2),
+        key: 2,
+        ..first
+    };
+    pulse.observe(&[next], true, false, now);
+    assert!(pulse.needs_redraw(now));
+    assert_eq!(pulse.alpha_for(&next, now), RESULT_PULSE_ALPHA);
 }
 
 #[test]

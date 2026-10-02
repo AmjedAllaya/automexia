@@ -128,6 +128,52 @@ fn native_padded_table_repaint_matches_the_retained_viewport() {
 }
 
 #[test]
+fn native_repaint_space_over_erased_wrap_cell_keeps_logical_line() {
+    // The cursor move leaves five erased cells between the two colored words.
+    // After reflow the eighth cell is erased but owns a soft-wrap marker.
+    // ConPTY repaints that cell as a space and emits CRLF for the physical row.
+    let repaint = b"\x1b[?25l\x1b[Habcd    \r\n xyz\x1b[K\r\nnext\x1b[?25h";
+    for split in 0..=repaint.len() {
+        let (mut terminal, events) = terminal(ResizePolicy::Conpty, 12, 8);
+        let mut parser = Processor::default();
+        parser.advance(&mut terminal, b"\x1b[32mabcd\x1b[10Gxyz\x1b[0m\r\nnext");
+        assert_eq!(copy_all(&mut terminal), "abcd     xyz\nnext");
+        terminal.resize(CrosswordsSize::new(8, 8));
+        assert_eq!(copy_all(&mut terminal), "abcd     xyz\nnext");
+        assert_eq!(terminal.grid[Line(0)][Column(7)].c(), '\0');
+        assert!(terminal.grid[Line(0)][Column(7)].wrapline());
+        parser.advance(&mut terminal, &repaint[..split]);
+        parser.advance(&mut terminal, &repaint[split..]);
+        assert_eq!(
+            copy_all(&mut terminal),
+            "abcd     xyz\nnext",
+            "fragment {split}"
+        );
+        assert_eq!(events.0.load(Ordering::Relaxed), 0);
+    }
+}
+
+#[test]
+fn native_repaint_wrap_protection_requires_the_resize_repaint_bracket() {
+    for repaint in [
+        &b"\x1b[Habcd    "[..],
+        &b"\x1b[?25l\x1b[H\x1b[?25habcd    "[..],
+        &b"X\x1b[?25l\x1b[Habcd    "[..],
+    ] {
+        let (mut terminal, _) = terminal(ResizePolicy::Conpty, 12, 8);
+        let mut parser = Processor::default();
+        parser.advance(&mut terminal, b"abcd\x1b[10Gxyz\r\nnext");
+        terminal.resize(CrosswordsSize::new(8, 8));
+        assert!(terminal.grid[Line(0)][Column(7)].wrapline());
+        parser.advance(&mut terminal, repaint);
+        assert!(
+            !terminal.grid[Line(0)][Column(7)].wrapline(),
+            "outside the repaint bracket, explicit replacement owns the line"
+        );
+    }
+}
+
+#[test]
 fn native_wider_shorter_resize_does_not_archive_a_live_prompt_fragment() {
     let (mut terminal, _) = terminal(ResizePolicy::Conpty, 146, 16);
     let output: Vec<_> = (1..=14).map(|index| format!(

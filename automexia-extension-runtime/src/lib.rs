@@ -21,6 +21,12 @@ use automexia_extension_api::{
     BoundedText, ContractError, EnvironmentCapsule, ExtensionId, OperationId, SessionId,
 };
 
+mod admission;
+pub use admission::{
+    discovery_inputs_bounded, session_facts_bounded, PassiveManifestAdmission,
+    MAX_DISCOVERY_TEXT_BYTES,
+};
+
 #[derive(Debug)]
 pub struct Generation {
     value: AtomicU32,
@@ -259,6 +265,8 @@ enum WorkerMessage<T> {
 /// Maximum live cleanup owners, including owners dropped during blocked work.
 #[cfg(not(target_arch = "wasm32"))]
 const MAX_WORKER_OWNERS: usize = 64;
+/// A caller may request less capacity, but cannot allocate an unbounded queue.
+const MAX_WORKER_QUEUE_CAPACITY: usize = 64;
 #[cfg(not(target_arch = "wasm32"))]
 static LIVE_WORKER_OWNERS: AtomicUsize = AtomicUsize::new(0);
 #[cfg(not(target_arch = "wasm32"))]
@@ -558,7 +566,7 @@ where
     ) -> Self {
         Self {
             name: name.into(),
-            capacity: capacity.max(1),
+            capacity: capacity.clamp(1, MAX_WORKER_QUEUE_CAPACITY),
             handler: Arc::new(handler),
             #[cfg(not(target_arch = "wasm32"))]
             slot: Mutex::new(WorkerSlot {
@@ -859,9 +867,61 @@ pub struct OperationContext {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use automexia_extension_api::{Capability, ExtensionManifest};
     use std::sync::atomic::{AtomicUsize, Ordering as AtomicOrdering};
     use std::sync::mpsc;
     use std::time::Duration;
+
+    #[test]
+    fn passive_manifest_admission_requires_exact_reviewed_identity_and_capabilities() {
+        const REVIEWED: &[Capability] =
+            &[Capability::FilesystemRead, Capability::EnvironmentRead];
+        let policy = PassiveManifestAdmission::new("automexia.devops", REVIEWED);
+        let manifest = ExtensionManifest {
+            id: "automexia.devops",
+            name: "Local context",
+            description: "fixture",
+            version: "0.4.0",
+            default_enabled: true,
+            capabilities: REVIEWED,
+        };
+        assert!(policy.admits(&manifest));
+        assert!(!policy.admits(&ExtensionManifest {
+            id: "devops.kubernetes",
+            ..manifest
+        }));
+        assert!(!policy.admits(&ExtensionManifest {
+            capabilities: &[Capability::EnvironmentRead, Capability::FilesystemRead],
+            ..manifest
+        }));
+        assert!(!policy.admits(&ExtensionManifest {
+            capabilities: &[Capability::FilesystemRead, Capability::ProcessSpawn],
+            ..manifest
+        }));
+        const SENSITIVE: &[&[Capability]] = &[
+            &[Capability::TerminalOutputRead],
+            &[Capability::UiOverlay],
+            &[Capability::Clipboard],
+            &[Capability::SessionLaunch],
+            &[Capability::ProcessSpawn],
+            &[Capability::Network],
+        ];
+        for sensitive in SENSITIVE {
+            let policy = PassiveManifestAdmission::new("automexia.devops", sensitive);
+            assert!(!policy.admits(&ExtensionManifest {
+                capabilities: sensitive,
+                ..manifest
+            }));
+        }
+    }
+
+    #[test]
+    fn worker_constructor_caps_untrusted_requested_queue_capacity() {
+        let worker = BoundedWorker::new("capacity-fixture", usize::MAX, |_: ()| {});
+        assert_eq!(worker.capacity, MAX_WORKER_QUEUE_CAPACITY);
+        let one = BoundedWorker::new("capacity-fixture", 0, |_: ()| {});
+        assert_eq!(one.capacity, 1);
+    }
 
     fn key(session: u64, revision: u64) -> CacheKey {
         CacheKey {

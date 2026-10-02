@@ -111,7 +111,7 @@
       "trigger": "ModifiersState(CONTROL)+Keycode { key: Character(\"l\"), location: Standard }"
     },
     {
-      "action": "Esc(\"\\u{c}\")",
+      "action": "ShellClearScreen",
       "effective": true,
       "mode": "BindingMode(0x0)",
       "not_mode": "BindingMode(VI)",

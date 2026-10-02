@@ -9,6 +9,7 @@ import json
 from pathlib import Path
 import tempfile
 import unittest
+from unittest import mock
 
 
 MODULE_PATH = Path(__file__).with_name("release_trust.py")
@@ -151,7 +152,7 @@ class ReleaseTrustTests(unittest.TestCase):
         (final / "release-trust-windows.json").write_text(
             json.dumps(
                 {
-                    "schema": 1,
+                    "schema": 3,
                     "version": "0.4.0",
                     "scanner": "Microsoft Defender Antivirus",
                     "scanner_version": "1.1.1",
@@ -160,8 +161,10 @@ class ReleaseTrustTests(unittest.TestCase):
                     "artifact_count": 4,
                     "artifact_bytes": windows_bytes,
                     "artifacts": windows_artifacts,
-                    "signature_count": 4,
+                    "signature_count": 8,
                     "embedded_script_signature_count": 16,
+                    "vendor_signature_count": 6,
+                    "vendor_package": TRUST.vendor_package_identity(),
                     "publisher": PUBLISHER,
                     "scan_milliseconds": 10,
                     "scan_timeout_seconds": 900,
@@ -170,6 +173,7 @@ class ReleaseTrustTests(unittest.TestCase):
             ),
             encoding="utf-8",
         )
+        TRUST.add_vendor_sbom(final, self.policy)
         self.write_checksums(final)
         return final
 
@@ -233,8 +237,35 @@ class ReleaseTrustTests(unittest.TestCase):
         final = self.prepare_final("final-evidence")
         TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
 
+    def test_windows_release_requires_pinned_vendor_sbom(self) -> None:
+        final = self.prepare_final("missing-vendor")
+        for name, key in (("automexia-terminal.spdx.json", "packages"),
+                          ("automexia-terminal.cdx.json", "components")):
+            path = final / name
+            document = json.loads(path.read_text(encoding="utf-8"))
+            document[key] = [item for item in document[key]
+                             if item["name"] != "Microsoft.Windows.Console.ConPTY"]
+            path.write_text(json.dumps(document), encoding="utf-8")
+        self.write_checksums(final)
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "ConPTY"):
+            TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+
+    def test_invalid_vendor_recipe_is_a_typed_release_failure(self) -> None:
+        with mock.patch.object(TRUST.CONPTY, "load_recipe",
+                               side_effect=TRUST.CONPTY.RuntimeError("fixture failure")):
+            with self.assertRaisesRegex(TRUST.ReleaseTrustError, "vendor recipe"):
+                TRUST.vendor_package_identity()
+
     def test_windows_evidence_is_bound_to_final_packages_and_release_identity(self) -> None:
         mutations = (
+            ("schema", 1, "exact passing trust evidence"),
+            ("schema", 2, "exact passing trust evidence"),
+            ("vendor_signature_count", 5, "exact passing trust evidence"),
+            ("vendor_signature_count", 7, "exact passing trust evidence"),
+            ("vendor_package", {}, "exact passing trust evidence"),
+            ("signature_count", 4, "exact passing trust evidence"),
+            ("signature_count", 7, "exact passing trust evidence"),
+            ("signature_count", 9, "exact passing trust evidence"),
             ("artifact_bytes", 1, "exact passing trust evidence"),
             ("artifacts", [], "exact passing trust evidence"),
             ("publisher", "CN=Unexpected", "exact passing trust evidence"),
@@ -268,6 +299,57 @@ class ReleaseTrustTests(unittest.TestCase):
         final = self.prepare_final("final-empty-publisher")
         with self.assertRaisesRegex(TRUST.ReleaseTrustError, "must not be empty"):
             TRUST.verify_final(final, "0.4.0", self.policy, " ")
+
+    def test_vendor_sbom_identity_license_hash_and_duplicates_fail_closed(self) -> None:
+        mutations = (("versionInfo", "version", "0.0.0"),
+                     ("checksums", "hashes", []),
+                     ("licenseDeclared", "licenses", "unreviewed"),
+                     ("externalRefs", "purl", []))
+        for index, (spdx_key, cdx_key, value) in enumerate(mutations):
+            for kind, key in (("spdx", spdx_key), ("cdx", cdx_key)):
+                with self.subTest(kind=kind, field=key):
+                    final = self.prepare_final(f"vendor-{index}-{kind}")
+                    path = final / f"automexia-terminal.{kind}.json"
+                    document = json.loads(path.read_text(encoding="utf-8"))
+                    entries = document["packages" if kind == "spdx" else "components"]
+                    entries[-1][key] = value
+                    path.write_text(json.dumps(document), encoding="utf-8")
+                    self.write_checksums(final)
+                    with self.assertRaisesRegex(TRUST.ReleaseTrustError, "ConPTY"):
+                        TRUST.verify_final(final, "0.4.0", self.policy, PUBLISHER)
+        final = self.prepare_final("vendor-duplicate")
+        path = final / "automexia-terminal.spdx.json"
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["packages"].append(copy.deepcopy(document["packages"][-1]))
+        path.write_text(json.dumps(document), encoding="utf-8")
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "conflicting ConPTY"):
+            TRUST.add_vendor_sbom(final, self.policy)
+
+    def test_vendor_enrichment_is_idempotent_and_preserves_non_windows_sboms(self) -> None:
+        final = self.prepare_final("vendor-enrichment")
+        names = ("automexia-terminal.spdx.json", "automexia-terminal.cdx.json")
+        before = [(final / name).read_bytes() for name in names]
+        TRUST.add_vendor_sbom(final, self.policy)
+        self.assertEqual(before, [(final / name).read_bytes() for name in names])
+        unrelated = self.root / "non-windows"
+        unrelated.mkdir()
+        for name in names:
+            (unrelated / name).write_text("scanner-owned fixture", encoding="utf-8")
+        TRUST.add_vendor_sbom(unrelated, self.policy)
+        self.assertEqual([(unrelated / name).read_text() for name in names],
+                         ["scanner-owned fixture"] * 2)
+
+    def test_conflicting_vendor_enrichment_does_not_rewrite_either_document(self) -> None:
+        final = self.prepare_final("vendor-conflict")
+        names = ("automexia-terminal.spdx.json", "automexia-terminal.cdx.json")
+        path = final / names[1]
+        document = json.loads(path.read_text(encoding="utf-8"))
+        document["components"][-1]["version"] = "unreviewed"
+        path.write_text(json.dumps(document), encoding="utf-8")
+        before = [(final / name).read_bytes() for name in names]
+        with self.assertRaisesRegex(TRUST.ReleaseTrustError, "conflicting ConPTY"):
+            TRUST.add_vendor_sbom(final, self.policy)
+        self.assertEqual(before, [(final / name).read_bytes() for name in names])
 
     def test_checksum_tampering_is_rejected(self) -> None:
         final = self.prepare_final()

@@ -605,7 +605,7 @@ fn hex(bytes: &[u8]) -> String {
     output
 }
 
-fn apply_no_follow(options: &mut OpenOptions) {
+pub(crate) fn apply_no_follow(options: &mut OpenOptions) {
     #[cfg(unix)]
     {
         use std::os::unix::fs::OpenOptionsExt as _;
@@ -640,7 +640,7 @@ fn same_identity(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 }
 
 #[cfg(unix)]
-fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+pub(crate) fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     use std::os::unix::fs::MetadataExt as _;
     same_identity(left, right)
         && left.size() == right.size()
@@ -649,7 +649,7 @@ fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 }
 
 #[cfg(windows)]
-fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+pub(crate) fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     use std::os::windows::fs::MetadataExt as _;
     same_identity(left, right)
         && left.file_size() == right.file_size()
@@ -657,7 +657,7 @@ fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
 }
 
 #[cfg(not(any(unix, windows)))]
-fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
+pub(crate) fn same_snapshot(left: &fs::Metadata, right: &fs::Metadata) -> bool {
     same_identity(left, right)
 }
 

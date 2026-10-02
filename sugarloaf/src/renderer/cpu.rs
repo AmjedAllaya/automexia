@@ -18,6 +18,9 @@ use rustc_hash::FxHashMap;
 use std::hash::Hasher;
 use wide::{u32x4, u32x8};
 
+#[path = "cpu_triangles.rs"]
+mod triangles;
+
 /// Image overlays and their pixel stores for a CPU frame.
 pub struct ImageLayers<'a> {
     pub overlays: &'a FxHashMap<usize, Vec<GraphicOverlay>>,
@@ -57,6 +60,25 @@ impl CpuCache {
 fn hash_surface_extent(hasher: &mut impl Hasher, width_px: u32, height_px: u32) {
     hasher.write_u32(width_px);
     hasher.write_u32(height_px);
+}
+
+fn hash_primitive_phases(
+    hasher: &mut impl Hasher,
+    base: (&[Vertex], &[crate::renderer::batch::QuadInstance]),
+    under_text: &[crate::renderer::batch::QuadInstance],
+    modal: (&[Vertex], &[crate::renderer::batch::QuadInstance]),
+) {
+    // Identical geometry moved between phases has different pixels. Include
+    // each phase and buffer boundary, not just the concatenated instance bytes.
+    for (phase, (vertices, instances)) in
+        [(0, base), (1, (&[] as &[Vertex], under_text)), (2, modal)]
+    {
+        hasher.write_u8(phase);
+        hasher.write_usize(vertices.len());
+        hasher.write(bytemuck::cast_slice(vertices));
+        hasher.write_usize(instances.len());
+        hasher.write(bytemuck::cast_slice(instances));
+    }
 }
 
 #[derive(Hash, Eq, PartialEq, Clone, Copy)]
@@ -331,6 +353,7 @@ pub fn render_cpu(
 
     let vertices = renderer.vertices();
     let quad_instances = renderer.instances();
+    let under_text_instances = renderer.under_text_instances();
     let text_instances = text.instances();
     let modal_vertices = renderer.modal_vertices();
     let modal_quad_instances = renderer.modal_instances();
@@ -359,12 +382,12 @@ pub fn render_cpu(
         } else {
             h.write_u8(0);
         }
-        let bytes: &[u8] = bytemuck::cast_slice(vertices);
-        h.write(bytes);
-        let inst_bytes: &[u8] = bytemuck::cast_slice(quad_instances);
-        h.write(inst_bytes);
-        h.write(bytemuck::cast_slice(modal_vertices));
-        h.write(bytemuck::cast_slice(modal_quad_instances));
+        hash_primitive_phases(
+            &mut h,
+            (vertices, quad_instances),
+            under_text_instances,
+            (modal_vertices, modal_quad_instances),
+        );
         for (grid, uniforms) in grids.iter() {
             h.write(bytemuck::bytes_of(uniforms));
             match &**grid {
@@ -447,123 +470,27 @@ pub fn render_cpu(
     let split_below_bg =
         image_overlays.partition_point(|o| o.z_index < crate::renderer::IMAGE_BG_LIMIT);
     let split_below_text = image_overlays.partition_point(|o| o.z_index < 0);
-    {
-        let buf_slice: &mut [u32] = &mut buffer;
-        let (below_bg, rest) = image_overlays.split_at(split_below_bg);
-        let (below_text, _) = rest.split_at(split_below_text - split_below_bg);
+    draw_terminal_content(
+        &mut buffer,
+        [ctx.width_px, ctx.height_px],
+        grids,
+        under_text_instances,
+        &image_overlays,
+        [split_below_bg, split_below_text],
+        images.data,
+    );
 
-        draw_image_overlays(buf_slice, buf_w, buf_h, below_bg, images.data);
-        for (grid, uniforms) in grids.iter() {
-            grid.render_bg_cpu(buf_slice, ctx.width_px, ctx.height_px, uniforms);
-        }
-        draw_image_overlays(buf_slice, buf_w, buf_h, below_text, images.data);
-        for (grid, uniforms) in grids.iter() {
-            grid.render_text_cpu(buf_slice, ctx.width_px, ctx.height_px, uniforms);
-        }
-    }
-
-    // QuadInstance pass: split borders, panel rects, scrollbar, dim
-    // overlays — anything queued via `sugarloaf.rect/quad/rounded_rect`.
-    // Image / mask layers (subpixel text, image atlas) are not handled
-    // here; sub-pixel UI text already lives in `text.render_cpu`, and
-    // the grid path owns terminal glyphs.
-    if !quad_instances.is_empty() {
-        let buf_slice: &mut [u32] = &mut buffer;
-        for inst in quad_instances {
-            // Image / mask atlas layers — skip on CPU (handled by
-            // grid + text passes for the use cases that matter).
-            if inst.layers[0] != 0 || inst.layers[1] != 0 {
-                continue;
-            }
-            // Underline pattern shaders — TODO: implement on CPU.
-            // For now drop straight underlines to a flat fill (style
-            // == 1) and skip styled variants.
-            if inst.underline_style > 1 {
-                continue;
-            }
-            draw_quad_instance(buf_slice, buf_w, buf_h, inst);
-        }
-    }
-
-    if !vertices.is_empty() {
-        let images = renderer.image_cache();
-        let atlas_size = images.cpu_max_texture_size();
-        let buf_slice: &mut [u32] = &mut buffer;
-
-        let mut pending: Option<PendingFill> = None;
-
-        let mut i = 0usize;
-        while i + 5 < vertices.len() {
-            let chunk = &vertices[i..i + 6];
-            i += 6;
-
-            let q = parse_quad(chunk);
-            if q.max_x - q.min_x <= 0.0 || q.max_y - q.min_y <= 0.0 {
-                continue;
-            }
-
-            let snapped = match snap_and_clip(&q, buf_w, buf_h) {
-                Some(r) => r,
-                None => continue,
-            };
-            let (x0, y0, x1, y1) = snapped;
-
-            // Glyph?
-            if q.mask_layer > 0 {
-                if let Some(p) = pending.take() {
-                    flush_fill(buf_slice, buf_w, &p);
-                }
-                draw_glyph(
-                    buf_slice, buf_w, x0, y0, x1, y1, q.min_x, q.min_y, q.min_u, q.min_v,
-                    q.color, images, atlas_size, cache,
-                );
-                continue;
-            }
-
-            // Color-atlas (image / color glyph): not implemented.
-            if q.color_layer > 0 {
-                if let Some(p) = pending.take() {
-                    flush_fill(buf_slice, buf_w, &p);
-                }
-                continue;
-            }
-
-            // Solid quad.
-            let r = (q.color[0].clamp(0.0, 1.0) * 255.0) as u8;
-            let g = (q.color[1].clamp(0.0, 1.0) * 255.0) as u8;
-            let b = (q.color[2].clamp(0.0, 1.0) * 255.0) as u8;
-            let a = (q.color[3].clamp(0.0, 1.0) * 255.0) as u8;
-            if a == 0 {
-                continue;
-            }
-
-            if a == 255 {
-                let packed = pack_opaque(r, g, b);
-                if let Some(p) = pending.as_mut() {
-                    if p.try_extend(x0, y0, x1, y1, packed) {
-                        continue;
-                    }
-                    flush_fill(buf_slice, buf_w, p);
-                }
-                pending = Some(PendingFill {
-                    x0,
-                    y0,
-                    x1,
-                    y1,
-                    packed,
-                });
-            } else {
-                if let Some(p) = pending.take() {
-                    flush_fill(buf_slice, buf_w, &p);
-                }
-                fill_translucent_simd(buf_slice, buf_w, x0, y0, x1, y1, r, g, b, a);
-            }
-        }
-
-        if let Some(p) = pending.take() {
-            flush_fill(buf_slice, buf_w, &p);
-        }
-    }
+    // Base and modal phases share the same primitive interpreter. In particular,
+    // polygons/lines use triangle coverage; only atlas glyphs arrive as quads.
+    draw_cpu_primitives(
+        &mut buffer,
+        buf_w,
+        buf_h,
+        quad_instances,
+        vertices,
+        renderer.image_cache(),
+        cache,
+    );
 
     // UI text pass — tab labels, search, command palette, assistant,
     // island, etc. Sits on top of grids + UI quads so labels never
@@ -600,6 +527,34 @@ pub fn render_cpu(
         }
     }
 }
+/// Compose real terminal cell backgrounds, optional rectangle fills, and atlas
+/// glyphs in that order. Kept shared with the literal pixel regression so an
+/// opaque customization cannot silently move back above text.
+fn draw_terminal_content(
+    buffer: &mut [u32],
+    size: [u32; 2],
+    grids: &[(&mut crate::grid::GridRenderer, crate::grid::GridUniforms)],
+    under_text_instances: &[crate::renderer::batch::QuadInstance],
+    overlays: &[&GraphicOverlay],
+    splits: [usize; 2],
+    images: &FxHashMap<u64, GraphicDataEntry>,
+) {
+    let [width, height] = size;
+    let (below_bg, rest) = overlays.split_at(splits[0]);
+    let (below_text, _) = rest.split_at(splits[1] - splits[0]);
+    draw_image_overlays(buffer, width as i32, height as i32, below_bg, images);
+    for (grid, uniforms) in grids {
+        grid.render_bg_cpu(buffer, width, height, uniforms);
+    }
+    draw_image_overlays(buffer, width as i32, height as i32, below_text, images);
+    for instance in under_text_instances {
+        draw_quad_instance(buffer, width as i32, height as i32, instance);
+    }
+    for (grid, uniforms) in grids {
+        grid.render_text_cpu(buffer, width, height, uniforms);
+    }
+}
+
 /// Paint one primitive phase into the software framebuffer.
 fn draw_cpu_primitives(
     buffer: &mut [u32],
@@ -626,8 +581,18 @@ fn draw_cpu_primitives(
     let atlas_size = images.cpu_max_texture_size();
     let mut pending: Option<PendingFill> = None;
     let mut i = 0usize;
-    while i + 5 < vertices.len() {
-        let chunk = &vertices[i..i + 6];
+    while i + 2 < vertices.len() {
+        if vertices[i].layers == [0, 0] {
+            if let Some(p) = pending.take() {
+                flush_fill(buffer, buf_w, &p);
+            }
+            triangles::draw_solid_triangle(buffer, buf_w, buf_h, &vertices[i..i + 3]);
+            i += 3;
+            continue;
+        }
+        let Some(chunk) = vertices.get(i..i + 6) else {
+            break;
+        };
         i += 6;
         let q = parse_quad(chunk);
         if q.max_x - q.min_x <= 0.0 || q.max_y - q.min_y <= 0.0 {
@@ -1135,8 +1100,48 @@ fn draw_quad_instance(
 }
 
 #[cfg(test)]
+#[path = "cpu_terminal_background_tests.rs"]
+mod terminal_background_tests;
+
+#[cfg(test)]
+#[path = "cpu_polygon_tests.rs"]
+mod polygon_tests;
+
+#[cfg(test)]
 mod frame_identity_tests {
     use super::*;
+
+    #[test]
+    fn moving_identical_geometry_between_composition_phases_changes_frame_identity() {
+        use crate::renderer::batch::QuadInstance;
+        use bytemuck::Zeroable;
+        let rect = [QuadInstance {
+            pos: [0.0, 0.0, 0.0],
+            size: [8.0, 8.0],
+            color: [0.0, 0.0, 1.0, 1.0],
+            ..QuadInstance::zeroed()
+        }];
+        let identity =
+            |base: &[QuadInstance], under: &[QuadInstance], modal: &[QuadInstance]| {
+                let mut hasher = rustc_hash::FxHasher::default();
+                hash_primitive_phases(&mut hasher, (&[], base), under, (&[], modal));
+                hasher.finish()
+            };
+        let base = identity(&rect, &[], &[]);
+        let under = identity(&[], &rect, &[]);
+        let modal = identity(&[], &[], &rect);
+        assert_ne!(
+            base, under,
+            "moving behind glyphs must invalidate a cached frame"
+        );
+        assert_ne!(base, modal);
+        assert_ne!(under, modal);
+        assert_eq!(under, identity(&[], &rect, &[]));
+        let mut recolored = rect;
+        recolored[0].color[0] = 1.0;
+        assert_ne!(under, identity(&[], &recolored, &[]));
+        assert_ne!(under, identity(&[], &[], &[]));
+    }
 
     fn extent_identity(width_px: u32, height_px: u32) -> u64 {
         let mut hasher = rustc_hash::FxHasher::default();

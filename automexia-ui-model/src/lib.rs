@@ -12,6 +12,7 @@ use automexia_extension_api::{
 use unicode_segmentation::UnicodeSegmentation;
 
 pub mod connection_hub;
+pub mod information_bar;
 pub mod quick_actions;
 pub mod semantic_table;
 pub mod settings;
@@ -256,13 +257,22 @@ pub fn segment_anchor_rgb(role: SegmentRole) -> [u8; 3] {
 }
 
 pub fn segment_anchor(role: SegmentRole) -> [f32; 4] {
-    let [red, green, blue] = segment_anchor_rgb(role);
+    context_anchor(segment_anchor_rgb(role))
+}
+
+fn context_anchor([red, green, blue]: [u8; 3]) -> [f32; 4] {
     [
         f32::from(red) / 255.0,
         f32::from(green) / 255.0,
         f32::from(blue) / 255.0,
         1.0,
     ]
+}
+
+fn context_tag_tint(anchor: [u8; 3], opacity_percent: u8) -> [f32; 4] {
+    let mut color = context_anchor(anchor);
+    color[3] = f32::from(opacity_percent.min(100)) / 100.0;
+    color
 }
 
 pub fn segment_color(background: [f32; 4], role: SegmentRole) -> [f32; 4] {
@@ -274,11 +284,48 @@ pub fn segment_color(background: [f32; 4], role: SegmentRole) -> [f32; 4] {
     ensure_contrast(anchor, background, MIN_TEXT_CONTRAST)
 }
 
+/// Resolved text and tint paint for one prompt-context tag.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ContextTagColors {
+    pub foreground: [f32; 4],
+    pub background: [f32; 4],
+}
+
+/// Resolve a custom RGB tag anchor against its composited, byte-quantized
+/// surface. Opacity above 100 percent is clamped; 12 preserves the legacy tint.
+pub fn context_tag_colors(
+    canvas: [f32; 4],
+    anchor: [u8; 3],
+    opacity_percent: u8,
+) -> ContextTagColors {
+    let background = context_tag_tint(anchor, opacity_percent);
+    let surface = quantize(composite_over(background, canvas));
+    let anchor = context_anchor(anchor);
+    let mut foreground = if contrast_ratio(quantize(anchor), surface) >= 4.5 {
+        anchor
+    } else {
+        ensure_contrast(anchor, surface, MIN_TEXT_CONTRAST)
+    };
+    // HSL correction can cross a byte boundary when the renderer truncates its
+    // channels. Keep passing legacy colors intact; correct only failing output.
+    if contrast_ratio(quantize(foreground), surface) < 4.5 {
+        foreground = ensure_contrast(anchor, surface, MIN_TEXT_CONTRAST + 0.05);
+        if contrast_ratio(quantize(foreground), surface) < 4.5 {
+            // The existing routine reaches the better black/white endpoint if
+            // this maximum target is unreachable. One endpoint always exceeds
+            // 4.5 for a bounded sRGB surface; both endpoints quantize exactly.
+            foreground = ensure_contrast(anchor, surface, 21.0);
+        }
+    }
+    ContextTagColors {
+        foreground,
+        background,
+    }
+}
+
 /// Translucent role tint painted behind a prompt-context tag.
 pub fn segment_tag_background(role: SegmentRole) -> [f32; 4] {
-    let mut color = segment_anchor(role);
-    color[3] = CONTEXT_TAG_BACKGROUND_ALPHA;
-    color
+    context_tag_tint(segment_anchor_rgb(role), 12)
 }
 
 /// Effective tag surface after its translucent role tint is composited over
@@ -291,13 +338,7 @@ pub fn segment_tag_surface(background: [f32; 4], role: SegmentRole) -> [f32; 4] 
 /// Resolve semantic foreground color against the tag surface rather than the
 /// bare terminal canvas.
 pub fn segment_tag_color(background: [f32; 4], role: SegmentRole) -> [f32; 4] {
-    let surface = quantize(segment_tag_surface(background, role));
-    let anchor = segment_anchor(role);
-    let rendered_anchor = quantize(anchor);
-    if contrast_ratio(rendered_anchor, surface) >= 4.5 {
-        return anchor;
-    }
-    ensure_contrast(anchor, surface, MIN_TEXT_CONTRAST)
+    context_tag_colors(background, segment_anchor_rgb(role), 12).foreground
 }
 
 fn composite_over(foreground: [f32; 4], background: [f32; 4]) -> [f32; 4] {
@@ -569,6 +610,244 @@ mod tests {
         SegmentRole::User,
     ];
 
+    // Captured from all13 legacy role adapters on four representative canvases.
+    const LEGACY_CONTEXT_TAG_FOREGROUNDS: [[[u8; 4]; 13]; 4] = [
+        [
+            [255, 92, 122, 255],
+            [255, 106, 0, 255],
+            [98, 176, 255, 255],
+            [220, 120, 255, 255],
+            [80, 213, 255, 255],
+            [36, 150, 237, 255],
+            [20, 125, 219, 255],
+            [255, 176, 32, 255],
+            [244, 111, 97, 255],
+            [255, 209, 102, 255],
+            [167, 139, 250, 255],
+            [45, 212, 191, 255],
+            [184, 243, 107, 255],
+        ],
+        [
+            [218, 0, 40, 255],
+            [183, 76, 0, 255],
+            [0, 108, 218, 255],
+            [177, 0, 239, 255],
+            [0, 121, 160, 255],
+            [15, 111, 185, 255],
+            [17, 108, 190, 255],
+            [156, 100, 0, 255],
+            [213, 33, 14, 255],
+            [151, 106, 0, 255],
+            [118, 75, 247, 255],
+            [25, 125, 112, 255],
+            [77, 128, 10, 255],
+        ],
+        [
+            [255, 245, 247, 255],
+            [255, 245, 238, 255],
+            [0, 12, 24, 255],
+            [254, 253, 255, 255],
+            [0, 20, 27, 255],
+            [0, 4, 7, 255],
+            [249, 252, 254, 255],
+            [9, 6, 0, 255],
+            [254, 247, 247, 255],
+            [21, 14, 0, 255],
+            [7, 1, 26, 255],
+            [3, 17, 15, 255],
+            [13, 22, 1, 255],
+        ],
+        [
+            [255, 92, 122, 255],
+            [255, 106, 0, 255],
+            [98, 176, 255, 255],
+            [220, 120, 255, 255],
+            [80, 213, 255, 255],
+            [36, 150, 237, 255],
+            [21, 131, 230, 255],
+            [255, 176, 32, 255],
+            [244, 111, 97, 255],
+            [255, 209, 102, 255],
+            [167, 139, 250, 255],
+            [45, 212, 191, 255],
+            [184, 243, 107, 255],
+        ],
+    ];
+
+    #[test]
+    fn legacy_context_tag_defaults_characterization() {
+        let canvases = [
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [0.13, 0.47, 0.73, 1.0],
+            [0.02, 0.04, 0.08, 0.82],
+        ];
+        let mut observed = Vec::new();
+        for canvas in canvases {
+            let mut foregrounds = Vec::new();
+            for role in ALL_ROLES {
+                let background = segment_tag_background(role);
+                assert_eq!(background[3], 0.12);
+                assert_eq!(background[..3], segment_anchor(role)[..3]);
+                let foreground = quantize(segment_tag_color(canvas, role));
+                let surface = quantize(segment_tag_surface(canvas, role));
+                assert!(contrast_ratio(foreground, surface) >= 4.5);
+                foregrounds
+                    .push(foreground.map(|channel| (channel * 255.0).round() as u8));
+            }
+            observed.push(foregrounds);
+        }
+        // Captured from the unchanged legacy adapter before customization.
+        let expected = LEGACY_CONTEXT_TAG_FOREGROUNDS;
+        assert_eq!(observed, expected);
+    }
+    #[test]
+    fn context_tag_custom_opacity_is_bounded_and_preserves_exact_tint() {
+        let anchor = [10, 120, 250];
+        let mut mismatches = Vec::new();
+        for (percent, expected) in [(0, 0.0), (12, 0.12), (100, 1.0), (255, 1.0)] {
+            let colors = context_tag_colors([0.0, 0.0, 0.0, 1.0], anchor, percent);
+            let expected = [10.0 / 255.0, 120.0 / 255.0, 250.0 / 255.0, expected];
+            if colors.background != expected {
+                mismatches.push((percent, colors.background, expected));
+            }
+        }
+        assert!(
+            mismatches.is_empty(),
+            "opacity actual/expected mismatches: {mismatches:?}"
+        );
+    }
+
+    #[test]
+    fn context_tag_custom_black_on_black_preserves_quantized_minimum() {
+        let canvas = [0.0, 0.0, 0.0, 1.0];
+        let anchor = [0, 0, 0];
+        let colors = context_tag_colors(canvas, anchor, 12);
+        let foreground = quantize(colors.foreground);
+        let surface = quantize(composite_over(colors.background, canvas));
+        let ratio = contrast_ratio(foreground, surface);
+        let bytes = foreground.map(|channel| (channel * 255.0).round() as u8);
+        assert!(ratio >= 4.5, "anchor {anchor:?}, canvas {canvas:?}, opacity12, resolved {:?}, rendered {bytes:?}, surface {surface:?}, ratio {ratio}", colors.foreground);
+    }
+
+    #[test]
+    fn context_tag_custom_anchors_keep_quantized_text_readable() {
+        let canvases = [
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [0.13, 0.47, 0.73, 1.0],
+            [0.02, 0.04, 0.08, 0.82],
+        ];
+        for anchor in [
+            [0, 0, 0],
+            [255, 255, 255],
+            [255, 0, 0],
+            [0, 255, 0],
+            [0, 0, 255],
+            [255, 255, 0],
+            [255, 0, 255],
+            [0, 255, 255],
+            [128, 128, 128],
+            [1, 2, 3],
+            [254, 253, 252],
+            [20, 24, 32],
+        ] {
+            for canvas in canvases {
+                for percent in [0, 12, 100, 255] {
+                    let colors = context_tag_colors(canvas, anchor, percent);
+                    let foreground = quantize(colors.foreground);
+                    let surface = quantize(composite_over(colors.background, canvas));
+                    assert!(foreground
+                        .into_iter()
+                        .chain(colors.background)
+                        .all(|value| value.is_finite() && (0.0..=1.0).contains(&value)));
+                    assert!(
+                        contrast_ratio(foreground, surface) >= 4.5,
+                        "custom {anchor:?}, canvas {canvas:?}, opacity {percent}"
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn context_tag_custom_default_anchors_match_frozen_legacy_rendered_bytes() {
+        let canvases = [
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [0.13, 0.47, 0.73, 1.0],
+            [0.02, 0.04, 0.08, 0.82],
+        ];
+        let expected = LEGACY_CONTEXT_TAG_FOREGROUNDS;
+        for (index, canvas) in canvases.into_iter().enumerate() {
+            for (role_index, role) in ALL_ROLES.into_iter().enumerate() {
+                let colors = context_tag_colors(canvas, segment_anchor_rgb(role), 12);
+                let foreground = quantize(colors.foreground)
+                    .map(|channel| (channel * 255.0).round() as u8);
+                assert_eq!(foreground, expected[index][role_index]);
+                assert_eq!(colors.background, segment_tag_background(role));
+            }
+        }
+    }
+
+    #[test]
+    fn context_tag_boundary_palette_keeps_independent_byte_contrast_and_opacity() {
+        // Measure displayed bytes independently of the production contrast metric.
+        let rendered_contrast = |foreground: [f32; 4], surface: [f32; 4]| {
+            let luminance = |color: [f32; 4]| {
+                let channel = |value: f32| {
+                    let value = f64::from((value.clamp(0.0, 1.0) * 255.0) as u8) / 255.0;
+                    if value <= 0.04045 {
+                        value / 12.92
+                    } else {
+                        ((value + 0.055) / 1.055).powf(2.4)
+                    }
+                };
+                0.2126 * channel(color[0])
+                    + 0.7152 * channel(color[1])
+                    + 0.0722 * channel(color[2])
+            };
+            let left = luminance(foreground);
+            let right = luminance(surface);
+            (left.max(right) + 0.05) / (left.min(right) + 0.05)
+        };
+        let canvases = [
+            [0.0, 0.0, 0.0, 1.0],
+            [1.0, 1.0, 1.0, 1.0],
+            [0.13, 0.47, 0.73, 1.0],
+            [0.5, 0.5, 0.5, 1.0],
+            [0.02, 0.04, 0.08, 0.82],
+        ];
+        let channels = [0, 1, 16, 63, 127, 128, 129, 191, 254, 255];
+        for red in channels {
+            for green in channels {
+                for blue in channels {
+                    let anchor = [red, green, blue];
+                    for canvas in canvases {
+                        for percent in [0, 12, 100, 255] {
+                            let colors = context_tag_colors(canvas, anchor, percent);
+                            let surface = composite_over(colors.background, canvas);
+                            let ratio = rendered_contrast(colors.foreground, surface);
+                            assert!(ratio >= 4.5, "boundary {anchor:?}, {canvas:?}, opacity{percent}, foreground {:?}, surface {surface:?}, ratio {ratio}", colors.foreground);
+                        }
+                    }
+                }
+            }
+        }
+        for percent in 0..=255 {
+            let colors =
+                context_tag_colors([0.02, 0.04, 0.08, 0.82], [1, 127, 254], percent);
+            assert_eq!(
+                colors.background,
+                [
+                    1.0 / 255.0,
+                    127.0 / 255.0,
+                    254.0 / 255.0,
+                    f32::from(percent.min(100)) / 100.0
+                ]
+            );
+        }
+    }
     fn session() -> SessionFacts {
         SessionFacts {
             session_id: 7,

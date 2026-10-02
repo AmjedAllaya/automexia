@@ -134,21 +134,33 @@ def main() -> int:
         "inactive panes lack isolated core command-result state",
     )
 
-    devops_start = renderer.find("        if self.devops_context_enabled {")
+    context_start = renderer.find("    fn prepare_prompt_context<")
+    context_end = renderer.find("    fn prompt_status_for_route(", context_start)
+    context_call = renderer.find(
+        "        self.prepare_prompt_context(context_manager, &active_pane, &inactive_panes);",
+        context_end,
+    )
     route_guard = renderer.find(
         "        if self.command_result_route != Some(active_route) {",
-        devops_start,
+        context_call,
     )
     core_render = renderer.find(
         "        self.command_results.render_command_results(",
         route_guard,
     )
     require(
-        devops_start >= 0 and route_guard > devops_start and core_render > route_guard,
+        context_start >= 0
+        and context_end > context_start
+        and context_call > context_end
+        and route_guard > context_call
+        and core_render > route_guard,
         "core command-result rendering is missing or ordered inside extension activation",
     )
     require(
-        "render_command_results(" not in renderer[devops_start:route_guard],
+        "render_command_results(" not in renderer[context_start:context_end]
+        and "render_command_results(" not in renderer[context_call:route_guard]
+        and "if self.devops_context_enabled {" not in renderer[route_guard:core_render]
+        and "if discovery_enabled {" not in renderer[route_guard:core_render],
         "command-result paint is still conditional on DevOps activation",
     )
     sync_start = renderer.find("    pub fn sync_extension_state")

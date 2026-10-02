@@ -34,12 +34,28 @@ modified, and disabling this presentation requires no data migration.
 
 ## Resource and compatibility boundaries
 
-Inline capture examines at most 512 native rows and 64 Ki native cells near the
-viewport and retains at most four surfaces. Each detected table keeps the
-existing 256 KiB, 256 logical-row, 4,096-cell and 64-column limits. Layout adds
-separate ceilings of 4,096 wrapped content lines and 32,768 fragments per table.
-Discovery tries at most eight candidate starts per contiguous table block.
+Inline capture examines at most 1,024 native rows and copies at most 64 Ki
+native cells near the viewport, retaining at most four surfaces. Each detected
+table keeps the existing 256 KiB, 256 logical-row, 4,096-cell and 64-column
+limits. Layout adds separate ceilings of 4,096 wrapped content lines and 32,768
+fragments per table. Discovery tries at most eight candidate starts per contiguous
+table block.
 No table is made to fit by splitting a grapheme or shrinking text to invisibility.
+When a captured table extends beyond 256 logical rows, the inline projection
+retains its original header and optional ruler, then models only a bounded
+window around visible data rows. Source-row indexes remain attached to those
+rows as the viewport moves, including when the header is offscreen. A missing
+header outside the copied viewport can be recovered by searching at most 1,024
+preceding physical rows and 256 Ki inspected cells on a changed live or scrollback
+snapshot. The header, optional top frame and ruler may soft-wrap; they share
+the 64 Ki copy budget with nearby data; optional prefix reservation cannot displace
+visible rows. Blank soft-wrap padding is not a table
+boundary. Recent blocks receive sparse-row admission before older history, within
+the same shared model-attempt limit. If
+that bounded search cannot verify the header or a visible window exceeds model
+limits, ordinary terminal output remains. Status tint fills each visible
+data row while explicit source ANSI, inverse, and selection retain glyph
+precedence; repaint uses the current source row after a watch-style rewrite.
 
 Recognition uses distinct uppercase labels, typed data beneath mixed-case or
 lowercase labels, or an explicit header ruler. Aligned whitespace, Markdown

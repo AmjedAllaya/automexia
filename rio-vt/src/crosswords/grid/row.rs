@@ -73,6 +73,32 @@ pub struct SemanticCommandBoundary {
     pub result: SemanticCommandResult,
 }
 
+/// Shell dialect published at an explicit integrated prompt input boundary.
+/// This is display metadata, never authority to parse or execute a command.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PromptInputShell {
+    Posix,
+    Cmd,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct SemanticInput {
+    pub column: usize,
+    pub shell: PromptInputShell,
+    /// A soft-wrapped tail cannot independently identify command/quote state.
+    pub continuation: bool,
+}
+
+impl SemanticInput {
+    pub(crate) fn after_prefix(self, count: usize) -> Self {
+        Self {
+            column: self.column.saturating_sub(count),
+            continuation: self.continuation || self.column < count,
+            ..self
+        }
+    }
+}
+
 /// A row in the grid.
 #[derive(Clone, Debug)]
 pub struct Row<T> {
@@ -108,6 +134,9 @@ pub struct Row<T> {
     /// Previous command result whose visible output ends at this prompt.
     pub semantic_command_boundary: Option<SemanticCommandBoundary>,
 
+    /// Exact OSC 133 B input boundary, carried with text through reflow.
+    pub semantic_input: Option<SemanticInput>,
+
     /// Per-row dirty bit set on every write through `IndexMut` /
     /// `last_mut` / `iter_mut` / `reset` / `append*` / `front_split_off`.
     /// Read + cleared by the renderer's snapshot path so it can copy
@@ -128,6 +157,7 @@ impl<T> Default for Row<T> {
             semantic_prompt_id: None,
             semantic_command_result: None,
             semantic_command_boundary: None,
+            semantic_input: None,
             dirty: true,
         }
     }
@@ -170,6 +200,7 @@ impl<T: Clone + Default> Row<T> {
             semantic_prompt_id: None,
             semantic_command_result: None,
             semantic_command_boundary: None,
+            semantic_input: None,
             dirty: true,
         }
     }
@@ -190,6 +221,7 @@ impl<T: Clone + Default> Row<T> {
         self.semantic_prompt_id = src.semantic_prompt_id;
         self.semantic_command_result = src.semantic_command_result;
         self.semantic_command_boundary = src.semantic_command_boundary;
+        self.semantic_input = src.semantic_input;
     }
 
     /// Reset a recycled row back to a blank `columns`-wide row, reusing the
@@ -209,6 +241,7 @@ impl<T: Clone + Default> Row<T> {
         self.semantic_prompt_id = None;
         self.semantic_command_result = None;
         self.semantic_command_boundary = None;
+        self.semantic_input = None;
         self.dirty = true;
     }
 
@@ -297,6 +330,7 @@ impl<T: Clone + Default> Row<T> {
         self.semantic_prompt_id = None;
         self.semantic_command_result = None;
         self.semantic_command_boundary = None;
+        self.semantic_input = None;
         self.dirty = true;
     }
 }
@@ -314,6 +348,7 @@ impl<T> Row<T> {
             semantic_prompt_id: None,
             semantic_command_result: None,
             semantic_command_boundary: None,
+            semantic_input: None,
             dirty: true,
         }
     }
@@ -355,6 +390,16 @@ impl<T> Row<T> {
     where
         T: Copy,
     {
+        if self.semantic_input.is_none() {
+            self.semantic_input = src
+                .semantic_input
+                .filter(|input| input.column < count)
+                .map(|input| SemanticInput {
+                    column: self.inner.len() + input.column,
+                    ..input
+                });
+        }
+        src.semantic_input = src.semantic_input.map(|input| input.after_prefix(count));
         self.inner.extend_from_slice(&src.inner[..count]);
         self.occ += count;
         self.dirty = true;
@@ -367,6 +412,10 @@ impl<T> Row<T> {
 
     #[inline]
     pub fn append_front(&mut self, mut vec: Vec<T>) {
+        self.semantic_input = self.semantic_input.map(|input| SemanticInput {
+            column: input.column.saturating_add(vec.len()),
+            ..input
+        });
         self.occ += vec.len();
         self.dirty = true;
         self.has_extras = true;
@@ -377,6 +426,7 @@ impl<T> Row<T> {
 
     #[inline]
     pub fn front_split_off(&mut self, at: usize) -> Vec<T> {
+        self.semantic_input = self.semantic_input.map(|input| input.after_prefix(at));
         self.occ = self.occ.saturating_sub(at);
         self.dirty = true;
 
@@ -404,6 +454,7 @@ impl<T> Row<T> {
     ) {
         self.semantic_prompt = prompt;
         self.semantic_prompt_id = prompt_id;
+        self.semantic_input = None;
         if prompt == SemanticPrompt::Prompt {
             self.semantic_command_result = None;
             self.semantic_command_boundary = None;
@@ -421,11 +472,13 @@ impl<T> Row<T> {
             || self.semantic_prompt_id.is_some()
             || self.semantic_command_result.is_some()
             || self.semantic_command_boundary.is_some()
+            || self.semantic_input.is_some()
         {
             self.semantic_prompt = SemanticPrompt::None;
             self.semantic_prompt_id = None;
             self.semantic_command_result = None;
             self.semantic_command_boundary = None;
+            self.semantic_input = None;
             self.dirty = true;
         }
     }

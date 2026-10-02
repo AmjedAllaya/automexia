@@ -1,13 +1,43 @@
 // cli.rs was retired originally from https://github.com/alacritty/alacritty/blob/e35e5ad14fce8456afdd89f2b392b9924bb27471/alacritty/src/cli.rs
 // which is licensed under Apache 2.0 license.
 
-use clap::{Args, Parser, Subcommand, ValueEnum, ValueHint};
+use clap::{
+    Args, CommandFactory, FromArgMatches, Parser, Subcommand, ValueEnum, ValueHint,
+};
 use rio_backend::config::Shell;
 use serde::{Deserialize, Serialize};
+use std::io::{self, IsTerminal, Write};
 use std::path::PathBuf;
 
+mod branding;
+
+/// Present Clap's own help at the destination width without rebuilding its command definitions.
+pub fn write_display_help(error: &clap::Error) -> io::Result<()> {
+    let help = branding::wrap_help(&error.to_string(), branding::help_width());
+    let mut stdout = io::stdout().lock();
+    match stdout.write_all(help.as_bytes()) {
+        Err(error) if error.kind() == io::ErrorKind::BrokenPipe => Ok(()),
+        result => result,
+    }
+}
+
+pub fn write_about() -> io::Result<()> {
+    branding::write_about(&mut io::stdout().lock(), io::stdout().is_terminal())
+}
+
+pub fn write_logo() -> io::Result<()> {
+    branding::write_logo(&mut io::stdout().lock(), io::stdout().is_terminal())
+}
+
 #[derive(Parser, Default, Debug)]
-#[clap(name = "automexia", bin_name = "automexia", author, about, version)]
+#[clap(
+    name = "automexia",
+    bin_name = "automexia",
+    author,
+    about = "Automexia Terminal",
+    version,
+    after_help = "Examples:\n  automexia google --print-url rust\n  automexia open --preview ."
+)]
 pub struct Cli {
     /// Explicit maintenance commands that do not open a terminal window.
     #[clap(subcommand)]
@@ -65,8 +95,31 @@ pub struct Cli {
     pub window_options: WindowOptions,
 }
 
+impl Cli {
+    fn command_for_display(interactive: bool) -> clap::Command {
+        let command = Self::command();
+        if interactive {
+            command.before_help(branding::compact_wordmark())
+        } else {
+            command
+        }
+    }
+
+    /// Parse through Clap's command tree so only root help receives the interactive mark.
+    pub fn try_parse() -> Result<Self, clap::Error> {
+        let mut matches =
+            Self::command_for_display(io::stdout().is_terminal()).try_get_matches()?;
+        Self::from_arg_matches_mut(&mut matches)
+            .map_err(|error| error.format(&mut Self::command()))
+    }
+}
+
 #[derive(Subcommand, Debug)]
 pub enum CliCommand {
+    /// Show the Automexia artwork when space allows, with version information.
+    About,
+    /// Print the Automexia artwork, or a compact mark in a small terminal.
+    Logo,
     /// Open a Google search in the default browser (also available as amx google).
     Google(GoogleCommand),
     /// Search the web, repositories or videos in the default browser.
@@ -87,6 +140,8 @@ pub enum CliCommand {
     Repo(RepoCommand),
     /// Inspect, install, or remove persistent shell integration.
     ShellIntegration(ShellIntegrationCommand),
+    /// Inspect non-executing SSH integration plans; does not enable managed SSH.
+    SshIntegration(crate::automexia::ssh_integration::Command),
     /// Search and manage typed Quick Actions without opening a window.
     Actions(ActionsCommand),
     /// Preview, publish, reload, diagnose, or roll back opt-in aliases.
@@ -942,7 +997,78 @@ pub enum ShellIntegrationAction {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use clap::CommandFactory;
+    use clap::{error::ErrorKind, CommandFactory};
+
+    #[test]
+    fn interactive_help_uses_clap_context_for_root_mark() {
+        for (arguments, root_help) in [
+            (vec!["automexia", "--help"], true),
+            (vec!["automexia", "-h"], true),
+            (vec!["automexia", "help"], true),
+            (
+                vec!["automexia", "--title-placeholder", "search", "--help"],
+                true,
+            ),
+            (vec!["automexia", "--title-placeholder=docs", "-h"], true),
+            (vec!["automexia", "search", "--help"], false),
+            (vec!["automexia", "help", "search"], false),
+        ] {
+            let error = Cli::command_for_display(true)
+                .try_get_matches_from(arguments.clone())
+                .expect_err("help must exit before command execution");
+            assert_eq!(error.kind(), ErrorKind::DisplayHelp, "{arguments:?}");
+            assert_eq!(
+                error
+                    .to_string()
+                    .matches(branding::compact_wordmark())
+                    .count(),
+                usize::from(root_help),
+                "{arguments:?}"
+            );
+        }
+
+        let redirected = Cli::command_for_display(false)
+            .try_get_matches_from([
+                "automexia",
+                "--title-placeholder",
+                "search",
+                "--help",
+            ])
+            .expect_err("help must exit before command execution");
+        assert_eq!(redirected.kind(), ErrorKind::DisplayHelp);
+        assert!(!redirected
+            .to_string()
+            .contains(branding::compact_wordmark()));
+    }
+
+    #[test]
+    fn help_wraps_at_narrow_widths_without_losing_sections() {
+        for width in [40, 80, 120, 160] {
+            for arguments in [
+                vec!["automexia", "--help"],
+                vec!["automexia", "search", "--help"],
+                vec!["automexia", "docs", "--help"],
+                vec!["automexia", "edit", "--help"],
+                vec!["automexia", "actions", "--help"],
+                vec!["automexia", "workspaces", "put", "--help"],
+            ] {
+                let error = Cli::command()
+                    .term_width(width)
+                    .try_get_matches_from(arguments.clone())
+                    .expect_err("help must exit before command execution");
+                assert_eq!(error.kind(), ErrorKind::DisplayHelp);
+                let help = branding::wrap_help(&error.to_string(), width);
+                assert!(help.contains("Usage:"), "missing usage: {arguments:?}");
+                assert!(help.contains("Options:"), "missing options: {arguments:?}");
+                for line in help.lines() {
+                    assert!(
+                        line.chars().count() <= width,
+                        "{arguments:?} at {width} columns overflowed: {line:?}"
+                    );
+                }
+            }
+        }
+    }
 
     #[test]
     fn google_command_accepts_query_and_offline_preview_before_gui_startup() {

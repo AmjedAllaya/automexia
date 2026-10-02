@@ -66,6 +66,14 @@ fixtures or reports.
 
 ### terminal-protocols-grid-history
 
+Live table regressions must consume incremental parser damage before any resize.
+Cover offscreen and wrapped headers, source/style offsets, newly arriving sparse
+blocks, and tall panes whose visible rows cannot be displaced by prefix recovery.
+Keep the fixed scan/copy bounds and exact source bytes. The native checker stages
+the pinned Windows transport beside its isolated fixture and retains an explicit
+inbox diagnostic mode. Direct and nested Windows x64/WSL streams do not certify
+ARM64 execution, native compositor pixels or other operating systems.
+
 Inline header tables preserve authoritative VT scalar widths, source bytes and
 ANSI styles while wrapping complete graphemes within aligned cells. Exercise
 actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
@@ -151,6 +159,15 @@ compare stable IDs, timestamps, boundaries, visible rows, and unchanged PTY
 bytes after each transition.
 
 ### pty-scheduler-process-lifecycle
+
+The pinned ConPTY package uses the existing DLL loader and PTY lifecycle owner.
+Prepare the DLL for the application architecture and both kernel-specific hosts
+through one bounded tooling helper; no download or discovery enters terminal
+runtime paths. Regressions cover all member hashes, PE architecture, unsafe ZIP
+entries and paths, offline cache misses, concurrent producers, interrupted
+publication and unchanged in-use files. Verify both hosts before publishing the
+DLL. Native x64 transport/lifecycle evidence remains distinct from ARM64 and
+final installed-artifact evidence. See [ADR 0082](adr/0082-pinned-windows-console-runtime.md).
 
 Channel readiness must survive first registration racing each send API and final
 sender destruction, without a later message or disconnect masking the result.
@@ -304,6 +321,73 @@ new extent and DPI. Native sibling output, process identities,
 resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
+
+Completed-command bands must preserve ANSI foregrounds, skip blank rows, and
+tint ordinary table data while enabled logs and Kubernetes retain separate
+ownership. Numeric opacity controls cover transparent, solid, intermediate,
+invalid and reset values without rewriting saved configuration. Parser/snapshot,
+table-painter and settings-view tests exercise these paths. The focused native
+Windows WGPU/CPU workflow types opacity values and paints real PowerShell ANSI
+errors without resize; other operating systems and assistive technology remain
+external.
+
+Live table capture preserves wrapped-header styles and visible-row capacity
+within the existing bounds. Shared route tests retain pending damage for every
+affected pane while redraw is suppressed, then restore visibility without new
+PTY output. Keep unfocused, occluded, visible and stale-route cases separate;
+the focused table failure is not evidence of an occlusion defect. These model
+and routing checks do not substitute for current native restore/paint or
+assistive-technology evidence.
+
+Kubernetes color ownership covers non-pod table schemas, sparse pending-storage
+columns, readiness counts, unknown statuses, resource prefixes and server errors.
+Raw soft-wrap and table-raster matrices exercise independent color switches at
+narrow and wide sizes; context resets prevent a schema leaking into unrelated
+logs. The native output-color fixture checks custom palette pixels on deployments,
+StatefulSets, volumes and namespaces before resize. File-context fixtures verify
+cloud, Docker, Terraform and Git selection changes and provider-file removal.
+
+Information-tag editing must supply sample data independently of live discovery,
+retain stable roster navigation across redraws, reveal selected rows and the Add
+action in short panes, and open disabled tags without affecting sibling slots.
+The Settings view event tests cover scaled pointer press/redraw/release, keyboard
+selection, discovery on/off, and narrow scrolling. The focused Windows
+`resize-stress-windows.ps1 -TagCustomizationOnly` fixture exercises native mouse
+and keyboard selection for all thirteen standard tags and unchanged terminal
+input. Other native platforms and assistive-technology delivery remain external.
+
+Tag shape coverage includes all ten reference styles, 0/100/300-percent spacing,
+first/middle/last caps, wrap/split boundaries, concave puzzle sockets, tint and
+plain outlines. Compare contour area with strip-triangle area and literal
+cap/socket points; preview event tests scan tips, empty corners and gaps for
+single-tag ownership. `tag-shapes-windows.ps1`, invoked by the isolated native
+`-TagShapesOnly` fixture, cycles actual controls and captures WGPU/CPU preview
+and terminal frames. Schema-6 tests preserve older snapshot/configuration bytes
+and reject new styles in legacy schemas. Native Linux/macOS shape evidence
+remains external.
+
+Preview hints use a single header row and expose E in the footer before and
+after saves and inside item controls. Independent glyph pixels catch missing or
+unreadable shortcut keys. Narrow/scaled event tests cover Edit/Done, retained
+selection and unchanged settings; save/loading feedback keeps priority. The tag
+fixture also exercises Done followed by E and captures the normal footer.
+
+Reset and Restore must open a scoped confirmation before emitting an intent.
+Cancel is initially selected. Event tests cover button mnemonics, text/IME
+ownership, cancel with a draft, repeated keys, stale revisions, resize and
+one-shot pointer approval. Opaque dialog rasters and native Windows reset/restore
+captures complement unchanged-file and unchanged-PTY assertions.
+
+The focused tag fixture passes on Windows WGPU and CPU. Nested CMD startup now
+passes the native Windows fixture with the bounded identity reference from
+[ADR 0083](adr/0083-bounded-cmd-prompt-identity-reference.md). The WGPU and CPU
+fixtures also restore the complete active path after extreme four-pane resize through
+[ADR 0084](adr/0084-active-prompt-viewport-follow.md), preserving native input
+coordinates. Both native workflows pass image hover/pinning/browsing and pixel
+checks, menu/modal composition, and owned shutdown. Native image hit geometry
+comes from the renderer's existing row projection; physical image regions use
+the existing DPI-aware capture owner. These native results do not replace the
+complete repository gate or establish other operating-system coverage.
 
 Inline header tables preserve authoritative VT scalar widths, source bytes and
 ANSI styles while wrapping complete graphemes within aligned cells. Exercise
@@ -465,6 +549,12 @@ live editor input at a fixed unsent sentinel so cursor-line drift cannot
 masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
+
+Both application damage-notification paths must mark the affected pane dirty
+before deciding whether its window may redraw. Cover inactive siblings and
+multiple pending panes, unchanged suppression, stale routes and restoration
+without another PTY event. Assert input, selection and focus ownership remain
+unchanged. Native window-manager restoration remains a separate platform gate.
 
 Inline header tables preserve authoritative VT scalar widths, source bytes and
 ANSI styles while wrapping complete graphemes within aligned cells. Exercise
@@ -629,6 +719,13 @@ network authority.
 
 ### extension-contract-runtime
 
+SSH planning remains non-activated. Its canonical dependency/source mutations,
+model/property scope and actual-generator controlling-PTY tests preserve native
+review ownership, permission masks, prompt hooks, redirection and scoped remote
+metadata. The existing application Criterion group measures only bounded local
+planning operations. Live SSH/native GUI and controlled latency are not established
+by these tests. See [current evidence commands](SSH-INTEGRATION-LIBRARY.md#verification).
+
 Worker tests must gate full queues, blocked handlers, reentrant and panicking
 registration, native thread-local destruction and callback lifetime beyond join.
 Require actual join before acknowledgement, no stale replacement, reuse of one
@@ -699,6 +796,22 @@ both root and fuzz metadata with locked full dependency graphs. Metadata with
 
 ### shell-integration-listings
 
+Ctrl+L must use actual keyboard dispatch with integrated shell resources,
+including nested CMD and WSL Bash/Zsh/Fish. Assert one prompt, visible context,
+unchanged partial input, repeated clears and execution only after explicit Enter.
+Keep fragmented redraw, wrapped Unicode, native cursor, zero-history and reused
+shell-local ID regressions. The `clear-shortcut` native rendering scenario runs
+on both renderers; unavailable native Linux/macOS sessions remain external.
+
+Typed command accents require owned OSC input boundaries, shell/pane isolation,
+Unicode reflow and prompt repair, cached source-damage invalidation, bounded
+input, native foreground/selection precedence, and separate output colors.
+Native pixels must cover PowerShell, CMD and explicitly requested WSL
+Bash/Zsh/Fish; unavailable Linux/macOS GUI and shell combinations remain external.
+Use `tests/integration/command-input-colors-windows.ps1` through the existing
+Windows rendering gate; `AUTOMEXIA_NATIVE_WSL_DISTRO` selects optional WSL coverage.
+Retain the VT input-boundary, renderer cache and emitted-glyph regressions.
+
 Exercise the actual application bootstrap with the real PowerShell integration
 in repository and flattened resource layouts. Prompt, input, completion and CMD
 helpers must survive bootstrap return and repeated loading, including literal
@@ -707,6 +820,16 @@ input, execute one explicitly submitted command once, and return to stable input
 Use isolated configuration/history, bounded child cleanup, and content-free
 diagnostics. Windows PowerShell and explicitly selected PowerShell 7 are separate
 native evidence; unexecuted operating systems remain external.
+
+CMD reference-v1 reinforcement uses the real interactive prompt expander in
+`tools/ci/test_cmd_prompt.py`, with default/ASCII/lambda glyphs, long Unicode
+identities and separate maximum 4096-byte registrations. Echoing PROMPT cannot
+prove its 511-code-unit limit. Real OSC metadata tests cover nested identity
+return, per-terminal isolation, clear/reset chronology, missing/partial/late
+references and dictionary saturation without eviction. Keep native input and
+directory updates unchanged; unresolved identities must not borrow guest context.
+See [ADR 0083](adr/0083-bounded-cmd-prompt-identity-reference.md). The full native
+application workflow remains a separate gate from this prompt fixture.
 
 Google command reinforcement: exact fixed-origin query encoding, argument/byte
 boundaries, control rejection, content-free failure/debug, preview with no
@@ -816,6 +939,16 @@ they reach local or hosted logs. CMD identity fixtures must use stable fictional
 values rather than contributor account or executable-path data.
 
 ### packaging-release-provenance
+
+Windows packages must retain the pinned Microsoft DLL and both kernel hosts in
+the same layout as local and native GUI builds. Missing assets fail before
+replacing previous portable staging. Keep vendor signatures outside Automexia's
+signing inputs; schema-3 trust evidence binds six vendor signatures across both
+ZIPs to the recipe. Mutation tests remove individual files, alter vendor identity
+or counts, and remove the pinned NuGet component/hash from either SBOM format.
+Final native verification checks both portable and installed bytes before
+execution. Offline fixture and signature checks do not establish signed MSI
+install/upgrade/uninstall, ARM64 execution or publication readiness.
 
 Reinforce artifact identity, licenses, checksums, SBOM, provenance, signatures,
 install, upgrade, rollback, uninstall, startup hooks, user-data policy, and final

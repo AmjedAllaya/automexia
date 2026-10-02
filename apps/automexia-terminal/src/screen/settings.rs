@@ -5,6 +5,34 @@ use rio_window::event::WindowEvent;
 
 impl Screen<'_> {
     pub(crate) fn open_settings_view(&mut self, catalog: Catalog) {
+        self.open_settings_view_for_section(catalog, None, None, None);
+    }
+
+    pub(crate) fn open_customizations_view(
+        &mut self,
+        catalog: Catalog,
+        packages: Option<
+            crate::automexia::package_customizations::PackageCustomizationPages,
+        >,
+        slot_pages: Option<crate::settings_catalog::SlotPageSnapshot>,
+    ) {
+        self.open_settings_view_for_section(
+            catalog,
+            Some(automexia_ui_model::settings::Section::Customizations),
+            packages,
+            slot_pages,
+        );
+    }
+
+    fn open_settings_view_for_section(
+        &mut self,
+        catalog: Catalog,
+        section: Option<automexia_ui_model::settings::Section>,
+        packages: Option<
+            crate::automexia::package_customizations::PackageCustomizationPages,
+        >,
+        slot_pages: Option<crate::settings_catalog::SlotPageSnapshot>,
+    ) {
         self.stop_hint_mode_if_active();
         self.dismiss_suggestions(
             crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
@@ -24,7 +52,16 @@ impl Screen<'_> {
         self.clear_highlighted_hint();
         self.context_manager.current_mut().ime.set_preedit(None);
         self.last_ime_cursor_pos = None;
-        self.settings_view.open(catalog);
+        if let Some(section) = section {
+            if section == automexia_ui_model::settings::Section::Customizations {
+                self.settings_view
+                    .open_customizations_with_slots(catalog, packages, slot_pages);
+            } else {
+                self.settings_view.open_with_section(catalog, Some(section));
+            }
+        } else {
+            self.settings_view.open(catalog);
+        }
         self.fit_settings_view();
         self.mark_dirty();
     }
@@ -60,6 +97,11 @@ impl Screen<'_> {
         event: &WindowEvent,
         clipboard: &mut Clipboard,
     ) -> bool {
+        // The quit confirmation is above Settings and owns its input until
+        // dismissed. Keep the customization page intact when close is canceled.
+        if self.renderer.confirm_quit.is_active() {
+            return route_covered_settings_event(&mut self.settings_view, event);
+        }
         if let WindowEvent::KeyboardInput {
             event: key,
             is_synthetic,
@@ -122,7 +164,9 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
     ) -> bool {
         // A native menu command has no matching physical key release.
-        self.dispatch_settings_key(key, clipboard, false)
+        route_settings_menu_input(self.renderer.confirm_quit.is_active(), || {
+            self.dispatch_settings_key(key, clipboard, false)
+        })
     }
 
     fn dispatch_settings_key(
@@ -131,6 +175,9 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
         record_release: bool,
     ) -> bool {
+        if self.renderer.confirm_quit.is_active() {
+            return false;
+        }
         self.fit_settings_view();
         let consumed = route_settings_key(
             &mut self.settings_view,
@@ -139,7 +186,12 @@ impl Screen<'_> {
             self.modifiers.state(),
             key.state,
             key.repeat,
-            || clipboard.get(ClipboardType::Clipboard),
+            |operation| match operation {
+                SettingsClipboard::Read => clipboard.try_get(ClipboardType::Clipboard),
+                SettingsClipboard::Write(text) => clipboard
+                    .try_set(ClipboardType::Clipboard, text)
+                    .map(|()| String::new()),
+            },
         );
         if !consumed {
             return false;
@@ -325,8 +377,39 @@ mod tests {
     }
 }
 
-/// Shared physical-key/native-menu route, with clipboard access deferred until
-/// an open Settings search actually receives a paste command.
+fn route_covered_settings_event(
+    view: &mut crate::settings_view::SettingsView,
+    event: &WindowEvent,
+) -> bool {
+    view.suspend_input();
+    // Keyboard, pointer and lifecycle events have existing confirmation owners.
+    // These input paths do not; consume them before downstream shell handlers.
+    matches!(
+        event,
+        WindowEvent::Ime(_)
+            | WindowEvent::Touch(_)
+            | WindowEvent::DroppedFile(_)
+            | WindowEvent::HoveredFile(_)
+            | WindowEvent::HoveredFileCancelled
+    )
+}
+
+fn route_settings_menu_input(
+    confirmation_active: bool,
+    dispatch: impl FnOnce() -> bool,
+) -> bool {
+    // Native menus have no quit-dialog key equivalent. Consume their commands
+    // while it is open, rather than letting the caller fall through to the PTY.
+    confirmation_active || dispatch()
+}
+
+enum SettingsClipboard {
+    Read,
+    Write(String),
+}
+
+/// Shared physical-key/native-menu route. Clipboard access belongs only to the
+/// focused editor; a missing selection never falls through to terminal copy.
 fn route_settings_key(
     view: &mut crate::settings_view::SettingsView,
     logical_key: &Key,
@@ -334,18 +417,40 @@ fn route_settings_key(
     modifiers: ModifiersState,
     state: ElementState,
     repeat: bool,
-    read_clipboard: impl FnOnce() -> String,
+    mut clipboard: impl FnMut(
+        SettingsClipboard,
+    ) -> Result<String, rio_backend::clipboard::ClipboardError>,
 ) -> bool {
     if !view.is_open() {
         return false;
     }
     if state == ElementState::Pressed {
-        let paste = (modifiers.control_key() || modifiers.super_key())
-            && !modifiers.alt_key()
+        let command =
+            (modifiers.control_key() || modifiers.super_key()) && !modifiers.alt_key();
+        let paste = command
             && matches!(logical_key, Key::Character(value) if value.eq_ignore_ascii_case("v"));
+        let copy_or_cut = command
+            && matches!(logical_key, Key::Character(value) if value.eq_ignore_ascii_case("c") || value.eq_ignore_ascii_case("x"));
         if paste {
             if !view.requires_larger_window() {
-                view.paste(&read_clipboard());
+                match clipboard(SettingsClipboard::Read) {
+                    Ok(text) => {
+                        view.paste(&text);
+                    }
+                    Err(_) => view.set_status("Paste failed. Try again."),
+                }
+            }
+        } else if copy_or_cut {
+            let cut = matches!(logical_key, Key::Character(value) if value.eq_ignore_ascii_case("x"));
+            if let Some(text) = view.clipboard_selection() {
+                if clipboard(SettingsClipboard::Write(text)).is_ok() {
+                    view.set_status("");
+                    if cut {
+                        view.paste("");
+                    }
+                } else {
+                    view.set_status("Copy failed. Try again.");
+                }
             }
         } else {
             view.key(logical_key, text, modifiers, repeat);
@@ -376,6 +481,193 @@ mod menu_tests {
         view
     }
     #[test]
+    fn settings_copy_and_cut_use_only_the_focused_editor_selection() {
+        for modifiers in [ModifiersState::SUPER, ModifiersState::CONTROL] {
+            let mut view = view();
+            view.paste("table");
+            view.key(&Key::Character("a".into()), None, modifiers, false);
+            let mut clipboard_called = false;
+            assert!(route_settings_key(
+                &mut view,
+                &Key::Character("c".into()),
+                None,
+                modifiers,
+                ElementState::Pressed,
+                false,
+                |operation| {
+                    assert!(
+                        matches!(operation, SettingsClipboard::Write(text) if text == "table")
+                    );
+                    clipboard_called = true;
+                    Ok(String::new())
+                },
+            ));
+            assert!(
+                clipboard_called,
+                "copy must reach the existing clipboard owner"
+            );
+            assert!(view.accessibility_summary().contains("Search: table."));
+            assert!(view.take_edit().is_none());
+            assert!(route_settings_key(
+                &mut view,
+                &Key::Character("x".into()),
+                None,
+                modifiers,
+                ElementState::Pressed,
+                false,
+                |operation| {
+                    assert!(
+                        matches!(operation, SettingsClipboard::Write(text) if text == "table")
+                    );
+                    Ok(String::new())
+                }
+            ));
+            assert!(view.accessibility_summary().contains("Search: ."));
+            assert!(route_settings_key(
+                &mut view,
+                &Key::Character("c".into()),
+                None,
+                modifiers,
+                ElementState::Pressed,
+                false,
+                |_| panic!("empty selection must not overwrite clipboard")
+            ));
+        }
+    }
+    #[test]
+    fn settings_failed_paste_preserves_the_selected_draft() {
+        let mut view = view();
+        view.paste("table");
+        view.key(
+            &Key::Character("a".into()),
+            None,
+            ModifiersState::CONTROL,
+            false,
+        );
+        assert!(route_settings_key(
+            &mut view,
+            &Key::Character("v".into()),
+            None,
+            ModifiersState::CONTROL,
+            ElementState::Pressed,
+            false,
+            |operation| {
+                assert!(matches!(operation, SettingsClipboard::Read));
+                Err(rio_backend::clipboard::ClipboardError::Failed)
+            }
+        ));
+        assert_eq!(view.clipboard_selection().as_deref(), Some("table"));
+        assert!(view.take_edit().is_none());
+    }
+    #[test]
+    fn settings_failed_cut_preserves_draft_and_selection_for_retry() {
+        let mut view = view();
+        view.paste("界 text");
+        view.key(
+            &Key::Character("a".into()),
+            None,
+            ModifiersState::CONTROL,
+            false,
+        );
+        for state in [ElementState::Released, ElementState::Pressed] {
+            assert!(route_settings_key(
+                &mut view,
+                &Key::Character("x".into()),
+                None,
+                ModifiersState::CONTROL,
+                state,
+                false,
+                |operation| {
+                    assert!(
+                        matches!(operation, SettingsClipboard::Write(text) if text == "界 text")
+                    );
+                    Err(rio_backend::clipboard::ClipboardError::Failed)
+                }
+            ));
+            assert_eq!(view.clipboard_selection().as_deref(), Some("界 text"));
+            assert!(view.take_edit().is_none());
+        }
+        assert!(route_settings_key(
+            &mut view,
+            &Key::Character("x".into()),
+            None,
+            ModifiersState::CONTROL,
+            ElementState::Pressed,
+            false,
+            |_| Ok(String::new())
+        ));
+        assert!(view.clipboard_selection().is_none());
+        assert!(view.accessibility_summary().contains("Search: ."));
+    }
+    #[test]
+    fn confirmation_blocks_native_menu_commands_without_reading_clipboard_or_editing_settings(
+    ) {
+        let mut view = view();
+        let before = view.accessibility_summary();
+        for key in ["v", "c", "a"] {
+            assert!(route_settings_menu_input(true, || route_settings_key(
+                &mut view,
+                &Key::Character(key.into()),
+                None,
+                ModifiersState::SUPER,
+                ElementState::Pressed,
+                false,
+                |_| panic!("covered native menu must never read the clipboard"),
+            )));
+            assert_eq!(view.accessibility_summary(), before);
+            assert!(view.take_edit().is_none());
+        }
+        assert!(route_settings_menu_input(false, || route_settings_key(
+            &mut view,
+            &Key::Character("v".into()),
+            None,
+            ModifiersState::SUPER,
+            ElementState::Pressed,
+            false,
+            |_| Ok("table".into()),
+        )));
+        assert!(view.accessibility_summary().contains("Search: table."));
+    }
+    #[test]
+    fn covered_settings_consume_composition_touch_and_drops_but_yield_confirmation_pointer(
+    ) {
+        use rio_window::event::{DeviceId, Ime, Touch, TouchPhase};
+        let mut view = view();
+        view.paste("unchanged draft");
+        let before = view.accessibility_summary();
+        // SAFETY: confined to pure window-event adapter tests.
+        let device_id = unsafe { DeviceId::dummy() };
+        for event in [
+            WindowEvent::Ime(Ime::Commit("unwanted".into())),
+            WindowEvent::Ime(Ime::Preedit("unwanted".into(), None)),
+            WindowEvent::DroppedFile("fixture.txt".into()),
+            WindowEvent::Touch(Touch {
+                device_id,
+                phase: TouchPhase::Started,
+                location: rio_window::dpi::PhysicalPosition::new(20.0, 30.0),
+                force: None,
+                id: 1,
+            }),
+        ] {
+            assert!(route_covered_settings_event(&mut view, &event));
+            assert_eq!(view.accessibility_summary(), before);
+            assert!(view.take_edit().is_none());
+        }
+        assert!(!route_covered_settings_event(
+            &mut view,
+            &WindowEvent::MouseInput {
+                device_id,
+                button: MouseButton::Left,
+                state: ElementState::Pressed,
+            }
+        ));
+        assert!(!route_covered_settings_event(
+            &mut view,
+            &WindowEvent::CloseRequested
+        ));
+    }
+
+    #[test]
     fn settings_menu_paste_and_select_all_share_the_physical_key_search_owner() {
         let mut view = view();
         for modifiers in [ModifiersState::SUPER, ModifiersState::CONTROL] {
@@ -386,7 +678,7 @@ mod menu_tests {
                 modifiers,
                 ElementState::Pressed,
                 false,
-                || "table".into()
+                |_| Ok("table".into())
             ));
             assert!(view.accessibility_summary().contains("Search: table."));
             assert!(route_settings_key(
@@ -396,7 +688,7 @@ mod menu_tests {
                 modifiers,
                 ElementState::Pressed,
                 false,
-                || panic!("Select All must not read the clipboard")
+                |_| panic!("Select All must not read the clipboard")
             ));
             assert!(route_settings_key(
                 &mut view,
@@ -405,7 +697,7 @@ mod menu_tests {
                 modifiers,
                 ElementState::Pressed,
                 false,
-                || "time".into()
+                |_| Ok("time".into())
             ));
             assert!(view.accessibility_summary().contains("Search: time."));
             assert!(
@@ -419,7 +711,7 @@ mod menu_tests {
                 modifiers,
                 ElementState::Pressed,
                 false,
-                || panic!("Select All must not read the clipboard")
+                |_| panic!("Select All must not read the clipboard")
             ));
         }
     }
@@ -434,7 +726,7 @@ mod menu_tests {
             ModifiersState::SUPER,
             ElementState::Pressed,
             false,
-            || panic!("a hidden Settings search must not fetch the clipboard")
+            |_| panic!("a hidden Settings search must not fetch the clipboard")
         ));
         assert!(view.take_edit().is_none());
         assert!(route_settings_key(
@@ -444,7 +736,7 @@ mod menu_tests {
             ModifiersState::empty(),
             ElementState::Pressed,
             false,
-            || panic!("Escape must not fetch the clipboard")
+            |_| panic!("Escape must not fetch the clipboard")
         ));
         assert!(!view.is_open());
     }
@@ -460,7 +752,7 @@ mod menu_tests {
             ModifiersState::SUPER,
             ElementState::Pressed,
             false,
-            || panic!("closed Settings must not read or deliver clipboard text"),
+            |_| panic!("closed Settings must not read or deliver clipboard text"),
         );
         assert!(
             !consumed,

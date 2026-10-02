@@ -8,12 +8,11 @@ It does not recognize Docker, Kubernetes, executable names, or particular header
 words. Fictional test data exercises seven columns, a multiword header, a long
 value, an empty middle field, and a final column beyond the first screen row.
 
-The script author did not have Rust, a native Automexia build, or a reachable
-clone in the authoring environment. Rust compilation and native tests MUST run
-on the target checkout before merging. Script-engine/Python tests are not Rust
-or native-terminal evidence. This patch does not certify a fix for the supplied
-screenshot: lost ConPTY wrap provenance remains a hypothesis until the native
-fixture measures the actual failing path.
+Subsequent native Windows x64 fixtures reproduced lost ConPTY wrap provenance
+when long records overflow a short pane. The identical fixture executable
+passed all ten cases with the pinned Microsoft runtime; three failed with the
+inbox transport. See [ADR 0082](adr/0082-pinned-windows-console-runtime.md).
+This is transport evidence, not native compositor or universal platform proof.
 
 ## Implemented changes
 
@@ -55,9 +54,14 @@ styles still use native rendering, now with a diagnostic reason.
 
 This change does not overhaul the renderer's global damage architecture or add
 an output protocol. Identical snapshots reuse surfaces; source capture is still
-bounded snapshot-based. Further revision-indexed incremental capture, optional
-worker offload, and more permissive sparse-row handling require measured evidence
-and separate changes. A global count ceiling is not a wall-clock latency promise.
+bounded snapshot-based. Further revision-indexed incremental capture and optional
+worker offload require measured evidence and separate changes. Sparse-row
+admission now reuses the existing pure table model across inline presentation and
+the focused viewer, including sparse first rows, aligned single-space records,
+and typed right-aligned numeric cells. Ambiguous prose and gutter-crossing values
+remain native output. Cached schema checks and model attempts have separate work
+bounds; exhausted optional probes do not clone another candidate prefix. A global
+count ceiling is not a wall-clock latency promise.
 
 A green native-host test proves the tested system-shell/PTY path only. Running
 Linux tests inside WSL does NOT exercise a Windows-host ConPTY session launching
@@ -84,9 +88,19 @@ On a Windows host, explicitly test the installed WSL distro you use:
 python tools/ci/check_inline_pipeline.py --wsl-distro Ubuntu
 ```
 
-The opt-in WSL test launches only a fictional `printf` fixture in that distro;
-it does not access Docker, a cluster, credentials, or application configuration.
+The opt-in WSL cases launch fictional output in that distro, including an
+interactive Bash session, directly and through PowerShell, with repository shell
+integration and isolated configuration/history. Long cells are verified at the
+initial pane size without resizing. They do not access Docker, a cluster, or credentials.
 It starts the selected distro, so do not request a production/unknown distro.
+
+On Windows the checker stages the exact Cargo-reported fixture executable with
+the pinned runtime in an isolated directory. It verifies the archive and member
+hashes; `CARGO_NET_OFFLINE=true` requires an already populated runtime cache.
+The application and package paths use the same preparation owner. Add
+`--inbox-conpty` to diagnose the older Windows transport with the same assertions;
+its short-pane cases can fail because wrap provenance has already been lost.
+The checker never places DLLs into Cargo's shared dependency directory.
 
 ```sh
 python tools/ci/check_inline_pipeline.py --bench --ready

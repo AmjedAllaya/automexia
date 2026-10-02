@@ -728,3 +728,11 @@ ordinary VT presentation. The [guide](user-guide/table-output.md) describes limi
 D0 follows ADR 0012: the terminal owns the local session and PTY while system
 OpenSSH owns networking, authentication, credentials, host trust, and proxy
 behavior. Optional discovery or review cannot become a second launch owner.
+
+## Non-executing SSH planning ownership
+
+`automexia-ssh-integration` is a private, effect-free planning library used by the
+read-only application CLI. Existing connectivity contracts, native launch review,
+PTY lifetime and VT framing remain authoritative. Its candidate shell resource
+is embedded once and does not create an execution capability. See
+[ADR 0080](adr/0080-nonexecuting-ssh-planning-boundary.md).

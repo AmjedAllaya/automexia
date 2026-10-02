@@ -1,4 +1,5 @@
 use super::*;
+use crate::{PackageStore, StoreErrorCode};
 use automexia_ecosystem::{SettingsMetadataError, SETTINGS_METADATA_ENTRY};
 const SETTINGS: &[u8] =
     include_bytes!("../../tests/fixtures/ecosystem/settings-metadata-v1.json");
@@ -16,6 +17,137 @@ fn signed_package_projects_its_declared_features_without_a_builtin_registry() {
     assert_eq!(metadata.document().features[0].id, "summary");
     assert_eq!(metadata.document().features[0].options.len(), 3);
     assert_eq!(verified.receipt.manifest.schema_version, 1);
+}
+
+#[test]
+fn committed_install_reopens_signed_settings_and_uninstall_removes_the_projection() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("ecosystem");
+    let verified = verify(&fixture_with(Some((
+        SETTINGS_METADATA_ENTRY,
+        SETTINGS,
+        0o100600,
+    ))))
+    .unwrap();
+    let mut store = PackageStore::open(&root).unwrap();
+    assert!(store
+        .committed_settings_snapshot()
+        .unwrap()
+        .packages
+        .is_empty());
+    store
+        .install_verified(&verified, 64 * 1024 * 1024, 100)
+        .unwrap();
+    let snapshot = store.committed_settings_snapshot().unwrap();
+    assert_eq!(snapshot.packages.len(), 1);
+    assert_eq!(snapshot.packages[0].extension_id, "example.inspect");
+    assert_eq!(
+        snapshot.packages[0]
+            .metadata
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .document()
+            .features[0]
+            .id,
+        "summary"
+    );
+    drop(store);
+    let mut store = PackageStore::open(&root).unwrap();
+    assert_eq!(
+        store.committed_settings_snapshot().unwrap().packages.len(),
+        1
+    );
+    store.uninstall("example.inspect").unwrap();
+    assert!(store
+        .committed_settings_snapshot()
+        .unwrap()
+        .packages
+        .is_empty());
+}
+
+#[test]
+fn invalid_optional_settings_remain_unavailable_after_install_and_restart() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("ecosystem");
+    let verified = verify(&fixture_with(Some((
+        SETTINGS_METADATA_ENTRY,
+        b"not JSON",
+        0o100600,
+    ))))
+    .unwrap();
+    let mut store = PackageStore::open(&root).unwrap();
+    store
+        .install_verified(&verified, 64 * 1024 * 1024, 100)
+        .unwrap();
+    drop(store);
+    let store = PackageStore::open(&root).unwrap();
+    let snapshot = store.committed_settings_snapshot().unwrap();
+    assert_eq!(snapshot.packages.len(), 1);
+    assert_eq!(
+        snapshot.packages[0].metadata,
+        Err(SettingsMetadataError::MalformedJson)
+    );
+}
+
+#[test]
+fn replaced_installed_settings_never_enter_the_committed_projection() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("ecosystem");
+    let verified = verify(&fixture_with(Some((
+        SETTINGS_METADATA_ENTRY,
+        SETTINGS,
+        0o100600,
+    ))))
+    .unwrap();
+    let mut store = PackageStore::open(&root).unwrap();
+    let installed = store
+        .install_verified(&verified, 64 * 1024 * 1024, 100)
+        .unwrap();
+    let path = root
+        .join("packages")
+        .join(&installed.extension_id)
+        .join(&installed.version)
+        .join(&installed.package_sha256)
+        .join(SETTINGS_METADATA_ENTRY);
+    let mut changed = SETTINGS.to_vec();
+    changed[0] = b' ';
+    std::fs::write(path, changed).unwrap();
+    assert_eq!(
+        store.committed_settings_snapshot().unwrap_err().code,
+        StoreErrorCode::UnsafeReceipt
+    );
+}
+
+#[test]
+fn altered_installed_receipt_identity_never_enters_the_committed_projection() {
+    let temporary = tempfile::tempdir().unwrap();
+    let root = temporary.path().join("ecosystem");
+    let verified = verify(&fixture_with(Some((
+        SETTINGS_METADATA_ENTRY,
+        SETTINGS,
+        0o100600,
+    ))))
+    .unwrap();
+    let mut store = PackageStore::open(&root).unwrap();
+    let installed = store
+        .install_verified(&verified, 64 * 1024 * 1024, 100)
+        .unwrap();
+    let path = root
+        .join("packages")
+        .join(&installed.extension_id)
+        .join(&installed.version)
+        .join(&installed.package_sha256)
+        .join("verification-receipt.json");
+    let mut receipt: serde_json::Value =
+        serde_json::from_slice(&std::fs::read(&path).unwrap()).unwrap();
+    receipt["publisher_id"] = serde_json::Value::String("other.publisher".into());
+    std::fs::write(path, serde_json::to_vec(&receipt).unwrap()).unwrap();
+    assert_eq!(
+        store.committed_settings_snapshot().unwrap_err().code,
+        StoreErrorCode::UnsafeReceipt
+    );
 }
 #[test]
 fn invalid_optional_metadata_is_typed_unavailable_but_package_stays_verified() {

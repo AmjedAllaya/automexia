@@ -164,6 +164,76 @@ fn isolated_context_fixture_child() {
     );
     let selected = root.join("selected");
     let mut session = facts(&selected, &root.join("work"));
+    if mode == "mutations" {
+        let before = detect(&session);
+        write(
+            &selected,
+            ".docker/config.json",
+            r#"{"currentContext":"next-docker"}"#,
+        );
+        write(
+            &selected,
+            ".aws/config",
+            "[default]\nregion = next-region\n",
+        );
+        write(
+            &selected,
+            ".azure/azureProfile.json",
+            r#"{"subscriptions":[{"isDefault":true,"environmentName":"AzureCloud","name":"next-subscription"}]}"#,
+        );
+        write(
+            &selected,
+            ".config/gcloud/configurations/config_next",
+            "[core]\nproject = next-project\n[compute]\nregion = next-region\n",
+        );
+        write(&selected, ".config/gcloud/active_config", "next");
+        write(
+            &root.join("work"),
+            ".terraform/environment",
+            "next-workspace\n",
+        );
+        write(
+            &root.join("work"),
+            ".git/HEAD",
+            "ref: refs/heads/next-branch\n",
+        );
+        let after = detect(&session);
+        assert_eq!(after.docker.as_deref(), Some("next-docker"));
+        assert_eq!(after.terraform.as_deref(), Some("next-workspace"));
+        assert_eq!(after.git_branch.as_deref(), Some("next-branch"));
+        assert_ne!(before.clouds, after.clouds);
+        for (provider, profile, region) in [
+            ("AWS", "default", "next-region"),
+            ("Azure", "next-subscription", ""),
+            ("GCP", "next-project", "next-region"),
+        ] {
+            let cloud = after
+                .clouds
+                .iter()
+                .find(|cloud| cloud.provider == provider)
+                .expect(provider);
+            assert_eq!((&*cloud.profile, &*cloud.region), (profile, region));
+        }
+        for path in [
+            ".aws/config",
+            ".azure/azureProfile.json",
+            ".config/gcloud/configurations/config_next",
+        ] {
+            std::fs::remove_file(selected.join(path)).unwrap();
+        }
+        std::fs::remove_file(root.join("work/.terraform/environment")).unwrap();
+        std::fs::remove_file(root.join("work/.git/HEAD")).unwrap();
+        let removed = detect(&session);
+        assert!(
+            removed.clouds.is_empty(),
+            "removed provider files must not retain cloud badges"
+        );
+        assert!(removed.git_branch.is_none());
+        // A remaining Terraform project directory still identifies its
+        // default workspace, rather than preserving the deleted selection.
+        assert_ne!(removed.terraform.as_deref(), Some("next-workspace"));
+        return;
+    }
     if let Some(selection) = mode.strip_prefix("kube-locations-") {
         match selection {
             "partial-home" => {
@@ -412,4 +482,43 @@ fn windows_default_kubeconfig_matches_native_home_precedence() {
 #[test]
 fn unselected_kubeconfig_does_not_claim_an_active_cluster() {
     isolated_fixture("no-current");
+}
+
+#[test]
+fn git_only_scope_tracks_branch_without_reading_other_local_context() {
+    let temporary = tempfile::tempdir().unwrap();
+    let home = temporary.path().join("home");
+    let project = temporary.path().join("project");
+    std::fs::create_dir_all(&home).unwrap();
+    write(&project, ".git/HEAD", "ref: refs/heads/fixture-one\n");
+    write(&project, ".terraform/environment", "staging\n");
+    let session = facts(&home, &project);
+
+    let git_only = automexia_devops::detect_git_only(&session);
+    assert_eq!(git_only.git_branch.as_deref(), Some("fixture-one"));
+    assert!(git_only.kubernetes.is_none());
+    assert!(git_only.terraform.is_none());
+    assert!(git_only.docker.is_none());
+    assert!(git_only.clouds.is_empty());
+
+    let devops_only = automexia_devops::detect_with_git(&session, false);
+    assert!(devops_only.git_branch.is_none());
+    assert_eq!(devops_only.terraform.as_deref(), Some("staging"));
+
+    write(&project, ".git/HEAD", "ref: refs/heads/fixture-two\n");
+    assert_eq!(
+        automexia_devops::detect_git_only(&session)
+            .git_branch
+            .as_deref(),
+        Some("fixture-two")
+    );
+    let outside = facts(&home, &temporary.path().join("outside"));
+    assert!(automexia_devops::detect_git_only(&outside)
+        .git_branch
+        .is_none());
+}
+
+#[test]
+fn native_file_context_changes_are_seen_by_the_next_refresh() {
+    isolated_fixture("mutations");
 }

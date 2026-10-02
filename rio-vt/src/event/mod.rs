@@ -88,10 +88,39 @@ pub enum Msg {
     /// Data that should be written to the PTY.
     Input(Cow<'static, [u8]>),
 
+    /// Paste text whose terminal-mode-dependent encoding belongs to this PTY worker.
+    Paste(PasteRequest),
+
     #[allow(dead_code)]
     Shutdown,
 
     Resize(WindowSize),
+}
+
+/// One bounded, route-owned paste. It is consumed by the receiving PTY worker.
+#[derive(Debug)]
+pub struct PasteRequest {
+    pub(crate) text: String,
+    pub(crate) bracketed: bool,
+}
+
+impl PasteRequest {
+    pub const MAX_BYTES: usize = 1024 * 1024;
+
+    pub fn new(text: &str, bracketed: bool) -> Option<Self> {
+        (text.len() <= Self::MAX_BYTES).then(|| Self {
+            text: text.to_owned(),
+            bracketed,
+        })
+    }
+
+    pub fn text(&self) -> &str {
+        &self.text
+    }
+
+    pub fn is_bracketed_request(&self) -> bool {
+        self.bracketed
+    }
 }
 
 #[derive(Debug, Eq, PartialEq)]
@@ -179,6 +208,7 @@ pub enum RioEvent {
     /// Notification only: the application retains the bounded edit request.
     ApplyShortcutEdit,
     OpenSettings,
+    OpenCustomizations,
     ExtensionInventoryChanged,
     PreferencesWritten,
     Scroll(Scroll),
@@ -387,6 +417,7 @@ impl Debug for RioEvent {
             RioEvent::UpdateTitles => write!(f, "UpdateTitles"),
             RioEvent::ApplyShortcutEdit => write!(f, "ApplyShortcutEdit"),
             RioEvent::OpenSettings => write!(f, "OpenSettings"),
+            RioEvent::OpenCustomizations => write!(f, "OpenCustomizations"),
             RioEvent::ExtensionInventoryChanged => write!(f, "ExtensionInventoryChanged"),
             RioEvent::PreferencesWritten => write!(f, "PreferencesWritten"),
             RioEvent::Noop => write!(f, "Noop"),

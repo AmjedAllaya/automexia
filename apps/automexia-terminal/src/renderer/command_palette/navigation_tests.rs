@@ -11,6 +11,10 @@ fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
         let mut palette = CommandPalette::new();
         palette.set_effective_bindings(&bindings, None);
         for command in COMMANDS {
+            if command.action == PaletteAction::OpenCustomizations {
+                assert_eq!(palette.command_shortcut(command), "Enter");
+                continue;
+            }
             // Inspect the actual dispatch table: an Enter fallback must not
             // conceal a missing default or a mode-only shortcut.
             assert!(
@@ -484,7 +488,7 @@ fn categories_cover_every_enabled_command_once_and_back_restores_root() {
         palette.has_adaptive_theme = adaptive;
         palette.set_enabled(true);
         let mut seen = Vec::new();
-        for index in 0..6 {
+        for index in 0..Category::ALL.len() {
             palette.selected_index = index;
             assert!(press(
                 &mut palette,
@@ -618,7 +622,10 @@ fn semantics_follow_scope_without_exporting_query_or_external_item_text() {
     assert!(palette
         .accessibility_summary()
         .unwrap()
-        .starts_with("Command categories; 6 results; selected 1"));
+        .starts_with(&format!(
+            "Command categories; {} results; selected 1",
+            Category::ALL.len()
+        )));
     palette.selected_index = 1;
     palette.activate_navigation();
     assert!(palette
@@ -645,7 +652,7 @@ fn category_names_search_actions_and_navigation_has_no_executable_authority() {
     assert!(rows
         .iter()
         .any(|(_, row)| row.action() == Some(PaletteAction::IncreaseFontSize)));
-    for index in 0..6 {
+    for index in 0..Category::ALL.len() {
         palette.set_enabled(true);
         palette.selected_index = index;
         assert_eq!(palette.get_selected_action(), None);
@@ -843,4 +850,242 @@ fn f2_enters_shortcut_editing_without_executing_the_selected_command() {
     ));
     assert!(palette.is_enabled());
     assert_eq!(palette.query, "Clone Active Session Right");
+}
+
+#[test]
+fn customizations_category_keyboard_routes_visual_controls_and_keeps_back_safe() {
+    for key in [NamedKey::Enter, NamedKey::ArrowRight] {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        let category_index = palette
+            .filtered_rows()
+            .iter()
+            .position(|(_, row)| row.title() == "Customizations")
+            .expect("Customizations is discoverable in the actual root menu");
+        for _ in 0..category_index {
+            palette.move_selection_down();
+        }
+        assert_eq!(palette.get_selected_action(), None);
+        assert!(press(&mut palette, key, ModifiersState::empty()));
+        let actions: Vec<_> = palette
+            .filtered_rows()
+            .iter()
+            .filter_map(|(_, row)| row.action())
+            .collect();
+        assert_eq!(actions, [PaletteAction::OpenCustomizations]);
+        assert_eq!(palette.filtered_rows()[0].1.title(), "Back to categories");
+        assert_eq!(
+            palette.get_selected_action(),
+            Some(PaletteAction::OpenCustomizations)
+        );
+        assert_eq!(
+            legacy_binding_target(PaletteAction::OpenCustomizations),
+            crate::bindings::Action::OpenCustomizations,
+        );
+        for _ in 0..8 {
+            assert!(palette.handle_navigation_key(
+                &Key::Named(NamedKey::Enter),
+                ModifiersState::empty(),
+                true,
+            ));
+            assert!(palette.is_enabled());
+            assert_eq!(
+                palette.get_selected_action(),
+                Some(PaletteAction::OpenCustomizations)
+            );
+        }
+        // Only a fresh explicit activation reaches the existing application action.
+        assert!(!press(
+            &mut palette,
+            NamedKey::Enter,
+            ModifiersState::empty()
+        ));
+        assert!(press(
+            &mut palette,
+            NamedKey::ArrowLeft,
+            ModifiersState::ALT
+        ));
+        assert_eq!(palette.selected_index, category_index);
+        assert_eq!(palette.get_selected_action(), None);
+        assert!(palette.is_enabled());
+    }
+}
+
+#[test]
+fn customizations_category_search_keeps_one_visual_preferences_entry() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    // Search remains global from another category as well as from the root.
+    palette.selected_index = 0;
+    assert!(palette.activate_navigation());
+    palette.set_query("customizations".into());
+    let actions: Vec<_> = palette
+        .filtered_rows()
+        .iter()
+        .filter_map(|(_, row)| row.action())
+        .collect();
+    assert_eq!(actions, [PaletteAction::OpenCustomizations]);
+    assert_eq!(
+        palette.get_selected_action(),
+        Some(PaletteAction::OpenCustomizations)
+    );
+    assert!(!palette.activate_navigation());
+    palette.set_query("customizations-no-such-setting".into());
+    assert_eq!(palette.get_selected_action(), None);
+    assert!(!palette.activate_navigation());
+    assert!(palette.is_enabled());
+    palette.set_query(String::new());
+    assert_eq!(palette.category, Some(Category::Tabs));
+    assert!(palette.go_back());
+    palette.set_query("settings".into());
+    assert_eq!(palette.get_selected_action(), None);
+}
+
+#[test]
+fn customizations_category_pointer_routes_settings_after_scroll_and_resize() {
+    for (width, height, scale) in [
+        (1280.0, 800.0, 1.0),
+        (640.0, 480.0, 1.0),
+        (1920.0, 1080.0, 3.0),
+        (640.0, 520.0, 2.0),
+    ] {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        let category_index = palette
+            .filtered_rows()
+            .iter()
+            .position(|(_, row)| row.title() == "Customizations")
+            .expect("Customizations is reachable by pointer in the actual root menu");
+        let (_, _, _, _, visible) = palette.palette_rect(width, height, scale);
+        palette.visible_results = visible;
+        palette.scroll_line_delta(-(category_index as f32));
+        let (x, y, _, _, visible) = palette.palette_rect(width, height, scale);
+        let offset = bounded_scroll_offset(
+            palette.filtered_rows().len(),
+            visible,
+            palette.scroll_offset,
+        );
+        let row_y = y
+            + PALETTE_PADDING
+            + INPUT_HEIGHT
+            + SEPARATOR_HEIGHT
+            + RESULTS_MARGIN_TOP
+            + (category_index - offset) as f32 * RESULT_ITEM_HEIGHT
+            + RESULT_ITEM_HEIGHT / 2.0;
+        assert_eq!(
+            palette.hit_test(x + 40.0, row_y, width, height, scale),
+            Ok(Some(category_index))
+        );
+        palette.hover(x + 40.0, row_y, width, height, scale);
+        assert_eq!(palette.selected_index, category_index);
+        assert_eq!(palette.get_selected_action(), None);
+        assert!(palette.activate_navigation());
+
+        let (width, height) = (width * 0.8, height * 0.8);
+        let settings_index = palette
+            .filtered_rows()
+            .iter()
+            .position(|(_, row)| row.action() == Some(PaletteAction::OpenCustomizations))
+            .expect("Customizations routes to visual controls");
+        let (_, _, _, _, visible) = palette.palette_rect(width, height, scale);
+        palette.visible_results = visible;
+        palette.scroll_line_delta(-(settings_index as f32));
+        let (x, y, _, _, visible) = palette.palette_rect(width, height, scale);
+        let offset = bounded_scroll_offset(
+            palette.filtered_rows().len(),
+            visible,
+            palette.scroll_offset,
+        );
+        let row_y = y
+            + PALETTE_PADDING
+            + INPUT_HEIGHT
+            + SEPARATOR_HEIGHT
+            + RESULTS_MARGIN_TOP
+            + (settings_index - offset) as f32 * RESULT_ITEM_HEIGHT
+            + RESULT_ITEM_HEIGHT / 2.0;
+        assert_eq!(
+            palette.hit_test(x + 40.0, row_y, width, height, scale),
+            Ok(Some(settings_index))
+        );
+        palette.hover(x + 40.0, row_y, width, height, scale);
+        assert_eq!(
+            palette.get_selected_action(),
+            Some(PaletteAction::OpenCustomizations)
+        );
+        assert!(!palette.activate_navigation());
+        let [back_x, back_y, back_w, back_h] =
+            palette.back_button_rect((width, height, scale)).unwrap();
+        assert!(palette.try_back_click(
+            back_x + back_w / 2.0,
+            back_y + back_h / 2.0,
+            (width, height, scale)
+        ));
+        assert_eq!(palette.selected_index, category_index);
+        assert_eq!(palette.get_selected_action(), None);
+    }
+}
+
+#[test]
+fn visual_preferences_have_no_duplicate_settings_category() {
+    for (width, height, scale) in [(1280.0, 800.0, 1.0), (640.0, 520.0, 2.0)] {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        assert!(!palette
+            .filtered_rows()
+            .iter()
+            .any(|(_, row)| row.title() == "Settings"));
+        let category_index = palette
+            .filtered_rows()
+            .iter()
+            .position(|(_, row)| row.title() == "Customizations")
+            .unwrap();
+        let (_, _, _, _, visible) = palette.palette_rect(width, height, scale);
+        palette.visible_results = visible;
+        palette.scroll_line_delta(-(category_index as f32));
+        let (x, y, _, _, visible) = palette.palette_rect(width, height, scale);
+        let offset = bounded_scroll_offset(
+            palette.filtered_rows().len(),
+            visible,
+            palette.scroll_offset,
+        );
+        let row_y = y
+            + PALETTE_PADDING
+            + INPUT_HEIGHT
+            + SEPARATOR_HEIGHT
+            + RESULTS_MARGIN_TOP
+            + (category_index - offset) as f32 * RESULT_ITEM_HEIGHT
+            + RESULT_ITEM_HEIGHT / 2.0;
+        assert_eq!(
+            palette.hit_test(x + 40.0, row_y, width, height, scale),
+            Ok(Some(category_index))
+        );
+        palette.hover(x + 40.0, row_y, width, height, scale);
+        assert!(palette.activate_navigation());
+        let actions: Vec<_> = palette
+            .filtered_rows()
+            .iter()
+            .filter_map(|(_, row)| row.action())
+            .collect();
+        assert_eq!(actions, [PaletteAction::OpenCustomizations]);
+        assert_eq!(
+            palette.get_selected_action(),
+            Some(PaletteAction::OpenCustomizations)
+        );
+        assert!(!press(
+            &mut palette,
+            NamedKey::Enter,
+            ModifiersState::empty()
+        ));
+        assert!(palette.go_back());
+        assert_eq!(palette.selected_index, category_index);
+        assert!(press(
+            &mut palette,
+            NamedKey::Enter,
+            ModifiersState::empty()
+        ));
+        assert_eq!(
+            palette.get_selected_action(),
+            Some(PaletteAction::OpenCustomizations)
+        );
+    }
 }

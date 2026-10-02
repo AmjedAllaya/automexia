@@ -111,11 +111,77 @@ __automexia_publish_location_hints() {
   printf '%s' "${__automexia_config_frame:-$'\e]1337;SetUserVar=automexia_env_KUBECONFIG=\a'}"
 }
 
+# Only public, non-path selectors cross this prompt frame. The Docker endpoint
+# is reduced to one presence bit; credentials and provider paths never cross.
+__automexia_selector_exported() {
+  local name=$1 attributes
+  if (( BASH_VERSINFO[0] > 4 || (BASH_VERSINFO[0] == 4 && BASH_VERSINFO[1] >= 4) )); then
+    [[ -v $name ]] || return 1
+    case $name in
+      DOCKER_CONTEXT) [[ ${DOCKER_CONTEXT@a} == *x* ]] ;;
+      DOCKER_HOST) [[ ${DOCKER_HOST@a} == *x* ]] ;;
+      AWS_PROFILE) [[ ${AWS_PROFILE@a} == *x* ]] ;;
+      AWS_DEFAULT_PROFILE) [[ ${AWS_DEFAULT_PROFILE@a} == *x* ]] ;;
+      AWS_REGION) [[ ${AWS_REGION@a} == *x* ]] ;;
+      AWS_DEFAULT_REGION) [[ ${AWS_DEFAULT_REGION@a} == *x* ]] ;;
+      AZURE_CLOUD_NAME) [[ ${AZURE_CLOUD_NAME@a} == *x* ]] ;;
+      CLOUDSDK_ACTIVE_CONFIG_NAME) [[ ${CLOUDSDK_ACTIVE_CONFIG_NAME@a} == *x* ]] ;;
+      CLOUDSDK_CORE_PROJECT) [[ ${CLOUDSDK_CORE_PROJECT@a} == *x* ]] ;;
+      CLOUDSDK_COMPUTE_REGION) [[ ${CLOUDSDK_COMPUTE_REGION@a} == *x* ]] ;;
+      TF_WORKSPACE) [[ ${TF_WORKSPACE@a} == *x* ]] ;;
+      AUTOMEXIA_ENV) [[ ${AUTOMEXIA_ENV@a} == *x* ]] ;;
+      ENVIRONMENT) [[ ${ENVIRONMENT@a} == *x* ]] ;;
+      APP_ENV) [[ ${APP_ENV@a} == *x* ]] ;;
+      NODE_ENV) [[ ${NODE_ENV@a} == *x* ]] ;;
+      *) return 1 ;;
+    esac
+  else
+    # Bash 3.2 has no attribute expansion. Inspect only nonempty candidates.
+    attributes=$(declare -p "$name" 2>/dev/null) || return 1
+    [[ $attributes == 'declare -'*x*' '* ]]
+  fi
+}
+
+__automexia_selector_values=()
+__automexia_selector_frames=()
+__automexia_selector_ready=0
+__automexia_publish_selector_hints() {
+  local LC_ALL=C name value frame index
+  local names=(DOCKER_CONTEXT DOCKER_HOST_PRESENT AWS_PROFILE AWS_DEFAULT_PROFILE AWS_REGION AWS_DEFAULT_REGION AZURE_CLOUD_NAME CLOUDSDK_ACTIVE_CONFIG_NAME CLOUDSDK_CORE_PROJECT CLOUDSDK_COMPUTE_REGION TF_WORKSPACE AUTOMEXIA_ENV ENVIRONMENT APP_ENV NODE_ENV)
+  for index in "${!names[@]}"; do
+    name=${names[index]}
+    value=''
+    if [[ $name == DOCKER_HOST_PRESENT ]]; then
+      value=0
+      if [[ -n ${DOCKER_HOST:-} ]] && __automexia_selector_exported DOCKER_HOST; then
+        value=1
+      fi
+    elif __automexia_selector_exported "$name"; then
+      value=${!name:-}
+    fi
+    if [[ ${#value} -gt 256 || $value == *[[:cntrl:]]* ]]; then
+      value=''
+    fi
+    if [[ ${__automexia_selector_ready:-0} != 1 ||
+          $value != "${__automexia_selector_values[index]-}" ]]; then
+      __automexia_selector_values[index]=$value
+      frame=$(__automexia_set_user_var "automexia_env_$name" "$value")
+      if [[ -z $frame ]]; then
+        printf -v frame '\e]1337;SetUserVar=automexia_env_%s=\a' "$name"
+      fi
+      __automexia_selector_frames[index]=$frame
+    fi
+    printf '%s' "${__automexia_selector_frames[index]}"
+  done
+  __automexia_selector_ready=1
+}
+
 # Startup uses the same complete metadata transaction as prompt replay. The
 # cached identity and locations stay together even if the PTY splits the bytes.
 printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
 printf '%s' "$__automexia_identity_frame"
 __automexia_publish_location_hints
+__automexia_publish_selector_hints
 printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
 
 # Match the liquid-hacker reference experience without parsing or rewriting
@@ -244,6 +310,7 @@ __automexia_pre_prompt() {
   printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
   printf '%s' "$__automexia_identity_frame"
   __automexia_publish_location_hints
+  __automexia_publish_selector_hints
   printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
   printf '\e[0m\e]133;D;%s\a' "$status"
   __automexia_osc7
@@ -294,7 +361,7 @@ esac
 
 # Readline owns only the short lambda/input row. The path was already emitted
 # by `__automexia_pre_prompt` as terminal-owned content.
-PS1='\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]\[\e[38;2;238;247;242m\]'
+PS1='\[\e[38;2;97;231;255m\]'$'\xCE\xBB''\[\e[0m\] \[\e]133;B\a\]'
 # shellcheck disable=SC2016 # Readline evaluates the arithmetic at prompt time.
 PS0='\[\e[0;$((__automexia_prompt_is_active=0))m\]\[\e]1337;SetUserVar=automexia_prompt_active=MA==\a\]\[\e]133;C\a\]'
 

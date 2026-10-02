@@ -9,23 +9,37 @@ use std::time::{Duration, Instant};
 use std::time::{SystemTime, UNIX_EPOCH};
 
 use automexia_extension_api::{
-    BoundedText, ContextContribution, Freshness, OperationId, SemanticSeverity,
-    SessionFacts, SessionId,
+    BoundedText, Capability, ContextContribution, ExtensionManifest, Freshness,
+    OperationId, SessionFacts, SessionId,
 };
 pub use automexia_extension_runtime::RefreshSubmission;
 use automexia_extension_runtime::{
-    BoundedCache, BoundedWorker, CacheKey, CancellationToken, CompletionWake, Generation,
+    session_facts_bounded, BoundedCache, BoundedWorker, CacheKey, CancellationToken,
+    CompletionWake, Generation, PassiveManifestAdmission,
 };
 
 use super::builtins::devops::{self, DevOpsSnapshot};
+use super::kubernetes_probe::ProbeBroker;
 use super::marketplace::{self, MarketItem};
 use super::state;
 
+static RUNTIME: OnceLock<RwLock<RuntimeState>> = OnceLock::new();
 static ACTIVATION_GENERATION: Generation = Generation::new(1);
 static DEVOPS_GENERATION: Generation = Generation::new(1);
 static DEVOPS_COMPLETION_COUNTER: Generation = Generation::new(1);
 static OPERATION_COUNTER: AtomicU32 = AtomicU32::new(1);
 const DEVOPS_CONTEXT_CACHE_LIMIT: usize = 32;
+
+/// An installed marker is not a grant. The live prompt may call only the
+/// reviewed local-read DevOps provider, never a separately installed extension
+/// whose manifest requests process, session-launch, clipboard or network I/O.
+fn passive_discovery_manifest(manifest: &ExtensionManifest) -> bool {
+    const REVIEWED: PassiveManifestAdmission<'static> = PassiveManifestAdmission::new(
+        devops::ID,
+        &[Capability::FilesystemRead, Capability::EnvironmentRead],
+    );
+    REVIEWED.admits(manifest)
+}
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ContextStatusError {
@@ -69,17 +83,33 @@ struct CapsuleState {
     revision: u64,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+struct DiscoveryScope {
+    devops: bool,
+    git: bool,
+}
+
+impl DiscoveryScope {
+    fn any(self) -> bool {
+        self.devops || self.git
+    }
+}
+
 #[derive(Debug)]
 struct RuntimeState {
     installed: BTreeSet<String>,
     context_status_preference: bool,
+    git_status_preference: bool,
     context_revision: u64,
     inventory_status: InventoryStatus,
     inventory_revision: u64,
     inventory_cancellation: Option<CancellationToken>,
     stopping: bool,
     devops_snapshots: BoundedCache<CacheKey, DevOpsCacheEntry>,
+    namespace_probes: ProbeBroker,
     capsules: BTreeMap<usize, CapsuleState>,
+    /// Unique checked leases survive route retirement without retained tombstones.
+    capsule_clock: u64,
     pending: BTreeMap<usize, (OperationId, CancellationToken)>,
 }
 
@@ -88,13 +118,16 @@ impl RuntimeState {
         Self {
             installed: BTreeSet::new(),
             context_status_preference: true,
+            git_status_preference: true,
             context_revision: 1,
             inventory_status: InventoryStatus::Uninitialized,
             inventory_revision: 0,
             inventory_cancellation: None,
             stopping: false,
             devops_snapshots: BoundedCache::new(DEVOPS_CONTEXT_CACHE_LIMIT),
+            namespace_probes: ProbeBroker::default(),
             capsules: BTreeMap::new(),
+            capsule_clock: 0,
             pending: BTreeMap::new(),
         }
     }
@@ -108,23 +141,83 @@ impl RuntimeState {
         }
         let Some(revision) = self.context_revision.checked_add(1) else {
             self.context_status_preference = false;
+            self.git_status_preference = false;
             self.clear_context();
             return Err(ContextStatusError::RevisionExhausted);
         };
         self.context_revision = revision;
         self.context_status_preference = enabled;
-        if !enabled {
-            self.clear_context();
-        }
+        self.clear_context();
         Ok(true)
     }
 
-    fn invalidate_devops_session(&mut self, _session_id: usize) -> bool {
-        false
+    fn set_git_status_enabled(
+        &mut self,
+        enabled: bool,
+    ) -> Result<bool, ContextStatusError> {
+        if self.git_status_preference == enabled {
+            return Ok(false);
+        }
+        let Some(revision) = self.context_revision.checked_add(1) else {
+            self.context_status_preference = false;
+            self.git_status_preference = false;
+            self.clear_context();
+            return Err(ContextStatusError::RevisionExhausted);
+        };
+        self.context_revision = revision;
+        self.git_status_preference = enabled;
+        self.clear_context();
+        Ok(true)
+    }
+
+    fn invalidate_devops_session(&mut self, session_id: usize) -> bool {
+        let previous = self
+            .capsules
+            .get(&session_id)
+            .map(|capsule| capsule.revision);
+        if let Some(previous) = previous.filter(|revision| *revision != 0) {
+            let next = if previous == u64::MAX {
+                0
+            } else {
+                self.next_capsule_revision()
+            };
+            if let Some(capsule) = self.capsules.get_mut(&session_id) {
+                capsule.revision = next;
+            }
+        }
+        self.clear_devops_work(session_id)
+            || previous.is_some_and(|revision| revision != 0)
+    }
+
+    fn retire_devops_session(&mut self, session_id: usize) -> bool {
+        let removed = self.capsules.remove(&session_id).is_some();
+        self.clear_devops_work(session_id) || removed
+    }
+
+    fn clear_devops_work(&mut self, session_id: usize) -> bool {
+        self.namespace_probes.revoke(session_id);
+        let mut changed = false;
+        if let Some((_, token)) = self.pending.remove(&session_id) {
+            token.cancel();
+            changed = true;
+        }
+        let before = self.devops_snapshots.len();
+        let id = SessionId::new(session_id as u64);
+        self.devops_snapshots.retain(|key, _| key.session_id != id);
+        changed || before != self.devops_snapshots.len()
+    }
+
+    fn next_capsule_revision(&mut self) -> u64 {
+        let Some(next) = self.capsule_clock.checked_add(1) else {
+            return 0;
+        };
+        self.capsule_clock = next;
+        next
     }
 
     fn clear_context(&mut self) {
         self.cancel_all();
+        self.namespace_probes.clear();
         self.devops_snapshots.clear();
         self.capsules.clear();
     }
@@ -133,21 +226,35 @@ impl RuntimeState {
         self.clear_context();
         let Some(revision) = self.context_revision.checked_add(1) else {
             self.context_status_preference = false;
+            self.git_status_preference = false;
             return Err(ContextStatusError::RevisionExhausted);
         };
         self.context_revision = revision;
         Ok(())
     }
 
-    fn context_status_enabled(&self) -> bool {
-        !self.stopping
+    fn discovery_scope(&self) -> DiscoveryScope {
+        let admitted = !self.stopping
             && self.inventory_status == InventoryStatus::Ready
-            && self.context_status_preference
             && self.installed.contains(devops::ID)
+            && passive_discovery_manifest(&devops::MANIFEST);
+        DiscoveryScope {
+            devops: admitted && self.context_status_preference,
+            git: admitted && self.git_status_preference,
+        }
+    }
+
+    fn context_status_enabled(&self) -> bool {
+        self.discovery_scope().devops
+    }
+
+    fn git_status_enabled(&self) -> bool {
+        self.discovery_scope().git
     }
 
     fn accepts_refresh(&self, request: &RefreshRequest) -> bool {
-        self.context_status_enabled()
+        request.scope.any()
+            && self.discovery_scope() == request.scope
             && self.context_revision == request.context_revision
             && !request.cancellation.is_cancelled()
             && self.accepts(
@@ -165,7 +272,8 @@ impl RuntimeState {
         context_revision: u64,
         cancellation: CancellationToken,
     ) -> bool {
-        if !self.context_status_enabled()
+        if capsule_revision == 0
+            || !self.discovery_scope().any()
             || self.context_revision != context_revision
             || cancellation.is_cancelled()
             || self
@@ -176,8 +284,7 @@ impl RuntimeState {
             cancellation.cancel();
             return false;
         }
-        self.register_operation(session_id, operation_id, cancellation);
-        true
+        self.register_operation(session_id, operation_id, cancellation)
     }
 
     fn begin_inventory(&mut self, cancellation: CancellationToken) -> Option<u64> {
@@ -264,33 +371,31 @@ impl RuntimeState {
     }
 
     fn capsule_revision(&mut self, session: &SessionFacts) -> u64 {
-        match self.capsules.get_mut(&session.session_id) {
-            Some(capsule) if same_devops_context(&capsule.session, session) => {
-                capsule.revision
+        if let Some(capsule) = self.capsules.get(&session.session_id) {
+            if capsule.revision == 0 || same_devops_context(&capsule.session, session) {
+                return capsule.revision;
             }
-            Some(capsule) => {
-                capsule.revision = capsule.revision.wrapping_add(1).max(1);
-                capsule.session = session.clone();
-                let revision = capsule.revision;
-                if let Some((_, token)) = self.pending.remove(&session.session_id) {
-                    token.cancel();
-                }
-                let session_id = SessionId::new(session.session_id as u64);
-                self.devops_snapshots
-                    .retain(|key, _| key.session_id != session_id);
-                revision
-            }
-            None => {
-                self.capsules.insert(
-                    session.session_id,
-                    CapsuleState {
-                        session: session.clone(),
-                        revision: 1,
-                    },
-                );
-                1
-            }
+        } else if self.capsules.len()
+            >= rio_backend::performer::PtyWorkerRegistry::CAPACITY
+        {
+            // Preserve every live lease. Optional discovery safely degrades when
+            // its session ceiling is full instead of evicting another route.
+            return 0;
         }
+        let revision = self.next_capsule_revision();
+        if revision == 0 {
+            self.invalidate_devops_session(session.session_id);
+            return 0;
+        }
+        self.clear_devops_work(session.session_id);
+        self.capsules.insert(
+            session.session_id,
+            CapsuleState {
+                session: session.clone(),
+                revision,
+            },
+        );
+        revision
     }
 
     fn accepts(
@@ -299,9 +404,11 @@ impl RuntimeState {
         operation_id: OperationId,
         capsule_revision: u64,
     ) -> bool {
-        self.capsules
-            .get(&session_id)
-            .is_some_and(|capsule| capsule.revision == capsule_revision)
+        capsule_revision != 0
+            && self
+                .capsules
+                .get(&session_id)
+                .is_some_and(|capsule| capsule.revision == capsule_revision)
             && self
                 .pending
                 .get(&session_id)
@@ -323,12 +430,24 @@ impl RuntimeState {
         session_id: usize,
         operation_id: OperationId,
         token: CancellationToken,
-    ) {
+    ) -> bool {
+        if self
+            .capsules
+            .get(&session_id)
+            .is_none_or(|capsule| capsule.revision == 0)
+            || (!self.pending.contains_key(&session_id)
+                && self.pending.len()
+                    >= rio_backend::performer::PtyWorkerRegistry::CAPACITY)
+        {
+            token.cancel();
+            return false;
+        }
         if let Some((_, previous)) =
             self.pending.insert(session_id, (operation_id, token))
         {
             previous.cancel();
         }
+        true
     }
 
     fn cancel_all(&mut self) {
@@ -376,7 +495,6 @@ pub fn same_devops_context(left: &SessionFacts, right: &SessionFacts) -> bool {
 }
 
 fn runtime() -> &'static RwLock<RuntimeState> {
-    static RUNTIME: OnceLock<RwLock<RuntimeState>> = OnceLock::new();
     RUNTIME.get_or_init(|| RwLock::new(RuntimeState::new()))
 }
 
@@ -435,11 +553,6 @@ pub fn generation() -> u32 {
     ACTIVATION_GENERATION.current()
 }
 
-/// Cached membership only: this does not initialize filesystem state or workers.
-pub fn output_highlighting_available() -> bool {
-    is_installed(devops::ID)
-}
-
 pub fn inventory_status() -> InventoryStatus {
     read_runtime().inventory_status
 }
@@ -490,6 +603,20 @@ pub fn context_status_enabled() -> bool {
     read_runtime().context_status_enabled()
 }
 
+/// The Git branch is a separate local-read feature of the installed DevOps package.
+pub fn set_git_status_enabled(enabled: bool) -> Result<bool, ContextStatusError> {
+    let result = write_runtime().set_git_status_enabled(enabled);
+    if !matches!(result, Ok(false)) {
+        DEVOPS_GENERATION.advance();
+        ACTIVATION_GENERATION.advance();
+    }
+    result
+}
+
+pub fn git_status_enabled() -> bool {
+    read_runtime().git_status_enabled()
+}
+
 pub fn is_installed(id: &str) -> bool {
     let runtime = read_runtime();
     !runtime.stopping
@@ -529,7 +656,7 @@ pub fn toggle(id: &str) -> Result<bool, String> {
     if cleared_devops {
         DEVOPS_GENERATION.advance();
     }
-    if next && id == devops::ID && context_status_enabled() {
+    if next && id == devops::ID && read_runtime().discovery_scope().any() {
         ensure_background_services();
     }
     ACTIVATION_GENERATION.advance();
@@ -549,8 +676,34 @@ pub fn market_items() -> Vec<MarketItem> {
         .collect()
 }
 
-pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
-    devops::classify_row_text(text)
+/// Remove optional discovery state only when the service already exists.
+/// Called by the actual session owner; it never starts services or joins work.
+#[doc(hidden)]
+pub fn retire_devops_session(session_id: usize) {
+    let Some(runtime) = RUNTIME.get() else {
+        return;
+    };
+    let changed = runtime
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .retire_devops_session(session_id);
+    if changed {
+        DEVOPS_GENERATION.advance();
+    }
+}
+
+#[doc(hidden)]
+pub fn invalidate_devops_session(session_id: usize) {
+    let Some(runtime) = RUNTIME.get() else {
+        return;
+    };
+    let changed = runtime
+        .write()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .invalidate_devops_session(session_id);
+    if changed {
+        DEVOPS_GENERATION.advance();
+    }
 }
 
 pub fn devops_generation() -> u32 {
@@ -588,6 +741,7 @@ pub type DevOpsRefreshCompletion = CompletionWake;
 
 struct RefreshRequest {
     context_revision: u64,
+    scope: DiscoveryScope,
     operation_id: OperationId,
     session: SessionFacts,
     capsule_revision: u64,
@@ -606,11 +760,17 @@ fn process_refresh(mut request: RefreshRequest) {
         if let Some(snapshot) = super::visual_test_hooks::visual_test_snapshot() {
             return snapshot;
         }
-        let snapshot = devops::detect(&request.session);
+        let snapshot = if request.scope.devops {
+            devops::detect_with_git(&request.session, request.scope.git)
+        } else {
+            devops::detect_git_only(&request.session)
+        };
         #[cfg(target_os = "windows")]
         let snapshot = {
             let mut snapshot = snapshot;
-            if automexia_devops::kubernetes::is_wsl_session(&request.session) {
+            if request.scope.devops
+                && automexia_devops::kubernetes::is_wsl_session(&request.session)
+            {
                 publish_devops_progress(&request, &snapshot);
                 let context = super::prompt_discovery::refresh(
                     &request.session,
@@ -798,7 +958,7 @@ fn seed_devops_snapshot(
 ) -> bool {
     {
         let mut runtime = write_runtime();
-        if !runtime.context_status_enabled()
+        if !runtime.discovery_scope().any()
             || runtime.context_revision != context_revision
             || runtime
                 .capsules
@@ -838,7 +998,7 @@ fn seed_devops_snapshot(
 }
 
 pub fn ensure_background_services() {
-    if context_status_enabled() {
+    if read_runtime().discovery_scope().any() {
         let _ = worker().ensure_started();
     }
 }
@@ -860,7 +1020,7 @@ pub fn request_devops_refresh(
     session: &SessionFacts,
     completion: Option<DevOpsRefreshCompletion>,
 ) -> RefreshSubmission {
-    if session.title.len() > MAX_SESSION_TITLE_BYTES {
+    if session.title.len() > MAX_SESSION_TITLE_BYTES || !session_facts_bounded(session) {
         tracing::warn!(
             session_id = session.session_id,
             title_bytes = session.title.len(),
@@ -868,17 +1028,25 @@ pub fn request_devops_refresh(
         );
         return RefreshSubmission::Rejected;
     }
-    if !context_status_enabled() {
+    if !read_runtime().discovery_scope().any() {
         return RefreshSubmission::Rejected;
     }
     let source_revision = source_revision(session);
-    let (capsule_revision, context_revision) = {
+    let (capsule_revision, context_revision, scope) = {
         let mut runtime = write_runtime();
-        if !runtime.context_status_enabled() {
+        let scope = runtime.discovery_scope();
+        if !scope.any() {
             return RefreshSubmission::Rejected;
         }
-        (runtime.capsule_revision(session), runtime.context_revision)
+        (
+            runtime.capsule_revision(session),
+            runtime.context_revision,
+            scope,
+        )
     };
+    if capsule_revision == 0 {
+        return RefreshSubmission::Rejected;
+    }
     let _ = seed_devops_snapshot(
         session,
         capsule_revision,
@@ -893,6 +1061,7 @@ pub fn request_devops_refresh(
     let cancellation = CancellationToken::default();
     let request = RefreshRequest {
         context_revision,
+        scope,
         operation_id,
         session: session.clone(),
         capsule_revision,
@@ -924,13 +1093,16 @@ mod tests {
         RuntimeState {
             installed: BTreeSet::from([devops::ID.to_owned()]),
             context_status_preference: true,
+            git_status_preference: true,
             context_revision: 1,
             inventory_status: InventoryStatus::Ready,
             inventory_revision: 1,
             inventory_cancellation: None,
             stopping: false,
             devops_snapshots: BoundedCache::new(DEVOPS_CONTEXT_CACHE_LIMIT),
+            namespace_probes: ProbeBroker::default(),
             capsules: BTreeMap::new(),
+            capsule_clock: 0,
             pending: BTreeMap::new(),
         }
     }
@@ -994,6 +1166,78 @@ mod tests {
     }
 
     #[test]
+    fn installed_marker_never_turns_a_sensitive_manifest_into_passive_discovery() {
+        static SENSITIVE: [[Capability; 3]; 4] = [
+            [
+                Capability::FilesystemRead,
+                Capability::EnvironmentRead,
+                Capability::Clipboard,
+            ],
+            [
+                Capability::FilesystemRead,
+                Capability::EnvironmentRead,
+                Capability::SessionLaunch,
+            ],
+            [
+                Capability::FilesystemRead,
+                Capability::EnvironmentRead,
+                Capability::ProcessSpawn,
+            ],
+            [
+                Capability::FilesystemRead,
+                Capability::EnvironmentRead,
+                Capability::Network,
+            ],
+        ];
+        assert!(passive_discovery_manifest(&devops::MANIFEST));
+        for capabilities in &SENSITIVE {
+            let manifest = ExtensionManifest {
+                capabilities,
+                ..devops::MANIFEST
+            };
+            assert!(!passive_discovery_manifest(&manifest));
+        }
+        assert!(!passive_discovery_manifest(
+            &automexia_devops_kubernetes::MANIFEST
+        ));
+        let mut state = state();
+        state.installed.remove(devops::ID);
+        state
+            .installed
+            .insert(automexia_devops_kubernetes::ID.to_owned());
+        assert!(!state.context_status_enabled());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn retiring_a_session_cancels_its_pending_namespace_probe_only() {
+        use super::super::kubernetes_probe::{NamespaceKey, ProbeSubmission};
+
+        let mut state = state();
+        let now = Instant::now();
+        let make_key = |session_id| NamespaceKey {
+            session_id,
+            capsule_revision: 1,
+            source_revision: 1,
+            context: "fixture".into(),
+            namespace: "sandbox".into(),
+        };
+        let first = match state.namespace_probes.seed_for_test(make_key(7), now) {
+            ProbeSubmission::Lease(lease) => lease,
+            _ => panic!("fixture probe should be admitted"),
+        };
+        let other = match state.namespace_probes.seed_for_test(make_key(8), now) {
+            ProbeSubmission::Lease(lease) => lease,
+            _ => panic!("parallel fixture probe should be admitted"),
+        };
+        state.retire_devops_session(7);
+        assert!(first.cancellation.is_cancelled());
+        assert!(!other.cancellation.is_cancelled());
+        state.clear_context();
+        assert!(other.cancellation.is_cancelled());
+    }
+
+    #[test]
     fn cache_keeps_only_the_latest_capsule_for_a_changed_session() {
         let mut state = state();
         put(&mut state, session(7, "powershell"), 1, snapshot("host"));
@@ -1005,6 +1249,112 @@ mod tests {
         assert_eq!(entry.session.title, "user@host:/mnt/d/work");
         assert_eq!(entry.snapshot.environment.as_deref(), Some("wsl"));
         assert_eq!(key.capsule_revision, 2);
+    }
+
+    #[test]
+    fn powershell_wsl_powershell_transition_replaces_context_without_borrowing_host_state(
+    ) {
+        let mut state = state();
+        let mut host = session(7, "PowerShell");
+        host.cwd = Some("C:/fixture/work".into());
+        host.shell_name = Some("pwsh".into());
+        host.shell_user = Some("host-user".into());
+        put(&mut state, host.clone(), 1, snapshot("host-context"));
+
+        let mut guest = session(7, "WSL");
+        guest.cwd = Some("/fixture/work".into());
+        guest.distro = Some("Fixture-Distro".into());
+        guest.shell_name = Some("bash".into());
+        guest.shell_user = Some("guest-user".into());
+        assert!(state.reusable_devops_snapshot(&guest).is_none());
+        let guest_revision = state.capsule_revision(&guest);
+        assert_eq!(guest_revision, 2);
+        assert!(state.devops_snapshot(7).is_none());
+        put(&mut state, guest, 2, snapshot("guest-context"));
+        assert_eq!(
+            state
+                .devops_snapshot(7)
+                .unwrap()
+                .1
+                .snapshot
+                .environment
+                .as_deref(),
+            Some("guest-context")
+        );
+
+        assert!(state.reusable_devops_snapshot(&host).is_none());
+        assert_eq!(state.capsule_revision(&host), 3);
+        assert!(state.devops_snapshot(7).is_none());
+        put(&mut state, host, 3, snapshot("host-returned"));
+        let (_, returned) = state.devops_snapshot(7).unwrap();
+        assert_eq!(
+            returned.snapshot.environment.as_deref(),
+            Some("host-returned")
+        );
+        assert_eq!(returned.session.shell_name.as_deref(), Some("pwsh"));
+        assert!(returned.session.distro.is_none());
+    }
+
+    #[test]
+    fn fresh_guest_session_and_parallel_host_pane_keep_separate_contexts() {
+        let mut state = state();
+        let mut host = session(21, "PowerShell");
+        host.cwd = Some("C:/fixture/work".into());
+        host.shell_name = Some("pwsh".into());
+        put(&mut state, host.clone(), 1, snapshot("host-context"));
+
+        let mut guest = session(22, "WSL");
+        guest.cwd = Some("/fixture/work".into());
+        guest.distro = Some("Fixture-Distro".into());
+        guest.shell_name = Some("zsh".into());
+        assert!(state.reusable_devops_snapshot(&guest).is_none());
+        put(&mut state, guest.clone(), 2, snapshot("guest-context"));
+        assert_eq!(
+            state
+                .devops_snapshot(21)
+                .unwrap()
+                .1
+                .snapshot
+                .environment
+                .as_deref(),
+            Some("host-context")
+        );
+        assert_eq!(
+            state
+                .devops_snapshot(22)
+                .unwrap()
+                .1
+                .snapshot
+                .environment
+                .as_deref(),
+            Some("guest-context")
+        );
+
+        let mut second_guest = guest;
+        second_guest.session_id = 23;
+        assert_eq!(
+            state
+                .reusable_devops_snapshot(&second_guest)
+                .unwrap()
+                .0
+                .environment
+                .as_deref(),
+            Some("guest-context")
+        );
+        let mut returned_host = host;
+        returned_host.session_id = 24;
+        assert_eq!(
+            state
+                .reusable_devops_snapshot(&returned_host)
+                .unwrap()
+                .0
+                .environment
+                .as_deref(),
+            Some("host-context")
+        );
+        state.retire_devops_session(22);
+        assert!(state.devops_snapshot(22).is_none());
+        assert!(state.devops_snapshot(21).is_some());
     }
 
     #[test]
@@ -1118,6 +1468,7 @@ mod tests {
         let cancellation = CancellationToken::default();
         let request = RefreshRequest {
             context_revision: 1,
+            scope: state.discovery_scope(),
             operation_id: OperationId::new(2),
             source_revision: source_revision(&facts),
             session: facts.clone(),
@@ -1163,6 +1514,7 @@ mod tests {
             let capsule_revision = state.capsule_revision(&facts);
             let request = RefreshRequest {
                 context_revision: 1,
+                scope: state.discovery_scope(),
                 operation_id: OperationId::new(3),
                 source_revision: source_revision(&facts),
                 session: facts,
@@ -1191,6 +1543,7 @@ mod tests {
     fn replacing_an_operation_cancels_the_obsolete_request() {
         let mut state = state();
         let old = CancellationToken::default();
+        state.capsule_revision(&session(8, "fixture"));
         state.register_operation(8, OperationId::new(1), old.clone());
         state.register_operation(8, OperationId::new(2), CancellationToken::default());
         assert!(old.is_cancelled());

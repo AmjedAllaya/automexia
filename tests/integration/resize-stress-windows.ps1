@@ -29,11 +29,24 @@ param(
     [int64]$MaximumImageThreadGrowth = 2,
     [ValidateRange(8388608, 1073741824)]
     [int64]$MaximumImageMemoryGrowth = 134217728,
+    [switch]$CloseConfirmationOnly,
+    [switch]$TagCustomizationOnly,
+    [switch]$TagShapesOnly,
+    [switch]$OutputColorsOnly,
+    [switch]$CommandInputColorsOnly,
+    [switch]$ClearShortcutOnly,
+    [string]$CommandInputWslDistro,
+    [switch]$CommandInputPowerShell7,
     [switch]$ConnectionHubOnly,
     [switch]$UseCpuRenderer
 )
 
 $ErrorActionPreference = 'Stop'
+if ($ClearShortcutOnly) { $CommandInputColorsOnly = $true }
+if ($TagShapesOnly) { $TagCustomizationOnly = $true }
+# A Windows PowerShell child can inherit PowerShell 7's module search paths.
+# Resolve Get-FileHash from the executing host for saved-file preservation checks.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Utility\Microsoft.PowerShell.Utility.psd1') -ErrorAction Stop
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..')).Path
 if ([string]::IsNullOrWhiteSpace($Binary)) {
     $Binary = Join-Path $root 'target\debug\automexia.exe'
@@ -157,7 +170,77 @@ public static class AutomexiaResizeDriver {
         return GetForegroundWindow() == hWnd;
     }
 
+    [DllImport("user32.dll")]
+    private static extern IntPtr GetKeyboardLayout(uint threadId);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern short VkKeyScanEx(char character, IntPtr layout);
+
+    private static NativeInput KeyboardInput(ushort virtualKey, bool release) {
+        return new NativeInput {
+            Type = 1,
+            Data = new NativeInputData {
+                Keyboard = new NativeKeyboardInput {
+                    VirtualKey = virtualKey,
+                    Flags = release ? 0x0002u : 0u,
+                },
+            },
+        };
+    }
+
+    public static bool ReplaceColorHex(IntPtr hWnd, string hex) {
+        // Queue one real, ordered Ctrl+A and typed batch. Re-activating the
+        // foreground window for every key attaches input threads, which resets
+        // modifier state before winit necessarily consumes the queued events.
+        if (hex == null || (hex.Length != 7 && hex.Length != 9) ||
+            hex[0] != '#' ||
+            !ActivateWindow(hWnd)) return false;
+        IntPtr layout = GetKeyboardLayout(GetWindowThreadProcessId(hWnd, IntPtr.Zero));
+        var inputs = new List<NativeInput>(80);
+        var usedKeys = new HashSet<ushort>();
+        inputs.Add(KeyboardInput(0x11, false));
+        inputs.Add(KeyboardInput(0x41, false));
+        inputs.Add(KeyboardInput(0x41, true));
+        inputs.Add(KeyboardInput(0x11, true));
+        foreach (char character in hex) {
+            if (character != '#' && !Uri.IsHexDigit(character)) return false;
+            short mapped = VkKeyScanEx(character, layout);
+            if (mapped == -1) return false;
+            ushort key = (ushort)(mapped & 0xFF);
+            bool shift = (mapped & 0x0100) != 0;
+            bool control = (mapped & 0x0200) != 0;
+            bool alt = (mapped & 0x0400) != 0;
+            if (control) inputs.Add(KeyboardInput(0x11, false));
+            if (alt) inputs.Add(KeyboardInput(0x12, false));
+            if (shift) inputs.Add(KeyboardInput(0x10, false));
+            inputs.Add(KeyboardInput(key, false));
+            inputs.Add(KeyboardInput(key, true));
+            if (shift) inputs.Add(KeyboardInput(0x10, true));
+            if (alt) inputs.Add(KeyboardInput(0x12, true));
+            if (control) inputs.Add(KeyboardInput(0x11, true));
+            usedKeys.Add(key);
+        }
+        if (GetForegroundWindow() != hWnd) return false;
+        uint count = (uint)inputs.Count;
+        uint sent = SendInput(count, inputs.ToArray(), Marshal.SizeOf(typeof(NativeInput)));
+        if (sent != count) {
+            // A partial batch must not leave a physical modifier or character
+            // key down after the test reports failure.
+            var releases = new List<NativeInput>();
+            foreach (ushort key in usedKeys) releases.Add(KeyboardInput(key, true));
+            releases.Add(KeyboardInput(0x41, true));
+            releases.Add(KeyboardInput(0x10, true));
+            releases.Add(KeyboardInput(0x12, true));
+            releases.Add(KeyboardInput(0x11, true));
+            SendInput((uint)releases.Count, releases.ToArray(),
+                Marshal.SizeOf(typeof(NativeInput)));
+            return false;
+        }
+        return GetForegroundWindow() == hWnd;
+    }
+
     public static bool ActivateWindow(IntPtr hWnd) {
+        if (GetForegroundWindow() == hWnd) return true;
         DateTime deadline = DateTime.UtcNow.AddSeconds(2);
         do {
             IntPtr foreground = GetForegroundWindow();
@@ -212,6 +295,83 @@ public static class AutomexiaResizeDriver {
     [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ClientToScreen(IntPtr hWnd, ref Point point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool ScreenToClient(IntPtr hWnd, ref Point point);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool GetCursorPos(out Point point);
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeMouseInput {
+        public int X;
+        public int Y;
+        public uint MouseData;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeKeyboardInput {
+        public ushort VirtualKey;
+        public ushort ScanCode;
+        public uint Flags;
+        public uint Time;
+        public IntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct NativeInputData {
+        [FieldOffset(0)] public NativeMouseInput Mouse;
+        [FieldOffset(0)] public NativeKeyboardInput Keyboard;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct NativeInput {
+        public uint Type;
+        public NativeInputData Data;
+    }
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern uint SendInput(
+        uint count, [In] NativeInput[] inputs, int size);
+
+    public static bool SendPhysicalLeftClick(IntPtr hWnd, int clientX, int clientY) {
+        // WM_LBUTTONDOWN via PostMessage does not establish real OS button
+        // state/capture. Use one bounded hardware-style click after checking
+        // that the owned foreground window contains the physical pointer.
+        if (GetForegroundWindow() != hWnd || !IsWindowVisible(hWnd)) return false;
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) return false;
+        try {
+            Rect client;
+            Point pointer;
+            if (!GetClientRect(hWnd, out client) || !GetCursorPos(out pointer) ||
+                !ScreenToClient(hWnd, ref pointer) ||
+                pointer.X < client.Left || pointer.X >= client.Right ||
+                pointer.Y < client.Top || pointer.Y >= client.Bottom ||
+                Math.Abs(pointer.X - clientX) > 2 ||
+                Math.Abs(pointer.Y - clientY) > 2) return false;
+            var inputs = new NativeInput[2];
+            inputs[0].Type = 0;
+            inputs[0].Data.Mouse.Flags = 0x0002;
+            inputs[1].Type = 0;
+            inputs[1].Data.Mouse.Flags = 0x0004;
+            uint sent = SendInput(2, inputs, Marshal.SizeOf(typeof(NativeInput)));
+            if (sent == 2) return true;
+            if (sent == 1) {
+                // Avoid leaving the real left button down on partial delivery.
+                SendInput(1, new NativeInput[] { inputs[1] },
+                    Marshal.SizeOf(typeof(NativeInput)));
+            }
+            return false;
+        } finally {
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
 
     private static void RequireExclusiveCaptureOwnership(IntPtr hWnd) {
         if (!ActivateWindow(hWnd)) {
@@ -335,6 +495,15 @@ public static class AutomexiaResizeDriver {
         }
     }
 
+    public static void WriteOpaqueWallpaperFixture(string path) {
+        using (var bitmap = new Bitmap(32, 32, PixelFormat.Format32bppArgb)) {
+            using (var graphics = Graphics.FromImage(bitmap)) {
+                graphics.Clear(Color.FromArgb(255, 123, 77, 49));
+            }
+            bitmap.Save(path, ImageFormat.Png);
+        }
+    }
+
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr GetDC(IntPtr hWnd);
 
@@ -365,13 +534,17 @@ public static class AutomexiaResizeDriver {
         public int DistinctColorBuckets;
         public int DominantColorBucket;
         public int LuminanceSpread;
+        public int MaximumLuminance;
         public int MeanLuminance;
         public int MeanRed;
         public int MeanGreen;
         public int MeanBlue;
         public int BrightSampleCount;
+        public int BrightForegroundSampleCount;
+        public int TargetColorSampleCount;
         public long NonOpaquePixelCount;
         public string PixelDigest;
+        public string DialogPixelDigest;
     }
 
     public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath) {
@@ -410,6 +583,37 @@ public static class AutomexiaResizeDriver {
             }
         }
         return CaptureClientFrameCore(hWnd, outputPath);
+    }
+
+    public static FrameStats CaptureStableCloseDialogFrame(IntPtr hWnd, string outputPath) {
+        // The terminal cursor can blink behind the modal. Require exact pixel
+        // stability in the centered dialog region without requiring the
+        // unrelated prompt area to stop animating.
+        IntPtr previousContext = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previousContext == IntPtr.Zero) {
+            throw new System.ComponentModel.Win32Exception(
+                Marshal.GetLastWin32Error(),
+                "Could not enter per-monitor DPI awareness for dialog capture");
+        }
+        try {
+            DateTime deadline = DateTime.UtcNow.AddSeconds(3);
+            FrameStats previousFrame = CaptureClientFrameCore(hWnd, null);
+            do {
+                System.Threading.Thread.Sleep(25);
+                FrameStats current = CaptureClientFrameCore(hWnd, outputPath);
+                if (previousFrame.NonOpaquePixelCount == 0 &&
+                    current.NonOpaquePixelCount == 0 &&
+                    String.Equals(previousFrame.DialogPixelDigest,
+                        current.DialogPixelDigest, StringComparison.Ordinal)) {
+                    return current;
+                }
+                previousFrame = current;
+            } while (DateTime.UtcNow < deadline);
+            throw new InvalidOperationException(
+                "Automexia close dialog did not reach two identical dialog-region captures");
+        } finally {
+            SetThreadDpiAwarenessContext(previousContext);
+        }
     }
 
     private static FrameStats CaptureClientFrameCore(IntPtr hWnd, string outputPath) {
@@ -479,11 +683,18 @@ public static class AutomexiaResizeDriver {
             }
             long nonOpaquePixels = 0;
             string pixelDigest;
-            using (var hasher = System.Security.Cryptography.SHA256.Create()) {
+            string dialogPixelDigest;
+            using (var hasher = System.Security.Cryptography.SHA256.Create())
+            using (var dialogHasher = System.Security.Cryptography.SHA256.Create()) {
                 byte[] dimensions = new byte[8];
                 Buffer.BlockCopy(BitConverter.GetBytes(width), 0, dimensions, 0, 4);
                 Buffer.BlockCopy(BitConverter.GetBytes(height), 0, dimensions, 4, 4);
                 hasher.TransformBlock(dimensions, 0, dimensions.Length, null, 0);
+                int dialogWidth = Math.Min(width, 640);
+                int dialogHeight = Math.Min(height, 360);
+                int dialogLeft = (width - dialogWidth) / 2;
+                int dialogTop = (height - dialogHeight) / 2;
+                dialogHasher.TransformBlock(dimensions, 0, dimensions.Length, null, 0);
                 var bounds = new Rectangle(0, 0, width, height);
                 BitmapData data = bitmap.LockBits(
                     bounds, ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
@@ -501,12 +712,18 @@ public static class AutomexiaResizeDriver {
                             }
                         }
                         hasher.TransformBlock(row, 0, row.Length, null, 0);
+                        if (y >= dialogTop && y < dialogTop + dialogHeight) {
+                            dialogHasher.TransformBlock(
+                                row, dialogLeft * 4, dialogWidth * 4, null, 0);
+                        }
                     }
                 } finally {
                     bitmap.UnlockBits(data);
                 }
                 hasher.TransformFinalBlock(new byte[0], 0, 0);
+                dialogHasher.TransformFinalBlock(new byte[0], 0, 0);
                 pixelDigest = BitConverter.ToString(hasher.Hash).Replace("-", "");
+                dialogPixelDigest = BitConverter.ToString(dialogHasher.Hash).Replace("-", "");
             }
             byte[] encoded;
             using (var stream = new MemoryStream()) {
@@ -529,12 +746,20 @@ public static class AutomexiaResizeDriver {
                 LuminanceSpread = maximumLuminance - minimumLuminance,
                 NonOpaquePixelCount = nonOpaquePixels,
                 PixelDigest = pixelDigest,
+                DialogPixelDigest = dialogPixelDigest,
             };
         }
     }
 
     public static FrameStats CapturePhysicalClientRegionStats(
         IntPtr hWnd, int x, int y, int width, int height) {
+        return CapturePhysicalClientRegionStats(
+            hWnd, x, y, width, height, -1, -1, -1, 0);
+    }
+
+    public static FrameStats CapturePhysicalClientRegionStats(
+        IntPtr hWnd, int x, int y, int width, int height,
+        int targetRed, int targetGreen, int targetBlue, int tolerance) {
         IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
         if (previous == IntPtr.Zero) {
             throw new System.ComponentModel.Win32Exception(
@@ -542,7 +767,9 @@ public static class AutomexiaResizeDriver {
                 "Could not enter per-monitor DPI awareness for region capture");
         }
         try {
-            return CaptureClientRegionStats(hWnd, x, y, width, height);
+            return CaptureClientRegionStats(
+                hWnd, x, y, width, height,
+                targetRed, targetGreen, targetBlue, tolerance);
         } finally {
             SetThreadDpiAwarenessContext(previous);
         }
@@ -550,6 +777,16 @@ public static class AutomexiaResizeDriver {
 
     public static FrameStats CaptureClientRegionStats(
         IntPtr hWnd, int x, int y, int width, int height) {
+        return CaptureClientRegionStats(
+            hWnd, x, y, width, height, -1, -1, -1, 0);
+    }
+
+    public static FrameStats CaptureClientRegionStats(
+        IntPtr hWnd, int x, int y, int width, int height,
+        int targetRed, int targetGreen, int targetBlue, int tolerance) {
+        if (tolerance < 0 || tolerance > 255) {
+            throw new ArgumentOutOfRangeException("tolerance");
+        }
         RequireExclusiveCaptureOwnership(hWnd);
         Rect rect;
         if (!GetClientRect(hWnd, out rect)) {
@@ -601,6 +838,8 @@ public static class AutomexiaResizeDriver {
             int maximumLuminance = 0;
             long luminanceTotal = 0;
             int brightSamples = 0;
+            int brightForegroundSamples = 0;
+            int targetColorSamples = 0;
             long redTotal = 0;
             long greenTotal = 0;
             long blueTotal = 0;
@@ -621,6 +860,17 @@ public static class AutomexiaResizeDriver {
                     if (luminance >= 32) {
                         brightSamples++;
                     }
+                    // The output-color native check needs to distinguish
+                    // bright glyphs from a tinted but otherwise blank band.
+                    if (luminance >= 160) {
+                        brightForegroundSamples++;
+                    }
+                    if (targetRed >= 0 && targetGreen >= 0 && targetBlue >= 0 &&
+                        Math.Abs(color.R - targetRed) <= tolerance &&
+                        Math.Abs(color.G - targetGreen) <= tolerance &&
+                        Math.Abs(color.B - targetBlue) <= tolerance) {
+                        targetColorSamples++;
+                    }
                     redTotal += color.R;
                     greenTotal += color.G;
                     blueTotal += color.B;
@@ -634,11 +884,14 @@ public static class AutomexiaResizeDriver {
                 DistinctColorBuckets = buckets.Count,
                 DominantColorBucket = -1,
                 LuminanceSpread = maximumLuminance - minimumLuminance,
+                MaximumLuminance = maximumLuminance,
                 MeanLuminance = samples == 0 ? 0 : (int)(luminanceTotal / samples),
                 MeanRed = samples == 0 ? 0 : (int)(redTotal / samples),
                 MeanGreen = samples == 0 ? 0 : (int)(greenTotal / samples),
                 MeanBlue = samples == 0 ? 0 : (int)(blueTotal / samples),
                 BrightSampleCount = brightSamples,
+                BrightForegroundSampleCount = brightForegroundSamples,
+                TargetColorSampleCount = targetColorSamples,
             };
         }
     }
@@ -678,9 +931,55 @@ public static class AutomexiaResizeDriver {
 '@
 Add-Type -Path (Join-Path $PSScriptRoot 'windows-native-window-locator.cs')
 
+function Assert-AutomexiaCloseSurface {
+    param([IntPtr]$Window, [object]$Snapshot, [string]$Capture)
+    [void][AutomexiaResizeDriver]::SetCaptureTopmost($Window, $true)
+    try {
+        [void][AutomexiaResizeDriver]::CaptureStableCloseDialogFrame($Window, $Capture)
+        $scale = [double]$Snapshot.scale_factor
+        $cardLeft = ([double]$Snapshot.window_width / $scale - 432) / 2
+        $cardTop = ([double]$Snapshot.window_height / $scale - 224) / 2
+        # Independent pixel oracles for the normal card and both button fills.
+        # No field, selection border or covered label may leak into these areas.
+        foreach ($probe in @(
+            @{ Name = 'card'; X = 32; Y = 120; W = 368; H = 24; RGB = @(7, 12, 17) },
+            @{ Name = 'cancel'; X = 32; Y = 174; W = 8; H = 12; RGB = @(14, 24, 33) },
+            @{ Name = 'close'; X = 232; Y = 174; W = 8; H = 12; RGB = @(94, 6, 18) }
+        )) {
+            $surface = [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
+                $Window, [int](($cardLeft + $probe.X) * $scale), [int](($cardTop + $probe.Y) * $scale),
+                [int]($probe.W * $scale), [int]($probe.H * $scale))
+            if ($surface.SampleCount -lt 20 -or $surface.LuminanceSpread -gt 2 -or
+                [Math]::Abs($surface.MeanRed - $probe.RGB[0]) -gt 3 -or
+                [Math]::Abs($surface.MeanGreen - $probe.RGB[1]) -gt 3 -or
+                [Math]::Abs($surface.MeanBlue - $probe.RGB[2]) -gt 3) {
+                throw "Close dialog $($probe.Name) is not opaque: RGB=$($surface.MeanRed)/$($surface.MeanGreen)/$($surface.MeanBlue), spread=$($surface.LuminanceSpread)"
+            }
+        }
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($Window, $false)
+    }
+}
+
 function Get-ActiveAutomexiaPanel {
     param($Snapshot)
     return @($Snapshot.panels | Where-Object { [bool]$_.active })[0]
+}
+
+function Get-AutomexiaPaintedRow {
+    param([object]$Panel, [int]$SourceRow)
+    if ($null -eq $Panel.source_row_visual_origins -or $SourceRow -lt 0) {
+        throw 'Native panel is missing painted row geometry'
+    }
+    $origins = @($Panel.source_row_visual_origins)
+    if ($SourceRow -ge $origins.Count -or $null -eq $origins[$SourceRow]) {
+        throw 'Native source row is hidden or outside the painted viewport'
+    }
+    $visual = [int]$origins[$SourceRow]
+    if ($visual -lt 0 -or $visual -ge $origins.Count) {
+        throw 'Native painted row is outside the viewport'
+    }
+    return $visual
 }
 
 function Test-AllAutomexiaPaneContexts {
@@ -1029,6 +1328,7 @@ try {
     Copy-Item -LiteralPath (Join-Path $root 'shell-integration\powershell\automexia.format.ps1xml') -Destination $integrationRoot
     Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.cmd') -Destination $integrationRoot
     Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-ls.ps1') -Destination $integrationRoot
+    Copy-Item -LiteralPath (Join-Path $root 'shell-integration\cmd\automexia-alias-loader.ps1') -Destination $integrationRoot
 
     $cmdSource = [IO.File]::ReadAllText(
         (Join-Path $root 'shell-integration\cmd\automexia.cmd'),
@@ -1059,14 +1359,40 @@ try {
     } else {
         ''
     }
+    $wallpaperConfig = ''
+    if ($OutputColorsOnly -and -not $UseCpuRenderer) {
+        $wallpaperPath = Join-Path $configRoot 'opaque-output-wallpaper.png'
+        [AutomexiaResizeDriver]::WriteOpaqueWallpaperFixture($wallpaperPath)
+        $wallpaperConfigPath = $wallpaperPath.Replace('\', '/')
+        $wallpaperConfig = "`n[window]`nbackground-image = { path = `"$wallpaperConfigPath`", opacity = 1.0 }`n"
+    }
+    $shellProgram = if ($CommandInputColorsOnly -and $CommandInputPowerShell7) { 'pwsh.exe' } else { 'powershell.exe' }
+    $inputHistorySetup = ''
+    if ($CommandInputColorsOnly) {
+        $inputHistory = (Join-Path $configRoot 'input-history.txt').Replace('\', '/')
+        $inputHistorySetup = "; Set-PSReadLineOption -HistorySavePath '$inputHistory' -HistorySaveStyle SaveNothing"
+    }
     $config = @"
-confirm-before-quit = false
+confirm-before-quit = true
 
 [shell]
-program = "powershell.exe"
-args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'"]
+program = "$shellProgram"
+args = ["-NoLogo", "-NoProfile", "-NoExit", "-Command", ". '$integration'$inputHistorySetup"]
 $rendererConfig
+$wallpaperConfig
 "@
+    if ($TagShapesOnly) {
+        # Solid backgrounds make reference silhouettes unambiguous in captures.
+        # This applies only to the fixture's disposable configuration root.
+        $config += "`n[presentation.tags]`nstyle = 'tinted'`nopacity = 100`n"
+    }
+    if ($CommandInputColorsOnly) {
+        # Literal palette oracle for Fish's native ANSI styles. It must not be
+        # replaced by the terminal's purple plain-input fallback.
+        # Moderate saturation keeps the literal pixel tolerance useful across
+        # the native compositor's color-space conversion.
+        $config += "`n[colors]`nyellow = '#B4D2B4'`ncyan = '#B4B4D2'`n"
+    }
     [System.IO.File]::WriteAllText(
         (Join-Path $configRoot 'config.toml'),
         $config,
@@ -1126,8 +1452,25 @@ $rendererConfig
         Write-Host ($initial | ConvertTo-Json -Depth 4)
         throw 'The deterministic S1 visual fixture did not freeze clock and animation state'
     }
+    $expectedRendererBackend = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
+    if ([string]$initial.renderer_backend -ne $expectedRendererBackend) {
+        throw "Native renderer backend mismatch: requested $expectedRendererBackend, actual $($initial.renderer_backend)"
+    }
 
     $initialPanel = Get-ActiveAutomexiaPanel $initial
+    # The first prompt can precede the background visual-fixture publication.
+    # Require the complete fixed context before using it as the later CMD
+    # comparison oracle; comparing a partial startup snapshot races discovery.
+    $fixtureSegments = @('main', 'platform?', 'eu-west-1', 'local', 'workspace', 'demo')
+    $fixtureDeadline = [DateTime]::UtcNow.AddSeconds(15)
+    while (@($fixtureSegments | Where-Object { $_ -notin @($initialPanel.context_segments) }).Count -gt 0 -and
+           [DateTime]::UtcNow -lt $fixtureDeadline) {
+        $initial = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+        $initialPanel = Get-ActiveAutomexiaPanel $initial
+    }
+    if (@($fixtureSegments | Where-Object { $_ -notin @($initialPanel.context_segments) }).Count -gt 0) {
+        throw 'The complete deterministic context fixture was not published after startup'
+    }
     $expectedContextSegmentsJson =
         @($initialPanel.context_segments) | ConvertTo-Json -Compress
     if ($null -eq $initialPanel -or [int]$initial.panel_count -ne 1) {
@@ -1139,6 +1482,451 @@ $rendererConfig
     $blankPromptLine = [string]$initialPanel.raw_cursor_line_text
     $script:testStage = 'initial resource baseline'
     $resourceBaseline = Get-AutomexiaResourceSample $process
+
+    if ($CommandInputColorsOnly) {
+        . (Join-Path $PSScriptRoot 'command-input-colors-windows.ps1')
+        Test-AutomexiaCommandInputColors
+        return
+    }
+    if ($OutputColorsOnly) {
+        . (Join-Path $PSScriptRoot 'output-colors-windows.ps1')
+        Test-AutomexiaOutputColors
+        return
+    }
+
+    if ($TagCustomizationOnly) {
+        $script:testStage = 'native information tag selection'
+        function Wait-TagState([scriptblock]$Predicate) {
+            $deadline = [DateTime]::UtcNow.AddSeconds(10)
+            do {
+                $state = Read-AutomexiaSnapshot
+                if (& $Predicate $state) { return $state }
+                Start-Sleep -Milliseconds 40
+            } while ([DateTime]::UtcNow -lt $deadline)
+            Write-Host ($state.settings | ConvertTo-Json -Depth 5 -Compress)
+            throw "Native tag customization did not reach the expected state during $script:testStage"
+        }
+        function Click-TagBounds($Bounds) {
+            # Use the same physical-input owner as the output-color fixture.
+            # Posting a second WM_MOUSEMOVE can race the real DPI-scaled move,
+            # especially when successive dialogs share a button position.
+            $x = [int][Math]::Round([double]$Bounds[0] + [double]$Bounds[2] * 0.5)
+            $y = [int][Math]::Round([double]$Bounds[1] + [double]$Bounds[3] * 0.5)
+            $scale = [double](Read-AutomexiaSnapshot).scale_factor
+            $physicalX = [int][Math]::Round($x * $scale)
+            $physicalY = [int][Math]::Round($y * $scale)
+            if (-not [AutomexiaResizeDriver]::ActivateWindow($window) -or
+                -not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $physicalX + 6, $physicalY)) {
+                throw 'Could not move the native tag pointer'
+            }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.pointer -and [Math]::Abs($s.settings.pointer[0] - ($physicalX + 6) / $scale) -le 1 -and [Math]::Abs($s.settings.pointer[1] - $y) -le 1 }
+            if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $physicalX, $physicalY)) { throw 'Could not settle the native tag pointer' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.pointer -and [Math]::Abs($s.settings.pointer[0] - $x) -le 1 -and [Math]::Abs($s.settings.pointer[1] - $y) -le 1 }
+            if (-not [AutomexiaResizeDriver]::SendPhysicalLeftClick($window, $physicalX, $physicalY)) {
+                throw 'Native tag click lost foreground or physical client ownership'
+            }
+        }
+        function Confirm-TagAction([switch]$CheckCancel) {
+            $confirmation = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.confirmation }
+            if ($confirmation.settings.confirmation.accept_selected) { throw 'Confirmation must initially select Cancel' }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Opening confirmation changed saved files' }
+            if ($CheckCancel) {
+                $before = $confirmation.settings.temporary_defaults
+                if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x1B, $false, $false, $false)) { throw 'Confirmation Escape failed' }
+                $null = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.confirmation -and $s.settings.temporary_defaults -eq $before }
+                if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Cancel changed saved files' }
+                if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x52, $false, $false, $false)) { throw 'Reset shortcut failed' }
+                $confirmation = Wait-TagState { param($s) $s.settings.ready -and $null -ne $s.settings.confirmation }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                [void][IO.Directory]::CreateDirectory($captureRoot)
+                $name = if ($confirmation.settings.confirmation.title -like 'Restore*') { 'settings-restore-confirm.png' } else { 'settings-reset-confirm.png' }
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot $name))
+            }
+            Click-TagBounds $confirmation.settings.confirmation.accept
+            $null = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.confirmation }
+        }
+        [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
+        try {
+            Send-AutomexiaTestControl 'open-customizations:tag-editor'
+            $script:testStage = 'customizations root'
+            $rootSettings = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.controls | Where-Object id -eq 'tags.enabled').Count -eq 1 }
+            Click-TagBounds ($rootSettings.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $script:testStage = 'information tag roster'
+            $roster = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+            if ($TagShapesOnly) {
+                . (Join-Path $PSScriptRoot 'tag-shapes-windows.ps1')
+                Invoke-TagShapeScenario
+                [void][AutomexiaResizeDriver]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+                $null = Wait-TagState { param($s) $s.confirm_quit_active }
+                if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x59, $false, $false, $false)) { throw 'Shape fixture close failed' }
+                if (-not $process.WaitForExit(6000)) { throw 'Shape fixture did not shut down' }
+                $process = $null
+                return
+            }
+            if ($roster.settings.devops_detection) {
+                $toggle = @($roster.settings.controls | Where-Object id -eq 'extension.automexia.devops.context_status.enabled')
+                if ($toggle.Count -ne 1) { throw 'Live DevOps detection toggle is not reachable' }
+                Click-TagBounds $toggle[0].bounds
+                $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+            }
+            $ids = @('production', 'ubuntu-wsl', 'windows', 'git', 'kubernetes', 'docker', 'azure', 'aws', 'gcp', 'unknown-cloud', 'terraform', 'environment', 'user')
+            # Ordinary edits above may still be saving. Establish disk baseline
+            # only after that receipt, then exercise the real temporary owner.
+            $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.save_pending }
+            $preferencePath = Join-Path $configRoot 'state/user-preferences-v6.toml'
+            if (-not (Test-Path -LiteralPath $preferencePath -PathType Leaf)) {
+                throw 'The native customization baseline was not saved'
+            }
+            $preferenceText = [IO.File]::ReadAllText($preferencePath)
+            # Independent assertion against this fixture's single saved edit,
+            # not a second TOML parser or a receipt-only preservation check.
+            if ($preferenceText -notmatch '(?m)^\[\[extension-features\]\]\r?\nid = "extension\.automexia\.devops\.context_status\.enabled"\r?\nenabled = false\r?$') {
+                throw 'The native customization baseline lacks the saved detection choice'
+            }
+            function Get-CustomizationFixtureHashes {
+                $files = @((Get-Item -LiteralPath (Join-Path $configRoot 'config.toml')))
+                $stateRoot = Join-Path $configRoot 'state'
+                if (Test-Path -LiteralPath $stateRoot) {
+                    $files += @(Get-ChildItem -LiteralPath $stateRoot -Filter '*preferences*.toml' -File)
+                }
+                return (($files | Sort-Object Name | ForEach-Object {
+                    $_.Name + ':' + (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+                }) -join '|')
+            }
+            $savedHashes = Get-CustomizationFixtureHashes
+            $script:testStage = 'temporary information-tag defaults'
+            Click-TagBounds $roster.settings.reset_button
+            Confirm-TagAction -CheckCancel
+            $resetState = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and $s.settings.tags_enabled }
+            Click-TagBounds ($resetState.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Temporary customization changed saved files' }
+
+            # Closing the sheet must not end the application-owned preview or
+            # replace its original saved snapshot with temporary choices.
+            $script:testStage = 'close and reopen temporary customizations'
+            [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+            $null = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets).Count -eq 0 }
+            [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+            $closedPreview = Wait-TagState { param($s) -not $s.settings.open }
+            if ([string](Get-ActiveAutomexiaPanel $closedPreview).raw_cursor_line_text -ne $blankPromptLine) {
+                throw 'Closing temporary customizations changed terminal input'
+            }
+            # The store belongs solely to this fixture. A regular file at the
+            # directory boundary reproduces a real asynchronous inventory error.
+            $packageProbe = Join-Path $configRoot 'ecosystem'
+            if (Test-Path -LiteralPath $packageProbe) { throw 'Package failure fixture requires an absent store' }
+            [IO.File]::WriteAllText($packageProbe, 'unavailable-store-fixture', [Text.Encoding]::ASCII)
+            Send-AutomexiaTestControl 'open-customizations:temporary-reopen'
+            $reopenedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled -and $s.settings.package_settings_notice -eq 'unavailable' }
+            if (@($reopenedPreview.settings.controls | Where-Object id -eq 'tags.enabled').Count -ne 1) {
+                throw 'Unavailable package inventory hid core customizations'
+            }
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                [void][IO.Directory]::CreateDirectory($captureRoot)
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot 'package-unavailable-customizations.png'))
+            }
+            [IO.File]::Delete($packageProbe)
+            $script:testStage = 'retry package inventory without losing temporary choices'
+            [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+            $null = Wait-TagState { param($s) -not $s.settings.open }
+            Send-AutomexiaTestControl 'open-customizations:inventory-retry'
+            $reopenedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled -and $s.settings.package_inventory_ready -and $s.settings.package_settings_notice -eq 'none' }
+            Click-TagBounds ($reopenedPreview.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+            $script:testStage = 'repeat feature reset without replacing saved choices'
+            Click-TagBounds $editedPreview.settings.reset_button
+            Confirm-TagAction
+            $resetState = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and $s.settings.tags_enabled }
+            Click-TagBounds ($resetState.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $editedPreview = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and -not $s.settings.tags_enabled }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Repeated temporary reset changed saved files' }
+
+            $script:testStage = 'global reset retains the original saved choices'
+            [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+            $rootPreview = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets).Count -eq 0 }
+            Click-TagBounds $rootPreview.settings.reset_button
+            Confirm-TagAction
+            $allDefaults = Wait-TagState { param($s) $s.settings.ready -and $s.settings.temporary_defaults -and $s.settings.tags_enabled -and $s.settings.devops_detection }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Global temporary reset changed saved files' }
+            $script:testStage = 'restore saved information-tag choices'
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x53, $false, $false, $false)) { throw 'Restore shortcut failed' }
+            Confirm-TagAction
+            $rootSettings = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection }
+            Click-TagBounds ($rootSettings.settings.controls | Where-Object id -eq 'tags.enabled').bounds
+            $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Restore saved changed saved files' }
+            foreach ($id in $ids) {
+                $script:testStage = "pointer selection of $id"
+                $page = "tags.slot.$id.page"
+                if (@($roster.settings.targets | Where-Object { $_.id -eq $page -and -not $_.roster }).Count -eq 0) {
+                    throw "Enabled tag $id is missing its native graphic sample"
+                }
+                $target = @($roster.settings.targets | Where-Object { $_.id -eq $page -and $_.roster })
+                if ($target.Count -ne 1) { throw "Tag $id has no unique roster target" }
+                Click-TagBounds $target[0].bounds
+                $selected = Wait-TagState { param($s) $s.settings.ready -and $s.settings.active_slot -eq $page }
+                if (@($selected.settings.controls | Where-Object id -eq "tags.slot.$id.enabled").Count -ne 1) {
+                    throw "Tag $id did not open its enable control"
+                }
+                [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+                $roster = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.active_slot -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+            }
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                [void][IO.Directory]::CreateDirectory($captureRoot)
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot 'preview-hints.png'))
+            }
+            Click-TagBounds $roster.settings.edit_button
+            $editing = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode }
+            $script:testStage = 'preview Done button'
+            Click-TagBounds $editing.settings.edit_button
+            $null = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.preview_edit_mode -and $null -eq $s.settings.active_slot }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x45, $false, $false, $false)) { throw 'Preview E shortcut after Done failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode }
+            [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x24, $true)
+            foreach ($id in $ids) {
+                $script:testStage = "keyboard selection of $id"
+                $page = "tags.slot.$id.page"
+                $selected = Wait-TagState { param($s) $s.settings.ready -and $s.settings.selected -eq $page }
+                [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x27, $true)
+            }
+            $selected = Wait-TagState { param($s) $s.settings.ready -and $s.settings.selected -eq 'tags.add-slot' }
+            $script:testStage = 'preview keyboard mode entry, traversal and detail return'
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x1B, $false, $false, $false)) { throw 'Preview Escape failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.preview_edit_mode -and $s.settings.active_category -eq 'tags.enabled' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x45, $false, $false, $false)) { throw 'Preview E shortcut failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode -and $s.settings.selected -eq 'tags.add-slot' }
+            # Forward wrap from Add must select the first tag; every subsequent
+            # Tab must stay in preview, including offscreen or disabled tags.
+            foreach ($id in $ids) {
+                if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x09, $false, $false, $false)) { throw 'Preview Tab failed' }
+                $page = "tags.slot.$id.page"
+                $selected = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode -and $s.settings.selected -eq $page -and $null -eq $s.settings.active_slot }
+            }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x24, $true, $false, $false)) { throw 'Preview Home failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.selected -eq 'tags.slot.production.page' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x09, $false, $false, $true)) { throw 'Preview Shift+Tab failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode -and $s.settings.selected -eq 'tags.add-slot' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x09, $false, $false, $true)) { throw 'Preview reverse selection failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.selected -eq 'tags.slot.user.page' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x0D, $false, $false, $false)) { throw 'Preview activation failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.preview_edit_mode -and $s.settings.active_slot -eq 'tags.slot.user.page' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x45, $false, $false, $false)) { throw 'Detail E shortcut failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode -and $null -eq $s.settings.active_slot -and $s.settings.selected -eq 'tags.slot.user.page' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x0D, $false, $false, $false)) { throw 'Repeated preview activation failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.active_slot -eq 'tags.slot.user.page' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x1B, $false, $false, $false)) { throw 'Detail Escape failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.preview_edit_mode -and $null -eq $s.settings.active_slot -and $s.settings.active_category -eq 'tags.enabled' }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x45, $false, $false, $false)) { throw 'Preview reentry failed' }
+            $null = Wait-TagState { param($s) $s.settings.ready -and $s.settings.preview_edit_mode }
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x23, $true, $false, $false)) { throw 'Preview End failed' }
+            $selected = Wait-TagState { param($s) $s.settings.ready -and $s.settings.selected -eq 'tags.add-slot' }
+            if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Preview navigation changed saved settings' }
+            $afterPanel = Get-ActiveAutomexiaPanel $selected
+            if ([string]$afterPanel.raw_cursor_line_text -ne $blankPromptLine -or
+                [int64]$afterPanel.route_id -ne [int64]$initialPanel.route_id) {
+                throw 'Tag customization leaked input into the terminal'
+            }
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                [void][IO.Directory]::CreateDirectory($captureRoot)
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot 'tag-customization.png'))
+            }
+            if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
+                $reportPath = [IO.Path]::GetFullPath($ResourceReport)
+                [void][IO.Directory]::CreateDirectory([IO.Path]::GetDirectoryName($reportPath))
+                [IO.File]::WriteAllText($reportPath, (@{
+                    schema_version = 1; mode = 'tag-customization-only';
+                    mouse_tags = $ids.Count; keyboard_tags = $ids.Count;
+                    preview_shortcut_and_tab_cycle = $true; detail_escape_and_shortcut = $true;
+                    preview_done_button = $true;
+                    reset_restore_confirmation = $true; cancel_keeps_saved_files = $true;
+                    unchanged_prompt = $true; live_detection_off = $true; scale = $selected.scale_factor;
+                    temporary_reset_edit_restore = $true; saved_files_unchanged = $true;
+                    temporary_close_reopen = $true; repeated_feature_and_global_reset = $true;
+                    package_inventory_failure_recovery = $true;
+                    frame = @($selected.window_width, $selected.window_height)
+                } | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+            }
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        }
+        # Check painted pixels while Customizations is still open. A state flag
+        # alone misses lower overlays painting over the confirmation card.
+        [void][AutomexiaResizeDriver]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        $closing = Wait-TagState { param($s) $s.confirm_quit_active }
+        $capture = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) { $null } else {
+            Join-Path ([IO.Path]::GetFullPath($ModalCaptureDirectory)) 'customization-close-confirm.png'
+        }
+        Assert-AutomexiaCloseSurface $window $closing $capture
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        $restored = Wait-TagState { param($s) -not $s.confirm_quit_active -and $s.settings.ready -and $s.settings.selected -eq 'tags.add-slot' }
+        if ((Get-CustomizationFixtureHashes) -ne $savedHashes -or
+            [string](Get-ActiveAutomexiaPanel $restored).raw_cursor_line_text -ne $blankPromptLine) {
+            throw 'Canceling close changed saved customizations or terminal input'
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
+            $report = Get-Content -LiteralPath $ResourceReport -Raw | ConvertFrom-Json
+            $report | Add-Member -NotePropertyName opaque_close_card_and_buttons -NotePropertyValue $true
+            $report | Add-Member -NotePropertyName cancel_restores_customizations -NotePropertyValue $true
+            [IO.File]::WriteAllText([IO.Path]::GetFullPath($ResourceReport), ($report | ConvertTo-Json), [Text.UTF8Encoding]::new($false))
+        }
+        [void][AutomexiaResizeDriver]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        $null = Wait-TagState { param($s) $s.confirm_quit_active }
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x59, $false, $false, $false)) {
+            throw 'Could not confirm the native tag fixture close with Y'
+        }
+        if (-not $process.WaitForExit(6000)) { throw 'Tag customization fixture did not shut down' }
+        $process = $null
+        Write-Host 'Native tag customization passed: 13 pointer selections, 13 keyboard selections, unchanged terminal input'
+        return
+    }
+
+    if ($CloseConfirmationOnly) {
+        # Do not depend on OS-cascaded startup placement: part of a default
+        # window can be below the monitor, yielding transparent capture rows.
+        # Use the same on-screen dimensions as the customization fixture.
+        [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
+        $sized = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (([Math]::Abs($sized.window_width / $sized.scale_factor - 1200) -gt 1 -or
+                [Math]::Abs($sized.window_height / $sized.scale_factor - 780) -gt 1) -and
+                [DateTime]::UtcNow -lt $deadline) {
+            $sized = Read-AutomexiaSnapshot -AfterSequence ([int64]$sized.sequence)
+        }
+        if ([Math]::Abs($sized.window_width / $sized.scale_factor - 1200) -gt 1 -or
+            [Math]::Abs($sized.window_height / $sized.scale_factor - 780) -gt 1) {
+            throw 'Close fixture did not reach its controlled window size'
+        }
+        $script:testStage = 'focused native WM_CLOSE confirmation'
+        if (-not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+            throw 'Could not post the first native close request'
+        }
+        $opened = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [bool]$opened.confirm_quit_active -and
+               [DateTime]::UtcNow -lt $deadline) {
+            $opened = Read-AutomexiaSnapshot -AfterSequence ([int64]$opened.sequence)
+        }
+        $process.Refresh()
+        if (-not [bool]$opened.confirm_quit_active -or $process.HasExited -or
+            -not [AutomexiaResizeDriver]::IsWindowVisible($window)) {
+            throw 'Native WM_CLOSE did not open the Automexia confirmation'
+        }
+        $presented = Read-AutomexiaSnapshot -AfterSequence ([int64]$opened.sequence)
+        if (-not [bool]$presented.confirm_quit_active) {
+            throw 'The close confirmation disappeared before presentation'
+        }
+        $capture = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+            $null
+        } else {
+            $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+            New-Item -ItemType Directory -Force -Path $captureRoot | Out-Null
+            Join-Path $captureRoot 'native-close-confirm-focused.png'
+        }
+        if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+            throw 'Could not expose the focused close overlay for capture'
+        }
+        try {
+            Start-Sleep -Milliseconds 100
+            $frame = [AutomexiaResizeDriver]::CaptureStableCloseDialogFrame($window, $capture)
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+        }
+        if ($frame.SampleCount -lt 100 -or
+            $frame.DistinctColorBuckets -lt 8 -or
+            $frame.LuminanceSpread -lt 32) {
+            throw 'The native close overlay frame is blank or unreadable'
+        }
+        Assert-AutomexiaCloseSurface $window $presented $capture
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+            throw 'Could not cancel the native close with Escape'
+        }
+        $cancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$opened.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([bool]$cancelled.confirm_quit_active -and
+               [DateTime]::UtcNow -lt $deadline) {
+            $cancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelled.sequence)
+        }
+        $process.Refresh()
+        if ([bool]$cancelled.confirm_quit_active -or $process.HasExited -or
+            -not [AutomexiaResizeDriver]::IsWindowVisible($window)) {
+            throw 'Escape did not restore the running window'
+        }
+        # A retained search footer uses the same modal text phase as settings.
+        # It must neither show through Quit nor consume Quit's first Escape.
+        Send-AutomexiaTestControl 'open-pane-search:close-regression'
+        $search = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelled.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not $search.search_active -and [DateTime]::UtcNow -lt $deadline) {
+            $search = Read-AutomexiaSnapshot -AfterSequence ([int64]$search.sequence)
+        }
+        if (-not $search.search_active) { throw 'Close regression could not open search' }
+        if (-not [AutomexiaResizeDriver]::PostMessage(
+                $window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+            throw 'Could not post the repeated native close request'
+        }
+        $reopened = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelled.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [bool]$reopened.confirm_quit_active -and
+               [DateTime]::UtcNow -lt $deadline) {
+            $reopened = Read-AutomexiaSnapshot -AfterSequence ([int64]$reopened.sequence)
+        }
+        if (-not [bool]$reopened.confirm_quit_active) {
+            throw 'Repeated native close did not reopen the confirmation'
+        }
+        $searchCapture = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) { $null } else {
+            Join-Path ([IO.Path]::GetFullPath($ModalCaptureDirectory)) 'search-close-confirm.png'
+        }
+        Assert-AutomexiaCloseSurface $window $reopened $searchCapture
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        $searchRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$reopened.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ($searchRestored.confirm_quit_active -and [DateTime]::UtcNow -lt $deadline) {
+            $searchRestored = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchRestored.sequence)
+        }
+        if ($searchRestored.confirm_quit_active -or -not $searchRestored.search_active) {
+            throw 'Canceling Quit did not preserve the covered search'
+        }
+        [void][AutomexiaResizeDriver]::PostMessage($window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)
+        $reopened = Read-AutomexiaSnapshot -AfterSequence ([int64]$searchRestored.sequence)
+        $deadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not $reopened.confirm_quit_active -and [DateTime]::UtcNow -lt $deadline) {
+            $reopened = Read-AutomexiaSnapshot -AfterSequence ([int64]$reopened.sequence)
+        }
+        if (-not $reopened.confirm_quit_active) { throw 'Close over search did not reopen' }
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+                $window, 0x59, $false, $false, $false)) {
+            throw 'Could not confirm the native close with Y'
+        }
+        if (-not $process.WaitForExit(15000)) {
+            $afterY = Read-AutomexiaSnapshot
+            throw "Confirming the native close did not exit Automexia (overlay active: $([bool]$afterY.confirm_quit_active), sequence: $($afterY.sequence))"
+        }
+        if (-not [string]::IsNullOrWhiteSpace($ResourceReport)) {
+            $reportPath = [IO.Path]::GetFullPath($ResourceReport)
+            New-Item -ItemType Directory -Force -Path ([IO.Path]::GetDirectoryName($reportPath)) | Out-Null
+            [IO.File]::WriteAllText($reportPath, (@{
+                schema_version = 1
+                mode = 'close-confirmation-only'
+                cancelled_and_reopened = $true
+                opaque_card_and_buttons = $true
+                cancel_restores_search = $true
+                frame = @($frame.Width, $frame.Height)
+                distinct_color_buckets = $frame.DistinctColorBuckets
+                artifact = if ($null -eq $capture) { $null } else { [IO.Path]::GetFileName($capture) }
+            } | ConvertTo-Json -Depth 3), [Text.UTF8Encoding]::new($false))
+        }
+        Write-Host 'Focused native WM_CLOSE confirmation passed'
+        $process = $null
+        return
+    }
 
     if ($ConnectionHubOnly) {
         $modalCaptureRoot = if ([string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
@@ -1790,7 +2578,7 @@ $rendererConfig
     }
     $resultSurfaceBottom =
         [double]$resultSurface[1] + [double]$resultSurface[3]
-    $resultGutter = [double]$resultDivider[1] - $resultSurfaceBottom
+    $resultMarkerGap = [double]$resultDivider[1] - $resultSurfaceBottom
     if ([double]$resultSurface[2] -lt 4.0 -or
         [double]$resultSurface[3] -lt 1.0 -or
         [double]$resultDivider[2] -lt 1.0 -or
@@ -1799,10 +2587,10 @@ $rendererConfig
         [double]$resultDivider[0] -le [double]$resultSurface[0] -or
         ([double]$resultDivider[0] + [double]$resultDivider[2]) -ge
             ([double]$resultSurface[0] + [double]$resultSurface[2]) -or
-        $resultGutter -lt 6.0 -or
-        $resultGutter -gt 12.5) {
+        $resultMarkerGap -lt 0.5 -or
+        $resultMarkerGap -gt 1.5) {
         Write-Host ($historyReady | ConvertTo-Json -Depth 8)
-        throw 'Command-result geometry must keep its gutter and a short inset marker, not a pane divider'
+        throw 'Command-result geometry must fill the final output row and place a short inset marker in the reserved prompt row'
     }
     $resultOpacity = @($historyReady.command_result_opacity)
     if ($resultOpacity.Count -ne 3 -or
@@ -1911,8 +2699,8 @@ $rendererConfig
     if ($resultGlyphWidth -lt 64 -or $resultGlyphHeight -lt 8) {
         throw 'Command-result glyph sample is too small'
     }
-    # Compare blank pixels in the resting surface with the adjacent untouched
-    # gutter. Text diversity cannot satisfy this assertion.
+    # Compare blank pixels in the resting surface with the following reserved
+    # prompt row outside its short marker. Text diversity cannot satisfy this.
     $resultSampleX = [int][Math]::Floor(
         ([double]$resultSurface[0] + [double]$resultSurface[2] * 0.60) * $resultScale)
     $resultSampleWidth = [int][Math]::Floor(
@@ -1921,13 +2709,13 @@ $rendererConfig
         ([double]$resultSurface[1] + [double]$resultSurface[3] * 0.20) * $resultScale)
     $resultSurfaceSampleHeight = [int][Math]::Max(2, [Math]::Floor(
         [double]$resultSurface[3] * 0.60 * $resultScale))
-    $resultGutterSampleY = [int][Math]::Ceiling(
-        ($resultSurfaceBottom + $resultGutter * 0.20) * $resultScale)
-    $resultGutterSampleHeight = [int][Math]::Max(2, [Math]::Floor(
-        $resultGutter * 0.60 * $resultScale))
+    $resultReservedRowSampleY = [int][Math]::Ceiling(
+        ($resultSurfaceBottom + 1.5) * $resultScale)
+    $resultReservedRowSampleHeight = [int][Math]::Max(2, [Math]::Ceiling(
+        1.0 * $resultScale))
     if ($resultSampleWidth -lt 32 -or
         $resultSurfaceSampleHeight -lt 2 -or
-        $resultGutterSampleHeight -lt 2) {
+        $resultReservedRowSampleHeight -lt 2) {
         throw 'Command-result blank-pixel contrast samples are too small'
     }
     $script:testStage = 'command-result composited surface'
@@ -1943,7 +2731,7 @@ $rendererConfig
         throw "Could not expose Automexia for command-result capture (Win32 error $code)"
     }
     $resultSurfaceBackground = $null
-    $resultGutterBackground = $null
+    $resultReservedRowBackground = $null
     $resultGlyphPixels = $null
     try {
         do {
@@ -1972,20 +2760,20 @@ $rendererConfig
                     $resultSurfaceSampleY,
                     $resultSampleWidth,
                     $resultSurfaceSampleHeight)
-            $resultGutterBackground =
+            $resultReservedRowBackground =
                 [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
                     $window,
                     $resultSampleX,
-                    $resultGutterSampleY,
+                    $resultReservedRowSampleY,
                     $resultSampleWidth,
-                    $resultGutterSampleHeight)
+                    $resultReservedRowSampleHeight)
             $resultPaintDelta =
                 [Math]::Abs([int]$resultSurfaceBackground.MeanRed -
-                    [int]$resultGutterBackground.MeanRed) +
+                    [int]$resultReservedRowBackground.MeanRed) +
                 [Math]::Abs([int]$resultSurfaceBackground.MeanGreen -
-                    [int]$resultGutterBackground.MeanGreen) +
+                    [int]$resultReservedRowBackground.MeanGreen) +
                 [Math]::Abs([int]$resultSurfaceBackground.MeanBlue -
-                    [int]$resultGutterBackground.MeanBlue)
+                    [int]$resultReservedRowBackground.MeanBlue)
             $resultPixelsValid = (
                 $resultFrame.Width -ge 100 -and
                 $resultFrame.Height -ge 100 -and
@@ -2003,10 +2791,10 @@ $rendererConfig
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
     }
     if (-not $resultPixelsValid) {
-        throw "Command-result pixels did not settle after $resultCaptureAttempts attempts: samples=$($resultPixels.SampleCount), buckets=$($resultPixels.DistinctColorBuckets), spread=$($resultPixels.LuminanceSpread), glyph-buckets=$($resultGlyphPixels.DistinctColorBuckets), glyph-spread=$($resultGlyphPixels.LuminanceSpread), blank-pixel-delta=$resultPaintDelta, surface-rgb=$($resultSurfaceBackground.MeanRed)/$($resultSurfaceBackground.MeanGreen)/$($resultSurfaceBackground.MeanBlue), gutter-rgb=$($resultGutterBackground.MeanRed)/$($resultGutterBackground.MeanGreen)/$($resultGutterBackground.MeanBlue)"
+        throw "Command-result pixels did not settle after $resultCaptureAttempts attempts: samples=$($resultPixels.SampleCount), buckets=$($resultPixels.DistinctColorBuckets), spread=$($resultPixels.LuminanceSpread), glyph-buckets=$($resultGlyphPixels.DistinctColorBuckets), glyph-spread=$($resultGlyphPixels.LuminanceSpread), blank-pixel-delta=$resultPaintDelta, surface-rgb=$($resultSurfaceBackground.MeanRed)/$($resultSurfaceBackground.MeanGreen)/$($resultSurfaceBackground.MeanBlue), reserved-row-rgb=$($resultReservedRowBackground.MeanRed)/$($resultReservedRowBackground.MeanGreen)/$($resultReservedRowBackground.MeanBlue)"
     }
     if ($resultPaintDelta -lt 16) {
-        throw "Command-result resting paint is not perceptible against its gutter: RGB delta $resultPaintDelta"
+        throw "Command-result resting paint is not perceptible against its reserved row: RGB delta $resultPaintDelta"
     }
 
     # Resize immediately before the public shortcut sequence. This preserves
@@ -2476,6 +3264,18 @@ $rendererConfig
         Write-Host ($localClosed | ConvertTo-Json -Depth 10)
         throw 'Single-tab pane retained stale local-tab rail geometry'
     }
+    if ($null -eq $localClosed.retired_renderer_grid_count -or
+        $null -eq $localClosed.renderer_grid_count -or
+        $null -eq $localClosed.owned_route_count -or
+        [int]$localClosed.retired_renderer_grid_count -ne 0 -or
+        [int]$localClosed.renderer_grid_count -gt [int]$localClosed.owned_route_count) {
+        Write-Host ('Renderer grid ownership after inactive tab close: ' + (@{
+            renderer_grid_count = $localClosed.renderer_grid_count
+            owned_route_count = $localClosed.owned_route_count
+            retired_renderer_grid_count = $localClosed.retired_renderer_grid_count
+        } | ConvertTo-Json -Compress))
+        throw 'Closing an inactive pane-local tab retained a renderer grid without a live route'
+    }
     $historyDone = $localClosed
 
     # Enter the real interactive CMD child through PowerShell's bare cmd alias.
@@ -2501,6 +3301,8 @@ $rendererConfig
     Send-AutomexiaTestControl $cmdEnterControl
     $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdTyped.sequence)
     $cmdDeadline = [DateTime]::UtcNow.AddSeconds(20)
+    # CMD publishes metadata before its final prompt glyph. Wait for the same
+    # complete prompt that the assertion below requires, not an intermediate frame.
     while (([string]$cmdReady.last_control -ne $cmdEnterControl -or
             (Get-ActiveAutomexiaPanel $cmdReady).shell_name -ne 'CMD' -or
             -not [bool](Get-ActiveAutomexiaPanel $cmdReady).shell_integration -or
@@ -2508,6 +3310,8 @@ $rendererConfig
             (@((Get-ActiveAutomexiaPanel $cmdReady).context_segments) |
                 ConvertTo-Json -Compress) -ne $expectedContextSegmentsJson -or
             (Get-ActiveAutomexiaPanel $cmdReady).shell_user -ne [Environment]::UserName -or
+            [IO.Path]::GetFileName([string](Get-ActiveAutomexiaPanel $cmdReady).shell_path) -ine 'cmd.exe' -or
+            -not ([string](Get-ActiveAutomexiaPanel $cmdReady).cursor_line_text).Contains([char]0x03BB) -or
             -not [bool]$cmdReady.full_path_visible) -and
            [DateTime]::UtcNow -lt $cmdDeadline) {
         $cmdReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$cmdReady.sequence)
@@ -2524,6 +3328,14 @@ $rendererConfig
         [IO.Path]::GetFileName([string]$cmdPanel.shell_path) -ine 'cmd.exe' -or
         -not ([string]$cmdPanel.cursor_line_text).Contains([char]0x03BB)) {
         Write-Host ($cmdReady | ConvertTo-Json -Depth 10)
+        # Report only executable names and process relationships; arguments and
+        # paths can contain private shell/provider data.
+        $cmdStartupProcesses = @(Get-AutomexiaOwnedProcessIds $process.Id $configRoot |
+            Select-Object -First 32 | ForEach-Object {
+                Get-CimInstance Win32_Process -Filter "ProcessId = $_" |
+                    Select-Object Name, ProcessId, ParentProcessId
+            })
+        Write-Host ($cmdStartupProcesses | ConvertTo-Json -Compress)
         throw 'Interactive CMD did not publish its shell, user, path, prompt, and complete working directory automatically'
     }
 
@@ -3160,9 +3972,10 @@ $rendererConfig
     $previewX = [int][Math]::Floor(
         [double]$previewPanel.grid_origin[0] +
         (($previewColumn + 1.5) * [double]$previewPanel.cell_width))
+    $previewPaintedRow = Get-AutomexiaPaintedRow -Panel $previewPanel -SourceRow $previewRow
     $previewY = [int][Math]::Floor(
         [double]$previewPanel.grid_origin[1] +
-        (($previewRow + 0.5) * [double]$previewPanel.cell_height))
+        (($previewPaintedRow + 0.5) * [double]$previewPanel.cell_height))
     $previewScale = [double]$preview.scale_factor
     if ($previewScale -le 0.0) {
         throw 'Native snapshot did not publish a valid window scale factor'
@@ -3288,7 +4101,7 @@ $rendererConfig
     $script:testStage = 'native image preview visible pixel fidelity'
     $pixelDeadline = [DateTime]::UtcNow.AddSeconds(5)
     do {
-        $previewPixels = [AutomexiaResizeDriver]::CaptureClientRegionStats(
+        $previewPixels = [AutomexiaResizeDriver]::CapturePhysicalClientRegionStats(
             $window, $overlayX, $overlayY, $overlayWidth, $overlayHeight)
         $brightRatio = if ($previewPixels.SampleCount -eq 0) {
             0.0
@@ -3685,6 +4498,11 @@ $rendererConfig
     } else {
         'confirm-quit-wgpu.png'
     }
+    $nativeQuitCaptureName = if ($UseCpuRenderer) {
+        'native-close-confirm-cpu.png'
+    } else {
+        'native-close-confirm-wgpu.png'
+    }
     $hubCaptureName = if ($UseCpuRenderer) {
         'connection-hub-cpu.png'
     } else {
@@ -3704,6 +4522,11 @@ $rendererConfig
         $null
     } else {
         Join-Path $modalCaptureRoot $quitCaptureName
+    }
+    $nativeQuitCapturePath = if ($null -eq $modalCaptureRoot) {
+        $null
+    } else {
+        Join-Path $modalCaptureRoot $nativeQuitCaptureName
     }
     $hubCapturePath = if ($null -eq $modalCaptureRoot) {
         $null
@@ -3932,9 +4755,11 @@ $rendererConfig
     # The snapshot that acknowledges a control is published before that dirty
     # frame is presented. Wait one additional renderer generation.
     $palettePresented = Read-AutomexiaSnapshot -AfterSequence ([int64]$paletteSnapshot.sequence)
-    if ([int]$palettePresented.palette_total_results -ne 6 -or
-        -not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Command categories;')) {
-        throw 'The native command palette did not open its six-category root'
+    if ([int]$palettePresented.palette_total_results -ne 7 -or
+        [int]$palettePresented.palette_selected_index -ne 0 -or
+        [int]$palettePresented.palette_scroll_offset -ne 0 -or
+        -not ([string]$palettePresented.palette_accessibility_summary).StartsWith('Command categories; 7 results;')) {
+        throw 'The native command palette did not open its seven-category root'
     }
     $paletteRootPanel = Get-ActiveAutomexiaPanel $palettePresented
     $paletteRoot = $palettePresented
@@ -4143,15 +4968,6 @@ $rendererConfig
     }
 
     $script:testStage = 'post-storm resource ceiling'
-    $resourceSettleDeadline = [DateTime]::UtcNow.AddSeconds(5)
-    do {
-        Start-Sleep -Milliseconds 100
-        $resourceFinal = Get-AutomexiaResourceSample $process
-        $descendantProcessGrowth =
-            $resourceFinal.descendant_process_count -
-            $resourceBaseline.descendant_process_count
-    } while ($descendantProcessGrowth -gt $MaximumDescendantProcessGrowth -and
-             [DateTime]::UtcNow -lt $resourceSettleDeadline)
     $resourceLimits = [ordered]@{
         handle_growth = $MaximumHandleGrowth
         thread_growth = $MaximumThreadGrowth
@@ -4159,15 +4975,48 @@ $rendererConfig
         working_set_growth = $MaximumWorkingSetGrowth
         descendant_process_growth = $MaximumDescendantProcessGrowth
     }
-    $resourceDelta = [ordered]@{
-        handle_growth = $resourceFinal.handle_count - $resourceBaseline.handle_count
-        thread_growth = $resourceFinal.thread_count - $resourceBaseline.thread_count
-        private_bytes_growth = $resourceFinal.private_bytes - $resourceBaseline.private_bytes
-        working_set_growth = $resourceFinal.working_set_bytes - $resourceBaseline.working_set_bytes
-        descendant_process_growth = $descendantProcessGrowth
-    }
+    $resourceSettleDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    $resourceSettleTimer = [Diagnostics.Stopwatch]::StartNew()
+    $resourceTimeline = [System.Collections.Generic.List[object]]::new()
+    $resourceInitialSample = $null
+    do {
+        Start-Sleep -Milliseconds 100
+        $resourceFinal = Get-AutomexiaResourceSample $process
+        if ($null -eq $resourceInitialSample) { $resourceInitialSample = $resourceFinal }
+        $descendantProcessGrowth =
+            $resourceFinal.descendant_process_count -
+            $resourceBaseline.descendant_process_count
+        $resourceDelta = [ordered]@{
+            handle_growth = $resourceFinal.handle_count - $resourceBaseline.handle_count
+            thread_growth = $resourceFinal.thread_count - $resourceBaseline.thread_count
+            private_bytes_growth = $resourceFinal.private_bytes - $resourceBaseline.private_bytes
+            working_set_growth = $resourceFinal.working_set_bytes - $resourceBaseline.working_set_bytes
+            descendant_process_growth = $descendantProcessGrowth
+        }
+        $resourceTimeline.Add([ordered]@{
+            elapsed_milliseconds = $resourceSettleTimer.ElapsedMilliseconds
+            handle_count = $resourceFinal.handle_count
+            thread_count = $resourceFinal.thread_count
+            private_bytes = $resourceFinal.private_bytes
+            working_set_bytes = $resourceFinal.working_set_bytes
+            descendant_process_count = $resourceFinal.descendant_process_count
+        })
+        $resourceExceeded = $false
+        foreach ($name in $resourceLimits.Keys) {
+            if ([int64]$resourceDelta[$name] -gt [int64]$resourceLimits[$name]) {
+                $resourceExceeded = $true
+            }
+        }
+    } while ($resourceExceeded -and [DateTime]::UtcNow -lt $resourceSettleDeadline)
     foreach ($name in $resourceLimits.Keys) {
         if ([int64]$resourceDelta[$name] -gt [int64]$resourceLimits[$name]) {
+            Write-Host ('Native resource ceiling diagnostic: ' + (@{
+                failed_metric = $name
+                baseline = $resourceBaseline
+                initial_sample = $resourceInitialSample
+                failing_sample = $resourceFinal
+                timeline = $resourceTimeline.ToArray()
+            } | ConvertTo-Json -Depth 5 -Compress))
             throw "Native resource ceiling exceeded for $name`: $($resourceDelta[$name]) > $($resourceLimits[$name])"
         }
     }
@@ -4179,11 +5028,17 @@ $rendererConfig
         }
         $report = [ordered]@{
             schema_version = 1
+            renderer_backend = [string]$initial.renderer_backend
             panel_count_at_final_sample = [int]$final.panel_count
             baseline = $resourceBaseline
             final = $resourceFinal
             delta = $resourceDelta
             ceilings = $resourceLimits
+            resource_settle = [ordered]@{
+                initial_sample = $resourceInitialSample
+                elapsed_milliseconds = $resourceSettleTimer.ElapsedMilliseconds
+                timeline = $resourceTimeline.ToArray()
+            }
             typography_frame = [ordered]@{
                 width = $typographyFrame.Width
                 height = $typographyFrame.Height
@@ -4237,7 +5092,7 @@ $rendererConfig
                 pulse_generation = [int64]$historyReady.command_result_pulse_generation
                 surface = $resultSurface
                 divider = $resultDivider
-                breathing_gutter = $resultGutter
+                reserved_row_marker_gap = $resultMarkerGap
                 attempts = $resultCaptureAttempts
                 region_size = @($resultRegionWidth, $resultRegionHeight)
                 region_sample_count = $resultPixels.SampleCount
@@ -4254,11 +5109,11 @@ $rendererConfig
                     $resultSurfaceBackground.MeanRed,
                     $resultSurfaceBackground.MeanGreen,
                     $resultSurfaceBackground.MeanBlue)
-                blank_gutter_mean_rgb = @(
-                    $resultGutterBackground.MeanRed,
-                    $resultGutterBackground.MeanGreen,
-                    $resultGutterBackground.MeanBlue)
-                blank_surface_gutter_rgb_delta = $resultPaintDelta
+                blank_reserved_row_mean_rgb = @(
+                    $resultReservedRowBackground.MeanRed,
+                    $resultReservedRowBackground.MeanGreen,
+                    $resultReservedRowBackground.MeanBlue)
+                blank_surface_reserved_row_rgb_delta = $resultPaintDelta
                 representative_commands = $resultCommandEvidence
                 completed_at_unix_ms = [int64]$historyReady.command_result_completed_at_unix_ms
                 timestamp_label = [string]$historyReady.command_result_label
@@ -4346,6 +5201,18 @@ $rendererConfig
                         [IO.Path]::GetFileName($quitCapturePath)
                     }
                 }
+                native_close_confirmation = [ordered]@{
+                    width = $nativeQuitFrame.Width
+                    height = $nativeQuitFrame.Height
+                    distinct_color_buckets = $nativeQuitFrame.DistinctColorBuckets
+                    luminance_spread = $nativeQuitFrame.LuminanceSpread
+                    cancelled_and_reopened = $true
+                    artifact = if ($null -eq $nativeQuitCapturePath) {
+                        $null
+                    } else {
+                        [IO.Path]::GetFileName($nativeQuitCapturePath)
+                    }
+                }
                 exclusive_state_restored = (
                     -not [bool]$modalDismissed.palette_enabled -and
                     -not [bool]$modalDismissed.confirm_quit_active -and
@@ -4382,12 +5249,73 @@ $rendererConfig
     # Capture exact process identities before closing the owner. Once a child
     # becomes orphaned, count-only sampling and parent-tree traversal can no
     # longer prove that the original route released it.
+    $script:testStage = 'native final-window close confirmation and cancellation'
+    $beforeNativeClose = Read-AutomexiaSnapshot
+    if (-not [AutomexiaResizeDriver]::PostMessage(
+            $window, 0x0010, [IntPtr]::Zero, [IntPtr]::Zero)) {
+        throw 'Could not post WM_CLOSE to the final Automexia window'
+    }
+    $nativeClose = Read-AutomexiaSnapshot -AfterSequence ([int64]$beforeNativeClose.sequence)
+    $nativeCloseDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (-not [bool]$nativeClose.confirm_quit_active -and
+           [DateTime]::UtcNow -lt $nativeCloseDeadline) {
+        $nativeClose = Read-AutomexiaSnapshot -AfterSequence ([int64]$nativeClose.sequence)
+    }
+    $process.Refresh()
+    if (-not [bool]$nativeClose.confirm_quit_active -or
+        $process.HasExited -or
+        -not [AutomexiaResizeDriver]::IsWindowVisible($window)) {
+        throw 'WM_CLOSE bypassed the in-app confirmation or left a native dialog blocking it'
+    }
+    if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)) {
+        throw 'Could not expose the native close confirmation for capture'
+    }
+    try {
+        Start-Sleep -Milliseconds 100
+        $nativeQuitFrame = [AutomexiaResizeDriver]::CaptureStableCloseDialogFrame(
+            $window, $nativeQuitCapturePath)
+    } finally {
+        [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
+    }
+    if ($nativeQuitFrame.SampleCount -lt 100 -or
+        $nativeQuitFrame.DistinctColorBuckets -lt 8 -or
+        $nativeQuitFrame.LuminanceSpread -lt 32) {
+        throw 'The native close confirmation frame is blank or unreadable'
+    }
+    if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
+        throw 'Could not cancel the native close confirmation with Escape'
+    }
+    $cancelledClose = Read-AutomexiaSnapshot -AfterSequence ([int64]$nativeClose.sequence)
+    $cancelDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while ([bool]$cancelledClose.confirm_quit_active -and
+           [DateTime]::UtcNow -lt $cancelDeadline) {
+        $cancelledClose = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelledClose.sequence)
+    }
+    $process.Refresh()
+    if ([bool]$cancelledClose.confirm_quit_active -or $process.HasExited -or
+        -not [AutomexiaResizeDriver]::IsWindowVisible($window)) {
+        throw 'Cancelling the native close did not restore the running window'
+    }
+
     $script:testStage = 'application process-tree shutdown'
     $ownedDescendantsAtShutdown = @(
         Get-AutomexiaOwnedProcessIds $process.Id $configRoot)
-    $shutdownTimer = [Diagnostics.Stopwatch]::StartNew()
     if (-not $process.CloseMainWindow()) {
         throw 'Automexia did not accept the native close request'
+    }
+    $confirmedClose = Read-AutomexiaSnapshot -AfterSequence ([int64]$cancelledClose.sequence)
+    $confirmDeadline = [DateTime]::UtcNow.AddSeconds(5)
+    while (-not [bool]$confirmedClose.confirm_quit_active -and
+           [DateTime]::UtcNow -lt $confirmDeadline) {
+        $confirmedClose = Read-AutomexiaSnapshot -AfterSequence ([int64]$confirmedClose.sequence)
+    }
+    if (-not [bool]$confirmedClose.confirm_quit_active) {
+        throw 'The final native close did not reopen the in-app confirmation'
+    }
+    $shutdownTimer = [Diagnostics.Stopwatch]::StartNew()
+    if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap(
+            $window, 0x59, $false, $false, $false)) {
+        throw 'Could not accept the native close confirmation with Y'
     }
     # Window retirement and child/resource teardown are different observations.
     # A process-exit ceiling alone previously allowed seconds of visible lag.
@@ -4451,7 +5379,15 @@ $rendererConfig
     }
     foreach ($ownedProcessId in $ownedDescendantsAtShutdown) {
         if ($null -ne (Get-Process -Id $ownedProcessId -ErrorAction SilentlyContinue)) {
-            Stop-Process -Id $ownedProcessId -Force
+            try {
+                Stop-Process -Id $ownedProcessId -Force
+            } catch {
+                # A descendant can finish between lookup and cleanup. Preserve
+                # the original assertion failure while retaining other errors.
+                if ($_.FullyQualifiedErrorId -notlike 'NoProcessFoundForGivenId,*') {
+                    throw
+                }
+            }
         }
     }
     if ($null -eq $previousSnapshot) {

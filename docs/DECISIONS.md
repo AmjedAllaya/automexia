@@ -60,6 +60,7 @@ listed or summarized here.
 | [0076](adr/0076-quick-actions-owned-retirement.md) | Quick Actions cancellation and owned worker retirement |
 | [0078](adr/0078-inline-header-table-presentation.md) | Inline header tables with bounded cell wrapping and source mapping |
 | [0079](adr/0079-shared-settings-and-presentation-preferences.md) | Shared Settings catalogue and application-owned presentation preferences |
+| [0080](adr/0080-installed-package-settings-projection.md) | Installed package settings projection and isolated preference writes |
 
 ## When an ADR is required
 
@@ -74,3 +75,9 @@ documentation tree until an explicit publication decision.
 
 D0 is governed by ADR 0012 and preserves the split between application-owned
 terminal sessions and system OpenSSH-owned network and credential authority.
+
+## SSH planning boundary record
+
+[ADR 0080](adr/0080-nonexecuting-ssh-planning-boundary.md) records the current
+non-executing implementation and is proposed for review. It does not approve
+managed SSH activation or change structured-action execution policy.

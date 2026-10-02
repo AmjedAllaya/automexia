@@ -12,16 +12,18 @@ pub(super) enum Category {
     Search,
     Input,
     Appearance,
+    Customizations,
     Tools,
 }
 
 impl Category {
-    pub(super) const ALL: [Self; 6] = [
+    pub(super) const ALL: [Self; 7] = [
         Self::Tabs,
         Self::Panes,
         Self::Search,
         Self::Input,
         Self::Appearance,
+        Self::Customizations,
         Self::Tools,
     ];
 
@@ -32,6 +34,7 @@ impl Category {
             Self::Search => "Search & History",
             Self::Input => "Clipboard & Input",
             Self::Appearance => "Appearance",
+            Self::Customizations => "Customizations",
             Self::Tools => "Tools",
         }
     }
@@ -43,7 +46,8 @@ impl Category {
             Self::Search => (CommandIcon::Search, BRAND_BLUE),
             Self::Input => (CommandIcon::Paste, BRAND_LIME),
             Self::Appearance => (CommandIcon::Theme, BRAND_AMBER),
-            Self::Tools => (CommandIcon::Settings, BRAND_CYAN),
+            Self::Customizations => (CommandIcon::Customizations, BRAND_CYAN),
+            Self::Tools => (CommandIcon::Toolbox, BRAND_CYAN),
         };
         RowPresentation { icon, accent }
     }
@@ -80,8 +84,9 @@ impl Category {
             | ToggleFullscreen
             | ToggleAppearanceTheme
             | ListFonts => Self::Appearance,
-            ConfigEditor | OpenSettings | PreviewSelectedImage | ViewTableOutput
-            | OpenMarket | OpenConnections | OpenActions => Self::Tools,
+            OpenSettings | OpenCustomizations => Self::Customizations,
+            ConfigEditor | PreviewSelectedImage | ViewTableOutput | OpenMarket
+            | OpenConnections | OpenActions => Self::Tools,
         }
     }
 }

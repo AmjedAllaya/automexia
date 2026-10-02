@@ -9,6 +9,185 @@ use rio_backend::sugarloaf::font::{constants, FontData, FontLibraryData};
 use rio_backend::sugarloaf::grid::{cpu::CpuGridRenderer, GridUniforms};
 use std::sync::Arc;
 
+#[test]
+fn non_pod_kubernetes_colors_survive_raw_soft_wrapping() {
+    use crate::automexia::api::SemanticSeverity::{Error, Info, Success, Warning};
+    use crate::automexia::output_semantics::{OutputClassification, OutputDomain};
+    for (header, data, severity) in [
+        (
+            "NAME  READY  UP-TO-DATE  AVAILABLE  AGE",
+            "api   1/3    3           1          1d",
+            Warning,
+        ),
+        (
+            "NAME  DESIRED  CURRENT  READY  AGE",
+            "api   3        3        3      1d",
+            Success,
+        ),
+        ("NAME  READY  AGE", "db    2/2    1d", Success),
+        (
+            "NAME  STATUS  COMPLETIONS  DURATION  AGE",
+            "job   Failed  0/1          1m        1m",
+            Error,
+        ),
+        (
+            "NAME  STATUS  VOLUME  CAPACITY  ACCESS MODES  STORAGECLASS  AGE",
+            "data  Lost    disk    1Gi       RWO           standard      1d",
+            Error,
+        ),
+        ("NAME  STATUS       AGE", "demo  Terminating  1d", Warning),
+        (
+            "NAME  SERVICE       AVAILABLE                 AGE",
+            "api   demo/metrics  False (MissingEndpoints)  1d",
+            Error,
+        ),
+        (
+            "NAME  TYPE       CLUSTER-IP  EXTERNAL-IP  PORT(S)  AGE",
+            "api   ClusterIP  10.0.0.1    <none>       80/TCP   1d",
+            Info,
+        ),
+    ] {
+        for width in [12, 32, 120] {
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(width, 40),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                128,
+            );
+            Processor::default()
+                .advance(&mut terminal, format!("{header}\r\n{data}\r\n").as_bytes());
+            let (rows, _, _) = snapshot(&mut terminal);
+            let mut classified = Vec::new();
+            classify_visible_output(
+                &rows,
+                width,
+                false,
+                &mut classified,
+                &mut String::new(),
+            );
+            let start = header.len().div_ceil(width);
+            let end = start + data.len().div_ceil(width);
+            assert!(
+                classified[start..end].iter().all(|value| *value
+                    == Some(OutputClassification {
+                        domain: OutputDomain::Kubernetes,
+                        severity: Some(severity),
+                    })),
+                "{header}: {data} at {width}: {:?}",
+                &classified[start..end]
+            );
+        }
+    }
+}
+
+#[test]
+fn wrapped_kubernetes_rows_keep_domain_status_and_independent_gate() {
+    use crate::automexia::output_semantics::{OutputClassification, OutputDomain};
+    let source = "pod-a  0/1  Running  0  1m\r\npod-b  1/1  FutureState error\r\n";
+    for width in [8, 12, 80] {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(width, 20),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        Processor::default().advance(&mut terminal, source.as_bytes());
+        let (rows, _, _) = snapshot(&mut terminal);
+        let mut classified = Vec::new();
+        classify_visible_output(&rows, width, false, &mut classified, &mut String::new());
+        let first_height = "pod-a  0/1  Running  0  1m".len().div_ceil(width);
+        let second_height = "pod-b  1/1  FutureState error".len().div_ceil(width);
+        for class in &classified[..first_height] {
+            assert_eq!(
+                *class,
+                Some(OutputClassification {
+                    domain: OutputDomain::Kubernetes,
+                    severity: Some(crate::automexia::api::SemanticSeverity::Warning),
+                })
+            );
+        }
+        for class in &classified[first_height..first_height + second_height] {
+            assert_eq!(
+                *class,
+                Some(OutputClassification {
+                    domain: OutputDomain::Kubernetes,
+                    severity: None,
+                })
+            );
+        }
+        let mut renderer = fixture_renderer(true);
+        renderer.presentation.kubernetes_highlighting = false;
+        assert_eq!(semantic_classification_fg(classified[0], &renderer), None);
+        renderer.presentation.output_highlighting = false;
+        renderer.presentation.kubernetes_highlighting = true;
+        assert_eq!(
+            semantic_classification_fg(classified[0], &renderer),
+            Some([255, 255, 0, 255])
+        );
+    }
+}
+
+#[test]
+fn visible_output_does_not_join_hard_lines_or_color_incomplete_wraps() {
+    let mut terminal = terminal("api 0/1\r\nRunning\r\n[ERROR] fixture\r\n");
+    let (rows, _, _) = snapshot(&mut terminal);
+    let mut classified = Vec::new();
+    classify_visible_output(&rows, 80, false, &mut classified, &mut String::new());
+    assert_eq!(classified[0], None);
+    assert_eq!(classified[1], None);
+    assert!(classified[2].is_some());
+
+    let mut narrow = Crosswords::new(
+        CrosswordsSize::new(8, 12),
+        rio_backend::ansi::CursorShape::Block,
+        VoidListener {},
+        WindowId::from(0),
+        0,
+        128,
+    );
+    Processor::default().advance(&mut narrow, b"pod-a 0/1 Running\r\n");
+    let (rows, _, _) = snapshot(&mut narrow);
+    classify_visible_output(&rows, 8, true, &mut classified, &mut String::new());
+    assert!(classified[..3]
+        .iter()
+        .all(|entry| entry.is_some_and(|entry| entry.domain
+            == crate::automexia::output_semantics::OutputDomain::Uncertain)));
+    classify_visible_output(&rows[..1], 8, false, &mut classified, &mut String::new());
+    assert_eq!(classified.len(), 1);
+    assert_eq!(
+        classified[0].unwrap().domain,
+        crate::automexia::output_semantics::OutputDomain::Uncertain
+    );
+}
+
+#[test]
+fn semantic_prompt_and_editable_input_are_never_output_status_rows() {
+    use rio_backend::crosswords::grid::row::SemanticPrompt;
+    let mut terminal =
+        terminal("[ERROR] prompt\r\napi 0/1 Running\r\n[ERROR] actual output\r\n");
+    let (mut rows, _, _) = snapshot(&mut terminal);
+    rows[0].set_semantic_prompt(SemanticPrompt::Prompt, Some(7));
+    rows[1].set_semantic_prompt(SemanticPrompt::PromptContinuation, Some(7));
+    let mut classified = Vec::new();
+    classify_visible_output(&rows, 80, false, &mut classified, &mut String::new());
+    assert!(classified[..2]
+        .iter()
+        .all(|entry| entry.is_some_and(|entry| entry.domain
+            == crate::automexia::output_semantics::OutputDomain::Uncertain)));
+    assert!(classified[2].is_some());
+    let renderer = fixture_renderer(true);
+    for row in &rows[..2] {
+        assert_eq!(
+            semantic_row_fg(row, 80, &renderer, &mut String::new()),
+            None
+        );
+    }
+}
+
 fn terminal(text: &str) -> Crosswords<VoidListener> {
     let mut terminal = Crosswords::new(
         CrosswordsSize::new(80, 12),
@@ -55,8 +234,241 @@ fn fixture_renderer(enabled: bool) -> Renderer {
     // environment. Theme selection itself is outside this colour-delivery test.
     renderer.named_colors = config.colors;
     renderer.colors = rio_backend::config::colors::term::List::from(&config.colors);
-    renderer.devops_enabled = enabled;
+    renderer.presentation.output_highlighting = enabled;
+    renderer.presentation.kubernetes_highlighting = enabled;
     renderer
+}
+
+#[test]
+fn typed_input_accents_reach_glyphs_preserve_native_styles_and_selection() {
+    use rio_backend::crosswords::grid::row::{PromptInputShell, SemanticInput};
+    let mut terminal = terminal("> docker ps -a\r\n> \x1b[38;2;7;19;31mdocker\x1b[0m ps -a\r\n> \x1b[2mdocker\x1b[0m ps -a\r\n> \x1b[7mdocker\x1b[0m ps -a\r\n> \x1b[8mdocker\x1b[0m ps -a\r\ndocker ps -a");
+    let (mut rows, styles, extras) = snapshot(&mut terminal);
+    for row in &mut rows[..5] {
+        row.semantic_input = Some(SemanticInput {
+            column: 2,
+            shell: PromptInputShell::Cmd,
+            continuation: false,
+        });
+    }
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let renderer = fixture_renderer(false);
+    let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
+    let mut rasterizer = GridGlyphRasterizer::new();
+    let mut glyphs = Vec::new();
+    for selected in [false, true] {
+        for (y, row) in rows.iter().take(6).enumerate() {
+            let selection = selected.then_some(RowSelection { lo: 0, hi: 79 });
+            build_row_fg(
+                row,
+                80,
+                y as u16,
+                &styles,
+                &extras,
+                &renderer,
+                &TermColors::default(),
+                &mut rasterizer,
+                &mut grid,
+                16.0,
+                10.0,
+                24.0,
+                selection,
+                &[],
+                &fonts,
+                0,
+                None,
+                &mut glyphs,
+            );
+            assert!(!glyphs.is_empty());
+            let accent_count = glyphs
+                .iter()
+                .filter(|glyph| glyph.color == [181, 140, 255, 255])
+                .count();
+            if selected || y == 5 {
+                assert_eq!(accent_count, 0);
+            } else if y == 0 {
+                assert_eq!(
+                    accent_count, 8,
+                    "command plus option, no positional argument"
+                );
+            } else {
+                assert_eq!(
+                    accent_count, 2,
+                    "only the option, native command style wins"
+                );
+            }
+            if !selected && y == 1 {
+                assert_eq!(
+                    glyphs
+                        .iter()
+                        .filter(|glyph| glyph.color == [7, 19, 31, 255])
+                        .count(),
+                    6
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn independent_kubernetes_grid_palette_preserves_ansi_inverse_and_selection() {
+    use rio_backend::config::presentation::{HighlightStyle, Rgb, Rgba};
+    let mut terminal = terminal("\x1b[38;2;7;19;31;48;2;41;53;67mpod\x1b[0m-a 0/1 Running\r\n\x1b[7mpod-b 0/1 Running\x1b[0m\r\n");
+    let (rows, styles, _) = snapshot(&mut terminal);
+    let mut renderer = fixture_renderer(true);
+    renderer.presentation.output_highlighting = false;
+    renderer.presentation.highlight.colors.warning = Some(Rgb::from_bytes([190, 1, 2]));
+    renderer.presentation.kubernetes.style = HighlightStyle::Both;
+    renderer.presentation.kubernetes.colors.warning = Some(Rgb::from_bytes([3, 191, 5]));
+    renderer.presentation.kubernetes.warning_background =
+        Some(Rgba::from_bytes([11, 23, 37, 128]));
+    let mut classified = Vec::new();
+    classify_visible_output(&rows, 80, false, &mut classified, &mut String::new());
+    let semantic = semantic_classification_fg(classified[0], &renderer);
+    assert_eq!(semantic, Some([3, 191, 5, 255]));
+    let square = rows[0][Column(0)];
+    assert_eq!(
+        semantic_or_cell_fg(
+            semantic,
+            square,
+            resolve_style(&styles, square),
+            &renderer,
+            &TermColors::default()
+        ),
+        [7, 19, 31, 255]
+    );
+    let inverted = rows[1][Column(0)];
+    assert_eq!(
+        semantic_or_cell_fg(
+            semantic,
+            inverted,
+            resolve_style(&styles, inverted),
+            &renderer,
+            &TermColors::default()
+        ),
+        cell_fg(
+            inverted,
+            resolve_style(&styles, inverted),
+            &renderer,
+            &TermColors::default()
+        )
+    );
+    let mut background = Vec::new();
+    build_row_bg_classified(
+        &rows[0],
+        80,
+        &styles,
+        &renderer,
+        &TermColors::default(),
+        Some(RowSelection { lo: 4, hi: 5 }),
+        &[],
+        &mut GridGlyphRasterizer::new(),
+        &mut background,
+        classified[0],
+    );
+    assert_eq!(background[0].rgba, [41, 53, 67, 255]);
+    assert_eq!(background[3].rgba, [11, 23, 37, 128]);
+    assert_eq!(
+        background[4].rgba,
+        normalized_to_u8(renderer.named_colors.selection_background)
+    );
+    renderer.presentation.kubernetes_highlighting = false;
+    assert_eq!(semantic_classification_fg(classified[0], &renderer), None);
+    assert!(
+        classified[0].is_some(),
+        "disabling paint must not erase row ownership"
+    );
+}
+
+#[test]
+fn semantic_background_never_overwrites_compact_explicit_ansi_fill_cells() {
+    let renderer = fixture_renderer(true);
+    let mut rgb = Square::default();
+    rgb.set_bg_rgb(17, 29, 43);
+    let mut indexed = Square::default();
+    indexed.set_bg_palette(1);
+    for square in [rgb, indexed] {
+        let source = cell_bg(square, Style::default(), &renderer, &TermColors::default());
+        assert_eq!(
+            semantic_or_cell_bg(
+                Some([200, 210, 220, 128]),
+                square,
+                Style::default(),
+                &renderer,
+                &TermColors::default()
+            ),
+            source
+        );
+    }
+}
+
+#[test]
+fn compact_background_gap_does_not_join_kubernetes_ready_and_status_fields() {
+    use crate::automexia::api::SemanticSeverity;
+    use crate::automexia::output_semantics::OutputDomain;
+    let mut terminal = terminal("api 0/1 Running\r\nprompt ");
+    Processor::default().advance(
+        &mut terminal,
+        b"\x1b7\x1b[1;8H\x1b[48;2;17;29;43m\x1b[X\x1b[0m\x1b8",
+    );
+    assert!(terminal.grid[Line(0)][Column(7)].is_bg_only());
+    let (rows, _, _) = snapshot(&mut terminal);
+    let mut classified = Vec::new();
+    classify_visible_output(&rows, 80, false, &mut classified, &mut String::new());
+    let classification =
+        classified[0].expect("erased colored space retains column separation");
+    assert_eq!(classification.domain, OutputDomain::Kubernetes);
+    assert_eq!(classification.severity, Some(SemanticSeverity::Warning));
+}
+
+#[test]
+fn visible_output_classification_is_bounded_and_fresh_after_same_cursor_updates() {
+    use crate::automexia::api::SemanticSeverity;
+    let mut terminal = terminal("api 0/1 Unknown\r\nprompt ");
+    let (rows, _, _) = snapshot(&mut terminal);
+    let mut classified = Vec::new();
+    let mut scratch = String::new();
+    classify_visible_output(&rows, 80, false, &mut classified, &mut scratch);
+    assert_eq!(
+        classified[0].unwrap().severity,
+        Some(SemanticSeverity::Warning)
+    );
+    let cursor = terminal.cursor().pos;
+    Processor::default().advance(
+        &mut terminal,
+        b"\x1b[A\r\x1b[2Kapi 1/1 Running\x1b[B\r\x1b[7C",
+    );
+    assert_eq!(terminal.cursor().pos, cursor);
+    let (rows, _, _) = snapshot(&mut terminal);
+    classify_visible_output(&rows, 80, false, &mut classified, &mut scratch);
+    assert_eq!(
+        classified[0].unwrap().severity,
+        Some(SemanticSeverity::Success)
+    );
+    let many = vec![rows[0].clone(); 1025];
+    classify_visible_output(&many, 80, false, &mut classified, &mut scratch);
+    assert_eq!(classified.len(), 1024);
+    assert!(classified[819..]
+        .iter()
+        .all(|entry| entry.is_some_and(|entry| entry.domain
+            == crate::automexia::output_semantics::OutputDomain::Uncertain)));
+    assert!(scratch.len() <= crate::automexia::output_semantics::MAX_ROW_BYTES);
+}
+
+#[test]
+fn core_output_highlighting_survives_disabled_optional_context() {
+    let mut renderer = fixture_renderer(true);
+    renderer.devops_context_enabled = false;
+    let mut terminal = terminal("[ERROR] fixture failed\r\n");
+    let (rows, _, _) = snapshot(&mut terminal);
+    assert_eq!(
+        semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
+        Some(crate::automexia::api::SemanticSeverity::Error),
+    );
 }
 
 #[test]
@@ -530,27 +942,392 @@ fn wrapped_completion_status_never_turns_green() {
 }
 
 #[test]
-fn presentation_highlighting_toggle_preserves_extension_and_native_output() {
+fn presentation_highlighting_toggle_preserves_optional_context_and_native_output() {
     let mut terminal = terminal("[ERROR] fixture failed\r\n");
     let (rows, _, _) = snapshot(&mut terminal);
     let config: Config =
         toml::from_str("[presentation]\noutput-highlighting = false\n").unwrap();
     let mut renderer = Renderer::new(&config);
-    renderer.devops_enabled = true;
+    renderer.devops_context_enabled = true;
     assert_eq!(
         semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
         None
     );
-    assert!(renderer.devops_enabled);
+    assert!(renderer.devops_context_enabled);
     renderer.update_config(&Config::default());
-    renderer.devops_enabled = true;
+    renderer.devops_context_enabled = true;
     assert_eq!(
         semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
         Some(crate::automexia::api::SemanticSeverity::Error)
     );
-    renderer.devops_enabled = false;
+    renderer.presentation.output_highlighting = false;
     assert_eq!(
         semantic_row_severity(&rows[0], 80, &renderer, &mut String::new()),
         None
     );
+}
+
+fn visual_renderer(style: &str) -> Renderer {
+    let source = format!("[presentation.highlight]\nstyle = '{style}'\nerror-background = '#17293b4d'\nwarning-background = '#51637587'\n[presentation.highlight.colors]\nerror = '#102030'\nwarning = '#405060'\nsuccess = '#708090'\ninfo = '#a0b0c0'\ndebug = '#d0e0f0'\n");
+    let config: Config = toml::from_str(&source).unwrap();
+    let mut renderer = Renderer::new(&config);
+    // Existing raster fixtures exercise one common palette for both domains.
+    // Independent-domain tests below use distinct palettes and switches.
+    renderer.presentation.kubernetes = renderer.presentation.highlight;
+    renderer
+}
+
+#[test]
+fn visual_render_custom_palette_reaches_real_glyph_and_background_emission() {
+    let cases = [
+        (
+            "[ERROR] fixture failed",
+            [16, 32, 48, 255],
+            Some([23, 41, 59, 77]),
+        ),
+        (
+            "api 0/1 Running",
+            [64, 80, 96, 255],
+            Some([81, 99, 117, 135]),
+        ),
+        ("pod/api 1/1 Running", [112, 128, 144, 255], None),
+        ("batch 0/1 Completed", [160, 176, 192, 255], None),
+        ("level=debug fixture", [208, 224, 240, 255], None),
+    ];
+    let source = cases
+        .iter()
+        .map(|case| case.0)
+        .collect::<Vec<_>>()
+        .join("\r\n");
+    let mut terminal = terminal(&source);
+    let cursor = terminal.cursor();
+    let (rows, styles, extras) = snapshot(&mut terminal);
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let renderer = visual_renderer("both");
+    for scale in [1.0, 1.25, 2.0] {
+        let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
+        let mut rasterizer = GridGlyphRasterizer::new();
+        let mut glyphs = Vec::new();
+        let mut backgrounds = Vec::new();
+        for (y, (_, expected, background)) in cases.iter().enumerate() {
+            build_row_fg(
+                &rows[y],
+                80,
+                y as u16,
+                &styles,
+                &extras,
+                &renderer,
+                &TermColors::default(),
+                &mut rasterizer,
+                &mut grid,
+                16.0 * scale,
+                10.0 * scale,
+                24.0 * scale,
+                None,
+                &[],
+                &fonts,
+                0,
+                None,
+                &mut glyphs,
+            );
+            assert!(!glyphs.is_empty(), "real shaped row emits glyphs");
+            assert!(
+                glyphs.iter().all(|glyph| glyph.color == *expected),
+                "custom palette on row {y}, scale {scale}"
+            );
+            build_row_bg(
+                &rows[y],
+                80,
+                &styles,
+                &renderer,
+                &TermColors::default(),
+                None,
+                &[],
+                &mut rasterizer,
+                &mut backgrounds,
+            );
+            if let Some(expected) = background {
+                assert!(backgrounds.iter().all(|cell| cell.rgba == *expected));
+            } else {
+                assert_eq!(
+                    backgrounds[0].rgba,
+                    cell_bg(
+                        rows[y][Column(0)],
+                        resolve_style(&styles, rows[y][Column(0)]),
+                        &renderer,
+                        &TermColors::default()
+                    )
+                );
+            }
+        }
+    }
+    assert_eq!(terminal.cursor(), cursor);
+}
+
+#[test]
+fn visual_render_style_and_disable_controls_gate_consumed_colors() {
+    let mut terminal = terminal("[ERROR] fixture failed\r\n");
+    let (rows, styles, _) = snapshot(&mut terminal);
+    for style in ["foreground", "background", "both"] {
+        for enabled in [false, true] {
+            let mut renderer = visual_renderer(style);
+            renderer.presentation.output_highlighting = enabled;
+            renderer.presentation.kubernetes_highlighting = enabled;
+            let foreground = semantic_row_fg(&rows[0], 80, &renderer, &mut String::new());
+            assert_eq!(
+                foreground,
+                (enabled && style != "background").then_some([16, 32, 48, 255])
+            );
+            let mut background = Vec::new();
+            build_row_bg(
+                &rows[0],
+                80,
+                &styles,
+                &renderer,
+                &TermColors::default(),
+                None,
+                &[],
+                &mut GridGlyphRasterizer::new(),
+                &mut background,
+            );
+            let expected = if enabled && style != "foreground" {
+                [23, 41, 59, 77]
+            } else {
+                cell_bg(
+                    rows[0][Column(0)],
+                    resolve_style(&styles, rows[0][Column(0)]),
+                    &renderer,
+                    &TermColors::default(),
+                )
+            };
+            assert!(
+                background.iter().all(|cell| cell.rgba == expected),
+                "style {style}, enabled {enabled}"
+            );
+        }
+    }
+}
+
+#[test]
+fn visual_render_background_style_highlights_each_recognized_severity() {
+    let cases = [
+        "[ERROR] fixture failed",
+        "api 0/1 Running",
+        "pod/api 1/1 Running",
+        "batch 0/1 Completed",
+        "level=debug fixture",
+    ];
+    let mut terminal = terminal(&cases.join("\r\n"));
+    let (rows, styles, _) = snapshot(&mut terminal);
+    let renderer = visual_renderer("background");
+    for (y, label) in cases.iter().enumerate() {
+        assert_eq!(
+            semantic_row_fg(&rows[y], 80, &renderer, &mut String::new()),
+            None
+        );
+        let mut backgrounds = Vec::new();
+        build_row_bg(
+            &rows[y],
+            80,
+            &styles,
+            &renderer,
+            &TermColors::default(),
+            None,
+            &[],
+            &mut GridGlyphRasterizer::new(),
+            &mut backgrounds,
+        );
+        let regular = cell_bg(
+            rows[y][Column(0)],
+            resolve_style(&styles, rows[y][Column(0)]),
+            &renderer,
+            &TermColors::default(),
+        );
+        assert_ne!(
+            backgrounds[0].rgba, regular,
+            "background style lost {label}"
+        );
+    }
+}
+
+#[test]
+fn visual_render_independent_status_backgrounds_apply_in_combined_style() {
+    let config: Config = toml::from_str(
+        "[presentation.highlight]\nstyle = 'both'\nsuccess-background = '#11223344'\ninfo-background = '#55667788'\ndebug-background = '#99aabbcc'\n",
+    )
+    .unwrap();
+    let renderer = Renderer::new(&config);
+    let cases = [
+        ("pod/api 1/1 Running", [17, 34, 51, 68]),
+        ("batch 0/1 Completed", [85, 102, 119, 136]),
+        ("level=debug fixture", [153, 170, 187, 204]),
+    ];
+    let mut terminal = terminal(
+        &cases
+            .iter()
+            .map(|(text, _)| *text)
+            .collect::<Vec<_>>()
+            .join("\r\n"),
+    );
+    let (rows, styles, _) = snapshot(&mut terminal);
+    for (y, (_, expected)) in cases.iter().enumerate() {
+        let mut backgrounds = Vec::new();
+        build_row_bg(
+            &rows[y],
+            80,
+            &styles,
+            &renderer,
+            &TermColors::default(),
+            None,
+            &[],
+            &mut GridGlyphRasterizer::new(),
+            &mut backgrounds,
+        );
+        assert!(backgrounds.iter().all(|cell| cell.rgba == *expected));
+    }
+}
+
+#[test]
+fn visual_render_custom_palette_preserves_explicit_ansi_inverse_and_selection() {
+    let renderer = visual_renderer("both");
+    let mut terminal = terminal("\x1b[38;2;9;19;29m[ERROR] fixture failed\x1b[0m\r\n\x1b[48;2;39;49;59m[ERROR] fixture failed\x1b[0m\r\n\x1b[7m[ERROR] fixture failed\x1b[0m");
+    let (rows, styles, _) = snapshot(&mut terminal);
+    let semantic = semantic_row_fg(&rows[0], 80, &renderer, &mut String::new());
+    let square = rows[0][Column(0)];
+    assert_eq!(
+        semantic_or_cell_fg(
+            semantic,
+            square,
+            resolve_style(&styles, square),
+            &renderer,
+            &TermColors::default()
+        ),
+        [9, 19, 29, 255]
+    );
+    for y in [1, 2] {
+        let mut background = Vec::new();
+        build_row_bg(
+            &rows[y],
+            80,
+            &styles,
+            &renderer,
+            &TermColors::default(),
+            None,
+            &[],
+            &mut GridGlyphRasterizer::new(),
+            &mut background,
+        );
+        let square = rows[y][Column(0)];
+        assert_eq!(
+            background[0].rgba,
+            cell_bg(
+                square,
+                resolve_style(&styles, square),
+                &renderer,
+                &TermColors::default()
+            )
+        );
+    }
+    let mut background = Vec::new();
+    build_row_bg(
+        &rows[0],
+        80,
+        &styles,
+        &renderer,
+        &TermColors::default(),
+        Some(RowSelection { lo: 0, hi: 4 }),
+        &[],
+        &mut GridGlyphRasterizer::new(),
+        &mut background,
+    );
+    assert_eq!(
+        background[0].rgba,
+        normalized_to_u8(renderer.named_colors.selection_background)
+    );
+    assert_eq!(background[5].rgba, [23, 41, 59, 77]);
+}
+
+#[test]
+fn settings_output_highlighting_switch_gates_live_error_and_success_rendering() {
+    use automexia_ui_model::settings::{Change, Edit, SettingId, SettingValue};
+    let base = Config::default();
+    let preferences = crate::automexia::preferences::UserPreferences::default();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Status coloring".into(),
+        installed: true,
+    }];
+    let mut terminal =
+        terminal("[ERROR] fixture failed\r\nweb Up 2 minutes (healthy)\r\n");
+    let (rows, styles, _) = snapshot(&mut terminal);
+    let mut renderer = Renderer::new(&base);
+    renderer.devops_context_enabled = true;
+    for row in rows.iter().take(2) {
+        assert!(semantic_row_fg(row, 80, &renderer, &mut String::new()).is_some());
+    }
+    let edit = Edit {
+        revision: 1,
+        id: SettingId::new(automexia_ui_model::settings::OUTPUT_HIGHLIGHTING).unwrap(),
+        change: Change::Set(SettingValue::Boolean(false)),
+    };
+    let disabled =
+        crate::settings_catalog::apply_edit(1, &base, &preferences, &market, &edit)
+            .unwrap();
+    renderer.presentation = disabled.apply_to(&base).presentation;
+    assert!(
+        renderer.devops_context_enabled,
+        "optional context remains enabled"
+    );
+    for row in rows.iter().take(2) {
+        assert_eq!(
+            semantic_row_fg(row, 80, &renderer, &mut String::new()),
+            None
+        );
+        assert_eq!(
+            semantic_row_severity(row, 80, &renderer, &mut String::new()),
+            None
+        );
+    }
+    let mut background = Vec::new();
+    build_row_bg(
+        &rows[0],
+        80,
+        &styles,
+        &renderer,
+        &TermColors::default(),
+        None,
+        &[],
+        &mut GridGlyphRasterizer::new(),
+        &mut background,
+    );
+    assert_eq!(
+        background[0].rgba,
+        cell_bg(
+            rows[0][Column(0)],
+            resolve_style(&styles, rows[0][Column(0)]),
+            &renderer,
+            &TermColors::default(),
+        )
+    );
+    let restored = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &disabled,
+        &market,
+        &Edit {
+            change: Change::Reset,
+            ..edit
+        },
+    )
+    .unwrap();
+    assert_eq!(restored.presentation.output_highlighting, None);
+    renderer.presentation = restored.apply_to(&base).presentation;
+    for row in rows.iter().take(2) {
+        assert!(semantic_row_fg(row, 80, &renderer, &mut String::new()).is_some());
+    }
 }

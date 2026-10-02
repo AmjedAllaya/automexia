@@ -15,6 +15,10 @@ import time
 import tempfile
 from typing import Any
 
+# Support both the CLI and file-based loading by release/test owners.
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+import windows_conpty_runtime as CONPTY
+
 
 ROOT = Path(__file__).resolve().parents[2]
 POLICY_PATH = ROOT / "tests/assurance/release-trust-policy-v1.json"
@@ -306,6 +310,92 @@ def read_json_bounded(path: Path, max_bytes: int) -> Any:
         raise ReleaseTrustError(f"{path.name} is not valid UTF-8 JSON: {error}") from error
 
 
+def vendor_package_identity() -> dict[str, str]:
+    package = vendor_package()
+    return {key: package[key] for key in ("id", "version", "sha256")}
+
+
+def vendor_package() -> dict[str, Any]:
+    try:
+        return CONPTY.load_recipe()["package"]
+    except CONPTY.RuntimeError as error:
+        raise ReleaseTrustError("ConPTY vendor recipe is unavailable or invalid") from error
+
+
+def vendor_sbom_components() -> tuple[dict[str, Any], dict[str, Any]]:
+    package = vendor_package()
+    purl = f"pkg:nuget/{package['id']}@{package['version']}"
+    spdx = {
+        "name": package["id"],
+        "versionInfo": package["version"],
+        "SPDXID": "SPDXRef-Package-Microsoft-Windows-Console-ConPTY",
+        "downloadLocation": package["url"],
+        "filesAnalyzed": False,
+        "licenseConcluded": package["license"],
+        "licenseDeclared": package["license"],
+        "supplier": f"Organization: {package['publisher']}",
+        "checksums": [{"algorithm": "SHA256", "checksumValue": package["sha256"]}],
+        "externalRefs": [{"referenceCategory": "PACKAGE-MANAGER",
+                          "referenceType": "purl", "referenceLocator": purl}],
+    }
+    cyclonedx = {
+        "type": "library", "name": package["id"], "version": package["version"],
+        "bom-ref": purl, "purl": purl,
+        "supplier": {"name": package["publisher"]},
+        "licenses": [{"license": {"id": package["license"]}}],
+        "hashes": [{"alg": "SHA-256", "content": package["sha256"]}],
+        "externalReferences": [{"type": "distribution", "url": package["url"]}],
+    }
+    return spdx, cyclonedx
+
+
+def validate_vendor_sboms(spdx: Any, cyclonedx: Any) -> None:
+    """Require the pinned vendor identity when the release includes Windows."""
+    for document, key, expected in zip(
+        (spdx, cyclonedx), ("packages", "components"), vendor_sbom_components()
+    ):
+        components = document.get(key) if isinstance(document, dict) else None
+        matches = [item for item in components if isinstance(item, dict)
+                   and str(item.get("name", "")).casefold() == expected["name"].casefold()] \
+            if isinstance(components, list) else []
+        if len(matches) != 1 or any(matches[0].get(field) != value
+                                    for field, value in expected.items()):
+            raise ReleaseTrustError(
+                f"ConPTY {key} must identify the exact pinned NuGet package, MIT license and SHA-256"
+            )
+
+
+def add_vendor_sbom(directory: Path, policy: dict[str, Any]) -> None:
+    """Augment scanner SBOMs with the recipe-owned binary dependency offline."""
+    if not any(path.name.endswith(("-pc-windows-msvc.zip", "-pc-windows-msvc.msi"))
+               for path in directory.iterdir()):
+        return
+    rules = metadata_rules(policy)
+    documents = []
+    names = ("automexia-terminal.spdx.json", "automexia-terminal.cdx.json")
+    for name, key, expected in zip(names, ("packages", "components"), vendor_sbom_components()):
+        path = directory / name
+        document = read_json_bounded(path, rules[name]["max_bytes"])
+        components = document.get(key) if isinstance(document, dict) else None
+        if not isinstance(components, list):
+            raise ReleaseTrustError(f"ConPTY enrichment requires existing {key}")
+        matches = [item for item in components if isinstance(item, dict)
+                   and str(item.get("name", "")).casefold() == expected["name"].casefold()]
+        if matches:
+            if len(matches) != 1 or any(matches[0].get(field) != value
+                                        for field, value in expected.items()):
+                raise ReleaseTrustError("conflicting ConPTY scanner component; inspect before enrichment")
+        else:
+            components.append(expected)
+        # Validate both documents before writing either; bound the final output too.
+        if len(json.dumps(document, indent=2).encode("utf-8")) + 1 > rules[name]["max_bytes"]:
+            raise ReleaseTrustError(f"ConPTY enrichment exceeds {name} byte limit")
+        documents.append(document)
+    validate_vendor_sboms(*documents)
+    for name, document in zip(names, documents):
+        write_json_atomic(directory / name, document)
+
+
 def validate_sboms(
     spdx: Any,
     cyclonedx: Any,
@@ -499,6 +589,9 @@ def verify_metadata(
         version,
         policy,
     )
+    validate_vendor_sboms(
+        parsed["automexia-terminal.spdx.json"], parsed["automexia-terminal.cdx.json"]
+    )
 
     windows = parsed["release-trust-windows.json"]
     windows_packages = sorted(
@@ -507,7 +600,7 @@ def verify_metadata(
     )
     windows_package_bytes = sum(path.stat().st_size for path in windows_packages)
     expected_windows = {
-        "schema": 1,
+        "schema": 3,
         "version": version,
         "scanner": "Microsoft Defender Antivirus",
         "artifact_count": 4,
@@ -520,8 +613,10 @@ def verify_metadata(
             }
             for path in windows_packages
         ],
-        "signature_count": 4,
+        "signature_count": 8,
         "embedded_script_signature_count": 16,
+        "vendor_signature_count": 6,
+        "vendor_package": vendor_package_identity(),
         "publisher": expected_windows_publisher,
         "result": "pass",
     }
@@ -632,10 +727,20 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--benchmark", type=Path)
     parser.add_argument("--verify-final", type=Path)
+    parser.add_argument("--add-vendor-sbom", type=Path)
     parser.add_argument("--expected-windows-publisher")
     arguments = parser.parse_args()
     try:
         policy = load_policy()
+        if arguments.add_vendor_sbom is not None:
+            if arguments.check_policy or any(value is not None for value in (
+                arguments.artifacts, arguments.version, arguments.manifest,
+                arguments.benchmark, arguments.verify_final, arguments.expected_windows_publisher,
+            )):
+                raise ReleaseTrustError("--add-vendor-sbom cannot be combined with artifact modes")
+            add_vendor_sbom(arguments.add_vendor_sbom, policy)
+            print("PASS: applicable Windows vendor SBOM identity is pinned")
+            return 0
         if arguments.check_policy:
             if any(
                 value is not None

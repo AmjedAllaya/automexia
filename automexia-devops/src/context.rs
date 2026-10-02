@@ -3,11 +3,11 @@ use std::path::Path;
 #[cfg(not(target_arch = "wasm32"))]
 use serde_json::Value;
 #[cfg(not(target_arch = "wasm32"))]
+use std::env;
+#[cfg(not(target_arch = "wasm32"))]
 use std::io::Read;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
-#[cfg(not(target_arch = "wasm32"))]
-use std::{env, fs};
 
 use super::model::DevOpsSnapshot;
 #[cfg(not(target_arch = "wasm32"))]
@@ -18,6 +18,22 @@ const MAX_CONFIG_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_LABEL_CHARS: usize = 96;
 
 pub fn detect(session: &SessionFacts) -> DevOpsSnapshot {
+    detect_with_git(session, true)
+}
+
+pub fn detect_with_git(session: &SessionFacts, include_git: bool) -> DevOpsSnapshot {
+    #[cfg(target_arch = "wasm32")]
+    {
+        let _ = (session, include_git);
+        return DevOpsSnapshot::default();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    detect_native(session, include_git)
+}
+
+/// Git-only scope never reads kubeconfig, cloud/provider, or project metadata.
+pub fn detect_git_only(session: &SessionFacts) -> DevOpsSnapshot {
     #[cfg(target_arch = "wasm32")]
     {
         let _ = session;
@@ -25,7 +41,14 @@ pub fn detect(session: &SessionFacts) -> DevOpsSnapshot {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    detect_native(session)
+    {
+        let view = session_view(session, None);
+        DevOpsSnapshot {
+            git_branch: git_branch(view.cwd.as_deref())
+                .map(|value| sanitize_label(&value)),
+            ..DevOpsSnapshot::default()
+        }
+    }
 }
 
 /// Attach isolated guest discovery using the same domain classification owner.
@@ -54,7 +77,7 @@ struct SessionView {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
+fn detect_native(session: &SessionFacts, include_git: bool) -> DevOpsSnapshot {
     let host_home = dirs::home_dir();
     let view = session_view(session, host_home.as_deref());
     let cwd = view.cwd.as_deref();
@@ -83,7 +106,7 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         })
     };
 
-    let docker = docker_context(home, cwd, view.use_process_env)
+    let docker = docker_context(session, home, cwd, view.use_process_env)
         .or_else(|| {
             project_context
                 .as_ref()
@@ -92,6 +115,7 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         .or_else(|| legacy_context.as_ref().and_then(docker_from_automexia_json));
 
     let clouds = cloud_contexts(
+        session,
         home,
         cwd,
         project_context.as_ref(),
@@ -99,7 +123,7 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         view.use_process_env,
     );
 
-    let terraform = terraform_workspace(cwd, view.use_process_env)
+    let terraform = terraform_workspace(session, cwd, view.use_process_env)
         .or_else(|| {
             project_context
                 .as_ref()
@@ -111,9 +135,13 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
                 .and_then(terraform_from_automexia_json)
         });
 
-    let git_branch = git_branch(cwd)
-        .or_else(|| project_context.as_ref().and_then(git_from_automexia_json))
-        .or_else(|| legacy_context.as_ref().and_then(git_from_automexia_json));
+    let git_branch = include_git
+        .then(|| {
+            git_branch(cwd)
+                .or_else(|| project_context.as_ref().and_then(git_from_automexia_json))
+                .or_else(|| legacy_context.as_ref().and_then(git_from_automexia_json))
+        })
+        .flatten();
 
     let user = session
         .shell_integration
@@ -128,10 +156,7 @@ fn detect_native(session: &SessionFacts) -> DevOpsSnapshot {
         })
         .map(|value| sanitize_label(&value));
 
-    let environment = view
-        .use_process_env
-        .then(inherited_environment)
-        .flatten()
+    let environment = inherited_environment(session, view.use_process_env)
         .or_else(|| {
             project_context
                 .as_ref()
@@ -330,10 +355,31 @@ fn windows_path_from_wsl_mount(linux_path: &str) -> Option<PathBuf> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn inherited_environment() -> Option<String> {
+fn shell_selector(
+    session: &SessionFacts,
+    name: &str,
+    use_process_env: bool,
+) -> Option<String> {
+    match session.environment.get(name) {
+        // A complete frame publishes empty values to clear a previous shell.
+        // Empty suppresses the Automexia process value for this key but lets
+        // the next selector alias or local config file supply its own value.
+        Some(value) => (!value.is_empty()).then(|| value.clone()),
+        None => use_process_env.then(|| env::var(name).ok()).flatten(),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn inherited_environment(
+    session: &SessionFacts,
+    use_process_env: bool,
+) -> Option<String> {
     ["AUTOMEXIA_ENV", "ENVIRONMENT", "APP_ENV", "NODE_ENV"]
         .into_iter()
-        .find_map(|name| env::var(name).ok().filter(|value| !value.trim().is_empty()))
+        .find_map(|name| {
+            shell_selector(session, name, use_process_env)
+                .filter(|value| !value.trim().is_empty())
+        })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -386,21 +432,28 @@ fn docker_config_root(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn docker_context(
+    session: &SessionFacts,
     home: Option<&Path>,
     cwd: Option<&Path>,
     use_process_env: bool,
 ) -> Option<String> {
-    if use_process_env {
-        if let Ok(value) = env::var("DOCKER_CONTEXT") {
-            if !value.trim().is_empty() {
-                return Some(value);
-            }
+    if let Some(value) = shell_selector(session, "DOCKER_CONTEXT", use_process_env) {
+        if !value.trim().is_empty() {
+            return Some(value);
         }
-        // The endpoint selects Docker's virtual default context. Its value is
-        // neither a display label nor an instruction to contact the daemon.
-        if env::var_os("DOCKER_HOST").is_some_and(|value| !value.is_empty()) {
-            return Some("default".to_string());
-        }
+    }
+    // Only a presence bit crosses shell metadata. The endpoint itself is not
+    // retained or displayed and cannot grant network authority.
+    let endpoint_selected = session
+        .environment
+        .get("DOCKER_HOST_PRESENT")
+        .map(|value| value == "1")
+        .unwrap_or_else(|| {
+            use_process_env
+                && env::var_os("DOCKER_HOST").is_some_and(|value| !value.is_empty())
+        });
+    if endpoint_selected {
+        return Some("default".to_string());
     }
 
     let root = docker_config_root(home, cwd, use_process_env)?;
@@ -416,11 +469,16 @@ fn docker_context(
 
     // A local context store is evidence of a configured client, not daemon
     // reachability. Do not probe Docker Desktop or a provider endpoint.
-    root.is_dir().then(|| "default".to_string())
+    matches!(
+        crate::kubernetes::local_entry(&root),
+        crate::kubernetes::LocalEntry::Present(metadata) if metadata.is_dir()
+    )
+    .then(|| "default".to_string())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn cloud_contexts(
+    session: &SessionFacts,
     home: Option<&Path>,
     cwd: Option<&Path>,
     project_context: Option<&Value>,
@@ -428,19 +486,20 @@ fn cloud_contexts(
     use_process_env: bool,
 ) -> Vec<CloudContext> {
     let mut contexts: Vec<CloudContext> = [
-        aws_context(home, cwd, use_process_env),
-        azure_context(home, cwd, use_process_env),
-        gcp_context(home, cwd, use_process_env),
+        aws_context(session, home, cwd, use_process_env),
+        azure_context(session, home, cwd, use_process_env),
+        gcp_context(session, home, cwd, use_process_env),
     ]
     .into_iter()
     .flatten()
     .collect();
 
-    if let Some(context) = project_context.or(legacy_context) {
-        if let Some(selected) = cloud_from_automexia_json(context) {
-            contexts.retain(|candidate| candidate.provider != selected.provider);
-            contexts.insert(0, selected);
-        }
+    if let Some(selected) = project_context
+        .and_then(cloud_from_automexia_json)
+        .or_else(|| legacy_context.and_then(cloud_from_automexia_json))
+    {
+        contexts.retain(|candidate| candidate.provider != selected.provider);
+        contexts.insert(0, selected);
     }
     contexts
 }
@@ -461,32 +520,34 @@ fn aws_config_path(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn aws_context(
+    session: &SessionFacts,
     home: Option<&Path>,
     cwd: Option<&Path>,
     use_process_env: bool,
 ) -> Option<CloudContext> {
-    let explicit_profile = use_process_env
-        .then(|| {
-            env::var("AWS_PROFILE")
-                .ok()
-                .or_else(|| env::var("AWS_DEFAULT_PROFILE").ok())
-        })
-        .flatten()
-        .filter(|value| !value.trim().is_empty());
+    let explicit_profile = shell_selector(session, "AWS_PROFILE", use_process_env)
+        .or_else(|| shell_selector(session, "AWS_DEFAULT_PROFILE", use_process_env));
+    if explicit_profile
+        .as_ref()
+        .is_some_and(|value| value.trim().is_empty())
+    {
+        return None;
+    }
     let path = aws_config_path(home, cwd, use_process_env);
-    if explicit_profile.is_none() && path.as_ref().is_none_or(|path| !path.is_file()) {
+    if explicit_profile.is_none()
+        && path.as_ref().is_none_or(|path| {
+            !matches!(
+                crate::kubernetes::local_entry(path),
+                crate::kubernetes::LocalEntry::Present(metadata) if metadata.is_file()
+            )
+        })
+    {
         return None;
     }
 
     let profile = explicit_profile.unwrap_or_else(|| "default".to_string());
-    let region = use_process_env
-        .then(|| {
-            env::var("AWS_REGION")
-                .ok()
-                .or_else(|| env::var("AWS_DEFAULT_REGION").ok())
-        })
-        .flatten()
-        .filter(|value| !value.trim().is_empty())
+    let region = shell_selector(session, "AWS_REGION", use_process_env)
+        .or_else(|| shell_selector(session, "AWS_DEFAULT_REGION", use_process_env))
         .or_else(|| path.as_deref().and_then(|path| aws_region(path, &profile)))
         .unwrap_or_default();
 
@@ -513,14 +574,13 @@ fn azure_config_root(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn azure_context(
+    session: &SessionFacts,
     home: Option<&Path>,
     cwd: Option<&Path>,
     use_process_env: bool,
 ) -> Option<CloudContext> {
     let root = azure_config_root(home, cwd, use_process_env)?;
-    let cloud = use_process_env
-        .then(|| env::var("AZURE_CLOUD_NAME").ok())
-        .flatten()
+    let cloud = shell_selector(session, "AZURE_CLOUD_NAME", use_process_env)
         .or_else(|| ini_value(&root.join("config"), "cloud", "name"))
         .unwrap_or_else(|| "AzureCloud".to_string());
     if cloud.is_empty() || cloud.len() > 512 || cloud.chars().any(char::is_control) {
@@ -590,20 +650,44 @@ fn valid_gcloud_configuration(name: &str) -> bool {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn gcp_context(
+    session: &SessionFacts,
     home: Option<&Path>,
     cwd: Option<&Path>,
     use_process_env: bool,
 ) -> Option<CloudContext> {
-    let root = gcloud_config_root(home, cwd, use_process_env)?;
-    let override_name = if use_process_env {
-        match env::var("CLOUDSDK_ACTIVE_CONFIG_NAME") {
-            Ok(name) => Some(name),
-            Err(env::VarError::NotPresent) => None,
-            Err(env::VarError::NotUnicode(_)) => return None,
+    let override_name =
+        if let Some(name) = session.environment.get("CLOUDSDK_ACTIVE_CONFIG_NAME") {
+            (!name.is_empty()).then(|| name.clone())
+        } else if use_process_env {
+            match env::var("CLOUDSDK_ACTIVE_CONFIG_NAME") {
+                Ok(name) => Some(name),
+                Err(env::VarError::NotPresent) => None,
+                Err(env::VarError::NotUnicode(_)) => return None,
+            }
+        } else {
+            None
+        };
+    let root = gcloud_config_root(home, cwd, use_process_env);
+    if root.is_none() && !use_process_env {
+        // A guest's explicit project selection is sufficient local evidence;
+        // a named configuration still requires its file and cannot be borrowed
+        // from the Windows host. NONE explicitly has no configuration file.
+        if override_name.as_deref().is_some_and(|name| name != "NONE") {
+            return None;
         }
-    } else {
-        None
-    };
+        let project = session
+            .environment
+            .get("CLOUDSDK_CORE_PROJECT")
+            .filter(|value| !value.trim().is_empty())?;
+        let region =
+            shell_selector(session, "CLOUDSDK_COMPUTE_REGION", false).unwrap_or_default();
+        return Some(CloudContext {
+            provider: "GCP",
+            profile: sanitize_label(project),
+            region: sanitize_label(&region),
+        });
+    }
+    let root = root?;
     let active = if let Some(name) = &override_name {
         name.clone()
     } else {
@@ -617,8 +701,10 @@ fn gcp_context(
                     name.to_string()
                 }
             }
-            None if fs::metadata(path)
-                .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+            None if matches!(
+                crate::kubernetes::local_entry(&path),
+                crate::kubernetes::LocalEntry::Missing
+            ) =>
             {
                 "default".to_string()
             }
@@ -642,9 +728,7 @@ fn gcp_context(
     if override_name.is_some() && active != "NONE" && content.is_none() {
         return None;
     }
-    let project = use_process_env
-        .then(|| env::var("CLOUDSDK_CORE_PROJECT").ok())
-        .flatten()
+    let project = shell_selector(session, "CLOUDSDK_CORE_PROJECT", use_process_env)
         .or_else(|| {
             content
                 .as_deref()
@@ -654,9 +738,7 @@ fn gcp_context(
     if project.trim().is_empty() {
         return None;
     }
-    let region = use_process_env
-        .then(|| env::var("CLOUDSDK_COMPUTE_REGION").ok())
-        .flatten()
+    let region = shell_selector(session, "CLOUDSDK_COMPUTE_REGION", use_process_env)
         .or_else(|| {
             content
                 .as_deref()
@@ -680,12 +762,14 @@ fn valid_terraform_workspace(name: &str) -> bool {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn terraform_workspace(cwd: Option<&Path>, use_process_env: bool) -> Option<String> {
-    if use_process_env {
-        if let Ok(value) = env::var("TF_WORKSPACE") {
-            if !value.is_empty() {
-                return valid_terraform_workspace(&value).then_some(value);
-            }
+fn terraform_workspace(
+    session: &SessionFacts,
+    cwd: Option<&Path>,
+    use_process_env: bool,
+) -> Option<String> {
+    if let Some(value) = shell_selector(session, "TF_WORKSPACE", use_process_env) {
+        if !value.is_empty() {
+            return valid_terraform_workspace(&value).then_some(value);
         }
     }
     let selected = use_process_env
@@ -697,7 +781,10 @@ fn terraform_workspace(cwd: Option<&Path>, use_process_env: bool) -> Option<Stri
     let root = provider_path(selected, cwd)?;
     // A selected initialized data directory is concrete local project evidence.
     // Do not show a Terraform badge in every unrelated working directory.
-    if !root.is_dir() {
+    if !matches!(
+        crate::kubernetes::local_entry(&root),
+        crate::kubernetes::LocalEntry::Present(metadata) if metadata.is_dir()
+    ) {
         return None;
     }
     let path = root.join("environment");
@@ -710,8 +797,10 @@ fn terraform_workspace(cwd: Option<&Path>, use_process_env: bool) -> Option<Stri
                 valid_terraform_workspace(name).then(|| name.to_string())
             }
         }
-        None if fs::metadata(path)
-            .is_err_and(|error| error.kind() == std::io::ErrorKind::NotFound) =>
+        None if matches!(
+            crate::kubernetes::local_entry(&path),
+            crate::kubernetes::LocalEntry::Missing
+        ) =>
         {
             Some("default".to_string())
         }
@@ -724,22 +813,27 @@ fn git_branch(cwd: Option<&Path>) -> Option<String> {
     let mut cursor = cwd?.to_path_buf();
     loop {
         let dot_git = cursor.join(".git");
-        let head_path = if dot_git.is_dir() {
-            dot_git.join("HEAD")
-        } else if dot_git.is_file() {
-            let pointer = read_small_text(&dot_git)?;
-            let git_dir = pointer.trim().strip_prefix("gitdir:")?.trim();
-            let git_dir = PathBuf::from(git_dir);
-            if git_dir.is_absolute() {
-                git_dir.join("HEAD")
-            } else {
-                cursor.join(git_dir).join("HEAD")
+        let head_path = match crate::kubernetes::local_entry(&dot_git) {
+            crate::kubernetes::LocalEntry::Present(metadata) if metadata.is_dir() => {
+                dot_git.join("HEAD")
             }
-        } else {
-            if !cursor.pop() {
-                return None;
+            crate::kubernetes::LocalEntry::Present(metadata) if metadata.is_file() => {
+                let pointer = read_small_text(&dot_git)?;
+                let git_dir = pointer.trim().strip_prefix("gitdir:")?.trim();
+                let git_dir = PathBuf::from(git_dir);
+                if git_dir.is_absolute() {
+                    git_dir.join("HEAD")
+                } else {
+                    cursor.join(git_dir).join("HEAD")
+                }
             }
-            continue;
+            crate::kubernetes::LocalEntry::Missing => {
+                if !cursor.pop() {
+                    return None;
+                }
+                continue;
+            }
+            _ => return None,
         };
 
         let head = read_small_text(&head_path)?;
@@ -759,8 +853,12 @@ fn project_automexia_context(cwd: Option<&Path>) -> Option<Value> {
     let mut cursor = cwd?.to_path_buf();
     loop {
         let candidate = cursor.join(".automexia-context.json");
-        if candidate.is_file() {
-            return read_json(&candidate);
+        match crate::kubernetes::local_entry(&candidate) {
+            crate::kubernetes::LocalEntry::Present(metadata) if metadata.is_file() => {
+                return read_json(&candidate);
+            }
+            crate::kubernetes::LocalEntry::Missing => {}
+            _ => return None,
         }
         if !cursor.pop() {
             return None;
@@ -932,12 +1030,12 @@ fn read_json(path: &Path) -> Option<Value> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn read_small_text(path: &Path) -> Option<String> {
-    let metadata = fs::metadata(path).ok()?;
+    let file = crate::kubernetes::open_local_file(path)?;
+    let metadata = file.metadata().ok()?;
     if !metadata.is_file() || metadata.len() > MAX_CONFIG_BYTES {
         return None;
     }
 
-    let file = fs::File::open(path).ok()?;
     let mut reader = file.take(MAX_CONFIG_BYTES + 1);
     let mut text = String::with_capacity(metadata.len() as usize);
     reader.read_to_string(&mut text).ok()?;
@@ -980,6 +1078,22 @@ mod tests {
     use super::*;
     use crate::kubernetes::namespace_for_context as kube_namespace_for_context;
 
+    fn session() -> SessionFacts {
+        SessionFacts {
+            session_id: 1,
+            cwd: None,
+            title: String::new(),
+            distro: None,
+            os_version: None,
+            shell_name: Some("bash".into()),
+            shell_user: Some("example".into()),
+            shell_path: None,
+            environment: Default::default(),
+            shell_integration: true,
+            shell_pid: 1,
+        }
+    }
+
     #[test]
     fn provider_paths_require_bounded_local_session_authority() {
         let temporary = tempfile::tempdir().unwrap();
@@ -1007,6 +1121,56 @@ mod tests {
             provider_path("//fixture.invalid/config".into(), Some(cwd)),
             None
         );
+    }
+
+    #[test]
+    fn git_pointer_does_not_follow_a_linked_directory() {
+        let root = tempfile::tempdir().unwrap();
+        let project = root.path().join("project");
+        let real_git_dir = root.path().join("real-git");
+        std::fs::create_dir(&project).unwrap();
+        std::fs::create_dir(&real_git_dir).unwrap();
+        std::fs::write(real_git_dir.join("HEAD"), "ref: refs/heads/fixture\n").unwrap();
+        let linked_git_dir = root.path().join("linked-git");
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&real_git_dir, &linked_git_dir).unwrap();
+        #[cfg(windows)]
+        crate::kubernetes::junction_for_test(&real_git_dir, &linked_git_dir).unwrap();
+        std::fs::write(
+            project.join(".git"),
+            format!("gitdir: {}\n", linked_git_dir.display()),
+        )
+        .unwrap();
+
+        assert_eq!(git_branch(Some(&project)), None);
+        std::fs::write(project.join(".git"), "gitdir: ../real-git\n").unwrap();
+        assert_eq!(git_branch(Some(&project)).as_deref(), Some("fixture"));
+    }
+
+    #[test]
+    fn passive_directory_badges_do_not_follow_a_linked_parent() {
+        let root = tempfile::tempdir().unwrap();
+        let home = root.path().join("home");
+        let project = root.path().join("project");
+        let real = root.path().join("real");
+        for directory in [&home, &project, &real] {
+            std::fs::create_dir(directory).unwrap();
+        }
+        let docker_link = home.join(".docker");
+        let terraform_link = project.join(".terraform");
+        #[cfg(unix)]
+        {
+            std::os::unix::fs::symlink(&real, &docker_link).unwrap();
+            std::os::unix::fs::symlink(&real, &terraform_link).unwrap();
+        }
+        #[cfg(windows)]
+        {
+            crate::kubernetes::junction_for_test(&real, &docker_link).unwrap();
+            crate::kubernetes::junction_for_test(&real, &terraform_link).unwrap();
+        }
+        let facts = session();
+        assert_eq!(docker_context(&facts, Some(&home), None, false), None);
+        assert_eq!(terraform_workspace(&facts, Some(&project), false), None);
     }
 
     #[test]
@@ -1142,7 +1306,7 @@ mod tests {
         ));
         std::fs::create_dir_all(home.join(".docker")).unwrap();
         assert_eq!(
-            docker_context(Some(&home), None, false).as_deref(),
+            docker_context(&session(), Some(&home), None, false).as_deref(),
             Some("default")
         );
         let _ = std::fs::remove_dir_all(home);
@@ -1157,6 +1321,127 @@ mod tests {
         assert!(!looks_production("product-catalog"));
         assert!(!looks_production("productive"));
         assert!(!looks_production("staging"));
+    }
+
+    #[test]
+    fn shell_selectors_switch_and_clear_without_host_provider_fallback() {
+        let mut facts = session();
+        facts
+            .environment
+            .insert("DOCKER_CONTEXT".into(), "team-one".into());
+        assert_eq!(
+            docker_context(&facts, None, None, false).as_deref(),
+            Some("team-one")
+        );
+        facts
+            .environment
+            .insert("DOCKER_CONTEXT".into(), String::new());
+        facts
+            .environment
+            .insert("DOCKER_HOST_PRESENT".into(), "1".into());
+        assert_eq!(
+            docker_context(&facts, None, None, false).as_deref(),
+            Some("default")
+        );
+        facts
+            .environment
+            .insert("DOCKER_HOST_PRESENT".into(), "0".into());
+        assert_eq!(docker_context(&facts, None, None, false), None);
+
+        facts
+            .environment
+            .insert("AWS_PROFILE".into(), String::new());
+        facts
+            .environment
+            .insert("AWS_DEFAULT_PROFILE".into(), "review".into());
+        facts.environment.insert("AWS_REGION".into(), String::new());
+        facts
+            .environment
+            .insert("AWS_DEFAULT_REGION".into(), "eu-west-1".into());
+        let aws = aws_context(&facts, None, None, false).unwrap();
+        assert_eq!(
+            (aws.profile.as_str(), aws.region.as_str()),
+            ("review", "eu-west-1")
+        );
+        facts
+            .environment
+            .insert("AWS_DEFAULT_PROFILE".into(), String::new());
+        assert!(aws_context(&facts, None, None, false).is_none());
+
+        facts
+            .environment
+            .insert("TF_WORKSPACE".into(), "sandbox".into());
+        assert_eq!(
+            terraform_workspace(&facts, None, false).as_deref(),
+            Some("sandbox")
+        );
+        facts
+            .environment
+            .insert("TF_WORKSPACE".into(), String::new());
+        assert_eq!(terraform_workspace(&facts, None, false), None);
+
+        facts
+            .environment
+            .insert("AUTOMEXIA_ENV".into(), "development".into());
+        assert_eq!(
+            inherited_environment(&facts, false).as_deref(),
+            Some("development")
+        );
+        facts
+            .environment
+            .insert("AUTOMEXIA_ENV".into(), String::new());
+        facts
+            .environment
+            .insert("NODE_ENV".into(), "production".into());
+        assert_eq!(
+            inherited_environment(&facts, false).as_deref(),
+            Some("production")
+        );
+        facts.environment.insert("NODE_ENV".into(), String::new());
+        assert_eq!(inherited_environment(&facts, false), None);
+    }
+
+    #[test]
+    fn explicit_guest_gcp_project_needs_no_host_config_but_azure_needs_a_profile() {
+        let mut facts = session();
+        facts
+            .environment
+            .insert("CLOUDSDK_CORE_PROJECT".into(), "fixture-project".into());
+        facts
+            .environment
+            .insert("CLOUDSDK_COMPUTE_REGION".into(), "europe-west1".into());
+        let gcp = gcp_context(&facts, None, None, false).unwrap();
+        assert_eq!(
+            (gcp.profile.as_str(), gcp.region.as_str()),
+            ("fixture-project", "europe-west1")
+        );
+        facts
+            .environment
+            .insert("CLOUDSDK_ACTIVE_CONFIG_NAME".into(), "named".into());
+        assert!(gcp_context(&facts, None, None, false).is_none());
+        facts
+            .environment
+            .insert("CLOUDSDK_ACTIVE_CONFIG_NAME".into(), "NONE".into());
+        assert!(gcp_context(&facts, None, None, false).is_some());
+        facts
+            .environment
+            .insert("AZURE_CLOUD_NAME".into(), "AzureCloud".into());
+        assert!(azure_context(&facts, None, None, false).is_none());
+        facts
+            .environment
+            .insert("CLOUDSDK_CORE_PROJECT".into(), String::new());
+        assert!(gcp_context(&facts, None, None, false).is_none());
+    }
+
+    #[test]
+    fn project_metadata_without_cloud_keeps_legacy_cloud_selection() {
+        let project: Value = serde_json::json!({"environment": "review"});
+        let legacy: Value = serde_json::json!({"cloud": {"provider": "azure", "profile": "fixture-subscription"}});
+        let clouds =
+            cloud_contexts(&session(), None, None, Some(&project), Some(&legacy), false);
+        assert_eq!(clouds.len(), 1);
+        assert_eq!(clouds[0].provider, "Azure");
+        assert_eq!(clouds[0].profile, "fixture-subscription");
     }
 
     #[test]

@@ -2,6 +2,10 @@
 use super::ui_theme::{self, color_u8, UiTheme};
 use crate::context::renderable::RenderableContent;
 use automexia_ui_model::tables::TableRowKind;
+use rio_backend::config::{
+    colors::{AnsiColor, NamedColor},
+    presentation::{CommandOutputAppearance, HighlightAppearance, HighlightStyle},
+};
 use rio_backend::crosswords::style::{Style, StyleFlags};
 use rio_backend::{
     config::colors::Colors,
@@ -37,18 +41,30 @@ fn clipped_rect(
     (x2 > x1 && y2 > y1).then_some([x1, y1, x2 - x1, y2 - y1])
 }
 
-pub(super) struct PaintOptions {
+#[derive(Clone, Copy)]
+pub(super) struct PaintOptions<'a> {
     pub colors: Colors,
+    pub highlight: Option<HighlightAppearance>,
+    pub kubernetes_highlight: Option<HighlightAppearance>,
     pub preserve_selection_foreground: bool,
     pub active: bool,
+    pub command_output: Option<CommandOutputAppearance>,
+    /// Normalized, ordered, pane-local completion anchors from command_info.
+    pub command_results: &'a [crate::automexia::ui::CommandResultAnchor],
+    pub pulse: Option<&'a super::command_results::CommandResults>,
 }
 
-impl Default for PaintOptions {
+impl Default for PaintOptions<'_> {
     fn default() -> Self {
         Self {
             colors: Colors::default(),
+            highlight: None,
+            kubernetes_highlight: None,
             preserve_selection_foreground: false,
             active: true,
+            command_output: None,
+            command_results: &[],
+            pulse: None,
         }
     }
 }
@@ -59,7 +75,7 @@ pub(super) fn draw(
     [x, y, cell_w, cell_h]: [f32; 4],
     font: f32,
     scale: f32,
-    options: PaintOptions,
+    options: PaintOptions<'_>,
     source_colors: impl Fn(&Style) -> ([f32; 4], [f32; 4]),
 ) {
     if ![x, y, cell_w, cell_h, font, scale]
@@ -72,6 +88,7 @@ pub(super) fn draw(
         return;
     }
     let colors = options.colors;
+    let now = std::time::Instant::now();
     let theme = UiTheme::resolve(colors.background.0, colors.foreground, colors.tabs);
     let clip = [
         x,
@@ -86,9 +103,13 @@ pub(super) fn draw(
         [theme.outline[0], theme.outline[1], theme.outline[2], 0.4],
     );
     for (si, surface) in content.inline_tables.surfaces.iter().enumerate() {
+        let mut classifier = crate::automexia::output_semantics::RowClassifier::default();
         let width = surface.layout.width as f32 * cell_w;
         let mut extent: Option<(f32, f32)> = None;
         for (ri, row) in surface.layout.rows.iter().enumerate() {
+            // Visit retained headers even when their painted rows are offscreen.
+            // One pane-local classifier owns both raw and tabulated output.
+            let classification = classifier.classify(&surface.table.source()[ri]);
             let Some((first, height)) =
                 content
                     .inline_tables
@@ -103,6 +124,77 @@ pub(super) fn draw(
             }
             let is_header = row.kind == TableRowKind::Header;
             let is_rule = row.kind == TableRowKind::Rule;
+            // One bounded classification per visible logical source row, never
+            // a wrapped fragment. Explicit ANSI and selection still win below.
+            let classification = (!is_rule).then_some(classification).flatten();
+            let row_colors = classification.and_then(|classification| {
+                use crate::automexia::output_semantics::OutputDomain;
+                let appearance = match classification.domain {
+                    OutputDomain::General => options.highlight,
+                    OutputDomain::Kubernetes => options.kubernetes_highlight,
+                    OutputDomain::Uncertain => None,
+                }?;
+                let severity = classification.severity?;
+                let foreground =
+                    (appearance.style != HighlightStyle::Background).then(|| {
+                        crate::automexia::presentation::output_foreground(
+                            &appearance,
+                            &colors,
+                            severity,
+                        )
+                        .map(|channel| f32::from(channel) / 255.0)
+                    });
+                let background = (appearance.style != HighlightStyle::Foreground)
+                    .then(|| {
+                        crate::automexia::presentation::output_background(
+                            &appearance,
+                            severity,
+                        )
+                    })
+                    .flatten()
+                    .map(|color| color.map(|channel| f32::from(channel) / 255.0));
+                Some((foreground, background))
+            });
+            let (row_foreground, status_background) = row_colors.unwrap_or((None, None));
+            let command_background = (!is_header
+                && !is_rule
+                && content.hint_matches.is_none()
+                && content.hint_labels.is_none()
+                && !crate::automexia::output_semantics::protects_command_background(
+                    classification,
+                    options.highlight.is_some(),
+                ))
+            .then(|| {
+                let appearance = options.command_output?;
+                // Command projection and row layout reach the same physical
+                // edge through different floating-point sums. Compare painted
+                // pixel boundaries so fractional scale cannot drop the last row.
+                let visible_top = snap(top.max(clip[1]));
+                let visible_bottom = snap(bottom.min(clip[3]));
+                // Lookup in the owner's sorted anchors is logarithmic; never
+                // scan terminal history or rebuild table recognition here.
+                let index = options
+                    .command_results
+                    .partition_point(|anchor| snap(anchor.y) <= visible_top);
+                let anchor = options.command_results.get(index)?;
+                let start = anchor.output_top?;
+                if !start.is_finite()
+                    || snap(start) > visible_top
+                    || visible_bottom > snap(anchor.y)
+                {
+                    return None;
+                }
+                Some(super::command_results::command_background_color(
+                    anchor,
+                    appearance,
+                    &colors,
+                    options
+                        .pulse
+                        .map_or(0.0, |pulse| pulse.pulse_alpha_for(anchor, now)),
+                ))
+            })
+            .flatten();
+            let row_background = status_background.or(command_background);
             let edge = snap((top + bottom) / 2.0);
             let extent_top = if is_rule { edge } else { top };
             let extent_bottom = if is_rule { edge + stroke } else { bottom };
@@ -114,8 +206,12 @@ pub(super) fn draw(
                     rect,
                     if is_header {
                         theme.raised
-                    } else {
+                    } else if let Some(color) = row_background {
+                        ui_theme::over(colors.background.0, color)
+                    } else if is_rule {
                         theme.background
+                    } else {
+                        colors.background.0
                     },
                 );
             }
@@ -195,8 +291,31 @@ pub(super) fn draw(
                                     fg = colors.selection_foreground;
                                 }
                                 bg = colors.selection_background;
-                            } else if is_header && bg == colors.background.0 {
-                                bg = theme.raised;
+                            } else {
+                                if is_header && bg == colors.background.0 {
+                                    bg = theme.raised;
+                                }
+                                // Keep source ANSI colors and inverse video.
+                                // Selection above retains its configured
+                                // foreground-preservation and background rules.
+                                if !style.flags.contains(StyleFlags::INVERSE) {
+                                    if matches!(
+                                        style.fg,
+                                        AnsiColor::Named(NamedColor::Foreground)
+                                    ) {
+                                        if let Some(color) = row_foreground {
+                                            fg = color;
+                                        }
+                                    }
+                                    if matches!(
+                                        style.bg,
+                                        AnsiColor::Named(NamedColor::Background)
+                                    ) {
+                                        if let Some(color) = row_background {
+                                            bg = ui_theme::over(bg, color);
+                                        }
+                                    }
+                                }
                             }
                             canvas.rect(run_clip, bg);
                             if style.flags.contains(StyleFlags::HIDDEN) {

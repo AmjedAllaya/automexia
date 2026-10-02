@@ -2,11 +2,24 @@
 <!--
   WiX v3 fragment consumed by cargo-packager 0.11.8. The packager owns the
   automexia.exe, PATH, shortcut, automexia://, upgrade, and uninstall entries;
-  this fragment adds only the two opt-out-safe Explorer launch surfaces.
+  this fragment adds the Explorer launch surfaces and pinned Microsoft transport.
 -->
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <DirectoryRef Id="INSTALLDIR">
+      <Component Id="AutomexiaConptyComponent" Guid="*" Win64="yes">
+        <File Id="AutomexiaConpty" Source="$(env.AUTOMEXIA_CONPTY_ROOT)\conpty.dll" Name="conpty.dll" KeyPath="yes" />
+      </Component>
+      <Directory Id="AutomexiaConptyX64Folder" Name="x64">
+        <Component Id="AutomexiaConptyX64HostComponent" Guid="*" Win64="yes">
+          <File Id="AutomexiaConptyX64Host" Source="$(env.AUTOMEXIA_CONPTY_ROOT)\x64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
+      <Directory Id="AutomexiaConptyArm64Folder" Name="arm64">
+        <Component Id="AutomexiaConptyArm64HostComponent" Guid="*" Win64="yes">
+          <File Id="AutomexiaConptyArm64Host" Source="$(env.AUTOMEXIA_CONPTY_ROOT)\arm64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
+        </Component>
+      </Directory>
       <Component Id="AutomexiaDirectoryContextMenu" Guid="*" Win64="yes">
         <Environment Id="AutomexiaPath"
                      Name="PATH"
@@ -42,6 +55,9 @@
       </Component>
     </DirectoryRef>
     <ComponentGroup Id="AutomexiaContextMenuComponents">
+      <ComponentRef Id="AutomexiaConptyComponent" />
+      <ComponentRef Id="AutomexiaConptyX64HostComponent" />
+      <ComponentRef Id="AutomexiaConptyArm64HostComponent" />
       <ComponentRef Id="AutomexiaDirectoryContextMenu" />
       <ComponentRef Id="AutomexiaBackgroundContextMenu" />
     </ComponentGroup>

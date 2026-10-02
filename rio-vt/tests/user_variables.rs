@@ -170,3 +170,43 @@ fn user_var_chronology_quota_rejection_does_not_allocate_tracking() {
     assert_eq!(stamp.latest.get(), 130);
     assert_eq!(stamp.previous.map(std::num::NonZeroU64::get), Some(1));
 }
+
+#[test]
+fn user_var_chronology_extra_parameters_reject_before_decode_allocation() {
+    for (body, terminator) in [
+        (
+            "\x1b]1337;SetUserVar=known=bmV3;invalid",
+            b"\x07".as_slice(),
+        ),
+        ("\x1b]1337;SetUserVar=known=bmV3;", b"\x1b\\".as_slice()),
+        ("\x1b]1337;SetUserVar=known=;invalid", b"\x07".as_slice()),
+    ] {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(80, 8),
+            CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        let mut processor = Processor::default();
+        processor.advance(&mut terminal, b"\x1b]1337;SetUserVar=known=b2xk\x07");
+        let stamp = terminal.user_var_write_stamp("known");
+        terminal.reset_damage();
+        processor.advance(&mut terminal, body.as_bytes());
+        let allocations = measured(|| processor.advance(&mut terminal, terminator));
+        assert_eq!(
+            allocations, 0,
+            "malformed metadata reached an allocating decoder"
+        );
+        assert_eq!(terminal.user_vars["known"], "old");
+        assert_eq!(terminal.user_var_write_stamp("known"), stamp);
+        assert_eq!(
+            terminal
+                .last_user_var_rejection()
+                .map(std::num::NonZeroU64::get),
+            Some(2)
+        );
+        assert_eq!(terminal.peek_damage_event(), None);
+    }
+}

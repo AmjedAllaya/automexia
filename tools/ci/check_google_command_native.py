@@ -28,6 +28,15 @@ def run(command, environment, cwd=ROOT):
     return result.return_code, bytes(chunks)
 
 
+def fixture_failure_detail(output, temporary):
+    marker = b"AMX_OUTPUT_BEGIN"
+    if marker not in output:
+        return f"fixture marker absent ({len(output)} captured bytes)"
+    detail = output.split(marker, 1)[1][:2048].decode("utf-8", errors="replace")
+    detail = detail.replace(str(temporary), "<fixture>").replace(str(ROOT), "<workspace>")
+    return f"post-marker output: {detail!r}"
+
+
 class GoogleCommandTests(unittest.TestCase):
     def invoke(self, root, environment, *arguments):
         hints = []
@@ -301,13 +310,18 @@ class GoogleCommandTests(unittest.TestCase):
 
     def test_native_shell_forwarding_collision_disable_and_repeat_source(self):
         for shell in SHELLS:
-            for case in ("normal", "function", "alias", "external", "disabled", "missing", "searches", "local", "directory", "editor", "repository"):
+            cases = ("normal", "function", "alias", "external", "disabled", "missing", "searches", "local", "directory", "editor", "repository")
+            if shell in ("powershell", "pwsh"):
+                cases += ("help", "verbatim")
+            for case in cases:
                 with self.subTest(shell=shell, case=case), tempfile.TemporaryDirectory(dir=ROOT / "target/qa", prefix="google-shell-") as temporary:
                     env = self.environment(temporary)
                     ps = shell in ("powershell", "pwsh")
                     adapter = "powershell" if ps else shell
                     suffix = {"powershell": "ps1", "bash": "bash", "zsh": "zsh", "fish": "fish"}[adapter]
                     env.update(AMX_TEST_SOURCE=str(ROOT / f"shell-integration/{adapter}/automexia.{suffix}"), AMX_TEST_CASE=case)
+                    if case == "verbatim":
+                        env["AUTOMEXIA_CLI"] = "\\\\?\\" + str(BINARY)
                     if case == "local":
                         (Path(temporary) / ".git").mkdir()
                         (Path(temporary) / "Dockerfile").write_text("fixture\n")
@@ -329,15 +343,26 @@ class GoogleCommandTests(unittest.TestCase):
                         external.write_bytes(b"@echo off\r\necho AMX_EXISTING_OK\r\n" if ps else b"#!/bin/sh\nprintf '%s\\n' AMX_EXISTING_OK\n")
                         external.chmod(0o700)
                         env["PATH"] = temporary + os.pathsep + env.get("PATH", "")
+                    if case == "missing":
+                        # Cargo may put the newly built amx launcher on PATH.
+                        # Keep the missing-executable oracle independent of
+                        # how this test runner itself was launched.
+                        env["PATH"] = temporary
                     fixture = str(ROOT / f"tests/fixtures/google-command/query.{suffix}")
                     arguments = [shutil.which(shell)]
-                    arguments += ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", fixture] if ps else (["--noprofile", "--norc", fixture] if shell == "bash" else ["-f", fixture] if shell == "zsh" else ["--no-config", fixture])
+                    if case == "verbatim":
+                        # A non-file current provider reproduces the native path
+                        # lookup failure seen when readiness spawns PowerShell.
+                        command = "Set-Location Env:; & '" + fixture.replace("'", "''") + "'"
+                        arguments += ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", command]
+                    else:
+                        arguments += ["-NoLogo", "-NoProfile", "-NonInteractive", "-File", fixture] if ps else (["--noprofile", "--norc", fixture] if shell == "bash" else ["-f", fixture] if shell == "zsh" else ["--no-config", fixture])
                     code, output = run(arguments, env, cwd=Path(temporary) if case in ("local", "directory", "editor", "repository") else ROOT)
-                    self.assertEqual(code, 0, "native amx scenario failed")
+                    self.assertEqual(code, 0, f"native amx scenario failed; {fixture_failure_detail(output, temporary)}")
                     marker = b"AMX_OUTPUT_BEGIN"
                     self.assertIn(marker, output, "native fixture did not reach its assertion boundary")
                     actual = output.split(marker, 1)[1].strip()
-                    expected = {"normal": b"https://www.google.com/search?q=caf%C3%A9+%26+rust+%2B%23%25+two+words", "function": b"AMX_EXISTING_OK", "alias": b"AMX_EXISTING_OK", "external": b"AMX_EXISTING_OK", "disabled": b"AMX_DISABLED_OK", "missing": b"AMX_MISSING_OK"}.get(case, b"")
+                    expected = {"normal": b"https://www.google.com/search?q=caf%C3%A9+%26+rust+%2B%23%25+two+words", "verbatim": b"https://www.google.com/search?q=caf%C3%A9+%26+rust+%2B%23%25+two+words", "function": b"AMX_EXISTING_OK", "alias": b"AMX_EXISTING_OK", "external": b"AMX_EXISTING_OK", "disabled": b"AMX_DISABLED_OK", "missing": b"AMX_MISSING_OK", "help": b"AMX_HELP_OK"}.get(case, b"")
                     if case == "searches":
                         actual = actual.replace(b"\r\n", b"\n")
                         expected = b"\n".join([
@@ -370,7 +395,7 @@ class GoogleCommandTests(unittest.TestCase):
                         # in this source fixture. Check its exact frame rather
                         # than stripping arbitrary terminal bytes from the oracle.
                         expected = b"\x1b[0m\x1b]1337;SetUserVar=automexia_prompt_active=MA==\x07\x1b]133;C\x07" + expected
-                    self.assertTrue(actual == expected, "native alias result differed from the independent oracle")
+                    self.assertTrue(actual == expected, f"native alias result differed from the independent oracle; {fixture_failure_detail(output, temporary)}")
 
 
 if __name__ == "__main__":

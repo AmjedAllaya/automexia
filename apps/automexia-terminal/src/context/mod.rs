@@ -184,6 +184,7 @@ pub struct Context<T: EventListener> {
 
 impl<T: rio_backend::event::EventListener> Drop for Context<T> {
     fn drop(&mut self) {
+        crate::automexia::runtime::retire_devops_session(self.route_id);
         // Application/window teardown broadcasts before contexts are dropped so
         // every owned PTY can consume its graceful budget concurrently. Keep
         // this request as the single-context fallback for every other drop path.
@@ -1340,6 +1341,12 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn open_customizations(&self) {
+        self.event_proxy
+            .send_event(RioEvent::OpenCustomizations, self.window_id);
+    }
+
+    #[inline]
     pub fn extension_inventory_changed(&self) {
         self.event_proxy
             .send_event(RioEvent::ExtensionInventoryChanged, self.window_id);
@@ -1362,10 +1369,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     /// Every PTY route owned by this OS window, including background
-    /// top-level tabs, splits, and pane-local tabs.
+    /// top-level tabs, splits, pane-local tabs, and parked undo topologies.
     pub fn route_ids(&self) -> Vec<usize> {
         self.contexts
             .iter()
+            .chain(self.parked_topologies.iter().map(|entry| &entry.grid))
             .flat_map(ContextGrid::route_ids)
             .collect()
     }
@@ -1674,6 +1682,16 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         if self.park_current_topology_model() {
             self.keep_only_active_context_visible(sugarloaf);
         }
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_park_current_topology(&mut self) -> bool {
+        self.park_current_topology_model()
+    }
+
+    #[cfg(test)]
+    pub(crate) fn test_undo_topology(&mut self) -> bool {
+        self.undo_topology_model()
     }
 
     /// Move the complete current top-level tab into bounded memory-only
@@ -1986,6 +2004,17 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                             .trim_end_matches(['\0', ' '])
                             .to_string()
                     });
+                // Source text and painted rows differ when a prompt header or
+                // inline table expands. Publish the same bounded projection
+                // used by painting, never raw row indices as pixel geometry.
+                let content = &context.renderable_content;
+                let source_row_visual_origins = (0..content.visible_rows.len())
+                    .map(|source| {
+                        let visual = content.command_rows.visual_row(source);
+                        (visual >= 0 && visual < content.screen_lines as isize
+                            && !content.inline_tables.hides_native(source))
+                            .then_some(visual)
+                    }).collect::<Vec<_>>();
                 serde_json::json!({
                     "route_id": context.route_id,
                     "active": context.route_id == active_route,
@@ -2024,6 +2053,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "selection_text": selection_text,
                     "selection_rendered": context.renderable_content.selection_range.is_some(),
                     "visible_text": visible_text,
+                    "source_row_visual_origins": source_row_visual_origins,
                 })
             })
             .collect()
@@ -2227,15 +2257,34 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         }
     }
 
+    #[cfg(test)]
+    pub(crate) fn test_create_cloned_context(
+        &self,
+        rich_text_id: usize,
+    ) -> Result<Context<T>, String> {
+        self.create_cloned_context(rich_text_id)
+    }
+
     fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
         let (launch, cursor, blinking, dimension, seed, source_capsule_id) = {
             let source = self.current();
-            let live = LiveSessionMetadata {
-                current_directory: source.renderable_content.current_directory.clone(),
-                distro: source.renderable_content.shell_distro.clone(),
-                user: source.renderable_content.shell_user.clone(),
-                shell_name: source.renderable_content.shell_name.clone(),
-                shell_path: source.renderable_content.shell_path.clone(),
+            let live = if source.renderable_content.session_metadata.readiness()
+                == crate::renderer::session_metadata::MetadataReadiness::Complete
+            {
+                LiveSessionMetadata {
+                    current_directory: source
+                        .renderable_content
+                        .current_directory
+                        .clone(),
+                    distro: source.renderable_content.shell_distro.clone(),
+                    user: source.renderable_content.shell_user.clone(),
+                    shell_name: source.renderable_content.shell_name.clone(),
+                    shell_path: source.renderable_content.shell_path.clone(),
+                }
+            } else {
+                // Incomplete metadata retains old labels for history, but cannot
+                // select a guest shell or directory for a new independent PTY.
+                LiveSessionMetadata::default()
             };
             let launch = source
                 .launch_descriptor
@@ -2566,6 +2615,63 @@ pub mod test {
     use super::*;
     use crate::event::VoidListener;
     use std::sync::Mutex;
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    #[test]
+    fn viewport_contract_native_snapshot_reports_projected_image_rows() {
+        let mut manager =
+            ContextManager::start_with_capacity(1, VoidListener {}, WindowId::from(86))
+                .unwrap();
+        for (rows, bands) in [
+            (15, vec![]),
+            (15, vec![(10, 2)]),
+            (18, vec![(10, 4)]),
+            (15, vec![]),
+        ] {
+            let content = &mut manager.current_mut().renderable_content;
+            content.visible_rows = (0..rows)
+                .map(|_| rio_backend::crosswords::grid::row::Row::new(32))
+                .collect();
+            content.screen_lines = rows;
+            content.command_rows.rebuild(rows, &bands);
+            content.command_rows.settle(Some(rows - 1), rows);
+            let expected: Vec<_> = (0..rows)
+                .map(|row| content.command_rows.visual_row(row))
+                .collect();
+            let snapshots = manager.native_test_panel_snapshots();
+            let published = snapshots[0]["source_row_visual_origins"]
+                .as_array()
+                .expect("native snapshot must expose painted row geometry");
+            assert_eq!(published.len(), rows);
+            for (source, visual) in expected.iter().enumerate() {
+                if *visual < 0 || *visual >= rows as isize {
+                    assert!(
+                        published[source].is_null(),
+                        "clipped source has no pointer target"
+                    );
+                } else {
+                    assert_eq!(published[source].as_i64(), Some(*visual as i64));
+                }
+            }
+            for source in [8, 9] {
+                assert_eq!(published[source].as_i64(), Some(expected[source] as i64));
+                assert_eq!(
+                    manager
+                        .current()
+                        .renderable_content
+                        .command_rows
+                        .native_row(expected[source] as usize),
+                    source
+                );
+            }
+            if bands == [(10, 2)] {
+                assert_eq!(
+                    expected[9], 8,
+                    "source row index is not a pixel row after expansion"
+                );
+            }
+        }
+    }
 
     #[cfg(windows)]
     #[test]

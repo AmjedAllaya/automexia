@@ -46,7 +46,7 @@ impl SuggestionTicket {
             let waited = self
                 .state
                 .ready
-                .wait_timeout(value, timeout)
+                .wait_timeout_while(value, timeout, |value| value.is_none())
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             value = waited.0;
         }
@@ -348,8 +348,10 @@ fn lock<T>(mutex: &Mutex<T>) -> MutexGuard<'_, T> {
 
 #[cfg(test)]
 mod tests {
-    use super::FairLatestQueue;
+    use super::{CompletionState, FairLatestQueue, SuggestionTicket};
     use automexia_command_productivity::suggestions::RouteIdentity;
+    use std::sync::Arc;
+    use std::time::{Duration, Instant};
 
     fn route(pane_id: u64) -> RouteIdentity {
         RouteIdentity {
@@ -383,5 +385,23 @@ mod tests {
         assert_eq!(queue.remove(&route(1)), Some(1));
         assert_eq!(queue.pop_next(), Some(2));
         assert!(queue.is_empty());
+    }
+
+    #[test]
+    fn ticket_wait_ignores_notification_without_completion() {
+        let state = Arc::new(CompletionState::default());
+        let ticket = SuggestionTicket {
+            state: state.clone(),
+        };
+        let notifier = std::thread::spawn(move || {
+            for _ in 0..20 {
+                state.ready.notify_all();
+                std::thread::sleep(Duration::from_millis(2));
+            }
+        });
+        let started = Instant::now();
+        assert!(ticket.wait_timeout(Duration::from_millis(80)).is_none());
+        assert!(started.elapsed() >= Duration::from_millis(70));
+        notifier.join().unwrap();
     }
 }

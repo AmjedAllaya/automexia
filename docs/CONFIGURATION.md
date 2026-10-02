@@ -16,10 +16,12 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v2.toml`
+Settings choices use the private, versioned `state/user-preferences-v6.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-1 preferences import only when both version-2 snapshots are absent;
-the old files remain unchanged for rollback.
+Version-5 preferences import only when both version-6 snapshots are absent;
+older versions import only when every newer snapshot pair is absent.
+Version 6 adds connected information-tag shapes. Older files remain unchanged
+for rollback; corrupt or future current snapshots do not fall back to older files.
 `AUTOMEXIA_CONFIG_HOME` replaces the complete root. `AUTOMEXIA_LOG_LEVEL`
 overrides the configured log level. For v0.4 only, `RIO_CONFIG_HOME` is a
 read-only migration source and `RIO_LOG_LEVEL` is a deprecated value fallback;
@@ -261,6 +263,7 @@ the running UI:
 - the forced light/dark appearance selected by the appearance shortcut;
 - shortcut overrides saved by the existing palette shortcut editor;
 - table formatting, status highlighting and command timestamp display;
+- information-bar format, tag recipes, spacing and appearance;
 - declared presentation features of installed built-in extensions, currently
   DevOps prompt context.
 
@@ -268,26 +271,27 @@ Writes are coalesced off the input/rendering path, bounded to 16 KiB, restricted
 to the current user, and retain one last-known-good snapshot. A malformed,
 oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
-`config.toml` values. Invalid or newer version-2 data is never replaced by an
-automatic legacy import. To clear individual choices, use Reset. To clear all
-runtime overrides, close Automexia and remove the version-2 primary and
-previous snapshots and any retained version-1 snapshots; leaving version-1
-files would import their choices again. This file never stores credentials, terminal contents,
+`config.toml` values. Invalid or newer version-4 data is never replaced by an
+automatic predecessor import. To clear individual choices, use Reset. To clear all
+runtime overrides, close Automexia and remove the version-4 primary and
+previous snapshots and any retained version-3, version-2 or version-1 snapshots; leaving
+older files would import their choices again. This file never stores credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.
 
 ## Runtime font and appearance
 
-Settings includes **Font size**, using the existing 6–100 point runtime range.
-The arrow controls change one point while retaining fractional sizes. Reset
+Customizations includes **Font size**, using the existing 6–100 point runtime range.
+The arrow controls change one point while retaining fractional sizes; the center
+field also accepts a typed value within the allowed range. Reset
 clears the saved override and inherits the current configured size. An unsupported
-configured size has an explanatory unavailable control; Settings does not rewrite
+configured size has an explanatory unavailable control; Customizations does not rewrite
 or clamp the configuration file.
 
 **Appearance** offers **Use configuration**, **Light** and **Dark** when both
 adaptive palettes are loaded. Use configuration and Reset remove the saved
 appearance override: a configured force-theme takes precedence, otherwise the
 host appearance applies. A fixed palette has an unavailable control with an
-explanation; its saved choice is retained. Settings does not discover or load
+explanation; its saved choice is retained. Customizations does not discover or load
 theme files.
 
 Font and appearance edits update open windows, panes and inactive local tabs
@@ -297,29 +301,127 @@ asynchronous writer persists these existing preference fields.
 
 ## Output presentation
 
-The command palette's **Settings** opens the native application settings sheet.
-Changes apply across windows, panes and tabs; Reset clears the UI override and
-inherits the current configuration. **Edit Configuration File** and its existing
+The command palette's **Customizations → Open Customizations** opens a feature
+list; each feature has a separate page for its supported switch and appearance
+controls. The existing Settings shortcut opens this same list for compatibility.
+Changes apply across windows, panes and tabs. **Reset all** or a feature's
+**Reset default** previews defaults for the current session without changing
+saved preference files; **Restore saved** returns to the choices from before
+the first reset. Appearance resets restore configured colors and styles, or
+built-in defaults where none are configured, and enable affected core switches.
+Reset inside an individual value editor still clears that
+value's UI override and inherits the current configuration.
+**Edit Configuration File** and its existing
 shortcut still open the external editor.
 
 ```toml
 [presentation]
 inline-tables = true
 output-highlighting = true
+command-output-highlighting = true
+kubernetes-highlighting = true
 command-timestamps = true
 ```
 
 | Key | Default | Effect |
 |---|---|---|
 | `presentation.inline-tables` | `true` | Add borders and per-cell wrapping to recognized header tables. Disabled output uses the original terminal grid. |
-| `presentation.output-highlighting` | `true` | Color recognized statuses while the classifier extension is installed. Producer ANSI colors retain precedence. |
+| `presentation.command-output-highlighting` | `true` | Tint ordinary completed-command output by exit status in Customizations → Terminal output colors. |
+| `presentation.output-highlighting` | `true` | Color detected logs and general statuses, independently of command backgrounds and Kubernetes. |
+| `presentation.kubernetes-highlighting` | `true` | Color recognized Kubernetes readiness and status rows in Customizations → Kubernetes status colors. |
 | `presentation.command-timestamps` | `true` | Show completion timestamps. Disabling this keeps exit status, duration and terminal-owned command metadata. |
 
-The installed-extension list is loaded asynchronously. Supported extension
-controls appear from that inventory; disabling a feature retains its control,
-while removing its extension removes the entry and its saved feature override.
-An unavailable inventory does not imply uninstall. Settings never grants
-provider permissions or activates protected integrations.
+Open **Information tags** in Customizations to show or hide the prompt tags,
+choose one of twelve **Information-bar format** presets, adjust **Space between
+tags** from 0% to 300% of the format's normal gap, and use **Context tag
+style** and **Context tag background opacity** for shared appearance. Use the
+preview's Edit button to select a tag or default role color. Disabling tags
+leaves context detection and command metadata intact. Tinted tags use an integer opacity from
+0 to 100 percent; Plain removes the tint while retaining readable text. User
+colors take precedence over configured colors and built-in anchors. The sheet
+checks text contrast against the rendered tag surface.
+
+Open **Terminal output colors** in Customizations to enable command backgrounds
+and the optional completion pulse. Select a successful, failed, or unknown-exit
+sample to edit its RGBA background, including opacity. The separate detected-log
+switch and style control log text and backgrounds. Completion labels and
+timestamps remain available when backgrounds are off.
+
+Open **Kubernetes status colors** for an independent switch, style and palette.
+Select a sample status to edit its text or background. An incomplete `0/1 Running`
+row remains a warning; `1/1 Running` is successful. Unknown recognized statuses
+stay neutral instead of borrowing a command's successful exit color.
+
+The detected-log and Kubernetes styles select Text, Background, or Text and
+background independently.
+Recognized error, warning, success, info and debug text and RGBA background
+colors can each be changed. Background style tints all five by default; Text
+and background retains the original error/warning-only default backgrounds,
+and applies any background colors you explicitly choose for the other three.
+Highlighting
+uses the bounded core classifier; original ANSI colors, inverse video,
+selection and hover keep their normal precedence. Command backgrounds never
+overlay recognized status rows or inline tables, which own their cell colors.
+Complete softwrapped rows share one classification; incomplete or oversized
+rows remain neutral. Full-screen and mouse-reporting applications keep their
+own colors. Turning a feature off retains its saved appearance choices.
+
+For older configurations, omitted Kubernetes controls inherit the old
+`output-highlighting` and `highlight` choices when loaded. Set the new Kubernetes
+fields explicitly to make them independent. Private preference schema v5 imports
+older choices once and leaves predecessor files unchanged for rollback.
+
+```toml
+[presentation.tags]
+enabled = true
+style = "tinted"
+opacity = 12
+[presentation.tags.colors]
+kubernetes = "#48c7ef"
+
+[presentation.highlight]
+style = "both"
+error-background = "#690c1956"
+success-background = "#09572e4e"
+[presentation.highlight.colors]
+error = "#ff1261"
+[presentation.command-output]
+success = "#00d08019"
+failure = "#f0406019"
+neutral = "#5080d019"
+pulse = true
+[presentation.kubernetes]
+style = "both"
+[presentation.kubernetes.colors]
+warning = "#ffd166"
+success = "#06d6a0"
+```
+
+In Information tags or either output color page, choose the preview's Edit button,
+then select a rendered tag or status directly in the sample. A selected tag's
+own color and inherited role-default color have separate rows. Use **Show
+hidden/other tags** in the preview when a tag is absent or disabled.
+Enter an exact RGB hex
+value (or RGBA for a background), then choose Apply, Cancel or Reset by mouse,
+Tab/Shift+Tab and Enter; Escape cancels. Apply is unavailable for malformed
+input. Reset inherits the current configuration or active palette. The color
+editor shows current and draft graphics before saving. Escape returns one level
+at a time through the element controls, shared feature controls and feature list.
+
+The installed-extension list is loaded asynchronously. Supported built-in DevOps
+controls appear from that inventory in Customizations; disabling a feature retains its
+control, while removing the built-in extension removes the entry and its saved
+feature override. Packages verified at install time with valid `settings.v1.json`
+metadata add one package page, then a separate page for each declared feature.
+The feature page saves its enabled preference and declared boolean, choice, and
+integer options. Those choices are stored separately in the private, versioned
+`state/package-preferences-v1.toml` snapshot. After a confirmed uninstall and
+successful inventory refresh, its pages and saved choices disappear. An
+unavailable inventory does not imply
+uninstall. Package controls save preferences only: they do not execute package
+components, grant provider permissions, or activate protected integrations.
+On refresh, extracted content is checked against its stored receipt and content
+digest; this does not renew publisher signature trust after local profile tampering.
 
 ## Renderer and keyboard
 

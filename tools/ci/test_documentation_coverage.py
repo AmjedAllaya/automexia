@@ -62,10 +62,11 @@ pub entries: Vec<String>,
                 "repo",
                 "search",
                 "shell-integration",
+                "ssh-integration",
                 "workspaces",
             },
         )
-        self.assertEqual(counts["cli_commands"], 14)
+        self.assertEqual(counts["cli_commands"], 15)
         self.assertGreaterEqual(counts["xtask_commands"], 20)
 
     def test_missing_config_key_is_rejected(self) -> None:

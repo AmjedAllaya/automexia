@@ -54,6 +54,122 @@ fn native_powershell_scrollback_after_bottom_pane_closes() {
     repeat_editor_resize(80);
 }
 
+#[test]
+fn native_powershell_long_prompt_after_minimal_viewport_restores_context_and_input() {
+    const PATH: &str = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
+    let fixture = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("tests/fixtures/pane-editor-resize.ps1");
+    let pty = teletypewriter::create_pty(
+        Some("powershell.exe"),
+        vec![
+            "-NoLogo".into(),
+            "-NoProfile".into(),
+            "-NoExit".into(),
+            "-File".into(),
+            fixture.to_string_lossy().into_owned(),
+            "-PromptPath".into(),
+            PATH.into(),
+            "-PromptPrefix".into(),
+            "λ ".into(),
+        ],
+        &None,
+        None,
+        140,
+        14,
+    )
+    .unwrap_or_else(|_| panic!("native long prompt fixture launch"));
+    let editor = Editor::launch(pty, 140, 14);
+    assert_eq!(editor.title(), "EDITOR-READY");
+    editor.key(123, 88, 0, b"\x1b[24~");
+    assert!(editor.title().starts_with("EDITOR-ACK-1:"));
+    for (step, (cols, rows)) in [(3, 2), (32, 15)].into_iter().enumerate() {
+        editor
+            .terminal
+            .lock()
+            .resize(CrosswordsSize::new(cols, rows));
+        editor
+            .sender
+            .send(Msg::Resize(WindowSize {
+                cols: cols as u16,
+                rows: rows as u16,
+                width: 0,
+                height: 0,
+            }))
+            .expect("long prompt resize");
+        // Acknowledgment observes the console without repainting or accepting input.
+        editor.key(123, 88, 0, b"\x1b[24~");
+        let title = editor.title();
+        assert!(title.starts_with(&format!("EDITOR-ACK-{}:", step + 2)));
+    }
+    editor.key(65, 30, 97, b"a");
+    editor.key(123, 88, 0, b"\x1b[24~");
+    let title = editor.title();
+    let native: Vec<usize> = title
+        .strip_prefix("EDITOR-ACK-4:")
+        .unwrap()
+        .split(':')
+        .map(|v| v.parse().unwrap())
+        .collect();
+    assert_eq!(&native[2..], &[32, 15, 1, 1]);
+    let mut terminal = editor.terminal.lock();
+    let visible: Vec<String> = terminal
+        .visible_rows()
+        .iter()
+        .map(|row| {
+            row.inner
+                .iter()
+                .map(|c| if c.c() == '\0' { ' ' } else { c.c() })
+                .collect::<String>()
+                .trim_end()
+                .to_owned()
+        })
+        .collect();
+    let cursor = terminal.grid.cursor.pos;
+    assert_eq!(
+        (cursor.row.0 as usize, cursor.col.0),
+        (native[0], native[1])
+    );
+    // Raw cursor must still match ConPTY. The shared viewport maps it to the
+    // displayed source row; no shell coordinate is changed by presentation.
+    assert_eq!(
+        terminal.viewport_cursor().pos.row.0 as usize,
+        native[0] + terminal.display_offset()
+    );
+    assert_eq!(
+        visible[terminal.viewport_cursor().pos.row.0 as usize],
+        "λ a"
+    );
+    assert!(
+        visible.join("").contains(PATH),
+        "complete fictional context returns after resize"
+    );
+    assert_eq!(visible.join("").matches(PATH).count(), 1);
+    use rio_vt::crosswords::pos::{Pos, Side};
+    use rio_vt::selection::{Selection, SelectionType};
+    let first_source = 1 - terminal.display_offset() as i32;
+    let last_source = cursor.row.0 - 1;
+    let last_column = terminal.grid[Line(last_source)]
+        .inner
+        .iter()
+        .rposition(|cell| !matches!(cell.c(), '\0' | ' '))
+        .unwrap();
+    let mut selection = Selection::new(
+        SelectionType::Simple,
+        Pos::new(Line(first_source), Column(0)),
+        Side::Left,
+    );
+    selection.update(
+        Pos::new(Line(last_source), Column(last_column)),
+        Side::Right,
+    );
+    terminal.selection = Some(selection);
+    assert_eq!(
+        terminal.selection_to_string().as_deref(),
+        Some(PATH),
+        "visible context uses the original selectable source exactly once"
+    );
+}
+
 fn repeat_editor_resize(history: usize) {
     for _ in 0..10 {
         run_editor_resize(history);

@@ -20,6 +20,73 @@ const POWERSHELL_SESSION_BOOTSTRAP: &str = concat!(
     "}",
 );
 
+#[cfg(target_os = "windows")]
+fn powershell_session_options(args: &[String], core: bool) -> (bool, bool, bool) {
+    // Admit known interactive host options, leaving command parsing to the host.
+    // ConsoleHost prefixes and their precedence follow PowerShell v7.5.3's
+    // CommandLineParameterParser; values are never scanned as host switches.
+    fn matches_option(option: &str, full: &str, minimum: usize) -> bool {
+        option.len() >= minimum && full.starts_with(option)
+    }
+
+    let mut has_no_logo = false;
+    let mut has_no_exit = false;
+    let mut arguments = args.iter();
+    while let Some(argument) = arguments.next() {
+        let lower = argument.to_ascii_lowercase();
+        let Some(option) = lower.strip_prefix('-').or_else(|| lower.strip_prefix('/'))
+        else {
+            return (has_no_logo, has_no_exit, false);
+        };
+        if matches_option(option, "nologo", 3) {
+            has_no_logo = true;
+        } else if matches_option(option, "noexit", 3) {
+            has_no_exit = true;
+        } else if matches_option(option, "noprofile", 3)
+            || option == "sta"
+            || option == "mta"
+            || (core
+                && (option == "noprofileloadtime"
+                    || matches_option(option, "interactive", 1)
+                    || matches_option(option, "login", 1)))
+        {
+            // These switches preserve a request for the interactive host.
+        } else if [
+            ("executionpolicy", 2),
+            ("ep", 2),
+            ("inputformat", 3),
+            ("if", 2),
+            ("outputformat", 1),
+            ("of", 2),
+            ("windowstyle", 1),
+            ("configurationname", 6),
+        ]
+        .iter()
+        .any(|(full, minimum)| matches_option(option, full, *minimum))
+            || (core
+                && [
+                    ("workingdirectory", 2),
+                    ("wd", 2),
+                    ("configurationfile", 17),
+                    ("settingsfile", 8),
+                ]
+                .iter()
+                .any(|(full, minimum)| matches_option(option, full, *minimum)))
+            || (!core && option == "psconsolefile")
+        {
+            // The host consumes one literal value, even if it looks like a flag.
+            if arguments.next().is_none() {
+                return (has_no_logo, has_no_exit, false);
+            }
+        } else {
+            // Explicit execution, positional scripts, noninteractive/server
+            // modes, and unknown options never acquire an implicit command.
+            return (has_no_logo, has_no_exit, false);
+        }
+    }
+    (has_no_logo, has_no_exit, true)
+}
+
 pub fn normalized_program(program: Option<&str>) -> Option<String> {
     #[cfg(target_os = "windows")]
     {
@@ -61,24 +128,24 @@ pub fn normalized_args(
                 }
                 result.push("/K".to_string());
                 result.push(
-                    "chcp 65001>nul & set \"AUTOMEXIA_CMD_PROMPT_GLYPH=λ\" & if exist \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\cmd\\automexia.cmd\" (call \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\cmd\\automexia.cmd\") else if exist \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\automexia.cmd\" call \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\automexia.cmd\""
+                    "chcp 65001>nul & set \"AUTOMEXIA_CMD_PROMPT_GLYPH=\u{03bb}\" & if exist \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\cmd\\automexia.cmd\" (call \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\cmd\\automexia.cmd\") else if exist \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\automexia.cmd\" call \"%AUTOMEXIA_SHELL_INTEGRATION_ROOT%\\automexia.cmd\""
                         .to_string(),
                 );
             }
             return result;
         }
 
-        let powershell = program.ends_with("powershell")
-            || program.ends_with("powershell.exe")
-            || program.ends_with("pwsh")
-            || program.ends_with("pwsh.exe");
+        let powershell = matches!(
+            basename,
+            "powershell" | "powershell.exe" | "pwsh" | "pwsh.exe"
+        );
         if !powershell {
             return result;
         }
 
-        let has_no_logo = result.iter().any(|arg| {
-            arg.eq_ignore_ascii_case("-NoLogo") || arg.eq_ignore_ascii_case("-nol")
-        });
+        let core = matches!(basename, "pwsh" | "pwsh.exe");
+        let (has_no_logo, has_no_exit, accepts_session_bootstrap) =
+            powershell_session_options(args, core);
         if !has_no_logo {
             result.insert(0, "-NoLogo".to_string());
         }
@@ -88,21 +155,7 @@ pub fn normalized_args(
         // directly into this child session. Profiles still load normally
         // because we never use -NoProfile. Persistent integration is an
         // independent, explicit maintenance command.
-        let has_explicit_command = result.iter().any(|arg| {
-            matches!(
-                arg.to_ascii_lowercase().as_str(),
-                "-command"
-                    | "-c"
-                    | "-file"
-                    | "-f"
-                    | "-encodedcommand"
-                    | "-encodedarguments"
-            )
-        });
-        if !has_explicit_command && integration_available {
-            let has_no_exit = result.iter().any(|arg| {
-                arg.eq_ignore_ascii_case("-NoExit") || arg.eq_ignore_ascii_case("-noe")
-            });
+        if accepts_session_bootstrap && integration_available {
             if !has_no_exit {
                 result.push("-NoExit".to_string());
             }
@@ -114,7 +167,7 @@ pub fn normalized_args(
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = program;
+        let _ = (program, integration_available);
         args.to_vec()
     }
 }
@@ -207,9 +260,15 @@ try {
         $global:AutomexiaScopeProbeCalls++
         return $global:AutomexiaScopeProbeLine
     }
-    [Console]::SetOut([IO.TextWriter]::Null)
+    $global:AutomexiaScopeProbeOutput = [IO.StringWriter]::new()
+    [Console]::SetOut($global:AutomexiaScopeProbeOutput)
 "#;
         let assertions = r#"
+    $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
+    $null = prompt
+    if ($global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
+        $script:AutomexiaPromptGeneration -ne 1) { exit 93 }
+    $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
     try { $line = PSConsoleHostReadLine } catch { exit 81 }
     if ($line -cne $global:AutomexiaScopeProbeLine -or
         $global:AutomexiaScopeProbeCalls -ne 1) { exit 82 }
@@ -221,7 +280,12 @@ try {
     try { $renderedPrompt = prompt } catch { exit 85 }
     if (-not $renderedPrompt.Contains([char]0x03bb) -or
         -not $renderedPrompt.Contains('133;B') -or
-        $script:AutomexiaPromptGeneration -ne 1) { exit 86 }
+        -not $global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
+        $script:AutomexiaPromptGeneration -ne 2) { exit 86 }
+    $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
+    $null = prompt
+    if ($global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
+        $script:AutomexiaPromptGeneration -ne 3) { exit 94 }
     if ((Get-AutomexiaPromptPath) -cne (Get-Location).Path -or
         [string]::IsNullOrEmpty((Get-AutomexiaAliasHealth).State) -or
         $null -eq $script:AutomexiaCompletionLoaded -or
@@ -242,8 +306,10 @@ try {
     $global:AutomexiaScopeProbeLine = 'second literal input'
     if ((PSConsoleHostReadLine) -cne $global:AutomexiaScopeProbeLine -or
         $global:AutomexiaScopeProbeCalls -ne 4) { exit 90 }
+    $null = $global:AutomexiaScopeProbeOutput.GetStringBuilder().Clear()
     $null = prompt
-    if ($script:AutomexiaPromptGeneration -ne 2) { exit 91 }
+    if (-not $global:AutomexiaScopeProbeOutput.ToString().Contains('133;D') -or
+        $script:AutomexiaPromptGeneration -ne 4) { exit 91 }
     exit 0
 } catch { exit 92 }
 "#;
@@ -433,6 +499,9 @@ try {
         assert!(output.iter().any(|arg| arg.eq_ignore_ascii_case("/D")));
         assert!(output.iter().any(|arg| arg.eq_ignore_ascii_case("/K")));
         assert!(output.iter().any(|arg| arg.contains("automexia.cmd")));
+        assert!(output
+            .iter()
+            .any(|arg| arg.contains("AUTOMEXIA_CMD_PROMPT_GLYPH=\u{03bb}")));
     }
 
     #[cfg(target_os = "windows")]
@@ -454,6 +523,275 @@ try {
                     || arg.eq_ignore_ascii_case("/K")
                     || arg.contains("shell-integration")
             }));
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_requires_an_exact_powershell_basename() {
+        for program in [
+            "custompowershell.exe",
+            "notpwsh.exe",
+            r"C:\example\custompowershell",
+            "C:/example/notpwsh",
+        ] {
+            for input in [vec![], vec!["--literal".to_string()]] {
+                assert_eq!(
+                    normalized_args(Some(program), &input, true),
+                    input,
+                    "unrelated executable: {program}"
+                );
+            }
+        }
+        for program in [
+            "PowerShell.EXE",
+            "PWSH",
+            r"C:\example\PowerShell.EXE",
+            "C:/example/pwsh.exe",
+        ] {
+            assert_eq!(
+                normalized_args(Some(program), &[], true),
+                vec![
+                    "-NoLogo".to_string(),
+                    "-NoExit".to_string(),
+                    "-Command".to_string(),
+                    POWERSHELL_SESSION_BOOTSTRAP.to_string(),
+                ],
+                "exact host basename: {program}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_preserves_explicit_powershell_execution_forms() {
+        for program in ["powershell.exe", "pwsh.exe"] {
+            for mode in [
+                "-Command",
+                "-c",
+                "-co",
+                "-Comman",
+                "-COMMAND",
+                "-File",
+                "-f",
+                "-fi",
+                "-fil",
+                "-EncodedCommand",
+                "-e",
+                "-ec",
+                "-en",
+                "-enc",
+                "-EncodedArguments",
+                "-ea",
+                "-encodeda",
+                "-CommandWithArgs",
+                "-cwa",
+            ] {
+                let input = vec![
+                    "-NoProfile".to_string(),
+                    mode.to_string(),
+                    "literal".to_string(),
+                ];
+                let mut expected = vec!["-NoLogo".to_string()];
+                expected.extend(input.clone());
+                assert_eq!(
+                    normalized_args(Some(program), &input, true),
+                    expected,
+                    "explicit host execution: {program}, {mode}"
+                );
+            }
+        }
+        let input = vec![
+            "-NoProfile".to_string(),
+            "./example.ps1".to_string(),
+            "literal".to_string(),
+        ];
+        let mut expected = vec!["-NoLogo".to_string()];
+        expected.extend(input.clone());
+        assert_eq!(normalized_args(Some("pwsh.exe"), &input, true), expected);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_explicit_payload_flags_are_not_host_options() {
+        for program in ["powershell.exe", "pwsh.exe"] {
+            for payload in ["-NoLogo", "-nol", "-NoExit", "-noe"] {
+                let input = vec!["-Command".to_string(), payload.to_string()];
+                let mut expected = vec!["-NoLogo".to_string()];
+                expected.extend(input.clone());
+                assert_eq!(
+                    normalized_args(Some(program), &input, true),
+                    expected,
+                    "explicit command payload must remain literal: {payload}"
+                );
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_option_values_do_not_select_execution_mode() {
+        for value in ["-c", "-NoExit", "-NoLogo"] {
+            let input = vec!["-WorkingDirectory".to_string(), value.to_string()];
+            assert_eq!(
+                normalized_args(Some("pwsh.exe"), &input, true),
+                vec![
+                    "-NoLogo".to_string(),
+                    "-WorkingDirectory".to_string(),
+                    value.to_string(),
+                    "-NoExit".to_string(),
+                    "-Command".to_string(),
+                    POWERSHELL_SESSION_BOOTSTRAP.to_string(),
+                ],
+                "host option value must remain literal: {value}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_admits_interactive_option_aliases_once() {
+        let input = vec![
+            "-nolo".to_string(),
+            "-noex".to_string(),
+            "-nop".to_string(),
+            "-ex".to_string(),
+            "RemoteSigned".to_string(),
+        ];
+        let mut expected = input.clone();
+        expected.extend([
+            "-Command".to_string(),
+            POWERSHELL_SESSION_BOOTSTRAP.to_string(),
+        ]);
+        assert_eq!(normalized_args(Some("pwsh.exe"), &input, true), expected);
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_does_not_bootstrap_unknown_or_noninteractive_arguments() {
+        for input in [
+            vec!["-NonInteractive".to_string()],
+            vec!["-noni".to_string()],
+            vec!["-SSHServerMode".to_string()],
+            vec!["-sshs".to_string()],
+            vec!["-ServerMode".to_string()],
+            vec!["-SocketServerMode".to_string()],
+            vec!["-NamedPipeServerMode".to_string()],
+            vec!["-UnknownOption".to_string()],
+            vec!["-NoLogo".to_string(), "-UnknownOption".to_string()],
+            vec!["--unknown".to_string()],
+            vec!["-?".to_string()],
+            vec!["-Version".to_string()],
+        ] {
+            let mut expected = if input.first().is_some_and(|arg| arg == "-NoLogo") {
+                Vec::new()
+            } else {
+                vec!["-NoLogo".to_string()]
+            };
+            expected.extend(input.clone());
+            assert_eq!(
+                normalized_args(Some("pwsh.exe"), &input, true),
+                expected,
+                "unadmitted launch must not gain an implicit command: {input:?}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_missing_option_values_do_not_gain_a_command() {
+        for option in [
+            "-ExecutionPolicy",
+            "-ex",
+            "-InputFormat",
+            "-OutputFormat",
+            "-WindowStyle",
+            "-WorkingDirectory",
+            "-wd",
+            "-SettingsFile",
+        ] {
+            let input = vec![option.to_string()];
+            assert_eq!(
+                normalized_args(Some("pwsh.exe"), &input, true),
+                vec!["-NoLogo".to_string(), option.to_string()],
+                "missing host option value: {option}"
+            );
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_retains_existing_explicit_and_interactive_controls() {
+        for program in ["powershell.exe", "pwsh.exe"] {
+            for mode in [
+                "-Command",
+                "-c",
+                "-File",
+                "-f",
+                "-EncodedCommand",
+                "-EncodedArguments",
+            ] {
+                let input = vec![
+                    "-NoLogo".to_string(),
+                    mode.to_string(),
+                    "literal".to_string(),
+                ];
+                assert_eq!(normalized_args(Some(program), &input, true), input);
+            }
+            for input in [
+                vec![],
+                vec!["-NoProfile".to_string()],
+                vec!["-ExecutionPolicy".to_string(), "RemoteSigned".to_string()],
+            ] {
+                let mut expected = vec!["-NoLogo".to_string()];
+                expected.extend(input.clone());
+                expected.extend([
+                    "-NoExit".to_string(),
+                    "-Command".to_string(),
+                    POWERSHELL_SESSION_BOOTSTRAP.to_string(),
+                ]);
+                assert_eq!(normalized_args(Some(program), &input, true), expected);
+                let unavailable = normalized_args(Some(program), &input, false);
+                let mut expected_unavailable = vec!["-NoLogo".to_string()];
+                expected_unavailable.extend(input);
+                assert_eq!(unavailable, expected_unavailable);
+            }
+        }
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn shell_startup_host_specific_options_keep_their_host_contract() {
+        for (option, value) in [
+            ("-WorkingDirectory", Some("example")),
+            ("-SettingsFile", Some("example.json")),
+            ("-ConfigurationFile", Some("example.pssc")),
+            ("-Interactive", None),
+            ("-Login", None),
+            ("-NoProfileLoadTime", None),
+            ("-PSConsoleFile", Some("example.psc1")),
+        ] {
+            let mut input = vec![option.to_string()];
+            if let Some(value) = value {
+                input.push(value.to_string());
+            }
+            for program in ["powershell.exe", "pwsh.exe"] {
+                let admitted = (program == "pwsh.exe") != (option == "-PSConsoleFile");
+                let mut expected = vec!["-NoLogo".to_string()];
+                expected.extend(input.clone());
+                if admitted {
+                    expected.extend([
+                        "-NoExit".to_string(),
+                        "-Command".to_string(),
+                        POWERSHELL_SESSION_BOOTSTRAP.to_string(),
+                    ]);
+                }
+                assert_eq!(
+                    normalized_args(Some(program), &input, true),
+                    expected,
+                    "host-specific interactive option: {program}, {option}"
+                );
+            }
         }
     }
 }

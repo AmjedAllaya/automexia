@@ -7,8 +7,14 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windows_conpty_trust.ps1')
 $msi = (Resolve-Path -LiteralPath $MsiPath).Path
 $portableZip = (Resolve-Path -LiteralPath $PortableZipPath).Path
+$runtimeArchitecture = if ([IO.Path]::GetFileName($msi).EndsWith('-aarch64-pc-windows-msvc.msi')) {
+    'arm64'
+} elseif ([IO.Path]::GetFileName($msi).EndsWith('-x86_64-pc-windows-msvc.msi')) {
+    'x64'
+} else { throw 'installer filename must identify a supported Windows architecture' }
 $previousMsi = if ([string]::IsNullOrWhiteSpace($PreviousMsiPath)) {
     $null
 } else {
@@ -25,6 +31,33 @@ $createdDataRoot = -not (Test-Path -LiteralPath $automexiaDataRoot)
 $portableRoot = Join-Path ([System.IO.Path]::GetTempPath()) (
     'automexia-portable-{0}' -f [guid]::NewGuid().ToString('N'))
 $installed = $false
+
+function Assert-RuntimeBinaries {
+    param([Parameter(Mandatory = $true)][string]$Root)
+
+    foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        $path = Join-Path $Root $runtime
+        $file = Get-Item -LiteralPath $path
+        if ($file.VersionInfo.ProductVersion -cne $Version) {
+            throw "runtime version metadata mismatch: $runtime"
+        }
+        $signature = Get-AuthenticodeSignature -LiteralPath $path
+        if ($signature.Status -ne 'Valid' -or
+            $signature.SignerCertificate.Subject -cne $ExpectedPublisher -or
+            $null -eq $signature.TimeStamperCertificate) {
+            throw "runtime does not have the expected timestamped publisher: $runtime"
+        }
+    }
+    Assert-ConPtyRuntime -Root $Root -Architecture $runtimeArchitecture | Out-Null
+    # The persistent helper accepts only its inherited bootstrap on stdin. It
+    # is verified above without executing it as if it were an interactive CLI.
+    foreach ($runtime in @('automexia.exe', 'amx.exe')) {
+        $reported = & (Join-Path $Root $runtime) --version | Out-String
+        if ($LASTEXITCODE -ne 0 -or $reported -notmatch [regex]::Escape($Version)) {
+            throw "runtime CLI version check failed: $runtime"
+        }
+    }
+}
 
 function Assert-SignedShellResources {
     param([Parameter(Mandatory = $true)][string]$Root)
@@ -80,8 +113,7 @@ try {
     if ($upgrade.ExitCode -ne 0) { throw "MSI upgrade/repair failed with $($upgrade.ExitCode)" }
     if (-not (Test-Path -LiteralPath $dataSentinel)) { throw 'MSI upgrade removed Automexia user data' }
 
-    $reported = & $binary --version | Out-String
-    if ($reported -notmatch [regex]::Escape($Version)) { throw "installed executable reported unexpected version: $reported" }
+    Assert-RuntimeBinaries -Root $installRoot
     $versionInfo = (Get-Item -LiteralPath $binary).VersionInfo
     if ($versionInfo.ProductName -ne 'Automexia Terminal') { throw "installed executable has unexpected product metadata: $($versionInfo.ProductName)" }
     if ($versionInfo.FileDescription -ne 'Automexia Terminal') { throw "installed executable has unexpected description: $($versionInfo.FileDescription)" }
@@ -97,36 +129,12 @@ try {
     $startMenuShortcut = Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Automexia Terminal\Automexia Terminal.lnk'
     if (-not (Test-Path -LiteralPath $desktopShortcut)) { throw 'desktop shortcut is missing' }
     if (-not (Test-Path -LiteralPath $startMenuShortcut)) { throw 'Start menu shortcut is missing' }
-    $signature = Get-AuthenticodeSignature -LiteralPath $binary
-    if ($signature.Status -ne 'Valid') { throw "installed executable signature is $($signature.Status)" }
-    if ($signature.SignerCertificate.Subject -cne $ExpectedPublisher) {
-        throw "installed executable publisher is '$($signature.SignerCertificate.Subject)'"
-    }
-    if ($null -eq $signature.TimeStamperCertificate) {
-        throw 'installed executable has no trusted timestamp'
-    }
     Assert-SignedShellResources -Root (Join-Path $installRoot 'shell-integration')
 
     # The portable package must expose the same version, publisher, timestamp, and
     # signed shell assets without depending on the installed copy.
     Expand-Archive -LiteralPath $portableZip -DestinationPath $portableRoot
-    $portableBinary = Get-ChildItem -LiteralPath $portableRoot -Recurse -File -Filter 'automexia.exe' |
-        Select-Object -First 1
-    if (-not $portableBinary) { throw 'portable ZIP does not contain automexia.exe' }
-    $portableReported = & $portableBinary.FullName --version | Out-String
-    if ($portableReported -notmatch [regex]::Escape($Version)) {
-        throw "portable executable reported unexpected version: $portableReported"
-    }
-    $portableSignature = Get-AuthenticodeSignature -LiteralPath $portableBinary.FullName
-    if ($portableSignature.Status -ne 'Valid') {
-        throw "portable executable signature is $($portableSignature.Status)"
-    }
-    if ($portableSignature.SignerCertificate.Subject -cne $ExpectedPublisher) {
-        throw "portable executable publisher is '$($portableSignature.SignerCertificate.Subject)'"
-    }
-    if ($null -eq $portableSignature.TimeStamperCertificate) {
-        throw 'portable executable has no trusted timestamp'
-    }
+    Assert-RuntimeBinaries -Root $portableRoot
     Assert-SignedShellResources -Root (Join-Path $portableRoot 'shell-integration')
 }
 finally {
@@ -140,7 +148,12 @@ finally {
 }
 
 # Uninstall removes product-owned state while preserving the two external sentinels.
-if (Test-Path -LiteralPath $binary) { throw 'uninstall left the Automexia executable behind' }
+foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe',
+                       'conpty.dll', 'x64/OpenConsole.exe', 'arm64/OpenConsole.exe')) {
+    if (Test-Path -LiteralPath (Join-Path $installRoot $runtime)) {
+        throw "uninstall left a runtime executable behind: $runtime"
+    }
+}
 if (Test-Path 'Registry::HKEY_LOCAL_MACHINE\Software\Classes\automexia') { throw 'uninstall left the automexia:// registration behind' }
 if (Test-Path 'Registry::HKEY_LOCAL_MACHINE\Software\Classes\Directory\shell\AutomexiaTerminal') { throw 'uninstall left the directory context menu behind' }
 if (-not (Test-Path -LiteralPath $rioSentinel)) { throw 'Automexia packaging modified Rio user state' }

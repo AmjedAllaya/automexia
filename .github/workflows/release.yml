@@ -502,19 +502,17 @@ jobs:
       run: "set -euo pipefail\nbinary=\"target/${{ matrix.target }}/release/automexia\"\nmkdir -p \"dist/${{ matrix.artifact }}\"\nreport=\"dist/${{ matrix.artifact }}/GLIBC_COMPATIBILITY.txt\"\nrequired=$(readelf --version-info \"$binary\" | grep -oE 'GLIBC_[0-9]+(\\.[0-9]+)+' | sed 's/^GLIBC_//' | sort -Vu | tail -n 1 || true)\nif [[ -z \"$required\" ]]; then\n  echo 'Could not determine required GLIBC symbol version.' >&2\n  exit 1\nfi\nldd_output=$(ldd \"$binary\" 2>&1 || true)\n{\n  echo \"target=${{ matrix.target }}\"\n  echo \"runner=${{ matrix.os }}\"\n  echo \"maximum_allowed_glibc=$AUTOMEXIA_LINUX_GLIBC_MAX\"\n  echo \"maximum_required_glibc=$required\"\n  echo\n  echo 'ELF dynamic dependencies:'\n  readelf -d \"$binary\" | grep NEEDED || true\n  echo\n  echo 'Runtime dependency resolution on the native build runner:'\n  printf '%s\\n' \"$ldd_output\"\n} | tee \"$report\"\nnewest=$(printf '%s\\n%s\\n' \"$required\" \"$AUTOMEXIA_LINUX_GLIBC_MAX\" | sort -V | tail -n 1)\nif [[ \"$newest\" != \"$AUTOMEXIA_LINUX_GLIBC_MAX\" ]]; then\n  echo \"Linux artifact requires GLIBC_$required, newer than the supported GLIBC_$AUTOMEXIA_LINUX_GLIBC_MAX ceiling.\" >&2\n  exit 1\nfi\nif grep -q 'not found' <<<\"$ldd_output\"; then\n  echo 'Native Linux artifact has unresolved shared-library dependencies.' >&2\n  exit 1\nfi\n"
     - name: Stage portable artifact
       shell: bash
-      run: 'set -euo pipefail
-
+      run: |
+        set -euo pipefail
         mkdir -p "dist/${{ matrix.artifact }}"
-
-        binary="target/${{ matrix.target }}/release/automexia"
-
-        [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
-
-        cp "$binary" "dist/${{ matrix.artifact }}/"
+        for runtime in automexia amx automexia-suggestion-helper; do
+          binary="target/${{ matrix.target }}/release/$runtime"
+          [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
+          test -f "$binary"
+          cp "$binary" "dist/${{ matrix.artifact }}/"
+        done
 
         cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md README.md "dist/${{ matrix.artifact }}/"
-
-        '
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: ${{ matrix.artifact }}
@@ -659,9 +657,11 @@ jobs:
         New-Item -ItemType Directory -Force signing-input | Out-Null
         tar -xzf staged-source/windows-package-inputs.tar.gz -C signing-input
         if ($LASTEXITCODE -ne 0) { throw 'could not restore Windows package inputs' }
-        $binary = @(Get-ChildItem staged-binary -Recurse -File -Filter automexia.exe)
-        if ($binary.Count -ne 1) { throw "expected one unsigned automexia.exe, found $($binary.Count)" }
-        Copy-Item -LiteralPath $binary[0].FullName -Destination signing-input/automexia.exe
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          $binary = @(Get-ChildItem staged-binary -Recurse -File -Filter $runtime)
+          if ($binary.Count -ne 1) { throw "expected one unsigned $runtime, found $($binary.Count)" }
+          Copy-Item -LiteralPath $binary[0].FullName -Destination (Join-Path signing-input $runtime)
+        }
         $scripts = @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
         if ($scripts.Count -eq 0) { throw 'no PowerShell integration files were provided for signing' }
     - name: Authenticate to Azure Artifact Signing
@@ -697,8 +697,10 @@ jobs:
         $pfxPath = Join-Path $env:RUNNER_TEMP 'automexia-runtime-signing.pfx'
         try {
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
-          signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD signing-input/automexia.exe
-          if ($LASTEXITCODE -ne 0) { throw 'executable Authenticode signing failed' }
+          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+            signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD (Join-Path signing-input $runtime)
+            if ($LASTEXITCODE -ne 0) { throw "executable Authenticode signing failed: $runtime" }
+          }
           $flags = [Security.Cryptography.X509Certificates.X509KeyStorageFlags]::EphemeralKeySet
           $certificate = [Security.Cryptography.X509Certificates.X509Certificate2]::new($pfxPath, $env:CERTIFICATE_PASSWORD, $flags)
           try {
@@ -717,7 +719,9 @@ jobs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        $files = @((Get-Item signing-input/automexia.exe)) + @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
+        $files = @(foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          Get-Item -LiteralPath (Join-Path signing-input $runtime)
+        }) + @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
         foreach ($file in $files) {
           $signature = Get-AuthenticodeSignature -LiteralPath $file.FullName
           if ($signature.Status -ne 'Valid') { throw "signature is $($signature.Status): $($file.FullName)" }
@@ -730,6 +734,8 @@ jobs:
         name: signed-inputs-${{ matrix.artifact }}
         path: |
           signing-input/automexia.exe
+          signing-input/amx.exe
+          signing-input/automexia-suggestion-helper.exe
           signing-input/shell-integration/**
         if-no-files-found: error
         retention-days: 2
@@ -785,12 +791,14 @@ jobs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        $exe = Get-Item signed-inputs/automexia.exe
-        $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
-        if ($exeSig.Status -ne 'Valid' -or $exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw 'signed executable input failed publisher verification' }
         $targetDir = "target/${{ matrix.target }}/release"
         New-Item -ItemType Directory -Force $targetDir | Out-Null
-        Copy-Item -LiteralPath $exe.FullName -Destination "$targetDir/automexia.exe"
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          $exe = Get-Item -LiteralPath (Join-Path signed-inputs $runtime)
+          $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          if ($exeSig.Status -ne 'Valid' -or $exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT -or $null -eq $exeSig.TimeStamperCertificate) { throw "signed executable input failed timestamped publisher verification: $runtime" }
+          Copy-Item -LiteralPath $exe.FullName -Destination (Join-Path $targetDir $runtime)
+        }
         Remove-Item shell-integration -Recurse -Force
         Copy-Item signed-inputs/shell-integration -Destination shell-integration -Recurse
         $scripts = @(Get-ChildItem shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
@@ -822,10 +830,11 @@ jobs:
         $dest = Join-Path $env:RUNNER_TEMP 'portable-check'
         Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
         Expand-Archive -LiteralPath $zip.FullName -DestinationPath $dest -Force
-        $exe = @(Get-ChildItem $dest -Recurse -File -Filter automexia.exe)
-        if ($exe.Count -ne 1) { throw "portable ZIP must contain exactly one automexia.exe; found $($exe.Count)" }
-        $sig = Get-AuthenticodeSignature -LiteralPath $exe[0].FullName
-        if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw 'portable executable signature/publisher verification failed' }
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          $exe = Get-Item -LiteralPath (Join-Path $dest $runtime)
+          $sig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT -or $null -eq $sig.TimeStamperCertificate) { throw "portable executable timestamped publisher verification failed: $runtime" }
+        }
         $scripts = @(Get-ChildItem $dest -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
         if ($scripts.Count -eq 0) { throw 'portable ZIP contains no signed PowerShell integration assets' }
         foreach ($script in $scripts) {
@@ -833,8 +842,10 @@ jobs:
           if ($scriptSig.Status -ne 'Valid' -or $scriptSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "portable PowerShell signature verification failed: $($script.FullName)" }
         }
         if ('${{ matrix.target }}' -eq 'x86_64-pc-windows-msvc') {
-          & $exe[0].FullName --version
-          if ($LASTEXITCODE -ne 0) { throw 'x64 portable executable smoke failed' }
+          foreach ($runtime in @('automexia.exe', 'amx.exe')) {
+            & (Join-Path $dest $runtime) --version
+            if ($LASTEXITCODE -ne 0) { throw "x64 portable executable smoke failed: $runtime" }
+          }
         }
     - name: Upload unsigned MSI and signed-content ZIP
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -974,19 +985,24 @@ jobs:
       shell: bash
       run: |
         set -euo pipefail
-        x64=$(find staged/x86_64 -type f -name automexia -print -quit)
-        arm=$(find staged/arm64 -type f -name automexia -print -quit)
-        test -n "$x64" && test -n "$arm"
         app='dist/Automexia Terminal.app'
         mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-        lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/automexia"
-        chmod 0755 "$app/Contents/MacOS/automexia"
-        lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/automexia"
-        file "$app/Contents/MacOS/automexia" | grep -F 'universal binary'
+        for runtime in automexia amx automexia-suggestion-helper; do
+          x64="staged/x86_64/macos-x86_64/$runtime"
+          arm="staged/arm64/macos-arm64/$runtime"
+          test -f "$x64" && test -f "$arm"
+          lipo -create "$x64" "$arm" -output "$app/Contents/MacOS/$runtime"
+          chmod 0755 "$app/Contents/MacOS/$runtime"
+          lipo -verify_arch x86_64 arm64 "$app/Contents/MacOS/$runtime"
+          file "$app/Contents/MacOS/$runtime" | grep -F 'universal binary'
+        done
         sed "s/@AUTOMEXIA_VERSION@/$AUTOMEXIA_VERSION/g" packaging/macos/Info.plist > "$app/Contents/Info.plist"
         cp assets/brand/automexia-terminal.icns "$app/Contents/Resources/automexia-terminal.icns"
         cp LICENSE NOTICE.md THIRD_PARTY_NOTICES.md "$app/Contents/Resources/"
+        cp README.md "$app/Contents/Resources/"
+        cp -R shell-integration "$app/Contents/Resources/shell-integration"
         "$app/Contents/MacOS/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
+        "$app/Contents/MacOS/amx" --version | grep -F "$AUTOMEXIA_VERSION"
         tar -C dist -czf "$RUNNER_TEMP/unsigned-macos-app.tar.gz" 'Automexia Terminal.app'
     - name: Upload unsigned app for isolated signing
       uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1020,8 +1036,10 @@ jobs:
         set -euo pipefail
         mkdir -p dist
         tar -xzf staged/unsigned-macos-app.tar.gz -C dist
-        test -x 'dist/Automexia Terminal.app/Contents/MacOS/automexia'
-        lipo -verify_arch x86_64 arm64 'dist/Automexia Terminal.app/Contents/MacOS/automexia'
+        for runtime in automexia amx automexia-suggestion-helper; do
+          test -x "dist/Automexia Terminal.app/Contents/MacOS/$runtime"
+          lipo -verify_arch x86_64 arm64 "dist/Automexia Terminal.app/Contents/MacOS/$runtime"
+        done
     - name: Require Apple production signing credentials
       shell: bash
       env:
@@ -1068,7 +1086,10 @@ jobs:
         security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
         security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
         security default-keychain -s "$keychain"
-        codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app/Contents/MacOS/automexia"
+        for runtime in automexia amx automexia-suggestion-helper; do
+          test -x "$app/Contents/MacOS/$runtime"
+          codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app/Contents/MacOS/$runtime"
+        done
         codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app"
         codesign --verify --deep --strict --verbose=2 "$app"
         codesign -d --verbose=4 "$app" 2>&1 | grep -q 'flags=.*runtime'
@@ -1161,33 +1182,25 @@ jobs:
 
         '
     - name: Build DEB, RPM, and portable archive
-      run: 'set -euo pipefail
-
-        binary=$(find staged -type f -name automexia | head -1)
-
-        chmod +x "$binary"
-
-        "$binary" --version | grep -F "$AUTOMEXIA_VERSION"
-
+      shell: bash
+      run: |
+        set -euo pipefail
         target_dir="target/${{ matrix.target }}/release"
-
         mkdir -p "$target_dir"
-
-        cp "$binary" "$target_dir/automexia"
-
+        for runtime in automexia amx automexia-suggestion-helper; do
+          binary="staged/${{ matrix.artifact }}/$runtime"
+          test -f "$binary"
+          cp "$binary" "$target_dir/$runtime"
+          chmod 0755 "$target_dir/$runtime"
+        done
+        "$target_dir/automexia" --version | grep -F "$AUTOMEXIA_VERSION"
+        "$target_dir/amx" --version | grep -F "$AUTOMEXIA_VERSION"
         export AUTOMEXIA_PACKAGE_SKIP_BUILD=1
-
         cargo xtask package --target "${{ matrix.target }}"
-
         package_dir="target/package/${{ matrix.target }}"
-
         desktop-file-validate packaging/linux/automexia-terminal.desktop
-
         appstreamcli validate --no-net packaging/linux/io.github.AmjedAllaya.AutomexiaTerminal.metainfo.xml
-
         lintian "$package_dir"/*.deb
-
-        '
     - name: Clean install, metadata, and uninstall smoke
       run: bash tools/ci/test_linux_package.sh "target/package/${{ matrix.target }}" "$AUTOMEXIA_VERSION"
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
@@ -1304,6 +1317,8 @@ jobs:
         format: cyclonedx-json
         output-file: release-assets/automexia-terminal.cdx.json
         upload-artifact: false
+    - name: Bind pinned Microsoft transport to both SBOM formats
+      run: python3 tools/ci/release_trust.py --add-vendor-sbom release-assets
     - name: Finalize release manifest and SHA-256 checksums
       shell: bash
       run: |
@@ -1414,6 +1429,7 @@ jobs:
   verify-windows-final:
     name: Verify final Windows MSI and ZIP
     needs:
+    - preflight
     - package-windows
     strategy:
       fail-fast: false
@@ -1434,6 +1450,11 @@ jobs:
     env:
       AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT: ${{ vars.AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT }}
     steps:
+    - name: Check out exact Windows verification source
+      uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      with:
+        persist-credentials: false
+        ref: ${{ needs.preflight.outputs.commit }}
     - name: Download exact final Windows package
       uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c
       with:
@@ -1458,14 +1479,19 @@ jobs:
 
         $portable = Join-Path $work 'portable'
         Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath $portable -Force
-        $exe = @(Get-ChildItem $portable -Recurse -File -Filter automexia.exe)
-        if ($exe.Count -ne 1) { throw "portable ZIP must contain exactly one automexia.exe; found $($exe.Count)" }
-        $exeSig = Get-AuthenticodeSignature -LiteralPath $exe[0].FullName
-        if ($exeSig.Status -ne 'Valid') { throw "portable executable signature is $($exeSig.Status)" }
-        if ($exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected portable executable publisher: $($exeSig.SignerCertificate.Subject)" }
-        if ($null -eq $exeSig.TimeStamperCertificate) { throw 'portable executable has no trusted timestamp' }
-        & $exe[0].FullName --version
-        if ($LASTEXITCODE -ne 0) { throw 'final portable executable smoke failed' }
+        . ./tools/ci/windows_conpty_trust.ps1
+        Assert-ConPtyRuntime -Root $portable -Architecture '${{ matrix.arch }}' | Out-Null
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          $exe = Get-Item -LiteralPath (Join-Path $portable $runtime)
+          $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+          if ($exeSig.Status -ne 'Valid') { throw "portable executable signature is $($exeSig.Status): $runtime" }
+          if ($exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected portable executable publisher: $runtime" }
+          if ($null -eq $exeSig.TimeStamperCertificate) { throw "portable executable has no trusted timestamp: $runtime" }
+        }
+        foreach ($runtime in @('automexia.exe', 'amx.exe')) {
+          & (Join-Path $portable $runtime) --version
+          if ($LASTEXITCODE -ne 0) { throw "final portable executable smoke failed: $runtime" }
+        }
 
         $log = Join-Path $work 'msi-install.log'
         $install = Start-Process msiexec.exe -ArgumentList @('/i', "`"$($msi[0].FullName)`"", '/qn', '/norestart', '/l*v', "`"$log`"") -Wait -PassThru
@@ -1476,11 +1502,18 @@ jobs:
             Get-ChildItem $root -Recurse -File -Filter automexia.exe -ErrorAction SilentlyContinue
           }) | Select-Object -First 1
           if (-not $installed) { throw 'installed Automexia executable not found' }
-          $installedSig = Get-AuthenticodeSignature -LiteralPath $installed.FullName
-          if ($installedSig.Status -ne 'Valid') { throw "installed executable signature is $($installedSig.Status)" }
-          if ($installedSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected installed publisher: $($installedSig.SignerCertificate.Subject)" }
-          & $installed.FullName --version
-          if ($LASTEXITCODE -ne 0) { throw 'installed executable smoke failed' }
+          Assert-ConPtyRuntime -Root $installed.DirectoryName -Architecture '${{ matrix.arch }}' | Out-Null
+          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+            $exe = Get-Item -LiteralPath (Join-Path $installed.DirectoryName $runtime)
+            $installedSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
+            if ($installedSig.Status -ne 'Valid') { throw "installed executable signature is $($installedSig.Status): $runtime" }
+            if ($installedSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT) { throw "unexpected installed publisher: $runtime" }
+            if ($null -eq $installedSig.TimeStamperCertificate) { throw "installed executable has no trusted timestamp: $runtime" }
+          }
+          foreach ($runtime in @('automexia.exe', 'amx.exe')) {
+            & (Join-Path $installed.DirectoryName $runtime) --version
+            if ($LASTEXITCODE -ne 0) { throw "installed executable smoke failed: $runtime" }
+          }
         } finally {
           $uninstall = Start-Process msiexec.exe -ArgumentList @('/x', "`"$($msi[0].FullName)`"", '/qn', '/norestart') -Wait -PassThru
           if ($uninstall.ExitCode -notin 0, 1605, 3010) { throw "MSI uninstall failed with $($uninstall.ExitCode)" }
@@ -1523,12 +1556,14 @@ jobs:
         test -n "$app"
         codesign --verify --deep --strict --verbose=4 "$app"
         spctl --assess --verbose=4 --type execute "$app"
-        bin="$(find "$app/Contents/MacOS" -type f -perm -111 -print -quit)"
-        test -n "$bin"
-        archs="$(lipo -archs "$bin")"
-        grep -qw arm64 <<<"$archs"
-        grep -qw x86_64 <<<"$archs"
-        "$bin" --version
+        for runtime in automexia amx automexia-suggestion-helper; do
+          bin="$app/Contents/MacOS/$runtime"
+          test -x "$bin"
+          lipo -verify_arch x86_64 arm64 "$bin"
+          codesign --verify --strict --verbose=4 "$bin"
+        done
+        "$app/Contents/MacOS/automexia" --version
+        "$app/Contents/MacOS/amx" --version
   verify-linux-final:
     name: Verify final Linux packages
     needs:

@@ -1,11 +1,20 @@
 //! One layout authority for optional context and core completion information.
 
 use super::{command_results, devops_status, SemanticPaneRenderState};
-use crate::automexia::ui::command_info::{pack, Band, CompletionLabel, Fragment, Label};
+#[cfg(test)]
+use crate::automexia::ui::command_info::{pack, pack_with_layout};
+use crate::automexia::ui::command_info::{
+    pack_with_tag_joins, Band, CompletionLabel, Fragment, Label,
+};
 use crate::automexia::ui::{CommandResultAnchor, PromptAnchor};
 use crate::context::renderable::RenderableContent;
+use automexia_ui_model::information_bar::{
+    bar_layout_hints, resolve_recipe, BarArrangement, BarLane, BarRecipe, ResolvedBarItem,
+};
 use rio_backend::config::colors::Colors;
+use rio_backend::crosswords::grid::row::SemanticPrompt;
 use rio_backend::sugarloaf::{text::DrawOpts, Sugarloaf};
+use std::sync::Arc;
 
 struct Header {
     row: usize,
@@ -13,6 +22,13 @@ struct Header {
     result: Option<CommandResultAnchor>,
     completion: String,
     band: Band,
+    items: Vec<ResolvedBarItem>,
+}
+
+struct PromptPaint {
+    anchor: PromptAnchor,
+    fragment: Fragment,
+    items: Arc<[ResolvedBarItem]>,
 }
 
 /// Shared text emission for context and completion fragments. Geometry values
@@ -105,31 +121,55 @@ pub(super) fn layout(
     content: &mut RenderableContent,
     sugarloaf: &mut Sugarloaf,
     colors: Colors,
-    show_timestamps: bool,
+    presentation: &rio_backend::config::presentation::Presentation,
+    recipe: &BarRecipe,
 ) -> bool {
-    let (changed, prompts) =
-        prepare(pane, status, content, sugarloaf.text_mut(), show_timestamps);
+    // Visibility is presentation-owned: context collection and route metadata
+    // remain available, while hidden tags reserve no prompt-band space.
+    let status = visible_status(status, &presentation.tags);
+    let (changed, prompts) = prepare_with_recipe(
+        pane,
+        status,
+        content,
+        sugarloaf.text_mut(),
+        presentation.command_timestamps,
+        recipe,
+    );
     if let Some(status) = status {
-        for (anchor, fragment) in prompts {
-            status.draw_prompt_fragment(
-                sugarloaf,
-                colors,
-                &anchor,
-                pane.session.session_id,
-                &fragment,
-            );
+        for paint in prompts {
+            if let Some(item) = paint.items.get(paint.fragment.item) {
+                status.draw_prompt_fragment(
+                    sugarloaf,
+                    colors,
+                    &presentation.tags,
+                    devops_status::PromptFragmentPaint {
+                        item,
+                        visual: recipe.visual,
+                        anchor: &paint.anchor,
+                        fragment: &paint.fragment,
+                    },
+                );
+            }
         }
     }
     changed
 }
 
-fn prepare(
+fn visible_status<'a>(
+    status: Option<&'a devops_status::DevOpsStatus>,
+    tags: &rio_backend::config::presentation::TagAppearance,
+) -> Option<&'a devops_status::DevOpsStatus> {
+    status.filter(|_| tags.enabled)
+}
+
+fn prepare_with_recipe(
     pane: &mut SemanticPaneRenderState,
     status: Option<&devops_status::DevOpsStatus>,
     content: &mut RenderableContent,
     text_engine: &mut rio_backend::sugarloaf::text::Text,
     show_timestamps: bool,
-) -> (bool, Vec<(PromptAnchor, Fragment)>) {
+    recipe: &BarRecipe,
+) -> (bool, Vec<PromptPaint>) {
     let mut prompts = Vec::new();
     let height = pane.cell_height;
     if !height.is_finite() || height <= 0.0 {
@@ -159,6 +199,7 @@ fn prepare(
                         result: None,
                         completion: String::new(),
                         band: Band::default(),
+                        items: Vec::new(),
                     })
                     .prompt = Some(*anchor);
             }
@@ -173,6 +214,7 @@ fn prepare(
                 result: None,
                 completion: String::new(),
                 band: Band::default(),
+                items: Vec::new(),
             });
             header.result = Some(*anchor);
             header.completion =
@@ -182,20 +224,43 @@ fn prepare(
     let metrics = devops_status::prompt_tag_metrics(height);
     let mut spans = Vec::with_capacity(headers.len());
     for header in headers.values_mut() {
-        let segments =
+        header.items = header
+            .prompt
+            .as_ref()
+            .zip(status)
+            .and_then(|(anchor, status)| {
+                resolve_recipe(
+                    recipe,
+                    status.segments_for_prompt(pane.session.session_id, anchor),
+                )
+                .ok()
+            })
+            .unwrap_or_default();
+        if matches!(
+            recipe.arrangement,
+            BarArrangement::Split | BarArrangement::TwoLine
+        ) {
             header
-                .prompt
-                .as_ref()
-                .zip(status)
-                .map_or(&[][..], |(anchor, status)| {
-                    status.segments_for_prompt(pane.session.session_id, anchor)
-                });
-        let mut labels: Vec<_> = segments
+                .items
+                .sort_by_key(|item| item.lane == BarLane::Trailing);
+        }
+        let width = header
+            .prompt
+            .map(|a| a.width)
+            .or_else(|| header.result.map(|a| a.width))
+            .unwrap_or(0.0);
+        let available_width = (width - 12.0).max(1.0);
+        let (padding, gap, break_before, trailing_start) =
+            bar_layout_hints(recipe, &header.items, metrics, available_width);
+        let mut labels: Vec<_> = header
+            .items
             .iter()
-            .map(|segment| Label {
-                text: &segment.value,
-                leading: metrics.icon_slot + metrics.icon_gap,
-                padding: metrics.padding_x,
+            .map(|item| Label {
+                text: &item.value,
+                leading: item
+                    .icon
+                    .map_or(0.0, |_| metrics.icon_slot + metrics.icon_gap),
+                padding,
                 align_end: false,
             })
             .collect();
@@ -207,19 +272,21 @@ fn prepare(
                 align_end: true,
             });
         }
-        let width = header
-            .prompt
-            .map(|a| a.width)
-            .or_else(|| header.result.map(|a| a.width))
-            .unwrap_or(0.0);
         let options = DrawOpts {
             font_size: metrics.font_size,
             ..DrawOpts::default()
         };
-        if let Some(band) = pack(
+        if let Some(band) = pack_with_tag_joins(
             &labels,
-            (width - 12.0).max(1.0),
-            metrics.tag_gap,
+            available_width,
+            gap,
+            &break_before,
+            trailing_start,
+            automexia_ui_model::information_bar::tag_join_overlap(
+                recipe.visual,
+                metrics.height,
+                available_width,
+            ),
             |_, text| text_engine.measure(text, &options),
         ) {
             spans.push((header.row, band.rows));
@@ -229,10 +296,20 @@ fn prepare(
     spans.extend(content.inline_tables.bands());
     spans.sort_unstable();
     let previous_top = content.command_rows.top();
+    content.command_rows.retain_clear_prefix(
+        content
+            .visible_rows
+            .iter()
+            .take_while(|row| {
+                row.semantic_prompt == SemanticPrompt::None
+                    && super::terminal_row_is_blank(row)
+            })
+            .count(),
+    );
     let changed = content
         .command_rows
         .rebuild(content.visible_rows.len(), &spans);
-    let cursor = (content.display_offset == 0)
+    let cursor = (content.display_offset == 0 || content.active_prompt_follow)
         .then_some(content.cursor.state.pos.row.0.max(0) as usize);
     if let Some(cursor) = cursor {
         let last = content
@@ -258,6 +335,8 @@ fn prepare(
     pane.completion_labels.clear();
     for header in headers.into_values() {
         let first = projection.visual_row(header.row);
+        let item_count = header.items.len();
+        let items: Arc<[ResolvedBarItem]> = header.items.into();
         let mut completion = header.result.map(|mut anchor| {
             anchor.y = project_y(anchor.y);
             CompletionLabel {
@@ -271,21 +350,16 @@ fn prepare(
             if visual < 0 || visual >= content.screen_lines as isize {
                 continue;
             }
-            let is_completion =
-                completion.is_some()
-                    && header.prompt.as_ref().zip(status).map_or(
-                        0,
-                        |(anchor, status)| {
-                            status
-                                .segments_for_prompt(pane.session.session_id, anchor)
-                                .len()
-                        },
-                    ) == fragment.item;
+            let is_completion = completion.is_some() && item_count == fragment.item;
             if is_completion {
                 completion.as_mut().unwrap().fragments.push(fragment);
             } else if let Some(mut anchor) = header.prompt {
                 anchor.y = project_y(anchor.y);
-                prompts.push((anchor, fragment));
+                prompts.push(PromptPaint {
+                    anchor,
+                    fragment,
+                    items: Arc::clone(&items),
+                });
             }
         }
         if let Some(completion) = completion {
@@ -301,6 +375,26 @@ fn prepare(
     (
         changed || previous_top != content.command_rows.top(),
         prompts,
+    )
+}
+
+#[cfg(test)]
+fn prepare(
+    pane: &mut SemanticPaneRenderState,
+    status: Option<&devops_status::DevOpsStatus>,
+    content: &mut RenderableContent,
+    text_engine: &mut rio_backend::sugarloaf::text::Text,
+    show_timestamps: bool,
+) -> (bool, Vec<(PromptAnchor, Fragment)>) {
+    let recipe = automexia_ui_model::information_bar::preset_recipe(Default::default());
+    let (changed, paints) =
+        prepare_with_recipe(pane, status, content, text_engine, show_timestamps, &recipe);
+    (
+        changed,
+        paints
+            .into_iter()
+            .map(|paint| (paint.anchor, paint.fragment))
+            .collect(),
     )
 }
 
@@ -322,6 +416,201 @@ mod tests {
         );
         FontLibrary {
             inner: Arc::new(parking_lot::RwLock::new(data)),
+        }
+    }
+
+    #[test]
+    fn all_twelve_presets_pack_factual_items_inside_narrow_and_wide_bands() {
+        use automexia_extension_api::{Freshness, IconKind, SegmentRole};
+        use automexia_ui_model::information_bar::{preset_recipe, InformationBarPreset};
+        use automexia_ui_model::Segment;
+        let segments = [
+            (SegmentRole::Windows, "Windows", IconKind::Windows),
+            (SegmentRole::Git, "main", IconKind::Git),
+            (SegmentRole::User, "alice", IconKind::User),
+        ]
+        .map(|(role, value, icon)| Segment {
+            value: value.into(),
+            accessibility_label: value.into(),
+            role,
+            icon,
+            priority: 0,
+            freshness: Freshness::Current,
+            observed_at_ms: 0,
+            details_action: None,
+        });
+        let metrics = devops_status::prompt_tag_metrics(24.0);
+        for preset in InformationBarPreset::ALL {
+            let recipe = preset_recipe(preset);
+            let mut items = resolve_recipe(&recipe, &segments).unwrap();
+            if matches!(
+                recipe.arrangement,
+                BarArrangement::Split | BarArrangement::TwoLine
+            ) {
+                items.sort_by_key(|item| item.lane == BarLane::Trailing);
+            }
+            assert!(!items.is_empty(), "{} resolves real context", preset.id());
+            for width in [18.0, 64.0, 240.0] {
+                let (padding, gap, breaks, trailing) =
+                    bar_layout_hints(&recipe, &items, metrics, width);
+                let labels: Vec<_> = items
+                    .iter()
+                    .map(|item| Label {
+                        text: &item.value,
+                        leading: item
+                            .icon
+                            .map_or(0.0, |_| metrics.icon_slot + metrics.icon_gap),
+                        padding,
+                        align_end: false,
+                    })
+                    .collect();
+                let band = pack_with_layout(
+                    &labels,
+                    width,
+                    gap,
+                    &breaks,
+                    trailing,
+                    |_, value| value.chars().count() as f32 * 7.0,
+                )
+                .unwrap();
+                assert!(band.rows > 0, "{} at {width}", preset.id());
+                for (index, item) in items.iter().enumerate() {
+                    let restored: String = band
+                        .fragments
+                        .iter()
+                        .filter(|f| f.item == index)
+                        .map(|f| &item.value[f.bytes.clone()])
+                        .collect();
+                    assert_eq!(restored, item.value, "{} at {width}", preset.id());
+                }
+                for (index, a) in band.fragments.iter().enumerate() {
+                    assert!(
+                        a.x >= 0.0 && a.x + a.width <= width + 0.001,
+                        "{} escaped at {width}",
+                        preset.id()
+                    );
+                    for b in &band.fragments[index + 1..] {
+                        assert!(
+                            a.row != b.row
+                                || a.x + a.width <= b.x
+                                || b.x + b.width <= a.x,
+                            "{} collided at {width}",
+                            preset.id()
+                        );
+                    }
+                }
+                if preset == InformationBarPreset::TwoLinePrompt && items.len() > 1 {
+                    assert!(!breaks.is_empty());
+                }
+            }
+            if preset == InformationBarPreset::CompactIconMode {
+                assert!(items
+                    .iter()
+                    .any(|item| item.icon_only && item.value.is_empty()));
+            }
+        }
+    }
+
+    #[test]
+    fn custom_tag_spacing_changes_only_the_gap_and_keeps_narrow_layout_bounded() {
+        use automexia_ui_model::information_bar::preset_recipe;
+        let metrics = devops_status::prompt_tag_metrics(24.0);
+        let mut recipe = preset_recipe(Default::default());
+        let (padding, base_gap, breaks, trailing) =
+            bar_layout_hints(&recipe, &[], metrics, 240.0);
+        assert!(base_gap > 0.0);
+        recipe.spacing_percent = 0;
+        let (zero_padding, zero_gap, zero_breaks, zero_trailing) =
+            bar_layout_hints(&recipe, &[], metrics, 240.0);
+        assert_eq!(padding, zero_padding);
+        assert_eq!(zero_gap, 0.0);
+        assert_eq!(breaks, zero_breaks);
+        assert_eq!(trailing, zero_trailing);
+
+        recipe.spacing_percent = 175;
+        let (wide_padding, wide_gap, _, _) =
+            bar_layout_hints(&recipe, &[], metrics, 240.0);
+        assert_eq!(padding, wide_padding);
+        assert!((wide_gap - base_gap * 1.75).abs() < 0.001);
+        let labels = [
+            Label {
+                text: "Windows",
+                leading: 0.0,
+                padding,
+                align_end: false,
+            },
+            Label {
+                text: "main",
+                leading: 0.0,
+                padding,
+                align_end: false,
+            },
+        ];
+        for width in [18.0, 40.0, 240.0] {
+            let band =
+                pack_with_layout(&labels, width, wide_gap, &[], None, |_, text| {
+                    text.chars().count() as f32 * 7.0
+                })
+                .unwrap();
+            assert!(band.fragments.iter().all(|fragment| {
+                fragment.x >= 0.0 && fragment.x + fragment.width <= width + 0.001
+            }));
+        }
+    }
+
+    #[test]
+    fn prompt_renderer_paints_swapped_icon_and_username_from_same_resolved_item() {
+        use automexia_extension_api::{IconKind, SegmentRole};
+        use automexia_ui_model::information_bar::{
+            BarIconSource, BarSlot, BarTextSource,
+        };
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(40, 12),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        Processor::default().advance(&mut terminal,
+            b"\x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07/work\r\n\x1b]133;P;k=c;aid=1\x07lambda \x1b]133;B\x07");
+        let mut content = RenderableContent::default();
+        let mut pane = snapshot(&mut terminal, &mut content);
+        let mut status = devops_status::DevOpsStatus::default();
+        status.prepare_prompt_rows(
+            &pane.session,
+            true,
+            &pane.historical_anchors,
+            pane.live_anchor,
+        );
+        let mut recipe =
+            automexia_ui_model::information_bar::preset_recipe(Default::default());
+        recipe.slots = vec![BarSlot {
+            id: "windows-icon-username".into(),
+            enabled: true,
+            text: BarTextSource::Role(SegmentRole::User),
+            icon: BarIconSource::Fixed(IconKind::Windows),
+            lane: BarLane::Leading,
+            color: None,
+            prefix: String::new(),
+            suffix: String::new(),
+        }];
+        let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
+        let (_, paints) = prepare_with_recipe(
+            &mut pane,
+            Some(&status),
+            &mut content,
+            &mut text,
+            true,
+            &recipe,
+        );
+        assert!(!paints.is_empty());
+        for paint in paints {
+            let item = &paint.items[paint.fragment.item];
+            assert_eq!(item.value, "alice");
+            assert_eq!(item.icon, Some(IconKind::Windows));
+            assert_eq!(item.source_role, Some(SegmentRole::User));
+            assert!(item.accessibility_label.starts_with("User "));
         }
     }
 
@@ -450,6 +739,58 @@ mod tests {
     }
 
     #[test]
+    fn conpty_prompt_follow_keeps_live_header_and_inverse_cursor_projection() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(140, 14),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        terminal.set_resize_policy(rio_backend::crosswords::ResizePolicy::Conpty);
+        let path = r"D:\workspaces\organizations\example-team\terminal-project\automexia-terminal\standalone";
+        let stream = format!("\x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07\x1b[36m{path}\x1b[0m\r\n\x1b]133;P;k=c;aid=1\x07λ \x1b]133;B\x07");
+        Processor::default().advance(&mut terminal, stream.as_bytes());
+        terminal.resize(CrosswordsSize::new(3, 2));
+        terminal.resize(CrosswordsSize::new(32, 15));
+        let native = terminal.grid.cursor.pos;
+        let mut content = RenderableContent::default();
+        let mut pane = snapshot(&mut terminal, &mut content);
+        assert!(content.active_prompt_follow);
+        assert!(pane.live_anchor.is_some());
+        let mut status = devops_status::DevOpsStatus::default();
+        status.prepare_prompt_rows(
+            &pane.session,
+            true,
+            &pane.historical_anchors,
+            pane.live_anchor,
+        );
+        let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
+        let (_, labels) =
+            prepare(&mut pane, Some(&status), &mut content, &mut text, true);
+        assert!(!labels.is_empty());
+        let source_cursor = content.cursor.state.pos.row.0 as usize;
+        let projected = content.command_rows.visual_row(source_cursor);
+        assert!((0..content.screen_lines as isize).contains(&projected));
+        assert_eq!(
+            content.command_rows.native_row(projected as usize) as i32
+                - content.display_offset as i32,
+            native.row.0
+        );
+        assert_eq!(terminal.grid.cursor.pos, native);
+        for (index, row) in content.visible_rows.iter().enumerate() {
+            let source = rio_backend::crosswords::pos::Line(
+                index as i32 - content.display_offset as i32,
+            );
+            assert_eq!(
+                row.inner, terminal.grid[source].inner,
+                "source cells and styles unchanged"
+            );
+        }
+    }
+
+    #[test]
     fn short_pane_keeps_all_context_reachable_without_native_history() {
         let mut terminal = Crosswords::new(
             CrosswordsSize::new(12, 3),
@@ -497,6 +838,58 @@ mod tests {
         prepare(&mut pane, None, &mut content, &mut text, true);
         assert!(!content.command_rows.expanded());
         assert_eq!(content.visible_rows, before);
+    }
+
+    #[test]
+    fn tag_visibility_recomposes_prompt_rows_without_discarding_detected_context() {
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(12, 12),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        Processor::default().advance(&mut terminal, b"\x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07/work\r\n\x1b]133;P;k=c;aid=1\x07lambda \x1b]133;B\x07");
+        let mut content = RenderableContent::default();
+        let mut status = devops_status::DevOpsStatus::default();
+        let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
+        text.init_cpu();
+        let mut tags = rio_backend::config::presentation::TagAppearance::default();
+        for enabled in [true, false, true] {
+            tags.enabled = enabled;
+            let mut pane = snapshot(&mut terminal, &mut content);
+            let source = content.visible_rows.clone();
+            status.prepare_prompt_rows(
+                &pane.session,
+                true,
+                &pane.historical_anchors,
+                pane.live_anchor,
+            );
+            let anchor = pane.live_anchor.unwrap();
+            let detected = status
+                .segments_for_prompt(pane.session.session_id, &anchor)
+                .len();
+            assert!(detected > 0);
+            let (_, prompts) = prepare(
+                &mut pane,
+                visible_status(Some(&status), &tags),
+                &mut content,
+                &mut text,
+                true,
+            );
+            assert_eq!(!prompts.is_empty(), enabled);
+            assert_eq!(content.command_rows.expanded(), enabled);
+            assert_eq!(
+                status
+                    .segments_for_prompt(pane.session.session_id, &anchor)
+                    .len(),
+                detected,
+                "visibility must not erase collected context"
+            );
+            assert_eq!(terminal.history_size(), 0);
+            assert_eq!(content.visible_rows, source);
+        }
     }
 
     #[test]
@@ -549,9 +942,10 @@ mod tests {
         content.columns = terminal.columns();
         content.screen_lines = terminal.screen_lines();
         content.display_offset = terminal.display_offset();
+        content.active_prompt_follow = terminal.active_prompt_follow();
         content.history_size = terminal.history_size();
         content.lines_evicted = terminal.lines_evicted();
-        content.cursor.state = terminal.cursor();
+        content.cursor.state = terminal.viewport_cursor();
         content.shell_integration = true;
         content.shell_prompt_active = true;
         content.shell_name = Some("bash".into());

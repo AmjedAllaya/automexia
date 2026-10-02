@@ -39,6 +39,33 @@ mod settings;
 
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
+#[derive(Debug, PartialEq, Eq)]
+enum RouteRedrawDecision {
+    Ready,
+    Unfocused,
+    Occluded,
+}
+
+fn prepare_route_redraw(
+    pending: Option<&mut crate::context::renderable::PendingUpdate>,
+    suppress_unfocused: bool,
+    suppress_occluded: bool,
+) -> RouteRedrawDecision {
+    // PTY notifications stay coalesced until the renderer consumes their
+    // damage. Keep each pane dirty even when this wake must not draw, so the
+    // existing focus/unocclusion redraw can consume it without another event.
+    if let Some(pending) = pending {
+        pending.set_dirty();
+    }
+    if suppress_unfocused {
+        return RouteRedrawDecision::Unfocused;
+    }
+    if suppress_occluded {
+        return RouteRedrawDecision::Occluded;
+    }
+    RouteRedrawDecision::Ready
+}
+
 enum RuntimeConfigReload {
     Apply(Box<rio_backend::config::Config>),
     KeepLastGood(rio_backend::config::ConfigError),
@@ -164,13 +191,19 @@ fn should_report_terminal_mouse(
     !shift_key && mouse_mode && !hint_click
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum CloseIntent {
+    Window { window_count: usize },
+    Application,
+}
+
 #[inline]
-fn should_confirm_window_close(
-    window_count: usize,
-    confirm_before_quit: bool,
-    already_confirmed_by_platform: bool,
-) -> bool {
-    window_count == 1 && confirm_before_quit && !already_confirmed_by_platform
+fn close_requires_confirmation(intent: CloseIntent, enabled: bool) -> bool {
+    enabled
+        && match intent {
+            CloseIntent::Window { window_count } => window_count == 1,
+            CloseIntent::Application => true,
+        }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -219,7 +252,12 @@ pub struct Application<'a> {
     base_config: rio_backend::config::Config,
     config: rio_backend::config::Config,
     user_preferences: UserPreferences,
+    /// Original in-memory choices while Reset default is only previewed.
+    /// No preference writer receives this preview state.
+    temporary_customizations: Option<UserPreferences>,
     preference_writer: PreferenceWriter,
+    package_customizations:
+        crate::automexia::package_customizations::PackageCustomizationService,
     settings_revision: u64,
     event_proxy: EventProxy,
     router: Router<'a>,
@@ -252,6 +290,8 @@ impl Application<'_> {
             crate::bindings::shortcut::recover_incompatible_overlay(&mut config);
 
         let mut router = Router::new(config.fonts.to_owned(), clipboard);
+        router
+            .set_information_bar_recipe(user_preferences.visual.information_bar.recipe());
         if incompatible_shortcuts {
             router.propagate_error_to_next_route(preference_warning(
                 runtime_preferences::PreferenceErrorCode::InvalidData,
@@ -267,6 +307,10 @@ impl Application<'_> {
                 matches!(
                     preference_load.source,
                     runtime_preferences::PreferenceSource::Previous
+                        | runtime_preferences::PreferenceSource::Version5Previous
+                        | runtime_preferences::PreferenceSource::Version4Previous
+                        | runtime_preferences::PreferenceSource::Version3Previous
+                        | runtime_preferences::PreferenceSource::Version2Previous
                         | runtime_preferences::PreferenceSource::LegacyPrevious
                 ),
             ));
@@ -281,8 +325,12 @@ impl Application<'_> {
         let scheduler = Scheduler::new(proxy);
         event_loop.listen_device_events(DeviceEvents::Never);
 
-        #[cfg(any(target_os = "macos", target_os = "windows"))]
-        event_loop.set_confirm_before_quit(config.confirm_before_quit);
+        // Window closes belong to the Automexia overlay. macOS also needs
+        // application-level Quit requests (menu/Dock/Cmd+Q) forwarded here.
+        #[cfg(target_os = "windows")]
+        event_loop.set_confirm_before_quit(false);
+        #[cfg(target_os = "macos")]
+        event_loop.set_confirm_before_quit(true);
 
         rio_notifier::request_authorization();
 
@@ -291,6 +339,7 @@ impl Application<'_> {
             base_config,
             config,
             user_preferences,
+            temporary_customizations: None,
             preference_writer: {
                 let mut writer = runtime_preferences::writer();
                 let proxy = event_proxy.clone();
@@ -302,6 +351,18 @@ impl Application<'_> {
                 }));
                 writer
             },
+            package_customizations: {
+                let proxy = event_proxy.clone();
+                crate::automexia::package_customizations::PackageCustomizationService::new(
+                    rio_backend::config::config_dir_path(),
+                    std::sync::Arc::new(move || {
+                        proxy.send_event(
+                            RioEventType::Rio(RioEvent::ExtensionInventoryChanged),
+                            rio_backend::event::WindowId::from(0),
+                        );
+                    }),
+                )
+            },
             event_proxy,
             router,
             scheduler,
@@ -311,18 +372,22 @@ impl Application<'_> {
             quake_previous_app: None,
         };
         application.initialize_extension_inventory();
+        application.package_customizations.request_refresh();
         application
     }
 
-    fn publish_user_preferences(
+    fn apply_live_user_preferences(
         &mut self,
         event_loop: &ActiveEventLoop,
         has_font_updates: bool,
-    ) -> u64 {
+    ) {
         self.config = resolve_runtime_preference_config(
             &self.base_config,
             &self.user_preferences,
             event_loop.system_theme(),
+        );
+        self.router.set_information_bar_recipe(
+            self.user_preferences.visual.information_bar.recipe(),
         );
 
         for route in self.router.routes.values_mut() {
@@ -334,7 +399,15 @@ impl Application<'_> {
             route.request_redraw();
         }
         self.refresh_settings_catalogs();
-        self.preference_writer.submit(self.user_preferences.clone())
+    }
+
+    fn publish_user_preferences(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        has_font_updates: bool,
+    ) -> Option<u64> {
+        self.apply_live_user_preferences(event_loop, has_font_updates);
+        self.queue_preference_write(settings::PreferenceWriteKind::Settings)
     }
 
     fn apply_shortcut_edit(&mut self, window_id: rio_backend::event::WindowId) {
@@ -382,15 +455,20 @@ impl Application<'_> {
             route.request_redraw();
         }
         self.refresh_settings_catalogs();
-        let revision = self.preference_writer.submit(self.user_preferences.clone());
+        let revision =
+            self.queue_preference_write(settings::PreferenceWriteKind::Settings);
         if let Some(route) = self.router.routes.get_mut(&window_id) {
             let palette = &mut route.window.screen.renderer.command_palette;
-            if revision == 0 {
+            if revision.is_none() {
+                palette.shortcut_save_failed(
+                    "Temporary preview: shortcut changes stay in this session. Restore saved in Customizations to return.",
+                );
+            } else if revision == Some(0) {
                 palette.shortcut_save_failed(
                     "Active this session only; settings could not be queued",
                 );
             } else {
-                palette.shortcut_save_started(revision);
+                palette.shortcut_save_started(revision.unwrap_or_default());
             }
         }
     }
@@ -739,6 +817,39 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     fn resumed(&mut self, _active_event_loop: &ActiveEventLoop) {}
 
     fn new_events(&mut self, event_loop: &ActiveEventLoop, cause: StartCause) {
+        if cause == StartCause::MacOSQuit {
+            let target = self
+                .router
+                .get_focused_route()
+                .or_else(|| {
+                    self.router
+                        .routes
+                        .iter()
+                        .find(|(_, route)| {
+                            route.window.winit_window.is_visible() != Some(false)
+                                && route.window.winit_window.is_minimized() != Some(true)
+                        })
+                        .map(|(id, _)| *id)
+                })
+                .or_else(|| self.router.routes.keys().next().copied());
+            if close_requires_confirmation(
+                CloseIntent::Application,
+                self.config.confirm_before_quit,
+            ) {
+                if let Some(route) = target.and_then(|id| self.router.routes.get_mut(&id))
+                {
+                    route.window.winit_window.set_visible(true);
+                    route.window.winit_window.set_minimized(false);
+                    route.window.winit_window.focus_window();
+                    if !route.window.screen.renderer.confirm_quit.is_active() {
+                        route.confirm_quit();
+                    }
+                    return;
+                }
+            }
+            self.request_application_exit(event_loop);
+            return;
+        }
         if cause != StartCause::Init
             && cause != StartCause::CreateWindow
             && cause != StartCause::MacOSReopen
@@ -846,34 +957,35 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             RioEventType::Rio(RioEvent::RenderRoute(route_id)) => {
                 if self.config.renderer.strategy.is_event_based() {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
-                        // Skip rendering for unfocused windows if configured
-                        if self.config.renderer.disable_unfocused_render
-                            && !route.window.is_focused
-                        {
-                            if route.window.screen.renderer.scrollbar.needs_redraw() {
-                                route.request_redraw();
+                        let suppress_unfocused =
+                            self.config.renderer.disable_unfocused_render
+                                && !route.window.is_focused;
+                        let suppress_occluded =
+                            self.config.renderer.disable_occluded_render
+                                && route.window.is_occluded
+                                && !route.window.needs_render_after_occlusion;
+                        let pending =
+                            route.window.screen.ctx_mut().get_by_route_id(route_id).map(
+                                |context| &mut context.renderable_content.pending_update,
+                            );
+                        match prepare_route_redraw(
+                            pending,
+                            suppress_unfocused,
+                            suppress_occluded,
+                        ) {
+                            RouteRedrawDecision::Unfocused => {
+                                if route.window.screen.renderer.scrollbar.needs_redraw() {
+                                    route.request_redraw();
+                                }
+                                return;
                             }
-                            return;
-                        }
-
-                        // Skip rendering for occluded windows if configured, unless we need to render after occlusion
-                        if self.config.renderer.disable_occluded_render
-                            && route.window.is_occluded
-                            && !route.window.needs_render_after_occlusion
-                        {
-                            return;
+                            RouteRedrawDecision::Occluded => return,
+                            RouteRedrawDecision::Ready => {}
                         }
 
                         // Clear the one-time render flag if it was set
                         if route.window.needs_render_after_occlusion {
                             route.window.needs_render_after_occlusion = false;
-                        }
-
-                        // Mark the renderable content as needing to render
-                        if let Some(context) =
-                            route.window.screen.ctx_mut().get_by_route_id(route_id)
-                        {
-                            context.renderable_content.pending_update.set_dirty();
                         }
 
                         // Check if we need to throttle based on timing
@@ -901,25 +1013,25 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             RioEventType::Rio(RioEvent::TerminalDamaged(route_id)) => {
                 if self.config.renderer.strategy.is_event_based() {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
-                        if self.config.renderer.disable_unfocused_render
-                            && !route.window.is_focused
-                        {
-                            return;
-                        }
-                        if self.config.renderer.disable_occluded_render
-                            && route.window.is_occluded
-                            && !route.window.needs_render_after_occlusion
-                        {
-                            return;
-                        }
+                        let suppress_unfocused =
+                            self.config.renderer.disable_unfocused_render
+                                && !route.window.is_focused;
+                        let suppress_occluded =
+                            self.config.renderer.disable_occluded_render
+                                && route.window.is_occluded
+                                && !route.window.needs_render_after_occlusion;
 
                         if let Some(context) =
                             route.window.screen.ctx_mut().get_by_route_id(route_id)
                         {
-                            // Just mark dirty — damage will be extracted from
-                            // the terminal when the renderer locks it.
-                            context.renderable_content.pending_update.set_dirty();
-                            route.request_redraw();
+                            if prepare_route_redraw(
+                                Some(&mut context.renderable_content.pending_update),
+                                suppress_unfocused,
+                                suppress_occluded,
+                            ) == RouteRedrawDecision::Ready
+                            {
+                                route.request_redraw();
+                            }
                         }
                     }
                 }
@@ -1117,8 +1229,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             RioEventType::Rio(RioEvent::Exit | RioEvent::Quit) => {
                 let should_exit =
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
-                        if self.config.confirm_before_quit
-                            && !route.window.screen.renderer.confirm_quit.is_active()
+                        if close_requires_confirmation(
+                            CloseIntent::Application,
+                            self.config.confirm_before_quit,
+                        ) && !route.window.screen.renderer.confirm_quit.is_active()
                         {
                             route.confirm_quit();
                             false
@@ -1500,10 +1614,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::CloseWindow) => {
-                if should_confirm_window_close(
-                    self.router.routes.len(),
+                if close_requires_confirmation(
+                    CloseIntent::Window {
+                        window_count: self.router.routes.len(),
+                    },
                     self.config.confirm_before_quit,
-                    false,
                 ) {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
                         route.confirm_quit();
@@ -1562,7 +1677,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     }
                 }
             }
-            RioEventType::Rio(RioEvent::OpenSettings) => self.open_settings(window_id),
+            RioEventType::Rio(RioEvent::OpenSettings) => {
+                // Retain existing shortcuts and custom bindings while using the
+                // one feature-organized preference editor.
+                self.open_settings(window_id, true)
+            }
+            RioEventType::Rio(RioEvent::OpenCustomizations) => {
+                self.open_settings(window_id, true)
+            }
             RioEventType::Rio(RioEvent::ExtensionInventoryChanged) => {
                 self.extension_inventory_changed();
             }
@@ -1722,24 +1844,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             return;
         }
 
+        let mut refresh_settings_for_theme = false;
         match event {
             WindowEvent::CloseRequested => {
-                // macOS: Cmd+Q quit confirmation is handled by
-                // `applicationShouldTerminate` in rio-window.
-                // Windows: per-window close confirmation is handled
-                // by `MessageBoxW` in rio-window's WM_CLOSE handler
-                // (see `set_confirm_before_quit` plumbing).
-                // Either way, by the time we see `CloseRequested`
-                // the user has already confirmed — just close.
-                if cfg!(any(target_os = "macos", target_os = "windows")) {
-                    self.close_window_and_maybe_exit(event_loop, window_id);
-                    return;
-                }
-
-                if should_confirm_window_close(
-                    window_count,
+                if close_requires_confirmation(
+                    CloseIntent::Window { window_count },
                     self.config.confirm_before_quit,
-                    false,
                 ) {
                     route.confirm_quit();
                     return;
@@ -3217,6 +3327,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     route.window.winit_window.set_cursor_visible(true);
                 }
                 route.request_redraw();
+                refresh_settings_for_theme = true;
             }
 
             WindowEvent::DroppedFile(path) => {
@@ -3368,6 +3479,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             _ => {}
+        }
+        if refresh_settings_for_theme {
+            self.refresh_settings_catalogs();
         }
     }
 
@@ -3555,6 +3669,88 @@ where
 }
 
 #[cfg(test)]
+mod window_damage_tests {
+    use super::{prepare_route_redraw, RouteRedrawDecision};
+    use crate::context::renderable::PendingUpdate;
+    use rio_backend::event::TerminalDamage;
+
+    #[test]
+    fn suppressed_route_damage_remains_pending_without_requesting_redraw() {
+        for (unfocused, occluded, expected) in [
+            (true, false, RouteRedrawDecision::Unfocused),
+            (false, true, RouteRedrawDecision::Occluded),
+            (true, true, RouteRedrawDecision::Unfocused),
+        ] {
+            let mut pending = PendingUpdate::default();
+            assert_eq!(
+                prepare_route_redraw(Some(&mut pending), unfocused, occluded),
+                expected,
+            );
+            assert!(pending.is_dirty(), "suppression discarded the pane update");
+        }
+    }
+
+    #[test]
+    fn visible_route_damage_requests_redraw_and_preserves_damage_hint() {
+        let mut pending = PendingUpdate::default();
+        pending.set_terminal_damage(TerminalDamage::Partial);
+        assert_eq!(
+            prepare_route_redraw(Some(&mut pending), false, false),
+            RouteRedrawDecision::Ready,
+        );
+        assert!(pending.is_dirty());
+        assert_eq!(
+            pending.take_terminal_damage(),
+            Some(TerminalDamage::Partial)
+        );
+    }
+
+    #[test]
+    fn restored_window_keeps_every_affected_pane_ready_without_new_pty_output() {
+        // The renderer consumes every dirty visible pane, not only the focused
+        // pane. PTY damage notifications are coalesced until that consumption.
+        let mut panes = [
+            PendingUpdate::default(),
+            PendingUpdate::default(),
+            PendingUpdate::default(),
+        ];
+        assert_eq!(
+            prepare_route_redraw(Some(&mut panes[0]), true, false),
+            RouteRedrawDecision::Unfocused,
+        );
+        assert_eq!(
+            prepare_route_redraw(Some(&mut panes[1]), false, true),
+            RouteRedrawDecision::Occluded,
+        );
+        // A repeated wake does not clear pending work or dirty unrelated panes.
+        prepare_route_redraw(Some(&mut panes[1]), true, true);
+        assert!(panes[0].is_dirty());
+        assert!(panes[1].is_dirty());
+        assert!(!panes[2].is_dirty());
+        for pane in &mut panes[..2] {
+            pane.reset();
+        }
+        assert!(panes.iter().all(|pane| !pane.is_dirty()));
+    }
+
+    #[test]
+    fn stale_route_redraw_keeps_existing_window_suppression_policy() {
+        assert_eq!(
+            prepare_route_redraw(None, false, false),
+            RouteRedrawDecision::Ready
+        );
+        assert_eq!(
+            prepare_route_redraw(None, true, false),
+            RouteRedrawDecision::Unfocused
+        );
+        assert_eq!(
+            prepare_route_redraw(None, false, true),
+            RouteRedrawDecision::Occluded
+        );
+    }
+}
+
+#[cfg(test)]
 mod custom_chrome_tests {
     use super::*;
 
@@ -3616,8 +3812,10 @@ mod custom_chrome_tests {
 
     #[test]
     fn runtime_reload_appends_platform_environment_once() {
-        let mut loaded = rio_backend::config::Config::default();
-        loaded.env_vars = vec!["BASE=value".into()];
+        let mut loaded = rio_backend::config::Config {
+            env_vars: vec!["BASE=value".into()],
+            ..Default::default()
+        };
         let platform = rio_backend::config::platform::PlatformConfig {
             env_vars: Some(vec!["PLATFORM=value".into()]),
             ..Default::default()
@@ -3731,22 +3929,43 @@ mod custom_chrome_tests {
 
     #[test]
     fn intermediate_window_close_never_becomes_global_quit() {
-        assert!(!should_confirm_window_close(2, false, false));
-        assert!(!should_confirm_window_close(2, true, false));
-        assert!(!should_confirm_window_close(8, true, false));
+        for count in [2, 8] {
+            assert!(!close_requires_confirmation(
+                CloseIntent::Window {
+                    window_count: count
+                },
+                true
+            ));
+        }
+        assert!(close_requires_confirmation(CloseIntent::Application, true));
     }
 
     #[test]
-    fn only_unconfirmed_last_window_close_uses_confirmation_overlay() {
-        assert!(!should_confirm_window_close(1, false, false));
-        assert!(should_confirm_window_close(1, true, false));
-        assert!(!should_confirm_window_close(1, true, true));
+    fn all_last_window_close_routes_use_confirmation_overlay_when_enabled() {
+        for enabled in [false, true] {
+            assert_eq!(
+                close_requires_confirmation(
+                    CloseIntent::Window { window_count: 1 },
+                    enabled
+                ),
+                enabled
+            );
+            assert_eq!(
+                close_requires_confirmation(CloseIntent::Application, enabled),
+                enabled
+            );
+        }
     }
 
     #[test]
     fn zero_window_teardown_never_reopens_confirmation() {
-        assert!(!should_confirm_window_close(0, false, false));
-        assert!(!should_confirm_window_close(0, true, true));
-        assert!(!should_confirm_window_close(0, true, false));
+        assert!(!close_requires_confirmation(
+            CloseIntent::Window { window_count: 0 },
+            false
+        ));
+        assert!(!close_requires_confirmation(
+            CloseIntent::Window { window_count: 0 },
+            true
+        ));
     }
 }

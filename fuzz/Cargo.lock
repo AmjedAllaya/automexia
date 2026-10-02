@@ -341,9 +341,11 @@ version = "0.4.0"
 dependencies = [
  "automexia-extension-api",
  "dirs",
+ "libc",
  "serde",
  "serde-saphyr",
  "serde_json",
+ "windows-sys 0.61.2",
 ]
 
 [[package]]
@@ -519,6 +521,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "automexia-ssh-integration"
+version = "0.4.0"
+dependencies = [
+ "automexia-connectivity",
+ "base64",
+]
+
+[[package]]
 name = "automexia-terminal"
 version = "0.4.0"
 dependencies = [
@@ -539,6 +549,7 @@ dependencies = [
  "automexia-extension-runtime",
  "automexia-image",
  "automexia-keybindings",
+ "automexia-ssh-integration",
  "automexia-ui-model",
  "base64",
  "bitflags 2.13.1",
@@ -554,6 +565,7 @@ dependencies = [
  "objc-rs",
  "onig",
  "parking_lot",
+ "process-wrap",
  "rapidhash",
  "raw-window-handle",
  "regex",
@@ -565,6 +577,7 @@ dependencies = [
  "serde",
  "serde_json",
  "sha2",
+ "signal-hook",
  "smallvec",
  "sugarloaf",
  "taffy",
@@ -1077,7 +1090,7 @@ dependencies = [
  "libc",
  "miow",
  "tracing",
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2800,7 +2813,7 @@ version = "0.6.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "536bfad37a309d62069485248eeaba1e8d9853aaf951caaeaed0585a95346f08"
 dependencies = [
- "windows-sys 0.61.2",
+ "windows-sys 0.60.2",
 ]
 
 [[package]]
@@ -2876,6 +2889,18 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ee6cda3051665f1fb8d9e08fc35c96d5a244fb1be711a03b71118828afc9a873"
 dependencies = [
  "jni-sys 0.3.1",
+]
+
+[[package]]
+name = "nix"
+version = "0.31.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "cf20d2fde8ff38632c426f1165ed7436270b44f199fc55284c38276f9db47c3d"
+dependencies = [
+ "bitflags 2.13.1",
+ "cfg-if",
+ "cfg_aliases",
+ "libc",
 ]
 
 [[package]]
@@ -3640,6 +3665,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "process-wrap"
+version = "10.0.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0e3f4237d0e4741eb50bc5584db701f1299c85fa31ff0274dd6445e79dc42d12"
+dependencies = [
+ "indexmap",
+ "nix",
+ "windows",
+]
+
+[[package]]
 name = "profiling"
 version = "1.0.18"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3890,6 +3926,7 @@ dependencies = [
  "rio-window",
  "serde",
  "sugarloaf",
+ "tempfile",
  "toml 1.1.4+spec-1.1.0",
  "tracing",
  "url",
@@ -4131,9 +4168,9 @@ dependencies = [
 
 [[package]]
 name = "serde-saphyr"
-version = "1.2.0"
+version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "3afb591f9cdb6223c88ba39269aff895620c7f0716dc42b705b5733d5c7c0823"
+checksum = "a1ec1f5cac0eb96063c64b28705255a7ed6e7d77f95c1d25e9f8b8c928006ce1"
 dependencies = [
  "annotate-snippets",
  "encoding_rs_io",
@@ -4631,9 +4668,9 @@ dependencies = [
 
 [[package]]
 name = "taffy"
-version = "0.14.0"
+version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "639627c87f43b9181c811f40a6296409e093a17bc761214cba3c15df74f86b99"
+checksum = "c034e05f6ee85a12daa63863c2245797715075c70649947aa0da54f3f2ab1d0f"
 dependencies = [
  "arrayvec",
  "serde",

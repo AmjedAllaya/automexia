@@ -115,5 +115,162 @@ class Cp22ContractTests(unittest.TestCase):
                 policy.validate_sources(self.contract)
 
 
+class Cp22LifecycleMutationTests(unittest.TestCase):
+    """Mutate real owners, retaining inert evidence to expose disconnected paths."""
+
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.contract = json.loads(policy.bounded_text(policy.CONTRACT))
+        cls.worker = "apps/automexia-terminal/src/automexia/quick_actions/worker.rs"
+        cls.extension = "automexia-extension-runtime/src/lib.rs"
+        cls.router = "apps/automexia-terminal/src/router/mod.rs"
+        cls.sources = {
+            relative: policy.bounded_text(policy.ROOT / relative)
+            for relative in (cls.worker, cls.extension, cls.router)
+        }
+
+    def reject_mutation(self, relative, original, replacement, decoy="") -> None:
+        source = self.sources[relative]
+        self.assertEqual(source.count(original), 1, "mutation must target one real owner")
+        changed = source.replace(original, replacement, 1) + decoy
+        original_read = policy.bounded_text
+
+        def mutated(path, maximum=policy.MAX_POLICY_BYTES):
+            key = path.relative_to(policy.ROOT).as_posix()
+            result = changed if key == relative else original_read(path, maximum)
+            if key == self.worker:
+                # The inherited checker demanded this obsolete application token.
+                # Supply it only as an inert comment, so RED demonstrates that the
+                # old gate actually admits a disconnected production lifecycle.
+                result += "\n// Inert old-owner proof: handle.join()\n"
+            return result
+
+        with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+            with self.assertRaisesRegex(policy.Cp22Error, "Quick Action (?:lifecycle|Drop)"):
+                policy.validate_sources(self.contract)
+
+    def test_application_cannot_discard_the_admitted_worker(self) -> None:
+        self.reject_mutation(self.worker, "worker: Some(worker),", "worker: None,")
+
+    def test_kickoff_capacity_cannot_expand(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            'BoundedWorker::new("automexia-quick-actions", 1, run_worker)',
+            'BoundedWorker::new("automexia-quick-actions", 2, run_worker)',
+        )
+
+    def test_kickoff_cannot_lose_its_real_handler(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            'BoundedWorker::new("automexia-quick-actions", 1, run_worker)',
+            'BoundedWorker::new("automexia-quick-actions", 1, |_run| {})',
+        )
+
+    def test_pending_cleanup_cannot_bind_a_different_queue(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "let pending_cleanup = PendingCleanup {\n        pending: Arc::clone(&shared.pending),\n    };",
+            "let pending_cleanup = PendingCleanup {\n        pending: Arc::new((Mutex::new(PendingState::default()), Condvar::new())),\n    };",
+        )
+
+    def test_queued_cleanup_guard_cannot_drop_at_loop_entry(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "        _pending_cleanup,\n    } = run;",
+            "        _pending_cleanup: _,\n    } = run;",
+        )
+
+    def test_queued_cleanup_guard_cannot_be_explicitly_dropped_early(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "        _pending_cleanup,\n    } = run;",
+            "        _pending_cleanup,\n    } = run;\n    drop(_pending_cleanup);",
+        )
+
+    def test_cancellation_cannot_drain_foreign_callbacks_on_the_caller(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "            state.shutdown = true;",
+            "            state.shutdown = true;\n            state.latest_by_route.clear();",
+        )
+
+    def test_application_cancellation_cannot_disconnect_worker_retirement(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "            worker.request_shutdown();",
+            "            let _ = worker.shutdown_status();",
+            "\n/* worker.request_shutdown(); */\n",
+        )
+
+    def test_drop_cannot_restore_synchronous_native_cleanup(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "impl Drop for RuntimeInner {\n    fn drop(&mut self) {\n        self.request_shutdown();\n    }\n}",
+            "impl Drop for RuntimeInner {\n    fn drop(&mut self) {\n        self.request_shutdown();\n        if let Some(worker) = &self.worker { worker.shutdown_timeout(Duration::from_secs(1)); }\n    }\n}",
+        )
+
+    def test_timeout_cannot_claim_success_before_the_owned_acknowledgement(self) -> None:
+        self.reject_mutation(
+            self.worker,
+            "        let started = Instant::now();\n        self.request_shutdown();",
+            "        return true;\n        let started = Instant::now();\n        self.request_shutdown();",
+        )
+
+    def test_native_worker_cannot_detach_from_the_cleanup_owner(self) -> None:
+        self.reject_mutation(
+            self.extension,
+            "        cleanup.own(job);",
+            "        drop(job);",
+            "\nfn cp22_dead_proof(cleanup: &CleanupService, job: JoinJob) { cleanup.own(job); }\n"
+            'const CP22_QUOTED_PROOF: &str = r###"/* { */ cleanup.own(job); }"###;\n'
+            "/* outer /* nested */ cleanup.own(job); */\n",
+        )
+
+    def test_cleanup_mailbox_cannot_discard_the_native_job(self) -> None:
+        self.reject_mutation(
+            self.extension,
+            "        *pending = Some(job);",
+            "        drop(job);",
+            "\n/* *pending = Some(job); */\n",
+        )
+
+    def test_native_handle_cannot_use_an_unrelated_completion(self) -> None:
+        self.reject_mutation(
+            self.extension,
+            "            completion: Arc::clone(&completion),",
+            "            completion: Arc::new(JoinCompletion::default()),",
+        )
+
+    def test_cleanup_thread_must_retain_the_admission_permit(self) -> None:
+        self.reject_mutation(
+            self.extension,
+            "                let _permit = permit;",
+            "                drop(permit);",
+        )
+
+    def test_actual_join_cannot_be_replaced_with_a_success_claim(self) -> None:
+        self.reject_mutation(
+            self.extension,
+            "                    match job.handle.join() {",
+            "                    match Ok::<(), Box<dyn std::any::Any + Send>>(()) {",
+            "\n// match job.handle.join() { Ok(()) => job.completion.finish(), }\n",
+        )
+
+    def test_cleanup_acknowledgement_cannot_precede_the_actual_join(self) -> None:
+        self.reject_mutation(
+            self.extension,
+            "                    match job.handle.join() {",
+            "                    job.completion.finish();\n                    match job.handle.join() {",
+        )
+
+    def test_router_shutdown_cannot_disconnect_quick_action_cancellation(self) -> None:
+        self.reject_mutation(
+            self.router,
+            "        self.quick_actions.request_shutdown();",
+            "        let _ = self.quick_actions.shutdown_status();",
+            "\n// self.quick_actions.request_shutdown();\n",
+        )
+
+
 if __name__ == "__main__":
     unittest.main()

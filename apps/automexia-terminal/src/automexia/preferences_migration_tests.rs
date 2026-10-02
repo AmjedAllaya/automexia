@@ -6,15 +6,24 @@ fn fixture(root: &Path, name: &str, bytes: &[u8]) {
 }
 
 #[test]
-fn new_snapshots_use_v2_without_creating_a_v1_writer() {
+fn new_snapshots_use_v6_without_creating_predecessor_writers() {
     let root = tempfile::tempdir().unwrap();
     write_to_root(root.path(), &UserPreferences::default()).unwrap();
-    let path = state_root(root.path()).join("user-preferences-v2.toml");
-    assert!(path.is_file(), "new preferences must use the v2 path");
+    let path = state_root(root.path()).join("user-preferences-v6.toml");
+    assert!(path.is_file(), "new preferences must use the v6 path");
     let bytes = fs::read(path).unwrap();
     assert!(std::str::from_utf8(&bytes)
         .unwrap()
-        .contains("schema-version = 2"));
+        .contains("schema-version = 6"));
+    assert!(!state_root(root.path())
+        .join("user-preferences-v5.toml")
+        .exists());
+    assert!(!state_root(root.path())
+        .join("user-preferences-v2.toml")
+        .exists());
+    assert!(!state_root(root.path())
+        .join("user-preferences-v2.lock")
+        .exists());
     assert!(!state_root(root.path())
         .join("user-preferences-v1.toml")
         .exists());
@@ -35,7 +44,7 @@ fn importing_v1_is_read_only_and_later_save_preserves_rollback_bytes() {
     assert_eq!(outcome.source, PreferenceSource::Legacy);
     assert!(outcome.warning.is_none());
     assert!(!state_root(root.path())
-        .join("user-preferences-v2.toml")
+        .join("user-preferences-v5.toml")
         .exists());
     let mut changed = outcome.preferences;
     changed.font_size = Some(23.0);
@@ -92,7 +101,7 @@ fn existing_invalid_v2_cannot_downgrade_to_valid_v1() {
 fn v2_presentation_roundtrip_preserves_false_and_inherits_omitted_values() {
     let root = tempfile::tempdir().unwrap();
     let base: Config = toml::from_str("[presentation]\ninline-tables = true\noutput-highlighting = false\ncommand-timestamps = false\n").unwrap();
-    let edited = parse_snapshot(b"schema-version = 2\n[presentation]\ninline-tables = false\ncommand-timestamps = true\n").unwrap();
+    let edited = parse_version2_snapshot(b"schema-version = 2\n[presentation]\ninline-tables = false\ncommand-timestamps = true\n").unwrap();
     write_to_root(root.path(), &edited).unwrap();
     let loaded = load_from_root(root.path()).preferences;
     assert_eq!(loaded, edited);
@@ -109,7 +118,7 @@ fn v2_presentation_roundtrip_preserves_false_and_inherits_omitted_values() {
         effective["presentation"]["command-timestamps"].as_bool(),
         Some(true)
     );
-    let reset = parse_snapshot(b"schema-version = 2\n").unwrap();
+    let reset = parse_version2_snapshot(b"schema-version = 2\n").unwrap();
     assert_eq!(reset.apply_to(&base), base);
 }
 
@@ -128,7 +137,7 @@ fn v2_previous_snapshot_takes_precedence_over_legacy_primary() {
     );
     let loaded = load_from_root(root.path());
     assert_eq!(loaded.preferences.font_size, Some(18.0));
-    assert_eq!(loaded.source, PreferenceSource::Previous);
+    assert_eq!(loaded.source, PreferenceSource::Version2Previous);
     assert_eq!(loaded.warning, Some(PreferenceErrorCode::InvalidData));
     assert!(!state_root(root.path())
         .join("user-preferences-v2.toml")
@@ -192,7 +201,7 @@ fn v2_extension_codec_accepts_only_bounded_declared_boolean_records() {
     let id = crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID;
     let record = format!("[[extension-features]]\nid = '{id}'\nenabled = false\n");
     let valid = format!("schema-version = 2\n{record}");
-    let preferences = parse_snapshot(valid.as_bytes()).unwrap();
+    let preferences = parse_version2_snapshot(valid.as_bytes()).unwrap();
     let serialized = serialize(&preferences).unwrap();
     let value: toml::Value =
         toml::from_str(std::str::from_utf8(&serialized).unwrap()).unwrap();
@@ -213,7 +222,7 @@ fn v2_extension_codec_accepts_only_bounded_declared_boolean_records() {
     ];
     for source in invalid {
         assert!(
-            parse_snapshot(source.as_bytes()).is_err(),
+            parse_version2_snapshot(source.as_bytes()).is_err(),
             "malformed extension override must be rejected"
         );
     }
@@ -273,6 +282,7 @@ fn resetting_presentation_inherits_current_config_and_keeps_extension_choices() 
             inline_tables: Some(false),
             output_highlighting: Some(false),
             command_timestamps: Some(false),
+            ..PresentationPreferences::default()
         },
         ..UserPreferences::default()
     };
@@ -324,7 +334,7 @@ fn legacy_previous_is_imported_without_repairing_the_legacy_files() {
 }
 
 #[test]
-fn invalid_candidate_preserves_both_v2_snapshots() {
+fn invalid_candidate_preserves_both_v5_snapshots() {
     let root = tempfile::tempdir().unwrap();
     write_to_root(
         root.path(),
@@ -354,7 +364,7 @@ fn invalid_candidate_preserves_both_v2_snapshots() {
 }
 
 #[test]
-fn v2_primary_wins_and_never_imports_later_legacy_changes() {
+fn v5_primary_wins_and_never_imports_later_legacy_changes() {
     let root = tempfile::tempdir().unwrap();
     let preferences = UserPreferences {
         font_size: Some(20.0),

@@ -19,6 +19,16 @@ contents:
     expand: true
     file_info:
       mode: 0755
+  - src: ${AUTOMEXIA_CLI_BINARY}
+    dst: /usr/bin/amx
+    expand: true
+    file_info:
+      mode: 0755
+  - src: ${AUTOMEXIA_SUGGESTION_HELPER_BINARY}
+    dst: /usr/bin/automexia-suggestion-helper
+    expand: true
+    file_info:
+      mode: 0755
   - src: packaging/linux/automexia-terminal.desktop
     dst: /usr/share/applications/automexia-terminal.desktop
     file_info:

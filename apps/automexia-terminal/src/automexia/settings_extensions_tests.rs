@@ -26,7 +26,7 @@ fn empty_snapshot_does_not_register_or_discover_extensions() {
 fn installed_devops_uses_its_real_owner_and_trusted_metadata() {
     let entries =
         extension_settings(&[item("automexia.devops", true)], |_| None).unwrap();
-    assert_eq!(entries.len(), 1);
+    assert_eq!(entries.len(), 2);
     let entry = &entries[0];
     assert_eq!(
         entry.id.as_str(),
@@ -36,13 +36,17 @@ fn installed_devops_uses_its_real_owner_and_trusted_metadata() {
         entry.owner,
         SettingOwner::Extension("automexia.devops".into())
     );
-    assert_eq!(entry.section, Section::Extensions);
-    assert_eq!(entry.label, "DevOps context");
+    assert_eq!(entry.section, Section::Customizations);
+    assert_eq!(entry.label, "DevOps detection");
     assert_eq!(entry.value, SettingValue::Boolean(true));
     assert_eq!(entry.default, SettingValue::Boolean(true));
     assert_eq!(entry.origin, ValueOrigin::Extension);
     assert_eq!(entry.availability, Availability::Available);
     assert!(!entry.description.contains("untrusted"));
+    let git = &entries[1];
+    assert_eq!(git.id.as_str(), DEVOPS_GIT_STATUS_ID);
+    assert_eq!(git.value, SettingValue::Boolean(true));
+    assert_eq!(git.owner, entry.owner);
     Catalog::new(1, entries).unwrap();
 }
 
@@ -50,14 +54,20 @@ fn installed_devops_uses_its_real_owner_and_trusted_metadata() {
 #[test]
 fn disabling_feature_keeps_its_installed_settings_row() {
     let entries = extension_settings(&[item("automexia.devops", true)], |id| {
-        assert_eq!(id, DEVOPS_CONTEXT_STATUS_ID);
-        Some(false)
+        if id == DEVOPS_CONTEXT_STATUS_ID {
+            Some(false)
+        } else {
+            assert_eq!(id, DEVOPS_GIT_STATUS_ID);
+            None
+        }
     })
     .unwrap();
-    assert_eq!(entries.len(), 1);
+    assert_eq!(entries.len(), 2);
     assert_eq!(entries[0].value, SettingValue::Boolean(false));
     assert_eq!(entries[0].origin, ValueOrigin::User);
     assert_eq!(entries[0].availability, Availability::Available);
+    assert_eq!(entries[1].value, SettingValue::Boolean(true));
+    assert_eq!(entries[1].origin, ValueOrigin::Extension);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -71,7 +81,7 @@ fn rebuilding_after_uninstall_keeps_only_the_remaining_owner() {
         |_| None,
     )
     .unwrap();
-    assert_eq!(initial.len(), 2);
+    assert_eq!(initial.len(), 3);
     let next = extension_settings(
         &[
             item("automexia.devops", false),
@@ -85,6 +95,7 @@ fn rebuilding_after_uninstall_keeps_only_the_remaining_owner() {
         next[0].id.as_str(),
         "extension.automexia.devops-aws.availability"
     );
+    assert_eq!(next[0].section, Section::Extensions);
     assert!(extension_settings(&[], |_| Some(true)).unwrap().is_empty());
 }
 
@@ -156,8 +167,13 @@ fn oversized_snapshot_is_rejected_before_projection() {
 #[test]
 fn only_exact_declared_boolean_feature_ids_accept_preferences() {
     assert!(is_known_boolean_feature(DEVOPS_CONTEXT_STATUS_ID));
+    assert!(is_known_boolean_feature(DEVOPS_GIT_STATUS_ID));
     assert_eq!(
         feature_owner(DEVOPS_CONTEXT_STATUS_ID),
+        Some("automexia.devops")
+    );
+    assert_eq!(
+        feature_owner(DEVOPS_GIT_STATUS_ID),
         Some("automexia.devops")
     );
     for id in [

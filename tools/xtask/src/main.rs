@@ -165,6 +165,9 @@ fn dispatch(args: Vec<String>) -> TaskResult {
             keybindings::generate(generate_args)
         }
         [command, scope] if command == "verify" && scope == "all" => verify_all(),
+        [command, scope] if command == "test" && scope == "ssh-integration" => {
+            test_ssh_integration()
+        }
         [command, scope] if command == "test" && scope == "conformance" => {
             test_conformance()
         }
@@ -227,7 +230,7 @@ fn dispatch(args: Vec<String>) -> TaskResult {
 }
 
 fn usage() -> String {
-    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|cache <status [--warn-gib N]|gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]>|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
+    "usage: cargo xtask <dev [-- APP_ARGS...]|ready|run [-- APP_ARGS...]|doctor|completion COMMAND [OPTIONS]|storage|cache <status [--warn-gib N]|gc [--scope automatic|tools|worktrees|all] [--grace-hours N] [--apply]>|visual-diff --expected PATH --actual PATH --config PATH --diff PATH --report PATH|check|ci|assurance <check-policy|install-tools|initialize-vet|install-hook|audit-history-secrets|pre-push|release-local|deep-source>|qa --full [--bundle]|verify architecture|verify identity|verify provenance|verify keybindings|verify all|generate keybindings <--version 1.3.1|--check>|test keybindings|test conformance|test ssh-integration|test resize-stress [--native-gui]|test image-rendering [--native-gui]|test image-decoder-fuzz [--seconds N]|test session-clone [--native-windows|--native-wsl]|package --check|package --target TARGET|release --version VERSION>".into()
 }
 
 fn cache(arguments: &[String]) -> TaskResult {
@@ -1025,7 +1028,35 @@ fn build_debug_app() -> TaskResult {
             "--bin",
             &identity.executable,
         ],
-    )
+    )?;
+    if cfg!(windows) {
+        prepare_windows_runtime(
+            debug_binary(&identity)
+                .parent()
+                .ok_or("debug binary has no parent directory")?,
+            std::env::consts::ARCH,
+        )?;
+    }
+    Ok(())
+}
+
+fn prepare_windows_runtime(destination: &Path, architecture: &str) -> TaskResult {
+    let python = python_program()
+        .ok_or("Python 3 is required to prepare the pinned Windows PTY runtime")?;
+    let mut command = Command::new(python);
+    command.current_dir(root());
+    command.args([
+        "tools/ci/windows_conpty_runtime.py",
+        "prepare",
+        "--architecture",
+        architecture,
+        "--destination",
+    ]);
+    command.arg(destination);
+    if env::var("CARGO_NET_OFFLINE").is_ok_and(|value| value == "true" || value == "1") {
+        command.arg("--offline");
+    }
+    run_command(command, "prepare pinned Windows PTY runtime")
 }
 
 fn debug_binary(identity: &ProductIdentity) -> PathBuf {
@@ -1164,6 +1195,9 @@ fn stage_runtime_binary(
         })?;
     }
 
+    if cfg!(windows) {
+        prepare_windows_runtime(&runtime, std::env::consts::ARCH)?;
+    }
     let (removed, retained) = cleanup_runtime_copies(&runtime, &identity.executable)?;
     if removed > 0 || retained > 0 {
         println!(
@@ -1348,6 +1382,8 @@ fn pre_compile_checks() -> TaskResult {
 }
 
 fn verify_all() -> TaskResult {
+    #[cfg(target_os = "linux")]
+    test_ssh_integration()?;
     verify_identity()?;
     verify_provenance()?;
     verify_architecture()?;
@@ -1749,6 +1785,10 @@ fn complete_ci_gate() -> TaskResult {
     doctor()?;
     run_python("tools/ci/validate_repository.py")?;
     validate_shell_integrations()?;
+    run_python("tools/ci/test_cmd_prompt.py")?;
+    run_python("tools/ci/test_windows_conpty_runtime.py")?;
+    run_python("tools/ci/test_package_contents.py")?;
+    run_python("tools/ci/test_release_runtime.py")?;
     with_verification_target(ci_in)?;
     run_command(
         cargo_deny_command(),
@@ -1943,6 +1983,7 @@ fn image_decoder_fuzz_wsl_script(seconds: u64) -> String {
             "--exclude='./fuzz/artifacts' -cf - . | ",
             "tar -C \"$fuzz_workspace/source\" -xf -; ",
             "cd \"$fuzz_workspace/source\"; ",
+            "CARGO_BUILD_BUILD_DIR=\"$fuzz_workspace/target/build\" ",
             "CARGO_TARGET_DIR=\"$fuzz_workspace/target\" cargo +nightly fuzz run ",
             "image_decoder \"$fuzz_workspace/corpus\" -- ",
             "-max_total_time={} -rss_limit_mb=768 -timeout=15"
@@ -2023,17 +2064,13 @@ fn test_image_decoder_fuzz(seconds: u64) -> TaskResult {
         .map_err(|error| format!("could not create disposable fuzz target: {error}"))?;
     fs::create_dir_all(&corpus)
         .map_err(|error| format!("could not create disposable fuzz corpus: {error}"))?;
-    let mut fuzz = Command::new("cargo");
-    fuzz.args(["+nightly", "fuzz", "run", "image_decoder"])
-        .arg(&corpus)
-        .args([
-            "--",
-            &format!("-max_total_time={seconds}"),
-            "-rss_limit_mb=768",
-            "-timeout=15",
-        ])
-        .env("CARGO_TARGET_DIR", &target)
-        .current_dir(root());
+    let mut fuzz = cargo_command(&target, &["+nightly", "fuzz", "run", "image_decoder"]);
+    fuzz.arg(&corpus).args([
+        "--",
+        &format!("-max_total_time={seconds}"),
+        "-rss_limit_mb=768",
+        "-timeout=15",
+    ]);
     run_command(fuzz, "nightly image-decoder fuzz campaign")
 }
 
@@ -2089,11 +2126,15 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
             "automexia-terminal",
             "--locked",
             "--features",
-            "visual-test-hooks",
+            "visual-test-hooks,wgpu",
         ],
     )?;
     let identity = product_identity()?;
     let binary = debug_binary(&identity);
+    prepare_windows_runtime(
+        binary.parent().ok_or("native GUI binary has no parent")?,
+        std::env::consts::ARCH,
+    )?;
     let binary = binary.to_str().ok_or_else(|| {
         format!(
             "native GUI test binary path is not UTF-8: {}",
@@ -2213,7 +2254,59 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         cpu_command.arg("-ResultCapture").arg(capture);
     }
     run_command(cpu_command, "native Windows CPU GUI resize stress")?;
-    verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)
+    verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)?;
+    // Exercise the actual settings controls against retained ordinary/table
+    // output in isolated fresh sessions on both compositor implementations.
+    for (scenario, switch) in [
+        ("tag-shapes", "-TagShapesOnly"),
+        ("output-colors", "-OutputColorsOnly"),
+        ("command-input-colors", "-CommandInputColorsOnly"),
+        ("clear-shortcut", "-ClearShortcutOnly"),
+    ] {
+        for renderer in ["wgpu", "cpu"] {
+            let report = report_directory
+                .path()
+                .join(format!("{scenario}-{renderer}.json"));
+            let mut command = Command::new("powershell.exe");
+            command
+                .args([
+                    "-NoLogo",
+                    "-NoProfile",
+                    "-NonInteractive",
+                    "-File",
+                    "tests/integration/resize-stress-windows.ps1",
+                    "-Binary",
+                    binary,
+                    switch,
+                ])
+                .arg("-ResourceReport")
+                .arg(&report)
+                .current_dir(root());
+            if renderer == "cpu" {
+                command.arg("-UseCpuRenderer");
+            }
+            if let Some(directory) = result_capture_directory.as_ref() {
+                command
+                    .arg("-ResultCapture")
+                    .arg(directory.join(format!("{scenario}-{renderer}.png")));
+                if matches!(
+                    scenario,
+                    "tag-shapes" | "command-input-colors" | "clear-shortcut"
+                ) {
+                    command
+                        .arg("-ModalCaptureDirectory")
+                        .arg(directory.join(format!("{scenario}-{renderer}")));
+                }
+            }
+            if matches!(scenario, "command-input-colors" | "clear-shortcut") {
+                if let Some(distro) = env::var_os("AUTOMEXIA_NATIVE_WSL_DISTRO") {
+                    command.arg("-CommandInputWslDistro").arg(distro);
+                }
+            }
+            run_command(command, &format!("native {scenario} {renderer}"))?;
+        }
+    }
+    Ok(())
 }
 
 fn verify_native_image_backend_equivalence(wgpu: &Path, cpu: &Path) -> TaskResult {
@@ -2311,7 +2404,7 @@ fn test_session_clone(native: Option<&str>) -> TaskResult {
             "automexia-terminal",
             "--locked",
             "--features",
-            "visual-test-hooks",
+            "visual-test-hooks,wgpu",
         ],
     )?;
     let identity = product_identity()?;
@@ -2376,6 +2469,7 @@ fn cargo_command(target: &Path, args: &[&str]) -> Command {
         .args(args)
         .current_dir(root())
         .env("CARGO_TARGET_DIR", target)
+        .env("CARGO_BUILD_BUILD_DIR", target.join("build"))
         .env("CARGO_INCREMENTAL", "0");
     command
 }
@@ -2570,7 +2664,7 @@ fn bounded_failure_after_cleanup(
 
 fn isolated_cargo_invocation(args: &[&str]) -> String {
     format!(
-        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={ISOLATED_TARGET_LOG_LABEL} cargo {}",
+        "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR={ISOLATED_TARGET_LOG_LABEL} CARGO_BUILD_BUILD_DIR={ISOLATED_TARGET_LOG_LABEL}/build cargo {}",
         args.join(" ")
     )
 }
@@ -2647,6 +2741,26 @@ const POWERSHELL_IDENTITY_FIXTURE_MARKERS: &[&str] = &[
     "GetBytes($fixtureShellPath)",
 ];
 
+// This runtime assertion must compare the launch token with the actual host
+// identity, not merely a self-consistent identity supplied by the code under
+// test. Exempt only this exact, function-local probe: it emits no identity or
+// hash, writes no fixture, and reports failures with a fixed message. Any body
+// change requires reviewing that boundary again rather than broadening it.
+const POWERSHELL_EPHEMERAL_IDENTITY_PROBE: &str = r#"function global:Test-AutomexiaCmdIdentity {
+param([Parameter(ValueFromRemainingArguments = $true)][object[]]$NativeArgs)
+$referenceHash = [Security.Cryptography.SHA256]::Create()
+try {
+$identity = [Environment]::UserName + [char]0 + 'Test-AutomexiaCmdIdentity'
+$expected = ([BitConverter]::ToString($referenceHash.ComputeHash([Text.Encoding]::UTF8.GetBytes($identity)))).Replace('-', '').Substring(0, 32).ToLowerInvariant()
+} finally { $referenceHash.Dispose() }
+if ($env:AUTOMEXIA_CMD_REFERENCE -ne $expected -or
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:AUTOMEXIA_CMD_REFERENCE_BASE64)) -ne $expected -or
+[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:AUTOMEXIA_CMD_PATH_BASE64)) -ne 'Test-AutomexiaCmdIdentity') {
+throw 'Nested CMD identity reference does not match its launch identity'
+}
+$global:LASTEXITCODE = 7
+}"#;
+
 fn powershell_test_output_is_redacted(source: &str) -> bool {
     POWERSHELL_TEST_OUTPUT_REDACTION_MARKERS
         .iter()
@@ -2654,13 +2768,31 @@ fn powershell_test_output_is_redacted(source: &str) -> bool {
 }
 
 fn powershell_identity_fixture_is_fictional(source: &str) -> bool {
+    let mut lines = source.lines().map(|line| line.trim_matches([' ', '\t']));
+    let mut saw_probe = false;
+    while let Some(line) = lines.next() {
+        if line == "function global:Test-AutomexiaCmdIdentity {" {
+            if saw_probe {
+                return false;
+            }
+            saw_probe = true;
+            for expected in POWERSHELL_EPHEMERAL_IDENTITY_PROBE.lines().skip(1) {
+                if lines.next() != Some(expected) {
+                    return false;
+                }
+            }
+        } else if line.contains("[Environment]::UserName")
+            || line.contains("GetBytes($env:ComSpec)")
+        {
+            return false;
+        }
+    }
+
     POWERSHELL_IDENTITY_FIXTURE_MARKERS
         .iter()
         .all(|marker| source.contains(marker))
         && source.matches("GetBytes($fixtureUser)").count() >= 2
         && source.matches("GetBytes($fixtureShellPath)").count() >= 2
-        && !source.contains("[Environment]::UserName")
-        && !source.contains("GetBytes($env:ComSpec)")
 }
 
 fn verify_benchmark_dependency(dependency: &serde_json::Value) -> TaskResult {
@@ -2676,6 +2808,28 @@ fn verify_devops_test_dependency(dependency: &serde_json::Value) -> TaskResult {
         !matches!(dependency["name"].as_str(), Some("criterion" | "tempfile"))
             || dependency["kind"].as_str() == Some("dev"),
         "DevOps fixture and benchmark dependencies must remain development-only",
+    )
+}
+
+fn verify_devops_platform_dependency(dependency: &serde_json::Value) -> TaskResult {
+    let (target, features): (&str, &[&str]) = match dependency["name"].as_str() {
+        Some("libc") => ("cfg(unix)", &[]),
+        Some("windows-sys") => ("cfg(windows)", &["Win32_Storage_FileSystem"]),
+        _ => return Ok(()),
+    };
+    require(
+        dependency["kind"].is_null()
+            && dependency["target"].as_str() == Some(target)
+            && dependency["rename"].is_null()
+            && dependency["optional"].as_bool() == Some(false)
+            && dependency["features"].as_array().is_some_and(|actual| {
+                actual.len() == features.len()
+                    && actual
+                        .iter()
+                        .zip(features)
+                        .all(|(item, expected)| item.as_str() == Some(*expected))
+            }),
+        "DevOps local-file platform dependencies must remain target-local and minimal",
     )
 }
 
@@ -2710,6 +2864,7 @@ fn verify_extension_worker_contract(source: &str) -> TaskResult {
 }
 
 fn verify_architecture() -> TaskResult {
+    run_python("tools/ci/check_ssh_boundaries.py")?;
     run_python("tools/ci/check_prompt_discovery.py")?;
     run_python("tools/ci/test_prompt_discovery.py")?;
     run_python_args("tools/ci/github_free_assurance.py", &["check-policy"])?;
@@ -2747,7 +2902,11 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 17] = [
+    let private_crates: [(&str, &[&str]); 18] = [
+        (
+            "automexia-ssh-integration",
+            &["automexia-connectivity", "base64", "proptest"],
+        ),
         (
             "automexia-keybindings",
             &["criterion", "proptest", "serde", "serde_json", "sha2"],
@@ -2791,12 +2950,14 @@ fn verify_architecture() -> TaskResult {
             &[
                 "automexia-extension-api",
                 "dirs",
+                "libc",
                 "serde",
                 "serde_json",
                 "serde-saphyr",
                 "criterion",
                 "proptest",
                 "tempfile",
+                "windows-sys",
             ],
         ),
         (
@@ -2951,11 +3112,15 @@ fn verify_architecture() -> TaskResult {
             let dependency_name = dependency["name"]
                 .as_str()
                 .ok_or_else(|| format!("{name} has an unnamed dependency"))?;
+            if name == "automexia-ssh-integration" {
+                verify_ssh_planning_dependency(dependency)?;
+            }
             if matches!(name, "automexia-extension-api" | "automexia-ui-model") {
                 verify_benchmark_dependency(dependency)?;
             }
             if name == "automexia-devops" {
                 verify_devops_test_dependency(dependency)?;
+                verify_devops_platform_dependency(dependency)?;
             }
             require(
                 allowed_dependencies.contains(&dependency_name),
@@ -3086,8 +3251,8 @@ fn verify_architecture() -> TaskResult {
     let ui_model = read(&root().join("automexia-ui-model/src/lib.rs"))?;
     require(
         context_renderer.contains("automexia_ui_model::project_status")
-            && context_renderer.contains("automexia_ui_model::segment_tag_color")
-            && context_renderer.contains("automexia_ui_model::segment_tag_background")
+            && context_renderer.contains("automexia_ui_model::context_tag_colors")
+            && context_renderer.contains("crate::automexia::presentation::tag_anchor")
             && !context_renderer.contains("DevOpsSnapshot")
             && !context_renderer.contains("CloudContext")
             && !context_renderer.contains("builtins::devops")
@@ -3108,6 +3273,7 @@ fn verify_architecture() -> TaskResult {
             && ui_model.contains("pub fn segment_tag_color")
             && ui_model.contains("pub fn segment_tag_background")
             && ui_model.contains("pub fn segment_tag_surface")
+            && ui_model.contains("pub fn context_tag_colors")
             && ui_model.contains("CONTEXT_TAG_BACKGROUND_ALPHA")
             && ui_model.contains("unicode_segmentation"),
         "generic UI model lacks semantic roles, bounded timestamps/actions, responsive layout, hit testing, accessibility, contrast, or grapheme handling",
@@ -3587,18 +3753,15 @@ fn verify_architecture() -> TaskResult {
                 .exists(),
         "extracted DevOps implementation files still exist inside the frontend",
     )?;
-    for capability in [
-        "Capability::FilesystemRead",
-        "Capability::EnvironmentRead",
-        "Capability::TerminalOutputRead",
-        "Capability::UiOverlay",
-    ] {
+    for capability in ["Capability::FilesystemRead", "Capability::EnvironmentRead"] {
         require(
             devops_capabilities.contains(capability),
             &format!("DevOps manifest is missing {capability}"),
         )?;
     }
     for excessive in [
+        "Capability::TerminalOutputRead",
+        "Capability::UiOverlay",
         "Capability::SessionLaunch",
         "Capability::ProcessSpawn",
         "Capability::Network",
@@ -3609,6 +3772,14 @@ fn verify_architecture() -> TaskResult {
             &format!("DevOps manifest declares excessive privilege {excessive}"),
         )?;
     }
+    verify_devops_passive_manifest(&devops_manifest)?;
+    verify_core_output_semantics(
+        &read(&app.join("src/automexia/mod.rs"))?,
+        &read(&app.join("src/automexia/output_semantics.rs"))?,
+        &read(&app.join("src/grid_emit.rs"))?,
+        &read(&app.join("src/renderer/inline_tables.rs"))?,
+        &read(&app.join("src/renderer/mod.rs"))?,
+    )?;
 
     let ssh_root = root().join("extensions/devops-ssh");
     let ssh_manifest = read(&ssh_root.join("src/lib.rs"))?;
@@ -3846,18 +4017,58 @@ fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
         return false;
     };
     let helper: String = helper.chars().filter(|c| !c.is_whitespace()).collect();
-    let guard =
-        ".get(\"automexia_env_pending\").is_some_and(|value|value!=\"0\"){return;}";
-    let Some(guard_end) = helper.find(guard).map(|index| index + guard.len()) else {
+    let observation = "letadmission=content.session_metadata.observe(terminal);";
+    let guard = "ifmatches!(admission,session_metadata::Admission::Retain){return;}";
+    let binding = "letmetadata=|name:&str|admission.value(terminal,name);";
+    let Some(observation_end) = helper.find(observation).map(|i| i + observation.len())
+    else {
         return false;
     };
+    let Some(guard_end) = helper.find(guard).map(|i| i + guard.len()) else {
+        return false;
+    };
+    let Some(binding_end) = helper.find(binding).map(|i| i + binding.len()) else {
+        return false;
+    };
+    if guard_end <= observation_end || binding_end <= guard_end {
+        return false;
+    }
+    let helper = helper.replace(",)", ")");
     let write = match field {
-        "current_directory" => {
-            "content.current_directory.clone_from(&terminal.current_directory);"
-                .to_owned()
-        }
-        "terminal_title" => {
-            "content.terminal_title.clone_from(&terminal.title);".to_owned()
+        "current_directory" | "terminal_title" => {
+            // Admission must bound hostile OSC metadata before any owned copy,
+            // and clear an oversized old value even when readiness is retained.
+            let fragments: &[&str] = if field == "current_directory" {
+                &[
+                    "letlimit=automexia_extension_runtime::MAX_DISCOVERY_TEXT_BYTES;",
+                    "letoversized_cwd=terminal.current_directory.as_ref().is_some_and(|path|path.as_os_str().len()>limit);",
+                    "ifoversized_cwd{content.current_directory=None;}",
+                    observation,
+                    guard,
+                    binding,
+                    "letbounded_cwd=terminal.current_directory.as_ref().filter(|path|path.as_os_str().len()<=limit);",
+                    "if(oversized_cwd||!retain_seed||bounded_cwd.is_some())&&content.current_directory.as_ref()!=bounded_cwd{content.current_directory=bounded_cwd.cloned();}",
+                ]
+            } else {
+                &[
+                    "letlimit=automexia_extension_runtime::MAX_DISCOVERY_TEXT_BYTES;",
+                    "letoversized_title=terminal.title.len()>limit;",
+                    "ifoversized_title{content.terminal_title.clear();}",
+                    observation,
+                    guard,
+                    binding,
+                    "letbounded_title=if!oversized_title{terminal.title.as_str()}else{\"\"};",
+                    "if(oversized_title||!retain_seed||!terminal.title.trim().is_empty())&&content.terminal_title!=bounded_title{content.terminal_title.clear();content.terminal_title.push_str(bounded_title);}",
+                ]
+            };
+            let mut remainder = helper.as_str();
+            for fragment in fragments {
+                let Some((_, rest)) = remainder.split_once(fragment) else {
+                    return false;
+                };
+                remainder = rest;
+            }
+            return true;
         }
         "shell_integration" => {
             "content.shell_integration=live_shell_integration;".to_owned()
@@ -3875,11 +4086,89 @@ fn snapshots_renderable_field(renderer: &str, field: &str) -> bool {
                 "shell_user" => "automexia_shell_user",
                 _ => "automexia_shell_path",
             };
-            format!("sync_optional_metadata(&mutcontent.{field},terminal.user_vars.get(\"{key}\"),)")
+            format!("sync_optional_metadata(&mutcontent.{field},metadata(\"{key}\"))")
         }
         _ => return false,
     };
-    helper.find(&write).is_some_and(|index| index >= guard_end)
+    let binding_end = helper
+        .find(binding)
+        .map(|i| i + binding.len())
+        .unwrap_or(usize::MAX);
+    if field == "shell_environment"
+        && !helper.contains("|name|metadata(name).map(String::as_str)")
+    {
+        return false;
+    }
+    if field == "shell_integration"
+        && !helper.contains("letlive_shell_integration=metadata(\"automexia_shell\").is_some_and(|value|value==\"1\");")
+    {
+        return false;
+    }
+    helper
+        .find(&write)
+        .is_some_and(|index| index >= binding_end)
+}
+
+fn verify_devops_passive_manifest(source: &str) -> TaskResult {
+    let block = source
+        .split("pub const MANIFEST")
+        .nth(1)
+        .and_then(|manifest| manifest.split("};").next())
+        .ok_or("DevOps manifest block is missing")?;
+    let compact: String = block.chars().filter(|c| !c.is_whitespace()).collect();
+    let declared = compact
+        .split_once("capabilities:&[")
+        .and_then(|(_, remainder)| remainder.split_once(']'))
+        .map(|(capabilities, _)| capabilities.split(',').collect::<Vec<_>>())
+        .ok_or("DevOps manifest capability list is missing")?;
+    require(
+        declared == ["Capability::FilesystemRead", "Capability::EnvironmentRead"],
+        "DevOps passive manifest must declare only filesystem and environment read",
+    )?;
+    require(
+        !source.contains("mod semantics;") && !source.contains("classify_row_text"),
+        "generic output classification must remain core-owned",
+    )
+}
+
+fn verify_core_output_semantics(
+    core_mod: &str,
+    classifier: &str,
+    grid: &str,
+    inline_table: &str,
+    renderer: &str,
+) -> TaskResult {
+    let compact_classifier: String =
+        classifier.chars().filter(|c| !c.is_whitespace()).collect();
+    let compact_renderer: String =
+        renderer.chars().filter(|c| !c.is_whitespace()).collect();
+    require(
+        core_mod.contains("pub mod output_semantics;")
+            && classifier.contains("pub fn classify_row_text(")
+            && classifier.contains("pub fn classify_row(")
+            && classifier.contains("mod kubernetes_tables;")
+            && classifier.contains("pub use kubernetes_tables::RowClassifier;")
+            && compact_classifier.contains("presentation.kubernetes_highlighting")
+            && compact_classifier.contains("presentation.output_highlighting")
+            && grid.contains("crate::automexia::output_semantics::appearance_for(")
+            && grid.contains("crate::automexia::output_semantics::classify_row(scratch)")
+            && grid.contains("crate::automexia::output_semantics::RowClassifier::default()")
+            && grid.contains("classifier.classify(scratch)")
+            && inline_table.contains("crate::automexia::output_semantics::RowClassifier::default()")
+            && inline_table.contains("classifier.classify(&surface.table.source()[ri])")
+            && compact_renderer.contains(
+                "highlight:self.presentation.output_highlighting.then_some(self.presentation.highlight)",
+            )
+            && compact_renderer.contains(
+                "kubernetes_highlight:self.presentation.kubernetes_highlighting.then_some(self.presentation.kubernetes)",
+            )
+            && compact_renderer.contains(
+                "background:self.presentation.command_output_highlighting.then_some(self.presentation.command_output)",
+            )
+            && !grid.contains("automexia_devops::classify_row_text")
+            && !inline_table.contains("automexia_devops::classify_row_text"),
+        "output domains and independent presentation gates must remain core-owned",
+    )
 }
 
 fn verify_identity() -> TaskResult {
@@ -3967,8 +4256,8 @@ fn verify_identity() -> TaskResult {
             "Close Automexia Terminal?".to_owned(),
         ),
         (
-            "rio-window/src/platform_impl/macos/app_delegate.rs",
-            "Quit Automexia Terminal?".to_owned(),
+            "apps/automexia-terminal/src/renderer/confirm_quit.rs",
+            "Close Automexia?".to_owned(),
         ),
         (
             "packaging/windows/automexia.wxs",
@@ -4320,6 +4609,38 @@ fn package_check() -> TaskResult {
     Ok(())
 }
 
+fn package_runtime_binaries(binary: &Path, target: &str) -> [PathBuf; 3] {
+    let suffix = if target.contains("windows") {
+        ".exe"
+    } else {
+        ""
+    };
+    [
+        binary.to_path_buf(),
+        binary.with_file_name(format!("amx{suffix}")),
+        binary.with_file_name(format!("automexia-suggestion-helper{suffix}")),
+    ]
+}
+
+fn package_conpty_runtime_files(binary: &Path) -> TaskResult<[PathBuf; 3]> {
+    let directory = binary.parent().ok_or("release binary has no parent")?;
+    Ok([
+        directory.join("conpty.dll"),
+        directory.join("x64/OpenConsole.exe"),
+        directory.join("arm64/OpenConsole.exe"),
+    ])
+}
+
+fn require_package_runtime_binaries(binaries: &[PathBuf]) -> TaskResult {
+    for binary in binaries {
+        require(
+            binary.is_file(),
+            &format!("release runtime binary is missing: {}", binary.display()),
+        )?;
+    }
+    Ok(())
+}
+
 fn package_target(target: &str) -> TaskResult {
     package_check()?;
     let identity = product_identity()?;
@@ -4331,6 +4652,7 @@ fn package_target(target: &str) -> TaskResult {
                 "build",
                 "--release",
                 "--locked",
+                "--bins",
                 "-p",
                 &identity.package_name,
                 "--target",
@@ -4340,10 +4662,7 @@ fn package_target(target: &str) -> TaskResult {
     }
 
     let binary = release_binary_in(&cargo_target_dir(), target, &identity.executable);
-    require(
-        binary.is_file(),
-        &format!("release binary is missing: {}", binary.display()),
-    )?;
+    require_package_runtime_binaries(&package_runtime_binaries(&binary, target))?;
     let output = root().join("target/package").join(target);
     fs::create_dir_all(&output)
         .map_err(|error| format!("could not create {}: {error}", output.display()))?;
@@ -4353,29 +4672,32 @@ fn package_target(target: &str) -> TaskResult {
             cfg!(windows),
             "Windows packages must be produced on Windows",
         )?;
+        let runtime_root = binary.parent().ok_or("release binary has no parent")?;
+        prepare_windows_runtime(runtime_root, target)?;
         if target == "aarch64-pc-windows-msvc" {
             package_windows_arm64(&identity, &binary, &output, target)?;
         } else {
-            run(
-                "cargo",
-                &[
-                    "packager",
-                    "--manifest-path",
-                    "apps/automexia-terminal/Cargo.toml",
-                    "--release",
-                    "--binaries-dir",
-                    binary
-                        .parent()
-                        .and_then(Path::to_str)
-                        .ok_or("binary directory is not UTF-8")?,
-                    "--out-dir",
-                    output.to_str().ok_or("package path is not UTF-8")?,
-                    "--target",
-                    target,
-                    "--formats",
-                    "wix",
-                ],
-            )?;
+            let mut command = Command::new("cargo");
+            command.env("AUTOMEXIA_CONPTY_ROOT", runtime_root);
+            command.args([
+                "packager",
+                "--manifest-path",
+                "apps/automexia-terminal/Cargo.toml",
+                "--release",
+                "--no-build",
+                "--binaries-dir",
+                binary
+                    .parent()
+                    .and_then(Path::to_str)
+                    .ok_or("binary directory is not UTF-8")?,
+                "--out-dir",
+                output.to_str().ok_or("package path is not UTF-8")?,
+                "--target",
+                target,
+                "--formats",
+                "wix",
+            ]);
+            run_command(command, "Windows x64 package")?;
         }
         portable_archive(&identity, target, &binary, &output, "zip")?;
     } else if target.contains("apple-darwin") {
@@ -4390,6 +4712,7 @@ fn package_target(target: &str) -> TaskResult {
                 "--manifest-path",
                 "apps/automexia-terminal/Cargo.toml",
                 "--release",
+                "--no-build",
                 "--binaries-dir",
                 binary
                     .parent()
@@ -4469,6 +4792,24 @@ fn package_windows_arm64(
     command.args([
         "-d",
         &define(
+            "ConptyRuntimeRoot",
+            binary.parent().ok_or("release binary has no parent")?,
+        ),
+    ]);
+    command.args([
+        "-d",
+        &define("CliBinaryPath", &binary.with_file_name("amx.exe")),
+    ]);
+    command.args([
+        "-d",
+        &define(
+            "SuggestionHelperPath",
+            &binary.with_file_name("automexia-suggestion-helper.exe"),
+        ),
+    ]);
+    command.args([
+        "-d",
+        &define(
             "IconPath",
             &workspace.join("assets/brand/automexia-terminal.ico"),
         ),
@@ -4502,6 +4843,16 @@ fn portable_archive(
     output: &Path,
     extension: &str,
 ) -> TaskResult {
+    let binaries = package_runtime_binaries(binary, target);
+    // Validate the entire input set before replacing any previous staging.
+    require_package_runtime_binaries(&binaries)?;
+    let conpty = if target.contains("windows") {
+        let files = package_conpty_runtime_files(binary)?;
+        require_package_runtime_binaries(&files)?;
+        Some(files)
+    } else {
+        None
+    };
     let staging = output.join("portable");
     if staging.exists() {
         fs::remove_dir_all(&staging)
@@ -4509,9 +4860,26 @@ fn portable_archive(
     }
     fs::create_dir_all(&staging)
         .map_err(|error| format!("could not create {}: {error}", staging.display()))?;
-    let binary_name = binary.file_name().ok_or("release binary has no filename")?;
-    fs::copy(binary, staging.join(binary_name))
-        .map_err(|error| format!("could not stage {}: {error}", binary.display()))?;
+    for runtime in binaries {
+        let name = runtime
+            .file_name()
+            .ok_or("release binary has no filename")?;
+        fs::copy(&runtime, staging.join(name))
+            .map_err(|error| format!("could not stage {}: {error}", runtime.display()))?;
+    }
+    if let Some(conpty) = conpty {
+        let directory = binary.parent().ok_or("release binary has no parent")?;
+        for source in conpty {
+            let relative = source
+                .strip_prefix(directory)
+                .map_err(|_| "ConPTY asset escaped its release directory")?;
+            let destination = staging.join(relative);
+            fs::create_dir_all(destination.parent().ok_or("ConPTY asset has no parent")?)
+                .map_err(|_| "could not create ConPTY package directory")?;
+            fs::copy(source, destination)
+                .map_err(|_| "could not copy verified ConPTY package asset")?;
+        }
+    }
     for document in [
         "LICENSE",
         "NOTICE.md",
@@ -4685,6 +5053,11 @@ fn package_linux(
         .env("NFPM_ARCH", arch)
         .env("AUTOMEXIA_VERSION", &identity.version)
         .env("AUTOMEXIA_BINARY", binary)
+        .env("AUTOMEXIA_CLI_BINARY", binary.with_file_name("amx"))
+        .env(
+            "AUTOMEXIA_SUGGESTION_HELPER_BINARY",
+            binary.with_file_name("automexia-suggestion-helper"),
+        )
         .env("AUTOMEXIA_MANPAGE", &manpage)
         .env("AUTOMEXIA_CHANGELOG", &changelog)
         .env("AUTOMEXIA_DEBIAN_CHANGELOG", &debian_changelog)
@@ -5209,6 +5582,7 @@ mod tests {
         assert!(script.contains("-rss_limit_mb=768 -timeout=15"));
         assert!(script.contains("mktemp -d /tmp/automexia-image-fuzz.XXXXXX"));
         assert!(script.contains("$fuzz_workspace/target"));
+        assert!(script.contains("CARGO_BUILD_BUILD_DIR=\"$fuzz_workspace/target/build\""));
         assert!(script.contains("$fuzz_workspace/corpus"));
         assert!(script.contains("source_root=$1"));
         assert!(script.starts_with("set -euo pipefail;"));
@@ -5289,6 +5663,64 @@ mod tests {
     }
 
     #[test]
+    fn devops_file_platform_dependencies_stay_target_local_and_minimal() {
+        let workspace = metadata().unwrap();
+        let package = workspace["packages"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .find(|package| package["name"].as_str() == Some("automexia-devops"))
+            .unwrap();
+        for name in ["libc", "windows-sys"] {
+            let matching = package["dependencies"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .filter(|dependency| dependency["name"].as_str() == Some(name))
+                .collect::<Vec<_>>();
+            assert_eq!(matching.len(), 1, "{name} must have one narrow declaration");
+            verify_devops_platform_dependency(matching[0]).unwrap();
+        }
+        for (name, target, features) in [
+            ("libc", "cfg(unix)", serde_json::json!([])),
+            (
+                "windows-sys",
+                "cfg(windows)",
+                serde_json::json!(["Win32_Storage_FileSystem"]),
+            ),
+        ] {
+            let mut dependency = serde_json::json!({
+                "name": name,
+                "kind": null,
+                "target": target,
+                "rename": null,
+                "optional": false,
+                "features": features,
+            });
+            assert!(verify_devops_platform_dependency(&dependency).is_ok());
+            for (field, replacement) in [
+                ("kind", serde_json::json!("build")),
+                ("target", serde_json::json!("cfg(any(unix, windows))")),
+                ("rename", serde_json::json!("alias")),
+                ("optional", serde_json::json!(true)),
+                (
+                    "features",
+                    serde_json::json!(["Win32_NetworkManagement_NetManagement"]),
+                ),
+            ] {
+                let original = dependency[field].clone();
+                dependency[field] = replacement;
+                assert!(verify_devops_platform_dependency(&dependency).is_err());
+                dependency[field] = original;
+            }
+        }
+        assert!(verify_devops_platform_dependency(
+            &serde_json::json!({"name": "serde-saphyr"})
+        )
+        .is_ok());
+    }
+
+    #[test]
     fn model_benchmark_dependency_rejects_runtime_build_and_renamed_mutations() {
         for kind in [
             serde_json::Value::Null,
@@ -5345,6 +5777,49 @@ mod tests {
             "GetBytes($fixtureShellPath)",
             "GetBytes($env:ComSpec)"
         )));
+    }
+
+    #[test]
+    fn powershell_identity_fixture_only_allows_the_exact_ephemeral_probe() {
+        let source = read(&root().join("tools/ci/test_shell_integration.ps1")).unwrap();
+        let reindented_crlf = source
+            .lines()
+            .map(|line| format!("\t{}\r\n", line.trim_start()))
+            .collect::<String>();
+        assert!(powershell_identity_fixture_is_fictional(&reindented_crlf));
+
+        for mutation in [
+            source.replace("$identity = [Environment]", "$script:identity = [Environment]"),
+            source.replace("$identity = [Environment]", "$global:identity = [Environment]"),
+            source.replace(
+                "$referenceHash.Dispose()",
+                "$referenceHash.Dispose(); Write-Output $identity",
+            ),
+            source.replace(
+                "$referenceHash.Dispose()",
+                "$referenceHash.Dispose(); [IO.File]::WriteAllText('identity.txt', $identity)",
+            ),
+            source.replace(
+                "$referenceHash.Dispose()",
+                "$referenceHash.Dispose(); $identity",
+            ),
+            source.replace(
+                "throw 'Nested CMD identity reference does not match its launch identity'",
+                "throw $expected",
+            ),
+            source.replace(
+                "[Environment]::UserName + [char]0",
+                "[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:AUTOMEXIA_CMD_USER_BASE64)) + [char]0",
+            ),
+            format!("{source}\n$leak = [Environment]::UserName\n"),
+            format!("$leak = [Environment]::UserName\n{source}"),
+            format!("{source}\n{POWERSHELL_EPHEMERAL_IDENTITY_PROBE}\n"),
+        ] {
+            assert!(
+                !powershell_identity_fixture_is_fictional(&mutation),
+                "identity probe changes must preserve the exact in-memory-only contract"
+            );
+        }
     }
 
     #[test]
@@ -5409,6 +5884,160 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("file-count or byte ceiling"));
+    }
+
+    #[test]
+    fn portable_packages_preserve_all_runtime_binaries_and_target_names() {
+        // Windows ships bsdtar with ZIP support; GNU tar uses tar.gz here.
+        let native_extension = if cfg!(windows) { "zip" } else { "tar.gz" };
+        for (target, extension, suffix) in [
+            ("x86_64-pc-windows-msvc", native_extension, ".exe"),
+            ("aarch64-pc-windows-msvc", "tar.gz", ".exe"),
+            ("x86_64-unknown-linux-gnu", "tar.gz", ""),
+            ("aarch64-unknown-linux-gnu", native_extension, ""),
+        ] {
+            let temporary = tempfile::tempdir().unwrap();
+            let source = temporary.path().join("release inputs");
+            let output = temporary.path().join("package output");
+            fs::create_dir_all(&source).unwrap();
+            fs::create_dir_all(&output).unwrap();
+            let names = ["automexia", "amx", "automexia-suggestion-helper"];
+            for name in names {
+                let path = source.join(format!("{name}{suffix}"));
+                fs::write(&path, name).unwrap();
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
+                }
+            }
+            if target.contains("windows") {
+                for relative in
+                    ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
+                {
+                    let asset = source.join(relative);
+                    fs::create_dir_all(asset.parent().unwrap()).unwrap();
+                    fs::write(asset, relative.as_bytes()).unwrap();
+                }
+            }
+            let identity = product_identity().unwrap();
+            portable_archive(
+                &identity,
+                target,
+                &source.join(format!("automexia{suffix}")),
+                &output,
+                extension,
+            )
+            .unwrap();
+            let archive = output.join(format!(
+                "{}-{}-{target}.{extension}",
+                identity.package_name, identity.version
+            ));
+            let extracted = temporary.path().join("extracted");
+            fs::create_dir_all(&extracted).unwrap();
+            assert!(Command::new("tar")
+                .arg("-xf")
+                .arg(archive)
+                .arg("-C")
+                .arg(&extracted)
+                .status()
+                .unwrap()
+                .success());
+            if target.contains("windows") {
+                for relative in
+                    ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
+                {
+                    assert_eq!(
+                        fs::read(extracted.join(relative)).unwrap(),
+                        relative.as_bytes()
+                    );
+                }
+                assert!(!extracted.join("OpenConsole.exe").exists());
+            }
+            for name in names {
+                let path = extracted.join(format!("{name}{suffix}"));
+                assert_eq!(
+                    fs::read(&path).unwrap(),
+                    name.as_bytes(),
+                    "{target}: {name} must retain the exact supplied bytes"
+                );
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    assert_eq!(
+                        fs::metadata(path).unwrap().permissions().mode() & 0o777,
+                        0o755
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn portable_packages_reject_missing_conpty_before_replacing_staging() {
+        for missing in ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"] {
+            let temporary = tempfile::tempdir().unwrap();
+            let source = temporary.path().join("release");
+            let output = temporary.path().join("packages");
+            fs::create_dir_all(&source).unwrap();
+            fs::create_dir_all(output.join("portable")).unwrap();
+            let retained = output.join("portable/retained.txt");
+            fs::write(&retained, b"previous package").unwrap();
+            for relative in [
+                "automexia.exe",
+                "amx.exe",
+                "automexia-suggestion-helper.exe",
+                "conpty.dll",
+                "x64/OpenConsole.exe",
+                "arm64/OpenConsole.exe",
+            ] {
+                if relative != missing {
+                    let asset = source.join(relative);
+                    fs::create_dir_all(asset.parent().unwrap()).unwrap();
+                    fs::write(asset, relative.as_bytes()).unwrap();
+                }
+            }
+            assert!(portable_archive(
+                &product_identity().unwrap(),
+                "x86_64-pc-windows-msvc",
+                &source.join("automexia.exe"),
+                &output,
+                "zip"
+            )
+            .is_err());
+            assert_eq!(fs::read(retained).unwrap(), b"previous package");
+        }
+    }
+
+    #[test]
+    fn portable_packages_reject_missing_companions_before_replacing_staging() {
+        for missing in ["amx.exe", "automexia-suggestion-helper.exe"] {
+            let temporary = tempfile::tempdir().unwrap();
+            let source = temporary.path().join("release");
+            let output = temporary.path().join("packages");
+            fs::create_dir_all(&source).unwrap();
+            fs::create_dir_all(output.join("portable")).unwrap();
+            let retained = output.join("portable/retained.txt");
+            fs::write(&retained, b"previous package").unwrap();
+            for name in [
+                "automexia.exe",
+                "amx.exe",
+                "automexia-suggestion-helper.exe",
+            ] {
+                if name != missing {
+                    fs::write(source.join(name), name).unwrap();
+                }
+            }
+            assert!(portable_archive(
+                &product_identity().unwrap(),
+                "x86_64-pc-windows-msvc",
+                &source.join("automexia.exe"),
+                &output,
+                "zip",
+            )
+            .is_err());
+            assert_eq!(fs::read(retained).unwrap(), b"previous package");
+        }
     }
 
     #[test]
@@ -5513,6 +6142,7 @@ mod tests {
     fn metadata_snapshot_check_rejects_disconnected_or_unguarded_owner() {
         let renderer =
             include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        assert!(snapshots_renderable_field(renderer, "current_directory"));
         for broken in [
             renderer.replace(
                 "sync_session_metadata(&mut context.renderable_content, &*terminal);",
@@ -5520,16 +6150,222 @@ mod tests {
             ),
             renderer.replace("fn sync_session_metadata<", "fn unused_session_metadata<"),
             renderer.replace(
-                ".is_some_and(|value| value != \"0\")",
-                ".is_some_and(|_| false)",
+                "content.session_metadata.observe(terminal)",
+                "session_metadata::Admission::Legacy",
             ),
             renderer.replace(
-                ".clone_from(&terminal.current_directory)",
-                ".clone_from(&None)",
+                "matches!(admission, session_metadata::Admission::Retain)",
+                "false",
+            ),
+            renderer.replace(
+                "admission.value(terminal, name)",
+                "terminal.user_vars.get(name)",
             ),
         ] {
-            assert_ne!(broken, renderer, "mutation must change its intended source");
+            assert!(
+                broken != renderer,
+                "mutation must change its intended source"
+            );
             assert!(!snapshots_renderable_field(&broken, "current_directory"));
+        }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_rejects_unbounded_or_retained_osc_values() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        for (field, source, replacement) in [
+            (
+                "current_directory",
+                "MAX_DISCOVERY_TEXT_BYTES",
+                "usize::MAX",
+            ),
+            (
+                "current_directory",
+                "path.as_os_str().len() <= limit",
+                "true",
+            ),
+            (
+                "current_directory",
+                "bounded_cwd.cloned()",
+                "terminal.current_directory.clone()",
+            ),
+            (
+                "current_directory",
+                "if oversized_cwd {\n        content.current_directory = None;\n    }",
+                "if false {\n        content.current_directory = None;\n    }",
+            ),
+            ("terminal_title", "MAX_DISCOVERY_TEXT_BYTES", "usize::MAX"),
+            ("terminal_title", "if !oversized_title {", "if true {"),
+            (
+                "terminal_title",
+                "content.terminal_title.push_str(bounded_title)",
+                "content.terminal_title.push_str(&terminal.title)",
+            ),
+            (
+                "terminal_title",
+                "if oversized_title {\n        content.terminal_title.clear();\n    }",
+                "if false {\n        content.terminal_title.clear();\n    }",
+            ),
+        ] {
+            let broken = renderer.replace(source, replacement);
+            assert_ne!(
+                broken, renderer,
+                "mutation must change its source: {source}"
+            );
+            assert!(
+                !snapshots_renderable_field(&broken, field),
+                "unbounded or retained {field}: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn devops_passive_manifest_and_core_output_owner_reject_privilege_drift() {
+        let devops = read(&root().join("automexia-devops/src/lib.rs")).unwrap();
+        verify_devops_passive_manifest(&devops).unwrap();
+        for capability in [
+            "TerminalOutputRead",
+            "UiOverlay",
+            "ProcessSpawn",
+            "Network",
+            "Clipboard",
+            "SessionLaunch",
+        ] {
+            let broken = devops.replace(
+                "Capability::EnvironmentRead],",
+                &format!("Capability::EnvironmentRead, Capability::{capability}],"),
+            );
+            assert_ne!(broken, devops);
+            assert!(verify_devops_passive_manifest(&broken).is_err());
+        }
+        for (source, replacement) in [
+            ("Capability::FilesystemRead", "Capability::Clipboard"),
+            ("Capability::EnvironmentRead", "Capability::Clipboard"),
+            ("mod model;", "mod semantics;\nmod model;"),
+        ] {
+            let broken = devops.replace(source, replacement);
+            assert_ne!(broken, devops);
+            assert!(verify_devops_passive_manifest(&broken).is_err());
+        }
+
+        let app = root().join("apps/automexia-terminal/src");
+        let sources = [
+            read(&app.join("automexia/mod.rs")).unwrap(),
+            read(&app.join("automexia/output_semantics.rs")).unwrap(),
+            read(&app.join("grid_emit.rs")).unwrap(),
+            read(&app.join("renderer/inline_tables.rs")).unwrap(),
+            read(&app.join("renderer/mod.rs")).unwrap(),
+        ];
+        verify_core_output_semantics(
+            &sources[0],
+            &sources[1],
+            &sources[2],
+            &sources[3],
+            &sources[4],
+        )
+        .unwrap();
+        for (owner, source, replacement) in [
+            (
+                0,
+                "pub mod output_semantics;",
+                "pub mod migrated_semantics;",
+            ),
+            (1, "pub fn classify_row_text(", "fn classify_row_text("),
+            (1, "pub fn classify_row(", "fn classify_row("),
+            (1, "mod kubernetes_tables;", "mod detached_tables;"),
+            (
+                1,
+                "pub use kubernetes_tables::RowClassifier;",
+                "pub use unrelated_tables::RowClassifier;",
+            ),
+            (1, "kubernetes_highlighting", "unconditional_kubernetes"),
+            (1, "output_highlighting", "unconditional_output"),
+            (
+                2,
+                "crate::automexia::output_semantics::appearance_for(",
+                "unconditional_appearance(",
+            ),
+            (
+                2,
+                "crate::automexia::output_semantics::classify_row(scratch)",
+                "automexia_devops::classify_row_text(scratch)",
+            ),
+            (
+                3,
+                "crate::automexia::output_semantics::RowClassifier::default()",
+                "automexia_devops::RowClassifier::default()",
+            ),
+            (
+                2,
+                "crate::automexia::output_semantics::RowClassifier::default()",
+                "automexia_devops::RowClassifier::default()",
+            ),
+            (
+                2,
+                "classifier.classify(scratch)",
+                "unrelated_classifier(scratch)",
+            ),
+            (
+                3,
+                "classifier.classify(&surface.table.source()[ri])",
+                "unrelated_classifier(&surface.table.source()[ri])",
+            ),
+            (4, "output_highlighting", "disabled_highlighting"),
+            (
+                4,
+                "kubernetes_highlighting",
+                "disabled_kubernetes_highlighting",
+            ),
+            (
+                4,
+                "command_output_highlighting",
+                "disabled_command_output_highlighting",
+            ),
+        ] {
+            let mut broken = sources.clone();
+            broken[owner] = broken[owner].replace(source, replacement);
+            assert_ne!(broken[owner], sources[owner]);
+            assert!(
+                verify_core_output_semantics(
+                    &broken[0], &broken[1], &broken[2], &broken[3], &broken[4]
+                )
+                .is_err(),
+                "core output owner mutation was accepted: {source}"
+            );
+        }
+    }
+
+    #[test]
+    fn metadata_snapshot_check_rejects_unbound_environment_and_activation() {
+        let renderer =
+            include_str!("../../../apps/automexia-terminal/src/renderer/mod.rs");
+        for (field, source, replacement) in [
+            (
+                "shell_environment",
+                "|name| metadata(name).map(String::as_str)",
+                "|name| terminal.user_vars.get(name).map(String::as_str)",
+            ),
+            (
+                "shell_integration",
+                "metadata(\"automexia_shell\")",
+                "terminal.user_vars.get(\"automexia_shell\")",
+            ),
+            (
+                "shell_user",
+                "metadata(\"automexia_shell_user\")",
+                "terminal.user_vars.get(\"automexia_shell_user\")",
+            ),
+        ] {
+            let broken = renderer.replace(source, replacement);
+            assert!(
+                broken != renderer,
+                "mutation must change its intended source"
+            );
+            assert!(
+                !snapshots_renderable_field(&broken, field),
+                "unbound {field}"
+            );
         }
     }
 
@@ -5732,11 +6568,26 @@ mod tests {
     }
 
     #[test]
+    fn isolated_cargo_command_owns_intermediate_build_directory() {
+        for target in [
+            Path::new("fixture-first-target"),
+            Path::new("fixture second target"),
+        ] {
+            let command = cargo_command(target, &["check", "--workspace"]);
+            let intermediate = command.get_envs().find_map(|(name, value)| {
+                (name == "CARGO_BUILD_BUILD_DIR").then_some(value).flatten()
+            });
+            let expected = target.join("build");
+            assert_eq!(intermediate, Some(expected.as_os_str()));
+        }
+    }
+
+    #[test]
     fn successful_readiness_diagnostics_use_logical_target_labels() {
         let invocation = isolated_cargo_invocation(&["check", "--workspace"]);
         assert_eq!(
             invocation,
-            "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<isolated-verification-target> cargo check --workspace"
+            "+ CARGO_INCREMENTAL=0 CARGO_TARGET_DIR=<isolated-verification-target> CARGO_BUILD_BUILD_DIR=<isolated-verification-target>/build cargo check --workspace"
         );
         assert!(!invocation.contains(r"C:\Users\alice\private-checkout"));
         assert_eq!(
@@ -5762,5 +6613,71 @@ mod tests {
             normalize_canonical_path(PathBuf::from(r"\\?\UNC\server\share\target")),
             PathBuf::from(r"\\server\share\target")
         );
+    }
+}
+
+fn test_ssh_integration() -> TaskResult {
+    run_python_args(
+        "tools/ci/check_ssh_library.py",
+        &["--shell-only", "--require-bash"],
+    )
+}
+
+// Normal and target-specific declarations are all present in Cargo metadata.
+// Keep this check in the canonical architecture owner, not the SSH library.
+fn verify_ssh_planning_dependency(dependency: &serde_json::Value) -> TaskResult {
+    let name = dependency["name"].as_str().unwrap_or("");
+    let kind = dependency["kind"].as_str();
+    let accepted = matches!(
+        (name, kind),
+        ("automexia-connectivity" | "base64", None) | ("proptest", Some("dev"))
+    );
+    require(
+        accepted
+            && dependency["target"].is_null()
+            && dependency["rename"].is_null()
+            && dependency["optional"].as_bool() == Some(false),
+        "SSH planning dependency changed kind, target, identity, or authority",
+    )
+}
+
+#[cfg(test)]
+mod ssh_planning_dependency_tests {
+    use super::*;
+    fn dependency(name: &str, kind: Option<&str>) -> serde_json::Value {
+        serde_json::json!({"name":name,"kind":kind,"target":null,"rename":null,"optional":false})
+    }
+    #[test]
+    fn reviewed_normal_and_test_dependencies_are_accepted() {
+        for (name, kind) in [
+            ("base64", None),
+            ("automexia-connectivity", None),
+            ("proptest", Some("dev")),
+        ] {
+            assert!(verify_ssh_planning_dependency(&dependency(name, kind)).is_ok());
+        }
+    }
+    #[test]
+    fn runtime_test_tool_and_build_dependencies_are_rejected() {
+        assert!(verify_ssh_planning_dependency(&dependency("proptest", None)).is_err());
+        assert!(
+            verify_ssh_planning_dependency(&dependency("base64", Some("build"))).is_err()
+        );
+        assert!(verify_ssh_planning_dependency(&dependency("reqwest", None)).is_err());
+    }
+    #[test]
+    fn platform_condition_does_not_hide_dependency_authority() {
+        let mut value = dependency("base64", None);
+        value["target"] = "cfg(windows)".into();
+        assert!(verify_ssh_planning_dependency(&value).is_err());
+    }
+    #[test]
+    fn renames_and_optional_flags_are_rejected() {
+        let mut value = dependency("base64", None);
+        value["rename"] = "opaque".into();
+        assert!(verify_ssh_planning_dependency(&value).is_err());
+        value["rename"] = serde_json::Value::Null;
+        value["optional"] = true.into();
+        assert!(verify_ssh_planning_dependency(&value).is_err());
     }
 }

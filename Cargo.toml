@@ -6,6 +6,7 @@ members = [
     "automexia-ecosystem",
     "automexia-ecosystem-runtime",
     "automexia-connectivity",
+    "automexia-ssh-integration",
     "automexia-command-productivity",
     "automexia-devops",
     "extensions/devops-aws",
@@ -70,6 +71,7 @@ automexia-extension-runtime = { path = "automexia-extension-runtime", version = 
 automexia-ecosystem = { path = "automexia-ecosystem", version = "0.4.0" }
 automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.4.0" }
 automexia-connectivity = { path = "automexia-connectivity", version = "0.4.0" }
+automexia-ssh-integration = { path = "automexia-ssh-integration", version = "0.4.0" }
 automexia-command-productivity = { path = "automexia-command-productivity", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
 automexia-devops-aws = { path = "extensions/devops-aws", version = "0.4.0" }
@@ -158,7 +160,7 @@ configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
-wasmtime = { version = "48.0.1", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wasmtime = { version = "48.0.3", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
 # Keep the tools on the reviewed Wasmtime parser generation (D7/CP6).
 wit-parser = "=0.254.0"
 wat = "=1.254.0"

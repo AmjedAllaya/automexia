@@ -752,6 +752,47 @@ mod pane_tab_tests {
     }
 
     #[test]
+    fn single_and_split_pane_coordinates_include_panel_offset_and_local_tabs() {
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            for split in [false, true] {
+                for tabs in [false, true] {
+                    let mut grid = if split {
+                        two_panel_grid()
+                    } else {
+                        ContextGrid::new(
+                            dead(11),
+                            Margin::default(),
+                            [0.0; 4],
+                            [0.0; 4],
+                            Default::default(),
+                        )
+                    };
+                    grid.scale = scale;
+                    grid.scaled_margin = Margin::new(48.0 * scale, 4.0, 8.0, 2.0 * scale);
+                    let item = grid.inner.get_mut(&grid.current).unwrap();
+                    // Even a single panel has an offset from its border/padding.
+                    item.layout_rect = [2.0 * scale, 2.0 * scale, 800.0, 600.0];
+                    if tabs {
+                        item.push_tab_core(dead(33));
+                    }
+                    let (_, margin) = grid.current_context_with_computed_dimension();
+                    assert_eq!(
+                        margin.left,
+                        4.0 * scale,
+                        "split={split}, tabs={tabs}, scale={scale}"
+                    );
+                    assert_eq!(
+                        margin.top,
+                        (50.0 + if tabs { 36.0 } else { 0.0 }) * scale
+                    );
+                    assert_eq!(margin.right, 4.0);
+                    assert_eq!(margin.bottom, 8.0);
+                }
+            }
+        }
+    }
+
+    #[test]
     fn parked_restore_keeps_zoom_and_unzoom_at_the_new_viewport() {
         let mut grid = two_panel_grid();
         let routes = grid.route_ids();
@@ -2153,37 +2194,9 @@ impl<T: rio_backend::event::EventListener> ContextGrid<T> {
     }
 
     pub fn current_context_with_computed_dimension(&self) -> (&Context<T>, Margin) {
-        let len = self.inner.len();
-        if len <= 1 {
-            if let Some(item) = self.inner.get(&self.current) {
-                let rail = pane_tab_rail_reserved_height(
-                    item.layout_rect[3],
-                    self.scale,
-                    item.tab_count(),
-                );
-                let mut margin = self.scaled_margin;
-                margin.top += rail;
-                return (&item.val, margin);
-            } else if let Some(root) = self.root {
-                if let Some(item) = self.inner.get(&root) {
-                    let rail = pane_tab_rail_reserved_height(
-                        item.layout_rect[3],
-                        self.scale,
-                        item.tab_count(),
-                    );
-                    let mut margin = self.scaled_margin;
-                    margin.top += rail;
-                    return (&item.val, margin);
-                }
-            }
-            panic!("Grid is in an invalid state - no contexts available");
-        }
-
         if let Some(current_item) = self.inner.get(&self.current) {
-            // For multi-panel layouts, the margin must include the panel's
-            // absolute offset so that mouse coordinates (which are relative
-            // to the window) are correctly translated to panel-local grid
-            // positions.
+            // Even one panel has a border/padding offset. Rendering, semantic
+            // command boundaries and pointer translation must share its origin.
             let [abs_x, abs_y, _, _] = current_item.layout_rect;
             let margin = Margin {
                 left: self.scaled_margin.left + abs_x,

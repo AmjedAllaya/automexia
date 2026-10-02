@@ -15,6 +15,7 @@ use super::marketplace::{self, MarketItem};
 pub const MAX_EXTENSION_SNAPSHOT_ITEMS: usize = 128;
 pub const DEVOPS_CONTEXT_STATUS_ID: &str =
     "extension.automexia.devops.context_status.enabled";
+pub const DEVOPS_GIT_STATUS_ID: &str = "extension.automexia.devops.git_status.enabled";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ExtensionSettingsError {
@@ -51,14 +52,14 @@ pub fn extension_settings(
         if membership.get(manifest.id) != Some(&true) {
             continue;
         }
-        let mut entry = if manifest.id == super::builtins::devops::ID {
+        if manifest.id == super::builtins::devops::ID {
             let selected = feature_enabled(DEVOPS_CONTEXT_STATUS_ID);
             let mut descriptor = SettingDescriptor::boolean(
                 SettingId::new(DEVOPS_CONTEXT_STATUS_ID)
                     .map_err(|_| ExtensionSettingsError::InvalidDescriptor)?,
-                Section::Extensions,
-                "DevOps context",
-                "Show local environment context above shell prompts.",
+                Section::Customizations,
+                "DevOps detection",
+                "Kubernetes, Docker, cloud and Terraform.",
                 selected.unwrap_or(true),
                 true,
             );
@@ -68,7 +69,27 @@ pub fn extension_settings(
                 ValueOrigin::Extension
             };
             descriptor.keywords = vec!["prompt".into(), "environment".into()];
-            descriptor
+            descriptor.owner = SettingOwner::Extension(manifest.id.into());
+            entries.push(descriptor);
+
+            let selected = feature_enabled(DEVOPS_GIT_STATUS_ID);
+            let mut descriptor = SettingDescriptor::boolean(
+                SettingId::new(DEVOPS_GIT_STATUS_ID)
+                    .map_err(|_| ExtensionSettingsError::InvalidDescriptor)?,
+                Section::Customizations,
+                "Git branch tag",
+                "Show the current Git branch.",
+                selected.unwrap_or(true),
+                true,
+            );
+            descriptor.origin = if selected.is_some() {
+                ValueOrigin::User
+            } else {
+                ValueOrigin::Extension
+            };
+            descriptor.keywords = vec!["git".into(), "branch".into(), "prompt".into()];
+            descriptor.owner = SettingOwner::Extension(manifest.id.into());
+            entries.push(descriptor);
         } else {
             // These adapters exist, but their protected activation remains gated.
             // A summary must not invent executable, configurable subfeatures.
@@ -76,7 +97,7 @@ pub fn extension_settings(
             let reason = super::connections::PROVIDER_ACTIVATION_BLOCKER;
             #[cfg(target_arch = "wasm32")]
             let reason = "Provider integration is unavailable on this platform";
-            SettingDescriptor {
+            let entry = SettingDescriptor {
                 id: SettingId::new(format!("extension.{}.availability", manifest.id))
                     .map_err(|_| ExtensionSettingsError::InvalidDescriptor)?,
                 owner: SettingOwner::Extension(manifest.id.into()),
@@ -92,10 +113,9 @@ pub fn extension_settings(
                     reason: reason.into(),
                 },
                 scope: ChangeScope::Immediate,
-            }
-        };
-        entry.owner = SettingOwner::Extension(manifest.id.into());
-        entries.push(entry);
+            };
+            entries.push(entry);
+        }
     }
     Ok(entries)
 }
@@ -108,7 +128,9 @@ pub fn is_known_boolean_feature(id: &str) -> bool {
 /// Exact stable identity lookup never treats labels or capability names as features.
 pub fn feature_owner(id: &str) -> Option<&'static str> {
     match id {
-        DEVOPS_CONTEXT_STATUS_ID => Some(super::builtins::devops::ID),
+        DEVOPS_CONTEXT_STATUS_ID | DEVOPS_GIT_STATUS_ID => {
+            Some(super::builtins::devops::ID)
+        }
         _ => None,
     }
 }

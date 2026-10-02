@@ -48,6 +48,25 @@ def guest(action: str, value: str | None, shell: str = "bash") -> None:
         result = run(["kubectl", "--kubeconfig", str(path), "config", "set-context", "--current", "--namespace=sandbox"])
         if result.returncode:
             raise RuntimeError("native kubectl fixture mutation failed")
+    elif action == "switch":
+        created = run(["kubectl", "--kubeconfig", str(path), "config", "set-context", "fixture-second",
+                       "--cluster=fixture", "--user=fixture", "--namespace=second"])
+        selected = run(["kubectl", "--kubeconfig", str(path), "config", "use-context", "fixture-second"])
+        if created.returncode or selected.returncode:
+            raise RuntimeError("native kubectl fixture switch failed")
+    elif action == "remove-current":
+        result = run(["kubectl", "--kubeconfig", str(path), "config", "delete-context", "fixture-second"])
+        if result.returncode:
+            raise RuntimeError("native kubectl fixture context deletion failed")
+    elif action == "link":
+        link = path.with_name(path.name + ".link")
+        link.symlink_to(path)
+        print(link)
+    elif action == "unlink":
+        link = path.with_name(path.name + ".link")
+        if not link.is_symlink():
+            raise RuntimeError("native fixture link missing")
+        link.unlink()
     elif action == "clear":
         path.write_text("{}", encoding="utf-8")
     elif action == "prompt":
@@ -96,6 +115,7 @@ def verify(binary: pathlib.Path, distro: str, report: pathlib.Path) -> None:
         "environment": {"HOME": "/fixture", "KUBECONFIG": fixture},
     }
     samples: list[float] = []
+    linked = False
 
     def read(expected: dict | None) -> None:
         start = time.perf_counter()
@@ -118,6 +138,20 @@ def verify(binary: pathlib.Path, distro: str, report: pathlib.Path) -> None:
             raise RuntimeError("native fixture mutation failed")
         for _ in range(20):
             read({"context": "fixture", "namespace": "sandbox"})
+        if run([*prefix, "switch", "--value", fixture]).returncode:
+            raise RuntimeError("native fixture context switch failed")
+        read({"context": "fixture-second", "namespace": "second"})
+        linked_result = run([*prefix, "link", "--value", fixture])
+        if linked_result.returncode:
+            raise RuntimeError("native fixture link creation failed")
+        linked = True
+        original_path = request["environment"]["KUBECONFIG"]
+        request["environment"]["KUBECONFIG"] = linked_result.stdout.decode("utf-8").strip()
+        read(None)
+        request["environment"]["KUBECONFIG"] = original_path
+        if run([*prefix, "remove-current", "--value", fixture]).returncode:
+            raise RuntimeError("native fixture context deletion failed")
+        read(None)
         if run([*prefix, "clear", "--value", fixture]).returncode:
             raise RuntimeError("native fixture clear failed")
         read(None)
@@ -125,7 +159,9 @@ def verify(binary: pathlib.Path, distro: str, report: pathlib.Path) -> None:
         if invalid.returncode != 2 or invalid.stdout or invalid.stderr:
             raise RuntimeError("invalid helper request was not rejected silently")
     finally:
-        if run([*prefix, "delete", "--value", fixture]).returncode:
+        link_cleaned = not linked or run([*prefix, "unlink", "--value", fixture]).returncode == 0
+        file_cleaned = run([*prefix, "delete", "--value", fixture]).returncode == 0
+        if not link_cleaned or not file_cleaned:
             raise RuntimeError("native fixture cleanup failed")
     # Never retain request arguments, temporary paths, usernames or raw output.
     evidence = {"status": "pass", "platform": "Windows-host/WSL-filesystem", "samples": len(samples),
@@ -138,7 +174,7 @@ def verify(binary: pathlib.Path, distro: str, report: pathlib.Path) -> None:
 
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--guest", choices=["create", "mutate", "clear", "delete", "prompt"])
+    parser.add_argument("--guest", choices=["create", "mutate", "switch", "remove-current", "link", "unlink", "clear", "delete", "prompt"])
     parser.add_argument("--shell", choices=["bash", "zsh", "fish"], default="bash")
     parser.add_argument("--value")
     parser.add_argument("--binary", type=pathlib.Path)

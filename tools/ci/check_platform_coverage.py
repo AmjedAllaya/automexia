@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -1067,7 +1068,11 @@ def validate_windows_release_trust_contract(source: str) -> None:
         "TimeStamperCertificate",
         "1.3.6.1.5.5.7.3.3",
         "MaximumSignatureAgeHours",
-        "automexia-portable-$portableIndex.exe",
+        "$portableBinaries = @(Expand-TrustedPortableArchive -Path $zip.FullName)",
+        "foreach ($portableBinary in $portableBinaries)",
+        "Assert-TrustedSignature -Path $portableBinary",
+        "Copy-Item -LiteralPath $portableBinary -Destination",
+        "$runtime-portable-$portableIndex.exe",
         "-DisableRemediation",
         "Wait-Job -Job $scanJob -Timeout $ScanTimeoutSeconds",
         "Stop-Job -Job $scanJob",
@@ -1077,6 +1082,23 @@ def validate_windows_release_trust_contract(source: str) -> None:
             fragment in source,
             f"Windows release trust script is missing {fragment!r}",
         )
+    # All packaged runtimes must survive both the exact ZIP allowlist and the
+    # extraction/version-check loop. A name elsewhere (including a comment)
+    # does not establish either boundary. Execution fixtures cover the reader.
+    runtime_names = {"automexia.exe", "amx.exe", "automexia-suggestion-helper.exe"}
+    allowlist = re.search(r"\$expectedFiles\s*=\s*@\((.*?)\)", source, re.DOTALL)
+    require(
+        allowlist is not None
+        and runtime_names.issubset(set(re.findall(r"'([^']*)'", allowlist.group(1)))),
+        "Windows release trust ZIP allowlist must require all three runtime executables",
+    )
+    runtime_loops = re.findall(
+        r"foreach\s*\(\s*\$runtime\s+in\s+@\((.*?)\)\s*\)", source, re.DOTALL
+    )
+    require(
+        any(set(re.findall(r"'([^']*)'", names)) == runtime_names for names in runtime_loops),
+        "Windows release trust must verify and return all three runtime executables",
+    )
     lowered = source.casefold()
     require(
         "add-mppreference" not in lowered

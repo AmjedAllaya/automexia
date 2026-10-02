@@ -2,6 +2,10 @@
 
 Status: accepted for current source; vendor bundle and other Windows architectures require separate native evidence.
 
+The subsequent pinned vendor deployment and its evidence boundaries are defined
+in [ADR 0082](0082-pinned-windows-console-runtime.md). This decision continues to
+own library selection and lifetime, including the inbox fallback.
+
 ## Owner and decision
 
 The existing `teletypewriter::windows::conpty` adapter owns optional library

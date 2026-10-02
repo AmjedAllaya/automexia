@@ -5,6 +5,7 @@ pub const MAX_ID_BYTES: usize = 128;
 pub const MAX_LABEL_BYTES: usize = 128;
 pub const MAX_DESCRIPTION_BYTES: usize = 512;
 pub const MAX_QUERY_BYTES: usize = 128;
+pub const MAX_TEXT_VALUE_BYTES: usize = 128;
 pub const MAX_KEYWORDS: usize = 8;
 pub const MAX_KEYWORD_BYTES: usize = 64;
 pub const MAX_CHOICES: usize = 16;
@@ -12,6 +13,8 @@ pub const MAX_CATALOG_BYTES: usize = 256 * 1024;
 pub const MAX_VIEWPORT_ROWS: usize = 256;
 pub const INLINE_TABLES: &str = "terminal.inline_tables";
 pub const OUTPUT_HIGHLIGHTING: &str = "terminal.output_highlighting";
+pub const COMMAND_OUTPUT_HIGHLIGHTING: &str = "terminal.command_output_highlighting";
+pub const KUBERNETES_HIGHLIGHTING: &str = "terminal.kubernetes_highlighting";
 pub const COMMAND_TIMESTAMPS: &str = "terminal.command_timestamps";
 pub const FONT_SIZE: &str = "appearance.font_size";
 pub const APPEARANCE_THEME: &str = "appearance.theme";
@@ -63,6 +66,7 @@ pub enum SettingOwner {
 pub enum Section {
     Terminal,
     Appearance,
+    Customizations,
     Input,
     Workspace,
     Sessions,
@@ -74,6 +78,7 @@ impl Section {
         match self {
             Self::Terminal => "Terminal & Output",
             Self::Appearance => "Appearance",
+            Self::Customizations => "Customizations",
             Self::Input => "Input & Shortcuts",
             Self::Workspace => "Workspace",
             Self::Sessions => "Sessions & Tools",
@@ -86,7 +91,10 @@ impl Section {
 pub enum SettingValue {
     Boolean(bool),
     Choice(String),
+    Text(String),
     Number(f64),
+    /// Exact sRGB channels; transparency is permitted only by the kind.
+    Color([u8; 4]),
     Action,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -97,6 +105,11 @@ pub struct ChoiceOption {
 #[derive(Clone, Debug, PartialEq)]
 pub enum SettingKind {
     Boolean,
+    /// Display-only user text; never interpreted as commands or templates.
+    Text {
+        max_bytes: usize,
+        allow_empty: bool,
+    },
     Choice {
         options: Vec<ChoiceOption>,
     },
@@ -110,6 +123,10 @@ pub enum SettingKind {
         min: f64,
         max: f64,
         step: f64,
+    },
+    /// Whether a color may include a non-opaque alpha channel.
+    Color {
+        alpha: bool,
     },
     Action,
 }
@@ -186,6 +203,8 @@ impl SettingDescriptor {
 pub struct CoreValues {
     pub inline_tables: bool,
     pub output_highlighting: bool,
+    pub command_output_highlighting: bool,
+    pub kubernetes_highlighting: bool,
     pub command_timestamps: bool,
 }
 impl Default for CoreValues {
@@ -193,6 +212,8 @@ impl Default for CoreValues {
         Self {
             inline_tables: true,
             output_highlighting: true,
+            command_output_highlighting: true,
+            kubernetes_highlighting: true,
             command_timestamps: true,
         }
     }
@@ -201,6 +222,8 @@ impl Default for CoreValues {
 pub struct CoreOrigins {
     pub inline_tables: ValueOrigin,
     pub output_highlighting: ValueOrigin,
+    pub command_output_highlighting: ValueOrigin,
+    pub kubernetes_highlighting: ValueOrigin,
     pub command_timestamps: ValueOrigin,
 }
 pub fn core_descriptors(
@@ -212,25 +235,43 @@ pub fn core_descriptors(
         (
             INLINE_TABLES,
             "Format detected tables",
-            "Add borders and wrap values inside their own cells.",
+            "Border and wrap table cells.",
             "wrap cells borders table",
             current.inline_tables,
             configured.inline_tables,
             origins.inline_tables,
         ),
         (
+            COMMAND_OUTPUT_HIGHLIGHTING,
+            "Highlight completed commands",
+            "Tint output by command exit status.",
+            "command result success failure neutral output band",
+            current.command_output_highlighting,
+            configured.command_output_highlighting,
+            origins.command_output_highlighting,
+        ),
+        (
             OUTPUT_HIGHLIGHTING,
-            "Highlight detected statuses",
-            "Color recognized status output when its extension is enabled.",
-            "status color severity output",
+            "Highlight recognized logs",
+            "Color recognized log and Docker status output.",
+            "log docker status color severity output",
             current.output_highlighting,
             configured.output_highlighting,
             origins.output_highlighting,
         ),
         (
+            KUBERNETES_HIGHLIGHTING,
+            "Highlight Kubernetes status",
+            "Color recognized Kubernetes status rows.",
+            "kubernetes pod status readiness color severity",
+            current.kubernetes_highlighting,
+            configured.kubernetes_highlighting,
+            origins.kubernetes_highlighting,
+        ),
+        (
             COMMAND_TIMESTAMPS,
             "Show command timestamps",
-            "Show when a command finished without changing its output.",
+            "Show command finish time.",
             "time date completion timestamp",
             current.command_timestamps,
             configured.command_timestamps,
@@ -294,8 +335,7 @@ pub fn appearance_descriptors(values: AppearanceValues) -> Vec<SettingDescriptor
         owner: SettingOwner::Core,
         section: Section::Appearance,
         label: "Font size".into(),
-        description: "Adjust terminal text in points. Reset uses the configured size."
-            .into(),
+        description: "Terminal text size (pt).".into(),
         keywords: vec!["text points zoom size".into()],
         kind: if font_supported {
             SettingKind::ContinuousNumber {
@@ -320,7 +360,9 @@ pub fn appearance_descriptors(values: AppearanceValues) -> Vec<SettingDescriptor
         availability: if font_supported {
             Availability::Available
         } else {
-            Availability::Unavailable { reason: "The configured font size is outside the supported runtime range. Adjust it in the configuration file.".into() }
+            Availability::Unavailable {
+                reason: "Configured font size unsupported; edit configuration.".into(),
+            }
         },
         scope: ChangeScope::Immediate,
     };
@@ -329,7 +371,7 @@ pub fn appearance_descriptors(values: AppearanceValues) -> Vec<SettingDescriptor
         owner: SettingOwner::Core,
         section: Section::Appearance,
         label: "Appearance".into(),
-        description: "Use the configured appearance or choose Light or Dark.".into(),
+        description: "Follow system or choose a theme.".into(),
         keywords: vec!["theme light dark colors".into()],
         kind: SettingKind::Choice {
             options: [
@@ -619,6 +661,11 @@ fn validate_descriptor(entry: &SettingDescriptor) -> Result<usize, SettingsError
         + reason.len()
         + entry.keywords.iter().map(String::len).sum::<usize>();
     match &entry.kind {
+        SettingKind::Text { max_bytes, .. }
+            if *max_bytes == 0 || *max_bytes > MAX_TEXT_VALUE_BYTES =>
+        {
+            return Err(SettingsError::InvalidDescriptor);
+        }
         SettingKind::Choice { options } => {
             if options.is_empty() || options.len() > MAX_CHOICES {
                 return Err(SettingsError::InvalidDescriptor);
@@ -660,6 +707,8 @@ fn validate_descriptor(entry: &SettingDescriptor) -> Result<usize, SettingsError
     for value in [&entry.value, &entry.default] {
         if let SettingValue::Choice(value) = value {
             size += value.len();
+        } else if let SettingValue::Text(value) = value {
+            size += value.len();
         }
     }
     Ok(size)
@@ -669,6 +718,16 @@ fn value_matches(kind: &SettingKind, value: &SettingValue) -> bool {
     match (kind, value) {
         (SettingKind::Boolean, SettingValue::Boolean(_))
         | (SettingKind::Action, SettingValue::Action) => true,
+        (
+            SettingKind::Text {
+                max_bytes,
+                allow_empty,
+            },
+            SettingValue::Text(value),
+        ) => safe_text(value, *max_bytes, *allow_empty),
+        (SettingKind::Color { alpha }, SettingValue::Color([_, _, _, opacity])) => {
+            *alpha || *opacity == 255
+        }
         (SettingKind::Choice { options }, SettingValue::Choice(value)) => {
             value.len() <= MAX_KEYWORD_BYTES
                 && options.iter().any(|option| &option.value == value)

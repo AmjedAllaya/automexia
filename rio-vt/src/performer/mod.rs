@@ -14,11 +14,13 @@ pub use workers::{PtyWorkerLease, PtyWorkerRegistry};
 #[cfg(feature = "pty")]
 use crate::crosswords::Crosswords;
 #[cfg(feature = "pty")]
+use crate::crosswords::Mode;
+#[cfg(feature = "pty")]
 use crate::event::sync::FairMutex;
 #[cfg(feature = "pty")]
 use crate::event::RioEvent;
 #[cfg(feature = "pty")]
-use crate::event::{EventListener, Msg, WindowId};
+use crate::event::{EventListener, Msg, PasteRequest, WindowId};
 #[cfg(feature = "pty")]
 use corcovado::channel;
 #[cfg(all(unix, feature = "pty"))]
@@ -86,6 +88,25 @@ const MAX_LOCKED_READ: usize = u16::MAX as usize;
 /// Closing a child must not let a surviving output producer drain forever.
 #[cfg(feature = "pty")]
 const MAX_FINAL_OUTPUT_BYTES: usize = 4 * READ_BUFFER_SIZE;
+/// Bound output work before paste so continuous writers cannot starve input.
+#[cfg(feature = "pty")]
+const MAX_PASTE_DRAIN_ROUNDS: u8 = 8;
+
+#[cfg(feature = "pty")]
+fn encode_paste(paste: PasteRequest, mode: Mode) -> Cow<'static, [u8]> {
+    let text = paste.text;
+    if paste.bracketed && mode.contains(Mode::BRACKETED_PASTE) {
+        let mut payload = Vec::with_capacity(text.len() + 12);
+        payload.extend_from_slice(b"\x1b[200~");
+        payload.extend(text.bytes().filter(|byte| !matches!(byte, 0x1b | 0x03)));
+        payload.extend_from_slice(b"\x1b[201~");
+        Cow::Owned(payload)
+    } else if paste.bracketed {
+        Cow::Owned(text.replace("\r\n", "\r").replace('\n', "\r").into_bytes())
+    } else {
+        Cow::Owned(text.into_bytes())
+    }
+}
 
 #[cfg(feature = "pty")]
 struct PeekableReceiver<T> {
@@ -133,7 +154,7 @@ fn coalesce_channel_messages(messages: impl IntoIterator<Item = Msg>) -> Vec<Msg
                 coalesced.push(Msg::Shutdown);
                 break;
             }
-            input @ Msg::Input(_) => coalesced.push(input),
+            input @ (Msg::Input(_) | Msg::Paste(_)) => coalesced.push(input),
         }
     }
     coalesced
@@ -152,7 +173,7 @@ fn next_channel_batch(
         }
         let message = receiver.recv()?;
         remaining -= 1;
-        if matches!(message, Msg::Input(_) | Msg::Shutdown) {
+        if matches!(message, Msg::Input(_) | Msg::Paste(_) | Msg::Shutdown) {
             remaining = 0;
         }
         Some(message)
@@ -163,6 +184,7 @@ fn next_channel_batch(
 trait PtyMessageSink {
     fn resize(&mut self, size: crate::event::WindowSize) -> io::Result<()>;
     fn input(&mut self, input: Cow<'static, [u8]>);
+    fn paste(&mut self, paste: PasteRequest);
     fn shutdown(&mut self);
 }
 
@@ -171,6 +193,7 @@ struct LivePtyMessageSink<'a, T, U: EventListener> {
     pty: &'a mut T,
     terminal: &'a Arc<FairMutex<Crosswords<U>>>,
     write_list: &'a mut VecDeque<Cow<'static, [u8]>>,
+    pending_paste: &'a mut Option<PasteRequest>,
     #[cfg(windows)]
     resize_input_not_before: &'a mut Option<Instant>,
 }
@@ -204,6 +227,10 @@ impl<T: teletypewriter::EventedPty, U: EventListener> PtyMessageSink
         }
     }
 
+    fn paste(&mut self, paste: PasteRequest) {
+        *self.pending_paste = Some(paste);
+    }
+
     fn shutdown(&mut self) {
         if let Err(error) = self.pty.shutdown_owned_process_tree() {
             warn!(
@@ -226,6 +253,7 @@ fn deliver_channel_messages(
     for msg in coalesce_channel_messages(messages) {
         match msg {
             Msg::Input(input) => sink.input(input),
+            Msg::Paste(paste) => sink.paste(paste),
             Msg::Resize(window_size) => {
                 if *last_window_size == Some(window_size) {
                     continue;
@@ -274,6 +302,8 @@ pub struct State {
     write_list: VecDeque<Cow<'static, [u8]>>,
     writing: Option<Writing>,
     parser: handler::Processor,
+    pending_paste: Option<PasteRequest>,
+    paste_drain_rounds: u8,
     resize_input_not_before: Option<Instant>,
 }
 
@@ -429,9 +459,10 @@ where
         buf: &mut [u8],
         drain_fully: bool,
         byte_limit: usize,
-    ) -> io::Result<usize> {
+    ) -> io::Result<(usize, bool)> {
         let mut unprocessed = 0;
         let mut processed = 0;
+        let mut fully_drained = false;
 
         // Reserve the next terminal lock for PTY reading.
         let _terminal_lease = Some(self.terminal.lease());
@@ -448,7 +479,10 @@ where
             // Read from the PTY.
             match self.pty.reader().read(&mut buf[unprocessed..read_limit]) {
                 // This is received on Windows/macOS when no more data is readable from the PTY.
-                Ok(0) if unprocessed == 0 => break,
+                Ok(0) if unprocessed == 0 => {
+                    fully_drained = true;
+                    break;
+                }
                 Ok(got) => {
                     eof = got == 0;
                     drained = got < read_limit - unprocessed;
@@ -458,6 +492,7 @@ where
                     ErrorKind::Interrupted | ErrorKind::WouldBlock => {
                         // Go back to mio if we're caught up on parsing and the PTY would block.
                         if unprocessed == 0 {
+                            fully_drained = err.kind() == ErrorKind::WouldBlock;
                             break;
                         }
                         // An interrupted read says nothing about the PTY
@@ -466,6 +501,7 @@ where
                     }
                     _ if teletypewriter::is_pty_eof_error(&err) => {
                         if unprocessed == 0 {
+                            fully_drained = true;
                             break;
                         }
                         // A resize/frame may have held the terminal lock while
@@ -500,6 +536,7 @@ where
             // Assure we're not blocking the terminal too long unnecessarily,
             // and stop as soon as the PTY looks drained.
             if eof || processed >= MAX_LOCKED_READ || (drained && !drain_fully) {
+                fully_drained = eof || (drained && !drain_fully);
                 break;
             }
         }
@@ -519,7 +556,7 @@ where
             }
         }
 
-        Ok(processed)
+        Ok((processed, fully_drained))
     }
 
     /// Drain the channel.
@@ -533,7 +570,7 @@ where
             }
             return false;
         }
-        if state.needs_write() {
+        if state.needs_write() || state.pending_paste.is_some() {
             return true;
         }
         let messages = next_channel_batch(&mut self.receiver);
@@ -541,10 +578,31 @@ where
             pty: &mut self.pty,
             terminal: &self.terminal,
             write_list: &mut state.write_list,
+            pending_paste: &mut state.pending_paste,
             #[cfg(windows)]
             resize_input_not_before: &mut state.resize_input_not_before,
         };
         deliver_channel_messages(messages, &mut sink, &mut self.last_window_size)
+    }
+
+    fn resolve_pending_paste(
+        &mut self,
+        state: &mut State,
+        buf: &mut [u8],
+    ) -> io::Result<()> {
+        if state.pending_paste.is_none() {
+            return Ok(());
+        }
+        let (_, drained) = self.pty_read_bounded(state, buf, true, MAX_LOCKED_READ)?;
+        state.paste_drain_rounds += 1;
+        if drained || state.paste_drain_rounds >= MAX_PASTE_DRAIN_ROUNDS {
+            if let Some(paste) = state.pending_paste.take() {
+                let mode = self.terminal.lock().mode();
+                state.write_list.push_back(encode_paste(paste, mode));
+            }
+            state.paste_drain_rounds = 0;
+        }
+        Ok(())
     }
 
     #[inline]
@@ -601,8 +659,8 @@ where
             // Release the terminal lease between normal-sized batches. The
             // byte budget also bounds a hostile surviving output producer.
             match self.pty_read_bounded(state, buf, true, remaining) {
-                Ok(0) => break,
-                Ok(processed) => remaining -= processed,
+                Ok((0, _)) => break,
+                Ok((processed, _)) => remaining -= processed,
                 Err(err) => {
                     tracing::debug!("PTY drain after child exit failed: {err}");
                     break;
@@ -679,6 +737,7 @@ where
                     timeout = Some(timeout.map_or(wait, |sync| sync.min(wait)));
                 }
                 if self.sender.shutdown_requested()
+                    || state.pending_paste.is_some()
                     || (!state.needs_write() && self.receiver.peek().is_some())
                 {
                     timeout = Some(std::time::Duration::ZERO);
@@ -744,6 +803,11 @@ where
                 }
                 if !self.drain_recv_channel(&mut state) {
                     break;
+                }
+                if let Err(err) = self.resolve_pending_paste(&mut state, &mut buf) {
+                    error!("Error draining output before paste: {err}");
+                    self.finish_child_exit(&mut state, &mut buf);
+                    break 'event_loop;
                 }
 
                 // Opportunistically flush newly queued input before waiting for
@@ -992,6 +1056,9 @@ mod tests {
                 ResizeQueueModelOutput::Resize(window_size.cols, window_size.rows)
             }
             Msg::Input(input) => ResizeQueueModelOutput::Input(input[0]),
+            Msg::Paste(_) => {
+                unreachable!("model generates only input, resize, and shutdown")
+            }
             Msg::Shutdown => ResizeQueueModelOutput::Shutdown,
         })
         .collect()
@@ -1023,6 +1090,10 @@ mod tests {
         fn input(&mut self, input: Cow<'static, [u8]>) {
             self.events
                 .push(RecordedPtyEvent::Input(input.into_owned()));
+        }
+
+        fn paste(&mut self, _: PasteRequest) {
+            panic!("this recording fixture does not send paste messages");
         }
 
         fn shutdown(&mut self) {

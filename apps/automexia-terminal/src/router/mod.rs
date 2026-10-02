@@ -45,6 +45,31 @@ pub(crate) enum RouteKeyIntent {
     CreateConfiguration,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ModalKeyTarget {
+    ConfirmQuit,
+    CommandPalette,
+    TabRename,
+    None,
+}
+
+fn modal_key_target(
+    confirmation: bool,
+    palette: bool,
+    tab_rename: bool,
+) -> ModalKeyTarget {
+    // The close dialog covers retained editors without changing their drafts.
+    if confirmation {
+        ModalKeyTarget::ConfirmQuit
+    } else if palette {
+        ModalKeyTarget::CommandPalette
+    } else if tab_rename {
+        ModalKeyTarget::TabRename
+    } else {
+        ModalKeyTarget::None
+    }
+}
+
 fn welcome_key_intent(
     welcome: bool,
     key: &Key,
@@ -228,11 +253,20 @@ impl Route<'_> {
             );
         }
 
+        let modal_target = modal_key_target(
+            self.window.screen.renderer.confirm_quit.is_active(),
+            self.window.screen.renderer.command_palette.is_enabled(),
+            self.window
+                .screen
+                .renderer
+                .island
+                .as_ref()
+                .is_some_and(|island| island.is_color_picker_open()),
+        );
+
         // Handle island color picker / rename input
         if let Some(ref mut island) = self.window.screen.renderer.island {
-            if island.is_color_picker_open()
-                && !self.window.screen.renderer.command_palette.is_enabled()
-            {
+            if modal_target == ModalKeyTarget::TabRename {
                 let consumed = island.handle_rename_input(
                     key_event,
                     &mut self.window.screen.context_manager,
@@ -244,8 +278,8 @@ impl Route<'_> {
             }
         }
 
-        // Handle command palette input first (works in all routes)
-        if self.window.screen.renderer.command_palette.is_enabled() {
+        // Handle command palette input when it is the top modal in any route.
+        if modal_target == ModalKeyTarget::CommandPalette {
             if key_event.state == ElementState::Pressed {
                 if self
                     .window
@@ -372,7 +406,7 @@ impl Route<'_> {
             return RouteKeyIntent::Consumed; // Block all input when command palette is active
         }
 
-        if self.window.screen.renderer.confirm_quit.is_active() {
+        if modal_target == ModalKeyTarget::ConfirmQuit {
             if key_event.state == rio_window::event::ElementState::Pressed {
                 match &key_event.logical_key {
                     Key::Character(c) if c.as_str() == "n" || c.as_str() == "N" => {
@@ -477,6 +511,7 @@ pub struct Router<'a> {
     pub config_route: Option<WindowId>,
     pub quake_window_id: Option<WindowId>,
     pub clipboard: Clipboard,
+    information_bar_recipe: automexia_ui_model::information_bar::BarRecipe,
     current_tab_id: u64,
     quick_actions: crate::automexia::quick_actions::QuickActionRuntime,
     connection_hub: crate::automexia::connections::ConnectionHubRuntime,
@@ -485,6 +520,15 @@ pub struct Router<'a> {
 }
 
 impl Router<'_> {
+    pub(crate) fn set_information_bar_recipe(
+        &mut self,
+        recipe: automexia_ui_model::information_bar::BarRecipe,
+    ) {
+        self.information_bar_recipe = recipe.clone();
+        for route in self.routes.values_mut() {
+            route.window.screen.renderer.information_bar_recipe = recipe.clone();
+        }
+    }
     pub fn new<'b>(
         fonts: rio_backend::sugarloaf::font::SugarloafFonts,
         clipboard: Clipboard,
@@ -517,6 +561,9 @@ impl Router<'_> {
             quake_window_id: None,
             font_library: Box::new(font_library),
             clipboard,
+            information_bar_recipe: automexia_ui_model::information_bar::preset_recipe(
+                automexia_ui_model::information_bar::InformationBarPreset::default(),
+            ),
             current_tab_id: 0,
             quick_actions:
                 crate::automexia::quick_actions::QuickActionRuntime::open_default(),
@@ -641,7 +688,9 @@ impl Router<'_> {
             self.workers.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
-        let route = Route::new(Assistant::new(), RoutePath::Terminal, window);
+        let mut route = Route::new(Assistant::new(), RoutePath::Terminal, window);
+        route.window.screen.renderer.information_bar_recipe =
+            self.information_bar_recipe.clone();
         self.routes.insert(id, route);
         self.config_route = Some(id);
     }
@@ -711,6 +760,8 @@ impl Router<'_> {
         let id: WindowId = window.winit_window.id().into();
 
         let mut route = Route::new(Assistant::new(), RoutePath::Terminal, window);
+        route.window.screen.renderer.information_bar_recipe =
+            self.information_bar_recipe.clone();
 
         if let Some(err) = &self.propagated_report {
             route.report_error(err);
@@ -745,10 +796,10 @@ impl Router<'_> {
             self.workers.clone(),
         );
         let id: WindowId = window.winit_window.id().into();
-        self.routes.insert(
-            id,
-            Route::new(Assistant::new(), RoutePath::Terminal, window),
-        );
+        let mut route = Route::new(Assistant::new(), RoutePath::Terminal, window);
+        route.window.screen.renderer.information_bar_recipe =
+            self.information_bar_recipe.clone();
+        self.routes.insert(id, route);
         self.quake_window_id = Some(id);
     }
 
@@ -777,10 +828,11 @@ impl Router<'_> {
             self.external_tool_runner.clone(),
             self.workers.clone(),
         );
-        self.routes.insert(
-            window.winit_window.id().into(),
-            Route::new(Assistant::new(), RoutePath::Terminal, window),
-        );
+        let id = window.winit_window.id().into();
+        let mut route = Route::new(Assistant::new(), RoutePath::Terminal, window);
+        route.window.screen.renderer.information_bar_recipe =
+            self.information_bar_recipe.clone();
+        self.routes.insert(id, route);
     }
 }
 
@@ -1251,9 +1303,39 @@ mod grid_size_tests {
 
 #[cfg(test)]
 mod welcome_input_tests {
-    use super::{welcome_key_intent, RouteKeyIntent};
+    use super::{modal_key_target, welcome_key_intent, ModalKeyTarget, RouteKeyIntent};
     use rio_window::event::ElementState;
     use rio_window::keyboard::{Key, NamedKey};
+
+    #[test]
+    fn confirmation_key_target_covers_every_retained_editor() {
+        for palette in [false, true] {
+            for tab_rename in [false, true] {
+                assert_eq!(
+                    modal_key_target(true, palette, tab_rename),
+                    ModalKeyTarget::ConfirmQuit,
+                    "covered editors must not receive confirmation keys"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn canceled_confirmation_restores_existing_modal_key_priority() {
+        assert_eq!(
+            modal_key_target(false, true, true),
+            ModalKeyTarget::CommandPalette
+        );
+        assert_eq!(
+            modal_key_target(false, true, false),
+            ModalKeyTarget::CommandPalette
+        );
+        assert_eq!(
+            modal_key_target(false, false, true),
+            ModalKeyTarget::TabRename
+        );
+        assert_eq!(modal_key_target(false, false, false), ModalKeyTarget::None);
+    }
 
     #[test]
     fn welcome_key_intent_consumes_enter_release_repeat_and_other_keys() {

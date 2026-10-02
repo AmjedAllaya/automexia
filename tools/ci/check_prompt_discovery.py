@@ -45,9 +45,16 @@ def validate(sources: dict[str, str]) -> None:
     if "fn accepts_refresh(" not in runtime:
         raise ValueError("context refresh lost its shared acceptance owner")
     acceptance = runtime.split("fn accepts_refresh(", 1)[1].split("fn register_refresh(", 1)[0]
-    required_acceptance = ["self.context_status_enabled()", "&& self.context_revision == request.context_revision", "&& !request.cancellation.is_cancelled()", "&& self.accepts(", "request.session.session_id", "request.operation_id", "request.capsule_revision"]
+    required_acceptance = ["request.scope.any()", "self.discovery_scope() == request.scope", "&& self.context_revision == request.context_revision", "&& !request.cancellation.is_cancelled()", "&& self.accepts(", "request.session.session_id", "request.operation_id", "request.capsule_revision"]
     if any(token not in acceptance for token in required_acceptance):
         raise ValueError("context refresh lost feature, revision, cancellation or session ownership")
+    if any(token not in runtime for token in [
+        "let scope = runtime.discovery_scope();",
+        "devops::detect_with_git(&request.session, request.scope.git)",
+        "devops::detect_git_only(&request.session)",
+        "if request.scope.devops",
+    ]):
+        raise ValueError("Git-only discovery lost its scoped worker boundary")
     if progress.index("!self.accepts_refresh(request)") >= progress.index("self.put_devops_snapshot("):
         raise ValueError("context progress publication must follow request acceptance")
     renderer = sources["renderer"].split("#[cfg(test)]\nmod tests", 1)[0]

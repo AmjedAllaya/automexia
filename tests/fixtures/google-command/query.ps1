@@ -42,6 +42,34 @@ if ($env:AMX_TEST_CASE -eq 'disabled') {
     $captured = @(amx docs kubernetes --print-url 'fixture & query')
     if ($LASTEXITCODE -ne 0 -or $captured.Count -ne 1) { throw 'docs preview failed' }
     $captured
+} elseif ($env:AMX_TEST_CASE -eq 'help') {
+    $env:COLUMNS = '40'
+    $captured = @(amx --help)
+    if ($LASTEXITCODE -ne 0 -or $env:COLUMNS -ne '40') { throw 'custom help width changed' }
+    if ($captured -notcontains 'Commands:' -or $captured -notcontains 'Options:') {
+        throw 'root help sections missing'
+    }
+    if (@($captured | Where-Object { $_.Length -gt 40 }).Count -ne 0) {
+        throw 'help overflowed custom width'
+    }
+    if (($captured -join "`n") -match [char]27 -or ($captured -join "`n") -match 'A U T O M E X I A') {
+        throw 'redirected help contains decoration'
+    }
+    $logo = @(amx logo)
+    if ($LASTEXITCODE -ne 0 -or ($logo -join "`n") -notmatch '\+\+\+\+\+\+\+\*') {
+        throw 'captured logo lost full artwork'
+    }
+    $redirectPath = Join-Path $env:AUTOMEXIA_CONFIG_HOME 'amx-logo.txt'
+    amx logo > $redirectPath
+    if ($LASTEXITCODE -ne 0 -or
+        ([IO.File]::ReadAllText($redirectPath)) -notmatch '\+\+\+\+\+\+\+\*') {
+        throw 'redirected logo lost full artwork'
+    }
+    Remove-Item -LiteralPath $redirectPath
+    Remove-Item Env:COLUMNS
+    $captured = @(amx search --help)
+    if ($LASTEXITCODE -ne 0 -or (Test-Path Env:COLUMNS)) { throw 'temporary width was not restored' }
+    'AMX_HELP_OK'
 } else {
     # Capture must work as with an ordinary CLI, not only paint to the host.
     $captured = @(amx google --print-url ('caf' + [char]0xe9 + ' & rust') '+#%' 'two words')

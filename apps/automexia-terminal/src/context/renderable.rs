@@ -88,6 +88,16 @@ pub struct RenderableContent {
     /// virtual-placement overlay path. Single source of truth — only
     /// one terminal lock + one materialize pass per frame per panel.
     pub visible_rows: Vec<Row<Square>>,
+    /// Bounded logical-row classification, refreshed only with source damage.
+    pub output_classifications:
+        Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
+    pub output_classification_pending:
+        Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
+    pub output_classification_scratch: String,
+    pub output_colors_eligible: bool,
+    /// Source styles/semantic rows protected from optional command backgrounds.
+    pub output_background_protected: Vec<bool>,
+    pub(crate) input_accents: crate::renderer::command_input::InputAccents,
     pub command_rows: crate::automexia::ui::command_info::RowProjection,
     pub inline_tables: crate::automexia::inline_tables::InlineTables,
     pub style_table: Vec<rio_backend::crosswords::style::Style>,
@@ -118,6 +128,9 @@ pub struct RenderableContent {
     pub shell_path: Option<String>,
     pub shell_environment: std::collections::BTreeMap<String, String>,
     pub(crate) session_metadata: crate::renderer::session_metadata::ShellMetadataState,
+    /// An oversized or invalid OSC source cannot seed another pane or feed
+    /// optional discovery, even after its display fields were cleared.
+    pub(crate) session_context_rejected: bool,
     /// Strictly equivalent source metadata retained only until a cloned PTY
     /// publishes its own integration marker.
     pub seeded_session_metadata: bool,
@@ -128,6 +141,8 @@ pub struct RenderableContent {
     /// Visible-area scroll offset at the time of the snapshot. Used by
     /// downstream selection-line / hint-line math.
     pub display_offset: usize,
+    /// A nonzero source offset may still follow the live semantic prompt.
+    pub active_prompt_follow: bool,
     /// Cached terminal dimensions captured under the same lock as
     /// `visible_rows`. Used for kitty placement positioning.
     pub columns: usize,
@@ -199,6 +214,12 @@ impl RenderableContent {
             background: None,
             frame_damage: TerminalDamage::Full,
             visible_rows: Vec::new(),
+            output_classifications: Vec::new(),
+            output_classification_pending: Vec::new(),
+            output_classification_scratch: String::new(),
+            output_colors_eligible: false,
+            output_background_protected: Vec::new(),
+            input_accents: Default::default(),
             command_rows: Default::default(),
             inline_tables: Default::default(),
             style_table: Vec::new(),
@@ -213,10 +234,12 @@ impl RenderableContent {
             shell_path: None,
             shell_environment: Default::default(),
             session_metadata: Default::default(),
+            session_context_rejected: false,
             seeded_session_metadata: false,
             shell_integration: false,
             shell_prompt_active: false,
             display_offset: 0,
+            active_prompt_follow: false,
             columns: 0,
             screen_lines: 0,
             history_size: 0,
@@ -247,6 +270,12 @@ impl RenderableContent {
     }
 
     pub fn session_metadata_seed(&self) -> SessionMetadataSeed {
+        if self.session_context_rejected
+            || self.session_metadata.readiness()
+                != crate::renderer::session_metadata::MetadataReadiness::Complete
+        {
+            return SessionMetadataSeed::default();
+        }
         SessionMetadataSeed {
             current_directory: self.current_directory.clone(),
             terminal_title: self.terminal_title.clone(),
@@ -269,6 +298,7 @@ impl RenderableContent {
         self.shell_path = seed.shell_path;
         self.shell_integration = seed.shell_integration;
         self.seeded_session_metadata = seed.shell_integration;
+        self.session_context_rejected = false;
     }
 }
 

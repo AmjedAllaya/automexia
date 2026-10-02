@@ -8,7 +8,7 @@ The category, navigation, independent-session and native-evidence contracts rema
 
 ## Decision
 
-The application-owned command palette opens on six categories. One exhaustive
+The application-owned command palette opens on seven categories. One exhaustive
 mapping groups existing actions without creating another executor or command
 catalog. Typing searches commands and category names globally. Clearing the
 query restores the current category; Back restores the root category selection.

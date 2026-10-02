@@ -62,11 +62,15 @@ class ReleaseManifestTests(unittest.TestCase):
             # Publication is deliberately two-stage: packages are consolidated
             # before independently generated SBOMs finalize the same directory.
             (output / "automexia-terminal.spdx.json").write_text(
-                '{"spdxVersion":"SPDX-2.3"}\n', encoding="utf-8"
+                '{"spdxVersion":"SPDX-2.3","packages":[]}\n', encoding="utf-8"
             )
             (output / "automexia-terminal.cdx.json").write_text(
-                '{"bomFormat":"CycloneDX"}\n', encoding="utf-8"
+                '{"bomFormat":"CycloneDX","components":[]}\n', encoding="utf-8"
             )
+            with self.assertRaisesRegex(MANIFEST.ReleaseManifestError, "ConPTY"):
+                MANIFEST.build_release_manifest(output, output, VERSION, COMMIT, include_sbom=True)
+            import release_trust
+            release_trust.add_vendor_sbom(output, release_trust.load_policy())
             final = MANIFEST.build_release_manifest(
                 output, output, VERSION, COMMIT, include_sbom=True
             )

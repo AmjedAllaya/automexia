@@ -1,0 +1,1 @@
+Prevent incomplete session-owned Kubernetes location metadata from borrowing the application's KUBECONFIG. Preserve explicit empty AWS profile and region selections so saved configuration or secondary aliases cannot silently restore a different selection. Add process-isolated regression tests and retain legacy and valid-alias compatibility controls.

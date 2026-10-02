@@ -42,6 +42,25 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         self.assertEqual(counts["external_gates"], 10)
         self.assertEqual(counts["source_files"], 18)
 
+    def test_wasmtime_minimum_cannot_return_to_vulnerable_release(self) -> None:
+        owner = CHECKER.ROOT / "Cargo.toml"
+        original_read = Path.read_text
+        source = original_read(owner, encoding="utf-8")
+        self.assertIn('wasmtime = { version = "48.0.3"', source)
+
+        def read(path, *args, **kwargs):
+            if path == owner:
+                return source.replace(
+                    'wasmtime = { version = "48.0.3"',
+                    'wasmtime = { version = "48.0.1"',
+                    1,
+                )
+            return original_read(path, *args, **kwargs)
+
+        with mock.patch.object(Path, "read_text", read):
+            with self.assertRaises(CHECKER.EcosystemContractError):
+                CHECKER.validate_repository()
+
     def test_component_interrupt_guards_and_regressions_cannot_be_removed(self) -> None:
         owner = CHECKER.ROOT / "automexia-ecosystem-runtime/src/sandbox.rs"
         original_read = Path.read_text

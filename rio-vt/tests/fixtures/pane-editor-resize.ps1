@@ -1,4 +1,4 @@
-param([int]$HistoryLines = 0)
+param([int]$HistoryLines = 0, [string]$PromptPath = '/example', [string]$PromptPrefix = 'lambda ')
 $ErrorActionPreference = 'Stop'
 Import-Module PSReadLine -ErrorAction Stop
 # Never read or write the contributor's shell history. SaveNothing leaves this
@@ -19,8 +19,8 @@ Set-PSReadLineKeyHandler -Chord F12 -ScriptBlock {
 }
 function global:prompt {
     $esc = [char]27
-    [Console]::Write("${esc}]133;A;aid=1`a `r`n${esc}]133;P;k=c;aid=1`a/example`r`n${esc}]133;P;k=c;aid=1`a")
-    return "lambda ${esc}]133;B`a"
+    [Console]::Write("${esc}]133;A;aid=1`a `r`n${esc}]133;P;k=c;aid=1`a$PromptPath`r`n${esc}]133;P;k=c;aid=1`a")
+    return "$PromptPrefix${esc}]133;B`a"
 }
 for ($row = 0; $row -lt $HistoryLines; $row++) { [Console]::Write("retained output`r`n") }
 $script:OriginalReadLine = (Get-Command PSConsoleHostReadLine).ScriptBlock

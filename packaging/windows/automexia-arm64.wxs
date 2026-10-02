@@ -23,6 +23,19 @@
     <StandardDirectory Id="ProgramFiles6432Folder">
       <Directory Id="AutomexiaPublisherFolder" Name="Automexia">
         <Directory Id="INSTALLFOLDER" Name="Terminal">
+          <Component Id="AutomexiaConptyComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaConpty" Source="$(var.ConptyRuntimeRoot)\conpty.dll" Name="conpty.dll" KeyPath="yes" />
+          </Component>
+          <Directory Id="AutomexiaConptyX64Folder" Name="x64">
+            <Component Id="AutomexiaConptyX64HostComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaConptyX64Host" Source="$(var.ConptyRuntimeRoot)\x64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
+            </Component>
+          </Directory>
+          <Directory Id="AutomexiaConptyArm64Folder" Name="arm64">
+            <Component Id="AutomexiaConptyArm64HostComponent" Guid="*" Bitness="always64">
+              <File Id="AutomexiaConptyArm64Host" Source="$(var.ConptyRuntimeRoot)\arm64\OpenConsole.exe" Name="OpenConsole.exe" KeyPath="yes" />
+            </Component>
+          </Directory>
           <Component Id="AutomexiaExecutableComponent" Guid="*" Bitness="always64">
             <File Id="AutomexiaExecutable" Source="$(var.BinaryPath)" Name="automexia.exe" KeyPath="yes">
               <Shortcut Id="AutomexiaStartMenuShortcut"
@@ -62,6 +75,14 @@
                 <RegistryValue Type="string" Value="&quot;[#AutomexiaExecutable]&quot; &quot;%1&quot;" />
               </RegistryKey>
             </RegistryKey>
+          </Component>
+
+          <Component Id="AutomexiaCliLauncherComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaCliLauncher" Source="$(var.CliBinaryPath)" Name="amx.exe" KeyPath="yes" />
+          </Component>
+
+          <Component Id="AutomexiaSuggestionHelperComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaSuggestionHelper" Source="$(var.SuggestionHelperPath)" Name="automexia-suggestion-helper.exe" KeyPath="yes" />
           </Component>
 
           <Component Id="AutomexiaLicenseComponent" Guid="*" Bitness="always64">
@@ -144,7 +165,12 @@
     </StandardDirectory>
 
     <Feature Id="AutomexiaTerminalFeature" Title="Automexia Terminal" Level="1">
+      <ComponentRef Id="AutomexiaConptyComponent" />
+      <ComponentRef Id="AutomexiaConptyX64HostComponent" />
+      <ComponentRef Id="AutomexiaConptyArm64HostComponent" />
       <ComponentRef Id="AutomexiaExecutableComponent" />
+      <ComponentRef Id="AutomexiaCliLauncherComponent" />
+      <ComponentRef Id="AutomexiaSuggestionHelperComponent" />
       <ComponentRef Id="AutomexiaLicenseComponent" />
       <ComponentRef Id="AutomexiaNoticeComponent" />
       <ComponentRef Id="AutomexiaThirdPartyComponent" />

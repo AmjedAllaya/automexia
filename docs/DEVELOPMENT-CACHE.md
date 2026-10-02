@@ -10,7 +10,7 @@ assurance tools own it, and deleting it changes only the next build time.
 |---|---|
 | Final Cargo artifacts | The workspace `target` directory; kept for normal development and removable with `cargo purge`. |
 | Cargo intermediate artifacts | `target/build`; separated from final artifacts through Cargo's `build-dir` setting. |
-| Complete-gate artifacts | A uniquely named verification target; removed after success or ordinary failure. |
+| Complete-gate artifacts | Final outputs and `build` intermediates inside a uniquely named verification target; removed after success or ordinary failure. |
 | Assurance executables | A platform- and version-addressed immutable toolset in the shared Automexia cache. |
 | Package-manager downloads and runtime state | Separate mutable `downloads` and `runtime` directories in the shared cache. |
 | Staging and process temporary data | Separate generated directories; reclaimed after the grace period when no lease is active. |

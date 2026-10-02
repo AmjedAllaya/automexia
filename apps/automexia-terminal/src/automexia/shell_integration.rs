@@ -191,6 +191,27 @@ fn prepare_cmd_identity_environment() {
         "AUTOMEXIA_CMD_PATH_BASE64",
         engine.encode(executable.as_bytes()),
     );
+    let reference = cmd_identity_reference(&user, &executable);
+    env::set_var("AUTOMEXIA_CMD_REFERENCE_V1", "1");
+    env::set_var("AUTOMEXIA_CMD_REFERENCE_BASE64", engine.encode(&reference));
+    env::set_var("AUTOMEXIA_CMD_REFERENCE", reference);
+}
+
+/// Stable per-identity key: repeated CMD launches reuse the terminal's existing
+/// bounded user-variable entries. This is a correlation key, not authentication.
+#[cfg(any(windows, test))]
+fn cmd_identity_reference(user: &str, executable: &str) -> String {
+    use sha2::{Digest, Sha256};
+    let mut digest = Sha256::new();
+    digest.update(user.as_bytes());
+    digest.update([0]);
+    digest.update(executable.as_bytes());
+    digest
+        .finalize()
+        .iter()
+        .take(16)
+        .map(|byte| format!("{byte:02x}"))
+        .collect()
 }
 
 pub fn session_available() -> bool {
@@ -331,6 +352,24 @@ mod tests {
         ] {
             assert!(!cmd_alias_safe(path));
         }
+    }
+
+    #[test]
+    fn cmd_reference_identity_key_is_stable_bounded_and_unambiguous() {
+        assert_eq!(
+            cmd_identity_reference("fixture", r"C:\AutomexiaFixtures\cmd.exe"),
+            "2ad960f9a395ec3806e6b513486f6e20"
+        );
+        assert_ne!(
+            cmd_identity_reference("ab", "c"),
+            cmd_identity_reference("a", "bc")
+        );
+        let reference =
+            cmd_identity_reference(&"\u{00e9}\u{754c}".repeat(100), &"p".repeat(4096));
+        assert_eq!(reference.len(), 32);
+        assert!(reference
+            .bytes()
+            .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase()));
     }
 
     fn make_root(root: &Path) {

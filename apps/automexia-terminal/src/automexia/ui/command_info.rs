@@ -4,7 +4,9 @@
 use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
-const MAX_ITEMS: usize = 16;
+// A validated recipe contributes at most 16 slots; a command-completion label
+// may share its semantic row without silently dropping the final slot.
+const MAX_ITEMS: usize = 17;
 const MAX_LABEL_BYTES: usize = 1024;
 
 pub struct Label<'a> {
@@ -24,6 +26,7 @@ pub struct Fragment {
     pub leading: f32,
     pub padding: f32,
     pub text_scale: f32,
+    pub shape_position: automexia_ui_model::information_bar::TagShapePosition,
 }
 
 #[derive(Default, Debug, PartialEq)]
@@ -48,13 +51,55 @@ pub fn pack(
     labels: &[Label<'_>],
     width: f32,
     gap: f32,
+    measure: impl FnMut(usize, &str) -> f32,
+) -> Option<Band> {
+    pack_with_layout(labels, width, gap, &[], None, measure)
+}
+
+/// Preserve source order while allowing a preset to start a new metadata row
+/// or place its trailing lane against the right edge. Both lanes still flow
+/// through the same bounded row projection and fall back to wrapping when the
+/// pane is too narrow for a split.
+pub fn pack_with_layout(
+    labels: &[Label<'_>],
+    width: f32,
+    gap: f32,
+    break_before: &[usize],
+    trailing_start: Option<usize>,
+    measure: impl FnMut(usize, &str) -> f32,
+) -> Option<Band> {
+    pack_with_tag_joins(
+        labels,
+        width,
+        gap,
+        break_before,
+        trailing_start,
+        0.0,
+        measure,
+    )
+}
+
+/// Join only tag chrome; completion labels and separate lanes never overlap.
+pub fn pack_with_tag_joins(
+    labels: &[Label<'_>],
+    width: f32,
+    gap: f32,
+    break_before: &[usize],
+    trailing_start: Option<usize>,
+    overlap: f32,
     mut measure: impl FnMut(usize, &str) -> f32,
 ) -> Option<Band> {
     if !width.is_finite()
         || width <= 0.0
         || !gap.is_finite()
         || gap < 0.0
+        || !overlap.is_finite()
+        || overlap < 0.0
         || labels.len() > MAX_ITEMS
+        || break_before
+            .iter()
+            .any(|index| *index == 0 || *index >= labels.len())
+        || trailing_start.is_some_and(|index| index == 0 || index >= labels.len())
         || labels.iter().any(|label| {
             label.text.len() > MAX_LABEL_BYTES
                 || !label.leading.is_finite()
@@ -69,6 +114,72 @@ pub fn pack(
     let mut x = 0.0;
     let mut row = 0;
     for (item, label) in labels.iter().enumerate() {
+        if break_before.contains(&item) && x > 0.0 {
+            row += 1;
+            x = 0.0;
+        }
+        if trailing_start == Some(item) {
+            let mut trailing_width = 0.0;
+            for (offset, trailing) in labels[item..].iter().enumerate() {
+                let measured = measure(item + offset, trailing.text);
+                if !measured.is_finite() || measured < 0.0 {
+                    return None;
+                }
+                let padding = trailing.padding.min(width * 0.08);
+                let leading = trailing.leading.min(width * 0.3);
+                trailing_width += padding * 2.0 + leading + measured;
+                if offset + 1 < labels.len() - item {
+                    trailing_width += gap;
+                    if !trailing.align_end && !labels[item + offset + 1].align_end {
+                        trailing_width -= overlap.min(padding).min(width * 0.08);
+                    }
+                }
+            }
+            if trailing_width <= width {
+                if x > 0.0 && x + trailing_width > width {
+                    row += 1;
+                    x = 0.0;
+                }
+                x = x.max(width - trailing_width);
+            }
+        }
+        if x > 0.0 && trailing_start != Some(item) && !label.align_end {
+            if let Some(previous) = band.fragments.last().filter(|fragment| {
+                fragment.row == row && !labels[fragment.item].align_end
+            }) {
+                x -= overlap
+                    .min(label.padding)
+                    .min(previous.width * 0.25)
+                    .min(width * 0.08);
+            }
+        }
+        if label.text.is_empty() {
+            let padding = label.padding.min(width * 0.08);
+            let leading = label.leading.min(width * 0.3);
+            let chrome = padding * 2.0 + leading;
+            if chrome <= 0.0 {
+                continue;
+            }
+            if x > 0.0 && x + chrome > width {
+                row += 1;
+                x = 0.0;
+            }
+            let fragment_width = chrome.min(width);
+            band.fragments.push(Fragment {
+                item,
+                bytes: 0..0,
+                row,
+                x,
+                width: fragment_width,
+                leading,
+                padding,
+                text_scale: 1.0,
+                shape_position: Default::default(),
+            });
+            x += fragment_width + gap;
+            band.rows = row + 1;
+            continue;
+        }
         let mut start = 0;
         while start < label.text.len() {
             let padding = label.padding.min(width * 0.08);
@@ -133,6 +244,7 @@ pub fn pack(
                 leading,
                 padding,
                 text_scale,
+                shape_position: Default::default(),
             });
             x = fragment_x + fragment_width + gap;
             start = end;
@@ -142,6 +254,30 @@ pub fn pack(
                 x = 0.0;
             }
         }
+    }
+    let mut ordinal = 0;
+    for index in 0..band.fragments.len() {
+        let starts = |previous: &Fragment, current: &Fragment| {
+            current.row != previous.row
+                || labels[current.item].align_end
+                || labels[previous.item].align_end
+                || (current.item != previous.item && trailing_start == Some(current.item))
+        };
+        let first =
+            index == 0 || starts(&band.fragments[index - 1], &band.fragments[index]);
+        let last = index + 1 == band.fragments.len()
+            || starts(&band.fragments[index], &band.fragments[index + 1]);
+        if first {
+            ordinal = 0;
+        }
+        let fragment = &mut band.fragments[index];
+        fragment.shape_position = automexia_ui_model::information_bar::TagShapePosition {
+            first,
+            last,
+            ordinal,
+            padding: fragment.padding,
+        };
+        ordinal += 1;
     }
     Some(band)
 }
@@ -156,6 +292,7 @@ pub struct RowProjection {
     manual: bool,
     overflow: usize,
     pending: Option<PendingScroll>,
+    clear_prefix: usize,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -167,6 +304,15 @@ struct PendingScroll {
 }
 
 impl RowProjection {
+    /// Hide only the blank prefix removed by an explicit host clear. Native
+    /// row/cursor coordinates and inverse input/selection mapping stay intact.
+    pub fn clear_before(&mut self, native_row: usize) {
+        self.clear_prefix = native_row.min(u16::MAX as usize);
+    }
+
+    pub fn retain_clear_prefix(&mut self, blank_rows: usize) {
+        self.clear_prefix = self.clear_prefix.min(blank_rows);
+    }
     pub fn top(&self) -> usize {
         self.top
     }
@@ -174,9 +320,10 @@ impl RowProjection {
         let native_rows = native_rows.min(u16::MAX as usize);
         let mut changed = self.native_rows != native_rows;
         self.native_rows = native_rows;
-        if !bands
-            .iter()
-            .any(|&(row, span)| row < native_rows && span > 1)
+        if self.clear_prefix == 0
+            && !bands
+                .iter()
+                .any(|&(row, span)| row < native_rows && span > 1)
         {
             changed |= !self.starts.is_empty() || self.top != 0;
             self.starts.clear();
@@ -202,8 +349,10 @@ impl RowProjection {
         }
         changed |= self.starts[native_rows] != total;
         self.starts[native_rows] = total;
-        self.overflow = total.saturating_sub(native_rows);
-        self.top = self.top.min(total.saturating_sub(native_rows));
+        self.overflow = total
+            .saturating_sub(native_rows)
+            .max(self.origin(self.clear_prefix));
+        self.top = self.top.min(self.overflow);
         changed
     }
 
@@ -276,6 +425,7 @@ impl RowProjection {
                     .saturating_add(1)
                     .saturating_sub(viewport_rows)
             });
+            self.top = self.top.max(self.origin(self.clear_prefix));
         }
         self.top = self.top.min(self.overflow);
     }
@@ -341,7 +491,10 @@ impl RowProjection {
     }
 
     pub fn limit_to_native_end(&mut self, end: usize, viewport_rows: usize) {
-        self.overflow = self.origin(end).saturating_sub(viewport_rows);
+        self.overflow = self
+            .origin(end)
+            .saturating_sub(viewport_rows)
+            .max(self.origin(self.clear_prefix));
     }
 
     pub fn scrollbar(
@@ -370,6 +523,65 @@ impl RowProjection {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn joined_tag_rows_fit_connectors_and_restart_caps_after_wrap_or_split() {
+        let labels: Vec<_> = ["aa", "bb", "cc"]
+            .into_iter()
+            .map(|text| Label {
+                text,
+                padding: 10.0,
+                leading: 6.0,
+                align_end: false,
+            })
+            .collect();
+        // Width clamps padding to 8: each item is 32 pixels. Connector area
+        // belongs to neither label; their 6-pixel overlap leaves a 2-pixel gap.
+        let measure = |_: usize, _: &str| 10.0;
+        let joined =
+            pack_with_tag_joins(&labels, 100.0, 2.0, &[], None, 6.0, measure).unwrap();
+        assert_eq!(joined.rows, 1);
+        assert_eq!(
+            joined.fragments.iter().map(|f| f.x).collect::<Vec<_>>(),
+            vec![0.0, 28.0, 56.0]
+        );
+        assert!(joined.fragments[0].shape_position.first);
+        assert!(!joined.fragments[1].shape_position.first);
+        assert!(joined.fragments[2].shape_position.last);
+        let spaced =
+            pack_with_tag_joins(&labels, 100.0, 20.0, &[], None, 6.0, measure).unwrap();
+        assert_eq!(spaced.rows, 2);
+        assert!(spaced.fragments[1].shape_position.last);
+        assert!(spaced.fragments[2].shape_position.first);
+        let split =
+            pack_with_tag_joins(&labels, 100.0, 2.0, &[], Some(1), 6.0, measure).unwrap();
+        assert!(split.fragments[0].shape_position.last);
+        assert!(split.fragments[1].shape_position.first);
+        assert_eq!(split.fragments[2].x + split.fragments[2].width, 100.0);
+        assert!(
+            pack_with_tag_joins(&labels, 100.0, 0.0, &[], None, f32::NAN, measure)
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn host_clear_projects_context_to_top_and_preserves_inverse_mapping() {
+        let mut projection = RowProjection::default();
+        projection.clear_before(10);
+        projection.rebuild(24, &[(10, 2)]);
+        projection.limit_to_native_end(13, 24);
+        projection.settle(Some(12), 24);
+        assert_eq!(projection.visual_row(10), 0);
+        assert_eq!(projection.visual_row(12), 3);
+        assert_eq!(projection.source_row(0), Some(10));
+        assert_eq!(projection.source_row(1), None);
+        assert_eq!(projection.native_row(3), 12);
+        projection.retain_clear_prefix(0);
+        projection.rebuild(24, &[]);
+        projection.settle(Some(12), 24);
+        assert_eq!(projection.visual_row(12), 12);
+        assert!(!projection.expanded());
+    }
 
     #[test]
     fn retained_view_stays_inside_its_header_when_metadata_becomes_shorter() {
@@ -537,6 +749,41 @@ mod tests {
                 }
             }
             assert_eq!(band.rows == 1, width >= 720.0);
+        }
+    }
+
+    #[test]
+    fn icon_only_label_keeps_a_hit_and_paint_fragment() {
+        let input = [Label {
+            text: "",
+            leading: 12.0,
+            padding: 4.0,
+            align_end: false,
+        }];
+        let band = pack(&input, 32.0, 0.0, |_, _| 0.0).unwrap();
+        assert_eq!(band.rows, 1);
+        assert_eq!(band.fragments.len(), 1);
+        assert_eq!(band.fragments[0].bytes, 0..0);
+        assert!(band.fragments[0].width > 0.0);
+    }
+
+    #[test]
+    fn explicit_lane_break_and_trailing_alignment_preserve_wrap_bounds() {
+        let input = labels(&["Windows", "main", "alice"]);
+        let measure = |_: usize, value: &str| value.len() as f32 * 5.0;
+        let wide = pack_with_layout(&input, 160.0, 4.0, &[2], None, measure).unwrap();
+        assert_eq!(wide.rows, 2);
+        assert_eq!(wide.fragments[2].row, 1);
+        let split = pack_with_layout(&input, 160.0, 4.0, &[], Some(2), measure).unwrap();
+        assert_eq!(split.rows, 1);
+        assert!(split.fragments[2].x > split.fragments[1].x + split.fragments[1].width);
+        for width in [16.0, 40.0, 80.0, 160.0] {
+            let band = pack_with_layout(&input, width, 4.0, &[2], None, measure).unwrap();
+            for fragment in &band.fragments {
+                assert!(
+                    fragment.x >= 0.0 && fragment.x + fragment.width <= width + 0.001
+                );
+            }
         }
     }
 

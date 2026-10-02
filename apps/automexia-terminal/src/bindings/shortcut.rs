@@ -45,6 +45,7 @@ pub(crate) fn palette_binding_target(
         | PreviewSelectedImage
         | ViewTableOutput
         | OpenSettings
+        | OpenCustomizations
         | OpenMarket
         | OpenConnections
         | OpenActions
@@ -79,6 +80,7 @@ pub(crate) fn legacy_binding_target(action: PaletteAction) -> crate::bindings::A
         CloseCurrentSplitOrTab => Action::CloseCurrentSplitOrTab,
         ConfigEditor => Action::ConfigEditor,
         OpenSettings => Action::OpenSettings,
+        OpenCustomizations => Action::OpenCustomizations,
         WindowCreateNew => Action::WindowCreateNew,
         IncreaseFontSize => Action::IncreaseFontSize,
         DecreaseFontSize => Action::DecreaseFontSize,

@@ -5,11 +5,29 @@ use super::{
 };
 use automexia_extension_api::SemanticSeverity;
 
-pub(super) fn classify(text: &str) -> Option<Option<SemanticSeverity>> {
+pub(super) fn classify_kubernetes(text: &str) -> Option<Option<SemanticSeverity>> {
+    if ["NAME", "READY", "STATUS"].iter().all(|field| {
+        fields(text)
+            .take(8)
+            .any(|token| token.eq_ignore_ascii_case(field))
+    }) {
+        return Some(Some(SemanticSeverity::Info));
+    }
     if let Some(status) = pod(text) {
         return Some(status);
     }
-    condition(text).map(Some).or_else(|| container(text))
+    condition(text)
+}
+
+pub(super) fn classify_general(text: &str) -> Option<Option<SemanticSeverity>> {
+    container(text)
+}
+
+// Table framing is presentation syntax. It must not make the same pod lose
+// its status domain when a producer uses pipe-delimited columns.
+fn fields(text: &str) -> impl Iterator<Item = &str> {
+    text.split(|c: char| c.is_whitespace() || c == '|')
+        .filter(|field| !field.is_empty())
 }
 
 fn identifier(text: &str) -> bool {
@@ -34,7 +52,7 @@ fn ratio(text: &str) -> Option<(Option<u32>, Option<u32>)> {
 }
 
 fn pod(text: &str) -> Option<Option<SemanticSeverity>> {
-    let mut fields = text.split_whitespace();
+    let mut fields = fields(text);
     // kubectl/oc default and --all-namespaces; also accept a bare READY STATUS.
     for _ in 0..3 {
         let token = fields.next()?;
@@ -121,8 +139,8 @@ fn failure(status: &str) -> bool {
     .any(|value| status.eq_ignore_ascii_case(value))
 }
 
-fn condition(text: &str) -> Option<SemanticSeverity> {
-    let mut words = text.split_whitespace();
+fn condition(text: &str) -> Option<Option<SemanticSeverity>> {
+    let mut words = fields(text);
     let first = words.next()?;
     let (name, value) = first
         .split_once('=')
@@ -142,27 +160,28 @@ fn condition(text: &str) -> Option<SemanticSeverity> {
     .any(|token| name.eq_ignore_ascii_case(token));
     if positive || negative {
         if value.eq_ignore_ascii_case("Unknown") {
-            return Some(SemanticSeverity::Warning);
+            return Some(Some(SemanticSeverity::Warning));
         }
         if value.eq_ignore_ascii_case("True") || value.eq_ignore_ascii_case("False") {
-            return Some(if value.eq_ignore_ascii_case("True") == positive {
+            return Some(Some(if value.eq_ignore_ascii_case("True") == positive {
                 SemanticSeverity::Success
             } else if negative {
                 SemanticSeverity::Error
             } else {
                 SemanticSeverity::Warning
-            });
+            }));
         }
+        return Some(None);
     }
     if identifier(first)
-        && text.split_whitespace().nth(4).is_some_and(|version| {
+        && fields(text).nth(4).is_some_and(|version| {
             version.starts_with('v')
                 && version.as_bytes().get(1).is_some_and(u8::is_ascii_digit)
         })
     {
-        let status = text.split_whitespace().nth(1)?;
+        let status = fields(text).nth(1)?;
         if status.eq_ignore_ascii_case("Ready") {
-            return Some(SemanticSeverity::Success);
+            return Some(Some(SemanticSeverity::Success));
         }
         if [
             "NotReady",
@@ -172,8 +191,9 @@ fn condition(text: &str) -> Option<SemanticSeverity> {
         .iter()
         .any(|value| status.eq_ignore_ascii_case(value))
         {
-            return Some(SemanticSeverity::Warning);
+            return Some(Some(SemanticSeverity::Warning));
         }
+        return Some(None);
     }
     None
 }

@@ -1,16 +1,58 @@
 use automexia_extension_api::SemanticSeverity;
 
+mod kubernetes_tables;
 mod workloads;
+pub use kubernetes_tables::RowClassifier;
 
-const MAX_ROW_BYTES: usize = 32 * 1024;
+/// Shared byte ceiling for library classification and desktop snapshot capture.
+pub const MAX_ROW_BYTES: usize = 32 * 1024;
 
-#[cfg(test)]
-#[path = "semantics_tests.rs"]
-mod status_tests;
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputDomain {
+    General,
+    Kubernetes,
+    /// Snapshot provenance or budget is incomplete. Optional paint must not
+    /// guess a status or tint the row as ordinary successful command output.
+    Uncertain,
+}
 
-/// Classify one visible terminal row without allocating and without mutating
-/// terminal bytes. Explicit application ANSI colors still win in grid_emit.
-pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
+/// Domain ownership is retained even when a status is unknown or its colors
+/// are disabled. Other optional decoration must not reinterpret those rows.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct OutputClassification {
+    pub domain: OutputDomain,
+    pub severity: Option<SemanticSeverity>,
+}
+
+/// Kubernetes and incomplete provenance always own their rows. General log
+/// colors own theirs only while enabled; otherwise the command result may tint
+/// the background without altering source text or its ANSI foreground.
+pub fn protects_command_background(
+    classification: Option<OutputClassification>,
+    logs_enabled: bool,
+) -> bool {
+    classification.is_some_and(|value| match value.domain {
+        OutputDomain::General => logs_enabled,
+        OutputDomain::Kubernetes | OutputDomain::Uncertain => true,
+    })
+}
+
+pub fn appearance_for(
+    presentation: &rio_backend::config::presentation::Presentation,
+    classification: OutputClassification,
+) -> Option<&rio_backend::config::presentation::HighlightAppearance> {
+    match classification.domain {
+        OutputDomain::General => presentation
+            .output_highlighting
+            .then_some(&presentation.highlight),
+        OutputDomain::Kubernetes => presentation
+            .kubernetes_highlighting
+            .then_some(&presentation.kubernetes),
+        OutputDomain::Uncertain => None,
+    }
+}
+
+pub fn classify_row(text: &str) -> Option<OutputClassification> {
     if text.len() > MAX_ROW_BYTES {
         return None;
     }
@@ -18,13 +60,51 @@ pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
     if text.is_empty() {
         return None;
     }
-
-    // Read known table fields before scanning prose: resource names and image
-    // tags are not health signals. A recognized but unknown status stays neutral.
-    if let Some(status) = workloads::classify(text) {
-        return status;
+    if let Some(classification) = kubernetes_tables::named_resource(text) {
+        return Some(classification);
     }
+    if starts_ascii_case_insensitive(text, "error from server")
+        || starts_ascii_case_insensitive(
+            text,
+            "error: the server doesn't have a resource type",
+        )
+    {
+        return Some(OutputClassification {
+            domain: OutputDomain::Kubernetes,
+            severity: Some(SemanticSeverity::Error),
+        });
+    }
+    if let Some(severity) = workloads::classify_kubernetes(text) {
+        return Some(OutputClassification {
+            domain: OutputDomain::Kubernetes,
+            severity,
+        });
+    }
+    if let Some(severity) = workloads::classify_general(text) {
+        return Some(OutputClassification {
+            domain: OutputDomain::General,
+            severity,
+        });
+    }
+    classify_general_text(text).map(|severity| OutputClassification {
+        domain: OutputDomain::General,
+        severity: Some(severity),
+    })
+}
 
+#[cfg(test)]
+mod kubernetes_table_tests;
+#[cfg(test)]
+#[path = "output_semantics_tests.rs"]
+mod status_tests;
+
+/// Classify one visible terminal row without allocating and without mutating
+/// terminal bytes. Explicit application ANSI colors still win in grid_emit.
+pub fn classify_row_text(text: &str) -> Option<SemanticSeverity> {
+    classify_row(text).and_then(|classification| classification.severity)
+}
+
+fn classify_general_text(text: &str) -> Option<SemanticSeverity> {
     if let Some(level) = structured_log_level(text) {
         return Some(level);
     }

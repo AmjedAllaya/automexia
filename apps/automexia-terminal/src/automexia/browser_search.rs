@@ -46,15 +46,22 @@ pub(crate) const DOC_SITES: &[(&str, &str)] = &[
 ];
 
 pub fn provider_help() -> String {
-    SEARCH_PROVIDERS
-        .iter()
-        .map(|p| format!("{}: {}", p.id, p.description))
-        .collect::<Vec<_>>()
-        .join("; ")
+    let mut help = String::from("Sources:\n");
+    for provider in SEARCH_PROVIDERS {
+        help.push_str(&format!("  {:<8} {}\n", provider.id, provider.description));
+    }
+    help.push_str("\nExample:\n  automexia search google rust");
+    help
 }
 
 pub fn docs_help() -> String {
-    format!("Official documentation via Google's site filter: {}. Terms are sent to Google only when opening; --print-url is offline.", DOC_SITES.iter().map(|(id, _)| *id).collect::<Vec<_>>().join(", "))
+    let mut help =
+        String::from("Official documentation via Google's site filter.\n\nSources:\n");
+    for (name, site) in DOC_SITES {
+        help.push_str(&format!("  {name:<11} {site}\n"));
+    }
+    help.push_str("\n--print-url is offline; opening sends terms to Google.\n\nExample:\n  automexia docs rust --print-url Vec");
+    help
 }
 
 fn search_url(source: &str, arguments: &[String]) -> io::Result<String> {

@@ -2,14 +2,15 @@ use std::{
     collections::{BTreeMap, BTreeSet},
     fmt,
     fs::{self, OpenOptions},
-    io::Write,
+    io::{Read, Write},
     path::{Path, PathBuf},
     sync::atomic::{AtomicU64, Ordering},
 };
 
 use automexia_ecosystem::{
-    decode_strict_json, portable_identifier, valid_digest, LifecycleState, Limits,
-    VerificationReceipt,
+    decode_settings_metadata, decode_strict_json, portable_identifier,
+    safe_relative_path, valid_digest, LifecycleState, Limits, SettingsMetadataError,
+    ValidatedSettingsMetadata, VerificationReceipt, SETTINGS_METADATA_ENTRY,
 };
 use serde::{Deserialize, Serialize};
 
@@ -115,6 +116,25 @@ pub struct CommittedStoreSnapshot<'a> {
     pub installed: &'a [InstalledGeneration],
 }
 
+/// An owned, explicitly requested settings projection of a committed install.
+/// This performs bounded filesystem verification and must run on a worker, never
+/// on startup, input, PTY, resize, or renderer paths.
+#[derive(Clone, Debug)]
+pub struct CommittedSettingsSnapshot {
+    pub revision: u64,
+    pub packages: Vec<InstalledPackageSettings>,
+}
+
+#[derive(Clone, Debug)]
+pub struct InstalledPackageSettings {
+    pub extension_id: String,
+    pub publisher_id: String,
+    pub version: String,
+    pub package_sha256: String,
+    /// Invalid optional declarations do not invalidate the signed installation.
+    pub metadata: Result<Option<ValidatedSettingsMetadata>, SettingsMetadataError>,
+}
+
 #[derive(Debug)]
 pub struct PackageStore {
     root: PathBuf,
@@ -158,6 +178,68 @@ impl PackageStore {
         Ok(CommittedStoreSnapshot {
             revision: self.state.global_generation,
             installed: &self.state.installed,
+        })
+    }
+
+    /// Read only selected installed generations. The stored content digest is
+    /// checked before any package-owned text reaches the application catalogue.
+    pub fn committed_settings_snapshot(
+        &self,
+    ) -> Result<CommittedSettingsSnapshot, StoreError> {
+        let inventory = self.committed_snapshot()?;
+        let mut packages = Vec::new();
+        for installed in inventory
+            .installed
+            .iter()
+            .filter(|item| item.last_known_good)
+        {
+            let generation = self.generation_path(installed);
+            validate_managed_directory(&self.root)?;
+            validate_managed_directory(&self.root.join("packages"))?;
+            validate_managed_directory(
+                &self.root.join("packages").join(&installed.extension_id),
+            )?;
+            validate_managed_directory(
+                &self
+                    .root
+                    .join("packages")
+                    .join(&installed.extension_id)
+                    .join(&installed.version),
+            )?;
+            validate_managed_directory(&generation)?;
+            let receipt = read_receipt(&generation)?;
+            validate_receipt(&receipt)?;
+            if receipt.extension_id != installed.extension_id
+                || receipt.version != installed.version
+                || receipt.package_sha256 != installed.package_sha256
+            {
+                return Err(StoreError::new(
+                    StoreErrorCode::UnsafeReceipt,
+                    "installed settings receipt identity differs from committed inventory",
+                ));
+            }
+            let entries = read_generation_entries(&generation)?;
+            if crate::content_digest(&entries) != receipt.content_sha256 {
+                return Err(StoreError::new(
+                    StoreErrorCode::UnsafeReceipt,
+                    "installed package content changed after verification",
+                ));
+            }
+            let metadata = entries
+                .get(SETTINGS_METADATA_ENTRY)
+                .map(|bytes| decode_settings_metadata(bytes, &receipt.manifest))
+                .transpose();
+            packages.push(InstalledPackageSettings {
+                extension_id: installed.extension_id.clone(),
+                publisher_id: receipt.publisher_id,
+                version: installed.version.clone(),
+                package_sha256: installed.package_sha256.clone(),
+                metadata,
+            });
+        }
+        Ok(CommittedSettingsSnapshot {
+            revision: inventory.revision,
+            packages,
         })
     }
 
@@ -785,19 +867,142 @@ fn replace_file(source: &Path, destination: &Path) -> Result<(), StoreError> {
     Ok(())
 }
 
-fn read_receipt(generation: &Path) -> Result<VerificationReceipt, StoreError> {
-    let path = generation.join("verification-receipt.json");
-    let metadata = fs::symlink_metadata(&path).map_err(StoreError::io)?;
-    if metadata.file_type().is_symlink()
-        || !metadata.is_file()
-        || metadata.len() > Limits::MANIFEST_BYTES as u64
-    {
+fn validate_managed_directory(path: &Path) -> Result<(), StoreError> {
+    let metadata = fs::symlink_metadata(path).map_err(StoreError::io)?;
+    if metadata.file_type().is_symlink() || !metadata.is_dir() {
         return Err(StoreError::new(
-            StoreErrorCode::UnsafeReceipt,
-            "receipt is linked, non-regular, or oversized",
+            StoreErrorCode::LinkRejected,
+            "installed package path is linked or not a directory",
         ));
     }
-    let bytes = fs::read(path).map_err(StoreError::io)?;
+    Ok(())
+}
+
+fn read_verified_file(path: &Path, maximum: usize) -> Result<Vec<u8>, StoreError> {
+    let before = fs::symlink_metadata(path).map_err(StoreError::io)?;
+    if before.file_type().is_symlink()
+        || !before.is_file()
+        || before.len() > maximum as u64
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::LinkRejected,
+            "installed package entry is linked, non-regular, or oversized",
+        ));
+    }
+    let mut options = OpenOptions::new();
+    options.read(true);
+    crate::package::apply_no_follow(&mut options);
+    let mut file = options.open(path).map_err(StoreError::io)?;
+    let opened = file.metadata().map_err(StoreError::io)?;
+    if !crate::package::same_snapshot(&before, &opened) {
+        return Err(StoreError::new(
+            StoreErrorCode::LinkRejected,
+            "installed package entry changed before reading",
+        ));
+    }
+    let mut bytes = Vec::new();
+    Read::by_ref(&mut file)
+        .take(maximum as u64 + 1)
+        .read_to_end(&mut bytes)
+        .map_err(StoreError::io)?;
+    let after = file.metadata().map_err(StoreError::io)?;
+    let path_after = fs::symlink_metadata(path).map_err(StoreError::io)?;
+    if bytes.len() > maximum
+        || bytes.len() as u64 != opened.len()
+        || !crate::package::same_snapshot(&opened, &after)
+        || !crate::package::same_snapshot(&after, &path_after)
+    {
+        return Err(StoreError::new(
+            StoreErrorCode::LinkRejected,
+            "installed package entry changed during reading",
+        ));
+    }
+    Ok(bytes)
+}
+
+fn read_generation_entries(
+    generation: &Path,
+) -> Result<BTreeMap<String, Vec<u8>>, StoreError> {
+    let mut stack = vec![generation.to_path_buf()];
+    let mut directories = 0usize;
+    let mut total = 0usize;
+    let mut entries = BTreeMap::new();
+    while let Some(directory) = stack.pop() {
+        directories = directories.saturating_add(1);
+        if directories > Limits::PACKAGE_FILES.saturating_mul(16) {
+            return Err(StoreError::new(
+                StoreErrorCode::CacheLimit,
+                "installed package directory count exceeds its limit",
+            ));
+        }
+        validate_managed_directory(&directory)?;
+        for entry in fs::read_dir(&directory).map_err(StoreError::io)? {
+            let entry = entry.map_err(StoreError::io)?;
+            let path = entry.path();
+            let kind = entry.file_type().map_err(StoreError::io)?;
+            if kind.is_symlink() {
+                return Err(StoreError::new(
+                    StoreErrorCode::LinkRejected,
+                    "installed package contains a link",
+                ));
+            }
+            if kind.is_dir() {
+                stack.push(path);
+                continue;
+            }
+            if !kind.is_file() {
+                return Err(StoreError::new(
+                    StoreErrorCode::LinkRejected,
+                    "installed package contains a special file",
+                ));
+            }
+            let relative = path
+                .strip_prefix(generation)
+                .ok()
+                .and_then(|value| value.to_str())
+                .map(|value| value.replace('\\', "/"))
+                .ok_or_else(|| {
+                    StoreError::new(
+                        StoreErrorCode::LinkRejected,
+                        "invalid package entry path",
+                    )
+                })?;
+            if relative == "verification-receipt.json" {
+                continue;
+            }
+            if !safe_relative_path(&relative) || entries.len() >= Limits::PACKAGE_FILES {
+                return Err(StoreError::new(
+                    StoreErrorCode::CacheLimit,
+                    "installed package entry limit or path policy failed",
+                ));
+            }
+            let remaining = Limits::EXPANDED_BYTES.saturating_sub(total);
+            let bytes = read_verified_file(&path, remaining)?;
+            total = total.checked_add(bytes.len()).ok_or_else(|| {
+                StoreError::new(
+                    StoreErrorCode::CacheLimit,
+                    "package content limit exceeded",
+                )
+            })?;
+            if entries.insert(relative, bytes).is_some() {
+                return Err(StoreError::new(
+                    StoreErrorCode::Collision,
+                    "duplicate installed package entry",
+                ));
+            }
+        }
+    }
+    Ok(entries)
+}
+
+fn read_receipt(generation: &Path) -> Result<VerificationReceipt, StoreError> {
+    let path = generation.join("verification-receipt.json");
+    let bytes = read_verified_file(&path, Limits::MANIFEST_BYTES).map_err(|_| {
+        StoreError::new(
+            StoreErrorCode::UnsafeReceipt,
+            "receipt could not be read safely",
+        )
+    })?;
     decode_strict_json(&bytes, Limits::MANIFEST_BYTES).map_err(|error| {
         StoreError::new(StoreErrorCode::UnsafeReceipt, error.to_string())
     })
@@ -1498,8 +1703,8 @@ mod tests {
     #[test]
     fn long_local_store_paths_keep_private_acl_and_atomic_recovery() {
         let temporary = tempfile::tempdir().unwrap();
-        let long_parent = temporary.path().join("p".repeat(180));
-        fs::create_dir(&long_parent).unwrap();
+        let long_parent = temporary.path().join("p".repeat(140)).join("q".repeat(140));
+        fs::create_dir_all(&long_parent).unwrap();
         let root = long_parent.join("ecosystem");
         let mut store = PackageStore::open(&root).unwrap();
         store

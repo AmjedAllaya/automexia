@@ -36,7 +36,7 @@ all-targets = [
     "multicloud-provider-inputs",
     "dep:automexia-image",
     "dep:automexia-keybindings",
-    "dep:automexia-terminal",
+    "semantic-classification",
     "dep:automexia-devops",
     "dep:automexia-connectivity",
     "dep:automexia-command-productivity",
@@ -61,6 +61,7 @@ multicloud-provider-inputs = [
     "dep:automexia-devops-teleport",
 ]
 semantic-surfaces = ["dep:automexia-extension-api", "dep:serde_json"]
+semantic-classification = ["dep:automexia-terminal"]
 
 [workspace]
 members = ["."]
@@ -96,6 +97,7 @@ bench = false
 [[bin]]
 name = "semantic_classification"
 path = "fuzz_targets/semantic_classification.rs"
+required-features = ["semantic-classification"]
 test = false
 doc = false
 bench = false

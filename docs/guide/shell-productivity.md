@@ -37,8 +37,24 @@ Supported shells may emit semantic command boundaries, current directory,
 status, duration, and other bounded public context. The selected session and
 generation own the metadata. Stale or cross-pane updates are rejected.
 
-Automexia does not recover commands by scraping rendered cells and does not
-silently persist native history files.
+Automexia does not recover commands from rendered cells for execution or
+insertion and does not silently persist native history files.
+
+## Typed command colors
+
+Integrated CMD, Bash and Zsh display a purple accent on simple command names
+and options while typing. Positional arguments and quoted values remain plain.
+CMD slash options and POSIX dash options follow their respective conventions.
+These accents do not validate whether a command exists or whether its syntax is
+correct. Complex substitutions and input whose beginning is offscreen may stay
+plain.
+
+PowerShell/PSReadLine and Fish keep their native syntax colors. Explicit colors
+from Zsh plugins or other shell editors also take precedence. Input, history,
+completion, selection and execution remain owned by the shell and terminal.
+Command-output and Kubernetes status color settings do not control typed input.
+The shared display path also applies on Linux and macOS; their native GUI
+execution must be verified separately from Windows/WSL tests.
 
 ## Listings
 

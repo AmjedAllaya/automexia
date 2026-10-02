@@ -11,6 +11,7 @@ fn request_for(state: &mut RuntimeState) -> RefreshRequest {
     let capsule_revision = state.capsule_revision(&facts);
     RefreshRequest {
         context_revision: state.context_revision,
+        scope: state.discovery_scope(),
         operation_id: OperationId::new(99),
         source_revision: source_revision(&facts),
         session: facts,
@@ -29,6 +30,7 @@ fn feature_disable_preserves_membership_but_cancels_discovery_and_cached_context
     assert!(state.set_context_status_enabled(false).unwrap());
     assert!(state.installed.contains(devops::ID));
     assert!(!state.context_status_enabled());
+    assert!(state.git_status_enabled());
     assert!(request.cancellation.is_cancelled());
     assert!(state.pending.is_empty());
     assert!(state.capsules.is_empty());
@@ -36,9 +38,62 @@ fn feature_disable_preserves_membership_but_cancels_discovery_and_cached_context
 }
 
 #[test]
+fn git_only_scope_cancels_old_work_and_remains_admitted() {
+    let mut state = enabled_state();
+    let old = request_for(&mut state);
+    assert!(register(&mut state, &old));
+
+    assert!(state.set_context_status_enabled(false).unwrap());
+    assert!(old.cancellation.is_cancelled());
+    assert!(!state.context_status_enabled());
+    assert!(state.git_status_enabled());
+    assert!(!state.accepts_refresh(&old));
+
+    let git_only = request_for(&mut state);
+    assert_eq!(
+        git_only.scope,
+        DiscoveryScope {
+            devops: false,
+            git: true
+        }
+    );
+    assert!(register(&mut state, &git_only));
+    assert!(state.accepts_refresh(&git_only));
+
+    assert!(state.set_git_status_enabled(false).unwrap());
+    assert!(git_only.cancellation.is_cancelled());
+    assert!(!state.discovery_scope().any());
+    assert!(!state.accepts_refresh(&git_only));
+}
+
+#[test]
+fn disabling_git_keeps_general_devops_discovery_without_reusing_old_results() {
+    let mut state = enabled_state();
+    let old = request_for(&mut state);
+    assert!(register(&mut state, &old));
+    assert!(state.set_git_status_enabled(false).unwrap());
+    assert!(old.cancellation.is_cancelled());
+    assert!(state.context_status_enabled());
+    assert!(!state.git_status_enabled());
+    assert!(!state.accepts_refresh(&old));
+
+    let devops_only = request_for(&mut state);
+    assert_eq!(
+        devops_only.scope,
+        DiscoveryScope {
+            devops: true,
+            git: false
+        }
+    );
+    assert!(register(&mut state, &devops_only));
+    assert!(state.accepts_refresh(&devops_only));
+}
+
+#[test]
 fn disabled_feature_rejects_admission_without_registering_work() {
     let mut state = enabled_state();
     state.set_context_status_enabled(false).unwrap();
+    state.set_git_status_enabled(false).unwrap();
     let request = request_for(&mut state);
     assert!(!register(&mut state, &request));
     assert!(request.cancellation.is_cancelled());
@@ -52,6 +107,7 @@ fn removed_extension_is_not_reactivated_by_an_enabled_preference() {
     state.set_context_status_enabled(true).unwrap();
     let request = request_for(&mut state);
     assert!(!state.context_status_enabled());
+    assert!(!state.git_status_enabled());
     assert!(!register(&mut state, &request));
     assert!(state.installed.is_empty());
 }
@@ -93,6 +149,7 @@ fn context_revision_exhaustion_fails_closed_without_wrapping() {
         Err(ContextStatusError::RevisionExhausted)
     );
     assert!(!state.context_status_enabled());
+    assert!(!state.git_status_enabled());
     assert_eq!(state.context_revision, u64::MAX);
 }
 

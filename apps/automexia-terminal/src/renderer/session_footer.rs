@@ -160,7 +160,7 @@ impl SessionFooter {
                 local_tab_count: item.tab_count(),
                 columns: context.dimension.columns,
                 lines: context.dimension.lines,
-                display_offset: rc.display_offset,
+                display_offset: history_indicator_offset(rc),
                 has_selection: rc.selection_range.is_some(),
                 line_ending: line_ending_for_shell(rc.shell_name.as_deref()),
                 clock: &clock,
@@ -186,6 +186,16 @@ struct FooterRenderState<'a> {
     clock: &'a str,
     is_active: bool,
     compatibility: Option<&'a CompatibilityIndicator>,
+}
+
+fn history_indicator_offset(
+    content: &crate::context::renderable::RenderableContent,
+) -> usize {
+    if content.active_prompt_follow {
+        0
+    } else {
+        content.display_offset
+    }
 }
 
 pub fn hit_test<T>(
@@ -683,6 +693,27 @@ mod tests {
     use crate::context::ContextManager;
     use crate::event::VoidListener;
     use rio_backend::event::WindowId;
+
+    #[test]
+    fn viewport_contract_footer_distinguishes_live_prompt_from_manual_history() {
+        let mut content = crate::context::renderable::RenderableContent {
+            display_offset: 4,
+            ..Default::default()
+        };
+        assert_eq!(history_indicator_offset(&content), 4);
+        content.active_prompt_follow = true;
+        assert_eq!(
+            history_indicator_offset(&content),
+            0,
+            "automatic live context is not user scrollback"
+        );
+        content.active_prompt_follow = false;
+        assert_eq!(
+            history_indicator_offset(&content),
+            4,
+            "manual search or scroll still shows retained history"
+        );
+    }
 
     fn test_frame(viewport_width: f32) -> FooterFrame {
         FooterFrame {

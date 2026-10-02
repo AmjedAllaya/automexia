@@ -27,9 +27,13 @@ Automexia are useful, but that is a separate user decision.
    configuration loading. Arbitrary inherited roots are accepted only in debug
    builds.
 3. PowerShell and CMD integration is injected only into a new interactive child
-   session and only when validated resources are available. Explicit
-   `-Command`, `-File`, `cmd /c`, and other noninteractive calls remain
-   unchanged.
+   session and only when validated resources are available. PowerShell hosts use
+   exact executable basenames and recognized interactive host options. Explicit
+   commands, scripts and encoded forms, positional scripts, noninteractive/server
+   modes, unknown options and missing option values never gain a bootstrap
+   command. Argument values and order remain intact; existing PowerShell banner
+   suppression may prepend `-NoLogo`. Unix arguments remain unchanged. The shell
+   remains responsible for parsing its arguments.
 4. Persistent integration is exposed only as
    `automexia shell-integration install|uninstall`. The Windows command honors
    the effective execution policy and never requests `Bypass`.

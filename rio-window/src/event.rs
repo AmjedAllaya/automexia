@@ -171,6 +171,9 @@ pub enum StartCause {
 
     /// Macos only, executed once app is requesting a reopen
     MacOSReopen,
+
+    /// macOS application-level Quit from the menu, Dock, or Cmd+Q.
+    MacOSQuit,
 }
 
 /// Describes an event from a [`Window`].

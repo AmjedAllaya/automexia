@@ -1,0 +1,1 @@
+Follow the existing bounded worker cleanup owner in Quick Action assurance instead of requiring a removed application join. Add mutation regressions for connected admission, queued cleanup, cancellation, timeout, and native join acknowledgement, reusing the existing source masking helper.

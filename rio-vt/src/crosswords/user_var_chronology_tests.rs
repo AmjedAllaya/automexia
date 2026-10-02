@@ -301,3 +301,63 @@ fn user_var_chronology_rejection_at_last_serial_then_overflow_stays_invalid() {
     assert!(t.user_vars.is_empty());
     assert_eq!(t.user_var_clock, u64::MAX);
 }
+
+#[test]
+fn user_var_chronology_terminator_and_value_controls_remain_supported() {
+    for terminator in ["\x07", "\x1b\\"] {
+        for (encoded, expected) in [("eA==", "x"), ("eA", "x"), ("", "")] {
+            let frame = format!("\x1b]1337;SetUserVar=key={encoded}{terminator}");
+            for split in 0..=frame.len() {
+                let mut t = terminal();
+                let mut p = Processor::default();
+                p.advance(&mut t, &frame.as_bytes()[..split]);
+                p.advance(&mut t, &frame.as_bytes()[split..]);
+                assert_eq!(t.user_vars["key"], expected);
+                assert_eq!(stamp(&t, "key"), (1, None));
+                assert_eq!(t.last_user_var_rejection(), None);
+            }
+        }
+    }
+}
+
+#[test]
+fn user_var_chronology_extra_parameters_never_accept_a_valid_prefix() {
+    for terminator in ["\x07", "\x1b\\"] {
+        for body in [
+            "SetUserVar=key=bmV3;invalid",
+            "SetUserVar=key=bmV3;",
+            "SetUserVar=key=;invalid",
+            "SetUserVar=automexia_prompt_active=MA==;invalid",
+        ] {
+            let frame = format!("\x1b]1337;{body}{terminator}");
+            for split in 0..=frame.len() {
+                let mut t = terminal();
+                let mut p = Processor::default();
+                p.advance(&mut t, b"\x1b]133;A;aid=5\x07");
+                publish(&mut p, &mut t, "key", b"old");
+                publish(&mut p, &mut t, "automexia_prompt_active", b"1");
+                let cursor = (t.grid.cursor.pos, t.grid.cursor.should_wrap);
+                t.reset_damage();
+                p.advance(&mut t, &frame.as_bytes()[..split]);
+                p.advance(&mut t, &frame.as_bytes()[split..]);
+                assert_eq!(t.last_user_var_rejection().map(NonZeroU64::get), Some(3));
+                assert_eq!(t.user_vars["key"], "old");
+                assert_eq!(t.user_vars["automexia_prompt_active"], "1");
+                assert_eq!(stamp(&t, "key"), (1, None));
+                assert_eq!(stamp(&t, "automexia_prompt_active"), (2, None));
+                assert_eq!(t.user_vars.len(), 2);
+                assert!(t.active_semantic_prompt.is_some());
+                assert_eq!(t.semantic_prompt_id, Some(5));
+                assert_eq!((t.grid.cursor.pos, t.grid.cursor.should_wrap), cursor);
+                assert_eq!(t.peek_damage_event(), None);
+                publish(&mut p, &mut t, "key", b"recovered");
+                assert_eq!(stamp(&t, "key"), (4, Some(1)));
+                assert_eq!(t.user_vars["key"], "recovered");
+                assert_eq!(t.last_user_var_rejection().map(NonZeroU64::get), Some(3));
+                publish(&mut p, &mut t, "automexia_prompt_active", b"0");
+                assert_eq!(stamp(&t, "automexia_prompt_active"), (5, Some(2)));
+                assert!(t.active_semantic_prompt.is_none());
+            }
+        }
+    }
+}

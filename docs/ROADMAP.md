@@ -85,8 +85,11 @@ See [status colours](user-guide/commands-and-shell.md#operational-status-colours
 
 Current source provides declarative terminal configuration for fonts, themes,
 cursor, window appearance, navigation and keybindings. The application-owned
-runtime-preference overlay separately stores font size and forced light/dark
-appearance; it does not store every terminal preference or rewrite `config.toml`.
+runtime-preference overlay stores font size, forced light/dark appearance,
+supported output-presentation switches, and tag/output visual choices. The
+Customizations sheet groups these controls by feature and shows supported
+installed-extension controls. It does not store every terminal preference or
+rewrite `config.toml`.
 These are implementation boundaries, not a claim of complete native verification
 for every theme, scale, keyboard profile or platform.
 

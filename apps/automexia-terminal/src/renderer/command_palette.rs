@@ -159,10 +159,6 @@ const SHORTCUT_PREV_PANE: &str = "Cmd+[";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_PREV_PANE: &str = "Shift+F6";
 #[cfg(target_os = "macos")]
-const SHORTCUT_NATIVE_SETTINGS: &str = "Cmd+Shift+S";
-#[cfg(not(target_os = "macos"))]
-const SHORTCUT_NATIVE_SETTINGS: &str = "Ctrl+Shift+S";
-#[cfg(target_os = "macos")]
 const SHORTCUT_SETTINGS: &str = "Cmd+,";
 #[cfg(not(target_os = "macos"))]
 const SHORTCUT_SETTINGS: &str = "Ctrl+,";
@@ -265,14 +261,23 @@ enum CommandIcon {
     TabsClose,
     TabNext,
     TabPrevious,
+    LocalTabNext,
+    LocalTabPrevious,
     SplitRight,
     SplitDown,
     CloneSplitRight,
     CloneSplitDown,
     PaneNext,
     PanePrevious,
+    FocusLeft,
+    FocusRight,
+    FocusUp,
+    FocusDown,
     Close,
     Settings,
+    Customizations,
+    Toolbox,
+    ConfigFile,
     WindowAdd,
     FontIncrease,
     FontDecrease,
@@ -283,8 +288,15 @@ enum CommandIcon {
     Copy,
     Paste,
     Search,
+    SearchBackward,
+    SearchGlobalForward,
+    SearchGlobalBackward,
     Image,
     History,
+    HistoryNext,
+    ClearScreen,
+    Table,
+    QuickActions,
     Connections,
     Extension,
     Font,
@@ -329,11 +341,11 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             accent: BRAND_BLUE,
         },
         SelectNextLocalTab => RowPresentation {
-            icon: CommandIcon::TabNext,
+            icon: CommandIcon::LocalTabNext,
             accent: BRAND_LIME,
         },
         SelectPrevLocalTab => RowPresentation {
-            icon: CommandIcon::TabPrevious,
+            icon: CommandIcon::LocalTabPrevious,
             accent: BRAND_LIME,
         },
         SplitRight => RowPresentation {
@@ -360,16 +372,32 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::PanePrevious,
             accent: BRAND_PURPLE,
         },
-        SelectPaneLeft | SelectPaneUp => RowPresentation {
-            icon: CommandIcon::PanePrevious,
+        SelectPaneLeft => RowPresentation {
+            icon: CommandIcon::FocusLeft,
             accent: BRAND_CYAN,
         },
-        SelectPaneRight | SelectPaneDown => RowPresentation {
-            icon: CommandIcon::PaneNext,
+        SelectPaneRight => RowPresentation {
+            icon: CommandIcon::FocusRight,
             accent: BRAND_CYAN,
         },
-        ConfigEditor | OpenSettings => RowPresentation {
+        SelectPaneUp => RowPresentation {
+            icon: CommandIcon::FocusUp,
+            accent: BRAND_CYAN,
+        },
+        SelectPaneDown => RowPresentation {
+            icon: CommandIcon::FocusDown,
+            accent: BRAND_CYAN,
+        },
+        OpenSettings => RowPresentation {
             icon: CommandIcon::Settings,
+            accent: BRAND_AMBER,
+        },
+        OpenCustomizations => RowPresentation {
+            icon: CommandIcon::Customizations,
+            accent: BRAND_CYAN,
+        },
+        ConfigEditor => RowPresentation {
+            icon: CommandIcon::ConfigFile,
             accent: BRAND_AMBER,
         },
         WindowCreateNew => RowPresentation {
@@ -417,19 +445,27 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             accent: BRAND_CYAN,
         },
         ScrollToNextCommand => RowPresentation {
-            icon: CommandIcon::History,
+            icon: CommandIcon::HistoryNext,
             accent: BRAND_PURPLE,
         },
-        SearchForward | SearchBackward => RowPresentation {
+        SearchForward => RowPresentation {
             icon: CommandIcon::Search,
             accent: BRAND_BLUE,
         },
-        SearchGlobalForward | SearchGlobalBackward => RowPresentation {
-            icon: CommandIcon::Search,
+        SearchBackward => RowPresentation {
+            icon: CommandIcon::SearchBackward,
+            accent: BRAND_BLUE,
+        },
+        SearchGlobalForward => RowPresentation {
+            icon: CommandIcon::SearchGlobalForward,
+            accent: BRAND_PURPLE,
+        },
+        SearchGlobalBackward => RowPresentation {
+            icon: CommandIcon::SearchGlobalBackward,
             accent: BRAND_PURPLE,
         },
         ViewTableOutput => RowPresentation {
-            icon: CommandIcon::Code,
+            icon: CommandIcon::Table,
             accent: BRAND_CYAN,
         },
         PreviewSelectedImage => RowPresentation {
@@ -437,7 +473,7 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             accent: BRAND_CYAN,
         },
         ClearScreen => RowPresentation {
-            icon: CommandIcon::History,
+            icon: CommandIcon::ClearScreen,
             accent: BRAND_AMBER,
         },
         OpenMarket => RowPresentation {
@@ -449,7 +485,7 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             accent: BRAND_BLUE,
         },
         OpenActions => RowPresentation {
-            icon: CommandIcon::Code,
+            icon: CommandIcon::QuickActions,
             accent: BRAND_CYAN,
         },
         Quit => RowPresentation {
@@ -585,9 +621,9 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::CloseCurrentSplitOrTab,
     },
     Command {
-        title: "Settings",
-        shortcut: SHORTCUT_NATIVE_SETTINGS,
-        action: PaletteAction::OpenSettings,
+        title: "Open Customizations",
+        shortcut: "Enter",
+        action: PaletteAction::OpenCustomizations,
     },
     Command {
         title: "Edit Configuration File",
@@ -1148,6 +1184,16 @@ fn draw_command_icon(
             canvas.tab_frame();
             canvas.chevron_left(7.0, 12.5, 3.0);
         }
+        CommandIcon::LocalTabNext => {
+            canvas.tab_frame();
+            canvas.line(8.5, 6.5, 8.5, 18.0);
+            canvas.chevron_right(17.0, 12.5, 2.5);
+        }
+        CommandIcon::LocalTabPrevious => {
+            canvas.tab_frame();
+            canvas.line(13.5, 6.5, 13.5, 18.0);
+            canvas.chevron_left(5.5, 12.5, 2.5);
+        }
         CommandIcon::SplitRight => {
             canvas.outline(1.5, 2.0, 19.0, 18.0, 3.5);
             canvas.line(11.0, 2.5, 11.0, 19.5);
@@ -1182,6 +1228,28 @@ fn draw_command_icon(
             canvas.line(11.0, 2.5, 11.0, 19.5);
             canvas.chevron_left(5.0, 11.0, 2.5);
         }
+        CommandIcon::FocusLeft => {
+            canvas.outline(8.0, 8.0, 6.0, 6.0, 3.0);
+            canvas.line(2.5, 11.0, 8.0, 11.0);
+            canvas.chevron_left(2.5, 11.0, 2.0);
+        }
+        CommandIcon::FocusRight => {
+            canvas.outline(8.0, 8.0, 6.0, 6.0, 3.0);
+            canvas.line(14.0, 11.0, 19.5, 11.0);
+            canvas.chevron_right(19.5, 11.0, 2.0);
+        }
+        CommandIcon::FocusUp => {
+            canvas.outline(8.0, 8.0, 6.0, 6.0, 3.0);
+            canvas.line(11.0, 2.5, 11.0, 8.0);
+            canvas.line(9.0, 4.5, 11.0, 2.5);
+            canvas.line(11.0, 2.5, 13.0, 4.5);
+        }
+        CommandIcon::FocusDown => {
+            canvas.outline(8.0, 8.0, 6.0, 6.0, 3.0);
+            canvas.line(11.0, 14.0, 11.0, 19.5);
+            canvas.line(9.0, 17.5, 11.0, 19.5);
+            canvas.line(11.0, 19.5, 13.0, 17.5);
+        }
         CommandIcon::Close => {
             canvas.outline(3.5, 3.5, 15.0, 15.0, 7.5);
             canvas.line(7.0, 11.0, 15.0, 11.0);
@@ -1193,6 +1261,27 @@ fn draw_command_icon(
             canvas.dot(6.0, 3.25, 3.5);
             canvas.dot(13.0, 9.25, 3.5);
             canvas.dot(8.5, 15.25, 3.5);
+        }
+        CommandIcon::Customizations => {
+            canvas.outline(2.0, 2.5, 18.0, 17.0, 7.0);
+            canvas.dot(5.0, 6.0, 2.5);
+            canvas.dot(10.0, 4.5, 2.5);
+            canvas.dot(15.0, 6.0, 2.5);
+            canvas.line(8.0, 17.0, 16.0, 9.0);
+            canvas.line(13.5, 8.5, 17.0, 12.0);
+        }
+        CommandIcon::Toolbox => {
+            canvas.outline(2.0, 7.0, 18.0, 13.0, 3.0);
+            canvas.outline(8.0, 2.5, 6.0, 4.5, 1.5);
+            canvas.line(2.5, 12.0, 19.5, 12.0);
+            canvas.line(10.0, 11.0, 12.0, 11.0);
+        }
+        CommandIcon::ConfigFile => {
+            canvas.outline(4.0, 2.0, 14.0, 18.0, 2.0);
+            canvas.line(13.0, 2.5, 13.0, 7.0);
+            canvas.line(13.0, 7.0, 17.5, 7.0);
+            canvas.line(7.0, 11.0, 15.0, 11.0);
+            canvas.line(7.0, 15.0, 13.0, 15.0);
         }
         CommandIcon::WindowAdd => {
             canvas.outline(1.5, 2.5, 19.0, 17.0, 3.5);
@@ -1263,6 +1352,21 @@ fn draw_command_icon(
             canvas.outline(2.5, 2.5, 12.5, 12.5, 6.25);
             canvas.line(14.0, 14.0, 20.0, 20.0);
         }
+        CommandIcon::SearchBackward => {
+            canvas.outline(2.5, 2.5, 12.5, 12.5, 6.25);
+            canvas.line(14.0, 14.0, 20.0, 20.0);
+            canvas.chevron_left(7.0, 8.5, 2.2);
+        }
+        CommandIcon::SearchGlobalForward => {
+            canvas.outline(1.5, 2.0, 13.0, 12.0, 2.0);
+            canvas.outline(6.0, 7.0, 13.0, 12.0, 2.0);
+            canvas.chevron_right(16.0, 13.0, 2.5);
+        }
+        CommandIcon::SearchGlobalBackward => {
+            canvas.outline(1.5, 2.0, 13.0, 12.0, 2.0);
+            canvas.outline(6.0, 7.0, 13.0, 12.0, 2.0);
+            canvas.chevron_left(9.0, 13.0, 2.5);
+        }
         CommandIcon::Image => {
             canvas.outline(2.0, 3.0, 18.0, 16.0, 3.0);
             canvas.dot(14.5, 6.0, 2.0);
@@ -1276,6 +1380,34 @@ fn draw_command_icon(
             canvas.line(11.0, 6.0, 11.0, 11.0);
             canvas.line(11.0, 11.0, 15.0, 13.5);
             canvas.chevron_left(2.5, 6.0, 2.0);
+        }
+        CommandIcon::HistoryNext => {
+            canvas.outline(2.0, 2.0, 18.0, 18.0, 9.0);
+            canvas.line(11.0, 6.0, 11.0, 11.0);
+            canvas.line(11.0, 11.0, 15.0, 13.5);
+            canvas.chevron_right(19.5, 6.0, 2.0);
+        }
+        CommandIcon::ClearScreen => {
+            canvas.outline(2.0, 3.0, 18.0, 14.0, 2.5);
+            canvas.line(7.0, 19.5, 15.0, 19.5);
+            canvas.line(11.0, 17.0, 11.0, 19.5);
+            canvas.line(7.0, 7.0, 15.0, 13.0);
+            canvas.line(15.0, 7.0, 7.0, 13.0);
+        }
+        CommandIcon::Table => {
+            canvas.outline(2.0, 2.5, 18.0, 17.0, 2.0);
+            canvas.line(2.5, 8.0, 19.5, 8.0);
+            canvas.line(2.5, 14.0, 19.5, 14.0);
+            canvas.line(9.0, 8.5, 9.0, 19.0);
+            canvas.line(15.0, 8.5, 15.0, 19.0);
+        }
+        CommandIcon::QuickActions => {
+            canvas.line(12.0, 2.0, 5.0, 12.0);
+            canvas.line(5.0, 12.0, 11.0, 12.0);
+            canvas.line(11.0, 12.0, 9.0, 20.0);
+            canvas.line(9.0, 20.0, 18.0, 9.0);
+            canvas.line(18.0, 9.0, 12.0, 9.0);
+            canvas.line(12.0, 9.0, 12.0, 2.0);
         }
         CommandIcon::Connections => {
             canvas.outline(2.0, 3.0, 18.0, 6.0, 2.5);
@@ -2866,15 +2998,40 @@ mod tests {
     }
 
     #[test]
-    fn settings_command_uses_native_preferences_and_keeps_text_editor_accessible() {
-        let settings = COMMANDS
+    fn browsable_categories_and_commands_have_distinct_icons() {
+        let categories = Category::ALL
+            .map(|category| (category.title(), category.presentation().icon));
+        for (index, (title, icon)) in categories.iter().enumerate() {
+            assert!(
+                !categories
+                    .iter()
+                    .skip(index + 1)
+                    .any(|(_, other)| other == icon),
+                "category icon reused by another root menu row: {title} ({icon:?})"
+            );
+        }
+
+        for (index, command) in COMMANDS.iter().enumerate() {
+            let icon = command_presentation(command.action).icon;
+            assert!(
+                !COMMANDS
+                    .iter()
+                    .skip(index + 1)
+                    .any(|other| { command_presentation(other.action).icon == icon }),
+                "command icon reused by another searchable row: {} ({icon:?})",
+                command.title
+            );
+        }
+    }
+
+    #[test]
+    fn visual_preferences_have_one_palette_entry_and_keep_text_editor_accessible() {
+        assert!(!COMMANDS
             .iter()
-            .find(|command| command.title == "Settings")
-            .unwrap();
-        assert_eq!(
-            serde_json::to_value(settings.action).unwrap(),
-            "OpenSettings"
-        );
+            .any(|command| command.action == PaletteAction::OpenSettings));
+        assert!(COMMANDS
+            .iter()
+            .any(|command| command.action == PaletteAction::OpenCustomizations));
         let editor = COMMANDS
             .iter()
             .find(|command| command.action == PaletteAction::ConfigEditor)
@@ -2964,6 +3121,7 @@ mod tests {
                 "Search & History",
                 "Clipboard & Input",
                 "Appearance",
+                "Customizations",
                 "Tools"
             ]
         );

@@ -35,7 +35,19 @@ rem Begin and commit the cached identity together, recovering incomplete frames
 rem left by a previous shell without launching work on subsequent prompts.
 rem A bare OSC 133 D closes the preceding A/B region without claiming an exit
 rem code CMD cannot expose through PROMPT. The terminal renders it neutrally.
+if "%AUTOMEXIA_CMD_REFERENCE_V1%"=="1" if defined AUTOMEXIA_CMD_REFERENCE if defined AUTOMEXIA_CMD_REFERENCE_BASE64 goto :automexia_cmd_reference
 set "AUTOMEXIA_CMD_IDENTITY=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_env_pending=MQ==%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_name=Q01E%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_user=%AUTOMEXIA_CMD_USER_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_path=%AUTOMEXIA_CMD_PATH_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_distro=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_os_version=%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell=MQ==%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_env_pending=MA==%AUTOMEXIA_ESC%\"
+goto :automexia_cmd_identity_ready
+
+rem CMD truncates PROMPT formats at 511 characters. New applications advertise
+rem reference v1; register the identity once, then replay its short reference on
+rem every prompt. Older applications/resources keep their existing full frame.
+:automexia_cmd_reference
+rem Separate bounded writes also stay below CMD's 8191-character line limit.
+<nul set /p "=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_cmd_user_v1_%AUTOMEXIA_CMD_REFERENCE%=%AUTOMEXIA_CMD_USER_BASE64%%AUTOMEXIA_ESC%\"
+<nul set /p "=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_cmd_path_v1_%AUTOMEXIA_CMD_REFERENCE%=%AUTOMEXIA_CMD_PATH_BASE64%%AUTOMEXIA_ESC%\"
+set "AUTOMEXIA_CMD_IDENTITY=%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_env_pending=MQ==%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell_name=Q01E%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_cmd_ref_v1=%AUTOMEXIA_CMD_REFERENCE_BASE64%%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_shell=MQ==%AUTOMEXIA_ESC%\%AUTOMEXIA_ESC%]1337;SetUserVar=automexia_env_pending=MA==%AUTOMEXIA_ESC%\"
+:automexia_cmd_identity_ready
 set "AUTOMEXIA_CMD_DONE=%AUTOMEXIA_ESC%]133;D%AUTOMEXIA_ESC%\"
 <nul set /p "=%AUTOMEXIA_CMD_IDENTITY%"
 

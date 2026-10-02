@@ -58,11 +58,18 @@ grep -qF "AUTOMEXIA_SHELL_INTEGRATION" "$root/shell-integration/bash/automexia.b
 grep -qF '\xCE\xBB' "$root/shell-integration/bash/automexia.bash"
 [[ $PS1 == *$'\u03BB'* ]]
 [[ $PS1 != *'\w'* ]]
+# Leave native explicit syntax colors authoritative; plain input starts in the
+# default foreground so the shared command/option accent can be displayed.
+[[ $PS1 == *'\[\e]133;B\a\]' ]]
 if grep -qF 'PROMPT_DIRTRIM' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
 if grep -qF '__automexia_git_segment' "$root/shell-integration/bash/automexia.bash"; then exit 1; fi
 grep -qF '133;A;aid=%s\a \n' "$root/shell-integration/bash/automexia.bash"
 grep -qF '133;P;k=c;aid=%s\a' "$root/shell-integration/bash/automexia.bash"
 grep -qF '133;A;aid=%s\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'SetUserVar=automexia_prompt_active=MQ==\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF '133;A;aid=%s\a \n' "$root/shell-integration/fish/automexia.fish"
+grep -qF '133;P;k=c;aid=%s\a' "$root/shell-integration/fish/automexia.fish"
+grep -qF 'SetUserVar=automexia_prompt_active=MA==\a' "$root/shell-integration/fish/automexia.fish"
 grep -qF 'fish_preexec' "$root/shell-integration/fish/automexia.fish"
 grep -qF '133;C\a' "$root/shell-integration/fish/automexia.fish"
 grep -qF 'fish_postexec' "$root/shell-integration/fish/automexia.fish"

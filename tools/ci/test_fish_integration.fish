@@ -64,6 +64,7 @@ env AUTOMEXIA_TEST_ROOT="$root" fish --no-config -c '
 
 set prompt_marker (__automexia_fish_prompt | string escape)
 string match -q '*133\;A\;aid=*' -- "$prompt_marker"; or exit 1
+string match -q '*133\;B*' -- "$prompt_marker"; or exit 1
 set preexec_marker (__automexia_fish_preexec | string escape)
 string match -q '*133\;C*' -- "$preexec_marker"; or exit 1
 

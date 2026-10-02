@@ -12,9 +12,16 @@ use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-use automexia_extension_api::{ContextContribution, IconKind, SegmentRole, SessionFacts};
+#[cfg(test)]
+use automexia_extension_api::SegmentRole;
+use automexia_extension_api::{ContextContribution, IconKind, SessionFacts};
+pub(super) use automexia_ui_model::information_bar::prompt_tag_metrics;
+use automexia_ui_model::information_bar::{
+    tag_surface_paint_layers, BarVisualStyle, ResolvedBarItem, TagSurfaceGeometry,
+};
 use automexia_ui_model::{self, IconOptics, Segment};
 
+use super::session_metadata::MetadataReadiness;
 use crate::automexia::runtime;
 use crate::automexia::ui::{PromptAnchor, MAX_PROMPT_CONTEXT_HISTORY};
 
@@ -25,46 +32,15 @@ pub(crate) const LIVE_REFRESH_MILLIS: u64 = 3_000;
 const REFRESH_INTERVAL: Duration = Duration::from_millis(LIVE_REFRESH_MILLIS);
 const REFRESH_IN_FLIGHT_TIMEOUT: Duration = Duration::from_secs(10);
 const ORDER: u8 = 19;
-const PROMPT_TAG_FONT_ROW_RATIO: f32 = 0.62;
-const PROMPT_TAG_MAX_FONT_SIZE: f32 = 14.0;
-const PROMPT_TAG_MIN_FONT_SIZE: f32 = 4.0;
 const PROMPT_TAG_LEFT_INSET: f32 = 2.0;
 
-#[derive(Clone, Copy, Debug, PartialEq)]
-pub(super) struct PromptTagMetrics {
-    pub font_size: f32,
-    pub icon_size: f32,
-    pub icon_slot: f32,
-    pub height: f32,
-    pub padding_x: f32,
-    pub icon_gap: f32,
-    pub tag_gap: f32,
-    pub radius: f32,
-}
-
-pub(super) fn prompt_tag_metrics(row_height: f32) -> PromptTagMetrics {
-    let row_height = row_height.max(1.0);
-    let font_size = (row_height * PROMPT_TAG_FONT_ROW_RATIO)
-        .clamp(PROMPT_TAG_MIN_FONT_SIZE, PROMPT_TAG_MAX_FONT_SIZE)
-        .min(row_height);
-    let vertical_padding = (row_height * 0.08).clamp(1.0, 2.0);
-    let height = (font_size + vertical_padding * 2.0).min(row_height);
-    let padding_x = (font_size * 0.35).clamp(3.0, 6.0);
-    let icon_gap = (font_size * 0.28).clamp(2.0, 5.0);
-    let tag_gap = (font_size * 0.35).clamp(3.0, 6.0);
-    let icon_size = font_size * 1.05;
-    let icon_slot = font_size * 1.20;
-    let radius = (height * 0.22).clamp(1.0, 5.0).min(height * 0.5);
-    PromptTagMetrics {
-        font_size,
-        icon_size,
-        icon_slot,
-        height,
-        padding_x,
-        icon_gap,
-        tag_gap,
-        radius,
-    }
+/// One already-projected prompt item and its row-projection geometry. Keeping
+/// these inputs together prevents paint from consulting a newer context frame.
+pub(super) struct PromptFragmentPaint<'a> {
+    pub item: &'a ResolvedBarItem,
+    pub visual: BarVisualStyle,
+    pub anchor: &'a PromptAnchor,
+    pub fragment: &'a crate::automexia::ui::command_info::Fragment,
 }
 
 struct PromptSnapshot {
@@ -91,7 +67,9 @@ enum SnapshotCandidate {
 
 #[derive(Default)]
 pub struct DevOpsStatus {
+    metadata_readiness: MetadataReadiness,
     contribution: Option<ContextContribution>,
+    metadata_session: Option<usize>,
     /// Materialized segment labels shared by live and historical prompt rows.
     /// Rebuilt only when session facts or the async discovery revision change.
     live_segments: Vec<Segment>,
@@ -111,10 +89,87 @@ pub struct DevOpsStatus {
 }
 
 impl DevOpsStatus {
-    pub(super) fn set_metadata_readiness(&mut self, _session_id: usize, _readiness: super::session_metadata::MetadataReadiness) {}
+    pub(super) fn set_metadata_readiness(
+        &mut self,
+        session_id: usize,
+        readiness: super::session_metadata::MetadataReadiness,
+    ) {
+        use super::session_metadata::MetadataReadiness;
+        if self
+            .metadata_session
+            .is_some_and(|owner| owner != session_id)
+        {
+            // The status is route-owned. A reused owner must not lend another
+            // route live labels or completed prompt history.
+            *self = Self::default();
+        }
+        self.metadata_session = Some(session_id);
+        if self.metadata_readiness == readiness {
+            return;
+        }
+        self.metadata_readiness = readiness;
+        if readiness == MetadataReadiness::Unavailable {
+            runtime::invalidate_devops_session(session_id);
+            self.contribution = None;
+            self.live_segments.clear();
+            self.live_segments_session = None;
+            self.live_segments_snapshot_revision = 0;
+            self.live_segments_revision = self.live_segments_revision.wrapping_add(1);
+            self.last_refresh_request = None;
+            self.last_session = None;
+            self.observed_global_generation = 0;
+            self.snapshot_revision = 0;
+            self.request_in_flight = false;
+        } else if readiness == MetadataReadiness::Complete {
+            // Even equal facts must refresh a prompt created while pending.
+            self.live_segments_session = None;
+        }
+        if readiness != MetadataReadiness::Complete {
+            self.refresh_pending = false;
+        }
+    }
 
-    pub fn clear(&mut self) {
-        *self = Self::default();
+    fn metadata_complete(&self) -> bool {
+        self.metadata_readiness == super::session_metadata::MetadataReadiness::Complete
+    }
+
+    fn initial_prompt_segments(&self) -> Vec<Segment> {
+        if self.metadata_complete() {
+            self.live_segments.clone()
+        } else {
+            Vec::new()
+        }
+    }
+
+    /// Revoking optional discovery must not erase renderer-owned OS/user tags
+    /// or lend the next active session's identity to historical prompt rows.
+    pub(super) fn clear_optional_contribution(&mut self) {
+        fn core_identity(segment: &Segment) -> bool {
+            matches!(
+                segment.role,
+                automexia_extension_api::SegmentRole::Windows
+                    | automexia_extension_api::SegmentRole::UbuntuWsl
+                    | automexia_extension_api::SegmentRole::User
+            )
+        }
+        self.contribution = None;
+        self.live_segments.retain(core_identity);
+        self.live_segments_session = None;
+        self.live_segments_snapshot_revision = 0;
+        self.live_segments_revision = self.live_segments_revision.wrapping_add(1);
+        for snapshot in &mut self.prompt_history {
+            snapshot.segments.retain(core_identity);
+        }
+        if let Some(active) = &mut self.active_prompt {
+            active.segments.retain(core_identity);
+            active.segments_revision = 0;
+        }
+        self.last_refresh_request = None;
+        self.last_session = None;
+        self.observed_global_generation = 0;
+        self.snapshot_revision = 0;
+        self.refresh_pending = false;
+        self.request_in_flight = false;
     }
 
     #[cfg(feature = "native-gui-test-hooks")]
@@ -177,7 +232,7 @@ impl DevOpsStatus {
             historical_anchors,
         );
 
-        if prompt_active {
+        if prompt_active && self.metadata_complete() {
             if let Some(anchor) = live_anchor {
                 let segments_revision = self.live_segments_revision;
                 match self.active_prompt.as_mut() {
@@ -202,7 +257,7 @@ impl DevOpsStatus {
                             session_id: session.session_id,
                             generation: anchor.generation,
                             key: anchor.key,
-                            segments: self.live_segments.clone(),
+                            segments: self.initial_prompt_segments(),
                             segments_revision,
                         });
                     }
@@ -265,7 +320,7 @@ impl DevOpsStatus {
                 session_id: session.session_id,
                 generation: anchor.generation,
                 key: anchor.key,
-                segments: self.live_segments.clone(),
+                segments: self.initial_prompt_segments(),
                 segments_revision: self.live_segments_revision,
             });
             return true;
@@ -300,6 +355,7 @@ impl DevOpsStatus {
         if active.session_id != session.session_id
             || generation_proves_new_prompt
             || previous_still_visible
+            || !self.metadata_complete()
         {
             if let Some(previous) = self.active_prompt.take() {
                 self.remember_prompt(previous);
@@ -308,15 +364,15 @@ impl DevOpsStatus {
                 session_id: session.session_id,
                 generation: anchor.generation,
                 key: anchor.key,
-                segments: self.live_segments.clone(),
+                segments: self.initial_prompt_segments(),
                 segments_revision: self.live_segments_revision,
             });
             return true;
         }
 
-        // Legacy integrations without `aid` cannot distinguish a reflowed row
-        // from a new row by identity alone. If the old key vanished, preserve
-        // the live prompt and adopt its recomputed geometry key.
+        // Complete legacy integrations without `aid` cannot distinguish a
+        // reflowed row from a new row by identity alone. Preserve that geometry
+        // compatibility only while fresh metadata can identify the live shell.
         if let Some(active) = self.active_prompt.as_mut() {
             active.generation = anchor.generation;
             active.key = anchor.key;
@@ -349,6 +405,12 @@ impl DevOpsStatus {
         session_id: usize,
         anchor: &PromptAnchor,
     ) -> &[Segment] {
+        if self
+            .metadata_session
+            .is_some_and(|owner| owner != session_id)
+        {
+            return &[];
+        }
         if let Some(active) = self.active_prompt.as_ref().filter(|active| {
             active.session_id == session_id
                 && same_prompt_identity(
@@ -358,27 +420,35 @@ impl DevOpsStatus {
                     anchor.key,
                 )
         }) {
-            return &active.segments;
+            return if self.live_segments_session.is_some() {
+                &active.segments
+            } else {
+                &[]
+            };
         }
-        self.cached_segments(session_id, anchor)
-            .unwrap_or(&self.live_segments)
+        self.cached_segments(session_id, anchor).unwrap_or_else(|| {
+            if self.metadata_complete() {
+                &self.live_segments
+            } else {
+                &[]
+            }
+        })
     }
 
     pub(super) fn draw_prompt_fragment(
         &self,
         sugarloaf: &mut Sugarloaf,
         colors: Colors,
-        anchor: &PromptAnchor,
-        session_id: usize,
-        fragment: &crate::automexia::ui::command_info::Fragment,
+        appearance: &rio_backend::config::presentation::TagAppearance,
+        inputs: PromptFragmentPaint<'_>,
     ) {
-        let Some(segment) = self
-            .segments_for_prompt(session_id, anchor)
-            .get(fragment.item)
-        else {
-            return;
-        };
-        let Some(text) = segment.value.get(fragment.bytes.clone()) else {
+        let PromptFragmentPaint {
+            item,
+            visual,
+            anchor,
+            fragment,
+        } = inputs;
+        let Some(text) = item.value.get(fragment.bytes.clone()) else {
             return;
         };
         let metrics = prompt_tag_metrics(anchor.height);
@@ -390,18 +460,31 @@ impl DevOpsStatus {
         .unwrap_or(0.0);
         let x = anchor.x + PROMPT_TAG_LEFT_INSET + fragment.x;
         let y = anchor.y + fragment.row as f32 * anchor.height + top_inset;
-        let color = segment_color(colors, segment.role);
-        sugarloaf.rounded_rect(
-            None,
-            x,
-            y,
-            fragment.width,
-            metrics.height,
-            segment_tag_background(segment.role),
-            0.0,
-            metrics.radius,
-            ORDER - 1,
+        let paint = prompt_bar_item_colors(colors, item, appearance, visual);
+        let color = paint.foreground;
+        draw_tag_surface_in_run(
+            sugarloaf,
+            visual,
+            [x, y, fragment.width, metrics.height],
+            paint,
+            fragment.shape_position,
         );
+        if let Some(anchor) = kubernetes_freshness_marker(item) {
+            let marker =
+                automexia_ui_model::context_tag_colors(colors.background.0, anchor, 0);
+            let size = (metrics.height * 0.22).clamp(2.0, 4.0);
+            sugarloaf.rounded_rect(
+                None,
+                x + fragment.width - size,
+                y,
+                size,
+                size,
+                marker.foreground,
+                0.0,
+                size * 0.5,
+                ORDER,
+            );
+        }
         #[cfg(feature = "native-gui-test-hooks")]
         self.native_prompt_paints.borrow_mut().push((
             anchor.generation,
@@ -412,24 +495,28 @@ impl DevOpsStatus {
             let slot = fragment.leading * metrics.icon_slot
                 / (metrics.icon_slot + metrics.icon_gap);
             let icon = metrics.icon_size.min(slot);
-            draw_icon_in_slot(
-                sugarloaf,
-                segment.icon,
-                x + fragment.padding,
-                y + (metrics.height - icon) * 0.5,
-                slot,
-                icon,
-                color,
+            if let Some(kind) = item.icon {
+                draw_icon_in_slot(
+                    sugarloaf,
+                    kind,
+                    x + fragment.padding,
+                    y + (metrics.height - icon) * 0.5,
+                    slot,
+                    icon,
+                    color,
+                );
+            }
+        }
+        if !item.icon_only && !text.is_empty() {
+            super::command_info::draw_fragment_text(
+                sugarloaf.text_mut(),
+                text,
+                fragment,
+                [anchor.x, anchor.y],
+                [anchor.height, metrics.font_size, metrics.height],
+                color_to_u8(color),
             );
         }
-        super::command_info::draw_fragment_text(
-            sugarloaf.text_mut(),
-            text,
-            fragment,
-            [anchor.x, anchor.y],
-            [anchor.height, metrics.font_size, metrics.height],
-            color_to_u8(color),
-        );
     }
 
     fn remember_prompt(&mut self, prompt: ActivePrompt) {
@@ -466,6 +553,9 @@ impl DevOpsStatus {
     ) where
         F: FnOnce() -> runtime::DevOpsRefreshCompletion,
     {
+        if !self.metadata_complete() {
+            return;
+        }
         let session_changed = self
             .last_session
             .as_ref()
@@ -517,6 +607,9 @@ impl DevOpsStatus {
     }
 
     fn sync_cached_snapshot(&mut self, session: &SessionFacts) {
+        if !self.metadata_complete() {
+            return;
+        }
         let global_generation = runtime::devops_generation();
         if global_generation == self.observed_global_generation {
             return;
@@ -540,6 +633,9 @@ impl DevOpsStatus {
         cached_session: Option<&SessionFacts>,
         contribution: ContextContribution,
     ) {
+        if !self.metadata_complete() {
+            return;
+        }
         match snapshot_candidate(
             self.snapshot_revision,
             revision,
@@ -566,6 +662,9 @@ impl DevOpsStatus {
     }
 
     fn ensure_live_segments(&mut self, session: &SessionFacts) {
+        if !self.metadata_complete() {
+            return;
+        }
         if self.live_segments_session.as_ref() == Some(session)
             && self.live_segments_snapshot_revision == self.snapshot_revision
         {
@@ -707,12 +806,312 @@ fn segment_anchor(role: SegmentRole) -> [f32; 4] {
     automexia_ui_model::segment_anchor(role)
 }
 
-fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
-    automexia_ui_model::segment_tag_color(colors.background.0, role)
+#[cfg(test)]
+fn prompt_tag_colors(
+    colors: Colors,
+    role: SegmentRole,
+    appearance: &rio_backend::config::presentation::TagAppearance,
+) -> automexia_ui_model::ContextTagColors {
+    use rio_backend::config::presentation::TagStyle;
+    let opacity = match appearance.style {
+        TagStyle::Plain => 0,
+        TagStyle::Tinted => appearance.opacity.get(),
+    };
+    automexia_ui_model::context_tag_colors(
+        colors.background.0,
+        crate::automexia::presentation::tag_anchor(appearance, role),
+        opacity,
+    )
 }
 
-fn segment_tag_background(role: SegmentRole) -> [f32; 4] {
-    automexia_ui_model::segment_tag_background(role)
+fn prompt_bar_item_colors(
+    colors: Colors,
+    item: &ResolvedBarItem,
+    appearance: &rio_backend::config::presentation::TagAppearance,
+    visual: BarVisualStyle,
+) -> automexia_ui_model::ContextTagColors {
+    use rio_backend::config::presentation::TagStyle;
+    let foreground = color_to_u8(colors.foreground);
+    let anchor = item.color.unwrap_or_else(|| {
+        item.source_role
+            .map_or([foreground[0], foreground[1], foreground[2]], |role| {
+                crate::automexia::presentation::tag_anchor(appearance, role)
+            })
+    });
+    let opacity =
+        if appearance.style == TagStyle::Plain || visual == BarVisualStyle::Underline {
+            0
+        } else {
+            appearance.opacity.get()
+        };
+    automexia_ui_model::context_tag_colors(colors.background.0, anchor, opacity)
+}
+
+/// An icon-only recipe has no text in which to show the unverified `?`.
+/// Keep its freshness visible inside the existing tag rectangle.
+fn kubernetes_freshness_marker(item: &ResolvedBarItem) -> Option<[u8; 3]> {
+    if item.source_role != Some(automexia_extension_api::SegmentRole::Kubernetes) {
+        return None;
+    }
+    match item.freshness {
+        automexia_extension_api::Freshness::Current => None,
+        automexia_extension_api::Freshness::Refreshing => Some([80, 213, 255]),
+        automexia_extension_api::Freshness::Stale
+        | automexia_extension_api::Freshness::Expired => Some([255, 194, 67]),
+        automexia_extension_api::Freshness::Unavailable
+        | automexia_extension_api::Freshness::Error => Some([255, 98, 115]),
+    }
+}
+
+/// Every vertex stays inside the fragment rectangle supplied by the shared
+/// packer. A shape never increases the prompt band or its terminal-grid rows.
+trait TagSurfaceCanvas {
+    fn fill_rounded(&mut self, rect: [f32; 4], radius: f32, color: [f32; 4]);
+    fn fill_rect(&mut self, rect: [f32; 4], color: [f32; 4]);
+    fn fill_polygon(&mut self, points: &[(f32, f32)], color: [f32; 4]);
+    fn stroke_line(
+        &mut self,
+        from: (f32, f32),
+        to: (f32, f32),
+        width: f32,
+        color: [f32; 4],
+    );
+    fn stroke_arc(
+        &mut self,
+        center: (f32, f32),
+        radius: f32,
+        angles: (f32, f32),
+        width: f32,
+        color: [f32; 4],
+    );
+}
+
+impl TagSurfaceCanvas for Sugarloaf<'_> {
+    fn fill_rounded(
+        &mut self,
+        [x, y, width, height]: [f32; 4],
+        radius: f32,
+        color: [f32; 4],
+    ) {
+        self.rounded_rect(None, x, y, width, height, color, 0.0, radius, ORDER - 1);
+    }
+
+    fn fill_rect(&mut self, [x, y, width, height]: [f32; 4], color: [f32; 4]) {
+        self.rect(None, x, y, width, height, color, 0.0, ORDER - 1);
+    }
+
+    fn fill_polygon(&mut self, points: &[(f32, f32)], color: [f32; 4]) {
+        self.polygon_with_order(points, 0.0, color, ORDER - 1);
+    }
+
+    fn stroke_line(
+        &mut self,
+        from: (f32, f32),
+        to: (f32, f32),
+        width: f32,
+        color: [f32; 4],
+    ) {
+        self.line(from.0, from.1, to.0, to.1, width, 0.0, color, ORDER - 1);
+    }
+
+    fn stroke_arc(
+        &mut self,
+        center: (f32, f32),
+        radius: f32,
+        angles: (f32, f32),
+        width: f32,
+        color: [f32; 4],
+    ) {
+        self.arc(
+            center.0, center.1, radius, angles.0, angles.1, width, 0.0, color,
+        );
+    }
+}
+
+#[cfg(test)]
+fn draw_tag_surface(
+    sugarloaf: &mut impl TagSurfaceCanvas,
+    visual: BarVisualStyle,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    paint: automexia_ui_model::ContextTagColors,
+) {
+    draw_tag_surface_in_run(
+        sugarloaf,
+        visual,
+        [x, y, width, height],
+        paint,
+        Default::default(),
+    );
+}
+
+fn draw_tag_surface_in_run(
+    sugarloaf: &mut impl TagSurfaceCanvas,
+    visual: BarVisualStyle,
+    [x, y, width, height]: [f32; 4],
+    paint: automexia_ui_model::ContextTagColors,
+    position: automexia_ui_model::information_bar::TagShapePosition,
+) {
+    if !x.is_finite() || !y.is_finite() {
+        return;
+    }
+    let Some(geometry) = automexia_ui_model::information_bar::tag_fragment_geometry(
+        visual, width, height, position,
+    ) else {
+        return;
+    };
+    let mut outline = paint.foreground;
+    outline[3] = 0.45;
+    let layers = tag_surface_paint_layers(visual, paint.background[3]);
+    match geometry {
+        TagSurfaceGeometry::Connected(shape) => {
+            let offset = |p: (f32, f32)| (x + p.0, y + p.1);
+            if layers.fill {
+                for triangle in shape.triangles() {
+                    sugarloaf.fill_polygon(&triangle.map(offset), paint.background);
+                }
+            } else {
+                for (a, b) in shape
+                    .points()
+                    .iter()
+                    .zip(shape.points().iter().cycle().skip(1))
+                {
+                    sugarloaf.stroke_line(offset(*a), offset(*b), shape.stroke, outline);
+                }
+            }
+            if layers.fill {
+                if let Some(fold) = shape.fold {
+                    let color = [
+                        paint.background[0] * 0.55,
+                        paint.background[1] * 0.55,
+                        paint.background[2] * 0.55,
+                        paint.background[3],
+                    ];
+                    sugarloaf.fill_polygon(&fold.map(offset), color);
+                }
+            }
+        }
+        TagSurfaceGeometry::Capsule { radius, stroke } => {
+            if layers.fill {
+                sugarloaf.fill_rounded([x, y, width, height], radius, paint.background);
+            } else {
+                draw_rounded_outline(
+                    sugarloaf, x, y, width, height, radius, stroke, outline,
+                );
+            }
+        }
+        TagSurfaceGeometry::Flat { stroke } => {
+            if layers.fill {
+                sugarloaf.fill_rect([x, y, width, height], paint.background);
+            } else {
+                draw_rect_outline(sugarloaf, x, y, width, height, stroke, outline);
+            }
+        }
+        TagSurfaceGeometry::Chevron { points, stroke }
+        | TagSurfaceGeometry::Hexagon { points, stroke } => {
+            let points = points.map(|(px, py)| (x + px, y + py));
+            if layers.fill {
+                sugarloaf.fill_polygon(&points, paint.background);
+            } else {
+                draw_polygon_outline(sugarloaf, &points, stroke, outline);
+            }
+        }
+        TagSurfaceGeometry::Card { radius, stroke } => {
+            if layers.fill {
+                sugarloaf.fill_rounded([x, y, width, height], radius, paint.background);
+            }
+            draw_rounded_outline(sugarloaf, x, y, width, height, radius, stroke, outline);
+        }
+        TagSurfaceGeometry::Underline { baseline_y, stroke } => {
+            sugarloaf.stroke_line(
+                (x + stroke * 0.5, y + baseline_y),
+                (x + width - stroke * 0.5, y + baseline_y),
+                stroke,
+                paint.foreground,
+            );
+        }
+    }
+}
+
+fn draw_polygon_outline(
+    sugarloaf: &mut impl TagSurfaceCanvas,
+    points: &[(f32, f32)],
+    stroke: f32,
+    color: [f32; 4],
+) {
+    for index in 0..points.len() {
+        let from = points[index];
+        let to = points[(index + 1) % points.len()];
+        sugarloaf.stroke_line(from, to, stroke, color);
+    }
+}
+
+fn draw_rect_outline(
+    sugarloaf: &mut impl TagSurfaceCanvas,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    stroke: f32,
+    color: [f32; 4],
+) {
+    let inset = stroke * 0.5;
+    let points = [
+        (x + inset, y + inset),
+        (x + width - inset, y + inset),
+        (x + width - inset, y + height - inset),
+        (x + inset, y + height - inset),
+    ];
+    for index in 0..points.len() {
+        let from = points[index];
+        let to = points[(index + 1) % points.len()];
+        sugarloaf.stroke_line(from, to, stroke, color);
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+fn draw_rounded_outline(
+    sugarloaf: &mut impl TagSurfaceCanvas,
+    x: f32,
+    y: f32,
+    width: f32,
+    height: f32,
+    radius: f32,
+    stroke: f32,
+    color: [f32; 4],
+) {
+    if radius < stroke * 0.5 {
+        draw_rect_outline(sugarloaf, x, y, width, height, stroke, color);
+        return;
+    }
+    let inset = stroke * 0.5;
+    let left = x + inset + radius;
+    let right = x + width - inset - radius;
+    let top = y + inset + radius;
+    let bottom = y + height - inset - radius;
+    for (from, to) in [
+        ((left, y + inset), (right, y + inset)),
+        ((x + width - inset, top), (x + width - inset, bottom)),
+        ((right, y + height - inset), (left, y + height - inset)),
+        ((x + inset, bottom), (x + inset, top)),
+    ] {
+        sugarloaf.stroke_line(from, to, stroke, color);
+    }
+    for (cx, cy, start, end) in [
+        (right, top, -90.0, 0.0),
+        (right, bottom, 0.0, 90.0),
+        (left, bottom, 90.0, 180.0),
+        (left, top, 180.0, 270.0),
+    ] {
+        sugarloaf.stroke_arc((cx, cy), radius, (start, end), stroke, color);
+    }
+}
+
+#[cfg(test)]
+fn segment_color(colors: Colors, role: SegmentRole) -> [f32; 4] {
+    prompt_tag_colors(colors, role, &Default::default()).foreground
 }
 
 #[cfg(test)]
@@ -728,6 +1127,152 @@ fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
 mod tests {
     use super::*;
     use automexia_extension_api::{ExtensionId, Freshness, SessionId, StatusSegment};
+
+    #[derive(Default)]
+    struct ShapeRecorder {
+        fills: Vec<[f32; 4]>,
+        polygons: Vec<Vec<(f32, f32)>>,
+        strokes: usize,
+    }
+
+    impl TagSurfaceCanvas for ShapeRecorder {
+        fn fill_rounded(&mut self, _rect: [f32; 4], _radius: f32, color: [f32; 4]) {
+            self.fills.push(color);
+        }
+
+        fn fill_rect(&mut self, _rect: [f32; 4], color: [f32; 4]) {
+            self.fills.push(color);
+        }
+
+        fn fill_polygon(&mut self, points: &[(f32, f32)], color: [f32; 4]) {
+            self.polygons.push(points.to_vec());
+            self.fills.push(color);
+        }
+
+        fn stroke_line(
+            &mut self,
+            _from: (f32, f32),
+            _to: (f32, f32),
+            _width: f32,
+            _color: [f32; 4],
+        ) {
+            self.strokes += 1;
+        }
+
+        fn stroke_arc(
+            &mut self,
+            _center: (f32, f32),
+            _radius: f32,
+            _angles: (f32, f32),
+            _width: f32,
+            _color: [f32; 4],
+        ) {
+            self.strokes += 1;
+        }
+    }
+
+    #[test]
+    fn every_plain_shape_has_a_real_outline_without_any_fill() {
+        let plain = automexia_ui_model::ContextTagColors {
+            foreground: [0.8, 0.9, 1.0, 1.0],
+            background: [0.1, 0.3, 0.5, 0.0],
+        };
+        for style in BarVisualStyle::ALL {
+            let mut recorder = ShapeRecorder::default();
+            draw_tag_surface(&mut recorder, style, 2.0, 3.0, 80.0, 18.0, plain);
+            assert!(recorder.fills.is_empty(), "{style:?} painted a plain fill");
+            assert!(recorder.strokes > 0, "{style:?} lost its silhouette");
+        }
+    }
+
+    #[test]
+    fn connected_terminal_shapes_keep_their_cutouts_and_exact_tint_alpha() {
+        use automexia_ui_model::information_bar::{
+            tag_fragment_geometry, TagShapePosition,
+        };
+        for style in BarVisualStyle::ALL
+            .into_iter()
+            .filter(|style| !style.is_legacy())
+        {
+            for ordinal in 0..3 {
+                let position = TagShapePosition {
+                    first: ordinal == 0,
+                    last: ordinal == 2,
+                    ordinal,
+                    padding: 12.0,
+                };
+                let TagSurfaceGeometry::Connected(shape) =
+                    tag_fragment_geometry(style, 90.0, 24.0, position).unwrap()
+                else {
+                    panic!("connected style lost its geometry")
+                };
+                for alpha in [0.12, 0.75, 1.0] {
+                    let paint = automexia_ui_model::ContextTagColors {
+                        foreground: [0.8, 0.9, 1.0, 1.0],
+                        background: [0.1, 0.3, 0.5, alpha],
+                    };
+                    let mut recorder = ShapeRecorder::default();
+                    draw_tag_surface_in_run(
+                        &mut recorder,
+                        style,
+                        [2.0, 3.0, 90.0, 24.0],
+                        paint,
+                        position,
+                    );
+                    let mut expected: Vec<Vec<_>> = shape
+                        .triangles()
+                        .map(|triangle| triangle.map(|p| (p.0 + 2.0, p.1 + 3.0)).to_vec())
+                        .collect();
+                    if let Some(fold) = shape.fold {
+                        expected.push(fold.map(|p| (p.0 + 2.0, p.1 + 3.0)).to_vec());
+                    }
+                    assert_eq!(
+                        recorder.polygons, expected,
+                        "{style:?}, position {ordinal}"
+                    );
+                    assert!(recorder.fills.iter().all(|color| color[3] == alpha));
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn tinted_card_keeps_exact_tint_and_real_outline_while_chevron_uses_notch() {
+        let tinted = automexia_ui_model::ContextTagColors {
+            foreground: [0.8, 0.9, 1.0, 1.0],
+            background: [0.1, 0.3, 0.5, 0.12],
+        };
+        let mut card = ShapeRecorder::default();
+        draw_tag_surface(
+            &mut card,
+            BarVisualStyle::Card,
+            2.0,
+            3.0,
+            80.0,
+            18.0,
+            tinted,
+        );
+        assert_eq!(card.fills, vec![tinted.background]);
+        assert!(card.strokes >= 4);
+
+        let mut chevron = ShapeRecorder::default();
+        draw_tag_surface(
+            &mut chevron,
+            BarVisualStyle::Chevron,
+            2.0,
+            3.0,
+            80.0,
+            18.0,
+            tinted,
+        );
+        assert_eq!(chevron.fills, vec![tinted.background]);
+        assert_eq!(chevron.polygons.len(), 1);
+        let notch = chevron.polygons[0][0];
+        assert!(notch.0 > 2.0 && notch.1 > 3.0);
+        assert!(chevron.polygons[0].iter().all(|point| {
+            point.0 >= 2.0 && point.0 <= 82.0 && point.1 >= 3.0 && point.1 <= 21.0
+        }));
+    }
 
     const ALL_SEGMENT_ROLES: [SegmentRole; 13] = [
         SegmentRole::Production,
@@ -876,6 +1421,22 @@ mod tests {
             .map(|segment| segment.value.as_str())
     }
 
+    #[test]
+    fn disabling_optional_discovery_keeps_historical_core_identity_only() {
+        let mut status = history_status(10, "old-namespace", "new-namespace");
+        assert_eq!(historical_value(&status, 10), Some("old-namespace"));
+        status.clear_optional_contribution();
+        let historical = status.segments_for_prompt(10, &history_anchor());
+        assert!(historical
+            .iter()
+            .any(|segment| segment.role == SegmentRole::UbuntuWsl));
+        assert!(!historical
+            .iter()
+            .any(|segment| segment.role == SegmentRole::Kubernetes));
+        assert!(!status.request_in_flight);
+        assert!(!status.refresh_pending);
+    }
+
     fn dead_history_context(
         route: usize,
     ) -> crate::context::Context<rio_backend::event::VoidListener> {
@@ -914,19 +1475,77 @@ mod tests {
         )
     }
 
+    fn core_prompt_pane(
+        route: usize,
+        user: &str,
+        distro: Option<&str>,
+        is_active: bool,
+    ) -> super::super::SemanticPaneRenderState {
+        let mut session = session("", distro);
+        session.session_id = route;
+        session.shell_user = Some(user.into());
+        super::super::SemanticPaneRenderState {
+            origin_y: 0.0,
+            bottom_y: 240.0,
+            cell_height: 24.0,
+            completion_labels: Vec::new(),
+            session,
+            metadata_readiness:
+                super::super::session_metadata::MetadataReadiness::Complete,
+            prompt_active: true,
+            historical_anchors: Vec::new(),
+            live_anchor: Some(history_anchor()),
+            command_results: Vec::new(),
+            output_background_protected: Vec::new(),
+            allow_result_animation: false,
+            is_active,
+        }
+    }
+
     #[test]
-    fn context_ownership_disabled_feature_keeps_route_state_empty() {
+    fn core_prompt_tags_keep_route_state_without_optional_devops() {
         let mut manager = history_manager();
         let mut renderer =
             super::super::Renderer::new(&rio_backend::config::Config::default());
         renderer.devops_context_enabled = false;
         renderer.sync_devops_routes(&manager);
-        assert!(renderer.devops_status_route.is_none());
-        manager.contexts_mut().push(history_grid(20));
-        manager.set_current(1);
-        renderer.sync_devops_routes(&manager);
-        assert!(renderer.devops_status_route.is_none());
-        assert!(renderer.devops_statuses.is_empty());
+        assert_eq!(renderer.devops_status_route, Some(10));
+        assert!(manager
+            .current_grid_mut()
+            .split_right_core(dead_history_context(20)));
+        assert!(manager.current_grid_mut().select_active_route(10));
+        let host = core_prompt_pane(10, "alice", None, true);
+        let guest = core_prompt_pane(20, "bob", Some("Ubuntu"), false);
+        renderer.prepare_prompt_context(&mut manager, &host, &[guest]);
+        let host_segments = renderer
+            .prompt_status_for_route(10, 10)
+            .unwrap()
+            .segments_for_prompt(10, &host.live_anchor.unwrap());
+        assert!(host_segments.iter().any(|s| s.role == SegmentRole::Windows));
+        assert!(host_segments.iter().any(|s| s.value == "alice"));
+        assert!(!host_segments.iter().any(|s| s.value == "bob"));
+        let guest_segments = renderer
+            .prompt_status_for_route(20, 10)
+            .unwrap()
+            .segments_for_prompt(20, &history_anchor());
+        assert!(guest_segments
+            .iter()
+            .any(|s| s.role == SegmentRole::UbuntuWsl));
+        assert!(guest_segments.iter().any(|s| s.value == "bob"));
+        assert!(!guest_segments.iter().any(|s| s.value == "alice"));
+
+        assert!(manager.current_grid_mut().select_active_route(20));
+        let guest = core_prompt_pane(20, "bob", Some("Ubuntu"), true);
+        let host = core_prompt_pane(10, "alice", None, false);
+        renderer.prepare_prompt_context(&mut manager, &guest, &[host]);
+        assert_eq!(renderer.devops_status_route, Some(20));
+        assert!(renderer.devops_statuses.contains_key(&10));
+        assert!(renderer
+            .prompt_status_for_route(20, 20)
+            .unwrap()
+            .segments_for_prompt(20, &history_anchor())
+            .iter()
+            .any(|s| s.value == "bob"));
     }
 
     #[test]
@@ -1089,7 +1708,6 @@ mod tests {
     #[test]
     fn prompt_tags_are_secondary_compact_and_fit_their_rows() {
         let comfortable = prompt_tag_metrics(24.0);
-        assert_eq!(PROMPT_TAG_MAX_FONT_SIZE, 14.0);
         assert_eq!(comfortable.font_size, 14.0);
         assert!(
             comfortable.font_size
@@ -1239,8 +1857,8 @@ mod tests {
     #[test]
     fn renderer_compaction_delegates_to_grapheme_safe_ui_policy() {
         assert_eq!(
-            compact_label("dev-😀-cluster-name", 10),
-            automexia_ui_model::compact_label("dev-😀-cluster-name", 10)
+            compact_label("dev-\u{1f600}-cluster-name", 10),
+            automexia_ui_model::compact_label("dev-\u{1f600}-cluster-name", 10)
         );
         assert_eq!(
             compact_middle("feature/very-long-branch", 12),
@@ -1359,7 +1977,129 @@ mod tests {
         assert!(same_prompt_identity(None, 12, None, 12));
         assert!(!same_prompt_identity(None, 12, None, 99));
     }
+    #[test]
+    fn metadata_readiness_other_route_cannot_borrow_live_segments() {
+        let mut status = history_status(417, "historic", "live");
+        status.set_metadata_readiness(417, MetadataReadiness::Complete);
+        assert!(status
+            .segments_for_prompt(418, &history_anchor())
+            .is_empty());
+        assert_eq!(historical_value(&status, 417), Some("historic"));
+    }
+
+    #[test]
+    fn metadata_readiness_repeated_pending_does_not_revoke_each_frame() {
+        let mut status = history_status(419, "historic", "live");
+        status.set_metadata_readiness(419, MetadataReadiness::Pending);
+        let revision = status.live_segments_revision;
+        for _ in 0..128 {
+            status.set_metadata_readiness(419, MetadataReadiness::Pending);
+            assert_eq!(status.live_segments_revision, revision);
+        }
+    }
+
     mod metadata_readiness {
         include!("devops_metadata_readiness_tests.rs");
+    }
+}
+
+#[cfg(test)]
+mod visual_tag_render_tests {
+    use super::*;
+    use rio_backend::config::{presentation::TagStyle, Config};
+
+    #[test]
+    fn icon_only_kubernetes_tag_keeps_unverified_state_visible() {
+        let mut item = ResolvedBarItem {
+            slot_id: "cluster".into(),
+            value: String::new(),
+            icon_only: true,
+            accessibility_label:
+                "Configured Kubernetes namespace sandbox; cluster existence unverified"
+                    .into(),
+            source_role: Some(SegmentRole::Kubernetes),
+            icon: Some(IconKind::Kubernetes),
+            lane: automexia_ui_model::information_bar::BarLane::Leading,
+            color: None,
+            freshness: automexia_extension_api::Freshness::Stale,
+            observed_at_ms: 1,
+            details_action: None,
+        };
+        assert!(kubernetes_freshness_marker(&item).is_some());
+        item.freshness = automexia_extension_api::Freshness::Current;
+        assert!(kubernetes_freshness_marker(&item).is_none());
+        item.source_role = Some(SegmentRole::Docker);
+        item.freshness = automexia_extension_api::Freshness::Stale;
+        assert!(kubernetes_freshness_marker(&item).is_none());
+    }
+
+    #[test]
+    fn visual_tag_render_custom_anchor_and_opacity_reach_prompt_paint_data() {
+        let config: Config = toml::from_str("[presentation.tags]\nopacity = 40\n[presentation.tags.colors]\nkubernetes = '#f1c284'\n").unwrap();
+        let renderer = super::super::Renderer::new(&config);
+        let expected = automexia_ui_model::context_tag_colors(
+            renderer.named_colors.background.0,
+            [241, 194, 132],
+            40,
+        );
+        assert_eq!(
+            prompt_tag_colors(
+                renderer.named_colors,
+                SegmentRole::Kubernetes,
+                &renderer.presentation.tags
+            )
+            .foreground,
+            expected.foreground
+        );
+        assert_eq!(
+            prompt_tag_colors(
+                renderer.named_colors,
+                SegmentRole::Kubernetes,
+                &renderer.presentation.tags
+            )
+            .background,
+            expected.background
+        );
+    }
+    #[test]
+    fn visual_tag_render_plain_and_zero_opacity_preserve_readable_foreground() {
+        for style in ["plain", "tinted"] {
+            let opacity = if style == "plain" { 61 } else { 0 };
+            let config: Config = toml::from_str(&format!(
+                "[presentation.tags]\nstyle = '{style}'\nopacity = {opacity}\n"
+            ))
+            .unwrap();
+            assert_eq!(
+                config.presentation.tags.style == TagStyle::Plain,
+                style == "plain"
+            );
+            let renderer = super::super::Renderer::new(&config);
+            for role in [SegmentRole::Kubernetes, SegmentRole::User] {
+                let expected = automexia_ui_model::context_tag_colors(
+                    renderer.named_colors.background.0,
+                    segment_anchor_rgb(role),
+                    0,
+                );
+                assert_eq!(
+                    prompt_tag_colors(
+                        renderer.named_colors,
+                        role,
+                        &renderer.presentation.tags
+                    )
+                    .background,
+                    expected.background,
+                    "role {role:?}, style {style}"
+                );
+                assert_eq!(
+                    prompt_tag_colors(
+                        renderer.named_colors,
+                        role,
+                        &renderer.presentation.tags
+                    )
+                    .foreground,
+                    expected.foreground
+                );
+            }
+        }
     }
 }

@@ -170,12 +170,57 @@ if (Test-Path -LiteralPath $completionRoot) {
 }
 Assert-AutomexiaAliasState $generatedRoot
 
+function Get-AutomexiaFileAcl([string]$Path) {
+    if ($PSVersionTable.PSVersion.Major -ge 6) { return (Get-Acl -LiteralPath $Path) }
+    return [IO.File]::GetAccessControl($Path)
+}
+
+function Set-AutomexiaFileAcl([string]$Path, $Acl) {
+    if ($PSVersionTable.PSVersion.Major -ge 6) {
+        Set-Acl -LiteralPath $Path -AclObject $Acl
+    } else {
+        [IO.File]::SetAccessControl($Path, $Acl)
+    }
+}
+
+function New-AutomexiaStage([string]$Destination) {
+    for ($attempt = 0; $attempt -lt 8; $attempt++) {
+        $temporary = "$Destination.automexia-$([IO.Path]::GetRandomFileName()).tmp"
+        try {
+            $stream = [IO.FileStream]::new(
+                $temporary, [IO.FileMode]::CreateNew,
+                [IO.FileAccess]::Write, [IO.FileShare]::None)
+            return @{ Path = $temporary; Stream = $stream }
+        } catch [IO.IOException] {
+            if (-not (Test-Path -LiteralPath $temporary)) { throw }
+        }
+    }
+    throw 'Could not create a unique shell-integration staging file.'
+}
+
+function Remove-AutomexiaStage($Stage) {
+    if ($null -eq $Stage) { return }
+    if ($null -ne $Stage.Stream) { $Stage.Stream.Dispose() }
+    # A path may name someone else's file after our handle closes. Do not
+    # delete by name without a retained identity for the created file.
+}
+
 function Remove-MarkedBlock([string]$Path) {
     if ([string]::IsNullOrWhiteSpace($Path) -or -not (Test-Path -LiteralPath $Path -PathType Leaf)) { return }
     $item = Get-Item -LiteralPath $Path -Force
     Assert-AutomexiaSafeProfilePathChain $Path
     if ($item.Length -gt 1MB) { throw "PowerShell profile exceeds the 1 MiB safety ceiling: $Path" }
-    $text = [IO.File]::ReadAllText($Path)
+    $encoding = [Text.UTF8Encoding]::new($false)
+    $original = [IO.File]::ReadAllBytes($Path)
+    if ($original.Length -ge 2 -and $original[0] -eq 0xFF -and $original[1] -eq 0xFE) {
+        $encoding = [Text.Encoding]::Unicode
+    } elseif ($original.Length -ge 2 -and $original[0] -eq 0xFE -and $original[1] -eq 0xFF) {
+        $encoding = [Text.Encoding]::BigEndianUnicode
+    } elseif ($original.Length -ge 3 -and $original[0] -eq 0xEF -and
+              $original[1] -eq 0xBB -and $original[2] -eq 0xBF) {
+        $encoding = [Text.UTF8Encoding]::new($true)
+    }
+    $text = [IO.File]::ReadAllText($Path, $encoding)
     $starts = ([regex]::Matches($text, [regex]::Escape($MarkerStart))).Count
     $ends = ([regex]::Matches($text, [regex]::Escape($MarkerEnd))).Count
     if ($starts -eq 0 -and $ends -eq 0) { return }
@@ -186,9 +231,24 @@ function Remove-MarkedBlock([string]$Path) {
     if ([regex]::Matches($text, $pattern).Count -ne 1) {
         throw "Malformed or reversed Automexia managed block; profile left unchanged: $Path"
     }
-    $temporary = "$Path.automexia-$PID.tmp"
-    [IO.File]::WriteAllText($temporary, [regex]::Replace($text, $pattern, ''), [Text.UTF8Encoding]::new($false))
-    Move-Item -LiteralPath $temporary -Destination $Path -Force
+    $updated = [regex]::Replace($text, $pattern, '')
+    $acl = Get-AutomexiaFileAcl $Path
+    $stage = New-AutomexiaStage $Path
+    try {
+        $preamble = $encoding.GetPreamble()
+        $stage.Stream.Write($preamble, 0, $preamble.Length)
+        $bytes = $encoding.GetBytes($updated)
+        $stage.Stream.Write($bytes, 0, $bytes.Length)
+        $stage.Stream.Flush($true)
+        $stage.Stream.Dispose()
+        $stage.Stream = $null
+        Set-AutomexiaFileAcl $stage.Path $acl
+        [IO.File]::Replace(
+            $stage.Path, $Path,
+            [Management.Automation.Language.NullString]::Value)
+    } finally {
+        Remove-AutomexiaStage $stage
+    }
 }
 
 $profiles = New-Object System.Collections.Generic.List[string]
@@ -230,6 +290,44 @@ if ($wsl) {
     $cleanup = @'
 set -eu
 umask 077
+stage_dir=
+stage_file=
+stage_identity=
+directory_identity() {
+  stat -c '%d:%i' "$1" 2>/dev/null || stat -f '%d:%i' "$1"
+}
+cleanup_stage() {
+  [ -n "$stage_dir" ] || return 0
+  [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || return 0
+  (
+    cd -P "$stage_dir" 2>/dev/null || exit 0
+    [ "$(directory_identity .)" = "$stage_identity" ] || exit 0
+    rm -f ./payload
+  )
+  [ "$(directory_identity "$stage_dir" 2>/dev/null)" = "$stage_identity" ] || return 0
+  rmdir "$stage_dir"
+}
+trap cleanup_stage EXIT HUP INT TERM
+new_stage() {
+  stage_dir=$(mktemp -d "$1.automexia.XXXXXXXX")
+  [ -d "$stage_dir" ] && [ ! -L "$stage_dir" ] || return 1
+  stage_file=$stage_dir/payload
+  stage_identity=$(directory_identity "$stage_dir")
+}
+publish_stage() {
+  destination=$1
+  case "$destination" in /*) ;; *) destination=$(pwd -P)/$destination ;; esac
+  (
+    cd -P "$stage_dir"
+    [ "$(directory_identity .)" = "$stage_identity" ] || exit 1
+    mv -f ./payload "$destination"
+  )
+  [ "$(directory_identity "$stage_dir" 2>/dev/null)" = "$stage_identity" ] || return 1
+  rmdir "$stage_dir"
+  stage_dir=
+  stage_file=
+  stage_identity=
+}
 remove_profile() {
   f=$1
   [ -f "$f" ] || return 0
@@ -239,10 +337,11 @@ remove_profile() {
   ends=$(grep -Fxc '# <<< AUTOMEXIA SHELL INTEGRATION <<<' "$f" 2>/dev/null || true)
   if [ "$starts" -eq 0 ] && [ "$ends" -eq 0 ]; then return 0; fi
   [ "$starts" -eq 1 ] && [ "$ends" -eq 1 ] || { printf 'malformed Automexia markers; profile unchanged: %s\n' "$f" >&2; exit 1; }
-  tmp="$f.automexia-$$.tmp"
-  awk 'BEGIN{skip=0} /# >>> AUTOMEXIA SHELL INTEGRATION >>>/{skip=1;next} /# <<< AUTOMEXIA SHELL INTEGRATION <<</{skip=0;next} !skip{print}' "$f" > "$tmp"
-  chmod --reference="$f" "$tmp" 2>/dev/null || true
-  mv "$tmp" "$f"
+  new_stage "$f"
+  (set -C; awk 'BEGIN{skip=0} /# >>> AUTOMEXIA SHELL INTEGRATION >>>/{skip=1;next} /# <<< AUTOMEXIA SHELL INTEGRATION <<</{skip=0;next} !skip{print}' "$f" > "$stage_file")
+  permissions=$(stat -c '%a' "$f" 2>/dev/null || stat -f '%Lp' "$f")
+  chmod "$permissions" "$stage_file"
+  publish_stage "$f"
 }
 cfg="${AUTOMEXIA_CONFIG_HOME:-${XDG_CONFIG_HOME:-$HOME/.config}/automexia}"
 fish_cfg="${XDG_CONFIG_HOME:-$HOME/.config}/fish/conf.d"

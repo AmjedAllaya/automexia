@@ -1,39 +1,10 @@
 //! Paste delivery belongs to an exact existing terminal, never to later focus.
 
 use super::{Context, ContextManager};
-use crate::event::Msg;
-use rio_backend::crosswords::{grid::Scroll, Mode};
+use crate::event::{Msg, PasteRequest};
+use rio_backend::crosswords::grid::Scroll;
 use rio_backend::event::EventListener;
 use std::sync::atomic::Ordering;
-
-/// Bound app-owned conversion and each queued transaction, not OS clipboard allocation.
-pub(crate) const MAX_PASTE_BYTES: usize = 1024 * 1024;
-
-pub(crate) fn prepare_paste(
-    text: &str,
-    bracketed: bool,
-    mode: Mode,
-) -> Result<Vec<u8>, PasteError> {
-    if text.len() > MAX_PASTE_BYTES {
-        return Err(PasteError::TooLarge);
-    }
-    if text.is_empty() {
-        return Ok(Vec::new());
-    }
-    if bracketed && mode.contains(Mode::BRACKETED_PASTE) {
-        let mut payload = Vec::with_capacity(text.len() + 12);
-        payload.extend_from_slice(b"\x1b[200~");
-        // Preserve UTF-8 and newlines; neither ESC nor ETX can terminate the
-        // bracket from inside its untrusted body. Do not append an Enter.
-        payload.extend(text.bytes().filter(|byte| !matches!(byte, 0x1b | 0x03)));
-        payload.extend_from_slice(b"\x1b[201~");
-        Ok(payload)
-    } else if bracketed {
-        Ok(text.replace("\r\n", "\r").replace('\n', "\r").into_bytes())
-    } else {
-        Ok(text.as_bytes().to_vec())
-    }
-}
 
 /// Consumed on delivery; no clone/replay API. The second identity rejects a
 /// replaced context even if a caller mistakenly reuses a route identifier.
@@ -72,20 +43,20 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
         if context.shutdown_requested.load(Ordering::Acquire) {
             return Err(PasteError::Closed);
         }
-        let mut terminal = context.terminal.lock();
-        let payload = prepare_paste(text, bracketed, terminal.mode())?;
-        if payload.is_empty() {
+        let paste = PasteRequest::new(text, bracketed).ok_or(PasteError::TooLarge)?;
+        if paste.text().is_empty() {
             return Ok(false);
         }
+        let mut terminal = context.terminal.lock();
         // One queue message prevents resize/keyboard producers from entering
         // between bracket delimiters. A disconnected receiver changes no UI state.
         context
             .messenger
             .channel
-            .send(Msg::Input(payload.into()))
+            .send(Msg::Paste(paste))
             .map_err(|_| PasteError::Closed)?;
-        // Keep terminal mutation under the same lock as mode observation and
-        // queue publication: the awakened PTY parser cannot publish first.
+        // Keep selection and scroll mutation under the same lock as publication.
+        // Mode-dependent encoding occurs only in the receiving PTY worker.
         terminal.scroll_display(Scroll::Bottom);
         terminal.selection.take();
         drop(terminal);
@@ -115,39 +86,23 @@ mod tests {
     }
 
     #[test]
-    fn paste_encoding_bounds_and_raw_input_are_independent_of_shell_identity() {
-        for mode in [
-            Mode::empty(),
-            Mode::BRACKETED_PASTE,
-            Mode::ALT_SCREEN | Mode::BRACKETED_PASTE,
-        ] {
-            for bracketed in [false, true] {
-                assert_eq!(prepare_paste("", bracketed, mode), Ok(Vec::new()));
-                for size in [MAX_PASTE_BYTES - 1, MAX_PASTE_BYTES] {
-                    assert!(prepare_paste(&"x".repeat(size), bracketed, mode).is_ok());
-                }
-                assert_eq!(
-                    prepare_paste(&"x".repeat(MAX_PASTE_BYTES + 1), bracketed, mode),
-                    Err(PasteError::TooLarge)
-                );
-                assert_eq!(
-                    prepare_paste(&"界".repeat(MAX_PASTE_BYTES / 3 + 1), bracketed, mode),
-                    Err(PasteError::TooLarge)
-                );
+    fn paste_request_bound_is_independent_of_shell_identity() {
+        for bracketed in [false, true] {
+            for size in [PasteRequest::MAX_BYTES - 1, PasteRequest::MAX_BYTES] {
+                let text = "x".repeat(size);
+                assert_eq!(PasteRequest::new(&text, bracketed).unwrap().text(), text);
             }
-            assert_eq!(
-                prepare_paste("a\r\nb\nc\x1b\x03", false, mode).unwrap(),
-                b"a\r\nb\nc\x1b\x03"
-            );
+            assert!(PasteRequest::new(
+                &"x".repeat(PasteRequest::MAX_BYTES + 1),
+                bracketed
+            )
+            .is_none());
+            assert!(PasteRequest::new(
+                &"界".repeat(PasteRequest::MAX_BYTES / 3 + 1),
+                bracketed
+            )
+            .is_none());
         }
-        assert_eq!(
-            prepare_paste("a\r\nb\nc", true, Mode::empty()).unwrap(),
-            b"a\rb\rc"
-        );
-        assert_eq!(
-            prepare_paste("界e\u{301}\n", true, Mode::BRACKETED_PASTE).unwrap(),
-            "\x1b[200~界e\u{301}\n\x1b[201~".as_bytes()
-        );
     }
 
     #[test]
@@ -167,7 +122,7 @@ mod tests {
         manager.current().terminal.lock().selection = Some(selection);
         let target = manager.current().paste_target();
         assert_eq!(
-            manager.deliver_paste(target, &"x".repeat(MAX_PASTE_BYTES + 1), true),
+            manager.deliver_paste(target, &"x".repeat(PasteRequest::MAX_BYTES + 1), true),
             Err(PasteError::TooLarge)
         );
         assert!(manager.current().terminal.lock().selection.is_some());
@@ -234,8 +189,6 @@ mod tests {
                 .unwrap();
         let (sender, receiver) = corcovado::channel::channel();
         manager.current_mut().messenger = Messenger::new(sender);
-        let mut parser = rio_backend::performer::handler::Processor::default();
-        parser.advance(&mut *manager.current().terminal.lock(), b"\x1b[?2004h");
         let target = manager.current().paste_target();
         let target_route = target.route_id;
         scrolled_header(&mut manager.current_mut().renderable_content);
@@ -244,16 +197,17 @@ mod tests {
         let (sibling_sender, sibling_receiver) = corcovado::channel::channel();
         manager.current_mut().messenger = Messenger::new(sibling_sender);
 
-        // A clipboard reply may arrive after focus changes. Capture actual
-        // queued bytes, not a mocked "sent" count or the current route.
+        // A clipboard reply may arrive after focus changes. The exact route
+        // receives one semantic transaction; only its PTY worker may encode it.
         assert_eq!(
             manager.deliver_paste(target, "one\r\ntwo\x1b[201~\x03", true),
             Ok(true)
         );
-        let Msg::Input(bytes) = receiver.try_recv().unwrap() else {
-            panic!("expected PTY input")
+        let Msg::Paste(paste) = receiver.try_recv().unwrap() else {
+            panic!("expected PTY paste")
         };
-        assert_eq!(&*bytes, b"\x1b[200~one\r\ntwo[201~\x1b[201~");
+        assert_eq!(paste.text(), "one\r\ntwo\x1b[201~\x03");
+        assert!(paste.is_bracketed_request());
         assert!(receiver.try_recv().is_err());
         assert!(sibling_receiver.try_recv().is_err());
         assert_eq!(manager.current().renderable_content.command_rows.top(), 2);

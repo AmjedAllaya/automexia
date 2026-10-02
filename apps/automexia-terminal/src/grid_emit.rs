@@ -335,62 +335,169 @@ fn cell_fg_hinted(tag: HintTag, renderer: &Renderer) -> [u8; 4] {
     }
 }
 
+/// Classify complete, proven soft-wrapped logical rows in the existing visible
+/// snapshot. No history lookbehind or guessing across CR/LF boundaries. A
+/// clipped prefix/suffix and an over-budget row remain neutral.
+pub(crate) fn classify_visible_output(
+    rows: &[Row<Square>],
+    cols: usize,
+    first_row_continues: bool,
+    output: &mut Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
+    scratch: &mut String,
+) {
+    use crate::automexia::output_semantics::{OutputClassification, OutputDomain};
+    let uncertain = Some(OutputClassification {
+        domain: OutputDomain::Uncertain,
+        severity: None,
+    });
+    const MAX_ROWS: usize = 1024;
+    const MAX_CELLS: usize = 64 * 1024;
+    output.clear();
+    output.resize(rows.len().min(MAX_ROWS), None);
+    scratch.clear();
+    let mut first = 0;
+    let mut cells = 0usize;
+    let mut incomplete = first_row_continues;
+    let mut classifier = crate::automexia::output_semantics::RowClassifier::default();
+    for (index, row) in rows.iter().take(output.len()).enumerate() {
+        let count = cols.min(row.len());
+        cells = cells.saturating_add(count);
+        if cells > MAX_CELLS
+            || row.semantic_prompt
+                != rio_backend::crosswords::grid::row::SemanticPrompt::None
+            || !append_semantic_row(row, count, scratch)
+        {
+            incomplete = true;
+        }
+        let wraps = count
+            .checked_sub(1)
+            .and_then(|last| row.inner.get(last))
+            .is_some_and(|square| square.wrapline());
+        if !wraps {
+            let classification = if incomplete {
+                classifier.reset();
+                uncertain
+            } else {
+                classifier.classify(scratch)
+            };
+            output[first..=index].fill(classification);
+            first = index + 1;
+            scratch.clear();
+            incomplete = false;
+        }
+    }
+    // Preserve uncertainty as an ownership boundary for later command bands.
+    if first < output.len() {
+        output[first..].fill(uncertain);
+    }
+    scratch.clear();
+}
+
+fn append_semantic_row(row: &Row<Square>, cols: usize, scratch: &mut String) -> bool {
+    use rio_backend::crosswords::square::{CellFlags, Wide};
+    for square in row.inner.iter().take(cols) {
+        if matches!(square.wide(), Wide::Spacer | Wide::LeadingSpacer)
+            || square.contains_cell_flag(CellFlags::REFLOW_PADDING)
+        {
+            continue;
+        }
+        // Erased/default blank cells still separate fields. Compact RGB cells
+        // have no character or extras despite reusing their packed bit slots.
+        let character = if square.is_bg_only() || matches!(square.c(), '\0' | '\t') {
+            ' '
+        } else {
+            square.c()
+        };
+        if character.is_control() {
+            continue;
+        }
+        if scratch.len().saturating_add(character.len_utf8())
+            > crate::automexia::output_semantics::MAX_ROW_BYTES
+        {
+            return false;
+        }
+        scratch.push(character);
+    }
+    true
+}
+
+#[cfg(test)]
+fn semantic_row_classification(
+    row: &Row<Square>,
+    cols: usize,
+    scratch: &mut String,
+) -> Option<crate::automexia::output_semantics::OutputClassification> {
+    scratch.clear();
+    if row.semantic_prompt != rio_backend::crosswords::grid::row::SemanticPrompt::None {
+        return None;
+    }
+    append_semantic_row(row, cols, scratch)
+        .then(|| crate::automexia::output_semantics::classify_row(scratch))
+        .flatten()
+}
+
+#[cfg(test)]
 fn semantic_row_severity(
     row: &Row<Square>,
     cols: usize,
     renderer: &Renderer,
     scratch: &mut String,
 ) -> Option<crate::automexia::api::SemanticSeverity> {
-    if !renderer.devops_enabled || !renderer.presentation.output_highlighting {
-        return None;
-    }
-    scratch.clear();
-    if scratch.capacity() < cols {
-        scratch.reserve(cols);
-    }
-    for square in row.inner.iter().take(cols) {
-        if square.content_tag() != ContentTag::Codepoint {
-            continue;
-        }
-        let character = square.c();
-        if character != ' ' && !character.is_control() {
-            scratch.push(character);
-        }
-    }
-    crate::automexia::runtime::classify_row_text(scratch)
+    let classification = semantic_row_classification(row, cols, scratch)?;
+    crate::automexia::output_semantics::appearance_for(
+        &renderer.presentation,
+        classification,
+    )?;
+    classification.severity
 }
 
+#[cfg(test)]
 fn semantic_row_fg(
     row: &Row<Square>,
     cols: usize,
     renderer: &Renderer,
     scratch: &mut String,
 ) -> Option<[u8; 4]> {
-    match semantic_row_severity(row, cols, renderer, scratch)? {
-        crate::automexia::api::SemanticSeverity::Error => {
-            Some(normalized_to_u8(renderer.named_colors.red))
-        }
-        crate::automexia::api::SemanticSeverity::Warning => {
-            Some(normalized_to_u8(renderer.named_colors.yellow))
-        }
-        crate::automexia::api::SemanticSeverity::Success => {
-            Some(normalized_to_u8(renderer.named_colors.green))
-        }
-        crate::automexia::api::SemanticSeverity::Info => {
-            Some(normalized_to_u8(renderer.named_colors.cyan))
-        }
-        crate::automexia::api::SemanticSeverity::Debug => {
-            Some(normalized_to_u8(renderer.named_colors.blue))
-        }
-    }
+    semantic_classification_fg(semantic_row_classification(row, cols, scratch), renderer)
 }
 
-fn semantic_row_bg(severity: crate::automexia::api::SemanticSeverity) -> Option<[u8; 4]> {
-    match severity {
-        crate::automexia::api::SemanticSeverity::Error => Some([105, 12, 25, 86]),
-        crate::automexia::api::SemanticSeverity::Warning => Some([96, 69, 0, 78]),
-        _ => None,
+pub(crate) fn semantic_classification_fg(
+    classification: Option<crate::automexia::output_semantics::OutputClassification>,
+    renderer: &Renderer,
+) -> Option<[u8; 4]> {
+    use rio_backend::config::presentation::HighlightStyle;
+    let classification = classification?;
+    let appearance = crate::automexia::output_semantics::appearance_for(
+        &renderer.presentation,
+        classification,
+    )?;
+    if appearance.style == HighlightStyle::Background {
+        return None;
     }
+    Some(crate::automexia::presentation::output_foreground(
+        appearance,
+        &renderer.named_colors,
+        classification.severity?,
+    ))
+}
+
+fn semantic_classification_bg(
+    classification: Option<crate::automexia::output_semantics::OutputClassification>,
+    renderer: &Renderer,
+) -> Option<[u8; 4]> {
+    use rio_backend::config::presentation::HighlightStyle;
+    let classification = classification?;
+    let appearance = crate::automexia::output_semantics::appearance_for(
+        &renderer.presentation,
+        classification,
+    )?;
+    if appearance.style == HighlightStyle::Foreground {
+        return None;
+    }
+    crate::automexia::presentation::output_background(
+        appearance,
+        classification.severity?,
+    )
 }
 
 #[inline]
@@ -402,7 +509,8 @@ fn semantic_or_cell_bg(
     term_colors: &TermColors,
 ) -> [u8; 4] {
     if let Some(semantic) = semantic {
-        if !style.flags.contains(StyleFlags::INVERSE)
+        if !sq.is_bg_only()
+            && !style.flags.contains(StyleFlags::INVERSE)
             && matches!(style.bg, AnsiColor::Named(NamedColor::Background))
         {
             return semantic;
@@ -430,6 +538,23 @@ fn semantic_or_cell_fg(
         }
     }
     cell_fg(sq, style, renderer, term_colors)
+}
+
+fn input_or_output_accent(
+    mask: &[bool],
+    column: usize,
+    style: Style,
+    output: Option<[u8; 4]>,
+) -> Option<[u8; 4]> {
+    if mask.get(column) == Some(&true)
+        && !style
+            .flags
+            .intersects(StyleFlags::DIM | StyleFlags::INVERSE | StyleFlags::HIDDEN)
+    {
+        Some(crate::renderer::command_input::ACCENT)
+    } else {
+        output
+    }
 }
 
 use rio_backend::sugarloaf::font::FontLibrary;
@@ -1139,15 +1264,11 @@ pub fn cell_bg(
 
 #[inline]
 fn normalized_to_u8(c: [f32; 4]) -> [u8; 4] {
-    [
-        (c[0].clamp(0.0, 1.0) * 255.0) as u8,
-        (c[1].clamp(0.0, 1.0) * 255.0) as u8,
-        (c[2].clamp(0.0, 1.0) * 255.0) as u8,
-        (c[3].clamp(0.0, 1.0) * 255.0) as u8,
-    ]
+    crate::automexia::presentation::normalized_to_u8(c)
 }
 
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub fn build_row_bg(
     row: &Row<Square>,
     cols: usize,
@@ -1159,10 +1280,37 @@ pub fn build_row_bg(
     rasterizer: &mut GridGlyphRasterizer,
     bg_scratch: &mut Vec<CellBg>,
 ) {
+    let classification =
+        semantic_row_classification(row, cols, &mut rasterizer.semantic_text_scratch);
+    build_row_bg_classified(
+        row,
+        cols,
+        style_table,
+        renderer,
+        term_colors,
+        row_sel,
+        row_hints,
+        rasterizer,
+        bg_scratch,
+        classification,
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_row_bg_classified(
+    row: &Row<Square>,
+    cols: usize,
+    style_table: &[Style],
+    renderer: &Renderer,
+    term_colors: &TermColors,
+    row_sel: Option<RowSelection>,
+    row_hints: &[RowHint],
+    _rasterizer: &mut GridGlyphRasterizer,
+    bg_scratch: &mut Vec<CellBg>,
+    classification: Option<crate::automexia::output_semantics::OutputClassification>,
+) {
     bg_scratch.clear();
-    let semantic_bg =
-        semantic_row_severity(row, cols, renderer, &mut rasterizer.semantic_text_scratch)
-            .and_then(semantic_row_bg);
+    let semantic_bg = semantic_classification_bg(classification, renderer);
 
     // Fast path: row has no selection and no color-changing hints
     // (HyperlinkHover only contributes an underline, never bg). The
@@ -1362,7 +1510,8 @@ pub struct GridGlyphRasterizer {
     /// while still letting the glyph→column mapping recover the right
     /// cell for each shaped glyph.
     run_cell_columns: Vec<u16>,
-    /// Reused DevOps row-classification buffer; no per-row String allocation after warm-up.
+    /// Scratch for single-row test adapters; production uses the pane snapshot.
+    #[cfg(test)]
     semantic_text_scratch: String,
     /// Cached CoreText handles per font_id.
     #[cfg(target_os = "macos")]
@@ -1418,6 +1567,7 @@ impl GridGlyphRasterizer {
             #[cfg(target_os = "macos")]
             run_cell_starts: Vec::new(),
             run_cell_columns: Vec::new(),
+            #[cfg(test)]
             semantic_text_scratch: String::new(),
             #[cfg(not(target_os = "macos"))]
             run_str_scratch: String::new(),
@@ -1771,6 +1921,7 @@ fn shape_run_swash(
 /// underlines first (drawn under glyphs), glyphs, then strikethroughs
 /// (drawn on top).
 #[allow(clippy::too_many_arguments)]
+#[cfg(test)]
 pub fn build_row_fg(
     row: &Row<Square>,
     cols: usize,
@@ -1797,6 +1948,63 @@ pub fn build_row_fg(
     cursor_col_for_row: Option<u16>,
     fg_scratch: &mut Vec<CellText>,
 ) {
+    let classification =
+        semantic_row_classification(row, cols, &mut rasterizer.semantic_text_scratch);
+    let mut input = crate::renderer::command_input::InputAccents::default();
+    input.refresh(&mut [row.clone()], cols, true);
+    build_row_fg_classified(
+        row,
+        cols,
+        y,
+        style_table,
+        extras_table,
+        renderer,
+        term_colors,
+        rasterizer,
+        grid,
+        size_px,
+        cell_w,
+        cell_h,
+        row_sel,
+        row_hints,
+        font_library,
+        route_id,
+        cursor_col_for_row,
+        fg_scratch,
+        classification,
+        input.rows.first().map_or(&[], Vec::as_slice),
+    );
+}
+
+#[allow(clippy::too_many_arguments)]
+pub fn build_row_fg_classified(
+    row: &Row<Square>,
+    cols: usize,
+    y: u16,
+    style_table: &[Style],
+    extras_table: &ExtrasMap,
+    renderer: &Renderer,
+    term_colors: &TermColors,
+    rasterizer: &mut GridGlyphRasterizer,
+    grid: &mut GridRenderer,
+    size_px: f32,
+    cell_w: f32,
+    cell_h: f32,
+    row_sel: Option<RowSelection>,
+    row_hints: &[RowHint],
+    font_library: &FontLibrary,
+    route_id: usize,
+    // Column of the cursor on this row, or `None` if the cursor isn't
+    // on this row (different row, or hidden). When `Some`, the
+    // run-extension loop breaks the run around the cursor cell so
+    // partial ligature lookahead (e.g. `grap` waiting for `h` to form
+    // `graph`) can't make pre-cursor cells visually disappear while
+    // the user is mid-typing.
+    cursor_col_for_row: Option<u16>,
+    fg_scratch: &mut Vec<CellText>,
+    classification: Option<crate::automexia::output_semantics::OutputClassification>,
+    input_accents: &[bool],
+) {
     fg_scratch.clear();
 
     let size_bucket = (size_px * 4.0).round().clamp(0.0, u16::MAX as f32) as u16;
@@ -1812,9 +2020,9 @@ pub fn build_row_fg(
     // the row has no selection / no color-changing hints.
     let has_sel = row_sel.is_some();
     let has_color_hints = row_hints.iter().any(|rh| rh.tag != HintTag::HyperlinkHover);
-    let semantic_fg =
-        semantic_row_fg(row, cols, renderer, &mut rasterizer.semantic_text_scratch);
-    let needs_per_cell_check = has_sel || has_color_hints || semantic_fg.is_some();
+    let semantic_fg = semantic_classification_fg(classification, renderer);
+    let needs_per_cell_check =
+        has_sel || has_color_hints || semantic_fg.is_some() || !input_accents.is_empty();
     // Consulted in the per-cell sprite hook and the run-extension break.
     let use_drawable_chars = renderer.use_drawable_chars();
 
@@ -1908,7 +2116,13 @@ pub fn build_row_fg(
                 } else if let Some(tag) = hint_tag {
                     cell_fg_hinted(tag, renderer)
                 } else {
-                    semantic_or_cell_fg(semantic_fg, sq, style, renderer, term_colors)
+                    semantic_or_cell_fg(
+                        input_or_output_accent(input_accents, x, style, semantic_fg),
+                        sq,
+                        style,
+                        renderer,
+                        term_colors,
+                    )
                 }
             };
 
@@ -1995,7 +2209,12 @@ pub fn build_row_fg(
                             cell_fg_hinted(tag, renderer)
                         } else {
                             semantic_or_cell_fg(
-                                semantic_fg,
+                                input_or_output_accent(
+                                    input_accents,
+                                    x,
+                                    style,
+                                    semantic_fg,
+                                ),
                                 sq,
                                 style,
                                 renderer,
@@ -2353,7 +2572,12 @@ pub fn build_row_fg(
                     (
                         CellText::ATLAS_GRAYSCALE,
                         semantic_or_cell_fg(
-                            semantic_fg,
+                            input_or_output_accent(
+                                input_accents,
+                                src_col,
+                                src_style,
+                                semantic_fg,
+                            ),
                             src_sq,
                             src_style,
                             renderer,

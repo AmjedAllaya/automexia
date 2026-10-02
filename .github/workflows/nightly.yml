@@ -501,17 +501,20 @@ jobs:
     - uses: taiki-e/install-action@5bf6ce016fd2e72eefc647cbca1e4213f65955b8
       with:
         tool: cargo-packager@0.11.8
-    - run: 'cargo build --release --locked -p automexia-terminal --target x86_64-apple-darwin
-
+    - shell: bash
+      run: |
+        set -euo pipefail
+        cargo build --release --locked -p automexia-terminal --target x86_64-apple-darwin
         cargo build --release --locked -p automexia-terminal --target aarch64-apple-darwin
 
         mkdir -p target/release
 
-        lipo -create target/x86_64-apple-darwin/release/automexia target/aarch64-apple-darwin/release/automexia -output target/release/automexia
+        for runtime in automexia amx automexia-suggestion-helper; do
+          lipo -create "target/x86_64-apple-darwin/release/$runtime" "target/aarch64-apple-darwin/release/$runtime" -output "target/release/$runtime"
+          lipo -verify_arch x86_64 arm64 "target/release/$runtime"
+        done
 
         cargo packager --manifest-path apps/automexia-terminal/Cargo.toml --release --no-build --out-dir target/package --formats app,dmg
-
-        '
     - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
       with:
         name: automexia-nightly-macos-universal

@@ -1,9 +1,58 @@
 $ErrorActionPreference = 'Stop'
 
+# Cargo can inherit PowerShell 7's PSModulePath when launching Windows
+# PowerShell 5.1. Resolve the ACL cmdlet from this host's bundled module so
+# auto-loading cannot import incompatible Security type data from another host.
+Import-Module (Join-Path $PSHOME 'Modules\Microsoft.PowerShell.Security\Microsoft.PowerShell.Security.psd1') -ErrorAction Stop
+
+function Test-AutomexiaEquivalentFileAccess([string]$Expected, [string]$Actual) {
+    # File.Replace can mark an unchanged inherited DACL as auto-inherited.
+    # Compare every descriptor bit and ACE except that bookkeeping flag;
+    # protection, inheritance rules, order, identities and rights must survive.
+    # https://learn.microsoft.com/windows/win32/secauthz/security-descriptor-control
+    $descriptors = foreach ($sddl in @($Expected, $Actual)) {
+        $descriptor = [Security.AccessControl.RawSecurityDescriptor]::new($sddl)
+        $flags = [int]$descriptor.ControlFlags -band
+            (-bnot [int][Security.AccessControl.ControlFlags]::DiscretionaryAclAutoInherited)
+        $descriptor.SetFlags([Security.AccessControl.ControlFlags]$flags)
+        $bytes = New-Object byte[] $descriptor.BinaryLength
+        $descriptor.GetBinaryForm($bytes, 0)
+        [Convert]::ToBase64String($bytes)
+    }
+    return $descriptors[0] -ceq $descriptors[1]
+}
+
+$accessFixture = 'D:(A;ID;FA;;;BA)(A;ID;FR;;;BU)'
+if (-not (Test-AutomexiaEquivalentFileAccess $accessFixture 'D:AI(A;ID;FA;;;BA)(A;ID;FR;;;BU)')) {
+    throw 'ACL preservation comparison rejected only the auto-inherited bookkeeping flag'
+}
+foreach ($changedAccess in @(
+    'D:(A;ID;FA;;;BA)(A;ID;FW;;;BU)', # Changed rights.
+    'D:(A;ID;FA;;;BA)', # Removed ACE.
+    'D:(A;ID;FR;;;BU)(A;ID;FA;;;BA)', # Reordered ACEs.
+    'D:P(A;ID;FA;;;BA)(A;ID;FR;;;BU)', # Changed DACL protection.
+    'D:(A;;FA;;;BA)(A;ID;FR;;;BU)', # Changed inheritance.
+    'D:(D;ID;FA;;;BA)(A;ID;FR;;;BU)', # Changed allow/deny type.
+    'D:(A;ID;FA;;;SY)(A;ID;FR;;;BU)', # Changed identity.
+    'D:AR(A;ID;FA;;;BA)(A;ID;FR;;;BU)' # Changed inheritance request.
+)) {
+    if (Test-AutomexiaEquivalentFileAccess $accessFixture $changedAccess) {
+        throw 'ACL preservation comparison accepted changed access semantics'
+    }
+}
+if (Test-AutomexiaEquivalentFileAccess 'O:SYG:SY' 'O:SYG:SYD:') {
+    throw 'ACL preservation comparison ignored DACL presence'
+}
+
 $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $integration = Join-Path $root 'shell-integration\powershell\automexia.ps1'
 $integrationSource = Get-Content -LiteralPath $integration -Raw
 $env:TERM_PROGRAM = 'Automexia'
+
+# Exercise the real accepted-line wrapper without reading from a console. The
+# prompt must emit D only after this input owner returns a line, not on redraw.
+Import-Module PSReadLine -ErrorAction Stop
+function global:PSConsoleHostReadLine { return 'fixture accepted line' }
 
 function Remove-AutomexiaAnsiFormatting {
     param([AllowNull()][string]$Text)
@@ -57,13 +106,27 @@ if ($integrationSource -notmatch '\$continuation\s*\+\s*\$pathPrompt\s*\+\s*"`r`
 if ($integrationSource -notmatch 'return\s+\$lambda\s*\+\s*\$input' -or $integrationSource -match 'return\s+\$pathPrompt') { throw 'PowerShell does not limit PSReadLine ownership to the editable lambda row' }
 if ($integrationSource -match '\.\.\.[\\/]') { throw 'PowerShell prompt still truncates the current path' }
 if ($global:LASTEXITCODE -ne 73) { throw 'PowerShell prompt changed LASTEXITCODE' }
+$previousConsoleOut = [Console]::Out
+$redrawConsoleOut = New-Object System.IO.StringWriter
+try {
+    [Console]::SetOut($redrawConsoleOut)
+    $null = & prompt
+} finally {
+    [Console]::SetOut($previousConsoleOut)
+}
+if ($redrawConsoleOut.ToString().Contains('133;D')) {
+    throw 'PowerShell redraw emitted a command result without an accepted line'
+}
+$redrawConsoleOut.Dispose()
 # A shell-only failure must not inherit a stale successful native exit code.
 # The prompt may read LASTEXITCODE but must not change this user-owned value.
 $global:LASTEXITCODE = 0
-$previousConsoleOut = [Console]::Out
 $failureConsoleOut = New-Object System.IO.StringWriter
 try {
     [Console]::SetOut($failureConsoleOut)
+    if ((PSConsoleHostReadLine) -cne 'fixture accepted line') {
+        throw 'PowerShell accepted-line wrapper did not return the fixture input'
+    }
     Write-Error 'AUTOMEXIA_SEMANTIC_FAILURE_PROBE' -ErrorAction SilentlyContinue
     $emittedFailure = & prompt
 } finally {
@@ -90,6 +153,8 @@ if ($cmdAlias.CommandType -ne 'Alias' -or $cmdAlias.Definition -ne 'Invoke-Autom
 # pipeline behavior without opening an interactive CMD child.
 $previousCmdExecutable = $script:AutomexiaCmdExecutable
 $previousCmdIntegration = $script:AutomexiaCmdIntegration
+$previousCmdReferenceVersion = $env:AUTOMEXIA_CMD_REFERENCE_V1
+$previousCmdUser = $env:AUTOMEXIA_CMD_USER_BASE64
 try {
     $script:AutomexiaCmdExecutable = 'Write-Output'
     $script:AutomexiaCmdIntegration = $integration
@@ -100,9 +165,36 @@ try {
         $bareCmdArguments[2] -notmatch '^chcp 65001>nul & set "AUTOMEXIA_CMD_PROMPT_GLYPH=.+?" & call "') {
         throw 'Bare cmd was mistaken for an explicit empty argument and skipped integration'
     }
+    # New applications advertise the bounded reference wire format. A nested
+    # launch must supply both fields and the matching token, then restore its
+    # caller's environment even when the child reports failure.
+    function global:Test-AutomexiaCmdIdentity {
+        param([Parameter(ValueFromRemainingArguments = $true)][object[]]$NativeArgs)
+        $referenceHash = [Security.Cryptography.SHA256]::Create()
+        try {
+            $identity = [Environment]::UserName + [char]0 + 'Test-AutomexiaCmdIdentity'
+            $expected = ([BitConverter]::ToString($referenceHash.ComputeHash([Text.Encoding]::UTF8.GetBytes($identity)))).Replace('-', '').Substring(0, 32).ToLowerInvariant()
+        } finally { $referenceHash.Dispose() }
+        if ($env:AUTOMEXIA_CMD_REFERENCE -ne $expected -or
+            [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:AUTOMEXIA_CMD_REFERENCE_BASE64)) -ne $expected -or
+            [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($env:AUTOMEXIA_CMD_PATH_BASE64)) -ne 'Test-AutomexiaCmdIdentity') {
+            throw 'Nested CMD identity reference does not match its launch identity'
+        }
+        $global:LASTEXITCODE = 7
+    }
+    $env:AUTOMEXIA_CMD_REFERENCE_V1 = '1'
+    $env:AUTOMEXIA_CMD_USER_BASE64 = 'Zml4dHVyZS1wYXJlbnQ='
+    $script:AutomexiaCmdExecutable = 'Test-AutomexiaCmdIdentity'
+    Invoke-AutomexiaCmd
+    if ($env:AUTOMEXIA_CMD_USER_BASE64 -ne 'Zml4dHVyZS1wYXJlbnQ=' -or $script:AutomexiaWrappedNativeExitCode -ne 7) {
+        throw 'Nested CMD reference launch leaked environment or lost native exit status'
+    }
 } finally {
     $script:AutomexiaCmdExecutable = $previousCmdExecutable
     $script:AutomexiaCmdIntegration = $previousCmdIntegration
+    [Environment]::SetEnvironmentVariable('AUTOMEXIA_CMD_REFERENCE_V1', $previousCmdReferenceVersion, 'Process')
+    [Environment]::SetEnvironmentVariable('AUTOMEXIA_CMD_USER_BASE64', $previousCmdUser, 'Process')
+    Remove-Item Function:Test-AutomexiaCmdIdentity -ErrorAction SilentlyContinue
 }
 
 # A wrapped native command must publish its exact exit status. PowerShell
@@ -111,6 +203,9 @@ try {
 $nativeFailureConsoleOut = New-Object System.IO.StringWriter
 try {
     [Console]::SetOut($nativeFailureConsoleOut)
+    if ((PSConsoleHostReadLine) -cne 'fixture accepted line') {
+        throw 'PowerShell accepted-line wrapper did not return the fixture input'
+    }
     & cmd /D /C 'exit /b 7'
     $emittedNativeFailure = & prompt
 } finally {
@@ -333,11 +428,16 @@ try {
     [IO.File]::WriteAllText($probePath, $probeSource, [Text.Encoding]::ASCII)
     $previousCmdPromptGlyph = $env:AUTOMEXIA_CMD_PROMPT_GLYPH
     $previousCmdConfigHome = $env:AUTOMEXIA_CONFIG_HOME
+    $previousProbeReferenceVersion = $env:AUTOMEXIA_CMD_REFERENCE_V1
     try {
+        # This existing generated-resource probe intentionally covers legacy
+        # fallback. test_cmd_prompt.py owns native reference-v1 expansion.
+        Remove-Item Env:AUTOMEXIA_CMD_REFERENCE_V1 -ErrorAction SilentlyContinue
         $env:AUTOMEXIA_CMD_PROMPT_GLYPH = [char]0x03BB
         $env:AUTOMEXIA_CONFIG_HOME = Join-Path $cmdProbeRoot 'empty-config'
         $cmdProbe = & $env:ComSpec /D /C $probePath | Out-String
     } finally {
+        [Environment]::SetEnvironmentVariable('AUTOMEXIA_CMD_REFERENCE_V1', $previousProbeReferenceVersion, 'Process')
         if ($null -eq $previousCmdPromptGlyph) {
             Remove-Item Env:AUTOMEXIA_CMD_PROMPT_GLYPH -ErrorAction SilentlyContinue
         } else {
@@ -503,6 +603,10 @@ if ($zshIntegration -notmatch '133;A;aid=%s.*\\n' -or $zshIntegration -notmatch 
 if ($bashIntegration -notmatch '133;D;%s') { throw 'Bash does not publish command exit status' }
 if ($zshIntegration -notmatch '133;D;%s') { throw 'Zsh does not publish command exit status' }
 if ($fishIntegration -notmatch '133;A;aid=%s' -or
+    $fishIntegration -notmatch 'SetUserVar=automexia_prompt_active=MQ==' -or
+    $fishIntegration -notmatch '133;A;aid=%s.*\\n' -or
+    $fishIntegration -notmatch '133;P;k=c;aid=%s' -or
+    $fishIntegration -notmatch 'SetUserVar=automexia_prompt_active=MA==' -or
     $fishIntegration -notmatch 'fish_preexec' -or
     $fishIntegration -notmatch '133;C' -or
     $fishIntegration -notmatch 'fish_postexec' -or
@@ -716,8 +820,15 @@ if ($installerSource -notmatch '\[switch\]\$Quiet' -or
     $installerSource -notmatch 'Test-StampedInstall') {
     throw 'Windows launch-time installer is not source-aware, quiet, forceable, and idempotent'
 }
-if ($installerSource -notmatch 'Move-Item -LiteralPath .* -Destination .* -Force') {
+if ($installerSource -notmatch '\[IO\.File\]::Replace\(' -or
+    $installerSource -notmatch '\[IO\.File\]::Move\(') {
     throw 'Windows launch-time installer does not publish staged files atomically'
+}
+if ($installerSource.Contains('.automexia-$PID.tmp') -or
+    $installerSource.Contains('.automexia-`$$.tmp') -or
+    $installerSource -notmatch 'FileMode\]::CreateNew' -or
+    $installerSource -notmatch 'mktemp -d') {
+    throw 'Windows or WSL installer lacks exclusive random same-directory staging'
 }
 
 $installerFixture = Join-Path ([IO.Path]::GetTempPath()) ("automexia-installer-{0}" -f [Guid]::NewGuid().ToString('N'))
@@ -731,10 +842,14 @@ try {
     $profilePath = Join-Path $installerFixture 'OneDrive\Documents\WindowsPowerShell\Microsoft.PowerShell_profile.ps1'
     $null = New-Item -ItemType Directory -Force -Path (Split-Path -Parent $profilePath)
     [IO.File]::WriteAllText($profilePath, "# existing profile`r`n", [Text.UTF8Encoding]::new($false))
+    $unicodeProfile = Join-Path $installerFixture 'OneDrive\Documents\WindowsPowerShell\Unicode_profile.ps1'
+    [IO.File]::WriteAllText($unicodeProfile, "# existing unicode`r`n", [Text.Encoding]::Unicode)
+    $unicodeAcl = (Get-Acl -LiteralPath $unicodeProfile).GetSecurityDescriptorSddlForm(
+        [Security.AccessControl.AccessControlSections]::Access)
     $installerArguments = @{
         SkipWsl = $true
         Quiet = $true
-        PowerShellProfilePathOverride = @($profilePath)
+        PowerShellProfilePathOverride = @($profilePath, $unicodeProfile)
     }
     & $installerPath @installerArguments
     $installedRoot = Join-Path $installerFixture 'Automexia\shell-integration'
@@ -750,6 +865,15 @@ try {
         ([regex]::Matches($profileText, [regex]::Escape('# >>> AUTOMEXIA SHELL INTEGRATION >>>'))).Count -ne 1 -or
         ([regex]::Matches($profileText, [regex]::Escape('# <<< AUTOMEXIA SHELL INTEGRATION <<<'))).Count -ne 1) {
         throw 'Windows automatic installer did not preserve the isolated profile and add exactly one managed hook'
+    }
+    $unicodeBytes = [IO.File]::ReadAllBytes($unicodeProfile)
+    if ($unicodeBytes.Length -lt 2 -or $unicodeBytes[0] -ne 0xFF -or
+        $unicodeBytes[1] -ne 0xFE -or
+        [IO.File]::ReadAllText($unicodeProfile, [Text.Encoding]::Unicode) -notmatch '# existing unicode' -or
+        -not (Test-AutomexiaEquivalentFileAccess $unicodeAcl (
+            (Get-Acl -LiteralPath $unicodeProfile).GetSecurityDescriptorSddlForm(
+                [Security.AccessControl.AccessControlSections]::Access)))) {
+        throw 'Windows installer did not preserve UTF-16 profile encoding and ACL'
     }
     $installedCmdBytes = [IO.File]::ReadAllBytes($installedCmd)
     if (($installedCmdBytes | Where-Object { $_ -gt 127 } | Select-Object -First 1) -or
@@ -783,7 +907,14 @@ try {
         throw 'Windows automatic installer did not repair the exact managed profile body in place'
     }
     Add-Content -LiteralPath $installedCmd -Value 'locally altered'
+    $oldInstallTemporary = "$installedCmd.automexia-$PID.tmp"
+    [IO.File]::WriteAllText($oldInstallTemporary, 'temporary-sentinel')
     & $installerPath @installerArguments
+    if (-not (Test-Path -LiteralPath $oldInstallTemporary -PathType Leaf) -or
+        [IO.File]::ReadAllText($oldInstallTemporary) -cne 'temporary-sentinel') {
+        throw 'Windows installer reused a precreated PID temporary file'
+    }
+    Remove-Item -LiteralPath $oldInstallTemporary -Force
     if ((Get-Content -LiteralPath $installedCmd -Raw) -match 'locally altered') {
         throw 'Windows automatic installer did not repair an altered installed integration'
     }
@@ -867,11 +998,27 @@ try {
     [IO.Directory]::Delete($linkedConfig)
     $env:AUTOMEXIA_CONFIG_HOME = Join-Path $installerFixture 'Automexia\Terminal'
 
+    $oldUninstallTemporary = "$profilePath.automexia-$PID.tmp"
+    [IO.File]::WriteAllText($oldUninstallTemporary, 'temporary-sentinel')
     & $uninstallerPath -SkipWsl -PowerShellProfilePathOverride @($profilePath)
+    if (-not (Test-Path -LiteralPath $oldUninstallTemporary -PathType Leaf) -or
+        [IO.File]::ReadAllText($oldUninstallTemporary) -cne 'temporary-sentinel') {
+        throw 'Windows uninstaller reused a precreated PID temporary file'
+    }
     $profileAfterUninstall = Get-Content -LiteralPath $profilePath -Raw
     if ($profileAfterUninstall -notmatch [regex]::Escape('# existing profile') -or
         $profileAfterUninstall -match 'AUTOMEXIA SHELL INTEGRATION') {
         throw 'Windows uninstaller did not remove only the managed block from the isolated profile'
+    }
+    $unicodeBytes = [IO.File]::ReadAllBytes($unicodeProfile)
+    if ($unicodeBytes.Length -lt 2 -or $unicodeBytes[0] -ne 0xFF -or
+        $unicodeBytes[1] -ne 0xFE -or
+        [IO.File]::ReadAllText($unicodeProfile, [Text.Encoding]::Unicode) -notmatch '# existing unicode' -or
+        [IO.File]::ReadAllText($unicodeProfile, [Text.Encoding]::Unicode) -match 'AUTOMEXIA SHELL INTEGRATION' -or
+        -not (Test-AutomexiaEquivalentFileAccess $unicodeAcl (
+            (Get-Acl -LiteralPath $unicodeProfile).GetSecurityDescriptorSddlForm(
+                [Security.AccessControl.AccessControlSections]::Access)))) {
+        throw 'Windows uninstaller did not preserve UTF-16 profile encoding and ACL'
     }
     if (Test-Path -LiteralPath $installedRoot) {
         throw 'Windows uninstaller did not remove the isolated managed installation root'
@@ -1006,4 +1153,47 @@ try {
 
 $uninstall = Get-Content (Join-Path $root 'shell-integration\uninstall-windows.ps1') -Raw
 if ($uninstall -notmatch 'AUTOMEXIA SHELL INTEGRATION') { throw 'uninstall marker cleanup is missing' }
+if ($uninstall.Contains('.automexia-$PID.tmp') -or
+    $uninstall.Contains('.automexia-$$.tmp') -or
+    $uninstall -notmatch 'FileMode\]::CreateNew' -or
+    $uninstall -notmatch 'mktemp -d') {
+    throw 'Windows or WSL uninstaller lacks exclusive random same-directory staging'
+}
+if ($uninstall -notmatch '\[IO\.File\]::Replace\(') {
+    throw 'Windows uninstaller does not replace an existing profile atomically'
+}
+
+function Assert-StageCleanupDoesNotDeleteReplacement([string]$ScriptText) {
+    $tokens = $null
+    $parseErrors = $null
+    $scriptAst = [Management.Automation.Language.Parser]::ParseInput(
+        $ScriptText, [ref]$tokens, [ref]$parseErrors)
+    if ($parseErrors.Count -ne 0) { throw 'Windows installer script did not parse' }
+    $cleanupAst = $scriptAst.Find({
+        param($node)
+        $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+        $node.Name -eq 'Remove-AutomexiaStage'
+    }, $true)
+    if ($null -eq $cleanupAst) { throw 'Windows staging cleanup function is missing' }
+    . ([scriptblock]::Create($cleanupAst.Extent.Text))
+
+    $stageFixture = Join-Path ([IO.Path]::GetTempPath()) (
+        'automexia-stage-replacement-{0}' -f [Guid]::NewGuid().ToString('N'))
+    $null = New-Item -ItemType Directory -Path $stageFixture
+    try {
+        $stagePath = Join-Path $stageFixture 'stage.tmp'
+        # Simulate publication closing/removing our stage, then another regular
+        # file taking its name before the finally cleanup runs.
+        [IO.File]::WriteAllText($stagePath, 'replacement belongs to another owner')
+        Remove-AutomexiaStage @{ Path = $stagePath; Stream = $null }
+        if ([IO.File]::ReadAllText($stagePath) -cne 'replacement belongs to another owner') {
+            throw 'Windows installer cleanup deleted a replacement regular file'
+        }
+    } finally {
+        Remove-Item -LiteralPath $stageFixture -Recurse -Force
+    }
+}
+
+Assert-StageCleanupDoesNotDeleteReplacement $installerSource
+Assert-StageCleanupDoesNotDeleteReplacement $uninstall
 Write-Output 'PASS: shell integration is idempotent, UTF-8-safe, WSL-isolated, native-completion-safe on PowerShell/Bash/Zsh/Fish, composite-folder-aware, pipeline-safe, semantically path-colored, three-row prompt-identified, full-path, resize-safe, script-safe, and uninstallable'

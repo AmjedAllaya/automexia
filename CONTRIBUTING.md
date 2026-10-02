@@ -68,6 +68,11 @@ cargo xtask cache status # inventory shared and per-worktree generated caches
 cargo purge     # remove Cargo artifacts after closing Automexia windows
 ```
 
+Windows launch and packaging commands prepare the pinned Microsoft console
+runtime outside the application. Offline builds require its verified cache.
+Bare Cargo builds do not provision these companions; see
+[the runtime contract](docs/adr/0082-pinned-windows-console-runtime.md).
+
 The two launching commands pass the repository-owned integration resources to
 Automexia for the new child session. Normal launch does not install integration
 or rewrite shell profiles. Missing resources leave the native shell available;

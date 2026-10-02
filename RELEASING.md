@@ -165,9 +165,12 @@ compile-time activation constant.
 
 The final controlled Windows runner additionally carries the `defender` label.
 It verifies both signed MSI and ZIP architecture pairs, requires each portable
-ZIP to contain only the five root files plus the exact bounded integration tree
-and exact release version, proves the publisher/timestamp for every
-MSI/executable and all eight PowerShell assets per ZIP, requires
+ZIP to contain only the declared product executables/documents, the three pinned
+ConPTY assets (the DLL and both architecture-specific console hosts), and the
+exact bounded integration tree at the exact release version. It proves the
+Automexia publisher/timestamp for every MSI/product executable and all eight
+PowerShell assets per ZIP, independently verifies Microsoft's vendor signatures,
+timestamps and pinned ConPTY hashes without re-signing those files, requires
 current Defender intelligence, and performs a bounded non-remediating malware
 scan. Its GPU/PTY and WSL smoke launches consume the final signed Windows ZIP and
 final Linux tar archive, never unsigned build intermediates. Publication downloads only `packages-*`

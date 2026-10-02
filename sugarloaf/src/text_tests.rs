@@ -31,6 +31,81 @@ fn frame(text: &mut Text, label: &str, opts: &DrawOpts) -> (f32, Vec<u32>) {
 }
 
 #[test]
+fn exclusive_modal_replaces_covered_labels_and_preserves_base_pixels() {
+    let fonts = fixture_fonts();
+    for scale in [1.0, 1.25, 2.0] {
+        let mut actual = Text::new(&fonts);
+        let mut expected = Text::new(&fonts);
+        for text in [&mut actual, &mut expected] {
+            text.init_cpu();
+            text.set_scale_factor(scale);
+            text.draw(4.0, 4.0, "Terminal", &DrawOpts::default());
+        }
+        let base_count = actual.instances.len();
+        assert!(base_count > 0);
+        for label in ["Search", "Rename", "Settings", "Color editor"] {
+            actual.begin_modal_layer();
+            actual.draw(4.0, 24.0, label, &DrawOpts::default());
+            actual.end_modal_layer();
+        }
+        assert!(!actual.modal_instances.is_empty());
+        actual.replace_modal_layer();
+        assert!(actual.modal_instances.is_empty());
+        assert_eq!(actual.instances.len(), base_count);
+        expected.begin_modal_layer();
+        for text in [&mut actual, &mut expected] {
+            text.draw(4.0, 24.0, "Close Automexia?", &DrawOpts::default());
+            text.end_modal_layer();
+            // Late base producers remain in the base phase.
+            text.draw(4.0, 48.0, "Status", &DrawOpts::default());
+            text.finalize_modal_layer();
+        }
+        let paint = |text: &Text| {
+            let mut pixels = vec![0x00070c11; 640 * 160];
+            text.render_cpu_base(&mut pixels, 640, 160);
+            text.render_cpu_modal(&mut pixels, 640, 160);
+            pixels
+        };
+        assert_eq!(paint(&actual), paint(&expected), "scale {scale}");
+    }
+}
+
+#[test]
+fn exclusive_modal_replacement_is_frame_local_and_idempotent() {
+    let fonts = fixture_fonts();
+    let mut actual = Text::new(&fonts);
+    let mut expected = Text::new(&fonts);
+    for _ in 0..3 {
+        actual.clear();
+        actual.begin_modal_layer();
+        actual.draw(4.0, 4.0, "Draft", &DrawOpts::default());
+        actual.end_modal_layer();
+        for _ in 0..2 {
+            actual.replace_modal_layer();
+            actual.draw(4.0, 24.0, "Cancel", &DrawOpts::default());
+            actual.end_modal_layer();
+        }
+        expected.clear();
+        expected.begin_modal_layer();
+        expected.draw(4.0, 24.0, "Cancel", &DrawOpts::default());
+        expected.end_modal_layer();
+        assert_same_instances(&actual.modal_instances, &expected.modal_instances);
+        actual.finalize_modal_layer();
+        // Cancel/new frame: the retained owner's ordinary recording works again.
+        actual.clear();
+        assert!(actual.instances.is_empty() && actual.modal_instances.is_empty());
+        actual.begin_modal_layer();
+        actual.draw(4.0, 4.0, "Draft", &DrawOpts::default());
+        actual.end_modal_layer();
+        expected.clear();
+        expected.begin_modal_layer();
+        expected.draw(4.0, 4.0, "Draft", &DrawOpts::default());
+        expected.end_modal_layer();
+        assert_same_instances(&actual.modal_instances, &expected.modal_instances);
+    }
+}
+
+#[test]
 fn nearby_sizes_measure_like_fresh_instances_in_both_orders_and_scales() {
     let fonts = fixture_fonts();
     for scale in [1.0, 1.25, 2.5] {

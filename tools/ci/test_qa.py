@@ -329,6 +329,9 @@ class QaRunnerTests(unittest.TestCase):
                     mock.patch.object(QA, "ROOT", root),
                     mock.patch.object(sys, "argv", ["qa.py", "--full"]),
                     mock.patch.dict(QA.os.environ, {"AUTOMEXIA_QA_RUN_LABEL": "identity-fixture"}, clear=True),
+                    # This fixture asserts source identity after successful
+                    # gates; disk exhaustion has its own boundary/stop tests.
+                    mock.patch.object(QA, "storage_preflight", return_value={"name": "storage-preflight", "status": "pass", "required": True}),
                     mock.patch.object(QA, "run_step", side_effect=successful_step),
                     mock.patch.object(QA, "collect_junit", return_value={"name": "junit", "status": "pass", "required": True}),
                     mock.patch.object(QA, "dirty_fingerprint", side_effect=["b" * 64, final]),

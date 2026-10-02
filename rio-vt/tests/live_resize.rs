@@ -5,10 +5,11 @@ use std::time::{Duration, Instant};
 
 use rio_vt::ansi::CursorShape;
 use rio_vt::crosswords::grid::Dimensions;
-use rio_vt::crosswords::pos::{Column, Line};
+use rio_vt::crosswords::pos::{Column, Line, Pos, Side};
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
 use rio_vt::event::{VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
+use rio_vt::selection::{Selection, SelectionType};
 use teletypewriter::{ChildEvent, EventedPty, ProcessReadWrite, WinsizeBuilder};
 
 struct FixtureWorker {
@@ -82,6 +83,40 @@ fn logical_rows<U: rio_vt::event::EventListener>(
         }
     }
     rows
+}
+
+fn styled_nonblank_cells<U: rio_vt::event::EventListener>(
+    terminal: &Crosswords<U>,
+) -> Vec<(char, rio_vt::crosswords::style::Style)> {
+    let mut cells = Vec::new();
+    for line in terminal.grid.topmost_line().0..=terminal.grid.bottommost_line().0 {
+        for cell in &terminal.grid[Line(line)].inner {
+            let c = cell.c();
+            if c != '\0' && !c.is_whitespace() {
+                cells.push((c, terminal.grid.style_of(cell)));
+            }
+        }
+    }
+    cells
+}
+
+fn copied_contents<U: rio_vt::event::EventListener>(
+    terminal: &mut Crosswords<U>,
+) -> String {
+    let old = terminal.selection.take();
+    let mut selection = Selection::new(
+        SelectionType::Simple,
+        Pos::new(terminal.grid.topmost_line(), Column(0)),
+        Side::Left,
+    );
+    selection.update(
+        Pos::new(terminal.grid.bottommost_line(), terminal.grid.last_column()),
+        Side::Right,
+    );
+    terminal.selection = Some(selection);
+    let copied = terminal.selection_to_string().unwrap_or_default();
+    terminal.selection = old;
+    copied
 }
 
 #[test]
@@ -759,6 +794,16 @@ fn native_live_wsl_eza_extreme_resize_restores_columns() {
     }
 }
 
+#[test]
+#[cfg(windows)]
+#[ignore = "requires an explicitly selected WSL distribution with eza installed"]
+fn native_completed_ultrawide_eza_listing_survives_first_shrink() {
+    // The listing is emitted at the large size before any resize. Re-running
+    // eza after shrinking would conceal damage to the retained output.
+    let sizes = [(96, 40), (96, 28), (52, 16), (30, 10), (320, 60)];
+    run_native_eza_listing(&sizes, "listing-ultrawide");
+}
+
 #[cfg(windows)]
 fn run_native_eza_listing(sizes: &[(usize, usize)], mode: &str) {
     let distribution =
@@ -779,7 +824,7 @@ fn run_native_eza_listing(sizes: &[(usize, usize)], mode: &str) {
         .tempdir_in(&scratch)
         .unwrap_or_else(|_| panic!("create isolated listing"));
     for index in 1..=28 {
-        let name = if mode == "listing-wide" {
+        let name = if mode == "listing-wide" || mode == "listing-ultrawide" {
             format!(
                 "entry-{index:02}-{}.{}",
                 "abcdefgh".repeat(index % 5 + 1),
@@ -801,7 +846,7 @@ fn run_native_eza_listing(sizes: &[(usize, usize)], mode: &str) {
         "{guest_root}/target/qa/native-listings/{}",
         directory.path().file_name().unwrap().to_str().unwrap()
     );
-    let arguments = vec![
+    let mut arguments = vec![
         "--distribution".into(),
         distribution,
         "--exec".into(),
@@ -813,6 +858,9 @@ fn run_native_eza_listing(sizes: &[(usize, usize)], mode: &str) {
         "scan".into(),
         guest_directory,
     ];
+    if mode == "listing-ultrawide" {
+        arguments.push(sizes.len().to_string());
+    }
     run_fixture_sizes(
         "wsl.exe",
         arguments.clone(),
@@ -841,7 +889,9 @@ fn listing_name(index: usize) -> String {
 }
 
 fn fixture_initial_size(arguments: &[String]) -> (usize, usize) {
-    if arguments.iter().any(|arg| arg == "listing-wide") {
+    if arguments.iter().any(|arg| arg == "listing-ultrawide") {
+        (320, 60)
+    } else if arguments.iter().any(|arg| arg == "listing-wide") {
         (146, 16)
     } else {
         (100, 24)
@@ -940,6 +990,7 @@ fn run_fixture_sizes(
     sizes: &[(usize, usize)],
 ) {
     let baseline_probe = arguments.iter().any(|arg| arg == "scan");
+    let ultrawide_listing = arguments.iter().any(|arg| arg == "listing-ultrawide");
     let (initial_cols, initial_rows) = fixture_initial_size(&arguments);
     #[cfg(windows)]
     let mut pty = teletypewriter::create_pty(
@@ -999,12 +1050,28 @@ fn run_fixture_sizes(
     } else {
         expected
     };
+    let styled_listing = ultrawide_listing.then(|| styled_nonblank_cells(&terminal));
+    if let Some(styles) = &styled_listing {
+        assert!(
+            styles.iter().any(|(_, style)| *style != Default::default()),
+            "the native eza fixture contains styled cells"
+        );
+    }
     let mut recent = std::collections::VecDeque::with_capacity(4);
     for (step, (cols, rows)) in sizes.iter().copied().enumerate() {
         let previous_cursor =
             (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap);
         let previous_size = (terminal.columns(), terminal.screen_lines());
         terminal.resize(CrosswordsSize::new(cols, rows));
+        if ultrawide_listing {
+            let before_native_repaint = logical_rows(&terminal);
+            assert!(
+                before_native_repaint
+                    .windows(expected.len())
+                    .any(|rows| rows == expected),
+                "retained wide listing changed during local grid reflow at {cols}x{rows}"
+            );
+        }
         let reflow_cursor = (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap);
         pty.set_winsize(WinsizeBuilder {
             rows: rows as u16,
@@ -1024,6 +1091,17 @@ fn run_fixture_sizes(
             format!("RESIZE-ACK-{step}\x07").as_bytes(),
         );
         let actual = logical_rows(&terminal);
+        if let Some(styles) = &styled_listing {
+            assert_eq!(
+                styled_nonblank_cells(&terminal),
+                *styles,
+                "colored source cells at resize {step}"
+            );
+            assert!(
+                copied_contents(&mut terminal).contains(&expected.join("\n")),
+                "selection copies the exact retained listing at resize {step}"
+            );
+        }
         if recent.len() == 4 {
             recent.pop_front();
         }

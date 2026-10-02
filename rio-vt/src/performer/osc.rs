@@ -113,6 +113,11 @@ pub(super) fn is_set_user_var(params: &[&[u8]]) -> bool {
 /// Parse `OSC 1337 ; SetUserVar=name=<base64 value>`. The value is
 /// base64 per iTerm2's spec; anything undecodable is dropped.
 pub(super) fn parse_set_user_var(params: &[&[u8]]) -> Option<(String, String)> {
+    // This command has one key/value pair. Never accept a valid prefix
+    // while discarding extra parameters from a malformed metadata attempt.
+    if params.len() != 2 {
+        return None;
+    }
     let payload = params.get(1)?.strip_prefix(b"SetUserVar=")?;
     let mut parts = payload.splitn(2, |byte| *byte == b'=');
     let name = parts.next()?;
@@ -279,7 +284,7 @@ pub(super) fn parse_current_directory(param: &[u8]) -> Option<String> {
     let path = &after_scheme[path_start..];
 
     if !host_is_local(host) {
-        tracing::warn!("ignoring OSC 7 for non-local host {host:?}");
+        tracing::warn!("ignoring OSC 7 for non-local host");
         return None;
     }
 

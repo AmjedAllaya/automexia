@@ -9,6 +9,7 @@
 pub(crate) mod action_surface;
 mod compatibility;
 mod connection_hub;
+mod grid_lifecycle;
 pub mod hint;
 mod settings;
 pub(crate) mod suggestions;
@@ -540,6 +541,10 @@ struct NativeWindowSnapshot {
     window_width: f32,
     window_height: f32,
     scale_factor: f32,
+    renderer_backend: &'static str,
+    renderer_grid_count: usize,
+    owned_route_count: usize,
+    retired_renderer_grid_count: usize,
     window_tab_count: usize,
     active_window_tab_index: usize,
     grid_width: f32,
@@ -553,6 +558,7 @@ struct NativeWindowSnapshot {
     palette_total_results: usize,
     palette_accessibility_summary: Option<String>,
     confirm_quit_active: bool,
+    settings: serde_json::Value,
     connection_hub_active: bool,
     connection_hub_route: Option<&'static str>,
     connection_hub_literal_entry: bool,
@@ -579,6 +585,7 @@ struct NativeWindowSnapshot {
     command_result_label: Option<String>,
     command_result_paints:
         Vec<crate::renderer::command_results::NativeCommandResultPaint>,
+    command_result_backgrounds: Vec<([f32; 4], [f32; 4])>,
     prompt_context_paints: Vec<crate::renderer::devops_status::NativePromptContextPaint>,
     command_result_pulse_duration_ms: Option<u64>,
     command_result_pulse_hold_fraction: Option<f32>,
@@ -733,6 +740,7 @@ fn write_native_resize_snapshot(
         "active_prompt_gap_rows": active_prompt_gap_rows,
         "last_control": last_control,
         "confirm_quit_active": window.confirm_quit_active,
+        "settings": window.settings,
         "fullscreen_display_request_active": fullscreen_display_request_active,
         "image_preview": {
             "visible": image_preview.visible,
@@ -755,6 +763,11 @@ fn write_native_resize_snapshot(
         "panels": panels,
     });
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
+    snapshot["renderer_backend"] = serde_json::json!(window.renderer_backend);
+    snapshot["renderer_grid_count"] = serde_json::json!(window.renderer_grid_count);
+    snapshot["owned_route_count"] = serde_json::json!(window.owned_route_count);
+    snapshot["retired_renderer_grid_count"] =
+        serde_json::json!(window.retired_renderer_grid_count);
     snapshot["display_offset"] = serde_json::json!(content.display_offset);
     snapshot["palette_enabled"] = serde_json::json!(window.palette_enabled);
     snapshot["connection_hub_active"] = serde_json::json!(window.connection_hub_active);
@@ -800,6 +813,10 @@ fn write_native_resize_snapshot(
         serde_json::json!(window.command_result_completed_at_unix_ms);
     snapshot["command_result_label"] = serde_json::json!(window.command_result_label);
     snapshot["command_result_paints"] = serde_json::json!(window.command_result_paints);
+    snapshot["command_result_backgrounds"] =
+        serde_json::json!(window.command_result_backgrounds);
+    snapshot["inline_table_count"] =
+        serde_json::json!(content.inline_tables.surfaces.len());
     snapshot["prompt_context_paints"] = serde_json::json!(window.prompt_context_paints);
     snapshot["command_result_pulse_duration_ms"] =
         serde_json::json!(window.command_result_pulse_duration_ms);
@@ -1988,7 +2005,7 @@ impl Screen<'_> {
             .command_rows
             .follow();
         let mut terminal = self.ctx_mut().current_mut().terminal.lock();
-        if terminal.display_offset() != 0 {
+        if !terminal.following_active_cursor() {
             terminal.scroll_display(Scroll::Bottom);
         }
         drop(terminal);
@@ -2392,6 +2409,59 @@ impl Screen<'_> {
                     Act::Esc(s) => {
                         self.paste(s, false);
                     }
+                    Act::ShellClearScreen => {
+                        let native_cmd = {
+                            let current = self.context_manager.current();
+                            cfg!(windows)
+                                && cmd_host_clear_allowed(*mode, self.search_active())
+                                && current
+                                    .launch_descriptor
+                                    .is_native_command_prompt_active(
+                                        current.renderable_content.shell_name.as_deref(),
+                                    )
+                        };
+                        let host_cleared = native_cmd && {
+                            let current = self.context_manager.current_mut();
+                            let mut terminal = current.terminal.lock();
+                            if terminal.host_clear_input_prompt_active() {
+                                let first = terminal.clear_window_preserving_input();
+                                drop(terminal);
+                                current.renderable_content.command_rows.follow();
+                                current
+                                    .renderable_content
+                                    .command_rows
+                                    .clear_before(first);
+                                current
+                                    .renderable_content
+                                    .pending_update
+                                    .set_terminal_damage(
+                                        rio_backend::event::TerminalDamage::Full,
+                                    );
+                                current.set_selection(None);
+                                true
+                            } else {
+                                false
+                            }
+                        };
+                        if host_cleared {
+                            self.mark_dirty();
+                        } else {
+                            // Other shells and foreground programs retain
+                            // ownership of their normal form-feed input.
+                            // The shell may erase and repaint the live prompt.
+                            // Suppress only stale prompt restoration during
+                            // that bounded repaint; the shell still receives
+                            // the ordinary control byte.
+                            if cmd_host_clear_allowed(*mode, self.search_active()) {
+                                let current = self.context_manager.current_mut();
+                                current.terminal.lock().begin_shell_clear();
+                            }
+                            // Preserve the original key record (including Win32
+                            // modifiers and release). Pasting a control byte can
+                            // insert ^L in a native console editor instead.
+                            ignore_chars = Some(false);
+                        }
+                    }
                     Act::Paste => {
                         self.paste_from_clipboard(clipboard, ClipboardType::Clipboard);
                     }
@@ -2618,6 +2688,7 @@ impl Screen<'_> {
                         self.move_divider_right();
                     }
                     Act::OpenSettings => self.context_manager.open_settings(),
+                    Act::OpenCustomizations => self.context_manager.open_customizations(),
                     Act::ConfigEditor => {
                         self.context_manager.switch_to_settings();
                         self.resize_top_or_bottom_line();
@@ -3170,6 +3241,7 @@ impl Screen<'_> {
     }
 
     fn relayout_current_grid(&mut self) {
+        self.reconcile_grid_renderers();
         let current_dim = self.context_manager.current().dimension;
         if current_dim.font_size <= 0.0 {
             return;
@@ -3240,6 +3312,7 @@ impl Screen<'_> {
         self.clear_selection();
         self.context_manager
             .close_current_context(&mut self.sugarloaf);
+        self.reconcile_grid_renderers();
         if let Some(ref mut island) = self.renderer.island {
             island.dismiss_color_picker();
         }
@@ -3263,6 +3336,7 @@ impl Screen<'_> {
     }
 
     pub fn resize_top_or_bottom_line(&mut self) {
+        self.reconcile_grid_renderers();
         let padding_y_top = padding_top_from_config(
             &self.renderer.navigation,
             self.renderer.margin.top,
@@ -5259,6 +5333,13 @@ impl Screen<'_> {
     }
 
     fn reset_search_origin(&mut self, direction: Direction) {
+        // Searching owns the displayed source range, including an already
+        // visible match. Retire automatic prompt follow without moving it.
+        self.context_manager
+            .current()
+            .terminal
+            .lock()
+            .scroll_display(Scroll::Delta(0));
         if self.get_mode().contains(Mode::VI) {
             let terminal = self.context_manager.current().terminal.lock();
             self.search_state.origin = terminal.vi_mode_cursor.pos;
@@ -6040,6 +6121,7 @@ impl Screen<'_> {
             &self.renderer.named_colors,
             creating,
         );
+        self.renderer.render_close_confirmation(&mut self.sugarloaf);
         self.sugarloaf.render();
     }
 
@@ -6134,6 +6216,9 @@ impl Screen<'_> {
             }
             PaletteAction::CloseCurrentSplitOrTab => self.close_split_or_tab(clipboard),
             PaletteAction::OpenSettings => self.context_manager.open_settings(),
+            PaletteAction::OpenCustomizations => {
+                self.context_manager.open_customizations()
+            }
             PaletteAction::ConfigEditor => {
                 self.context_manager.switch_to_settings();
                 self.resize_top_or_bottom_line();
@@ -6299,6 +6384,9 @@ impl Screen<'_> {
         event: &rio_window::event::WindowEvent,
         clipboard: &mut Clipboard,
     ) -> bool {
+        if self.renderer.confirm_quit.is_active() {
+            return false;
+        }
         if let rio_window::event::WindowEvent::KeyboardInput { event, .. } = event {
             if self.consume_overlay_key_release(event) {
                 return true;
@@ -6538,10 +6626,16 @@ impl Screen<'_> {
                 .command_results
                 .native_test_result_paints()
                 .to_vec();
+            let command_result_backgrounds = self
+                .renderer
+                .command_results
+                .native_test_result_backgrounds()
+                .to_vec();
             let prompt_context_paints =
                 self.renderer.native_test_active_prompt_context_paints();
             let palette_scroll_state =
                 self.renderer.command_palette.native_test_scroll_state();
+            let owned_routes = self.context_manager.route_ids();
             self.pending_native_snapshot = (!control_changed)
                 .then(|| {
                     write_native_resize_snapshot(
@@ -6551,6 +6645,14 @@ impl Screen<'_> {
                     window_width: window_size.width,
                     window_height: window_size.height,
                     scale_factor: self.sugarloaf.scale_factor(),
+                    renderer_backend: self.sugarloaf.native_renderer_backend(),
+                    renderer_grid_count: self.grids.len(),
+                    owned_route_count: owned_routes.len(),
+                    retired_renderer_grid_count: self
+                        .grids
+                        .keys()
+                        .filter(|route_id| !owned_routes.contains(route_id))
+                        .count(),
                     window_tab_count: self.context_manager.len(),
                     active_window_tab_index: self.context_manager.current_index(),
                     grid_width: self.context_manager.current_grid().width,
@@ -6566,6 +6668,7 @@ impl Screen<'_> {
                     palette_total_results: palette_scroll_state.3,
                     palette_accessibility_summary: self.renderer.command_palette.accessibility_summary(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    settings: self.settings_view.native_test_snapshot(),
                     connection_hub_active: self.connection_hub.is_active(),
                     connection_hub_route: self
                         .connection_hub
@@ -6650,6 +6753,7 @@ impl Screen<'_> {
                         .and_then(|identity| identity.3),
                     command_result_label,
                     command_result_paints,
+                    command_result_backgrounds,
                     prompt_context_paints,
                     command_result_divider: command_result_visual.map(|visual| visual.1),
                     command_result_opacity: command_result_style.map(|style| style.0),
@@ -6769,6 +6873,8 @@ impl Screen<'_> {
             }
         }
 
+        self.renderer.render_close_confirmation(&mut self.sugarloaf);
+
         // Phase 2.2/2.3: per-panel CellBg + CellText emission with
         // per-row dirty gating. Iterates every panel in the active
         // grid. For each:
@@ -6808,6 +6914,9 @@ impl Screen<'_> {
                 cursor_row: u16,
                 command_rows: crate::automexia::ui::command_info::RowProjection,
                 inline_tables: crate::automexia::inline_tables::InlineTables,
+                output_classifications:
+                    Vec<Option<crate::automexia::output_semantics::OutputClassification>>,
+                input_accents: Vec<Vec<bool>>,
                 cursor_visible: bool,
                 /// Terminal-side cursor shape (block / underline /
                 /// beam / hidden). Driven by DECSCUSR + the
@@ -7010,6 +7119,12 @@ impl Screen<'_> {
                     inline_tables: std::mem::take(
                         &mut ctx.renderable_content.inline_tables,
                     ),
+                    output_classifications: std::mem::take(
+                        &mut ctx.renderable_content.output_classifications,
+                    ),
+                    input_accents: std::mem::take(
+                        &mut ctx.renderable_content.input_accents.rows,
+                    ),
                     cursor_shape,
                     cursor_blinking,
                     cursor_blink_visible,
@@ -7154,7 +7269,8 @@ impl Screen<'_> {
                             }
                             _ => row,
                         };
-                        crate::grid_emit::build_row_bg(
+                        let classification = p.output_classifications.get(source_y).copied().flatten();
+                        crate::grid_emit::build_row_bg_classified(
                             row,
                             cols,
                             style_table,
@@ -7164,6 +7280,7 @@ impl Screen<'_> {
                             &row_scratch.hints,
                             rasterizer,
                             &mut row_scratch.backgrounds,
+                            classification,
                         );
                         let cursor_col_for_row = if p.cursor_visible
                             && (y as u16) == p.cursor_row
@@ -7173,7 +7290,7 @@ impl Screen<'_> {
                         } else {
                             None
                         };
-                        crate::grid_emit::build_row_fg(
+                        crate::grid_emit::build_row_fg_classified(
                             row,
                             cols,
                             y as u16,
@@ -7192,6 +7309,8 @@ impl Screen<'_> {
                             p.route_id,
                             cursor_col_for_row,
                             &mut row_scratch.foregrounds,
+                            classification,
+                            p.input_accents.get(source_y).map_or(&[], Vec::as_slice),
                         );
                         grid.write_row(
                             y as u32,
@@ -7425,6 +7544,9 @@ impl Screen<'_> {
                         style_table.truncate(base as usize);
                     }
                     item.val.renderable_content.visible_rows = p.visible_rows;
+                    item.val.renderable_content.output_classifications =
+                        p.output_classifications;
+                    item.val.renderable_content.input_accents.rows = p.input_accents;
                     item.val.renderable_content.command_rows = p.command_rows;
                     item.val.renderable_content.inline_tables = p.inline_tables;
                     item.val.renderable_content.style_table = style_table;
@@ -7494,6 +7616,7 @@ impl Screen<'_> {
         let action = fields.next().unwrap_or_default();
         let _sequence = fields.next();
         match action {
+            "open-customizations" => self.context_manager.open_customizations(),
             "open-palette" => {
                 self.renderer.confirm_quit.set_active(false);
                 self.renderer.command_palette.set_enabled(true);
@@ -7919,6 +8042,11 @@ impl Screen<'_> {
         clipboard: &mut Clipboard,
     ) -> bool {
         use rio_window::event::WindowEvent;
+        // Leave the covered hint state intact and let the same confirmation
+        // owner receive the first key/click, including Escape and Y/N.
+        if self.renderer.confirm_quit.is_active() {
+            return false;
+        }
         if let WindowEvent::KeyboardInput { event, .. } = event {
             if self.consume_overlay_key_release(event) {
                 return true;
@@ -8314,12 +8442,26 @@ fn shell_execute_open(target: &str) {
     }
 }
 
+fn cmd_host_clear_allowed(mode: Mode, search_active: bool) -> bool {
+    !search_active && !mode.intersects(Mode::ALT_SCREEN | Mode::VI | Mode::MOUSE_MODE)
+}
+
 #[cfg(test)]
 use crate::hints::post_process_hyperlink_uri;
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cmd_host_clear_respects_search_vi_and_full_screen_ownership() {
+        assert!(cmd_host_clear_allowed(Mode::empty(), false));
+        assert!(cmd_host_clear_allowed(Mode::WIN32_INPUT, false));
+        assert!(!cmd_host_clear_allowed(Mode::ALT_SCREEN, false));
+        assert!(!cmd_host_clear_allowed(Mode::VI, false));
+        assert!(!cmd_host_clear_allowed(Mode::MOUSE_MODE, false));
+        assert!(!cmd_host_clear_allowed(Mode::empty(), true));
+    }
 
     #[cfg(windows)]
     #[test]

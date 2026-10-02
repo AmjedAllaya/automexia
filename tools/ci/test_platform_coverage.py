@@ -708,6 +708,36 @@ class PlatformCoverageTests(unittest.TestCase):
                 source + "\nAdd-MpPreference -ExclusionPath C:\\\n"
             )
 
+    def test_windows_release_scanner_cannot_drop_any_runtime(self) -> None:
+        source = PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
+        for runtime in ("automexia.exe", "amx.exe", "automexia-suggestion-helper.exe"):
+            with self.subTest(runtime=runtime, boundary="allowlist"):
+                altered = source.replace(f"            '{runtime}',\n", "", 1)
+                self.assertNotEqual(altered, source)
+                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "ZIP allowlist"):
+                    PLATFORM.validate_windows_release_trust_contract(altered)
+            with self.subTest(runtime=runtime, boundary="extraction"):
+                loop = "@('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')"
+                remaining = [name for name in ("automexia.exe", "amx.exe", "automexia-suggestion-helper.exe") if name != runtime]
+                altered = source.replace(loop, "@(" + ", ".join(repr(name) for name in remaining) + ")", 1)
+                self.assertNotEqual(altered, source)
+                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "return all three"):
+                    PLATFORM.validate_windows_release_trust_contract(altered)
+
+    def test_windows_release_scanner_must_scan_every_returned_runtime(self) -> None:
+        source = PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
+        for original, replacement in (
+            ("foreach ($portableBinary in $portableBinaries)", "foreach ($portableBinary in @($portableBinaries[0]))"),
+            ("Assert-TrustedSignature -Path $portableBinary", "Assert-TrustedSignature -Path $portableBinaries[0]"),
+            ("Copy-Item -LiteralPath $portableBinary -Destination", "Copy-Item -LiteralPath $portableBinaries[0] -Destination"),
+            ("$runtime-portable-$portableIndex.exe", "automexia-portable-$portableIndex.exe"),
+        ):
+            with self.subTest(contract=original):
+                altered = source.replace(original, replacement, 1)
+                self.assertNotEqual(altered, source)
+                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "trust script is missing"):
+                    PLATFORM.validate_windows_release_trust_contract(altered)
+
     def test_release_cannot_drop_sbom_attestation(self) -> None:
         altered = copy.deepcopy(self.release)
         publish = altered["jobs"]["publish"]

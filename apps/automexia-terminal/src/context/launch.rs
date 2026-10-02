@@ -140,6 +140,19 @@ impl SessionLaunchDescriptor {
         matches!(self.kind, SessionKind::Wsl(_))
     }
 
+    /// The executable, rather than a profile label or displayed title, owns
+    /// whether a native CMD-specific host shortcut is safe to use.
+    pub fn is_native_command_prompt(&self) -> bool {
+        !self.is_wsl() && is_command_prompt_program(self.program())
+    }
+
+    pub fn is_native_command_prompt_active(&self, live_shell_name: Option<&str>) -> bool {
+        live_shell_name.map_or_else(
+            || self.is_native_command_prompt(),
+            |name| is_command_prompt_name(name) || is_command_prompt_program(Some(name)),
+        )
+    }
+
     pub fn wsl_distro(&self) -> Option<&str> {
         match &self.kind {
             SessionKind::Wsl(wsl) => wsl.distro.as_deref(),
@@ -545,6 +558,28 @@ fn parse_wsl_launch(args: &[String]) -> WslLaunch {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn host_clear_uses_only_a_native_cmd_executable() {
+        let cmd = descriptor(r"C:\Windows\System32\CMD.EXE", &[], r"C:\work");
+        assert!(cmd.is_native_command_prompt());
+        assert!(cmd.is_native_command_prompt_active(None));
+        assert!(cmd.is_native_command_prompt_active(Some("CMD")));
+        assert!(!cmd.is_native_command_prompt_active(Some("PowerShell")));
+        assert!(!descriptor("pwsh.exe", &[], r"C:\work").is_native_command_prompt());
+        assert!(descriptor("pwsh.exe", &[], r"C:\work")
+            .is_native_command_prompt_active(Some("CMD")));
+        assert!(!descriptor("pwsh.exe", &[], r"C:\work")
+            .is_native_command_prompt_active(None));
+        let wsl = SessionLaunchDescriptor::new(
+            Some("wsl.exe".to_string()),
+            vec!["--exec".to_string(), "bash".to_string()],
+            Vec::new(),
+            Some("CMD".to_string()),
+            None,
+        );
+        assert!(!wsl.is_native_command_prompt());
+    }
 
     fn descriptor(
         program: &str,

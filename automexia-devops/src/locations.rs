@@ -1,5 +1,33 @@
 use std::collections::BTreeMap;
 
+/// Public selectors only. Paths and provider endpoints have separate authority.
+pub const SHELL_SELECTOR_HINTS: [(&str, &str); 15] = [
+    ("DOCKER_CONTEXT", "automexia_env_DOCKER_CONTEXT"),
+    ("DOCKER_HOST_PRESENT", "automexia_env_DOCKER_HOST_PRESENT"),
+    ("AWS_PROFILE", "automexia_env_AWS_PROFILE"),
+    ("AWS_DEFAULT_PROFILE", "automexia_env_AWS_DEFAULT_PROFILE"),
+    ("AWS_REGION", "automexia_env_AWS_REGION"),
+    ("AWS_DEFAULT_REGION", "automexia_env_AWS_DEFAULT_REGION"),
+    ("AZURE_CLOUD_NAME", "automexia_env_AZURE_CLOUD_NAME"),
+    (
+        "CLOUDSDK_ACTIVE_CONFIG_NAME",
+        "automexia_env_CLOUDSDK_ACTIVE_CONFIG_NAME",
+    ),
+    (
+        "CLOUDSDK_CORE_PROJECT",
+        "automexia_env_CLOUDSDK_CORE_PROJECT",
+    ),
+    (
+        "CLOUDSDK_COMPUTE_REGION",
+        "automexia_env_CLOUDSDK_COMPUTE_REGION",
+    ),
+    ("TF_WORKSPACE", "automexia_env_TF_WORKSPACE"),
+    ("AUTOMEXIA_ENV", "automexia_env_AUTOMEXIA_ENV"),
+    ("ENVIRONMENT", "automexia_env_ENVIRONMENT"),
+    ("APP_ENV", "automexia_env_APP_ENV"),
+    ("NODE_ENV", "automexia_env_NODE_ENV"),
+];
+
 /// Copy only location hints used by passive discovery. Unchanged frames allocate
 /// nothing; empty values deliberately clear a nested shell's previous location.
 pub fn sync_location_hints<'a>(
@@ -35,25 +63,39 @@ pub fn sync_location_hints<'a>(
     let complete_windows_frame = cfg!(windows)
         && shell_name.is_some_and(|name| name.eq_ignore_ascii_case("PowerShell"))
         && windows[2..].iter().all(|(_, key)| source(key).is_some());
-    let hints: &[(&str, &str)] = if complete_windows_frame {
+    let locations: &[(&str, &str)] = if complete_windows_frame {
         &windows
     } else {
         &base
     };
-    if hints
+    let invalid_location = locations
         .iter()
         .filter_map(|(_, key)| source(key))
-        .any(|value| value.len() > 4096 || value.chars().any(char::is_control))
-    {
+        .any(|value| value.len() > 4096 || value.chars().any(char::is_control));
+    let invalid_selector = SHELL_SELECTOR_HINTS
+        .iter()
+        .filter_map(|(_, key)| source(key))
+        .any(|value| value.len() > 256 || value.chars().any(char::is_control));
+    if invalid_location || invalid_selector {
         // Reject the complete snapshot: a partial clear could select a different
         // default cluster from a remaining home candidate.
-        for (name, _) in hints {
+        for (name, _) in locations {
             target.entry((*name).to_owned()).or_default().clear();
         }
-        target.retain(|name, _| hints.iter().any(|(allowed, _)| name == allowed));
+        for (name, key) in &SHELL_SELECTOR_HINTS {
+            if source(key).is_some() || target.contains_key(*name) {
+                target.entry((*name).to_owned()).or_default().clear();
+            }
+        }
+        target.retain(|name, _| {
+            locations.iter().any(|(allowed, _)| name == allowed)
+                || SHELL_SELECTOR_HINTS
+                    .iter()
+                    .any(|(allowed, _)| name == allowed)
+        });
         return;
     }
-    for &(name, key) in hints {
+    for &(name, key) in locations {
         match source(key) {
             Some(value) => {
                 if target.get(name).map(String::as_str) != Some(value) {
@@ -65,7 +107,23 @@ pub fn sync_location_hints<'a>(
             }
         }
     }
-    target.retain(|name, _| hints.iter().any(|(allowed, _)| name == allowed));
+    for (name, key) in &SHELL_SELECTOR_HINTS {
+        match source(key) {
+            Some(value) if target.get(*name).map(String::as_str) != Some(value) => {
+                target.insert((*name).to_owned(), value.to_owned());
+            }
+            Some(_) => {}
+            None => {
+                target.remove(*name);
+            }
+        }
+    }
+    target.retain(|name, _| {
+        locations.iter().any(|(allowed, _)| name == allowed)
+            || SHELL_SELECTOR_HINTS
+                .iter()
+                .any(|(allowed, _)| name == allowed)
+    });
 }
 
 #[cfg(test)]
@@ -81,7 +139,7 @@ mod tests {
                 "automexia_env_HOME" => Some("/home/alice"),
                 "automexia_env_KUBECONFIG" => Some("/fixture/one:/fixture/two"),
                 "automexia_env_pending" => Some("0"),
-                _ => Some("credential-canary"),
+                _ => None,
             },
             true,
             Some("bash"),
@@ -92,12 +150,14 @@ mod tests {
         sync_location_hints(
             &mut hints,
             |name| {
-                if name.ends_with("pending") {
+                if name == "automexia_env_pending" {
                     Some("0")
-                } else if name.ends_with("HOME") {
+                } else if name == "automexia_env_HOME" {
                     Some("/home/alice")
-                } else {
+                } else if name == "automexia_env_KUBECONFIG" {
                     Some("")
+                } else {
+                    None
                 }
             },
             true,
@@ -108,12 +168,10 @@ mod tests {
         let oversized = "x".repeat(4097);
         sync_location_hints(
             &mut hints,
-            |name| {
-                Some(if name.ends_with("pending") {
-                    "0"
-                } else {
-                    &oversized
-                })
+            |name| match name {
+                "automexia_env_pending" => Some("0"),
+                "automexia_env_HOME" | "automexia_env_KUBECONFIG" => Some(&oversized),
+                _ => None,
             },
             true,
             Some("bash"),
@@ -128,14 +186,11 @@ mod tests {
         let mut hints = BTreeMap::new();
         sync_location_hints(
             &mut hints,
-            |name| {
-                Some(if name.ends_with("pending") {
-                    "0"
-                } else if name.ends_with("HOME") {
-                    "/fixture/home"
-                } else {
-                    "invalid\npath"
-                })
+            |name| match name {
+                "automexia_env_pending" => Some("0"),
+                "automexia_env_HOME" => Some("/fixture/home"),
+                "automexia_env_KUBECONFIG" => Some("invalid\npath"),
+                _ => None,
             },
             true,
             Some("bash"),
@@ -156,12 +211,11 @@ mod tests {
         for pending in ["1", "malformed", "0"] {
             sync_location_hints(
                 &mut hints,
-                |name| {
-                    Some(match name {
-                        "automexia_env_pending" => pending,
-                        "automexia_env_HOME" => "/fixture/new",
-                        _ => "/fixture/new-config",
-                    })
+                |name| match name {
+                    "automexia_env_pending" => Some(pending),
+                    "automexia_env_HOME" => Some("/fixture/new"),
+                    "automexia_env_KUBECONFIG" => Some("/fixture/new-config"),
+                    _ => None,
                 },
                 true,
                 Some("bash"),

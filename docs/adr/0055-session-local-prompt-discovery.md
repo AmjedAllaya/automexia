@@ -6,21 +6,49 @@ Kubernetes prompt context belongs to the existing optional DevOps extension.
 Optional shell home and configuration search paths are untrusted location
 hints accepted by the bounded snapshot adapter. Bundled Bash, Zsh, Fish and
 PowerShell hooks publish HOME and exported KUBECONFIG with a 4096-byte per-value
-ceiling, explicit clearing, and a begin/commit marker around each pair. Encoded
-frames are cached until values change and replayed after nested shells return.
-These hints are not
+ceiling, explicit clearing, and a begin/commit marker around each pair. The same
+frame now carries a fixed allowlist of public Docker, AWS, Azure, GCP,
+Terraform, and environment selectors, each limited to 256 bytes. Docker's
+endpoint is reduced to a presence bit; provider paths, credentials, and
+arbitrary environment variables are excluded. Encoded frames are cached until
+values change and replayed after nested shells return. These hints are not
 credentials, authentication state, or permission to execute a command. The
 application transports generic environment facts; only the extension interprets
 the allowlisted names. No Kubernetes dependency enters the VT or PTY owner.
 
-Generic session serialization excludes location hints, and session Debug output
-redacts values. Only the application-owned helper transport opts in to the two
-names. No persistence or upload is introduced. Native Windows discovery rejects
+Accepted-write provenance remains generic VT state; application framing and
+availability belong to the existing per-terminal snapshot adapter. A complete
+frame requires fresh activation, shell identity and the required location pair
+for shells that publish dynamic locations. CMD retains its inherited-location
+contract.
+Incomplete publication cannot turn retained fields into evidence for a new
+frame. Pending frames preserve admitted history, while invalid commits suppress
+live discovery. A new independent terminal inherits only complete metadata;
+otherwise its owned launch descriptor remains authoritative. No public session
+schema or provider I/O is added to the renderer.
+
+Session retirement removes its optional discovery state through the existing
+runtime owner without initializing that service or joining workers. Checked
+leases remain unique across retirement and readmission without growing a
+tombstone cache. Optional session and pending-operation admission share the
+existing PTY worker ceiling; exhaustion rejects new discovery without evicting
+live routes. Parked undo topologies remain live owners until actually discarded.
+
+Generic session serialization excludes location and selector hints, and session
+Debug output redacts values. The application-owned WSL Kubernetes helper
+transport still opts in to HOME and KUBECONFIG only. No persistence or upload is
+introduced. Native Windows discovery rejects
 UNC and device paths so terminal metadata cannot request implicit network
 authentication. `AUTOMEXIA_CONTEXT_PATH_HINTS=0` clears the pair. CMD uses the
 application-inherited environment; its PROMPT mechanism cannot safely publish
 dynamic encoded variables without a new per-prompt process or command hook.
-The receiver discards a previous guest's hints once CMD restores its identity.
+The receiver discards a previous guest's hints and selectors once CMD restores
+its identity. An empty selector in a complete frame clears that shell's prior
+selection without restoring the Automexia process value. In WSL, a published
+selector never grants access to the host's provider files; guest file-derived
+Docker, AWS, Azure, GCP, and Terraform defaults remain unavailable unless a
+separate bounded guest read is reviewed. A published GCP project can identify
+an explicit guest selection without such a file.
 
 The former Windows-host fallback cannot represent a WSL session truthfully.
 Guest-backed filesystem reads run in a short-lived copy of the application,

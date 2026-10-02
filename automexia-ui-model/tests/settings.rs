@@ -21,6 +21,41 @@ fn edit(id: &str, change: Change) -> Edit {
 }
 
 #[test]
+fn bounded_display_text_rejects_controls_bidi_and_overlong_utf8() {
+    let mut row = core().entries()[0].clone();
+    row.kind = SettingKind::Text {
+        max_bytes: 8,
+        allow_empty: false,
+    };
+    row.value = SettingValue::Text("Label".into());
+    row.default = row.value.clone();
+    let catalog = Catalog::new(7, vec![row.clone()]).unwrap();
+    assert!(catalog
+        .validate_edit(&edit(
+            INLINE_TABLES,
+            Change::Set(SettingValue::Text("école".into()))
+        ))
+        .is_ok());
+    for invalid in ["", "\u{001b}[31m", "\u{202e}flip", "123456789", "ééééé"] {
+        assert_eq!(
+            catalog.validate_edit(&edit(
+                INLINE_TABLES,
+                Change::Set(SettingValue::Text(invalid.into()))
+            )),
+            Err(SettingsError::InvalidValue)
+        );
+    }
+    row.kind = SettingKind::Text {
+        max_bytes: MAX_TEXT_VALUE_BYTES + 1,
+        allow_empty: false,
+    };
+    assert_eq!(
+        Catalog::new(7, vec![row]),
+        Err(SettingsError::InvalidDescriptor)
+    );
+}
+
+#[test]
 fn output_preferences_preserve_legacy_defaults_and_independent_values() {
     let current = CoreValues {
         inline_tables: false,
@@ -36,7 +71,7 @@ fn output_preferences_preserve_legacy_defaults_and_independent_values() {
     };
     let catalog =
         Catalog::new(7, core_descriptors(current, configured, origins)).unwrap();
-    assert_eq!(catalog.entries().len(), 3);
+    assert_eq!(catalog.entries().len(), 5);
     let tables = catalog
         .get(&SettingId::new(INLINE_TABLES).unwrap())
         .unwrap();
@@ -57,6 +92,22 @@ fn output_preferences_preserve_legacy_defaults_and_independent_values() {
             .value,
         SettingValue::Boolean(true)
     );
+}
+
+#[test]
+fn command_log_and_kubernetes_color_switches_have_distinct_core_ids() {
+    let rows = core().entries().to_vec();
+    for id in [
+        "terminal.command_output_highlighting",
+        OUTPUT_HIGHLIGHTING,
+        "terminal.kubernetes_highlighting",
+    ] {
+        let row = rows.iter().find(|row| row.id.as_str() == id).unwrap();
+        assert_eq!(row.value, SettingValue::Boolean(true));
+        assert_eq!(row.default, SettingValue::Boolean(true));
+        assert_eq!(row.owner, SettingOwner::Core);
+        assert_eq!(row.section, Section::Terminal);
+    }
 }
 
 #[test]
@@ -283,11 +334,11 @@ fn focus_navigation_and_resize_keep_target_visible_and_scroll_clamped() {
     assert_eq!(view.visible_range(), 0..1);
     view.move_focus(FocusMove::Last);
     assert_eq!(view.focused().unwrap().as_str(), COMMAND_TIMESTAMPS);
-    assert_eq!(view.visible_range(), 2..3);
+    assert_eq!(view.visible_range(), 4..5);
     view.move_focus(FocusMove::Previous);
-    assert_eq!(view.visible_range(), 1..2);
+    assert_eq!(view.visible_range(), 3..4);
     view.set_viewport_rows(usize::MAX);
-    assert_eq!(view.visible_range(), 0..3);
+    assert_eq!(view.visible_range(), 0..5);
     view.move_focus(FocusMove::First);
     view.move_focus(FocusMove::Previous);
     assert_eq!(view.focused().unwrap().as_str(), INLINE_TABLES);
@@ -394,4 +445,102 @@ fn appearance_continuous_number_metadata_rejects_invalid_or_unbounded_increments
             SettingsError::InvalidDescriptor
         );
     }
+}
+
+fn color_descriptor(alpha: bool) -> SettingDescriptor {
+    let mut entry = SettingDescriptor::boolean(
+        SettingId::new("appearance.test_color").unwrap(),
+        Section::Appearance,
+        "Test color",
+        "Color model fixture",
+        true,
+        true,
+    );
+    entry.kind = SettingKind::Color { alpha };
+    entry.value = SettingValue::Color([1, 171, 192, 255]);
+    entry.default = SettingValue::Color([255, 0, 128, 255]);
+    entry
+}
+
+#[test]
+fn color_kinds_admit_exact_channels_and_reset_without_mutating_the_snapshot() {
+    for alpha in [false, true] {
+        let catalog = Catalog::new(7, vec![color_descriptor(alpha)]).unwrap();
+        for opacity in if alpha {
+            vec![0, 1, 254, 255]
+        } else {
+            vec![255]
+        } {
+            let request = edit(
+                "appearance.test_color",
+                Change::Set(SettingValue::Color([0, 255, 127, opacity])),
+            );
+            assert_eq!(catalog.validate_edit(&request), Ok(request));
+        }
+        let request = edit("appearance.test_color", Change::Reset);
+        assert_eq!(catalog.validate_edit(&request), Ok(request));
+        assert_eq!(
+            catalog.entries()[0].value,
+            SettingValue::Color([1, 171, 192, 255])
+        );
+    }
+}
+
+#[test]
+fn color_kinds_reject_transparent_opaque_values_and_wrong_typed_edits() {
+    let catalog = Catalog::new(7, vec![color_descriptor(false)]).unwrap();
+    for value in [
+        SettingValue::Color([0, 0, 0, 0]),
+        SettingValue::Color([255, 255, 255, 254]),
+        SettingValue::Choice("#01ABC0".into()),
+        SettingValue::Boolean(true),
+        SettingValue::Number(255.0),
+        SettingValue::Action,
+    ] {
+        assert_eq!(
+            catalog.validate_edit(&edit("appearance.test_color", Change::Set(value))),
+            Err(SettingsError::InvalidValue),
+        );
+    }
+    for default in [false, true] {
+        let mut entry = color_descriptor(false);
+        if default {
+            entry.default = SettingValue::Color([1, 2, 3, 0]);
+        } else {
+            entry.value = SettingValue::Color([1, 2, 3, 254]);
+        }
+        assert_eq!(
+            Catalog::new(7, vec![entry]),
+            Err(SettingsError::InvalidValue)
+        );
+    }
+}
+
+#[test]
+fn color_kinds_keep_revision_availability_and_activation_boundaries() {
+    let mut entry = color_descriptor(true);
+    entry.value = SettingValue::Color([0, 0, 0, 0]);
+    entry.default = SettingValue::Color([255, 255, 255, 1]);
+    let catalog = Catalog::new(7, vec![entry.clone()]).unwrap();
+    let mut request = edit(
+        "appearance.test_color",
+        Change::Set(SettingValue::Color([4, 5, 6, 7])),
+    );
+    request.revision = 6;
+    assert_eq!(
+        catalog.validate_edit(&request),
+        Err(SettingsError::StaleRevision)
+    );
+    assert_eq!(
+        catalog.validate_edit(&edit("appearance.test_color", Change::Activate)),
+        Err(SettingsError::InvalidValue)
+    );
+    entry.availability = Availability::Unavailable {
+        reason: "Not supported by this fixture".into(),
+    };
+    let catalog = Catalog::new(7, vec![entry]).unwrap();
+    assert_eq!(
+        catalog.validate_edit(&edit("appearance.test_color", Change::Reset)),
+        Err(SettingsError::Unavailable)
+    );
 }

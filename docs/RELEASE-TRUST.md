@@ -38,12 +38,16 @@ The flat publication directory must contain exactly eleven versioned packages:
 - one signed, notarized, and stapled universal macOS DMG;
 - Linux x86_64 and ARM64 DEB, RPM, and tar.gz packages.
 
-Each Windows ZIP has an exact allowlist: `automexia.exe`, the four reviewed
+Each Windows ZIP has an exact allowlist: `automexia.exe`, `amx.exe`,
+`automexia-suggestion-helper.exe`, the application-architecture `conpty.dll`,
+`x64/OpenConsole.exe`, `arm64/OpenConsole.exe`, the four reviewed
 documents, and the complete `shell-integration/` resource tree. Nested paths,
 entry count, expanded size, compression ratio, and traversal are bounded.
 Portable staging is reset before every package run and the resource copy rejects
 symlinks/reparse points, more than 128 files, or more than 32 MiB. The embedded
-executable product version must equal the release tag.
+product version of each Automexia executable must equal the release tag.
+Microsoft runtime files retain their vendor version and original signature; the
+pinned recipe in `packaging/windows/conpty-runtime.json` owns their hashes.
 
 Raw executables, app directories, symbol files, signing material, build logs,
 and unsigned staging artifacts are forbidden. Every expected architecture must
@@ -58,11 +62,21 @@ atomically, and verifies that `SHA256SUMS` names every final asset exactly once.
 Controlled Windows evidence is accepted only when its release version, exact
 publisher, artifact count, signature count, and every scanned package name, size, and SHA-256 match those
 final packages; unknown evidence fields and out-of-contract timeouts are rejected.
+Windows trust evidence uses schema 3: eight Automexia runtime/package signatures
+(two MSI files and all three product executables from each ZIP), sixteen embedded
+PowerShell signatures, and six separate Microsoft vendor signatures. The pinned
+NuGet identity and package SHA-256 are recorded separately. Schema 1 and 2
+evidence omit required runtime checks and are rejected.
+Regenerate evidence by running the controlled gate against the final packages;
+changing a schema number or reusing an earlier scan is not a migration.
 SBOM input contains the final package directory plus the exact `Cargo.lock`
 used by the tagged build, not unsigned build outputs. Validation requires
 complete SPDX/CycloneDX metadata, at least ten components, Cargo PURLs, the
 exact `automexia-terminal` version, and agreement between both formats;
-header-only/empty documents fail. The release manifest, checksums, signed
+header-only/empty documents fail. Windows releases also require the pinned
+Microsoft.Windows.Console.ConPTY NuGet PURL, version, MIT license and package
+SHA-256 in both formats. The offline enrichment step adds this binary dependency
+from the shared recipe; conflicting scanner entries fail for review. The release manifest, checksums, signed
 package evidence, and SBOMs bind the final packages to the reviewed release
 process. GitHub provenance/SBOM attestations for this private repository are an
 external Enterprise entitlement and are not claimed by the GitHub-Free flow.
@@ -98,11 +112,17 @@ The Linux preflight receives only `configured`/empty presence flags for signing
 secrets, never certificate or account secret values. Actual credentials are
 scoped to their protected native signing job.
 
-The workflow copies the one reviewed executable into an isolated flat signing
-directory and signs it before packaging. It then Authenticode-signs and
+The workflow copies the three reviewed runtime executables into an isolated flat
+signing directory and signs each before packaging. It then Authenticode-signs and
 timestamps every distributed `.ps1` and `.ps1xml` resource before MSI/ZIP
 creation, and signs every MSI using an RFC 3161 timestamp. Azure Artifact
-Signing and PFX fallback paths both cover the scripts. Validation requires a
+Signing and PFX fallback paths both cover all Automexia executables and scripts.
+The three Microsoft files are added only in credential-free packaging, after
+product signing. They must never enter the Automexia signing input directory.
+Offline hash/architecture checks and native Authenticode chain, Microsoft
+publisher, timestamp and code-signing EKU checks verify them without execution.
+Both portable extraction and installed-package checks reuse the same verifier.
+The Defender gate scans the extracted vendor files as well as the final packages. Validation requires a
 trusted Authenticode chain, the exact configured publisher, a trusted
 timestamp, and the code-signing EKU.
 Portable ZIPs are treated as hostile input during validation: traversal,
@@ -111,6 +131,9 @@ contents are rejected. The controlled gate also extracts both final ZIPs and
 requires exactly eight valid publisher/timestamp signatures in each embedded
 PowerShell resource tree; the resulting count is bound into the redacted
 release evidence.
+The persistent suggestion helper is checked through version metadata and its
+signature; it is never launched with `--version`, which its bootstrap protocol
+does not support. Native CLI smoke checks run `automexia` and `amx`.
 
 The controlled hardware runner launches the final signed Windows x86_64 ZIP and
 the final Linux x86_64 tar archive for version/GPU/PTY/WSL smoke coverage; it does

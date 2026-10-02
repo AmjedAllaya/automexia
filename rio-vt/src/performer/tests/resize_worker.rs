@@ -180,6 +180,149 @@ fn machine() -> Machine<BoundaryPty, VoidListener> {
     .unwrap()
 }
 
+#[test]
+fn queued_fragmented_bracketed_mode_is_applied_before_paste_encoding() {
+    for (fragments, expected) in [
+        (
+            vec![b"\x1b[?20".to_vec(), b"04h".to_vec()],
+            b"\x1b[200~a\r\nb\x1b[201~".as_slice(),
+        ),
+        (
+            vec![b"\x1b[?2004h\x1b[?20".to_vec(), b"04l".to_vec()],
+            b"a\rb".as_slice(),
+        ),
+    ] {
+        let mut machine = machine();
+        machine.pty.reader.tail_chunks = fragments.into();
+        machine.pty.writable_bytes = 128;
+        let sender = machine.channel();
+        sender
+            .send(Msg::Paste(PasteRequest::new("a\r\nb", true).unwrap()))
+            .unwrap();
+        let mut state = State::default();
+        assert!(machine.drain_recv_channel(&mut state));
+        assert!(state.pending_paste.is_some());
+        machine
+            .resolve_pending_paste(&mut state, &mut [0; 64])
+            .unwrap();
+        machine.pty_write(&mut state).unwrap();
+        assert_eq!(machine.pty.output, expected);
+        assert!(state.pending_paste.is_none());
+    }
+}
+
+#[test]
+fn queued_mode_after_full_read_budget_is_seen_before_paste() {
+    let mut machine = machine();
+    machine.pty.reader.final_bytes = Some(vec![b'\r'; MAX_LOCKED_READ]);
+    machine.pty.reader.tail_chunks = VecDeque::from([b"\x1b[?2004h".to_vec()]);
+    machine.pty.writable_bytes = 64;
+    let sender = machine.channel();
+    sender
+        .send(Msg::Paste(PasteRequest::new("x", true).unwrap()))
+        .unwrap();
+    let mut state = State::default();
+    assert!(machine.drain_recv_channel(&mut state));
+    machine
+        .resolve_pending_paste(&mut state, &mut [0; 1024])
+        .unwrap();
+    assert!(
+        state.pending_paste.is_some(),
+        "full read budget defers paste"
+    );
+    assert!(!state.needs_write());
+    machine
+        .resolve_pending_paste(&mut state, &mut [0; 1024])
+        .unwrap();
+    machine.pty_write(&mut state).unwrap();
+    assert_eq!(machine.pty.output, b"\x1b[200~x\x1b[201~");
+}
+
+#[test]
+fn continuous_output_has_bounded_paste_drain_and_does_not_starve_input() {
+    let mut machine = machine();
+    let read_bytes = Arc::new(AtomicUsize::new(0));
+    machine.pty.reader.final_bytes = Some(vec![
+        b'\r';
+        MAX_LOCKED_READ
+            * usize::from(MAX_PASTE_DRAIN_ROUNDS)
+            + 1
+    ]);
+    machine.pty.reader.read_bytes = Some(read_bytes.clone());
+    machine.pty.writable_bytes = 64;
+    let sender = machine.channel();
+    sender
+        .send(Msg::Paste(PasteRequest::new("x", true).unwrap()))
+        .unwrap();
+    let mut state = State::default();
+    assert!(machine.drain_recv_channel(&mut state));
+    for _ in 0..MAX_PASTE_DRAIN_ROUNDS - 1 {
+        machine
+            .resolve_pending_paste(&mut state, &mut [0; 1024])
+            .unwrap();
+        assert!(state.pending_paste.is_some());
+    }
+    machine
+        .resolve_pending_paste(&mut state, &mut [0; 1024])
+        .unwrap();
+    assert!(state.pending_paste.is_none());
+    assert_eq!(
+        read_bytes.load(Ordering::Relaxed),
+        MAX_LOCKED_READ * usize::from(MAX_PASTE_DRAIN_ROUNDS)
+    );
+    machine.pty_write(&mut state).unwrap();
+    assert_eq!(machine.pty.output, b"x");
+}
+
+#[test]
+fn paste_is_one_ordered_write_between_keyboard_messages() {
+    let mut machine = machine();
+    machine.pty.reader.tail_chunks = VecDeque::from([b"\x1b[?2004h".to_vec()]);
+    machine.pty.writable_bytes = 128;
+    let sender = machine.channel();
+    sender.send(Msg::Input(Cow::Borrowed(b"before"))).unwrap();
+    sender
+        .send(Msg::Paste(PasteRequest::new("a\nb", true).unwrap()))
+        .unwrap();
+    sender.send(Msg::Input(Cow::Borrowed(b"after"))).unwrap();
+    let mut state = State::default();
+    assert!(machine.drain_recv_channel(&mut state));
+    machine.pty_write(&mut state).unwrap();
+    assert_eq!(machine.pty.output, b"before");
+    assert!(machine.drain_recv_channel(&mut state));
+    machine
+        .resolve_pending_paste(&mut state, &mut [0; 64])
+        .unwrap();
+    machine.pty_write(&mut state).unwrap();
+    assert_eq!(machine.pty.output, b"before\x1b[200~a\nb\x1b[201~");
+    assert!(machine.drain_recv_channel(&mut state));
+    machine.pty_write(&mut state).unwrap();
+    assert_eq!(machine.pty.output, b"before\x1b[200~a\nb\x1b[201~after");
+}
+
+#[test]
+fn paste_encoder_preserves_current_newline_and_control_contract() {
+    let text = "界e\u{301}\r\nb\n\x1b[201~\x03";
+    let raw = encode_paste(
+        PasteRequest::new(text, false).unwrap(),
+        Mode::BRACKETED_PASTE,
+    );
+    assert_eq!(raw.as_ref(), text.as_bytes());
+    let bracketed = encode_paste(
+        PasteRequest::new(text, true).unwrap(),
+        Mode::BRACKETED_PASTE,
+    );
+    assert_eq!(
+        bracketed.as_ref(),
+        "\x1b[200~界e\u{301}\r\nb\n[201~\x1b[201~".as_bytes()
+    );
+    let unbracketed = encode_paste(PasteRequest::new(text, true).unwrap(), Mode::empty());
+    assert_eq!(
+        unbracketed.as_ref(),
+        "界e\u{301}\rb\r\x1b[201~\x03".as_bytes()
+    );
+}
+
 #[derive(Clone, Copy)]
 enum ExitScenario {
     BeforePoll,

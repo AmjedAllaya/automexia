@@ -80,6 +80,14 @@ symbols retain their meaning, so the distinction does not rely on hue alone.
 
 ## Visual asset workflow
 
+The CLI artwork is the exact static text in
+`apps/automexia-terminal/src/cli/ascii-brand.txt`. Interactive root help uses
+only its compact wordmark. The full artwork is reserved for explicit `about`
+and `logo` commands when the terminal can show it; redirected `logo` output is
+plain full artwork. Version output, subcommand help, errors, status reports,
+JSON, completion, and ordinary startup do not add a banner. CLI presentation
+does not load image assets or initialize the application window.
+
 The canonical source image is
 `assets/brand/automexia-terminal-source-512.png`. Its provenance and digest are
 recorded in `assets/brand/ASSET-MANIFEST.toml`.

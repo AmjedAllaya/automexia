@@ -115,6 +115,17 @@ fn namespace_remains_visible_and_accessible_with_a_long_context_name() {
     };
     let projection =
         contribution(&snapshot, &session(), 1, 1, 0, Freshness::Current).unwrap();
+    let kube = projection
+        .segments
+        .iter()
+        .find(|segment| segment.id.as_str() == "kubernetes")
+        .unwrap();
+    assert_eq!(kube.freshness, Freshness::Stale);
+    assert_eq!(kube.label.as_str(), "sandbox?");
+    assert!(kube
+        .accessibility_label
+        .as_str()
+        .contains("cluster existence unverified"));
     let value = serde_json::to_value(projection).unwrap();
     let segment = value["segments"]
         .as_array()
@@ -122,10 +133,96 @@ fn namespace_remains_visible_and_accessible_with_a_long_context_name() {
         .iter()
         .find(|segment| segment["id"] == "kubernetes")
         .unwrap();
-    assert_eq!(segment["label"], "sandbox");
+    assert_eq!(segment["label"], "sandbox?");
+    assert_eq!(segment["freshness"], "stale");
     let text = segment.to_string();
     assert!(text.contains("fixture-context-with-a-long-descriptive-name"));
     assert!(text.contains("namespace sandbox"));
+    assert!(text.contains("cluster existence unverified"));
+}
+
+#[test]
+fn no_kubernetes_tag_survives_a_completed_local_refresh_after_config_removal() {
+    let temporary = tempfile::tempdir().unwrap();
+    let path = temporary.path().join("config");
+    std::fs::write(&path, r#"{"current-context":"fixture","contexts":[{"name":"fixture","context":{"namespace":"sandbox"}}]}"#).unwrap();
+    let first = DevOpsSnapshot {
+        kubernetes: kubernetes::from_files(std::slice::from_ref(&path)),
+        ..Default::default()
+    };
+    assert!(
+        contribution(&first, &session(), 1, 1, 1, Freshness::Current)
+            .unwrap()
+            .segments
+            .iter()
+            .any(|segment| segment.id.as_str() == "kubernetes")
+    );
+    std::fs::write(&path, "{}").unwrap();
+    let refreshed = DevOpsSnapshot {
+        kubernetes: kubernetes::from_files(&[path]),
+        ..Default::default()
+    };
+    assert!(
+        !contribution(&refreshed, &session(), 1, 1, 2, Freshness::Current)
+            .unwrap()
+            .segments
+            .iter()
+            .any(|segment| segment.id.as_str() == "kubernetes")
+    );
+}
+
+#[test]
+fn native_detection_replaces_removed_context_without_borrowing_another_pane() {
+    let temporary = tempfile::tempdir().unwrap();
+    let first_path = temporary.path().join("first-config");
+    let second_path = temporary.path().join("second-config");
+    let config = |namespace: &str| {
+        format!(
+            r#"{{"current-context":"fixture","contexts":[{{"name":"fixture","context":{{"namespace":"{namespace}"}}}}]}}"#
+        )
+    };
+    std::fs::write(&first_path, config("first")).unwrap();
+    std::fs::write(&second_path, config("second")).unwrap();
+    let native_session = |session_id, path: &std::path::Path| {
+        let mut facts = session();
+        facts.session_id = session_id;
+        facts.distro = None;
+        facts.cwd = Some(temporary.path().to_path_buf());
+        facts.shell_name = Some(if cfg!(windows) { "PowerShell" } else { "bash" }.into());
+        facts
+            .environment
+            .insert("KUBECONFIG".into(), path.to_string_lossy().into_owned());
+        facts.environment.insert(
+            "HOME".into(),
+            temporary.path().to_string_lossy().into_owned(),
+        );
+        facts
+    };
+    let first = native_session(7, &first_path);
+    let second = native_session(8, &second_path);
+    assert_eq!(
+        automexia_devops::detect(&first)
+            .kubernetes
+            .unwrap()
+            .namespace,
+        "first"
+    );
+    assert_eq!(
+        automexia_devops::detect(&second)
+            .kubernetes
+            .unwrap()
+            .namespace,
+        "second"
+    );
+    std::fs::write(&first_path, "{}").unwrap();
+    assert!(automexia_devops::detect(&first).kubernetes.is_none());
+    assert_eq!(
+        automexia_devops::detect(&second)
+            .kubernetes
+            .unwrap()
+            .namespace,
+        "second"
+    );
 }
 
 #[test]

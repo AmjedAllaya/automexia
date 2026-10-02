@@ -9,10 +9,13 @@ VT grid, cursor and reflow remain the source of truth.
 Automatic presentation recognizes aligned whitespace tables, Markdown pipe
 tables, and ASCII or Unicode table frames. Headers may use uppercase, mixed-case
 or lowercase labels when a ruler or typed data makes their role clear. Empty
-cells and explicitly ruled single-column tables are supported. Recognition uses
-the output structure rather than command names, and does not derive resource
+cells and explicitly ruled single-column tables are supported. A sparse first
+data row and later sparse records can retain the header schema, including
+right-aligned numeric fields when typed data and shared gutters establish their
+columns. Recognition uses the output structure rather than command names, and does not derive resource
 health from a value. Unsupported output
-keeps its ordinary terminal presentation.
+keeps its ordinary terminal presentation. Supported tables update as complete
+rows arrive; resizing the pane is not needed to start recognition.
 
 Borders and glyphs stay inside their pane and cell bounds. Source terminal
 colours and the selection-foreground preference remain authoritative. Hovered
@@ -29,8 +32,8 @@ command and press **F2**, or double-click its shortcut badge. Other keyboard
 profiles can bind the `ViewTableOutput` action explicitly.
 
 Select a complete table first to choose exactly which output to view. Without
-a selection, Automexia looks for the most recent aligned table at or above the
-current scroll position. This is a focused, read-only snapshot; the shell keeps
+a selection, Automexia looks for the most recent supported header table at or
+above the current scroll position. This is a focused, read-only snapshot; the shell keeps
 running underneath. Close and reopen the view to capture newer output.
 
 | Control | Action |
@@ -70,9 +73,21 @@ captured. Inline presentation is also disabled while terminal vi mode is active.
 Output with images or unsupported text decorations retains its ordinary rendering.
 
 Each recognized table is bounded to 256 KiB, 256 logical rows, 4,096 cells per row
-and 64 columns. Inline discovery examines at most 512 native rows and 64 Ki
-native cells near the viewport, retaining at most four table surfaces and trying
-at most eight header starts per contiguous block. Wrapping
+and 64 columns. Inline discovery examines at most 1,024 native rows and copies
+at most 64 Ki native cells near the viewport, retaining at most four table
+surfaces and trying at most eight header starts per contiguous block. Candidate
+schema probes and final detection share a ceiling of 32 model attempts,
+reserving half for final models; established schemas do not spend another attempt
+for each sparse row.
+For a longer captured table, Automexia keeps the header and an optional ruler
+as schema evidence and formats only a bounded window around the visible rows.
+Borders remain attached after the header leaves the pane when a bounded
+live-output or scrollback search can verify it within 1,024 preceding rows and 256 Ki inspected
+cells. If the header cannot be verified within those limits, ordinary output
+remains.
+When output is rewritten in place, row status colors follow the current values;
+explicit command colors and selection styling still take precedence for text.
+Exhausted budgets stop optional source cloning before another probe. Wrapping
 is bounded to 4,096 content lines and 32,768 fragments per table. A pane must fit
 at least one complete grapheme and the cell padding in every column; if it
 cannot, or a limit is exceeded, the original terminal output remains available.

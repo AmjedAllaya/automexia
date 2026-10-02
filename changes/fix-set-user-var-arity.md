@@ -1,0 +1,1 @@
+Reject extra OSC SetUserVar parameters before decoding or changing metadata provenance. Retain supported terminators and encodings, add allocation and fragmentation regressions, and compare final metadata provenance in the existing bounded VT fuzz target.

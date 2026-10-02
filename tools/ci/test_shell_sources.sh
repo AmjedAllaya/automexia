@@ -97,6 +97,7 @@ cmp -s \
 [[ $(grep -Fc '# >>> AUTOMEXIA SHELL INTEGRATION >>>' "$installer_home/.bashrc") -eq 1 ]]
 [[ -s "$installer_config/automexia/install-state-unix.sha256" ]]
 
+bash tools/ci/test_shell_installer_temp.sh
 bash tools/ci/test_shell_integration.sh
 zsh tools/ci/test_zsh_integration.zsh
 python3 tools/ci/test_shell_location_hints.py

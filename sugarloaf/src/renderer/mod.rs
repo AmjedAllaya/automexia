@@ -79,6 +79,10 @@ pub struct WgpuRenderer {
     constant_bind_group: wgpu::BindGroup,
     layout_bind_group: wgpu::BindGroup,
     layout_bind_group_layout: wgpu::BindGroupLayout,
+    /// Tiny existing fallback bindings for ordinary quads before any legacy
+    /// image atlas is needed.
+    placeholder_color_view: wgpu::TextureView,
+    placeholder_mask_view: wgpu::TextureView,
     transform: wgpu::Buffer,
     pipeline: wgpu::RenderPipeline,
     instanced_pipeline: wgpu::RenderPipeline,
@@ -871,17 +875,22 @@ pub struct BackgroundImagePixels {
     pub pixels: Vec<u8>,
 }
 
+mod under_text;
+
 fn finish_composition_phases(
+    under_text: &mut under_text::UnderText,
     base: &mut Compositor,
     modal: &mut Compositor,
     instances: &mut Vec<batch::QuadInstance>,
     vertices: &mut Vec<Vertex>,
     draw_cmds: &mut Vec<batch::DrawCmd>,
-) -> (usize, usize, usize) {
+) -> ((usize, usize, usize), (usize, usize, usize)) {
+    under_text.finish(instances, vertices, draw_cmds);
+    let base_start = (instances.len(), vertices.len(), draw_cmds.len());
     base.finish(instances, vertices, draw_cmds);
     let boundary = (instances.len(), vertices.len(), draw_cmds.len());
     modal.finish(instances, vertices, draw_cmds);
-    boundary
+    (base_start, boundary)
 }
 
 pub struct Renderer {
@@ -891,6 +900,10 @@ pub struct Renderer {
     pub(crate) frame_dropped: bool,
     brush_type: RendererType,
     comp: Compositor,
+    under_text: under_text::UnderText,
+    base_instance_start: usize,
+    base_vertex_start: usize,
+    base_cmd_start: usize,
     instances: Vec<batch::QuadInstance>,
     modal_comp: Compositor,
     recording_modal: bool,
@@ -1081,6 +1094,10 @@ impl Renderer {
             frame_dropped: false,
             brush_type,
             comp: Compositor::new(),
+            under_text: under_text::UnderText::default(),
+            base_instance_start: 0,
+            base_vertex_start: 0,
+            base_cmd_start: 0,
             instances: vec![],
             modal_comp: Compositor::new(),
             recording_modal: false,
@@ -1112,6 +1129,7 @@ impl Renderer {
     #[inline]
     pub(crate) fn discard_frame_batches(&mut self) {
         self.comp.batches.reset();
+        self.under_text.clear();
         self.modal_comp.batches.reset();
         self.recording_modal = false;
     }
@@ -1198,10 +1216,18 @@ impl Renderer {
         self.draw_cmds.clear();
         self.images.process_atlases(context);
         (
-            self.modal_instance_start,
-            self.modal_vertex_start,
-            self.modal_cmd_start,
+            (
+                self.base_instance_start,
+                self.base_vertex_start,
+                self.base_cmd_start,
+            ),
+            (
+                self.modal_instance_start,
+                self.modal_vertex_start,
+                self.modal_cmd_start,
+            ),
         ) = finish_composition_phases(
+            &mut self.under_text,
             &mut self.comp,
             &mut self.modal_comp,
             &mut self.instances,
@@ -1762,12 +1788,26 @@ impl Renderer {
         tracing::info!("Renderer atlas cleared");
     }
 
+    /// Rectangle-only terminal backgrounds. Recorded independently of UI/modal
+    /// order and painted between grid backgrounds and glyphs on every backend.
+    pub(crate) fn under_text_rect(&mut self, rect: [f32; 4], color: [f32; 4]) {
+        self.under_text.rect(rect, color);
+    }
+
     /// Route subsequent immediate-mode primitives to the final modal
     /// compositor. The layer is physically rendered after base UI text,
     /// so no pane chrome can leak through an opaque dialog.
     #[inline]
     pub fn begin_modal_layer(&mut self) {
         self.recording_modal = true;
+    }
+
+    /// Replace this frame's pending modal geometry before recording the
+    /// exclusive topmost dialog. Base content and retained UI state are intact.
+    #[inline]
+    pub(crate) fn replace_modal_layer(&mut self) {
+        self.modal_comp.batches.reset();
+        self.begin_modal_layer();
     }
 
     #[inline]
@@ -1900,6 +1940,19 @@ impl Renderer {
     }
 
     #[inline]
+    pub fn polygon_with_order(
+        &mut self,
+        points: &[(f32, f32)],
+        depth: f32,
+        color: [f32; 4],
+        order: u8,
+    ) {
+        self.compositor_mut()
+            .batches
+            .add_polygon_with_order(points, depth, color, order);
+    }
+
+    #[inline]
     #[allow(clippy::too_many_arguments)]
     pub fn triangle(
         &mut self,
@@ -1966,44 +2019,75 @@ impl Renderer {
         self.modal_cmd_start < self.draw_cmds.len()
     }
 
-    #[inline]
+    /// Upload the combined under-text/base/modal buffers once before drawing.
     #[cfg(feature = "wgpu")]
-    pub fn render<'pass>(
-        &'pass mut self,
-        ctx: &mut WgpuContext,
-        rpass: &mut wgpu::RenderPass<'pass>,
-    ) {
-        // Destructure to get independent borrows of different fields
+    pub(crate) fn upload_wgpu_primitives(&mut self, ctx: &mut WgpuContext) {
         let Self {
             brush_type,
-            images,
             instances,
             vertices,
-            draw_cmds,
-            modal_cmd_start,
-            image_draws,
-            image_textures,
-            background_image_texture,
             ..
         } = self;
-
         if let RendererType::Wgpu(brush) = brush_type {
-            let color_views = images.get_texture_views();
-            let mask_texture_view = images.get_mask_texture_view();
-
-            let has_images = !image_draws.is_empty();
-            let has_background = background_image_texture.is_some();
-            if (color_views.is_empty() || (instances.is_empty() && vertices.is_empty()))
-                && !has_images
-                && !has_background
-            {
-                return;
+            // Upload buffers once
+            if !instances.is_empty() {
+                if instances.len() > brush.supported_instance_buffer {
+                    brush.instance_buffer.destroy();
+                    brush.supported_instance_buffer =
+                        (instances.len() as f32 * 1.25) as usize;
+                    brush.instance_buffer =
+                        ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                            label: Some("rich_text::Instance Buffer (resized)"),
+                            size: mem::size_of::<batch::QuadInstance>() as u64
+                                * brush.supported_instance_buffer as u64,
+                            usage: wgpu::BufferUsages::VERTEX
+                                | wgpu::BufferUsages::COPY_DST,
+                            mapped_at_creation: false,
+                        });
+                }
+                ctx.queue.write_buffer(
+                    &brush.instance_buffer,
+                    0,
+                    bytemuck::cast_slice(instances),
+                );
             }
+            if !vertices.is_empty() {
+                if vertices.len() > brush.supported_vertex_buffer {
+                    brush.vertex_buffer.destroy();
+                    brush.supported_vertex_buffer =
+                        (vertices.len() as f32 * 1.25) as usize;
+                    brush.vertex_buffer =
+                        ctx.device.create_buffer(&wgpu::BufferDescriptor {
+                            label: Some("rich_text::Vertices Buffer (resized)"),
+                            size: mem::size_of::<Vertex>() as u64
+                                * brush.supported_vertex_buffer as u64,
+                            usage: wgpu::BufferUsages::VERTEX
+                                | wgpu::BufferUsages::COPY_DST,
+                            mapped_at_creation: false,
+                        });
+                }
+                ctx.queue.write_buffer(
+                    &brush.vertex_buffer,
+                    0,
+                    bytemuck::cast_slice(vertices),
+                );
+            }
+        }
+    }
 
+    /// Paint the window wallpaper before terminal cell backgrounds. Kitty
+    /// placements retain their own existing layer/order in the ordinary pass.
+    #[cfg(feature = "wgpu")]
+    pub(crate) fn render_background_wgpu(
+        &mut self,
+        ctx: &mut WgpuContext,
+        rpass: &mut wgpu::RenderPass<'_>,
+    ) {
+        if let RendererType::Wgpu(brush) = &mut self.brush_type {
             // Background image: drawn first so all subsequent text/rects
             // composite on top. Single fullscreen instance, dedicated
             // vertex buffer, reuses the kitty image pipeline + sampler.
-            if let Some(bg_tex) = background_image_texture.as_ref() {
+            if let Some(bg_tex) = self.background_image_texture.as_ref() {
                 if let Some(view) = bg_tex.gpu.wgpu_view() {
                     let instance = ImageInstance {
                         dest_pos: [0.0, 0.0],
@@ -2032,10 +2116,44 @@ impl Renderer {
                         brush.background_image_vertex_buffer.slice(..),
                     );
                     rpass.draw(0..4, 0..1);
-                    // Restore text pipeline state for downstream batches.
-                    rpass.set_pipeline(&brush.pipeline);
-                    rpass.set_bind_group(0, &brush.constant_bind_group, &[]);
                 }
+            }
+        }
+    }
+
+    #[cfg(feature = "wgpu")]
+    pub(crate) fn render_under_text_wgpu(
+        &mut self,
+        ctx: &mut WgpuContext,
+        rpass: &mut wgpu::RenderPass<'_>,
+    ) {
+        self.render_primitive_range(ctx, rpass, 0..self.base_cmd_start);
+    }
+
+    #[inline]
+    #[cfg(feature = "wgpu")]
+    pub fn render(&mut self, ctx: &mut WgpuContext, rpass: &mut wgpu::RenderPass<'_>) {
+        // Destructure to get independent borrows of different fields
+        let Self {
+            brush_type,
+            images,
+            instances,
+            vertices,
+            draw_cmds,
+            base_cmd_start,
+            modal_cmd_start,
+            image_draws,
+            image_textures,
+            ..
+        } = self;
+
+        if let RendererType::Wgpu(brush) = brush_type {
+            let color_views = images.get_texture_views();
+            let mask_texture_view = images.get_mask_texture_view();
+
+            let has_images = !image_draws.is_empty();
+            if instances.is_empty() && vertices.is_empty() && !has_images {
+                return;
             }
 
             if has_images && image_draws.iter().any(|d| d.layer == ImageLayer::BelowText)
@@ -2102,55 +2220,15 @@ impl Renderer {
                 rpass.set_bind_group(0, &brush.constant_bind_group, &[]);
             }
 
-            // Upload buffers once
-            if !instances.is_empty() {
-                if instances.len() > brush.supported_instance_buffer {
-                    brush.instance_buffer.destroy();
-                    brush.supported_instance_buffer =
-                        (instances.len() as f32 * 1.25) as usize;
-                    brush.instance_buffer =
-                        ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                            label: Some("rich_text::Instance Buffer (resized)"),
-                            size: mem::size_of::<batch::QuadInstance>() as u64
-                                * brush.supported_instance_buffer as u64,
-                            usage: wgpu::BufferUsages::VERTEX
-                                | wgpu::BufferUsages::COPY_DST,
-                            mapped_at_creation: false,
-                        });
-                }
-                ctx.queue.write_buffer(
-                    &brush.instance_buffer,
-                    0,
-                    bytemuck::cast_slice(instances),
-                );
-            }
-            if !vertices.is_empty() {
-                if vertices.len() > brush.supported_vertex_buffer {
-                    brush.vertex_buffer.destroy();
-                    brush.supported_vertex_buffer =
-                        (vertices.len() as f32 * 1.25) as usize;
-                    brush.vertex_buffer =
-                        ctx.device.create_buffer(&wgpu::BufferDescriptor {
-                            label: Some("rich_text::Vertices Buffer (resized)"),
-                            size: mem::size_of::<Vertex>() as u64
-                                * brush.supported_vertex_buffer as u64,
-                            usage: wgpu::BufferUsages::VERTEX
-                                | wgpu::BufferUsages::COPY_DST,
-                            mapped_at_creation: false,
-                        });
-                }
-                ctx.queue.write_buffer(
-                    &brush.vertex_buffer,
-                    0,
-                    bytemuck::cast_slice(vertices),
-                );
-            }
-
             // Text pipeline: dispatch draw commands
             let mut current_pipeline_instanced = false;
             let mut pipeline_set = false;
+            let placeholder_color_view = brush.placeholder_color_view.clone();
+            let placeholder_mask_view = brush.placeholder_mask_view.clone();
 
-            for cmd in &draw_cmds[..(*modal_cmd_start).min(draw_cmds.len())] {
+            for cmd in &draw_cmds[(*base_cmd_start).min(draw_cmds.len())
+                ..(*modal_cmd_start).min(draw_cmds.len())]
+            {
                 let (color_layer, mask_layer) = match cmd {
                     batch::DrawCmd::Instanced {
                         color_layer,
@@ -2166,15 +2244,21 @@ impl Renderer {
 
                 // Bind textures for this batch
                 let color_view = if color_layer > 0 {
-                    let idx = (color_layer - 1) as usize;
-                    color_views.get(idx).unwrap_or(&color_views[0])
+                    let Some(view) = color_views.get((color_layer - 1) as usize).copied()
+                    else {
+                        continue;
+                    };
+                    view
                 } else {
-                    &color_views[0]
+                    &placeholder_color_view
                 };
                 let final_mask_view = if mask_layer > 0 {
-                    mask_texture_view.unwrap_or(color_views[0])
+                    let Some(view) = mask_texture_view else {
+                        continue;
+                    };
+                    view
                 } else {
-                    color_views[0]
+                    &placeholder_mask_view
                 };
                 brush.update_bind_group(ctx, color_view, final_mask_view);
 
@@ -2260,39 +2344,50 @@ impl Renderer {
         }
     }
 
-    /// Paint only the modal compositor after the ordinary UI-label pass.
-    /// Primitive buffers were uploaded by render; this pass only rebinds
-    /// their modal command suffix, avoiding a second allocation or upload.
+    /// Paint the modal suffix after ordinary UI labels, using the same upload.
     #[inline]
     #[cfg(feature = "wgpu")]
-    pub fn render_modal<'pass>(
-        &'pass mut self,
+    pub fn render_modal(
+        &mut self,
         ctx: &mut WgpuContext,
-        rpass: &mut wgpu::RenderPass<'pass>,
+        rpass: &mut wgpu::RenderPass<'_>,
+    ) {
+        self.render_primitive_range(
+            ctx,
+            rpass,
+            self.modal_cmd_start..self.draw_cmds.len(),
+        );
+    }
+
+    #[cfg(feature = "wgpu")]
+    fn render_primitive_range(
+        &mut self,
+        ctx: &mut WgpuContext,
+        rpass: &mut wgpu::RenderPass<'_>,
+        range: std::ops::Range<usize>,
     ) {
         let Self {
             brush_type,
             images,
             draw_cmds,
-            modal_cmd_start,
             ..
         } = self;
-        let start = (*modal_cmd_start).min(draw_cmds.len());
-        if start == draw_cmds.len() {
+        let start = range.start.min(draw_cmds.len());
+        let end = range.end.min(draw_cmds.len());
+        if start >= end {
             return;
         }
         let RendererType::Wgpu(brush) = brush_type else {
             return;
         };
         let color_views = images.get_texture_views();
-        if color_views.is_empty() {
-            return;
-        }
         let mask_texture_view = images.get_mask_texture_view();
         let mut current_pipeline_instanced = false;
         let mut pipeline_set = false;
+        let placeholder_color_view = brush.placeholder_color_view.clone();
+        let placeholder_mask_view = brush.placeholder_mask_view.clone();
 
-        for cmd in &draw_cmds[start..] {
+        for cmd in &draw_cmds[start..end] {
             let (color_layer, mask_layer) = match cmd {
                 batch::DrawCmd::Instanced {
                     color_layer,
@@ -2306,16 +2401,21 @@ impl Renderer {
                 } => (*color_layer, *mask_layer),
             };
             let color_view = if color_layer > 0 {
-                color_views
-                    .get((color_layer - 1) as usize)
-                    .unwrap_or(&color_views[0])
+                let Some(view) = color_views.get((color_layer - 1) as usize).copied()
+                else {
+                    continue;
+                };
+                view
             } else {
-                &color_views[0]
+                &placeholder_color_view
             };
             let final_mask_view = if mask_layer > 0 {
-                mask_texture_view.unwrap_or(color_views[0])
+                let Some(view) = mask_texture_view else {
+                    continue;
+                };
+                view
             } else {
-                color_views[0]
+                &placeholder_mask_view
             };
             brush.update_bind_group(ctx, color_view, final_mask_view);
 
@@ -2371,6 +2471,7 @@ impl Renderer {
         use block::ConcreteBlock;
         use std::cell::Cell as StdCell;
 
+        let base_cmd_start = self.base_cmd_start.min(self.draw_cmds.len());
         let modal_cmd_start = self.modal_cmd_start.min(self.draw_cmds.len());
         let has_modal = modal_cmd_start < self.draw_cmds.len();
         let brush = match &mut self.brush_type {
@@ -2491,10 +2592,9 @@ impl Renderer {
             //   ↓
             //   UI text pass (labels)
             //
-            // The two grid passes run inside a single iteration loop
-            // per panel — for multi-panel layouts the bg/text
-            // ordering is per-grid (one panel's text doesn't paint
-            // over another panel's bg image, and vice versa).
+            // Every pane's backgrounds are drawn before the bounded terminal
+            // rectangle phase and glyphs. Pane geometry supplies its own bounds;
+            // UI and modal compositors keep their existing ordering.
             let ok = ok
                 && (|| {
                     if has_images
@@ -2528,6 +2628,20 @@ impl Renderer {
                     {
                         return false;
                     }
+                    if base_cmd_start > 0
+                        && !brush.render(
+                            &self.instances,
+                            &self.vertices,
+                            &self.draw_cmds[..base_cmd_start],
+                            &self.images,
+                            render_encoder,
+                            context,
+                            &instance_buffer,
+                            &mut instance_offset,
+                        )
+                    {
+                        return false;
+                    }
                     for (grid, uniforms) in grids.iter_mut() {
                         grid.render_text_metal(render_encoder, frame, uniforms);
                     }
@@ -2548,7 +2662,7 @@ impl Renderer {
                     if !brush.render(
                         &self.instances,
                         &self.vertices,
-                        &self.draw_cmds[..modal_cmd_start],
+                        &self.draw_cmds[base_cmd_start..modal_cmd_start],
                         &self.images,
                         render_encoder,
                         context,
@@ -2686,16 +2800,16 @@ impl Renderer {
 
     /// Record sugarloaf's own draws inside the active dynamic-rendering
     /// pass that `Sugarloaf::render_vulkan` opens. Order:
-    /// 1. Background image (full-screen quad).
-    /// 2. BelowText image overlays (kitty / sixel placements with
+    /// Window wallpaper is painted separately before terminal cells.
+    /// 1. BelowText image overlays (kitty / sixel placements with
     ///    `dest_pos.z < 0`).
-    /// 3. Rich-text quad pass — `quad()` / `rect()` calls + cell
+    /// 2. Rich-text quad pass — `quad()` / `rect()` calls + cell
     ///    underline decorations (dashed/dotted/curly handled in
     ///    `quad.frag.glsl`).
-    /// 4. Non-quad geometry — `polygon()` / `line()` / `triangle()`
+    /// 3. Non-quad geometry — `polygon()` / `line()` / `triangle()`
     ///    / `arc()` calls (cursor underline shape, hint highlights).
-    /// 5. AboveText image overlays.
-    /// 6. Optional bootstrap rect (`AUTOMEXIA_VULKAN_BOOTSTRAP=1`).
+    /// 4. AboveText image overlays.
+    /// 5. Optional bootstrap rect (`AUTOMEXIA_VULKAN_BOOTSTRAP=1`).
     ///
     /// Glyph atlas sampling through this pipeline isn't ported —
     /// grid text + UI text overlay each own dedicated atlas
@@ -2747,6 +2861,38 @@ impl Renderer {
             .collect();
 
         if let RendererType::Vulkan(brush) = &mut self.brush_type {
+            brush.render_image_overlays(cmd, slot, viewport, &below);
+            brush.render_quads(
+                cmd,
+                slot,
+                viewport,
+                &self.instances,
+                self.base_instance_start.min(self.instances.len())
+                    ..self.modal_instance_start.min(self.instances.len()),
+            );
+            brush.render_geometry(
+                cmd,
+                slot,
+                viewport,
+                &self.vertices,
+                self.base_vertex_start.min(self.vertices.len())
+                    ..self.modal_vertex_start.min(self.vertices.len()),
+            );
+            brush.render_image_overlays(cmd, slot, viewport, &above);
+            brush.draw_bootstrap(cmd);
+        }
+    }
+    /// Wallpaper precedes cells and under-text fills, just as on CPU/Metal.
+    #[allow(irrefutable_let_patterns)]
+    #[cfg(target_os = "linux")]
+    pub(crate) fn render_background_vulkan(
+        &mut self,
+        cmd: ash::vk::CommandBuffer,
+        frame: &crate::context::vulkan::VulkanFrame,
+    ) {
+        let viewport = [frame.extent.width as f32, frame.extent.height as f32];
+        let slot = frame.slot;
+        if let RendererType::Vulkan(brush) = &mut self.brush_type {
             if let Some(bg) = &self.background_image_texture {
                 if let ImageTexture::Vulkan(tex) = &bg.gpu {
                     brush.render_background_image(
@@ -2757,26 +2903,26 @@ impl Renderer {
                     );
                 }
             }
-
-            brush.render_image_overlays(cmd, slot, viewport, &below);
-            brush.render_quads(
-                cmd,
-                slot,
-                viewport,
-                &self.instances,
-                0..self.modal_instance_start.min(self.instances.len()),
-            );
-            brush.render_geometry(
-                cmd,
-                slot,
-                viewport,
-                &self.vertices,
-                0..self.modal_vertex_start.min(self.vertices.len()),
-            );
-            brush.render_image_overlays(cmd, slot, viewport, &above);
-            brush.draw_bootstrap(cmd);
         }
     }
+
+    #[cfg(target_os = "linux")]
+    pub(crate) fn render_under_text_vulkan(
+        &mut self,
+        cmd: ash::vk::CommandBuffer,
+        frame: &crate::context::vulkan::VulkanFrame,
+    ) {
+        if let RendererType::Vulkan(brush) = &mut self.brush_type {
+            brush.render_quads(
+                cmd,
+                frame.slot,
+                [frame.extent.width as f32, frame.extent.height as f32],
+                &self.instances,
+                0..self.base_instance_start.min(self.instances.len()),
+            );
+        }
+    }
+
     /// Paint the modal primitive suffix after base UI labels.
     #[cfg(target_os = "linux")]
     pub fn render_vulkan_modal(
@@ -2811,7 +2957,8 @@ impl Renderer {
 
     /// Vertices accumulated for the current frame (CPU rasterizer reads these).
     pub(crate) fn vertices(&self) -> &[Vertex] {
-        &self.vertices[..self.modal_vertex_start.min(self.vertices.len())]
+        &self.vertices[self.base_vertex_start.min(self.vertices.len())
+            ..self.modal_vertex_start.min(self.vertices.len())]
     }
 
     /// Per-quad instances accumulated for the current frame. The CPU
@@ -2820,7 +2967,11 @@ impl Renderer {
     /// panel borders, scrollbars, and dim overlays. The GPU paths
     /// upload them to a per-instance vertex buffer; we just iterate.
     pub(crate) fn instances(&self) -> &[crate::renderer::batch::QuadInstance] {
-        &self.instances[..self.modal_instance_start.min(self.instances.len())]
+        &self.instances[self.base_instance_start.min(self.instances.len())
+            ..self.modal_instance_start.min(self.instances.len())]
+    }
+    pub(crate) fn under_text_instances(&self) -> &[batch::QuadInstance] {
+        &self.instances[..self.base_instance_start.min(self.instances.len())]
     }
     pub(crate) fn modal_vertices(&self) -> &[Vertex] {
         &self.vertices[self.modal_vertex_start.min(self.vertices.len())..]
@@ -3029,6 +3180,42 @@ impl WgpuRenderer {
                     label: Some("rich_text::constant_bind_group"),
                 });
 
+        // Ordinary quads still need valid shader bindings when the optional
+        // rich-text image cache has not allocated either large atlas.
+        let placeholder_color_view = context
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("placeholder_color"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::Rgba8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&wgpu::TextureViewDescriptor::default());
+        let placeholder_mask_view = context
+            .device
+            .create_texture(&wgpu::TextureDescriptor {
+                label: Some("placeholder_mask"),
+                size: wgpu::Extent3d {
+                    width: 1,
+                    height: 1,
+                    depth_or_array_layers: 1,
+                },
+                mip_level_count: 1,
+                sample_count: 1,
+                dimension: wgpu::TextureDimension::D2,
+                format: wgpu::TextureFormat::R8Unorm,
+                usage: wgpu::TextureUsages::TEXTURE_BINDING,
+                view_formats: &[],
+            })
+            .create_view(&wgpu::TextureViewDescriptor::default());
         // Create initial layout bind group (will be updated when textures change)
         let layout_bind_group =
             context
@@ -3039,45 +3226,13 @@ impl WgpuRenderer {
                         wgpu::BindGroupEntry {
                             binding: 0,
                             resource: wgpu::BindingResource::TextureView(
-                                &context
-                                    .device
-                                    .create_texture(&wgpu::TextureDescriptor {
-                                        label: Some("placeholder_color"),
-                                        size: wgpu::Extent3d {
-                                            width: 1,
-                                            height: 1,
-                                            depth_or_array_layers: 1,
-                                        },
-                                        mip_level_count: 1,
-                                        sample_count: 1,
-                                        dimension: wgpu::TextureDimension::D2,
-                                        format: wgpu::TextureFormat::Rgba8Unorm,
-                                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                                        view_formats: &[],
-                                    })
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
+                                &placeholder_color_view,
                             ),
                         },
                         wgpu::BindGroupEntry {
                             binding: 1,
                             resource: wgpu::BindingResource::TextureView(
-                                &context
-                                    .device
-                                    .create_texture(&wgpu::TextureDescriptor {
-                                        label: Some("placeholder_mask"),
-                                        size: wgpu::Extent3d {
-                                            width: 1,
-                                            height: 1,
-                                            depth_or_array_layers: 1,
-                                        },
-                                        mip_level_count: 1,
-                                        sample_count: 1,
-                                        dimension: wgpu::TextureDimension::D2,
-                                        format: wgpu::TextureFormat::R8Unorm,
-                                        usage: wgpu::TextureUsages::TEXTURE_BINDING,
-                                        view_formats: &[],
-                                    })
-                                    .create_view(&wgpu::TextureViewDescriptor::default()),
+                                &placeholder_mask_view,
                             ),
                         },
                     ],
@@ -3329,6 +3484,8 @@ impl WgpuRenderer {
         WgpuRenderer {
             layout_bind_group,
             layout_bind_group_layout,
+            placeholder_color_view,
+            placeholder_mask_view,
             constant_bind_group,
             transform,
             pipeline,
@@ -3473,6 +3630,57 @@ mod modal_phase_tests {
     use super::{batch, finish_composition_phases, Compositor, Rect};
 
     #[test]
+    fn terminal_background_base_and_modal_ranges_are_disjoint_and_drained() {
+        let mut under_text = super::under_text::UnderText::default();
+        let mut base = Compositor::new();
+        let mut modal = Compositor::new();
+        let geometry = Rect {
+            x: 0.0,
+            y: 0.0,
+            width: 8.0,
+            height: 8.0,
+        };
+        let under_color = [0.0, 0.0, 1.0, 1.0];
+        let base_color = [0.0, 1.0, 0.0, 1.0];
+        let modal_color = [1.0, 0.0, 0.0, 1.0];
+        // Record out of paint order; each phase still owns an exclusive range.
+        modal.batches.rect(&geometry, 0.0, &modal_color, 0);
+        base.batches.rect(&geometry, 0.0, &base_color, 0);
+        under_text.rect([0.0, 0.0, 8.0, 8.0], under_color);
+        let (mut instances, mut vertices, mut commands) =
+            (Vec::new(), Vec::new(), Vec::new());
+        let boundaries = finish_composition_phases(
+            &mut under_text,
+            &mut base,
+            &mut modal,
+            &mut instances,
+            &mut vertices,
+            &mut commands,
+        );
+        assert_eq!(boundaries, ((1, 0, 1), (2, 0, 2)));
+        assert_eq!(
+            instances.iter().map(|item| item.color).collect::<Vec<_>>(),
+            [under_color, base_color, modal_color]
+        );
+        assert_eq!(commands.len(), 3);
+        instances.clear();
+        vertices.clear();
+        commands.clear();
+        assert_eq!(
+            finish_composition_phases(
+                &mut under_text,
+                &mut base,
+                &mut modal,
+                &mut instances,
+                &mut vertices,
+                &mut commands,
+            ),
+            ((0, 0, 0), (0, 0, 0))
+        );
+        assert!(instances.is_empty() && vertices.is_empty() && commands.is_empty());
+    }
+
+    #[test]
     fn modal_primitives_are_physically_appended_after_base_primitives() {
         let mut base = Compositor::new();
         let mut modal = Compositor::new();
@@ -3505,6 +3713,7 @@ mod modal_phase_tests {
         let mut vertices = Vec::new();
         let mut commands = Vec::new();
         let boundary = finish_composition_phases(
+            &mut super::under_text::UnderText::default(),
             &mut base,
             &mut modal,
             &mut instances,
@@ -3512,7 +3721,7 @@ mod modal_phase_tests {
             &mut commands,
         );
 
-        assert_eq!(boundary, (1, 0, 1));
+        assert_eq!(boundary, ((0, 0, 0), (1, 0, 1)));
         assert_eq!(instances.len(), 2);
         assert_eq!(instances[0].color, base_color);
         assert_eq!(instances[1].color, modal_color);

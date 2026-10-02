@@ -14,6 +14,13 @@ import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
 HINT_NAMES = ["HOME", "KUBECONFIG"]
+SELECTOR_NAMES = [
+    "DOCKER_CONTEXT", "DOCKER_HOST_PRESENT", "AWS_PROFILE", "AWS_DEFAULT_PROFILE",
+    "AWS_REGION", "AWS_DEFAULT_REGION", "AZURE_CLOUD_NAME",
+    "CLOUDSDK_ACTIVE_CONFIG_NAME", "CLOUDSDK_CORE_PROJECT",
+    "CLOUDSDK_COMPUTE_REGION", "TF_WORKSPACE", "AUTOMEXIA_ENV",
+    "ENVIRONMENT", "APP_ENV", "NODE_ENV",
+]
 WINDOWS_HINTS = {"HOMEDRIVE": "C:", "HOMEPATH": "\\fixture\\drive-home", "USERPROFILE": "C:\\fixture\\profile"}
 FRAME = re.compile(rb"\x1b\]1337;SetUserVar=automexia_env_(HOME|KUBECONFIG|HOMEDRIVE|HOMEPATH|USERPROFILE)=([A-Za-z0-9+/=]*)\x07")
 HOME_FIXTURE = "/fixture/home"
@@ -27,6 +34,8 @@ def committed_identity_frames(shell, wire):
     """Decode real OSC independently; errors never include identity values."""
     hints = [] if shell == "cmd" else HINT_NAMES + (list(WINDOWS_HINTS) if shell in ("powershell", "pwsh") else [])
     required = IDENTITY_NAMES | {"automexia_env_" + name for name in hints}
+    if shell != "cmd":
+        required |= {"automexia_env_" + name for name in SELECTOR_NAMES}
     pending = "automexia_env_pending"
     frames, current = [], None
     for name, encoded in USER_VAR.findall(wire):
@@ -63,7 +72,7 @@ def native_shells():
     return [name for name in candidates if shutil.which(name)]
 
 
-def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None, inspect_identity=False, identity_environment=None):
+def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=False, disabled=False, location_changes=None, selector_changes=None, inspect_identity=False, identity_environment=None):
     """Run real hooks in one shell so cache invalidation cannot hide behind restart."""
     powershell = shell in ("powershell", "pwsh")
     adapter = "powershell" if powershell else shell
@@ -114,11 +123,17 @@ def run_prompt_fixture(shell, changes, repeat=1, no_encoder=False, unexport=Fals
             script += assign("AUTOMEXIA_CONTEXT_PATH_HINTS", "0") + "\n"
         if location_changes is not None and len(location_changes) != len(changes):
             raise ValueError("location changes must match prompt fixture steps")
+        if selector_changes is not None and len(selector_changes) != len(changes):
+            raise ValueError("selector changes must match prompt fixture steps")
         for step, value in enumerate(changes):
             for key, hint in (location_changes[step] if location_changes else {}).items():
                 if key not in ["HOME", *WINDOWS_HINTS]:
                     raise ValueError("unsupported location fixture key")
                 script += (remove(key) if hint is None else assign(key, hint)) + "\n"
+            for key, selected in (selector_changes[step] if selector_changes else {}).items():
+                if key not in SELECTOR_NAMES and key != "DOCKER_HOST":
+                    raise ValueError("unsupported selector fixture key")
+                script += (remove(key) if selected is None else assign(key, selected)) + "\n"
             script += (remove("KUBECONFIG") if value is None else assign("KUBECONFIG", value)) + "\n"
             if unexport:
                 script += {"bash": "export -n KUBECONFIG", "zsh": "typeset +x KUBECONFIG",
@@ -265,6 +280,48 @@ class ShellLocationHintTests(unittest.TestCase):
                 self.assertEqual(len(chunks), len(changes) + 1)
                 for chunk, expected in zip(chunks, changes + [None]):
                     self.assert_pair(shell, chunk, expected or "")
+
+    def test_public_selector_frames_switch_clear_and_restore_without_endpoints(self):
+        changes = [
+            {"DOCKER_CONTEXT": "review-a", "DOCKER_HOST": "tcp://fixture.invalid:2375",
+             "AWS_PROFILE": "review-a", "AWS_DEFAULT_PROFILE": "fallback-a",
+             "CLOUDSDK_CORE_PROJECT": "fixture-project-a", "TF_WORKSPACE": "review-a",
+             "AUTOMEXIA_ENV": "development"},
+            {"DOCKER_CONTEXT": "review-b", "DOCKER_HOST": None,
+             "AWS_PROFILE": None, "AWS_DEFAULT_PROFILE": "fallback-b",
+             "CLOUDSDK_CORE_PROJECT": None, "TF_WORKSPACE": None,
+             "AUTOMEXIA_ENV": "production"},
+            {"DOCKER_CONTEXT": "review-a", "DOCKER_HOST": "tcp://fixture.invalid:2375",
+             "AWS_PROFILE": "review-a", "AWS_DEFAULT_PROFILE": "fallback-a",
+             "CLOUDSDK_CORE_PROJECT": "fixture-project-a", "TF_WORKSPACE": "review-a",
+             "AUTOMEXIA_ENV": "development"},
+        ]
+        for shell in self.shells():
+            with self.subTest(shell=shell):
+                groups, _ = run_prompt_fixture(shell, ["", "", ""],
+                                               selector_changes=changes, inspect_identity=True)
+                frames = [group[-1] for group in groups[:3]]
+                expected = [
+                    ("review-a", "1", "review-a", "fallback-a", "fixture-project-a", "review-a", "development"),
+                    ("review-b", "0", "", "fallback-b", "", "", "production"),
+                    ("review-a", "1", "review-a", "fallback-a", "fixture-project-a", "review-a", "development"),
+                ]
+                names = ["DOCKER_CONTEXT", "DOCKER_HOST_PRESENT", "AWS_PROFILE",
+                         "AWS_DEFAULT_PROFILE", "CLOUDSDK_CORE_PROJECT", "TF_WORKSPACE",
+                         "AUTOMEXIA_ENV"]
+                for frame, values in zip(frames, expected):
+                    self.assertEqual(tuple(frame["automexia_env_" + name] for name in names), values)
+                    self.assertNotIn("fixture.invalid", repr(frame))
+
+    def test_public_selector_utf8_byte_boundary_clears_only_that_selector(self):
+        values = ["a" * 256, "a" * 257, "é" * 128, "é" * 129]
+        for shell in self.shells():
+            with self.subTest(shell=shell):
+                groups, _ = run_prompt_fixture(shell, [""] * len(values),
+                                               selector_changes=[{"AWS_PROFILE": value} for value in values],
+                                               inspect_identity=True)
+                actual = [group[-1]["automexia_env_AWS_PROFILE"] for group in groups[:4]]
+                self.assertEqual(actual, [values[0], "", values[2], ""])
 
     def test_unicode_metacharacters_are_data_not_commands(self):
         for shell in self.shells():

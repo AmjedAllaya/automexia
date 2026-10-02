@@ -21,6 +21,19 @@ automexia [OPTIONS] [COMMAND]
 | `-h, --help` | Print help. |
 | `-V, --version` | Print version. |
 
+Help is generated from the same command and option definitions used by the
+parser. It wraps to the terminal width when that width is available, accepts a
+bounded `COLUMNS` hint for redirected shells, and defaults to 100 columns when
+the width is unknown. Redirected help is plain text without artwork or ANSI
+decoration. `automexia about` prints version information with the full ASCII
+artwork when an interactive terminal has room, or a compact wordmark otherwise.
+`automexia logo` prints the full plain artwork when redirected and uses the
+compact wordmark in a small interactive terminal. The same commands are
+available through the session-local `amx` helper. On Windows, builds that
+include the console `amx.exe` forward arguments and standard streams to the
+application; GUI-only bundles use the synchronous PowerShell compatibility
+wrapper for captured or redirected output.
+
 Everything after the explicit program is passed as an exact argument. Do not
 use this option as a replacement for shell pipelines, redirects, aliases,
 functions, or expansion; enter those in the real shell.

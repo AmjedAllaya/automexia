@@ -31,7 +31,6 @@ mod settings_view;
 mod table_view;
 mod watcher;
 
-use clap::Parser;
 use rio_backend::config::config_dir_path;
 use rio_backend::config::product;
 use rio_backend::event::EventPayload;
@@ -128,6 +127,8 @@ fn execute_cli_command(
     use cli::{CliCommand, ShellIntegrationAction};
 
     match command {
+        CliCommand::About => cli::write_about().map_err(Into::into),
+        CliCommand::Logo => cli::write_logo().map_err(Into::into),
         CliCommand::Google(command) => {
             automexia::google::execute(command).map_err(Into::into)
         }
@@ -152,6 +153,10 @@ fn execute_cli_command(
         CliCommand::Repo(command) => {
             automexia::repository_open::execute(command, session).map_err(Into::into)
         }
+        CliCommand::SshIntegration(command) => automexia::ssh_integration::execute(
+            command,
+            crate::context::launch_broker::MANAGED_SESSION_LAUNCH_ENABLED,
+        ),
         CliCommand::ShellIntegration(command) => match &command.action {
             ShellIntegrationAction::Doctor => {
                 println!("{}", shell_integration::status());
@@ -576,7 +581,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     // Load command line options.
-    let args = cli::Cli::parse();
+    let args = match cli::Cli::try_parse() {
+        Ok(args) => args,
+        Err(error) if error.kind() == clap::error::ErrorKind::DisplayHelp => {
+            cli::write_display_help(&error)?;
+            #[cfg(windows)]
+            unsafe {
+                FreeConsole();
+            }
+            return Ok(());
+        }
+        Err(error) => error.exit(),
+    };
 
     if let Some(result) = execute_compatibility_list(&args) {
         #[cfg(windows)]
@@ -711,4 +727,14 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod ssh_library_gate {
+    #[test]
+    fn enhanced_ssh_addition_does_not_enable_the_existing_broker() {
+        assert!(!std::hint::black_box(
+            crate::context::launch_broker::MANAGED_SESSION_LAUNCH_ENABLED
+        ));
+    }
 }

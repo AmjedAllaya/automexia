@@ -32,8 +32,7 @@ pub fn dispatch_helper() -> Option<i32> {
             return None;
         }
         let session: SessionFacts = serde_json::from_str(request).ok()?;
-        let paths = kubernetes::wsl_paths(&session)?;
-        let context = kubernetes::from_files(&paths);
+        let context = kubernetes::from_wsl_session(&session);
         let bytes = serde_json::to_vec(&context).ok()?;
         if bytes.len() > MAX_RESPONSE {
             return None;

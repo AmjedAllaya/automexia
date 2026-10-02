@@ -108,11 +108,41 @@ __automexia_publish_location_hints() {
   fi
 }
 
+typeset -ga __automexia_selector_values __automexia_selector_frames
+__automexia_publish_selector_hints() {
+  emulate -L zsh
+  local LC_ALL=C name value frame index=1
+  local -a names=(DOCKER_CONTEXT DOCKER_HOST_PRESENT AWS_PROFILE AWS_DEFAULT_PROFILE AWS_REGION AWS_DEFAULT_REGION AZURE_CLOUD_NAME CLOUDSDK_ACTIVE_CONFIG_NAME CLOUDSDK_CORE_PROJECT CLOUDSDK_COMPUTE_REGION TF_WORKSPACE AUTOMEXIA_ENV ENVIRONMENT APP_ENV NODE_ENV)
+  for name in $names; do
+    value=''
+    if [[ $name == DOCKER_HOST_PRESENT ]]; then
+      value=0
+      [[ -n ${DOCKER_HOST:-} && ${(t)DOCKER_HOST} == *export* ]] && value=1
+    elif [[ ${(tP)name} == *export* ]]; then
+      value=${(P)name}
+    fi
+    if [[ ${#value} -gt 256 || $value == *[[:cntrl:]]* ]]; then
+      value=''
+    fi
+    if [[ ${__automexia_selector_ready:-0} != 1 ||
+          $value != "${__automexia_selector_values[index]-}" ]]; then
+      __automexia_selector_values[index]=$value
+      frame=$(__automexia_set_user_var "automexia_env_$name" "$value")
+      [[ -z $frame ]] && frame=$'\e]1337;SetUserVar=automexia_env_'"$name"$'=\a'
+      __automexia_selector_frames[index]=$frame
+    fi
+    printf '%s' "${__automexia_selector_frames[index]}"
+    (( index++ ))
+  done
+  typeset -g __automexia_selector_ready=1
+}
+
 # Startup uses the same complete metadata transaction as prompt replay. The
 # cached identity and locations stay together even if the PTY splits the bytes.
 printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
 printf '%s' "$__automexia_identity_frame"
 __automexia_publish_location_hints
+__automexia_publish_selector_hints
 printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
 
 # Let eza emit the file-type glyphs seen in the liquid-hacker mockup. Keeping
@@ -226,6 +256,7 @@ __automexia_precmd() {
   printf '\e]1337;SetUserVar=automexia_env_pending=MQ==\a'
   printf '%s' "$__automexia_identity_frame"
   __automexia_publish_location_hints
+  __automexia_publish_selector_hints
   printf '\e]1337;SetUserVar=automexia_env_pending=MA==\a'
   printf '\e[0m\e]133;D;%s\a' "$exit_status"
   printf '\e]7;file://%s%s\a' "${HOST:-localhost}" "${PWD// /%20}"
@@ -241,7 +272,7 @@ __automexia_precmd() {
   __automexia_print_colored_path "$PWD"
   printf '\n'
   printf '\e]133;P;k=c;aid=%s\a' "$__automexia_prompt_generation"
-  PROMPT=$'%F{cyan}\xCE\xBB%f %{\e]133;B\a%}%F{white}'
+  PROMPT=$'%F{cyan}\xCE\xBB%f %{\e]133;B\a%}'
 }
 __automexia_preexec() {
   __automexia_prompt_is_active=0

@@ -315,6 +315,14 @@ impl Text {
         self.recording_modal = true;
     }
 
+    /// Retire covered labels along with their modal geometry. Merely painting
+    /// an opaque card later cannot cover labels in the same text pass.
+    #[inline]
+    pub(crate) fn replace_modal_layer(&mut self) {
+        self.modal_instances.clear();
+        self.begin_modal_layer();
+    }
+
     #[inline]
     pub fn end_modal_layer(&mut self) {
         self.recording_modal = false;

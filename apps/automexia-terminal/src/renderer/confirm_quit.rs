@@ -177,7 +177,7 @@ impl ConfirmQuit {
         let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = Self::layout(dimensions);
         let card = layout.card;
-        sugarloaf.begin_modal_layer();
+        sugarloaf.replace_modal_layer();
 
         sugarloaf.rect(
             None,

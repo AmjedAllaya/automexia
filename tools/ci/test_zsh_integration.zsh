@@ -43,6 +43,7 @@ __automexia_precmd >/dev/null
 (( ${preexec_functions[(I)__automexia_preexec]} == 1 ))
 [[ $PROMPT == *$'\xCE\xBB'* ]]
 [[ $PROMPT != *'%d'* ]]
+[[ $PROMPT == *$'%{\e]133;B\a%}' ]]
 failure_marker=$(set +e; false; __automexia_precmd)
 [[ $failure_marker == *$'\e]133;D;1\a'* ]]
 [[ $failure_marker == *$'\e]133;A;aid='* ]]

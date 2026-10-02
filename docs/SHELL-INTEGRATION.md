@@ -38,6 +38,14 @@ persist shell history.
 The terminal owns stable context/path rows; the native shell editor owns its
 editable command and cursor. Context decoration does not insert command text.
 
+CMD publishes a short identity reference on every prompt to stay below its
+511-character prompt-format limit. Long user and executable names are registered
+once per identity in the terminal's bounded metadata map. Nested shells restore
+their own identity on return; missing or invalid registrations remain unavailable.
+Clear-window and terminal reset preserve these session-local registrations. See
+[ADR 0083](adr/0083-bounded-cmd-prompt-identity-reference.md) for the versioned
+wire contract and compatibility behavior.
+
 For passive Kubernetes context, Bash, Zsh, Fish and PowerShell publish local HOME
 and exported KUBECONFIG paths with byte limits, cached encoding, explicit clearing
 and snapshot commit markers. Native Windows PowerShell additionally publishes

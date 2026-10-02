@@ -11,6 +11,8 @@ import tempfile
 import unittest
 from unittest.mock import patch
 
+import check_command_productivity_cp22 as CP22
+
 
 ROOT = Path(__file__).resolve().parents[2]
 SPEC = importlib.util.spec_from_file_location(
@@ -28,6 +30,90 @@ CONTRACT = json.loads(
 
 
 class AliasSpecificationTests(unittest.TestCase):
+    def test_alias_worker_calls_existing_cp22_owner_with_exact_root(self) -> None:
+        POLICY.validate_model_evidence(ROOT)
+        owner = POLICY.cp22.validate_worker_lifecycle
+        with patch.object(POLICY.cp22, "validate_worker_lifecycle", wraps=owner) as called:
+            POLICY.validate_model_evidence(ROOT)
+        called.assert_called_once_with(ROOT)
+
+    def test_alias_worker_rejects_missing_shared_join(self) -> None:
+        POLICY.validate_model_evidence(ROOT)
+        original = POLICY.cp22.bounded_text
+        runtime_path = ROOT / POLICY.cp22.EXTENSION_WORKER
+        self.assertIn("job.handle.join()", original(runtime_path))
+
+        def changed(path, maximum=POLICY.cp22.MAX_POLICY_BYTES):
+            text = original(path, maximum)
+            if path == runtime_path:
+                return text.replace("job.handle.join()", "removed_shared_join()", 1)
+            return text
+
+        with patch.object(POLICY.cp22, "bounded_text", side_effect=changed):
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "worker-local native cleanup owner"):
+                POLICY.validate_model_evidence(ROOT)
+
+    def test_alias_worker_rejects_disconnected_application_shutdown(self) -> None:
+        POLICY.validate_model_evidence(ROOT)
+        original = POLICY.cp22.bounded_text
+        worker_path = ROOT / POLICY.PERSISTENCE_FILES[7]
+        source = original(worker_path)
+        self.assertIn("self.0.request_shutdown();", source)
+
+        def changed(path, maximum=POLICY.cp22.MAX_POLICY_BYTES):
+            text = original(path, maximum)
+            if path == worker_path:
+                return text.replace("self.0.request_shutdown();", "removed_shutdown();", 1)
+            return text
+
+        with patch.object(POLICY.cp22, "bounded_text", side_effect=changed):
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "public cancellation owner"):
+                POLICY.validate_model_evidence(ROOT)
+
+    def test_alias_worker_retains_search_and_route_requirements(self) -> None:
+        POLICY.validate_model_evidence(ROOT)
+        original = POLICY.bounded_text
+        worker_path = ROOT / POLICY.PERSISTENCE_FILES[7]
+        for token in ("SEARCH_COALESCE_INTERVAL", "forget_route"):
+            with self.subTest(token=token):
+                self.assertIn(token, original(worker_path, POLICY.MAX_APPLICATION_SOURCE_BYTES, "worker fixture"))
+
+                def changed(path, maximum, owner):
+                    text = original(path, maximum, owner)
+                    return text.replace(token, "REMOVED_REQUIRED_TOKEN") if path == worker_path else text
+
+                with patch.object(POLICY, "bounded_text", side_effect=changed):
+                    with self.assertRaisesRegex(POLICY.AliasSpecError, "application tokens"):
+                        POLICY.validate_model_evidence(ROOT)
+
+    def test_alias_worker_uses_the_supplied_repository_root(self) -> None:
+        POLICY.validate_model_evidence(ROOT)
+        read_alias = POLICY.bounded_text
+        read_cp22 = POLICY.cp22.bounded_text
+        with tempfile.TemporaryDirectory() as directory:
+            other_root = Path(directory) / "isolated-checkout"
+            paths = []
+
+            def alias_read(path, maximum, owner):
+                paths.append(path)
+                return read_alias(ROOT / path.relative_to(other_root), maximum, owner)
+
+            def cp22_read(path, maximum=POLICY.cp22.MAX_POLICY_BYTES):
+                paths.append(path)
+                return read_cp22(ROOT / path.relative_to(other_root), maximum)
+
+            with patch.object(POLICY, "bounded_text", side_effect=alias_read), \
+                 patch.object(POLICY.cp22, "bounded_text", side_effect=cp22_read):
+                POLICY.validate_model_evidence(other_root)
+            self.assertIn(other_root / POLICY.cp22.EXTENSION_WORKER, paths)
+            self.assertIn(other_root / POLICY.PERSISTENCE_FILES[7], paths)
+
+    def test_alias_worker_requires_the_installed_shared_checker(self) -> None:
+        POLICY.validate_model_evidence(ROOT)
+        with patch.object(POLICY.cp22, "validate_worker_lifecycle", None):
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "CP2.2 shared lifecycle checker is unavailable"):
+                POLICY.validate_model_evidence(ROOT)
+
     def test_repository_contract_validates(self) -> None:
         counts = POLICY.validate_repository(ROOT)
         self.assertEqual(
@@ -44,6 +130,45 @@ class AliasSpecificationTests(unittest.TestCase):
                 "wiring": 10,
             },
         )
+
+    def test_worker_local_join_literal_is_neither_required_nor_sufficient(self) -> None:
+        worker = ROOT / POLICY.PERSISTENCE_FILES[7]
+        self.assertNotIn("handle.join()", worker.read_text(encoding="utf-8"))
+        POLICY.validate_model_evidence(ROOT)
+        CP22.validate_worker_lifecycle()
+        original = CP22.bounded_text
+        actual_join = "                    match job.handle.join() {"
+        replacement = "                    match Ok::<(), Box<dyn std::any::Any + Send>>(()) {"
+        native = original(CP22.ROOT / CP22.EXTENSION_WORKER)
+        self.assertEqual(native.count(actual_join), 1)
+
+        def disconnected(path: Path, maximum: int = CP22.MAX_POLICY_BYTES) -> str:
+            source = original(path, maximum)
+            if path == CP22.ROOT / CP22.EXTENSION_WORKER:
+                return source.replace(actual_join, replacement, 1)
+            if path == worker:
+                return source + "\n// Inert old-owner proof: handle.join()\n"
+            return source
+
+        with patch.object(CP22, "bounded_text", side_effect=disconnected):
+            with self.assertRaisesRegex(CP22.Cp22Error, "Quick Action lifecycle"):
+                CP22.validate_worker_lifecycle()
+
+    def test_worker_coalescing_and_route_retirement_tokens_remain_required(self) -> None:
+        original = POLICY.bounded_text
+        worker = ROOT / POLICY.PERSISTENCE_FILES[7]
+        for token in ("SEARCH_COALESCE_INTERVAL", "forget_route"):
+            with self.subTest(token=token):
+                source = original(worker, POLICY.MAX_APPLICATION_SOURCE_BYTES, "CP2-CP3.3 application source")
+                self.assertIn(token, source)
+
+                def disconnected(path: Path, maximum: int, label: str) -> str:
+                    text = original(path, maximum, label)
+                    return text.replace(token, "removed worker contract") if path == worker else text
+
+                with patch.object(POLICY, "bounded_text", side_effect=disconnected):
+                    with self.assertRaisesRegex(POLICY.AliasSpecError, token):
+                        POLICY.validate_model_evidence(ROOT)
 
     def test_runtime_activation_is_rejected(self) -> None:
         changed = deepcopy(CONTRACT)

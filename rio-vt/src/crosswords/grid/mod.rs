@@ -273,7 +273,7 @@ impl<T: GridSquare + Default + PartialEq + Clone> Grid<T> {
         };
     }
 
-    fn increase_scroll_limit(&mut self, count: usize) {
+    pub(super) fn increase_scroll_limit(&mut self, count: usize) {
         let count = min(count, self.max_scroll_limit - self.history_size());
         if count != 0 {
             self.raw.initialize(count, self.columns);

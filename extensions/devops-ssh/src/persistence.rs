@@ -841,11 +841,20 @@ mod tests {
     #[cfg(windows)]
     #[test]
     fn long_local_metadata_paths_keep_private_acl_and_atomic_recovery() {
+        use std::os::windows::ffi::OsStrExt;
+
         let temporary = tempfile::tempdir().unwrap();
-        let store =
-            MetadataStore::new(temporary.path().join("p".repeat(180)).join("devops-ssh"))
-                .unwrap();
-        assert!(store.path().to_string_lossy().len() > 260);
+        // Exceed MAX_PATH even when the caller has a short temporary root,
+        // while keeping each individual component below the filesystem limit.
+        let store = MetadataStore::new(
+            temporary
+                .path()
+                .join("p".repeat(140))
+                .join("q".repeat(140))
+                .join("devops-ssh"),
+        )
+        .unwrap();
+        assert!(store.path().as_os_str().encode_wide().count() > 260);
         store.save(&sample()).unwrap();
         let next = store.compare_and_swap(0, &sample()).unwrap();
         assert_eq!(next.revision, 1);

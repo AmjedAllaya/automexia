@@ -74,6 +74,7 @@ and `Ctrl+Shift+PageUp/PageDown` reorders it. Linux/BSD also supports
 | `Ctrl+Shift+Space` | Toggle Vi mode on Windows. |
 | `Alt+Shift+Space` | Toggle Vi mode on Linux/BSD and all platforms through the common binding. |
 | `Ctrl+Shift+K` | Clear history on Windows. |
+| `Ctrl+L` | Clear the active shell view while preserving unfinished input. |
 | `F11` or `Alt+Enter` | Toggle fullscreen on Windows. |
 | `Ctrl+Alt+I` | Preview the selected or pointer-targeted local raster image. |
 | `Ctrl+Shift+P` | Open the command palette. |
@@ -91,6 +92,50 @@ original control character instead, add:
 [bindings]
 keys = [{ key = "V", with = "control", action = "ReceiveChar" }]
 ```
+
+Native CMD does not implement form-feed clearing. At an integrated CMD prompt,
+including CMD opened from another shell, Automexia clears the displayed output
+and history and puts the current prompt at the top. The native edit buffer and
+cursor coordinates remain unchanged; no command or Enter is sent.
+
+PowerShell and Unix shells receive the original keyboard event through the
+normal input encoder. Integrated Bash, Zsh and Fish clear recovery retains the
+information bar and current context above one editable prompt. Recovery waits
+for the editor redraw and never restores an old typed command. Context that
+fits is automatically visible, including when the native cursor is at row zero.
+Zero scrollback capacity or a prompt taller than the viewport prioritizes the
+native edit; the complete context may not fit.
+
+An explicit user binding replaces the default. Alternate-screen and mouse
+applications retain keyboard ownership. Search and Vi mode keep their existing
+input handling. Shell profiles and saved settings are unchanged.
+
+The native `clear-shortcut` scenario in `cargo xtask test image-rendering --native-gui`
+uses actual foreground Ctrl+L keys with empty, partial and wrapped input,
+repeated clears, nested CMD, and explicit Enter. `AUTOMEXIA_NATIVE_WSL_DISTRO`
+adds integrated WSL Bash/Zsh/Fish. The fixture also accepts
+`-CommandInputPowerShell7` to distinguish PowerShell 7 from Windows PowerShell.
+Parser tests cover fragmented redraw, wrapped Unicode, unchanged native cursor,
+zero history and reused shell-local prompt IDs; projection tests cover pointer
+and selection row mapping after CMD clear. Native Linux/BSD/macOS GUI evidence
+remains separate from WSL and shared-platform routing tests.
+
+Plain Tab, Up/Down, Ctrl+R, Ctrl+D, and Ctrl+C with no selection remain shell
+input outside Search and Vi mode. Search owns its own history/cancel keys while
+active; pane and tab commands use separate modifier chords. An alternate-screen
+application receives the Ctrl+L control character, and a CMD child without an
+active integrated input prompt is not host-cleared. The built-in shortcut never
+adds Enter to an unfinished command.
+
+### Input ownership audit
+
+| Area | Active default | Evidence and limits |
+|---|---|---|
+| Clipboard | Ctrl+C copies only a non-empty selection; otherwise it is the shell interrupt. Copy/paste are Ctrl+Shift+C/V on Linux/BSD, Ctrl+Shift+C and Ctrl+V or Ctrl+Shift+V on Windows, and Cmd+C/V on macOS. | Shared binding and selection-owner inspection; clipboard behavior was not exercised natively in every shell. |
+| Completion and history | Plain Tab, Up/Down, Ctrl+R and Ctrl+D reach the selected shell outside Search/Vi. Automexia does not synthesize a completion or history command. | Shared routing inspection; native completion/history behavior depends on each shell and its configuration. |
+| Search | Ctrl+F selects pane search on Windows/Linux/BSD; Cmd+F does so on macOS. While Search is active, its own Ctrl+C, Up/Down, Ctrl+P/N and Escape actions own cancellation and navigation. | Mode-qualified binding inspection; cross-shell native search interaction was not exercised in this check. |
+| Panes and tabs | Platform modifier chords in the tables above create, close, select, reorder and resize the focused pane/tab. Plain Tab remains shell input; Ctrl+Tab/Shift+Tab selects window tabs when navigation bindings are enabled. | Platform defaults and navigation setting inspected; native pane/tab interaction was not repeated for every OS/shell pair. |
+| Custom bindings and foreground apps | An explicit matching `[bindings]` entry replaces the default. Vi and alternate-screen modes keep their documented owners; native CMD host clear additionally requires a current integrated input-prompt signal. | Override and CMD guard tests passed across platform defaults; foreground-child rejection was checked in the terminal model, not every native child program. |
 
 ## macOS defaults
 
@@ -134,8 +179,31 @@ forwarded to the shell. Search and Vi mode retain their own input ownership.
 
 ## Command palette
 
-`Ctrl+Shift+P` (`Cmd+Shift+P` on macOS) opens six categories: Tabs & Windows,
-Panes & Sessions, Search & History, Clipboard & Input, Appearance, and Tools.
+`Ctrl+Shift+P` (`Cmd+Shift+P` on macOS) opens seven categories: Tabs & Windows,
+Panes & Sessions, Search & History, Clipboard & Input, Appearance,
+Customizations, and Tools. Customizations opens the feature list in the native
+settings sheet. Enter or Space opens one feature's
+controls, Escape or Alt+Left returns to the list, and Escape there closes it.
+The list includes tag and output appearance, core presentation switches, and
+declared features of installed extensions. In Information tags, Terminal output
+colors, or Kubernetes status colors, **E** or the preview's **Edit** button starts preview
+selection. **Tab / Shift+Tab** cycles only preview items, wrapping at either end.
+Arrow, Home, End, PageUp and PageDown also move selection. **Enter / Space** opens
+the selected item's controls and leaves preview selection. From item controls,
+**E** returns to preview selection; **Esc** returns to the shared feature controls.
+**Done** or **Esc / Alt+Left** in preview selection returns focus to Edit. Click a tag
+or its roster entry directly to edit it. E remains ordinary input in search and
+value editors, including IME composition. In text fields, Shift+Arrow/Home/End
+selects text, and Ctrl+C/X/V (Cmd+C/X/V on macOS) copies, cuts, or pastes the
+field's selection.
+
+Settings buttons show **R** for Reset, **S** for Restore saved, **C** for Close,
+and **Esc** for Back. Letter shortcuts apply outside text fields. Reset and
+Restore open a confirmation; **Esc / N** cancels, **Y** confirms, and **Tab**
+switches between Cancel and the action. **Enter / Space** activates the selected
+button, initially Cancel. Color-editor buttons use **A** to apply, **R** to
+request reset, and **Esc** to cancel; typed letters still belong to the field.
+
 Type to search all commands, even inside a category; category names also match.
 Clear the query to return to that category. No match leaves the palette open.
 
@@ -277,7 +345,7 @@ ResetFontSize, IncreaseFontSize, DecreaseFontSize,
 CreateWindow, CloseWindow, ReloadConfig, ToggleQuake,
 ScrollToPrevPrompt, ScrollToNextPrompt,
 CreateTab, CreateLocalTab, MoveCurrentTabToPrev, MoveCurrentTabToNext,
-CloseTab, CloseSplitOrTab, CloseUnfocusedTabs, OpenConfigEditor, OpenSettings,
+CloseTab, CloseSplitOrTab, CloseUnfocusedTabs, OpenConfigEditor, OpenSettings, OpenCustomizations,
 SelectPrevTab, SelectNextTab, SelectPrevLocalTab, SelectNextLocalTab,
 SelectLastTab, ScrollPageUp, ScrollPageDown, ScrollHalfPageUp,
 ScrollHalfPageDown, ScrollToTop, ScrollToBottom,

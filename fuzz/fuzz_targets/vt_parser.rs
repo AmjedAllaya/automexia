@@ -34,16 +34,21 @@ fn assert_user_variable_bounds(terminal: &Crosswords<VoidListener>) {
 fuzz_target!(|data: &[u8]| {
     // Preserve the existing whole-input coverage, including large inputs.
     let mut whole = terminal();
-    Processor::default().advance(&mut whole, data);
+    let mut whole_processor = Processor::default();
+    whole_processor.advance(&mut whole, data);
     assert_user_variable_bounds(&whole);
 
     // Bound only the additional fragmentation work. Large inputs get a fresh
     // prefix reference so the comparison always concerns identical bytes.
     if data.len() > MAX_INPUT_BYTES {
         whole = terminal();
-        Processor::default().advance(&mut whole, &data[..MAX_INPUT_BYTES]);
+        whole_processor = Processor::default();
+        whole_processor.advance(&mut whole, &data[..MAX_INPUT_BYTES]);
     }
     let data = &data[..data.len().min(MAX_INPUT_BYTES)];
+    // Compare after an explicit publication boundary, independent of real time.
+    whole_processor.stop_sync(&mut whole);
+    assert_user_variable_bounds(&whole);
     for chunk_size in [1, 7, 31] {
         let mut fragmented = terminal();
         let mut processor = Processor::default();
@@ -51,14 +56,33 @@ fuzz_target!(|data: &[u8]| {
             processor.advance(&mut fragmented, chunk);
         }
 
+        processor.stop_sync(&mut fragmented);
         assert_user_variable_bounds(&fragmented);
+
+        // Metadata provenance is independent of PTY read boundaries, even
+        // when prompt timing or synchronized screen updates cannot be compared.
+        assert_eq!(fragmented.user_vars, whole.user_vars);
+        assert_eq!(
+            fragmented.user_var_chronology_valid(),
+            whole.user_var_chronology_valid()
+        );
+        assert_eq!(
+            fragmented.last_user_var_rejection(),
+            whole.last_user_var_rejection()
+        );
+        for name in whole.user_vars.keys() {
+            assert_eq!(
+                fragmented.user_var_write_stamp(name),
+                whole.user_var_write_stamp(name)
+            );
+        }
 
         // Ground-state text/control semantics must not depend on read sizes.
         // OSC lifecycle timestamps and synchronized-update deadlines are not
         // compared; exact framed-protocol oracles live in the owner unit tests.
         if !data.contains(&0x1b) {
             assert_eq!(fragmented.grid.cursor.pos, whole.grid.cursor.pos);
-            assert_eq!(fragmented.mode(), whole.mode());
+            assert_eq!(fragmented.mode().bits(), whole.mode().bits());
             for row in 0..24 {
                 let expected = whole.grid[Line(row)].inner.iter().map(|cell| cell.c());
                 let actual = fragmented.grid[Line(row)].inner.iter().map(|cell| cell.c());
