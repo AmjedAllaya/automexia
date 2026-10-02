@@ -735,10 +735,26 @@ D0 follows ADR 0012: the terminal owns the local session and PTY while system
 OpenSSH owns networking, authentication, credentials, host trust, and proxy
 behavior. Optional discovery or review cannot become a second launch owner.
 
-## Non-executing SSH planning ownership
+## SSH integration ownership
 
-`automexia-ssh-integration` is a private, effect-free planning library used by the
-read-only application CLI. Existing connectivity contracts, native launch review,
-PTY lifetime and VT framing remain authoritative. Its candidate shell resource
-is embedded once and does not create an execution capability. See
+`automexia-ssh-integration` owns pure invocation, effective-config, bundled shell
+and advisory metadata contracts. Read-only planning stays separate from the
+explicit application-owned `+ssh` command. The latter reuses the tool/process
+owner, inherited PTY and system OpenSSH; the managed launch gate stays disabled.
+Each shell has one canonical resource. The VT owns bounded nested metadata
+scopes and checks a locally retained random preimage before scope return. The
+renderer projects remote display facts without invoking local providers or
+promoting remote paths into local launch/clone authority. See
 [ADR 0086](adr/0086-nonexecuting-ssh-planning-boundary.md).
+
+Optional session-only helper upload keeps this boundary: pure versioned
+request/upload contracts stay in the SSH crate; artifact IO and OpenSSH effects
+stay in the application adapter. The `automexia-ssh-helper` binary reuses the
+existing CLI process owner and passive `automexia-devops` detector. One bounded
+scanner receives only the latest complete public snapshot. The zero-dependency
+`automexia-terminal-protocol` crate owns the bounded revision codec shared by
+the SSH contract and VT. VT scope state retains the accepted maximum and
+revocation boundary across nested sessions and coalesced renders; the renderer
+consumes that admission result. Terminal engines acquire no connectivity,
+provider or process dependency. Shell hooks submit context through bounded local IPC;
+they do not perform discovery or introduce a second PTY or SSH transport.

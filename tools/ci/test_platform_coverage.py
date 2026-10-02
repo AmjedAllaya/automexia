@@ -710,18 +710,18 @@ class PlatformCoverageTests(unittest.TestCase):
 
     def test_windows_release_scanner_cannot_drop_any_runtime(self) -> None:
         source = PLATFORM.WINDOWS_RELEASE_TRUST_SCRIPT.read_text(encoding="utf-8")
-        for runtime in ("automexia.exe", "amx.exe", "automexia-suggestion-helper.exe"):
+        for runtime in ("automexia.exe", "amx.exe", "automexia-suggestion-helper.exe", "automexia-ssh-helper.exe"):
             with self.subTest(runtime=runtime, boundary="allowlist"):
                 altered = source.replace(f"            '{runtime}',\n", "", 1)
                 self.assertNotEqual(altered, source)
                 with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "ZIP allowlist"):
                     PLATFORM.validate_windows_release_trust_contract(altered)
             with self.subTest(runtime=runtime, boundary="extraction"):
-                loop = "@('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')"
-                remaining = [name for name in ("automexia.exe", "amx.exe", "automexia-suggestion-helper.exe") if name != runtime]
+                loop = "@('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')"
+                remaining = [name for name in ("automexia.exe", "amx.exe", "automexia-suggestion-helper.exe", "automexia-ssh-helper.exe") if name != runtime]
                 altered = source.replace(loop, "@(" + ", ".join(repr(name) for name in remaining) + ")", 1)
                 self.assertNotEqual(altered, source)
-                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "return all three"):
+                with self.assertRaisesRegex(PLATFORM.PlatformCoverageError, "return all four"):
                     PLATFORM.validate_windows_release_trust_contract(altered)
 
     def test_windows_release_scanner_must_scan_every_returned_runtime(self) -> None:

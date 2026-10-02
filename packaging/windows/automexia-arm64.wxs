@@ -85,6 +85,10 @@
             <File Id="AutomexiaSuggestionHelper" Source="$(var.SuggestionHelperPath)" Name="automexia-suggestion-helper.exe" KeyPath="yes" />
           </Component>
 
+          <Component Id="AutomexiaSshHelperComponent" Guid="*" Bitness="always64">
+            <File Id="AutomexiaSshHelper" Source="$(var.SshHelperPath)" Name="automexia-ssh-helper.exe" KeyPath="yes" />
+          </Component>
+
           <Component Id="AutomexiaLicenseComponent" Guid="*" Bitness="always64">
             <File Id="AutomexiaLicense" Source="$(var.LicensePath)" Name="LICENSE" KeyPath="yes" />
           </Component>
@@ -171,6 +175,7 @@
       <ComponentRef Id="AutomexiaExecutableComponent" />
       <ComponentRef Id="AutomexiaCliLauncherComponent" />
       <ComponentRef Id="AutomexiaSuggestionHelperComponent" />
+      <ComponentRef Id="AutomexiaSshHelperComponent" />
       <ComponentRef Id="AutomexiaLicenseComponent" />
       <ComponentRef Id="AutomexiaNoticeComponent" />
       <ComponentRef Id="AutomexiaThirdPartyComponent" />

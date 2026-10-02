@@ -13,6 +13,20 @@ use crate::automexia::suggestions::SuggestionInvalidation;
 
 impl Screen<'_> {
     pub(crate) fn sync_suggestions(&mut self) {
+        if self
+            .context_manager
+            .current()
+            .terminal
+            .lock()
+            .integration_scope_active()
+        {
+            if self.suggestions.surface().is_some()
+                || self.renderer.suggestions.surface().is_some()
+            {
+                self.dismiss_suggestions(SuggestionInvalidation::PaneChanged);
+            }
+            return;
+        }
         let next = self.suggestions.surface().cloned();
         if self.renderer.suggestions.surface() == next.as_ref() {
             return;
@@ -25,6 +39,20 @@ impl Screen<'_> {
     }
 
     pub(crate) fn process_suggestion_host_key(&mut self, key: &KeyEvent) -> bool {
+        if self
+            .context_manager
+            .current()
+            .terminal
+            .lock()
+            .integration_scope_active()
+        {
+            if self.suggestions.surface().is_some()
+                || self.renderer.suggestions.surface().is_some()
+            {
+                self.dismiss_suggestions(SuggestionInvalidation::PaneChanged);
+            }
+            return false;
+        }
         if key.state != ElementState::Pressed || self.suggestions.surface().is_none() {
             return false;
         }

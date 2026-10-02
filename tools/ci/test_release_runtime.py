@@ -16,7 +16,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIMES = ("automexia", "amx", "automexia-suggestion-helper")
+RUNTIMES = ("automexia", "amx", "automexia-suggestion-helper", "automexia-ssh-helper")
 SHELL_ASSETS = (
     "bash/automexia.bash", "cmd/automexia-ls.cmd", "cmd/automexia-ls.ps1", "cmd/automexia.cmd",
     "completion/bash/automexia-completion.bash", "completion/fish/automexia-completion.fish",
@@ -51,7 +51,7 @@ def write_fixture_script(path: Path, body: str) -> None:
 
 
 def runtime_fixture(runtime: str) -> str:
-    if runtime == "automexia-suggestion-helper":
+    if runtime in ("automexia-suggestion-helper", "automexia-ssh-helper"):
         return "echo 'helper must not be launched by package assembly' >&2\nexit 93\n"
     return f'''printf '%s\\n' '{runtime}' >> "$FIXTURE_TRACE/cli"
 [[ "$#" -eq 1 && "$1" == --version ]]
@@ -147,7 +147,7 @@ class ReleaseRuntimeTests(unittest.TestCase):
     def test_helper_is_not_invoked_with_version(self) -> None:
         for workflow in ("release.yml", "nightly.yml"):
             text = (ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
-            self.assertNotRegex(text, r"suggestion-helper(?:\.exe)?[\"']?\s+--version")
+            self.assertNotRegex(text, r"(?:suggestion|ssh)-helper(?:\.exe)?[\"']?\s+--version")
         helper = (ROOT / "apps/automexia-terminal/src/bin/automexia-suggestion-helper.rs").read_text(encoding="utf-8")
         self.assertIn("std::env::args_os().len() != 1", helper)
 
@@ -452,8 +452,8 @@ try {
         $paths = @(Expand-TrustedPortableArchive -Path $Archive)
         if ($Expected -ne 'pass') { throw 'fixture accepted an invalid archive' }
         $names = @($paths | ForEach-Object { [IO.Path]::GetFileName($_) } | Sort-Object)
-        if (($names -join '|') -cne 'amx.exe|automexia-suggestion-helper.exe|automexia.exe') {
-            throw 'archive reader failed to return all three runtime executables'
+        if (($names -join '|') -cne 'amx.exe|automexia-ssh-helper.exe|automexia-suggestion-helper.exe|automexia.exe') {
+            throw 'archive reader failed to return all four runtime executables'
         }
         if ($script:checkedScripts.Count -ne 8) { throw 'archive reader skipped signed shell assets' }
         if ($script:vendorSignatureCount -ne 3) { throw 'archive reader skipped vendor signatures' }
@@ -482,7 +482,7 @@ try {
                      for index, asset in enumerate(vendor))
         cases.extend(("missing-" + runtime, [name for name in expected if name != runtime + ".exe"], "content mismatch") for runtime in RUNTIMES)
         cases.extend((
-            ("legacy-main-only", [name for name in expected if name not in ("amx.exe", "automexia-suggestion-helper.exe")], "content mismatch"),
+            ("legacy-main-only", [name for name in expected if name not in ("amx.exe", "automexia-suggestion-helper.exe", "automexia-ssh-helper.exe")], "content mismatch"),
             ("extra-runtime", expected + ["unexpected.exe"], "content mismatch"),
             ("traversal", expected + ["../escape.exe"], "unsafe path"),
             ("duplicate", expected + ["./amx.exe"], "content mismatch"),

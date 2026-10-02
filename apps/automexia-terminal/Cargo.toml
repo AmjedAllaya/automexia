@@ -33,6 +33,7 @@ binaries = [
     { path = "automexia", main = true },
     { path = "amx" },
     { path = "automexia-suggestion-helper" },
+    { path = "automexia-ssh-helper" },
 ]
 
 [package.metadata.packager.windows]
@@ -53,6 +54,10 @@ path = "src/bin/amx.rs"
 [[bin]]
 name = "automexia-suggestion-helper"
 path = "src/bin/automexia-suggestion-helper.rs"
+
+[[bin]]
+name = "automexia-ssh-helper"
+path = "src/bin/automexia-ssh-helper.rs"
 
 [dependencies]
 automexia-keybindings = { workspace = true }

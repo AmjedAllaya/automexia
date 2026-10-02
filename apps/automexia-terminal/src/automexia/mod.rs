@@ -50,7 +50,12 @@ pub mod shell;
 pub mod shell_integration;
 #[doc(hidden)]
 pub mod shortcut_preferences;
+#[doc(hidden)]
+pub mod ssh_helper;
 pub mod ssh_integration;
+pub(crate) mod ssh_scope;
+pub(crate) mod ssh_upload;
+pub mod ssh_wrapper;
 mod state;
 pub mod suggestions;
 pub mod table_output;
@@ -58,3 +63,5 @@ pub mod theme;
 pub mod ui;
 #[cfg(feature = "visual-test-hooks")]
 pub mod visual_test_hooks;
+#[cfg(windows)]
+pub(crate) mod windows_pipe_security;

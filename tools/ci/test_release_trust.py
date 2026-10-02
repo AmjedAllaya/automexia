@@ -152,7 +152,7 @@ class ReleaseTrustTests(unittest.TestCase):
         (final / "release-trust-windows.json").write_text(
             json.dumps(
                 {
-                    "schema": 3,
+                    "schema": 4,
                     "version": "0.4.0",
                     "scanner": "Microsoft Defender Antivirus",
                     "scanner_version": "1.1.1",
@@ -161,7 +161,7 @@ class ReleaseTrustTests(unittest.TestCase):
                     "artifact_count": 4,
                     "artifact_bytes": windows_bytes,
                     "artifacts": windows_artifacts,
-                    "signature_count": 8,
+                    "signature_count": 10,
                     "embedded_script_signature_count": 16,
                     "vendor_signature_count": 6,
                     "vendor_package": TRUST.vendor_package_identity(),
@@ -260,12 +260,15 @@ class ReleaseTrustTests(unittest.TestCase):
         mutations = (
             ("schema", 1, "exact passing trust evidence"),
             ("schema", 2, "exact passing trust evidence"),
+            ("schema", 3, "exact passing trust evidence"),
             ("vendor_signature_count", 5, "exact passing trust evidence"),
             ("vendor_signature_count", 7, "exact passing trust evidence"),
             ("vendor_package", {}, "exact passing trust evidence"),
             ("signature_count", 4, "exact passing trust evidence"),
             ("signature_count", 7, "exact passing trust evidence"),
+            ("signature_count", 8, "exact passing trust evidence"),
             ("signature_count", 9, "exact passing trust evidence"),
+            ("signature_count", 11, "exact passing trust evidence"),
             ("artifact_bytes", 1, "exact passing trust evidence"),
             ("artifacts", [], "exact passing trust evidence"),
             ("publisher", "CN=Unexpected", "exact passing trust evidence"),

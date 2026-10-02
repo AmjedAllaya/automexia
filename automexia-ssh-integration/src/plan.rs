@@ -20,6 +20,7 @@ pub enum RemoteShell {
     Zsh,
     Fish,
     PowerShell,
+    Pwsh,
 }
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum Startup {

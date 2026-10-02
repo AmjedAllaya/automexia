@@ -1,0 +1,11 @@
+[package]
+name = "automexia-terminal-protocol"
+description = "Private, capability-free Automexia terminal wire value contracts."
+publish = false
+build = false
+version.workspace = true
+authors.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+repository.workspace = true

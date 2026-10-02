@@ -128,6 +128,8 @@ pub struct RenderableContent {
     pub shell_path: Option<String>,
     pub shell_environment: std::collections::BTreeMap<String, String>,
     pub(crate) session_metadata: crate::renderer::session_metadata::ShellMetadataState,
+    pub(crate) remote_session:
+        crate::renderer::remote_session_metadata::RemoteSessionMetadata,
     /// An oversized or invalid OSC source cannot seed another pane or feed
     /// optional discovery, even after its display fields were cleared.
     pub(crate) session_context_rejected: bool,
@@ -234,6 +236,7 @@ impl RenderableContent {
             shell_path: None,
             shell_environment: Default::default(),
             session_metadata: Default::default(),
+            remote_session: Default::default(),
             session_context_rejected: false,
             seeded_session_metadata: false,
             shell_integration: false,
@@ -270,7 +273,8 @@ impl RenderableContent {
     }
 
     pub fn session_metadata_seed(&self) -> SessionMetadataSeed {
-        if self.session_context_rejected
+        if self.remote_session.active()
+            || self.session_context_rejected
             || self.session_metadata.readiness()
                 != crate::renderer::session_metadata::MetadataReadiness::Complete
         {

@@ -15,6 +15,9 @@ mod inline_tables;
 pub mod island;
 #[cfg(test)]
 mod output_snapshot_tests;
+pub(crate) mod remote_session_metadata;
+#[cfg(test)]
+mod remote_session_metadata_tests;
 pub mod responsive;
 pub mod scrollbar;
 pub mod search;
@@ -319,6 +322,26 @@ fn sync_session_metadata<T: rio_backend::event::EventListener>(
     content: &mut RenderableContent,
     terminal: &rio_backend::crosswords::Crosswords<T>,
 ) {
+    content.remote_session.observe(terminal);
+    if content.remote_session.active() {
+        // Scoped remote strings never authorize local discovery, clone paths,
+        // executable selection or WSL inference. Keep the display owner separate.
+        content.current_directory = None;
+        content.terminal_title.clear();
+        content.shell_distro = None;
+        content.shell_os_version = None;
+        content.shell_name = None;
+        content.shell_user = None;
+        content.shell_path = None;
+        content.shell_environment.clear();
+        content.seeded_session_metadata = false;
+        content.shell_integration = content
+            .remote_session
+            .presentation()
+            .is_some_and(|remote| remote.ready);
+        content.session_context_rejected = true;
+        return;
+    }
     let limit = automexia_extension_runtime::MAX_DISCOVERY_TEXT_BYTES;
     let oversized_title = terminal.title.len() > limit;
     let oversized_cwd = terminal
@@ -420,6 +443,8 @@ struct SemanticPaneRenderState {
     cell_height: f32,
     completion_labels: Vec<crate::automexia::ui::command_info::CompletionLabel>,
     session: crate::automexia::api::SessionFacts,
+    remote_context: Option<remote_session_metadata::RemotePresentation>,
+    remote_active: bool,
     metadata_readiness: session_metadata::MetadataReadiness,
     prompt_active: bool,
     historical_anchors: Vec<crate::automexia::ui::PromptAnchor>,
@@ -931,6 +956,8 @@ fn semantic_snapshot(
 
     SemanticPaneRenderState {
         session,
+        remote_context: rc.remote_session.presentation().cloned(),
+        remote_active: rc.remote_session.active(),
         metadata_readiness: if context_bounded {
             rc.session_metadata.readiness()
         } else {
@@ -1254,8 +1281,15 @@ impl Renderer {
     ) {
         self.sync_devops_routes(context_manager);
         let active_route = active.session.session_id;
-        self.devops_status
-            .set_metadata_readiness(active_route, active.metadata_readiness);
+        self.devops_status.set_remote_context(
+            &active.session,
+            active.remote_active,
+            active.remote_context.as_ref(),
+        );
+        if !active.remote_active {
+            self.devops_status
+                .set_metadata_readiness(active_route, active.metadata_readiness);
+        }
         let discovery_enabled = self.devops_context_enabled || self.git_context_enabled;
         let refresh_pending = discovery_enabled
             && self
@@ -1281,7 +1315,14 @@ impl Renderer {
             debug_assert!(!pane.is_active);
             let route = pane.session.session_id;
             let status = self.devops_statuses.entry(route).or_default();
-            status.set_metadata_readiness(route, pane.metadata_readiness);
+            status.set_remote_context(
+                &pane.session,
+                pane.remote_active,
+                pane.remote_context.as_ref(),
+            );
+            if !pane.remote_active {
+                status.set_metadata_readiness(route, pane.metadata_readiness);
+            }
             if discovery_enabled {
                 inactive_refresh_pending |= status
                     .refresh_visible_session(&pane.session, || {
@@ -1627,10 +1668,15 @@ impl Renderer {
                 );
                 context.renderable_content.term_colors = terminal.colors;
                 sync_session_metadata(&mut context.renderable_content, &*terminal);
-                context.renderable_content.shell_prompt_active = terminal
-                    .user_vars
-                    .get("automexia_prompt_active")
-                    .is_some_and(|value| value == "1");
+                context.renderable_content.shell_prompt_active =
+                    if terminal.integration_scope_active() {
+                        terminal.integration_scope_prompt_active()
+                    } else {
+                        terminal
+                            .user_vars
+                            .get("automexia_prompt_active")
+                            .is_some_and(|value| value == "1")
+                    };
                 context.renderable_content.display_offset = terminal.display_offset();
                 context.renderable_content.active_prompt_follow =
                     terminal.active_prompt_follow();

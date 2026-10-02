@@ -1430,6 +1430,20 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     /// followed by the immutable launch descriptor used to create the PTY.
     pub fn tab_profile_identity(&self, index: usize) -> Option<String> {
         let context = self.contexts.get(index)?.current();
+        {
+            let terminal = context.terminal.lock();
+            if terminal.integration_scope_active() {
+                return Some(
+                    terminal
+                        .integration_scope()
+                        .filter(|scope| scope.shell != "unknown")
+                        .map_or_else(
+                            || "SSH".to_owned(),
+                            |scope| format!("SSH · {}", scope.shell),
+                        ),
+                );
+            }
+        }
         [
             context.renderable_content.shell_distro.as_deref(),
             context.renderable_content.shell_name.as_deref(),
@@ -2268,6 +2282,9 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     fn create_cloned_context(&self, rich_text_id: usize) -> Result<Context<T>, String> {
         let (launch, cursor, blinking, dimension, seed, source_capsule_id) = {
             let source = self.current();
+            if source.terminal.lock().integration_scope_active() {
+                return Err("This SSH session cannot be cloned automatically. Open a new terminal and connect explicitly.".to_owned());
+            }
             let live = if source.renderable_content.session_metadata.readiness()
                 == crate::renderer::session_metadata::MetadataReadiness::Complete
             {

@@ -40,7 +40,7 @@
     {
       "id": "terminal-protocols-grid-history",
       "title": "VT protocols, Unicode grid, selection, search, history, and reflow",
-      "components": ["rio-vt"],
+      "components": ["rio-vt", "automexia-terminal-protocol"],
       "documentation": {
         "guide": ["docs/LIQUID-HACKER-UX.md#keyboard-selection", "docs/user-guide/hyperlinks.md", "docs/user-guide/table-output.md"],
         "reference": ["docs/TESTING.md#terminal-conformance", "docs/CONFIGURATION.md#hints", "docs/INLINE-TABLE-PIPELINE.md"],
@@ -48,8 +48,8 @@
       },
       "quality": {
         "accessibility": {"level": "pr", "evidence": ["rio-vt/src/codepoint_width.rs", "rio-vt/src/selection.rs"]},
-        "correctness": {"level": "pr", "evidence": ["rio-vt/src/selection.rs", "rio-vt/tests/conformance_fixtures.rs", "rio-vt/tests/resize_repaint.rs", "rio-vt/tests/live_resize.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json", "apps/automexia-terminal/src/automexia/ui/command_info.rs", "apps/automexia-terminal/src/renderer/command_info.rs", "apps/automexia-terminal/src/automexia/inline_tables.rs", "apps/automexia-terminal/src/automexia/inline_pipeline.rs", "apps/automexia-terminal/src/automexia/inline_pipeline_tests.rs", "apps/automexia-terminal/tests/inline_pipeline_native.rs"], "rationale": "Live damage snapshots cover offscreen wrapped headers, newest sparse blocks, style offsets and tall-view bounds without a resize; native Windows x64/WSL fictional streams compare inbox and pinned ConPTY."},
-        "security": {"level": "nightly", "evidence": ["fuzz/fuzz_targets/vt_parser.rs", "fuzz/fuzz_targets/osc_metadata.rs", "fuzz/fuzz_targets/control_string_bounds.rs", ".github/workflows/nightly.yml#fuzz"]},
+        "correctness": {"level": "pr", "evidence": ["automexia-terminal-protocol/src/lib.rs", "automexia-ssh-integration/tests/revision_contract.rs", "rio-vt/src/crosswords/integration_scope/tests.rs", "rio-vt/src/selection.rs", "rio-vt/tests/conformance_fixtures.rs", "rio-vt/tests/resize_repaint.rs", "rio-vt/tests/live_resize.rs", "tests/fixtures/osc-metadata.json", "tests/fixtures/unicode-width.json", "apps/automexia-terminal/src/automexia/ui/command_info.rs", "apps/automexia-terminal/src/renderer/command_info.rs", "apps/automexia-terminal/src/automexia/inline_tables.rs", "apps/automexia-terminal/src/automexia/inline_pipeline.rs", "apps/automexia-terminal/src/automexia/inline_pipeline_tests.rs", "apps/automexia-terminal/tests/inline_pipeline_native.rs"], "rationale": "Live damage snapshots cover offscreen wrapped headers, newest sparse blocks, style offsets and tall-view bounds without a resize; native Windows x64/WSL fictional streams compare inbox and pinned ConPTY."},
+        "security": {"level": "nightly", "evidence": ["automexia-terminal-protocol/src/lib.rs", "tools/ci/test_ssh_boundaries.py", "fuzz/fuzz_targets/vt_parser.rs", "fuzz/fuzz_targets/osc_metadata.rs", "fuzz/fuzz_targets/control_string_bounds.rs", ".github/workflows/nightly.yml#fuzz"]},
         "performance": {"level": "nightly", "evidence": ["rio-vt/benches/vt_input.rs", ".github/workflows/nightly.yml#benchmarks-controlled", "apps/automexia-terminal/benches/automexia_services.rs", "apps/automexia-terminal/src/automexia/inline_tables.rs"], "rationale": "Bounded prefix recovery preserves the existing scan/copy budget and never displaces visible rows."},
         "resource_lifetime": {"level": "pr", "evidence": ["rio-vt/src/performer/handler.rs", "rio-vt/src/crosswords/grid/storage.rs"]},
         "storage_hygiene": {"level": "pr", "evidence": ["rio-vt/src/ansi/kitty_graphics_protocol.rs"]},

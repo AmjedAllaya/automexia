@@ -67,6 +67,8 @@ enum SnapshotCandidate {
 
 #[derive(Default)]
 pub struct DevOpsStatus {
+    remote_active: bool,
+    remote_context: Option<super::remote_session_metadata::RemotePresentation>,
     metadata_readiness: MetadataReadiness,
     contribution: Option<ContextContribution>,
     metadata_session: Option<usize>,
@@ -89,6 +91,26 @@ pub struct DevOpsStatus {
 }
 
 impl DevOpsStatus {
+    pub(super) fn set_remote_context(
+        &mut self,
+        session: &SessionFacts,
+        active: bool,
+        remote: Option<&super::remote_session_metadata::RemotePresentation>,
+    ) {
+        if self.remote_active == active && self.remote_context.as_ref() == remote {
+            return;
+        }
+        // Local provider leases and labels cannot cross an SSH or nested scope.
+        // Historical prompt rows stay intact; only the live projection changes.
+        self.set_metadata_readiness(session.session_id, MetadataReadiness::Unavailable);
+        self.remote_active = active;
+        self.remote_context = remote.cloned();
+        if active && remote.is_some_and(|remote| remote.ready) {
+            self.set_metadata_readiness(session.session_id, MetadataReadiness::Complete);
+        }
+        self.live_segments_session = None;
+    }
+
     pub(super) fn set_metadata_readiness(
         &mut self,
         session_id: usize,
@@ -553,7 +575,7 @@ impl DevOpsStatus {
     ) where
         F: FnOnce() -> runtime::DevOpsRefreshCompletion,
     {
-        if !self.metadata_complete() {
+        if self.remote_active || !self.metadata_complete() {
             return;
         }
         let session_changed = self
@@ -607,7 +629,7 @@ impl DevOpsStatus {
     }
 
     fn sync_cached_snapshot(&mut self, session: &SessionFacts) {
-        if !self.metadata_complete() {
+        if self.remote_active || !self.metadata_complete() {
             return;
         }
         let global_generation = runtime::devops_generation();
@@ -633,7 +655,7 @@ impl DevOpsStatus {
         cached_session: Option<&SessionFacts>,
         contribution: ContextContribution,
     ) {
-        if !self.metadata_complete() {
+        if self.remote_active || !self.metadata_complete() {
             return;
         }
         match snapshot_candidate(
@@ -678,11 +700,201 @@ impl DevOpsStatus {
     }
 
     fn build_live_segments(&self, session: &SessionFacts) -> Vec<Segment> {
+        if self.remote_active {
+            return self
+                .remote_context
+                .as_ref()
+                .filter(|remote| remote.ready)
+                .map_or_else(Vec::new, |remote| {
+                    remote_segments(session.session_id, remote)
+                });
+        }
         self.contribution.as_ref().map_or_else(
             || automexia_ui_model::immediate_session_segments(session),
             |contribution| automexia_ui_model::project_status(session, contribution),
         )
     }
+}
+
+fn remote_segments(
+    session_id: usize,
+    remote: &super::remote_session_metadata::RemotePresentation,
+) -> Vec<Segment> {
+    use automexia_extension_api::{
+        ExtensionId, Freshness, SegmentRole, SessionId, StatusSegment,
+    };
+    use automexia_ssh_integration::helper::ContextField as Discovered;
+    use automexia_ssh_integration::session::RemoteContextField as Field;
+    let value = |field| {
+        remote
+            .context
+            .as_ref()
+            .and_then(|context| context.value(field))
+    };
+    let mut segments = Vec::new();
+    let discovered = |field| {
+        remote
+            .discovered
+            .as_ref()
+            .and_then(|context| context.value(field))
+    };
+    let mut push = |id: &str, label: String, accessible: String, role, icon, priority| {
+        if let Ok(segment) = StatusSegment::new(
+            id,
+            label,
+            accessible,
+            role,
+            icon,
+            priority,
+            if role == SegmentRole::Kubernetes {
+                Freshness::Stale
+            } else {
+                Freshness::Current
+            },
+        ) {
+            segments.push(segment);
+        }
+    };
+    let environment = value(Field::Environment).unwrap_or(&remote.shell);
+    push(
+        "ssh",
+        format!(
+            "SSH · {}",
+            automexia_ui_model::compact_label(environment, 20)
+        ),
+        format!("Remote SSH environment {environment}"),
+        SegmentRole::Environment,
+        IconKind::Environment,
+        10,
+    );
+    for (field, id, role, icon, priority) in [
+        (Field::GitBranch, "git", SegmentRole::Git, IconKind::Git, 30),
+        (
+            Field::DockerContext,
+            "docker",
+            SegmentRole::Docker,
+            IconKind::Docker,
+            50,
+        ),
+        (
+            Field::TerraformWorkspace,
+            "terraform",
+            SegmentRole::Terraform,
+            IconKind::Terraform,
+            60,
+        ),
+    ] {
+        if let Some(value) = value(field) {
+            push(
+                id,
+                automexia_ui_model::compact_label(value, 24),
+                format!("Remote {id} {value}"),
+                role,
+                icon,
+                priority,
+            );
+        }
+    }
+    for (legacy, profile, region, id, role, priority) in [
+        (
+            Field::AwsProfile,
+            Discovered::AwsProfile,
+            Discovered::AwsRegion,
+            "aws",
+            SegmentRole::Aws,
+            70,
+        ),
+        (
+            Field::AzureCloud,
+            Discovered::AzureSubscription,
+            Discovered::AzureRegion,
+            "azure",
+            SegmentRole::Azure,
+            71,
+        ),
+        (
+            Field::GcpProject,
+            Discovered::GcpProject,
+            Discovered::GcpRegion,
+            "gcp",
+            SegmentRole::Gcp,
+            72,
+        ),
+    ] {
+        let selection = discovered(profile).or_else(|| value(legacy));
+        let region = discovered(region);
+        let label = match (selection, region) {
+            (Some(selection), Some(region)) => format!("{selection} · {region}"),
+            (Some(selection), None) => selection.to_owned(),
+            (None, Some(region)) => region.to_owned(),
+            (None, None) => continue,
+        };
+        push(
+            id,
+            automexia_ui_model::compact_label(&label, 24),
+            format!("Remote {id} {label}"),
+            role,
+            IconKind::Cloud,
+            priority,
+        );
+    }
+    if discovered(Discovered::Production) == Some("1") {
+        push(
+            "production",
+            "prod".into(),
+            "Remote production context".into(),
+            SegmentRole::Production,
+            IconKind::Production,
+            0,
+        );
+    }
+    if let Some(context) = value(Field::KubernetesContext) {
+        let namespace = value(Field::KubernetesNamespace);
+        let combined = namespace.map_or_else(
+            || context.to_owned(),
+            |namespace| format!("{context} · {namespace}"),
+        );
+        let accessible = namespace.map_or_else(
+            || format!("Remote Kubernetes context {context}"),
+            |namespace| {
+                format!("Remote Kubernetes context {context}, namespace {namespace}")
+            },
+        );
+        push(
+            "kubernetes",
+            format!("{}?", automexia_ui_model::compact_label(&combined, 27)),
+            format!(
+                "{accessible}; remote configured selection, cluster existence unverified"
+            ),
+            SegmentRole::Kubernetes,
+            IconKind::Kubernetes,
+            40,
+        );
+    }
+    if let Some(user) = &remote.user {
+        push(
+            "user",
+            automexia_ui_model::compact_label(user, 16),
+            format!("Remote user {user}"),
+            SegmentRole::User,
+            IconKind::User,
+            90,
+        );
+    }
+    let Ok(extension) = ExtensionId::new("automexia.ssh") else {
+        return Vec::new();
+    };
+    let Ok(contribution) = ContextContribution::new(
+        extension,
+        SessionId::new(session_id as u64),
+        remote.key.generation(),
+        1,
+        Freshness::Current,
+        segments,
+    ) else {
+        return Vec::new();
+    };
+    automexia_ui_model::project_context_contribution(&contribution)
 }
 
 fn snapshot_candidate(
@@ -1422,6 +1634,222 @@ mod tests {
     }
 
     #[test]
+    fn ssh_scope_blocks_host_discovery_and_cached_contributions_even_when_remote_ready() {
+        let mut facts = session("fixture-local", Some("Fixture-Linux"));
+        facts.session_id = 10;
+        facts.cwd = Some("/fixture/local".into());
+        facts.shell_user = Some("local-user".into());
+        let mut status = history_status(10, "local-history", "local-live");
+        let remote = super::super::remote_session_metadata::RemotePresentation {
+            key: automexia_ssh_integration::GenerationKey::new(1, 2).unwrap(),
+            shell: "bash".into(),
+            ready: true,
+            directory: None,
+            user: Some("remote-user".into()),
+            context: None,
+            discovered: None,
+        };
+        status.set_remote_context(&facts, true, Some(&remote));
+        assert!(!status.refresh_session_context(&facts, || panic!(
+            "remote scope ran host provider"
+        )));
+        status
+            .request_prompt_refresh(&facts, || panic!("remote prompt ran host provider"));
+        assert!(!status.refresh_visible_session(&facts, || panic!(
+            "remote inactive pane ran host provider"
+        )));
+        status.accept_cached_snapshot(
+            &facts,
+            99,
+            Some(&facts),
+            contribution(vec![status_segment(
+                "kubernetes",
+                "injected-local",
+                SegmentRole::Kubernetes,
+                IconKind::Kubernetes,
+                100,
+            )]),
+        );
+        assert!(status.contribution.is_none());
+        assert!(!status.request_in_flight);
+        assert_eq!(historical_value(&status, 10), Some("local-history"));
+        assert!(status
+            .live_segments
+            .iter()
+            .any(|segment| segment.value == "SSH · bash"));
+        assert!(status
+            .live_segments
+            .iter()
+            .any(|segment| segment.value == "remote-user"));
+        assert!(!status.live_segments.iter().any(|segment| matches!(
+            segment.role,
+            SegmentRole::Windows
+                | SegmentRole::UbuntuWsl
+                | SegmentRole::Kubernetes
+                | SegmentRole::Git
+        )));
+        assert!(!status
+            .live_segments
+            .iter()
+            .any(|segment| segment.value == "local-user"));
+        status.set_remote_context(&facts, false, None);
+        status.set_metadata_readiness(10, MetadataReadiness::Complete);
+        status.ensure_live_segments(&facts);
+        assert!(status
+            .live_segments
+            .iter()
+            .any(|segment| segment.value == "local-user"));
+        assert!(!status
+            .live_segments
+            .iter()
+            .any(|segment| segment.value == "remote-user"));
+        assert_eq!(historical_value(&status, 10), Some("local-history"));
+    }
+
+    #[test]
+    fn ssh_scope_unready_and_quarantine_have_no_local_live_identity() {
+        let mut facts = session("fixture-local", None);
+        facts.session_id = 10;
+        let mut status = history_status(10, "local-history", "local-live");
+        status.set_remote_context(&facts, true, None);
+        status.refresh_session_context(&facts, || {
+            panic!("unready scope ran host provider")
+        });
+        assert!(status.live_segments.is_empty());
+        let pending = super::super::remote_session_metadata::RemotePresentation {
+            key: automexia_ssh_integration::GenerationKey::new(1, 2).unwrap(),
+            shell: "pwsh".into(),
+            ready: false,
+            directory: None,
+            user: None,
+            context: None,
+            discovered: None,
+        };
+        status.set_remote_context(&facts, true, Some(&pending));
+        status.refresh_visible_session(&facts, || {
+            panic!("pending scope ran host provider")
+        });
+        assert!(status.live_segments.is_empty());
+        assert_eq!(historical_value(&status, 10), Some("local-history"));
+    }
+
+    #[test]
+    fn ssh_scope_projects_scoped_context_roles_and_clears_changed_values() {
+        use automexia_ssh_integration::{session::RemoteContext, GenerationKey};
+        let key = GenerationKey::new(1, 2).unwrap();
+        let snapshot = "AMXSSHCTX1|1|2|\ngit_branch=remote-main\nkubernetes_context=fixture-cluster\nkubernetes_namespace=fixture-ns\ndocker_context=fixture-docker\nterraform_workspace=fixture-workspace\nenvironment=staging\naws_profile=fixture-aws\nazure_cloud=fixture-azure\ngcp_project=fixture-gcp\n";
+        let mut remote = super::super::remote_session_metadata::RemotePresentation {
+            key,
+            shell: "bash".into(),
+            ready: true,
+            directory: None,
+            user: Some("remote-user".into()),
+            context: RemoteContext::decode(key, snapshot).unwrap(),
+            discovered: None,
+        };
+        let facts = session("", None);
+        let mut status = DevOpsStatus::default();
+        status.set_remote_context(&facts, true, Some(&remote));
+        status.ensure_live_segments(&facts);
+        assert_eq!(status.live_segments.len(), 9);
+        for role in [
+            SegmentRole::Git,
+            SegmentRole::Kubernetes,
+            SegmentRole::Docker,
+            SegmentRole::Terraform,
+            SegmentRole::Environment,
+            SegmentRole::Aws,
+            SegmentRole::Azure,
+            SegmentRole::Gcp,
+            SegmentRole::User,
+        ] {
+            assert_eq!(
+                status
+                    .live_segments
+                    .iter()
+                    .filter(|segment| segment.role == role)
+                    .count(),
+                1
+            );
+        }
+        assert!(status
+            .live_segments
+            .iter()
+            .any(|segment| segment.accessibility_label.contains("namespace fixture-ns")));
+        assert!(status
+            .live_segments
+            .iter()
+            .any(|segment| segment.value == "SSH · staging"));
+        remote.context = None;
+        status.set_remote_context(&facts, true, Some(&remote));
+        status.ensure_live_segments(&facts);
+        assert_eq!(status.live_segments.len(), 2);
+        assert!(!status
+            .live_segments
+            .iter()
+            .any(|segment| segment.role == SegmentRole::Kubernetes));
+    }
+
+    #[test]
+    fn ssh_discovered_clouds_keep_regions_and_production_without_duplicate_tags() {
+        use automexia_ssh_integration::{
+            helper::{ContextField, ContextUpdate},
+            GenerationKey,
+        };
+        let key = GenerationKey::new(1, 2).unwrap();
+        let mut discovered = ContextUpdate::new(key, 3).unwrap();
+        for (field, value) in [
+            (ContextField::AzureCloud, "fixture-cloud"),
+            (ContextField::AzureSubscription, "fixture-subscription"),
+            (ContextField::AzureRegion, "region-a"),
+            (ContextField::AwsProfile, "fixture-profile"),
+            (ContextField::AwsRegion, "region-b"),
+            (ContextField::GcpProject, "fixture-project"),
+            (ContextField::GcpRegion, "region-c"),
+            (ContextField::Production, "1"),
+        ] {
+            discovered.set(field, value).unwrap();
+        }
+        let mut remote = super::super::remote_session_metadata::RemotePresentation {
+            key,
+            shell: "bash".into(),
+            ready: true,
+            directory: None,
+            user: None,
+            context: Some(discovered.base_context()),
+            discovered: Some(discovered),
+        };
+        let segments = remote_segments(1, &remote);
+        for (role, label) in [
+            (SegmentRole::Azure, "fixture-subscription · region-a"),
+            (SegmentRole::Aws, "fixture-profile · region-b"),
+            (SegmentRole::Gcp, "fixture-project · region-c"),
+        ] {
+            let matching: Vec<_> = segments
+                .iter()
+                .filter(|segment| segment.role == role)
+                .collect();
+            assert_eq!(matching.len(), 1);
+            assert!(matching[0].accessibility_label.ends_with(label));
+        }
+        assert_eq!(
+            segments
+                .iter()
+                .filter(|segment| segment.role == SegmentRole::Production)
+                .count(),
+            1
+        );
+        assert!(!segments
+            .iter()
+            .any(|segment| segment.accessibility_label.contains("fixture-cloud")));
+        remote.context = None;
+        remote.discovered = None;
+        let cleared = remote_segments(1, &remote);
+        assert_eq!(cleared.len(), 1);
+        assert_eq!(cleared[0].role, SegmentRole::Environment);
+    }
+
+    #[test]
     fn disabling_optional_discovery_keeps_historical_core_identity_only() {
         let mut status = history_status(10, "old-namespace", "new-namespace");
         assert_eq!(historical_value(&status, 10), Some("old-namespace"));
@@ -1492,6 +1920,8 @@ mod tests {
             session,
             metadata_readiness:
                 super::super::session_metadata::MetadataReadiness::Complete,
+            remote_context: None,
+            remote_active: false,
             prompt_active: true,
             historical_anchors: Vec::new(),
             live_anchor: Some(history_anchor()),

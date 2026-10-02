@@ -1085,19 +1085,19 @@ def validate_windows_release_trust_contract(source: str) -> None:
     # All packaged runtimes must survive both the exact ZIP allowlist and the
     # extraction/version-check loop. A name elsewhere (including a comment)
     # does not establish either boundary. Execution fixtures cover the reader.
-    runtime_names = {"automexia.exe", "amx.exe", "automexia-suggestion-helper.exe"}
+    runtime_names = {"automexia.exe", "amx.exe", "automexia-suggestion-helper.exe", "automexia-ssh-helper.exe"}
     allowlist = re.search(r"\$expectedFiles\s*=\s*@\((.*?)\)", source, re.DOTALL)
     require(
         allowlist is not None
         and runtime_names.issubset(set(re.findall(r"'([^']*)'", allowlist.group(1)))),
-        "Windows release trust ZIP allowlist must require all three runtime executables",
+        "Windows release trust ZIP allowlist must require all four runtime executables",
     )
     runtime_loops = re.findall(
         r"foreach\s*\(\s*\$runtime\s+in\s+@\((.*?)\)\s*\)", source, re.DOTALL
     )
     require(
         any(set(re.findall(r"'([^']*)'", names)) == runtime_names for names in runtime_loops),
-        "Windows release trust must verify and return all three runtime executables",
+        "Windows release trust must verify and return all four runtime executables",
     )
     lowered = source.casefold()
     require(

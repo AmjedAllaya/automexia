@@ -60,13 +60,58 @@ class FeatureTestReinforcementTests(unittest.TestCase):
     def test_native_member_identity_must_be_pinned_before_termination(self):
         sources = self.native_sources.copy()
         source = sources["cli_process"]
-        pin = "self.completion.pin_members()"
+        pin = "completion.pin_members()"
         kill = "self.inner.start_kill()"
         self.assertIn(pin, source)
         self.assertIn(kill, source)
         sources["cli_process"] = source.replace(pin, "PIN_PLACEHOLDER", 1).replace(kill, pin, 1).replace("PIN_PLACEHOLDER", kill, 1)
         with self.assertRaises(REINFORCEMENT.ReinforcementError):
             REINFORCEMENT._validate_local_tool_sources(sources)
+
+    def test_native_leader_exception_cannot_weaken_tree_ownership(self):
+        REINFORCEMENT._validate_local_tool_sources(self.native_sources)
+        source = self.native_sources["cli_process"]
+        mutations = (
+            ("interactive_inner(command, cancelled, Ownership::Tree, |_| Ok(()))",
+             "interactive_inner(command, cancelled, Ownership::Leader, |_| Ok(()))"),
+            ("interactive_inner(command, cancelled, Ownership::Leader, |_| Ok(()))",
+             "interactive_inner(command, cancelled, Ownership::Tree, |_| Ok(()))"),
+            ("spawn_owned(command, true, Ownership::Tree)?",
+             "spawn_owned(command, true, Ownership::Leader)?"),
+            ("let completion = if ownership == Ownership::Tree",
+             "let completion = if ownership == Ownership::Leader"),
+            ("Some(windows_completion::CompletionJob::new()?)", "None"),
+            (".wrap(process_wrap::std::JobObject)", ""),
+            (".wrap(completion.clone())", ""),
+            ("if ownership == Ownership::Tree {\n                    child.retire()?;\n                }",
+             "child.retire()?;"),
+            (".map(|completion| completion.pin_members())", ".map(|_| Ok(Vec::new()))"),
+            ("self.members = members?.unwrap_or_default();", "self.members = Vec::new();"),
+            (".map(|completion| completion.is_empty())", ".map(|_| Ok(true))"),
+            ("&& windows_completion::members_stopped(&self.members)?", ""),
+            ("if self.reaped && tree_empty", "if self.reaped"),
+            ("let isolated_group = ownership == Ownership::Tree;", "let isolated_group = false;"),
+            ("unix_foreground::Foreground::prepare()?", "None"),
+            ("foreground.attach(child.inner.id())?", "()"),
+            ("foreground.poll_stopped(&cancelled)?", "()"),
+            ("let cleanup = child.cleanup();", "let cleanup = child.cleanup()?;"),
+            ("map(|owner| owner.restore())", "map(|_| Ok(()))"),
+            ("return Err(incomplete_retirement(child));", "return Err(cleanup_error());"),
+            ("child: std::sync::Mutex::new(Some(child))", "child: std::sync::Mutex::new(None)"),
+            ("child.cleanup()?;", "()"),
+            ("child.take();", "()"),
+            ("(!upload && limits.timeout > Duration::from_secs(60))", "false"),
+            ("(upload && limits.timeout > Duration::from_secs(120))", "false"),
+            ("CaptureInput::Upload(snapshot) => Stdio::from(snapshot)",
+             "CaptureInput::Upload(_) => Stdio::inherit()"),
+        )
+        for original, replacement in mutations:
+            with self.subTest(contract=original):
+                self.assertIn(original, source)
+                mutation = source.replace(original, replacement, 1)
+                with self.assertRaises(REINFORCEMENT.ReinforcementError):
+                    REINFORCEMENT._validate_local_tool_sources(
+                        dict(self.native_sources, cli_process=mutation))
 
     def test_local_tool_limits_directory_handoff_native_cancellation_and_guest_import_isolation_cannot_disappear(self):
         REINFORCEMENT._validate_local_tool_sources(self.native_sources)

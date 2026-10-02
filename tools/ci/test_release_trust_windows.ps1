@@ -124,6 +124,7 @@ function Expand-TrustedPortableArchive {
             'automexia.exe',
             'amx.exe',
             'automexia-suggestion-helper.exe',
+            'automexia-ssh-helper.exe',
             'conpty.dll',
             'x64/OpenConsole.exe',
             'arm64/OpenConsole.exe',
@@ -166,7 +167,7 @@ function Expand-TrustedPortableArchive {
     [IO.Directory]::CreateDirectory($destination) | Out-Null
     $temporaryRoots.Add($destination)
     [IO.Compression.ZipFile]::ExtractToDirectory($Path, $destination)
-    $binaries = @(foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+    $binaries = @(foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
         $binary = Get-Item -LiteralPath (Join-Path $destination $runtime)
         $productVersion = $binary.VersionInfo.ProductVersion
         if ($productVersion -cne $Version) {
@@ -263,7 +264,7 @@ try {
     $scanMilliseconds = [int64]((Get-Date) - $startedAt).TotalMilliseconds
 
     $evidence = [ordered]@{
-        schema = 3
+        schema = 4
         version = $Version
         scanner = 'Microsoft Defender Antivirus'
         scanner_version = $defender.AMEngineVersion

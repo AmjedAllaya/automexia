@@ -111,7 +111,19 @@ pub fn project_status(
     session: &SessionFacts,
     contribution: &ContextContribution,
 ) -> Vec<Segment> {
-    let mut segments = immediate_session_segments(session);
+    project_with_identity(immediate_session_segments(session), contribution)
+}
+
+/// Project display-only context without inferring a local OS or user identity.
+/// Remote callers must supply their own validated, scoped identity segments.
+pub fn project_context_contribution(contribution: &ContextContribution) -> Vec<Segment> {
+    project_with_identity(Vec::new(), contribution)
+}
+
+fn project_with_identity(
+    mut segments: Vec<Segment>,
+    contribution: &ContextContribution,
+) -> Vec<Segment> {
     segments.extend(contribution.segments.iter().map(|segment| Segment {
         value: segment.label.as_str().to_owned(),
         accessibility_label: segment.accessibility_label.as_str().to_owned(),
@@ -1056,6 +1068,41 @@ mod tests {
             1
         );
         assert_eq!(projected[1].role, SegmentRole::Docker);
+    }
+
+    #[test]
+    fn remote_projection_has_no_inferred_identity_and_retains_role_priority_deduplication(
+    ) {
+        assert!(project_context_contribution(&contribution(Vec::new())).is_empty());
+        let segments = [
+            ("late-git", "stale", SegmentRole::Git, IconKind::Git, 40),
+            (
+                "docker",
+                "remote-docker",
+                SegmentRole::Docker,
+                IconKind::Docker,
+                60,
+            ),
+            ("git", "remote-main", SegmentRole::Git, IconKind::Git, 30),
+        ]
+        .into_iter()
+        .map(|(id, label, role, icon, priority)| {
+            StatusSegment::new(id, label, label, role, icon, priority, Freshness::Current)
+                .unwrap()
+        })
+        .collect();
+        let projected = project_context_contribution(&contribution(segments));
+        assert_eq!(
+            projected
+                .iter()
+                .map(|segment| segment.value.as_str())
+                .collect::<Vec<_>>(),
+            ["remote-main", "remote-docker"]
+        );
+        assert!(!projected.iter().any(|segment| matches!(
+            segment.role,
+            SegmentRole::Windows | SegmentRole::UbuntuWsl | SegmentRole::User
+        )));
     }
 
     #[test]

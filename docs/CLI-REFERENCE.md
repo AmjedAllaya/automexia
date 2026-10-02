@@ -233,8 +233,55 @@ requirements](user-guide/local-tools.md).
 
 ## SSH integration planning
 
-`automexia ssh-integration status` reports the existing managed-SSH gate and the
-separate, disabled enhanced-execution state. It performs no SSH or config probe.
+### Interactive SSH wrapper
+
+`automexia +ssh --shell bash -- host-alias` starts system OpenSSH with bundled
+remote shell integration. On Windows, invoke `amx +ssh` through the installed
+console launcher. `ssh` is an alias for `+ssh`. Select the account's
+actual shell with `--shell bash|zsh|fish|powershell|pwsh`; `powershell` selects
+Windows PowerShell and `pwsh` selects PowerShell 7. Native SSH arguments follow
+`--` unchanged. Unknown shells use native SSH; no account-shell syntax is guessed.
+
+`--integration off` preserves native behavior. `--integration required` rejects
+unsupported local invocation/configuration conditions; remote capabilities still
+depend on the installed shell and profile. Redirected streams, explicit remote
+commands, control operations and incompatible configuration use native SSH in
+automatic mode. SSH's exit status is preserved.
+If effective configuration cannot be read or classified, automatic mode stops
+before connecting; choose `--integration off` for explicit native passthrough.
+Classified interactive fallback isolates remote metadata without claiming an
+integrated shell. Native noninteractive operations and integration off do not
+inject terminal metadata.
+
+`--force-tty` explicitly requests a remote PTY through redirected streams. It
+cannot restore local terminal behavior lost by a process bridge. Use the Linux
+Automexia executable inside WSL for native interruption and resize behavior.
+
+Enhanced startup evaluates effective OpenSSH configuration only after this
+explicit command. Authentication, host-key checks, agents and proxies remain
+OpenSSH-owned. Session files are temporary: no remote profile, credential store
+or service is installed or changed. Remote context is display-only. Cloning an
+active remote pane requires opening a terminal and connecting explicitly.
+
+`--helper-upload PATH` adds automatic remote Git, Kubernetes, Docker, Terraform
+and cloud context discovery using a trusted helper built for the remote OS and
+architecture. It requires a known shell, an enhanced interactive session, and
+integration `auto` or `required`; incompatible conditions are errors, not silent
+native fallback. Supported upload targets are POSIX Bash/Zsh and Windows
+PowerShell 5/7. Fish and PowerShell on Unix can use ordinary integration without
+upload; the helper requires a verified nonblocking shell request channel.
+POSIX upload staging also requires Bash 3.2 or newer, including Zsh sessions.
+The helper is copied to a private temporary directory for the session, without
+remote installation or profile edits. Upload requires two SSH invocations and
+may authenticate twice; staging has a 120-second deadline and a 64 MiB limit.
+Interrupted setup or forced termination can leave temporary files. See
+[helper behavior and cleanup](SSH-INTEGRATION-LIBRARY.md#temporary-discovery-helper).
+
+### Read-only planning
+
+`automexia ssh-integration status` reports the existing managed-SSH gate, the
+non-executing planning boundary and the separate explicit wrapper's availability.
+It performs no SSH or config probe.
 `automexia ssh-integration inspect -- host-alias` classifies a proposed invocation
 and prints a redacted JSON preview, not an executable command or authorization.
 
@@ -244,7 +291,7 @@ Inspect options are `--mode auto|off|required`, `--shell unknown|bash|zsh|fish|p
 assumptions only; they do not observe a remote server, grant capabilities, or
 activate execution. Native SSH arguments follow the `--` separator unchanged.
 
-Only the explicit, experimental non-login Bash candidate is implemented. Unknown
+The read-only planner exposes only its non-login Bash candidate. Unknown
 shells/configuration, login startup, remote commands, tunnels, control operations,
 non-TTY input/output, and unsupported options retain non-enhanced classifications.
 There is no `--execute`, `--apply`, or security-gate override on this command.

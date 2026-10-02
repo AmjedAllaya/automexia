@@ -600,7 +600,7 @@ def verify_metadata(
     )
     windows_package_bytes = sum(path.stat().st_size for path in windows_packages)
     expected_windows = {
-        "schema": 3,
+        "schema": 4,
         "version": version,
         "scanner": "Microsoft Defender Antivirus",
         "artifact_count": 4,
@@ -613,7 +613,7 @@ def verify_metadata(
             }
             for path in windows_packages
         ],
-        "signature_count": 8,
+        "signature_count": 10,
         "embedded_script_signature_count": 16,
         "vendor_signature_count": 6,
         "vendor_package": vendor_package_identity(),

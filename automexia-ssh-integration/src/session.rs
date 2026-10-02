@@ -29,7 +29,7 @@ impl Capabilities {
     pub const COMMAND_STATUS: Self = Self(4);
     pub const KNOWN: u8 = 7;
     /// Only capabilities the current core can supply; not a permission grant.
-    pub const CORE: Self = Self(3);
+    pub const CORE: Self = Self(7);
     pub const fn bits(self) -> u8 {
         self.0
     }
@@ -231,7 +231,11 @@ impl RemoteDirectoryUpdate {
         let path = if path.is_empty() {
             None
         } else {
-            if !path.starts_with('/')
+            let windows_root =
+                path.as_bytes().first().is_some_and(u8::is_ascii_alphabetic)
+                    && path.as_bytes().get(1) == Some(&b':')
+                    && matches!(path.as_bytes().get(2), Some(b'\\' | b'/'));
+            if !(path.starts_with('/') || path.starts_with("\\\\") || windows_root)
                 || path.len() > crate::bootstrap::MAX_CWD_PAYLOAD_PATH
             {
                 return Err(Error::InvalidPath);
@@ -239,6 +243,123 @@ impl RemoteDirectoryUpdate {
             Some(RemotePath::new(key, path.to_owned())?)
         };
         Ok(Some(Self { key, path }))
+    }
+}
+
+/// Display-only remote context selectors; none are paths or provider authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum RemoteContextField {
+    GitBranch,
+    KubernetesContext,
+    KubernetesNamespace,
+    DockerContext,
+    TerraformWorkspace,
+    Environment,
+    AwsProfile,
+    AzureCloud,
+    GcpProject,
+}
+impl RemoteContextField {
+    pub const ALL: [Self; 9] = [
+        Self::GitBranch,
+        Self::KubernetesContext,
+        Self::KubernetesNamespace,
+        Self::DockerContext,
+        Self::TerraformWorkspace,
+        Self::Environment,
+        Self::AwsProfile,
+        Self::AzureCloud,
+        Self::GcpProject,
+    ];
+    pub const fn name(self) -> &'static str {
+        match self {
+            Self::GitBranch => "git_branch",
+            Self::KubernetesContext => "kubernetes_context",
+            Self::KubernetesNamespace => "kubernetes_namespace",
+            Self::DockerContext => "docker_context",
+            Self::TerraformWorkspace => "terraform_workspace",
+            Self::Environment => "environment",
+            Self::AwsProfile => "aws_profile",
+            Self::AzureCloud => "azure_cloud",
+            Self::GcpProject => "gcp_project",
+        }
+    }
+}
+
+pub const MAX_REMOTE_CONTEXT_BYTES: usize = 3072;
+pub const MAX_REMOTE_CONTEXT_VALUE_BYTES: usize = 256;
+
+#[derive(Clone, PartialEq, Eq)]
+pub struct RemoteContext {
+    key: GenerationKey,
+    values: [Option<String>; 9],
+}
+impl std::fmt::Debug for RemoteContext {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("RemoteContext")
+            .field("key", &self.key)
+            .field("values", &"<remote>")
+            .finish()
+    }
+}
+impl RemoteContext {
+    pub(crate) fn from_helper_values(
+        key: GenerationKey,
+        values: [Option<String>; 9],
+    ) -> Self {
+        Self { key, values }
+    }
+    pub const fn key(&self) -> GenerationKey {
+        self.key
+    }
+    pub fn value(&self, field: RemoteContextField) -> Option<&str> {
+        self.values[field as usize].as_deref()
+    }
+    pub fn decode(expected: GenerationKey, value: &str) -> Result<Option<Self>, Error> {
+        if value.len() > MAX_REMOTE_CONTEXT_BYTES {
+            return Err(Error::InvalidFrame);
+        }
+        let (header, body) = value.split_once('\n').ok_or(Error::InvalidFrame)?;
+        let mut parts = header.split('|');
+        if parts.next() != Some("AMXSSHCTX1") {
+            return Err(Error::InvalidFrame);
+        }
+        let key = GenerationKey::new(number(parts.next())?, number(parts.next())?)?;
+        if parts.next() != Some("") || parts.next().is_some() {
+            return Err(Error::InvalidFrame);
+        }
+        if key != expected {
+            return Ok(None);
+        }
+        let mut values: [Option<String>; 9] = Default::default();
+        let mut seen = [false; 9];
+        let body = body.strip_suffix('\n').unwrap_or(body);
+        for line in body.split('\n') {
+            let (name, text) = line.split_once('=').ok_or(Error::InvalidFrame)?;
+            let index = RemoteContextField::ALL
+                .iter()
+                .position(|field| field.name() == name)
+                .ok_or(Error::InvalidFrame)?;
+            if seen[index] || text.len() > MAX_REMOTE_CONTEXT_VALUE_BYTES
+                || text.chars().any(|c| c.is_control() || matches!(c,
+                    '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')) {
+                return Err(Error::InvalidFrame);
+            }
+            seen[index] = true;
+            values[index] = (!text.is_empty()).then(|| text.to_owned());
+        }
+        if seen.contains(&false) {
+            return Err(Error::InvalidFrame);
+        }
+        Ok(Some(Self { key, values }))
+    }
+    pub fn empty_value(key: GenerationKey) -> String {
+        let mut value = format!("AMXSSHCTX1|{}|{}|\n", key.pane(), key.generation());
+        for field in RemoteContextField::ALL {
+            value.push_str(field.name());
+            value.push_str("=\n");
+        }
+        value
     }
 }
 

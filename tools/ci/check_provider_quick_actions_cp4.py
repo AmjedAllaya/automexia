@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
+import re
 import sys
 from typing import Any
 
@@ -291,10 +292,17 @@ def validate_sources(document: dict[str, Any]) -> None:
     action_surface = bounded_text(
         ROOT / "apps/automexia-terminal/src/screen/action_surface.rs"
     )
-    if action_surface.count("self.sync_provider_actions_for_current_route()") != 2:
-        raise CP4ContractError(
-            "CP4 product synchronization must occur at open and final authorization"
+    # Require the authority boundaries, not a global call count: switching
+    # local/remote scopes also legitimately republishes the available actions.
+    for owner in ("open_action_center", "ensure_selected_provider_action_authorized"):
+        body = re.search(
+            rf"^    (?:pub(?:\([^\n]*\))? )?fn {owner}\([^\n]*\).*?(?=^    (?:pub(?:\([^\n]*\))? )?fn |\Z)",
+            action_surface, re.MULTILINE | re.DOTALL,
         )
+        if body is None or "self.sync_provider_actions_for_current_route()" not in body[0]:
+            raise CP4ContractError(
+                "CP4 product synchronization must occur at open and final authorization"
+            )
 
     for relative in (
         "automexia-command-productivity/src/actions/provider.rs",

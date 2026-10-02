@@ -23,6 +23,9 @@ pub mod square;
 pub mod style;
 pub mod vi_mode;
 
+mod integration_scope;
+pub use integration_scope::IntegrationScopeInfo;
+
 #[cfg(test)]
 mod user_var_chronology_tests;
 #[cfg(test)]
@@ -738,6 +741,7 @@ where
     user_var_clock: u64,
     user_var_chronology_valid: bool,
     last_user_var_rejection: Option<NonZeroU64>,
+    integration_scopes: integration_scope::Scopes,
 
     /// Latest prompt identity, B-marked compatibility candidate, and in-flight
     /// command timer from OSC 133. The nested candidate option distinguishes
@@ -831,6 +835,7 @@ impl<U: EventListener> Crosswords<U> {
             user_var_clock: 0,
             user_var_chronology_valid: true,
             last_user_var_rejection: None,
+            integration_scopes: Default::default(),
             semantic_prompt_id: None,
             active_semantic_prompt: None,
             semantic_command_candidate: None,
@@ -856,6 +861,7 @@ impl<U: EventListener> Crosswords<U> {
             // Never reuse a serial or mutate metadata without representable
             // provenance. Existing values remain unavailable for framed use.
             self.user_var_chronology_valid = false;
+            self.damage_cursor_line();
             return None;
         };
         self.user_var_clock = serial.get();
@@ -1163,6 +1169,11 @@ impl<U: EventListener> Crosswords<U> {
     pub fn host_clear_input_prompt_active(&self) -> bool {
         use crate::crosswords::grid::row::SemanticPrompt;
 
+        // A locally launched CMD can be hosting SSH. Remote prompt markers
+        // cannot authorize CMD's local-only display clear behavior.
+        if self.integration_scope_active() {
+            return false;
+        }
         if self
             .user_vars
             .get("automexia_env_pending")
@@ -4751,6 +4762,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.title = String::from("");
         self.selection = None;
         self.semantic_prompt_id = None;
+        self.scope_prompt_identity(None);
         self.active_semantic_prompt = None;
         self.shell_clear_deadline = None;
         self.shell_clear_rehome_deadline = None;
@@ -4872,6 +4884,9 @@ impl<U: EventListener> Handler for Crosswords<U> {
     }
 
     fn set_current_directory(&mut self, path: std::path::PathBuf) {
+        if self.integration_scope_active() {
+            return;
+        }
         trace!("Setting working directory from OSC 7");
         self.current_directory = Some(path);
     }
@@ -4881,6 +4896,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
         mark: crate::crosswords::grid::row::SemanticPrompt,
         prompt_id: Option<u64>,
     ) {
+        let prompt_id = self.scope_prompt_identity(prompt_id);
         let redraws_live_prompt = mark
             == crate::crosswords::grid::row::SemanticPrompt::Prompt
             && prompt_id.is_some()
@@ -4967,8 +4983,13 @@ impl<U: EventListener> Handler for Crosswords<U> {
         // Keep this exact boundary as renderer-neutral row metadata. Merely
         // resembling a prompt, or writing an OSC B without an owned A, cannot
         // classify output as editable input. Native highlighters remain owners.
-        let shell = if self.user_vars.get("automexia_shell").map(String::as_str)
-            == Some("1")
+        let shell = if self.integration_scope_active() {
+            match self.integration_scope().map(|scope| scope.shell.as_str()) {
+                Some("bash" | "zsh") => Some(PromptInputShell::Posix),
+                // Fish and PowerShell retain their native input highlighters.
+                _ => None,
+            }
+        } else if self.user_vars.get("automexia_shell").map(String::as_str) == Some("1")
             && self
                 .user_vars
                 .get("automexia_env_pending")
@@ -5109,10 +5130,20 @@ impl<U: EventListener> Handler for Crosswords<U> {
     fn reject_user_var(&mut self) {
         if let Some(serial) = self.next_user_var_serial() {
             self.last_user_var_rejection = Some(serial);
+            // Publish rejection before waking metadata consumers. Without this,
+            // stale labels survive until unrelated text or a resize arrives.
+            // Damage is an invalidation signal; no grid cells are changed.
+            self.damage_cursor_line();
         }
     }
 
     fn set_user_var(&mut self, name: String, value: String) {
+        // Scope transitions must work even when the generic metadata dictionary
+        // is full. This reserved control never consumes a dictionary entry.
+        if name == "terminal_scope_v1" {
+            self.apply_integration_scope(&value);
+            return;
+        }
         let Some(serial) = self.next_user_var_serial() else {
             return;
         };
@@ -5128,6 +5159,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
                 && !self.user_vars.contains_key(&name))
         {
             self.last_user_var_rejection = Some(serial);
+            self.damage_cursor_line();
             return;
         }
         let other_bytes = self.user_vars.iter().try_fold(
@@ -5148,6 +5180,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
             .is_none_or(|total| total > MAX_USER_VAR_TOTAL_BYTES)
         {
             self.last_user_var_rejection = Some(serial);
+            self.damage_cursor_line();
             return;
         }
         // Publish value and provenance under the same terminal owner before
@@ -5175,6 +5208,9 @@ impl<U: EventListener> Handler for Crosswords<U> {
             self.active_semantic_prompt = None;
             self.shell_clear_deadline = None;
             self.shell_clear_rehome_deadline = None;
+        }
+        if name == "automexia_ssh_revision" {
+            self.record_discovery_revision(&value, serial);
         }
         self.user_vars.insert(name, value);
         // User variables feed application overlays even when the OSC itself

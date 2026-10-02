@@ -1,61 +1,80 @@
-# ADR 0086: Non-executing SSH planning library
+# ADR 0086: Pure SSH contracts and explicit application wrapper
 
-Status: proposed for maintainer review; implementation is non-activating.
-This record grants no remote execution permission and does not amend the
-structured-action shell-evaluation prohibition or protected activation gates.
+Status: implemented. The original non-executing planning boundary is retained;
+the explicit `+ssh` command is a separate application-owned execution path.
+The managed connection launch gate is unchanged.
 
-## Current ownership
+## Ownership
 
-System OpenSSH remains the only SSH transport. The existing connectivity model
-owns native connection validation/review and its destination budget. The existing
-application broker owns approved execution; VT/PTY and renderer ownership is
-unchanged. The inventory extension still only discovers granted public records.
+System OpenSSH remains the only transport and authentication/configuration
+owner. `automexia-connectivity` keeps native reviewed connection contracts.
+`automexia-ssh-integration` owns bounded pure classification, effective-config
+interpretation, canonical shell generation and advisory remote facts. The
+application command reuses its tool resolver/process lifetime owner and inherited
+terminal. It never extends an already reviewed native binding.
 
-The private `automexia-ssh-integration` crate contains effect-free enhancement
-classification and scoped, untrusted metadata contracts. Its application CLI is
-read-only. An enhanced candidate cannot be appended to an approved native binding.
-Its remote-shell source is experimental data, not an executable structured action.
-No local `sh -c`, remote SSH process, automatic profile edit or new launch path is
-introduced by this change. The redundant inner shell layer was removed.
+`ssh-integration status|inspect` stays read-only. Only the explicit wrapper
+observes effective configuration or executes fixed bundled startup source. User
+arguments stay exact native SSH arguments, never interpolated into bootstrap
+source. Unknown account-shell syntax is never guessed.
 
 ## Reuse and placement
 
-A module in `automexia-connectivity` was considered. The narrow private crate
-keeps shell-source resource churn and shell compatibility tests independently
-compilable from the established native-connection model. This is a first-party
-library, not an ecosystem component, inventory extension, daemon or public SDK.
-If those independent boundaries cease to be useful, merge it back into the existing
-owner rather than multiplying facades. No speculative cross-product consumer is
-claimed. The native review path has no new forwarding wrapper.
+The private library isolates shell compatibility resources/tests from the native
+connectivity model. It is not a public SDK, extension, daemon or SSH implementation.
+Existing Base64 encodes bounded frames. Each supported resource is embedded once
+and tested through the actual Rust exporter. The existing QA process owner
+supplies bounded test execution and cleanup.
 
-Encoding uses workspace Base64, property tests use workspace proptest, and
-Criterion workloads extend the existing application benchmark target. Process
-supervision reuses `tools/ci/qa_process.py`. No new external package is selected.
-The supplied Bash core is a different remote, profile-preserving compatibility
-adapter, not a copy of the local CLI/listing integration. It has one canonical
-resource embedded with `include_str!`, exercised by its actual Rust exporter.
+The VT parser remains the sole OSC/Base64 owner. Its per-terminal scope stack
+moves local metadata and semantic command state aside during remote execution.
+The application generates a random local end preimage with platform facilities
+and sends only its SHA-256 digest before the child. The VT reuses workspace
+SHA-256 to check the end. No new dependency version, credential store or general
+authentication protocol is introduced.
 
-## Invariants and current evidence scope
+## Trust and lifecycle
 
-The crate has no I/O, clocks, threads, global services, credentials or terminal
-framing. The existing VT parser owns OSC/Base64 decoding. Remote directory data
-has explicit pane/generation identity and is never emitted as an unscoped OSC 7
-local path. Negotiation cannot exceed its caller-supplied capability ceiling.
-The remote core preserves native hooks/status, uses private umask only in setup
-subshells, declines conflicting names, emits on terminal stderr and caches CWD
-encoding. Removal/replacement of the resource never authorizes a launch.
+Remote generation, shell, user, readiness and directory values are advisory.
+Remote CWD never enters the local OSC 7 path or a local provider/clone seed.
+Local discovery is suspended while a scope is active or quarantined. A forged
+end cannot restore local authority. A valid outer end discards unfinished inner
+scopes and restores its own state; resets cannot remove the boundary. A killed
+wrapper without a valid end fails closed. Nesting is limited to eight, controls
+to 192 bytes, and remote fact parsers retain explicit limits.
 
-Architecture validation uses the canonical Cargo metadata registry plus recursive
-source drift checks. The checks are not a security sandbox. Mutations cover
-platform/build dependencies, nested modules, gate changes and duplicate owners.
-The coupled assurance ledgers name the tests and benchmark owner. Passing model,
-Bash or benchmark tests is not live SSH, native GUI or release approval.
+Prompt identities map into a monotonic pane namespace after remote entry,
+preventing remote aid=1 from colliding with its parent's aid=1. Nested command
+timers and metadata chronology keep their existing owner. The renderer projects
+scoped facts through existing status/shape models without creating another
+terminal or provider runtime. Missing metadata never enables host discovery.
 
-## Compatibility and rollback
+## Compatibility and verification
 
-The CLI remains a non-executing `ssh-integration status|inspect` interface.
-The advisory readiness version stays 1; the new optional scoped CWD value has its
-own `AMXSSHCWD1` prefix. No live reader or persisted record is migrated. Unsupported
-shells and configurations remain non-enhanced planning outcomes. The update
-installer journals the pre-update files; rollback returns to that exact snapshot
-without discarding unrelated work. Existing installer receipts are retained.
+The CLI is additive. Read-only planning retains its existing fields and reports
+wrapper availability separately. `AMXSCOPE1`, `AMXSSH1` and scoped path envelopes
+are versioned; no persisted record migration is needed. Native/off mode preserves
+OpenSSH behavior. Explicit known-shell startup uses temporary session files and
+native profiles; unsupported capabilities degrade truthfully.
+
+Architecture checks enforce effect-free dependencies, exact resource ownership,
+scoped CWD and the protected managed gate. Tests cover actual generated shells,
+native arguments/exit, malformed/stale/nested metadata, local-provider suppression
+and isolated SSH runtime paths. A model or shell pass is not native GUI,
+server-platform or release evidence.
+
+## Optional temporary discovery
+
+An explicit helper-upload option supplies automatic remote context without
+installing an agent or changing profiles. The helper lives in the application
+package and reuses its existing process owner and passive detector. The pure SSH
+crate owns only bounded upload/request/revision/result contracts and generated
+source. One scanner at a time consumes a complete allowlisted snapshot; stale
+results cannot cross a revision or session boundary. An unconfirmed scanner
+retirement retains the process owner and disables replacement. Revocation
+survives coalesced render frames and requires a fresh result after resumption.
+This avoids remote provider CLIs and keeps
+discovery off prompt, PTY and rendering paths. The CLI/protocol additions are
+versioned and opt-in; existing planning and native passthrough retain their
+contracts. Interrupted upload or a failed follow-up connection may leave its
+private temporary copy, which must be reported truthfully.

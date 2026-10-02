@@ -52,6 +52,8 @@ impl Drop for Screen<'_> {
 #[derive(Default)]
 struct State {
     last_request: u64,
+    search_scope: Option<(usize, u64)>,
+    review_scope: Option<(usize, u64)>,
     search_query: String,
     hits: Vec<ActionSearchHit>,
     selected: Option<Arc<QuickAction>>,
@@ -132,6 +134,7 @@ impl Screen<'_> {
             return;
         };
         self.action_surface.state.selected = Some(action);
+        self.action_surface.state.review_scope = Some(self.action_scope_identity());
         self.action_surface.state.selected_provider = provider;
         self.action_surface.state.provider_review = None;
         self.action_surface.state.bindings = PlaceholderBindings::default();
@@ -172,7 +175,8 @@ impl Screen<'_> {
         choice: crate::renderer::command_palette::QuickActionReviewChoice,
         clipboard: &mut Clipboard,
     ) {
-        if !self.ensure_selected_provider_action_authorized()
+        if !self.ensure_action_scope_authorized()
+            || !self.ensure_selected_provider_action_authorized()
             || !self.ensure_selected_workspace_action_authorized()
         {
             return;
@@ -219,6 +223,16 @@ impl Screen<'_> {
         if !self.renderer.command_palette.is_action_search() {
             return;
         }
+        if self.action_surface.state.search_scope != Some(self.action_scope_identity()) {
+            self.action_surface.state.hits.clear();
+            self.renderer.command_palette.update_action_items(
+                Vec::new(),
+                "Session changed; refreshing actions".into(),
+            );
+            self.sync_provider_actions_for_current_route();
+            self.submit_action_search(self.action_surface.state.search_query.clone());
+            return;
+        }
         let route_id = self.context_manager.current().route_id;
         let Some(result) = self
             .action_surface
@@ -232,6 +246,22 @@ impl Screen<'_> {
         }
         self.action_surface.state.runtime_status = Some(result.status);
         self.action_surface.state.hits = result.hits;
+        let (remote, known) = {
+            let terminal = self.context_manager.current().terminal.lock();
+            (
+                terminal.integration_scope_active(),
+                known_remote_action_shell(
+                    terminal
+                        .integration_scope()
+                        .map(|scope| scope.shell.as_str()),
+                ),
+            )
+        };
+        if remote {
+            self.action_surface.state.hits.retain(|hit| {
+                known && remote_action_available(&hit.action, hit.provider.is_some())
+            });
+        }
         let notice = self
             .action_surface
             .state
@@ -254,11 +284,14 @@ impl Screen<'_> {
 
     fn submit_action_search(&mut self, query: String) {
         self.action_surface.state.search_query = query.clone();
+        self.action_surface.state.search_scope = Some(self.action_scope_identity());
         let (route_id, workspace_path) = {
             let current = self.context_manager.current();
             (
                 current.route_id,
-                current.renderable_content.current_directory.clone(),
+                (!current.terminal.lock().integration_scope_active())
+                    .then(|| current.renderable_content.current_directory.clone())
+                    .flatten(),
             )
         };
         let context = self.current_action_context();
@@ -284,7 +317,8 @@ impl Screen<'_> {
     }
 
     fn continue_action_review(&mut self) {
-        if !self.ensure_selected_provider_action_authorized()
+        if !self.ensure_action_scope_authorized()
+            || !self.ensure_selected_provider_action_authorized()
             || !self.ensure_selected_workspace_action_authorized()
         {
             return;
@@ -432,7 +466,9 @@ impl Screen<'_> {
             let current = self.context_manager.current();
             (
                 current.route_id,
-                current.renderable_content.current_directory.clone(),
+                (!current.terminal.lock().integration_scope_active())
+                    .then(|| current.renderable_content.current_directory.clone())
+                    .flatten(),
             )
         };
         if self.action_surface.runtime.workspace_action_is_authorized(
@@ -457,6 +493,20 @@ impl Screen<'_> {
     }
 
     fn sync_provider_actions_for_current_route(&mut self) -> Option<String> {
+        if self
+            .context_manager
+            .current()
+            .terminal
+            .lock()
+            .integration_scope_active()
+        {
+            self.action_surface
+                .runtime
+                .clear_provider_snapshot(self.context_manager.current().route_id);
+            return Some(
+                "Local workspace and provider actions are hidden over SSH".into(),
+            );
+        }
         self.connection_hub.sync();
         let publication = self.connection_hub.provider_action_publication();
         let route_id = self.context_manager.current().route_id;
@@ -476,6 +526,10 @@ impl Screen<'_> {
 
     fn current_action_context(&self) -> SearchContext {
         let current = self.context_manager.current();
+        let terminal = current.terminal.lock();
+        let remote_shell = terminal
+            .integration_scope()
+            .map(|scope| scope.shell.as_str());
         let shell_name = current
             .renderable_content
             .shell_name
@@ -488,9 +542,71 @@ impl Screen<'_> {
             capsule_revision: current.environment_capsule.revision,
             workspace_identity: None,
             workspace_trusted: false,
-            shell: shell_kind(shell_name, current.launch_descriptor.wsl_distro()),
+            shell: remote_shell.map_or_else(
+                || shell_kind(shell_name, current.launch_descriptor.wsl_distro()),
+                |shell| shell_kind(shell, None),
+            ),
         }
     }
+
+    fn action_scope_identity(&self) -> (usize, u64) {
+        let current = self.context_manager.current();
+        (
+            current.route_id,
+            current.terminal.lock().integration_scope_revision(),
+        )
+    }
+
+    fn ensure_action_scope_authorized(&mut self) -> bool {
+        let Some(action) = self.action_surface.state.selected.as_ref() else {
+            return false;
+        };
+        let (remote, known) = {
+            let terminal = self.context_manager.current().terminal.lock();
+            (
+                terminal.integration_scope_active(),
+                known_remote_action_shell(
+                    terminal
+                        .integration_scope()
+                        .map(|scope| scope.shell.as_str()),
+                ),
+            )
+        };
+        let unchanged =
+            self.action_surface.state.review_scope == Some(self.action_scope_identity());
+        if unchanged
+            && (!remote
+                || (known
+                    && remote_action_available(
+                        action,
+                        self.action_surface.state.selected_provider.is_some(),
+                    )))
+        {
+            return true;
+        }
+        let view = QuickActionReviewView::new(action.id.clone(), action.display_name.clone(),
+            "Session changed or this action belongs to the local session. Review an available action again.".into(),
+            risk(action.risk), QuickActionMode::Unavailable);
+        self.action_surface.state.expanded = None;
+        self.action_surface.state.confirmation_armed = false;
+        self.renderer.command_palette.enter_action_review(view);
+        false
+    }
+}
+
+fn known_remote_action_shell(shell: Option<&str>) -> bool {
+    matches!(shell, Some("bash" | "zsh" | "fish" | "powershell" | "pwsh"))
+}
+
+fn remote_action_available(action: &QuickAction, provider: bool) -> bool {
+    use automexia_command_productivity::actions::{
+        ActionProvenance, ActionScope, WorkingDirectoryPolicy,
+    };
+    !provider
+        && action.scope == ActionScope::GlobalUser
+        && !matches!(action.provenance, ActionProvenance::WorkspaceTask { .. })
+        && action.working_directory_policy == WorkingDirectoryPolicy::Inherit
+        && action.execution != ExecutionMode::ExactLaunch
 }
 
 fn list_items(
@@ -765,6 +881,39 @@ mod tests {
             enabled: true,
             alias_projection: None,
         }
+    }
+
+    #[test]
+    fn ssh_scope_quick_actions_keep_global_insert_and_reject_local_authority() {
+        for shell in [None, Some("unknown"), Some("cmd"), Some("unrecognized")] {
+            assert!(!known_remote_action_shell(shell));
+        }
+        for shell in ["bash", "zsh", "fish", "powershell", "pwsh"] {
+            assert!(known_remote_action_shell(Some(shell)));
+        }
+        let mut action = action_for_preflight();
+        assert!(remote_action_available(&action, false));
+        assert!(!remote_action_available(&action, true));
+        for scope in [
+            ActionScope::Session,
+            ActionScope::Capsule,
+            ActionScope::TrustedWorkspace,
+            ActionScope::ShellUser,
+            ActionScope::BuiltinDisabled,
+        ] {
+            action.scope = scope;
+            assert!(!remote_action_available(&action, false));
+        }
+        action.scope = ActionScope::GlobalUser;
+        action.execution = ExecutionMode::ExactLaunch;
+        assert!(!remote_action_available(&action, false));
+        action.execution = ExecutionMode::Copy;
+        assert!(remote_action_available(&action, false));
+        assert_eq!(shell_kind("powershell", None), ShellKind::Powershell);
+        assert_eq!(shell_kind("pwsh", None), ShellKind::Powershell);
+        assert_eq!(shell_kind("bash", None), ShellKind::Bash);
+        assert_eq!(shell_kind("zsh", None), ShellKind::Zsh);
+        assert_eq!(shell_kind("fish", None), ShellKind::Fish);
     }
 
     #[test]

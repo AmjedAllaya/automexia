@@ -108,6 +108,23 @@ class CP4ContractTests(unittest.TestCase):
             ):
                 policy.validate_sources(self.contract)
 
+        def missing_open_sync_with_decoy(path, maximum=policy.MAX_EVIDENCE_BYTES):
+            source = original(path, maximum)
+            if path.name == "action_surface.rs":
+                source = source.replace(
+                    "self.sync_provider_actions_for_current_route()", "None", 1
+                )
+                source += "\nfn decoy() { self.sync_provider_actions_for_current_route(); }\n"
+            return source
+
+        with mock.patch.object(
+            policy, "bounded_text", side_effect=missing_open_sync_with_decoy
+        ):
+            with self.assertRaisesRegex(
+                policy.CP4ContractError, "open and final authorization"
+            ):
+                policy.validate_sources(self.contract)
+
     def test_final_revalidation_test_removal_is_rejected(self) -> None:
         original = policy.bounded_text
         target = "provider_failure_states_are_actionable_and_never_claim_execution"

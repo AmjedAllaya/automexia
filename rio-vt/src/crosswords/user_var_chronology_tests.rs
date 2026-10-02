@@ -32,6 +32,24 @@ fn stamp(t: &Crosswords<VoidListener>, name: &str) -> (u64, Option<u64>) {
     (stamp.latest.get(), stamp.previous.map(NonZeroU64::get))
 }
 
+fn visible_rows(t: &Crosswords<VoidListener>) -> Vec<grid::row::Row<square::Square>> {
+    (0..t.grid.screen_lines() as i32)
+        .map(|line| t.grid[Line(line)].clone())
+        .collect()
+}
+
+fn assert_metadata_invalidation_only(
+    t: &Crosswords<VoidListener>,
+    previous_rows: &[grid::row::Row<square::Square>],
+) {
+    assert_eq!(t.peek_damage_event(), Some(TerminalDamage::Partial));
+    assert_eq!(
+        visible_rows(t),
+        previous_rows,
+        "metadata invalidation changed cells"
+    );
+}
+
 #[test]
 fn user_var_chronology_new_terminal_is_valid_and_has_no_provenance() {
     let t = terminal();
@@ -74,6 +92,7 @@ fn user_var_chronology_malformed_recognized_frames_mark_rejections_only() {
     frames.push(wire("kept", &vec![b'x'; 8194]));
     for (index, frame) in frames.into_iter().enumerate() {
         t.reset_damage();
+        let previous_rows = visible_rows(&t);
         p.advance(&mut t, &frame);
         assert_eq!(
             t.last_user_var_rejection().map(NonZeroU64::get),
@@ -82,7 +101,7 @@ fn user_var_chronology_malformed_recognized_frames_mark_rejections_only() {
         assert_eq!(stamp(&t, "kept"), (1, None));
         assert_eq!(t.user_vars.len(), 1);
         assert_eq!(t.user_vars["kept"], "old");
-        assert_eq!(t.peek_damage_event(), None);
+        assert_metadata_invalidation_only(&t, &previous_rows);
     }
     publish(&mut p, &mut t, "kept", b"recovered");
     assert_eq!(stamp(&t, "kept"), (11, Some(1)));
@@ -172,11 +191,12 @@ fn user_var_chronology_raw_osc_overflow_reports_rejection_without_dispatching_pr
         "unfinished OSC is not an event"
     );
     t.reset_damage();
+    let previous_rows = visible_rows(&t);
     p.advance(&mut t, b"\x07");
     assert_eq!(t.last_user_var_rejection().map(NonZeroU64::get), Some(2));
     assert_eq!(t.user_vars["kept"], "old");
     assert_eq!(stamp(&t, "kept"), (1, None));
-    assert_eq!(t.peek_damage_event(), None);
+    assert_metadata_invalidation_only(&t, &previous_rows);
     let mut unrelated = b"\x1b]0;".to_vec();
     unrelated.extend(vec![b'A'; 1024 * 1024 + 64]);
     unrelated.push(7);
@@ -252,12 +272,13 @@ fn user_var_chronology_direct_setter_failures_are_content_free_events() {
     let mut t = terminal();
     t.set_user_var("key".into(), "old".into());
     t.reset_damage();
+    let previous_rows = visible_rows(&t);
     t.set_user_var(String::new(), "x".into());
     t.set_user_var("key".into(), "x".repeat(8193));
     assert_eq!(t.last_user_var_rejection().map(NonZeroU64::get), Some(3));
     assert_eq!(stamp(&t, "key"), (1, None));
     assert_eq!(t.user_vars["key"], "old");
-    assert_eq!(t.peek_damage_event(), None);
+    assert_metadata_invalidation_only(&t, &previous_rows);
     t.set_user_var("key".into(), "new".into());
     assert_eq!(stamp(&t, "key"), (4, Some(1)));
 }
@@ -273,14 +294,21 @@ fn user_var_chronology_checked_exhaustion_never_wraps_or_mutates_prompt_state() 
     assert_eq!(stamp(&t, "automexia_prompt_active"), (u64::MAX, Some(1)));
     assert!(t.user_var_chronology_valid());
     t.reset_damage();
+    let previous_rows = visible_rows(&t);
     publish(&mut p, &mut t, "automexia_prompt_active", b"0");
     assert!(!t.user_var_chronology_valid());
     assert_eq!(t.user_var_clock, u64::MAX);
     assert_eq!(t.user_var_write_stamp("automexia_prompt_active"), None);
     assert_eq!(t.user_vars["automexia_prompt_active"], "1");
     assert!(t.active_semantic_prompt.is_some());
-    assert_eq!(t.peek_damage_event(), None);
+    assert_metadata_invalidation_only(&t, &previous_rows);
+    t.reset_damage();
     publish(&mut p, &mut t, "later", b"ignored");
+    assert_eq!(
+        t.peek_damage_event(),
+        None,
+        "already invalid chronology must not reschedule damage"
+    );
     assert!(!t.user_vars.contains_key("later"));
     assert_eq!(t.user_var_clock, u64::MAX);
 }
@@ -338,6 +366,7 @@ fn user_var_chronology_extra_parameters_never_accept_a_valid_prefix() {
                 publish(&mut p, &mut t, "automexia_prompt_active", b"1");
                 let cursor = (t.grid.cursor.pos, t.grid.cursor.should_wrap);
                 t.reset_damage();
+                let previous_rows = visible_rows(&t);
                 p.advance(&mut t, &frame.as_bytes()[..split]);
                 p.advance(&mut t, &frame.as_bytes()[split..]);
                 assert_eq!(t.last_user_var_rejection().map(NonZeroU64::get), Some(3));
@@ -349,7 +378,7 @@ fn user_var_chronology_extra_parameters_never_accept_a_valid_prefix() {
                 assert!(t.active_semantic_prompt.is_some());
                 assert_eq!(t.semantic_prompt_id, Some(5));
                 assert_eq!((t.grid.cursor.pos, t.grid.cursor.should_wrap), cursor);
-                assert_eq!(t.peek_damage_event(), None);
+                assert_metadata_invalidation_only(&t, &previous_rows);
                 publish(&mut p, &mut t, "key", b"recovered");
                 assert_eq!(stamp(&t, "key"), (4, Some(1)));
                 assert_eq!(t.user_vars["key"], "recovered");

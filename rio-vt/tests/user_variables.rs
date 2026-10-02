@@ -1,7 +1,9 @@
 //! Dispatch allocation evidence excludes the already-bounded OSC input buffer.
 use rio_vt::ansi::CursorShape;
+use rio_vt::crosswords::grid::Dimensions;
+use rio_vt::crosswords::pos::Line;
 use rio_vt::crosswords::{Crosswords, CrosswordsSize};
-use rio_vt::event::{VoidListener, WindowId};
+use rio_vt::event::{TerminalDamage, VoidListener, WindowId};
 use rio_vt::performer::handler::Processor;
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::cell::Cell;
@@ -190,8 +192,13 @@ fn user_var_chronology_extra_parameters_reject_before_decode_allocation() {
             128,
         );
         let mut processor = Processor::default();
+        processor.advance(&mut terminal, b"fixture output\r\n");
         processor.advance(&mut terminal, b"\x1b]1337;SetUserVar=known=b2xk\x07");
         let stamp = terminal.user_var_write_stamp("known");
+        let cursor = (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap);
+        let rows: Vec<_> = (0..terminal.grid.screen_lines() as i32)
+            .map(|line| terminal.grid[Line(line)].clone())
+            .collect();
         terminal.reset_damage();
         processor.advance(&mut terminal, body.as_bytes());
         let allocations = measured(|| processor.advance(&mut terminal, terminator));
@@ -207,6 +214,15 @@ fn user_var_chronology_extra_parameters_reject_before_decode_allocation() {
                 .map(std::num::NonZeroU64::get),
             Some(2)
         );
-        assert_eq!(terminal.peek_damage_event(), None);
+        // Rejection invalidates stale metadata presentation without allocating
+        // or changing terminal text, cursor state, or accepted metadata.
+        assert_eq!(terminal.peek_damage_event(), Some(TerminalDamage::Partial));
+        assert_eq!(
+            (terminal.grid.cursor.pos, terminal.grid.cursor.should_wrap),
+            cursor
+        );
+        for (line, row) in rows.iter().enumerate() {
+            assert_eq!(&terminal.grid[Line(line as i32)], row);
+        }
     }
 }

@@ -29,6 +29,11 @@ contents:
     expand: true
     file_info:
       mode: 0755
+  - src: ${AUTOMEXIA_SSH_HELPER_BINARY}
+    dst: /usr/bin/automexia-ssh-helper
+    expand: true
+    file_info:
+      mode: 0755
   - src: packaging/linux/automexia-terminal.desktop
     dst: /usr/share/applications/automexia-terminal.desktop
     file_info:

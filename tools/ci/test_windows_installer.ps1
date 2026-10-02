@@ -35,7 +35,7 @@ $installed = $false
 function Assert-RuntimeBinaries {
     param([Parameter(Mandatory = $true)][string]$Root)
 
-    foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+    foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
         $path = Join-Path $Root $runtime
         $file = Get-Item -LiteralPath $path
         if ($file.VersionInfo.ProductVersion -cne $Version) {
@@ -148,7 +148,7 @@ finally {
 }
 
 # Uninstall removes product-owned state while preserving the two external sentinels.
-foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe',
+foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe',
                        'conpty.dll', 'x64/OpenConsole.exe', 'arm64/OpenConsole.exe')) {
     if (Test-Path -LiteralPath (Join-Path $installRoot $runtime)) {
         throw "uninstall left a runtime executable behind: $runtime"

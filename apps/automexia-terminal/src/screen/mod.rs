@@ -902,6 +902,13 @@ pub(crate) struct ScreenServices {
         crate::context::external_tool_runner::ExternalToolRunner,
 }
 
+/// Remote terminal paths never become local file/protocol authority. Ordinary
+/// web and mail links retain their explicit click behavior without filesystem IO.
+fn remote_hint_can_open(text: &str) -> bool {
+    url::Url::parse(text)
+        .is_ok_and(|url| matches!(url.scheme(), "https" | "http" | "mailto"))
+}
+
 pub struct Screen<'screen> {
     bindings: crate::bindings::KeyBindings,
     binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
@@ -1301,6 +1308,9 @@ impl Screen<'_> {
 
         let point = self.mouse_position(self.display_offset());
         let current = self.context_manager.current();
+        if current.terminal.lock().integration_scope_active() {
+            return None;
+        }
         let mut cwd = current
             .renderable_content
             .current_directory
@@ -1425,6 +1435,9 @@ impl Screen<'_> {
     )> {
         let current_grid = self.context_manager.current_grid();
         let (current, margin) = current_grid.current_context_with_computed_dimension();
+        if current.terminal.lock().integration_scope_active() {
+            return Vec::new();
+        }
         let mut cwd = current
             .renderable_content
             .current_directory
@@ -1542,6 +1555,16 @@ impl Screen<'_> {
     }
 
     pub fn preview_selected_image(&mut self) {
+        if self
+            .context_manager
+            .current()
+            .terminal
+            .lock()
+            .integration_scope_active()
+        {
+            let _ = self.dismiss_image_preview();
+            return;
+        }
         let (selection, cwd, wsl_distro, route_id) = {
             let current = self.context_manager.current();
             let terminal = current.terminal.lock();
@@ -6469,6 +6492,15 @@ impl Screen<'_> {
         self.sync_connection_hub();
         self.sync_suggestions();
 
+        if self
+            .context_manager
+            .current()
+            .terminal
+            .lock()
+            .integration_scope_active()
+        {
+            let _ = self.dismiss_image_preview();
+        }
         let preview_route_id = self.context_manager.current().route_id;
         let completion = self
             .context_manager
@@ -8132,13 +8164,23 @@ impl Screen<'_> {
     /// What a hint should hand to a launcher: the match text, or the path it
     /// resolves to against the terminal's OSC 7 CWD when it names one that
     /// exists. URLs and non-existent paths come back unchanged.
-    fn hint_open_target(&self, hint_match: &crate::hints::HintMatch) -> String {
+    fn hint_open_target(&self, hint_match: &crate::hints::HintMatch) -> Option<String> {
+        if self
+            .context_manager
+            .current()
+            .terminal
+            .lock()
+            .integration_scope_active()
+        {
+            return remote_hint_can_open(&hint_match.text)
+                .then(|| hint_match.text.clone());
+        }
         // URI activation has no filesystem discovery. Preserve exact OSC 8
         // spelling, including uppercase schemes and meaningful punctuation.
         if url::Url::parse(&hint_match.text).is_ok()
             && !(cfg!(windows) && hint_match.text.as_bytes().get(1) == Some(&b':'))
         {
-            return hint_match.text.clone();
+            return Some(hint_match.text.clone());
         }
         // Cloned so the terminal lock is released before resolving, which
         // goes to the filesystem.
@@ -8150,8 +8192,8 @@ impl Screen<'_> {
             .current_directory
             .clone();
         match crate::hints::resolve_path_for_opening(&hint_match.text, cwd.as_deref()) {
-            Some(resolved) => resolved.to_string_lossy().into_owned(),
-            None => hint_match.text.clone(),
+            Some(resolved) => Some(resolved.to_string_lossy().into_owned()),
+            None => Some(hint_match.text.clone()),
         }
     }
 
@@ -8194,12 +8236,16 @@ impl Screen<'_> {
                     if !crate::hints::safe_open_target(&hint_match.text) {
                         return;
                     }
-                    let target = self.hint_open_target(hint_match);
+                    let Some(target) = self.hint_open_target(hint_match) else {
+                        return;
+                    };
                     self.open_with_default_handler(&target);
                 }
             },
             HintAction::Command { command } => {
-                let arg_text = self.hint_open_target(hint_match);
+                let Some(arg_text) = self.hint_open_target(hint_match) else {
+                    return;
+                };
 
                 match command {
                     HintCommand::Simple(program) => {
@@ -8957,5 +9003,28 @@ mod tests {
             post_process_hyperlink_uri("https://example.com/path[with]brackets"),
             "https://example.com/path[with]brackets"
         );
+    }
+
+    #[test]
+    fn ssh_scope_remote_hints_keep_web_links_and_reject_host_file_authority() {
+        for value in [
+            "https://example.com/docs",
+            "HTTP://example.com",
+            "mailto:help@example.com",
+        ] {
+            assert!(remote_hint_can_open(value));
+        }
+        for value in [
+            "/fixture/remote.png",
+            "./remote.png",
+            "C:\\fixture\\image.png",
+            "file:///fixture/remote",
+            "file://remote.example/fixture",
+            "vscode://file/fixture",
+            "shell:fixture",
+            "../fixture",
+        ] {
+            assert!(!remote_hint_can_open(value));
+        }
     }
 }

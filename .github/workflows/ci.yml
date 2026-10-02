@@ -218,8 +218,8 @@ jobs:
       - name: Shell integration syntax and contract smoke
         run: bash tools/ci/test_shell_sources.sh
 
-      - name: SSH actual-generator controlling-PTY regression
-        run: python3 tools/ci/check_ssh_library.py --shell-only --require-bash
+      - name: SSH actual-generator Bash, Zsh and Fish controlling-PTY regression
+        run: python3 tools/ci/check_ssh_library.py --shell-only --require-posix-shells
 
       - name: Report compiler cache statistics
         if: ${{ always() && steps.sccache.outcome == 'success' }}
@@ -393,3 +393,9 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw 'coverage collection failed' }
           python tools/ci/check_coverage.py
           if ($LASTEXITCODE -ne 0) { throw 'coverage policy failed' }
+
+      - name: SSH actual-generator native PowerShell 5 and 7 regression
+        run: python tools/ci/check_ssh_library.py --shell-only --require-windows-powershells
+
+      - name: SSH helper native ConPTY session regression
+        run: python tools/ci/test_ssh_helper_native.py

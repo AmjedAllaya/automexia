@@ -12,15 +12,21 @@ fn command(args: &[&str]) -> ssh_integration::Command {
     }
 }
 #[test]
-fn ssh_library_status_is_explicitly_non_activated() {
+fn ssh_library_status_separates_read_only_planning_from_explicit_wrapper() {
     let command = command(&["automexia", "ssh-integration", "status"]);
     for broker in [false, true] {
         let result = ssh_integration::report(&command, broker).unwrap();
         assert_eq!(result["native_broker_enabled"], broker);
         assert_eq!(result["enhanced_execution_enabled"], false);
+        assert_eq!(result["explicit_wrapper_available"], true);
+        assert!(result["implemented_runtime_capabilities"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .any(|capability| capability == "scoped-remote-display"));
         assert_eq!(
-            result["implemented_runtime_capabilities"],
-            serde_json::json!([])
+            result["explicit_wrapper_shells"],
+            serde_json::json!(["bash", "zsh", "fish", "powershell", "pwsh"])
         );
     }
 }

@@ -511,7 +511,7 @@ jobs:
       run: |
         set -euo pipefail
         mkdir -p "dist/${{ matrix.artifact }}"
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           binary="target/${{ matrix.target }}/release/$runtime"
           [[ "$RUNNER_OS" == "Windows" ]] && binary="${binary}.exe"
           test -f "$binary"
@@ -663,7 +663,7 @@ jobs:
         New-Item -ItemType Directory -Force signing-input | Out-Null
         tar -xzf staged-source/windows-package-inputs.tar.gz -C signing-input
         if ($LASTEXITCODE -ne 0) { throw 'could not restore Windows package inputs' }
-        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
           $binary = @(Get-ChildItem staged-binary -Recurse -File -Filter $runtime)
           if ($binary.Count -ne 1) { throw "expected one unsigned $runtime, found $($binary.Count)" }
           Copy-Item -LiteralPath $binary[0].FullName -Destination (Join-Path signing-input $runtime)
@@ -703,7 +703,7 @@ jobs:
         $pfxPath = Join-Path $env:RUNNER_TEMP 'automexia-runtime-signing.pfx'
         try {
           [IO.File]::WriteAllBytes($pfxPath, [Convert]::FromBase64String($env:CERTIFICATE_BASE64))
-          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
             signtool sign /fd SHA256 /td SHA256 /tr http://timestamp.acs.microsoft.com /d "Automexia Terminal" /du "https://github.com/AmjedAllaya/automexia-terminal" /f $pfxPath /p $env:CERTIFICATE_PASSWORD (Join-Path signing-input $runtime)
             if ($LASTEXITCODE -ne 0) { throw "executable Authenticode signing failed: $runtime" }
           }
@@ -725,7 +725,7 @@ jobs:
       shell: pwsh
       run: |
         $ErrorActionPreference = 'Stop'
-        $files = @(foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        $files = @(foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
           Get-Item -LiteralPath (Join-Path signing-input $runtime)
         }) + @(Get-ChildItem signing-input/shell-integration -Recurse -File | Where-Object Extension -in @('.ps1', '.ps1xml'))
         foreach ($file in $files) {
@@ -742,6 +742,7 @@ jobs:
           signing-input/automexia.exe
           signing-input/amx.exe
           signing-input/automexia-suggestion-helper.exe
+          signing-input/automexia-ssh-helper.exe
           signing-input/shell-integration/**
         if-no-files-found: error
         retention-days: 2
@@ -799,7 +800,7 @@ jobs:
         $ErrorActionPreference = 'Stop'
         $targetDir = "target/${{ matrix.target }}/release"
         New-Item -ItemType Directory -Force $targetDir | Out-Null
-        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
           $exe = Get-Item -LiteralPath (Join-Path signed-inputs $runtime)
           $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
           if ($exeSig.Status -ne 'Valid' -or $exeSig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT -or $null -eq $exeSig.TimeStamperCertificate) { throw "signed executable input failed timestamped publisher verification: $runtime" }
@@ -836,7 +837,7 @@ jobs:
         $dest = Join-Path $env:RUNNER_TEMP 'portable-check'
         Remove-Item $dest -Recurse -Force -ErrorAction SilentlyContinue
         Expand-Archive -LiteralPath $zip.FullName -DestinationPath $dest -Force
-        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
           $exe = Get-Item -LiteralPath (Join-Path $dest $runtime)
           $sig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
           if ($sig.Status -ne 'Valid' -or $sig.SignerCertificate.Subject -cne $env:AUTOMEXIA_WINDOWS_PUBLISHER_SUBJECT -or $null -eq $sig.TimeStamperCertificate) { throw "portable executable timestamped publisher verification failed: $runtime" }
@@ -993,7 +994,7 @@ jobs:
         set -euo pipefail
         app='dist/Automexia Terminal.app'
         mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           x64="staged/x86_64/macos-x86_64/$runtime"
           arm="staged/arm64/macos-arm64/$runtime"
           test -f "$x64" && test -f "$arm"
@@ -1042,7 +1043,7 @@ jobs:
         set -euo pipefail
         mkdir -p dist
         tar -xzf staged/unsigned-macos-app.tar.gz -C dist
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           test -x "dist/Automexia Terminal.app/Contents/MacOS/$runtime"
           lipo -verify_arch x86_64 arm64 "dist/Automexia Terminal.app/Contents/MacOS/$runtime"
         done
@@ -1092,7 +1093,7 @@ jobs:
         security import "$certificate" -k "$keychain" -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
         security set-key-partition-list -S apple-tool:,apple: -s -k "$keychain_password" "$keychain"
         security default-keychain -s "$keychain"
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           test -x "$app/Contents/MacOS/$runtime"
           codesign --force --options runtime --timestamp --sign "$APPLE_SIGNING_IDENTITY" "$app/Contents/MacOS/$runtime"
         done
@@ -1193,7 +1194,7 @@ jobs:
         set -euo pipefail
         target_dir="target/${{ matrix.target }}/release"
         mkdir -p "$target_dir"
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           binary="staged/${{ matrix.artifact }}/$runtime"
           test -f "$binary"
           cp "$binary" "$target_dir/$runtime"
@@ -1487,7 +1488,7 @@ jobs:
         Expand-Archive -LiteralPath $zip[0].FullName -DestinationPath $portable -Force
         . ./tools/ci/windows_conpty_trust.ps1
         Assert-ConPtyRuntime -Root $portable -Architecture '${{ matrix.arch }}' | Out-Null
-        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+        foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
           $exe = Get-Item -LiteralPath (Join-Path $portable $runtime)
           $exeSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
           if ($exeSig.Status -ne 'Valid') { throw "portable executable signature is $($exeSig.Status): $runtime" }
@@ -1509,7 +1510,7 @@ jobs:
           }) | Select-Object -First 1
           if (-not $installed) { throw 'installed Automexia executable not found' }
           Assert-ConPtyRuntime -Root $installed.DirectoryName -Architecture '${{ matrix.arch }}' | Out-Null
-          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe')) {
+          foreach ($runtime in @('automexia.exe', 'amx.exe', 'automexia-suggestion-helper.exe', 'automexia-ssh-helper.exe')) {
             $exe = Get-Item -LiteralPath (Join-Path $installed.DirectoryName $runtime)
             $installedSig = Get-AuthenticodeSignature -LiteralPath $exe.FullName
             if ($installedSig.Status -ne 'Valid') { throw "installed executable signature is $($installedSig.Status): $runtime" }
@@ -1562,7 +1563,7 @@ jobs:
         test -n "$app"
         codesign --verify --deep --strict --verbose=4 "$app"
         spctl --assess --verbose=4 --type execute "$app"
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           bin="$app/Contents/MacOS/$runtime"
           test -x "$bin"
           lipo -verify_arch x86_64 arm64 "$bin"

@@ -22,6 +22,20 @@ impl Default for ContextTitle {
 pub fn create_title_extra_from_context<T: rio_backend::event::EventListener>(
     context: &Context<T>,
 ) -> Option<ContextTitleExtra> {
+    {
+        let terminal = context.terminal.lock();
+        if terminal.integration_scope_active() {
+            return Some(ContextTitleExtra {
+                program: terminal
+                    .integration_scope()
+                    .filter(|scope| scope.shell != "unknown")
+                    .map_or_else(
+                        || "SSH".to_owned(),
+                        |scope| format!("SSH · {}", scope.shell),
+                    ),
+            });
+        }
+    }
     #[cfg(not(unix))]
     let _ = context;
 
@@ -91,6 +105,21 @@ pub fn update_title<T: rio_backend::event::EventListener>(
 ) -> String {
     if template.is_empty() {
         return template.to_string();
+    }
+
+    {
+        let terminal = context.terminal.lock();
+        if terminal.integration_scope_active() {
+            // A local foreground-process path cannot describe a remote shell.
+            // Remote CWD is separately scoped display data, never a local Path.
+            return terminal
+                .integration_scope()
+                .filter(|scope| scope.shell != "unknown")
+                .map_or_else(
+                    || "SSH".to_owned(),
+                    |scope| format!("SSH · {}", scope.shell),
+                );
+        }
     }
 
     let mut new_template = template.to_owned();

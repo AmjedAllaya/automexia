@@ -1,12 +1,37 @@
 //! Bounded remote-shell source CANDIDATE. No local shell or SSH is executed.
 //! This source is not an approved structured action. The application must not
 //! append it to an existing native OpenSSH binding or activate it implicitly.
-use crate::{Capabilities, Error, GenerationKey, MAX_BOOTSTRAP_BYTES};
+use crate::{Capabilities, Error, GenerationKey, RemoteShell, MAX_BOOTSTRAP_BYTES};
 use base64::{engine::general_purpose::STANDARD, Engine as _};
+mod upload;
+pub use upload::{upload_stage_candidate, uploaded_session_candidate};
 
 pub const BASH_CORE: &str = include_str!("../resources/bash-core.bash");
+pub const ZSH_CORE: &str = include_str!("../resources/zsh-core.zsh");
+pub const FISH_CORE: &str = include_str!("../resources/fish-core.fish");
+pub const POWERSHELL_CORE: &str = include_str!("../resources/powershell-core.ps1");
+pub const MAX_WINDOWS_REMOTE_COMMAND_BYTES: usize = 8191;
 /// Leave room for the scoped envelope inside the existing 4 KiB user-var value.
 pub const MAX_CWD_PAYLOAD_PATH: usize = 4000;
+
+/// Encode a bounded app-owned user variable. VT remains the framing reader.
+pub fn user_var_frame(name: &str, value: &str) -> Result<String, Error> {
+    if name.is_empty()
+        || name.len() > 64
+        || !name
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || byte == b'_')
+        || name.as_bytes()[0].is_ascii_digit()
+        || value.len() > 4096
+        || value.as_bytes().contains(&0)
+    {
+        return Err(Error::InvalidFrame);
+    }
+    Ok(format!(
+        "\x1b]1337;SetUserVar={name}={}\x07",
+        STANDARD.encode(value)
+    ))
+}
 
 /// One POSIX literal word; this routine is not an authorization or Windows API.
 pub fn quote_posix(value: &str) -> Result<String, Error> {
@@ -31,19 +56,181 @@ pub fn readiness_value(key: GenerationKey) -> String {
 
 /// Same canonical resource consumed by model tests and the shell fixture exporter.
 pub fn bash_core_candidate(key: GenerationKey) -> String {
-    let prompt = format!("AMXSSH1|{}|{}|1|1", key.pane(), key.generation());
-    let downgrade = format!("AMXSSH1|{}|{}|2|1", key.pane(), key.generation());
+    render_core(BASH_CORE, key)
+}
+
+fn render_core(source: &str, key: GenerationKey) -> String {
+    let prompt = format!("AMXSSH1|{}|{}|1|5", key.pane(), key.generation());
+    let downgrade = format!("AMXSSH1|{}|{}|2|5", key.pane(), key.generation());
     let revoke = format!("AMXSSH1|{}|{}|3|0", key.pane(), key.generation());
     let clear = format!("AMXSSHCWD1|{}|{}|", key.pane(), key.generation());
-    BASH_CORE
+    let clear_user = format!("AMXSSHUSER1|{}|{}|", key.pane(), key.generation());
+    let prompt_cwd = format!("AMXSSH1|{}|{}|1|3", key.pane(), key.generation());
+    source
         .replace("@@RECEIPT@@", &STANDARD.encode(readiness_value(key)))
         .replace("@@PROMPT_RECEIPT@@", &STANDARD.encode(prompt))
+        .replace("@@PROMPT_CWD_RECEIPT@@", &STANDARD.encode(prompt_cwd))
         .replace("@@DOWNGRADE_RECEIPT@@", &STANDARD.encode(downgrade))
         .replace("@@REVOKE_RECEIPT@@", &STANDARD.encode(revoke))
         .replace("@@CLEAR_CWD@@", &STANDARD.encode(clear))
+        .replace("@@CLEAR_USER@@", &STANDARD.encode(clear_user))
+        .replace(
+            "@@CLEAR_CONTEXT@@",
+            &STANDARD.encode(crate::session::RemoteContext::empty_value(key)),
+        )
         .replace("@@PANE@@", &key.pane().to_string())
         .replace("@@GENERATION@@", &key.generation().to_string())
         .replace("@@PATH_LIMIT@@", &MAX_CWD_PAYLOAD_PATH.to_string())
+}
+
+/// Actual fixed resource used by the remote adapter and native shell tests.
+pub fn core_candidate(shell: RemoteShell, key: GenerationKey) -> Result<String, Error> {
+    let source = match shell {
+        RemoteShell::Bash => BASH_CORE,
+        RemoteShell::Zsh => ZSH_CORE,
+        RemoteShell::Fish => FISH_CORE,
+        RemoteShell::PowerShell | RemoteShell::Pwsh => POWERSHELL_CORE,
+        RemoteShell::Unknown => return Err(Error::UnsupportedShell),
+    };
+    Ok(render_core(source, key))
+}
+
+const ZSH_ENV: &str = r#"AUTOMEXIA_SSH_TEMP=$ZDOTDIR
+if [[ $AUTOMEXIA_SSH_ZDOTDIR_SET == x ]]; then
+    ZDOTDIR=$AUTOMEXIA_SSH_ZDOTDIR
+else
+    unset ZDOTDIR
+fi
+[[ -r ${ZDOTDIR-$HOME}/.zshenv ]] && builtin source "${ZDOTDIR-$HOME}/.zshenv"
+AUTOMEXIA_SSH_ZDOTDIR=${ZDOTDIR-$HOME}
+AUTOMEXIA_SSH_ZDOTDIR_SET=${ZDOTDIR+x}
+ZDOTDIR=$AUTOMEXIA_SSH_TEMP"#;
+const ZSH_RC_PREFIX: &str = r#"if [[ $AUTOMEXIA_SSH_ZDOTDIR_SET == x ]]; then
+    ZDOTDIR=$AUTOMEXIA_SSH_ZDOTDIR
+else
+    unset ZDOTDIR
+fi
+unset AUTOMEXIA_SSH_ZDOTDIR AUTOMEXIA_SSH_ZDOTDIR_SET AUTOMEXIA_SSH_TEMP
+[[ -r ${ZDOTDIR-$HOME}/.zshrc ]] && builtin source "${ZDOTDIR-$HOME}/.zshrc""#;
+
+/// Startup data for the effectful helper owner. `hook` is bundled, reviewed
+/// source, never remote/user input. The owner creates private files and launches
+/// the selected shell with exact argv; no path is interpolated into this source.
+pub fn helper_shell_files(
+    shell: RemoteShell,
+    key: GenerationKey,
+    hook: &str,
+) -> Result<Vec<(&'static str, String)>, Error> {
+    // Fish remains supported by interactive_candidate. Its builtin output can
+    // spin under optional helper backpressure, so do not install that hook.
+    if shell == RemoteShell::Fish {
+        return Err(Error::UnsupportedShell);
+    }
+    if hook.len() > 16 * 1024 || hook.contains('\0') {
+        return Err(Error::BootstrapLimit);
+    }
+    let body = format!(
+        "{}\n{}\n",
+        core_candidate(shell, key)?,
+        render_core(hook, key)
+    );
+    Ok(match shell {
+        RemoteShell::Bash => vec![(
+            "rc.bash",
+            format!(
+                "[[ -r \"$HOME/.bashrc\" ]] && builtin source \"$HOME/.bashrc\"\n{body}"
+            ),
+        )],
+        RemoteShell::Zsh => vec![
+            (".zshenv", format!("{ZSH_ENV}\n")),
+            (".zshrc", format!("{ZSH_RC_PREFIX}\n{body}")),
+        ],
+        RemoteShell::PowerShell | RemoteShell::Pwsh => vec![("rc.ps1", body)],
+        RemoteShell::Fish | RemoteShell::Unknown => return Err(Error::UnsupportedShell),
+    })
+}
+
+/// Fixed bundled source for an explicitly chosen remote account-shell adapter.
+/// The application must separately authorize the complete OpenSSH argument list.
+pub fn interactive_candidate(
+    shell: RemoteShell,
+    key: GenerationKey,
+) -> Result<String, Error> {
+    let candidate = match shell {
+        RemoteShell::Bash => return bash_interactive_candidate(key),
+        RemoteShell::Zsh => zsh_interactive_candidate(key)?,
+        RemoteShell::Fish => format!(
+            "exec fish --interactive --init-command {}",
+            quote_posix(&core_candidate(shell, key)?)?
+        ),
+        RemoteShell::PowerShell | RemoteShell::Pwsh => {
+            let bytes: Vec<u8> = core_candidate(shell, key)?
+                .encode_utf16()
+                .flat_map(u16::to_le_bytes)
+                .collect();
+            let executable = if shell == RemoteShell::PowerShell {
+                "powershell.exe"
+            } else {
+                "pwsh"
+            };
+            // Normal profile startup is intentional; no execution-policy override
+            // or untrusted expression evaluation is introduced.
+            let command = format!(
+                "{executable} -NoLogo -NoExit -EncodedCommand {}",
+                STANDARD.encode(bytes)
+            );
+            if command.len() > MAX_WINDOWS_REMOTE_COMMAND_BYTES {
+                return Err(Error::BootstrapLimit);
+            }
+            command
+        }
+        RemoteShell::Unknown => return Err(Error::UnsupportedShell),
+    };
+    if candidate.len() > MAX_BOOTSTRAP_BYTES {
+        return Err(Error::BootstrapLimit);
+    }
+    Ok(candidate)
+}
+
+fn zsh_interactive_candidate(key: GenerationKey) -> Result<String, Error> {
+    let core = core_candidate(RemoteShell::Zsh, key)?;
+    // ZDOTDIR is scoped to this child. The temporary .zshenv and .zshrc wrappers
+    // restore the original startup location before sourcing native user files.
+    Ok(format!(
+        r#"amx_plain() {{ exec zsh -i; }}
+command -v zsh >/dev/null 2>&1 || exit 127
+[ -t 0 ] && [ -t 2 ] || exit 125
+[ -z "${{AUTOMEXIA_SSH_ZDOTDIR+x}}${{AUTOMEXIA_SSH_ZDOTDIR_SET+x}}${{AUTOMEXIA_SSH_TEMP+x}}" ] || amx_plain
+command -v mktemp >/dev/null 2>&1 || amx_plain
+command -v cat >/dev/null 2>&1 || amx_plain
+command -v rm >/dev/null 2>&1 || amx_plain
+command -v rmdir >/dev/null 2>&1 || amx_plain
+amx_dir=$(umask 077; mktemp -d "${{TMPDIR:-/tmp}}/automexia-ssh.XXXXXXXXXX") || amx_plain
+if ! (umask 077
+cat > "$amx_dir/.zshenv" <<'AMX_ENV_V1'
+{ZSH_ENV}
+AMX_ENV_V1
+cat > "$amx_dir/.zshrc" <<'AMX_RC_V1'
+# Anchor cleanup to this actual startup file, not profile-mutable environment.
+# Global compinit may have generated its standard cache inside our private dir.
+command rm -f -- "${{(%):-%N}}" "${{${{(%):-%N}}%/*}}/.zshenv" "${{${{(%):-%N}}%/*}}/.zcompdump" "${{${{(%):-%N}}%/*}}/.zcompdump.zwc"
+command rmdir -- "${{${{(%):-%N}}%/*}}" 2>/dev/null || :
+{ZSH_RC_PREFIX}
+{core}
+AMX_RC_V1
+)
+then
+    command rm -f -- "$amx_dir/.zshenv" "$amx_dir/.zshrc"
+    command rmdir -- "$amx_dir" 2>/dev/null || :
+    amx_plain
+fi
+AUTOMEXIA_SSH_ZDOTDIR=${{ZDOTDIR-$HOME}} AUTOMEXIA_SSH_ZDOTDIR_SET=${{ZDOTDIR+x}} ZDOTDIR=$amx_dir command zsh -i
+amx_status=$?
+command rm -f -- "$amx_dir/.zshenv" "$amx_dir/.zshrc" "$amx_dir/.zcompdump" "$amx_dir/.zcompdump.zwc"
+command rmdir -- "$amx_dir" 2>/dev/null || :
+exit "$amx_status"
+"#
+    ))
 }
 
 pub fn bash_interactive_candidate(key: GenerationKey) -> Result<String, Error> {
@@ -91,10 +278,10 @@ mod tests {
     fn encoding_uses_the_workspace_base64_contract() {
         let key = GenerationKey::new(3, 7).unwrap();
         let source = bash_core_candidate(key);
-        assert!(source.contains("QU1YU1NIMXwzfDd8MXwz"));
+        assert!(source.contains("QU1YU1NIMXwzfDd8MXw3"));
         assert_eq!(
-            STANDARD.decode("QU1YU1NIMXwzfDd8MXwz").unwrap(),
-            b"AMXSSH1|3|7|1|3"
+            STANDARD.decode("QU1YU1NIMXwzfDd8MXw3").unwrap(),
+            b"AMXSSH1|3|7|1|7"
         );
     }
     #[test]

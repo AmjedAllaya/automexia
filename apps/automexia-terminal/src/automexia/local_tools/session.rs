@@ -1,8 +1,26 @@
 //! Transient explicit session hints; never stored, logged or evaluated as code.
 use clap::Args;
-use std::{io, process::Command};
+use std::{ffi::OsString, io, process::Command};
 
 const MAX_GUEST_HINT_BYTES: usize = 8192;
+
+#[cfg(windows)]
+fn interactive_size(command: &Command) -> io::Result<()> {
+    let size = std::iter::once(command.get_program())
+        .chain(command.get_args())
+        .map(|arg| {
+            arg.to_string_lossy()
+                .encode_utf16()
+                .count()
+                .saturating_mul(2)
+                + 3
+        })
+        .sum::<usize>();
+    if size > 30000 {
+        return Err(super::invalid("guest invocation exceeds the native command-line limit; shorten the arguments or session PATH"));
+    }
+    Ok(())
+}
 
 #[cfg(any(windows, test))]
 fn guest_tool_path(path: &str) -> io::Result<String> {
@@ -66,6 +84,107 @@ impl ToolSession {
         self.distribution.as_deref()
     }
 
+    fn validate_guest_hints(&self) -> io::Result<()> {
+        let hints = [&self.distribution, &self.cwd, &self.path, &self.home];
+        if !hints.iter().all(|hint| {
+            hint.as_ref().is_some_and(|value| {
+                !value.is_empty()
+                    && value.len() <= MAX_GUEST_HINT_BYTES
+                    && !value.chars().any(char::is_control)
+            })
+        }) {
+            return Err(super::invalid("incomplete or invalid guest session hints; reopen an updated Automexia session"));
+        }
+        if self.distribution.as_deref().is_none_or(|value| {
+            value.len() > 96 || !value.starts_with(|c: char| c.is_ascii_alphanumeric())
+        }) || self
+            .cwd
+            .as_deref()
+            .is_none_or(|value| !value.starts_with('/'))
+            || self
+                .home
+                .as_deref()
+                .is_none_or(|value| !value.starts_with('/'))
+        {
+            return Err(super::invalid("invalid guest session identity or paths"));
+        }
+        Ok(())
+    }
+
+    /// Explicit interactive tools inherit the terminal directly. The bounded
+    /// Python capture bridge is deliberately not part of this path.
+    pub(crate) fn interactive_command(
+        &self,
+        program: &str,
+        arguments: &[OsString],
+    ) -> io::Result<Command> {
+        self.interactive_command_with_environment(program, arguments, &[])
+    }
+
+    pub(crate) fn interactive_command_with_environment(
+        &self,
+        program: &str,
+        arguments: &[OsString],
+        environment: &[(&str, &str)],
+    ) -> io::Result<Command> {
+        if !self.has_guest_hints() {
+            let mut command = Command::new(super::resolve_tool(program)?);
+            command.args(arguments).envs(environment.iter().copied());
+            return Ok(command);
+        }
+        self.validate_guest_hints()?;
+        #[cfg(not(windows))]
+        {
+            let _ = (program, arguments, environment);
+            Err(super::invalid(
+                "guest hints apply only to the Windows-backed WSL command adapter",
+            ))
+        }
+        #[cfg(windows)]
+        {
+            let command =
+                self.guest_interactive_command(program, arguments, environment)?;
+            // Resolve only after every transient argument has been validated.
+            let executable = super::resolve_tool("wsl")?;
+            let mut resolved = Command::new(executable);
+            resolved.args(command.get_args());
+            interactive_size(&resolved)?;
+            Ok(resolved)
+        }
+    }
+
+    #[cfg(windows)]
+    fn guest_interactive_command(
+        &self,
+        program: &str,
+        arguments: &[OsString],
+        environment: &[(&str, &str)],
+    ) -> io::Result<Command> {
+        self.validate_guest_hints()?;
+        // All four fields were validated as present above. env receives
+        // literal argv; no shell, expression evaluation, or implicit Enter.
+        let path = guest_tool_path(self.path.as_deref().unwrap())?;
+        let mut command = Command::new("wsl.exe");
+        command.args([
+            "--distribution",
+            self.distribution.as_deref().unwrap(),
+            "--cd",
+            self.cwd.as_deref().unwrap(),
+            "--exec",
+            "/usr/bin/env",
+        ]);
+        command.arg(format!("PATH={path}"));
+        command.arg(format!("HOME={}", self.home.as_deref().unwrap()));
+        command.args(
+            environment
+                .iter()
+                .map(|(name, value)| format!("{name}={value}")),
+        );
+        command.arg(program).args(arguments);
+        interactive_size(&command)?;
+        Ok(command)
+    }
+
     pub(super) fn command(
         &self,
         program: &str,
@@ -77,26 +196,7 @@ impl ToolSession {
             command.args(arguments);
             return Ok((command, false));
         }
-        if !hints.iter().all(|hint| {
-            hint.as_ref().is_some_and(|v| {
-                !v.is_empty()
-                    && v.len() <= MAX_GUEST_HINT_BYTES
-                    && !v.chars().any(char::is_control)
-            })
-        }) {
-            return Err(super::invalid("incomplete or invalid guest session hints; reopen an updated Automexia session"));
-        }
-        if self.distribution.as_deref().unwrap().len() > 96
-            || !self
-                .distribution
-                .as_deref()
-                .unwrap()
-                .starts_with(|c: char| c.is_ascii_alphanumeric())
-            || !self.cwd.as_deref().unwrap().starts_with('/')
-            || !self.home.as_deref().unwrap().starts_with('/')
-        {
-            return Err(super::invalid("invalid guest session identity or paths"));
-        }
+        self.validate_guest_hints()?;
         #[cfg(not(windows))]
         {
             let _ = (program, arguments);
@@ -157,6 +257,57 @@ impl ToolSession {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn amx_interactive_wsl_preserves_exact_guest_argv_and_public_environment() {
+        let session = ToolSession {
+            distribution: Some("Fixture-Linux".into()),
+            cwd: Some("/fixture/work space".into()),
+            home: Some("/fixture/home".into()),
+            path: Some(".:/opt/tools:/usr/bin:/bin".into()),
+        };
+        let native = [
+            "-i",
+            "/fixture/key with spaces",
+            "fixture",
+            "literal '$HOME; data'",
+        ];
+        let command = session
+            .guest_interactive_command(
+                "ssh",
+                &native.map(OsString::from),
+                &[("TERM", "xterm-256color")],
+            )
+            .unwrap();
+        let actual: Vec<_> = command
+            .get_args()
+            .map(|value| value.to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(
+            actual,
+            [
+                "--distribution",
+                "Fixture-Linux",
+                "--cd",
+                "/fixture/work space",
+                "--exec",
+                "/usr/bin/env",
+                "PATH=/opt/tools:/usr/bin:/bin",
+                "HOME=/fixture/home",
+                "TERM=xterm-256color",
+                "ssh",
+                "-i",
+                "/fixture/key with spaces",
+                "fixture",
+                "literal '$HOME; data'",
+            ]
+        );
+        assert!(command.get_envs().next().is_none());
+        assert!(session
+            .guest_interactive_command("ssh", &[OsString::from("x".repeat(30000))], &[])
+            .is_err());
+    }
 
     #[test]
     fn amx_local_guest_path_keeps_absolute_order_and_posix_semantics() {

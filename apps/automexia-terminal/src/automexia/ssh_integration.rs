@@ -75,15 +75,18 @@ pub fn report(
         "schema": 1,
         "native_broker_enabled": native_broker_enabled,
         "enhanced_execution_enabled": false,
-        "reason": "enhanced bootstrap requires a separately reviewed launch contract",
+        "reason": "this planning command never executes SSH; use the explicit +ssh command",
+        "explicit_wrapper_available": true,
+        "explicit_wrapper_command": "+ssh --shell <shell> -- <ssh-arguments>",
+        "explicit_wrapper_shells": ["bash", "zsh", "fish", "powershell", "pwsh"],
         "evidence": "declared-preview-not-observed",
         "protocol": integration::PROTOCOL_VERSION,
         "supported_bootstrap_candidate": "POSIX account shell, Bash >=5.1, non-login interactive, explicit temporary-file permission",
-        "implemented_runtime_capabilities": [],
-        "candidate_hook_capabilities": ["prompt-boundaries", "cwd"],
-        "remote_command_status": "not implemented",
-        "remote_cwd_transport": "scoped user-variable candidate, not connected to live sessions",
-        "remote_automexia_prompt": "not implemented"
+        "implemented_runtime_capabilities": ["scoped-remote-display", "prompt-boundaries", "cwd", "command-status"],
+        "candidate_hook_capabilities": ["prompt-boundaries", "cwd", "command-status"],
+        "remote_command_status": "negotiated by the explicit wrapper's shell adapter",
+        "remote_cwd_transport": "scoped display-only metadata; never a local filesystem path",
+        "remote_automexia_prompt": "native shell prompt with separate Automexia context row"
     });
     if let Action::Inspect {
         shell,

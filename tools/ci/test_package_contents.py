@@ -9,7 +9,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parents[2]
-RUNTIME_BINARIES = ("automexia", "amx", "automexia-suggestion-helper")
+RUNTIME_BINARIES = ("automexia", "amx", "automexia-suggestion-helper", "automexia-ssh-helper")
 
 
 class PackageContentsTests(unittest.TestCase):
@@ -55,7 +55,9 @@ class PackageContentsTests(unittest.TestCase):
             "${AUTOMEXIA_BINARY}",
             "${AUTOMEXIA_CLI_BINARY}",
             "${AUTOMEXIA_SUGGESTION_HELPER_BINARY}",
+            "${AUTOMEXIA_SSH_HELPER_BINARY}",
         )
+        self.assertEqual(len(sources), len(RUNTIME_BINARIES))
         for name, source in zip(RUNTIME_BINARIES, sources):
             with self.subTest(binary=name):
                 matches = [
@@ -71,7 +73,8 @@ class PackageContentsTests(unittest.TestCase):
         document = ET.parse(ROOT / "packaging/windows/automexia-arm64.wxs")
         ns = {"w": "http://wixtoolset.org/schemas/v4/wxs"}
         references = [entry.attrib["Id"] for entry in document.findall(".//w:Feature/w:ComponentRef", ns)]
-        sources = ("BinaryPath", "CliBinaryPath", "SuggestionHelperPath")
+        sources = ("BinaryPath", "CliBinaryPath", "SuggestionHelperPath", "SshHelperPath")
+        self.assertEqual(len(sources), len(RUNTIME_BINARIES))
         for name, source in zip(RUNTIME_BINARIES, sources):
             with self.subTest(binary=name):
                 components = [

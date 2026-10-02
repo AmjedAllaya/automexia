@@ -7,6 +7,7 @@ members = [
     "automexia-ecosystem-runtime",
     "automexia-connectivity",
     "automexia-ssh-integration",
+    "automexia-terminal-protocol",
     "automexia-command-productivity",
     "automexia-devops",
     "extensions/devops-aws",
@@ -72,6 +73,7 @@ automexia-ecosystem = { path = "automexia-ecosystem", version = "0.4.0" }
 automexia-ecosystem-runtime = { path = "automexia-ecosystem-runtime", version = "0.4.0" }
 automexia-connectivity = { path = "automexia-connectivity", version = "0.4.0" }
 automexia-ssh-integration = { path = "automexia-ssh-integration", version = "0.4.0" }
+automexia-terminal-protocol = { path = "automexia-terminal-protocol", version = "0.4.0" }
 automexia-command-productivity = { path = "automexia-command-productivity", version = "0.4.0" }
 automexia-devops = { path = "automexia-devops", version = "0.4.0" }
 automexia-devops-aws = { path = "extensions/devops-aws", version = "0.4.0" }

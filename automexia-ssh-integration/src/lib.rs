@@ -8,10 +8,13 @@
 #![forbid(unsafe_code)]
 
 pub mod bootstrap;
+pub mod effective_config;
+pub mod helper;
 pub mod invocation;
 pub mod plan;
 pub mod session;
 
+pub use effective_config::EffectiveConfig;
 pub use invocation::{Invocation, InvocationClass, PassReason};
 pub use plan::{
     plan, Candidate, ConfigEvidence, Decision, Mode, Options, RemoteShell, Startup,
@@ -22,6 +25,7 @@ pub use session::{Capabilities, GenerationKey, Negotiation, Phase, RemotePath};
 pub const PROTOCOL_VERSION: u32 = 1;
 pub const MAX_ARGUMENTS: usize = 128;
 pub const MAX_ARGUMENT_BYTES: usize = 16 * 1024;
+pub const MAX_EFFECTIVE_CONFIG_BYTES: usize = 64 * 1024;
 // The reviewed connection model remains the destination-budget owner.
 pub use automexia_connectivity::connections::MAX_DIRECT_OPENSSH_DESTINATION_BYTES as MAX_DESTINATION_BYTES;
 pub const MAX_BOOTSTRAP_BYTES: usize = 12 * 1024;
@@ -40,6 +44,8 @@ pub enum Error {
     DeadlineOverflow,
     BootstrapLimit,
     RequiredUnavailable,
+    InvalidConfiguration,
+    ConfigurationLimit,
 }
 
 impl std::fmt::Display for Error {
@@ -58,6 +64,12 @@ impl std::fmt::Display for Error {
             Self::DeadlineOverflow => "invalid negotiation deadline",
             Self::BootstrapLimit => "SSH bootstrap exceeds its fixed budget",
             Self::RequiredUnavailable => "required SSH integration is unavailable",
+            Self::InvalidConfiguration => {
+                "SSH effective configuration is incomplete or unsupported"
+            }
+            Self::ConfigurationLimit => {
+                "SSH effective configuration exceeds its fixed budget"
+            }
         })
     }
 }

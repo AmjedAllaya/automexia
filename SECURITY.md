@@ -68,6 +68,25 @@ When a user manually runs system OpenSSH, OpenSSH and the operating system own
 configuration, credentials, agents, host-key policy, authentication, proxy
 behavior, and networking. Automexia owns only the local terminal session.
 
+The explicit `+ssh` wrapper uses that same system client. Bundled remote startup
+code is selected by a known shell with bounded generated substitutions; it never
+extends a managed broker's reviewed native launch binding. The pure SSH library
+performs no I/O. Remote metadata remains untrusted and display-only. The VT
+isolates local metadata, ignores remote OSC 7 directories and requires the local
+lifetime guard's random preimage to restore the outer scope. Missing cleanup
+leaves local discovery disabled. The preimage never enters SSH arguments or
+environment. Shell capabilities and generation identifiers are advisory.
+
+Explicit `--helper-upload` executes a caller-selected trusted helper on the
+remote account for that session. Size/hash/protocol checks protect transfer
+integrity, not publisher authenticity. It does not download or permanently
+install software. Temporary copies can remain after interrupted setup or forced
+termination; a cleanup warning is not a guarantee of remote retirement. The
+helper's isolated passive scanner receives only bounded allowlisted public
+selectors, never inherited credentials, and does not execute provider commands
+or authentication plugins. Its results remain display-only and are rejected
+when the scope or request revision changes.
+
 Public inventory reads only explicitly selected bounded local files, exposes
 public metadata, performs no passive network/login work, and preserves
 last-known-good state after invalid, linked, replaced, or revoked input.

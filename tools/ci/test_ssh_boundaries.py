@@ -21,6 +21,7 @@ class Boundaries(unittest.TestCase):
         self.root = Path(self.temporary.name)
         package = HERE.parents[1]/'automexia-ssh-integration'
         shutil.copytree(package, self.root/'automexia-ssh-integration', ignore=shutil.ignore_patterns('__pycache__','target'))
+        shutil.copytree(HERE.parents[1]/'automexia-terminal-protocol', self.root/'automexia-terminal-protocol', ignore=shutil.ignore_patterns('__pycache__','target'))
         self.write('apps/automexia-terminal/src/context/launch_broker.rs',
             'pub const MANAGED_SESSION_LAUNCH_ENABLED: bool = false;\nconst _: () = assert!(!MANAGED_SESSION_LAUNCH_ENABLED);')
         self.write('apps/automexia-terminal/src/automexia/ssh_integration.rs', '"enhanced_execution_enabled": false')
@@ -36,7 +37,43 @@ class Boundaries(unittest.TestCase):
     def fail(self):
         with self.assertRaises(ValueError): BOUNDARY.validate_repository(self.root)
     def test_canonical_inputs_are_accepted(self):
-        self.assertEqual(BOUNDARY.validate_repository(self.root)['runtime_dependencies'],2)
+        result = BOUNDARY.validate_repository(self.root)
+        self.assertEqual(result['runtime_dependencies'],3)
+        self.assertEqual(result['protocol_runtime_dependencies'],0)
+    def test_protocol_rejects_dependencies_of_every_kind(self):
+        path = self.root/'automexia-terminal-protocol/Cargo.toml'
+        original = path.read_text(encoding='utf-8')
+        for table in ('dependencies', 'dev-dependencies', 'build-dependencies', "target.'cfg(windows)'.dependencies", "target.'cfg(unix)'.dev-dependencies", "target.'cfg(unix)'.build-dependencies"):
+            with self.subTest(table=table):
+                path.write_text(original+f'\n[{table}]\nbase64="0.23"\n',encoding='utf-8')
+                self.fail()
+        path.write_text(original,encoding='utf-8')
+    def test_protocol_no_std_and_unsafe_prohibition_are_required(self):
+        path = self.root/'automexia-terminal-protocol/src/lib.rs'
+        original = path.read_text(encoding='utf-8')
+        for marker in ('#![no_std]', '#![forbid(unsafe_code)]'):
+            with self.subTest(marker=marker):
+                path.write_text(original.replace(marker,''),encoding='utf-8')
+                self.fail()
+        path.write_text(original,encoding='utf-8')
+    def test_protocol_effects_and_nested_code_inclusions_require_review(self):
+        for source in ('use std::fs;', 'extern crate std;', 'use alloc::vec::Vec;', 'include!("hidden.rs");', '#[path="../../other.rs"] mod hidden;'):
+            with self.subTest(source=source):
+                self.write('automexia-terminal-protocol/src/nested.rs',source)
+                self.fail()
+    def test_protocol_rejects_publication_builds_and_features(self):
+        path = self.root/'automexia-terminal-protocol/Cargo.toml'
+        original = path.read_text(encoding='utf-8')
+        for mutation in (original.replace('publish = false','publish = true'), original.replace('build = false','build = "build.rs"'), original+'\n[features]\nnetwork=[]\n'):
+            path.write_text(mutation,encoding='utf-8')
+            self.fail()
+        path.write_text(original,encoding='utf-8')
+    def test_protocol_rejects_executable_sources_and_custom_lib_roots(self):
+        self.write('automexia-terminal-protocol/src/main.rs','fn main() {}')
+        self.fail()
+        (self.root/'automexia-terminal-protocol/src/main.rs').unlink()
+        self.append('automexia-terminal-protocol/Cargo.toml','\n[lib]\npath="other.rs"\n')
+        self.fail()
     def test_windows_network_dependency_is_rejected(self):
         self.append('automexia-ssh-integration/Cargo.toml','\n[target.\'cfg(windows)\'.dependencies]\nreqwest="1"\n');self.fail()
     def test_build_dependency_is_rejected(self):
@@ -68,6 +105,26 @@ class Boundaries(unittest.TestCase):
         self.append('automexia-ssh-integration/src/lib.rs','\n#[path="../../other.rs"] mod escape;');self.fail()
     def test_second_embedded_resource_is_rejected(self):
         self.append('automexia-ssh-integration/src/lib.rs','\nconst X:&str=include_str!("../other");');self.fail()
+    def test_duplicate_canonical_resource_is_rejected(self):
+        self.append('automexia-ssh-integration/src/bootstrap.rs','\nconst X:&str=include_str!("../resources/fish-core.fish");');self.fail()
+    def test_upload_resource_cannot_move_to_another_source_owner(self):
+        self.append('automexia-ssh-integration/src/bootstrap.rs','\nconst X:&str=include_str!("../../resources/upload-posix.sh");');self.fail()
+    def test_duplicate_upload_resource_is_rejected(self):
+        self.append('automexia-ssh-integration/src/bootstrap/upload.rs','\nconst X:&str=include_str!("../../resources/upload-posix.sh");');self.fail()
+    def test_missing_upload_resource_is_rejected(self):
+        (self.root/'automexia-ssh-integration/resources/upload-posix.sh').unlink()
+        self.fail()
+    def test_missing_powershell_upload_template_is_rejected(self):
+        (self.root/'automexia-ssh-integration/resources/upload-powershell.ps1.in').unlink()
+        self.fail()
+    def test_each_remote_adapter_rejects_local_cwd_protocol(self):
+        for name in ('bash-core.bash', 'zsh-core.zsh', 'fish-core.fish', 'powershell-core.ps1'):
+            with self.subTest(resource=name):
+                path=self.root/'automexia-ssh-integration/resources'/name
+                original=path.read_text(encoding='utf-8')
+                path.write_text(original+'\n# ]7;file://remote\n',encoding='utf-8')
+                self.fail()
+                path.write_text(original,encoding='utf-8')
     def test_enabling_broker_is_rejected(self):
         p=self.root/'apps/automexia-terminal/src/context/launch_broker.rs';p.write_text(p.read_text(encoding='utf-8').replace('= false','= true'),encoding='utf-8');self.fail()
     def test_removing_compile_time_denial_is_rejected(self):

@@ -57,6 +57,82 @@ impl Invocation {
     pub fn arguments(&self) -> &[OsString] {
         &self.arguments
     }
+    /// Arguments for the explicitly requested, separate staging connection.
+    /// First-value config overrides and removal of enabling short switches keep
+    /// forwarding and local commands confined to the later native session.
+    /// Authentication/destination options and option values retain OS strings.
+    pub fn upload_stage_arguments(&self) -> Result<Vec<OsString>, Error> {
+        let InvocationClass::Interactive { destination_index } =
+            self.classify_for_wrapper(true, true)
+        else {
+            return Err(Error::InvalidArgument);
+        };
+        let mut result: Vec<OsString> = ["-T", "-a", "-x"].map(OsString::from).into();
+        for setting in [
+            "RequestTTY=no",
+            "ClearAllForwardings=yes",
+            "ForwardAgent=no",
+            "ForwardX11=no",
+            "PermitLocalCommand=no",
+            "ControlMaster=no",
+            "ControlPersist=no",
+            "Tunnel=no",
+            "GSSAPIDelegateCredentials=no",
+        ] {
+            result.push("-o".into());
+            result.push(setting.into());
+        }
+        let mut index = 0;
+        while index < destination_index {
+            let raw = &self.arguments[index];
+            let argument = raw.to_str().ok_or(Error::InvalidArgument)?;
+            if argument == "--" {
+                result.push(raw.clone());
+                index += 1;
+                continue;
+            }
+            let bytes = argument.as_bytes();
+            let mut kept = String::from("-");
+            let mut offset = 1;
+            while offset < bytes.len() {
+                let flag = bytes[offset];
+                if b"tAXYgK".contains(&flag) {
+                    offset += 1;
+                    continue;
+                }
+                let takes_value = b"BbcDEeFIiJLlmoPpRSw".contains(&flag);
+                let omit = b"DLRw".contains(&flag);
+                if !omit {
+                    kept.push(char::from(flag));
+                }
+                if takes_value {
+                    if offset + 1 < bytes.len() {
+                        if !omit {
+                            kept.push_str(&argument[offset + 1..]);
+                        }
+                    } else {
+                        index += 1;
+                        let value =
+                            self.arguments.get(index).ok_or(Error::InvalidArgument)?;
+                        if !omit {
+                            result.push(OsString::from(&kept));
+                            kept.clear();
+                            result.push(value.clone());
+                        }
+                    }
+                    break;
+                }
+                offset += 1;
+            }
+            if kept.len() > 1 {
+                result.push(kept.into());
+            }
+            index += 1;
+        }
+        result.push(self.arguments[destination_index].clone());
+        // The generated stage is subject to the same native argument bounds.
+        Self::new(result).map(|stage| stage.arguments)
+    }
     /// No copies, filesystem access, ssh -G, or user config evaluation.
     pub fn classify(
         &self,
@@ -123,6 +199,95 @@ impl Invocation {
                 return Passthrough(PassReason::ExplicitCommand);
             }
             if !destination_is_unambiguous(arg) {
+                return Passthrough(PassReason::AmbiguousDestination);
+            }
+            return Interactive {
+                destination_index: index,
+            };
+        }
+        Passthrough(PassReason::NoDestination)
+    }
+
+    /// Recognize the native argument grammar for the explicit SSH wrapper.
+    /// Interactive means eligible for a separate effective-configuration check,
+    /// never permission to append a remote command. Values are neither split nor
+    /// interpreted as shell text; the original OS strings remain authoritative.
+    pub fn classify_for_wrapper(
+        &self,
+        terminal_input: bool,
+        terminal_output: bool,
+    ) -> InvocationClass {
+        use InvocationClass::{Interactive, Passthrough};
+        if !terminal_input || !terminal_output {
+            return Passthrough(PassReason::NotInteractive);
+        }
+        let mut index = 0usize;
+        let mut options = true;
+        while index < self.arguments.len() {
+            let Some(argument) = self.arguments[index].to_str() else {
+                return Passthrough(PassReason::NonUnicode);
+            };
+            if options && argument == "--" {
+                options = false;
+                index += 1;
+                continue;
+            }
+            if options && argument.starts_with('-') {
+                if argument.len() == 1 {
+                    return Passthrough(PassReason::UnsupportedOption);
+                }
+                // OpenSSH short options may be clustered. An option taking a
+                // value owns the entire remainder, including option-like text.
+                let flags = argument.as_bytes();
+                let mut offset = 1;
+                while offset < flags.len() {
+                    let flag = flags[offset];
+                    if b"TnNfsWOGVQM".contains(&flag) {
+                        return Passthrough(PassReason::TransportOrControl);
+                    }
+                    if b"46AaCgKkqtvXxYy".contains(&flag) {
+                        offset += 1;
+                        continue;
+                    }
+                    if !b"BbcDEeFIiJLlmoPpRSw".contains(&flag) {
+                        return Passthrough(PassReason::UnsupportedOption);
+                    }
+                    let value = if offset + 1 < flags.len() {
+                        // All preceding option bytes are ASCII, so this boundary
+                        // is valid even when the attached value contains Unicode.
+                        &argument[offset + 1..]
+                    } else {
+                        index += 1;
+                        let Some(value) = self.arguments.get(index) else {
+                            return Passthrough(PassReason::UnsupportedOption);
+                        };
+                        let Some(value) = value.to_str() else {
+                            return Passthrough(PassReason::NonUnicode);
+                        };
+                        value
+                    };
+                    if value.is_empty() || value.chars().any(char::is_control) {
+                        return Passthrough(PassReason::UnsupportedOption);
+                    }
+                    if flag == b'p'
+                        && (!value.bytes().all(|byte| byte.is_ascii_digit())
+                            || value
+                                .parse::<u16>()
+                                .ok()
+                                .filter(|port| *port > 0)
+                                .is_none())
+                    {
+                        return Passthrough(PassReason::UnsupportedOption);
+                    }
+                    break;
+                }
+                index += 1;
+                continue;
+            }
+            if index + 1 < self.arguments.len() {
+                return Passthrough(PassReason::ExplicitCommand);
+            }
+            if !destination_is_unambiguous(argument) {
                 return Passthrough(PassReason::AmbiguousDestination);
             }
             return Interactive {

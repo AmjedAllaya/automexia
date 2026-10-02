@@ -142,6 +142,9 @@ pub enum CliCommand {
     ShellIntegration(ShellIntegrationCommand),
     /// Inspect non-executing SSH integration plans; does not enable managed SSH.
     SshIntegration(crate::automexia::ssh_integration::Command),
+    /// Connect using system OpenSSH, with optional session-only remote integration.
+    #[command(name = "+ssh", visible_alias = "ssh")]
+    Ssh(crate::automexia::ssh_wrapper::Command),
     /// Search and manage typed Quick Actions without opening a window.
     Actions(ActionsCommand),
     /// Preview, publish, reload, diagnose, or roll back opt-in aliases.

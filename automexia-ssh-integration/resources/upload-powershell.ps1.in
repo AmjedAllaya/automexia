@@ -1,0 +1,34 @@
+$ErrorActionPreference='Stop';$ProgressPreference='SilentlyContinue'
+if([Environment]::OSVersion.Platform-ne'Win32NT'){[Console]::Error.WriteLine('Automexia: this helper upload requires Windows.');exit 78}
+$d=[IO.Path]::Combine([IO.Path]::GetTempPath(),'automexia-ssh.@@NONCE@@')
+$f=[IO.Path]::Combine($d,'helper.exe');$mk=$false;$own=$false;$ok=$false;$p=$null;$o=$null;$r=$null
+try{
+$sid=[Security.Principal.WindowsIdentity]::GetCurrent().User
+$acl=New-Object Security.AccessControl.DirectorySecurity
+$acl.SetOwner($sid);$acl.SetAccessRuleProtection($true,$false)
+$acl.AddAccessRule((New-Object Security.AccessControl.FileSystemAccessRule($sid,'FullControl','ContainerInherit,ObjectInherit','None','Allow')))
+$fs=New-Object -ComObject Scripting.FileSystemObject
+try{$null=$fs.CreateFolder($d);$mk=$true}finally{$null=[Runtime.InteropServices.Marshal]::FinalReleaseComObject($fs)}
+$di=New-Object IO.DirectoryInfo($d)
+if($PSVersionTable.PSVersion.Major-lt6){$di.SetAccessControl($acl)}else{[IO.FileSystemAclExtensions]::SetAccessControl($di,$acl)}
+$o=[IO.File]::Open($f,1,2,0);$own=$true
+$s=[Console]::OpenStandardInput();$b=New-Object byte[] 8192;$n=0
+while($n-lt @@LIMIT@@){$q=$s.Read($b,0,[Math]::Min($b.Length,@@LIMIT@@-$n));if(!$q){break};$o.Write($b,0,$q);$n+=$q}
+$o.Dispose();$o=$null
+if($n-ne @@SIZE@@){throw 'size'}
+$sha=[Security.Cryptography.SHA256]::Create();$r=[IO.File]::OpenRead($f)
+try{$h=[BitConverter]::ToString($sha.ComputeHash($r)).Replace('-','').ToLowerInvariant()}finally{$r.Dispose();$r=$null;$sha.Dispose()}
+if($h-ne'@@SHA256@@'){throw 'hash'}
+$p=New-Object Diagnostics.Process;$i=$p.StartInfo;$i.FileName=$f;$i.Arguments='--describe-v1'
+$i.UseShellExecute=$false;$i.CreateNoWindow=$true;$i.RedirectStandardOutput=$true;$i.RedirectStandardInput=$true
+if(!$p.Start()){throw 'start'};$p.StandardInput.Close();$w=[Diagnostics.Stopwatch]::StartNew();$b=New-Object byte[] 64;$n=0
+while($n-lt64){$left=5000-$w.ElapsedMilliseconds;if($left-le0){throw 'timeout'};$t=$p.StandardOutput.BaseStream.ReadAsync($b,$n,64-$n);if(!$t.Wait([int]$left)){throw 'timeout'};$q=$t.Result;if(!$q){break};$n+=$q}
+if($n-ge64-or !$p.WaitForExit([int][Math]::Max(1,5000-$w.ElapsedMilliseconds))-or $p.ExitCode-ne0-or [Text.Encoding]::UTF8.GetString($b,0,$n)-cne"AMXSSHHELPER1`n"){throw 'protocol'}
+$path=[Convert]::ToBase64String([Text.Encoding]::UTF8.GetBytes($d))
+[Console]::Out.Write("AMXSSHUPLOAD1|@@PANE@@|@@GENERATION@@|@@NONCE@@|@@SIZE@@|@@SHA256@@|$path`n");$ok=$true
+}catch{[Console]::Error.WriteLine('Automexia helper staging failed.')}finally{
+if($o){$o.Dispose()};if($r){$r.Dispose()}
+if($p){try{if(!$p.HasExited){$p.Kill();$null=$p.WaitForExit(1000)}}catch{};$p.Dispose()}
+if(!$ok){if($own){try{[IO.File]::Delete($f)}catch{}};if($mk){try{[IO.Directory]::Delete($d)}catch{}}}
+}
+if(!$ok){exit 73}

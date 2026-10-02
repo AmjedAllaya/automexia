@@ -39,7 +39,7 @@ The flat publication directory must contain exactly eleven versioned packages:
 - Linux x86_64 and ARM64 DEB, RPM, and tar.gz packages.
 
 Each Windows ZIP has an exact allowlist: `automexia.exe`, `amx.exe`,
-`automexia-suggestion-helper.exe`, the application-architecture `conpty.dll`,
+`automexia-suggestion-helper.exe`, `automexia-ssh-helper.exe`, the application-architecture `conpty.dll`,
 `x64/OpenConsole.exe`, `arm64/OpenConsole.exe`, the four reviewed
 documents, and the complete `shell-integration/` resource tree. Nested paths,
 entry count, expanded size, compression ratio, and traversal are bounded.
@@ -62,10 +62,10 @@ atomically, and verifies that `SHA256SUMS` names every final asset exactly once.
 Controlled Windows evidence is accepted only when its release version, exact
 publisher, artifact count, signature count, and every scanned package name, size, and SHA-256 match those
 final packages; unknown evidence fields and out-of-contract timeouts are rejected.
-Windows trust evidence uses schema 3: eight Automexia runtime/package signatures
-(two MSI files and all three product executables from each ZIP), sixteen embedded
+Windows trust evidence uses schema 4: ten Automexia runtime/package signatures
+(two MSI files and all four product executables from each ZIP), sixteen embedded
 PowerShell signatures, and six separate Microsoft vendor signatures. The pinned
-NuGet identity and package SHA-256 are recorded separately. Schema 1 and 2
+NuGet identity and package SHA-256 are recorded separately. Schema 1, 2 and 3
 evidence omit required runtime checks and are rejected.
 Regenerate evidence by running the controlled gate against the final packages;
 changing a schema number or reusing an earlier scan is not a migration.
@@ -112,7 +112,7 @@ The Linux preflight receives only `configured`/empty presence flags for signing
 secrets, never certificate or account secret values. Actual credentials are
 scoped to their protected native signing job.
 
-The workflow copies the three reviewed runtime executables into an isolated flat
+The workflow copies the four reviewed runtime executables into an isolated flat
 signing directory and signs each before packaging. It then Authenticode-signs and
 timestamps every distributed `.ps1` and `.ps1xml` resource before MSI/ZIP
 creation, and signs every MSI using an RFC 3161 timestamp. Azure Artifact

@@ -177,8 +177,9 @@
         "Typed table exact borrowed values, bounded viewport, stable selection and scroll anchor across reorder/delete/reused resource/schema changes; delayed input and revoked/last-good host states",
         "Channel-gated full queue, blocked handler, callback reentry/unwind, callback lifetime beyond native join, thread-local and panic-payload cleanup, service reuse, 64-owner admission, last-owner drop and application review-drop cases; require actual join acknowledgement and no stale replacement.",
         "Cached-only inventory reads, publish-before-wake async initialization, preference-before-load, disabled-feature retention, uninstall pruning, stale edit/revision rejection, checked context-lease exhaustion and native isolated membership toggles.",
-        "SSH planning boundary mutations in tools/ci/test_ssh_boundaries.py cover target/build dependencies, nested source, duplicate review/encoding owners and unchanged native launch denial",
-        "SSH planning controlling-PTY regressions in tools/ci/test_ssh_bash_core.py cover dynamic and readonly prompts, redirected output, scoped CWD, inherited and profile umask, setup fallback and exact cleanup using the actual Rust generator"
+    "SSH planning mutations in tools/ci/test_ssh_boundaries.py cover target/build dependencies, nested source, duplicate review/encoding owners and unchanged native launch denial. Controlling-PTY regressions in tools/ci/test_ssh_bash_core.py cover dynamic/readonly prompts, redirected output, scoped CWD, inherited/profile umask, setup fallback and exact cleanup using the actual Rust generator",
+    "Explicit SSH wrapper tests cover native argv and exit/signal preservation, known-shell startup, effective config rejection and bounded cancellation. Parser/renderer tests cover forged/replayed ends, nesting/overflow, saturated metadata, reset, repeated prompt ids, outer status restoration, remote context replacement and local provider/clone/action/file isolation. Generated shell and isolated loopback server tests remain separate native evidence",
+    "Temporary helper tests cover bounded uploads, wrong artifacts/receipts, no-exec storage, remote cancellation and exact cleanup; paused/dead/full IPC cannot block prompts. Verify complete public snapshots, unchanged revisions, invalid clears, stale results, idle refresh, native full-buffer publication and scanner retirement. Package inventories retain the helper/trust checks; unsupported Fish uploads reject before staging while ordinary Fish remains supported"
       ],
       "verification_reinforcements": [
         "Assert capability decisions and absence of undeclared I/O at every boundary with redaction canaries",
@@ -214,7 +215,7 @@
         "Each supported native platform proves exact capability, process-tree, PTY, cancellation, and cleanup behavior",
         "Unexecuted sandbox, signing, or platform loader evidence remains external",
         "Admission and typed presentation models do not establish active provider IPC, a multi-surface registry, interactive rendering, native pixels or accessibility",
-        "SSH planning and actual-generator Bash checks pass on their stated hosts; native SSH, Windows/WSL, UI, latency and protected activation remain external and cannot be inferred from these checks"
+        "SSH planning, explicit wrapper and actual-generator shell checks pass on their stated hosts; isolated SSH runtime tests must record the client/server and exercised shells. Native Windows servers, macOS, GUI, latency and protected managed activation cannot be inferred from model or Linux fixture checks"
       ]
     },
     {

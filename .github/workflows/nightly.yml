@@ -384,6 +384,12 @@ jobs:
       with:
         tool: cargo-packager@0.11.8
     - run: cargo build --release --locked -p automexia-terminal --target ${{ matrix.target }}
+    - name: SSH actual-generator native PowerShell 5 and 7 regression
+      if: matrix.target == 'x86_64-pc-windows-msvc'
+      run: python tools/ci/check_ssh_library.py --shell-only --require-windows-powershells
+    - name: SSH helper native ConPTY session regression
+      if: matrix.target == 'x86_64-pc-windows-msvc'
+      run: python tools/ci/test_ssh_helper_native.py
     - name: Build unsigned MSI and portable ZIP
       shell: pwsh
       run: '$env:AUTOMEXIA_PACKAGE_SKIP_BUILD = ''1''
@@ -513,7 +519,7 @@ jobs:
 
         mkdir -p target/release
 
-        for runtime in automexia amx automexia-suggestion-helper; do
+        for runtime in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
           lipo -create "target/x86_64-apple-darwin/release/$runtime" "target/aarch64-apple-darwin/release/$runtime" -output "target/release/$runtime"
           lipo -verify_arch x86_64 arm64 "target/release/$runtime"
         done

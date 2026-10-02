@@ -1,0 +1,13 @@
+{
+  "version": 1,
+  "description": "Actual Rust-generated Bash integration in a controlling Linux PTY. Initial prompt, edited text, then Ctrl+L; no command was executed. Remote path and user are fictional fixture values.",
+  "scope_note": "The local scope-begin envelope is a deterministic synthetic parser prefix; the three following byte segments are actual PTY output.",
+  "columns": 80,
+  "rows": 24,
+  "pane": 3,
+  "generation": 7,
+  "scope_begin": "\u001b]1337;SetUserVar=terminal_scope_v1=QU1YU0NPUEUxfGJlZ2lufDY2Njg3YWFkZjg2MmJkNzc2YzhmYzE4YjhlOWY4ZTIwMDg5NzE0ODU2ZWUyMzNiMzkwMmE1OTFkMGQ1ZjI5MjV8M3w3fGJhc2g=\u0007",
+  "initial": "To run a command as administrator (user \"root\"), use \"sudo <command>\".\r\nSee \"man sudo_root\" for details.\r\n\r\n\u001b]1337;SetUserVar=automexia_ssh_cwd=QU1YU1NIQ1dEMXwzfDd8L3Nydi9leGFtcGxlL3Byb2plY3Q=\u0007\u001b]1337;SetUserVar=automexia_ssh_user=QU1YU1NIVVNFUjF8M3w3fHJlbW90ZS11c2Vy\u0007\u001b]1337;SetUserVar=automexia_ssh_context=QU1YU1NIQ1RYMXwzfDd8CmdpdF9icmFuY2g9Cmt1YmVybmV0ZXNfY29udGV4dD0Ka3ViZXJuZXRlc19uYW1lc3BhY2U9CmRvY2tlcl9jb250ZXh0PQp0ZXJyYWZvcm1fd29ya3NwYWNlPQplbnZpcm9ubWVudD0KYXdzX3Byb2ZpbGU9CmF6dXJlX2Nsb3VkPQpnY3BfcHJvamVjdD0K\u0007\u001b]1337;SetUserVar=automexia_ssh_ready=QU1YU1NIMXwzfDd8MXw3\u0007\u001b]1337;SetUserVar=automexia_ssh_cwd=QU1YU1NIQ1dEMXwzfDd8L3Nydi9leGFtcGxlL3Byb2plY3Q=\u0007\u001b]1337;SetUserVar=automexia_ssh_user=QU1YU1NIVVNFUjF8M3w3fHJlbW90ZS11c2Vy\u0007\u001b]1337;SetUserVar=automexia_ssh_context=QU1YU1NIQ1RYMXwzfDd8CmdpdF9icmFuY2g9Cmt1YmVybmV0ZXNfY29udGV4dD0Ka3ViZXJuZXRlc19uYW1lc3BhY2U9CmRvY2tlcl9jb250ZXh0PQp0ZXJyYWZvcm1fd29ya3NwYWNlPQplbnZpcm9ubWVudD0KYXdzX3Byb2ZpbGU9CmF6dXJlX2Nsb3VkPQpnY3BfcHJvamVjdD0K\u0007\u001b]133;A;aid=1\u0007 \r\n\u001b[?2004h\u001b]133;P;k=c;aid=1\u0007AMX_AUDIT_PROMPT> ",
+  "typed": "\u001b]133;B\u0007printf demo",
+  "ctrl_l": "\u001b[H\u001b[2J\u001b]133;P;k=c;aid=1\u0007AMX_AUDIT_PROMPT> \u001b]133;B\u0007printf demo"
+}

@@ -6,6 +6,101 @@ fn invocation(args: &[&str]) -> Invocation {
 fn key() -> GenerationKey {
     GenerationKey::new(3, 7).unwrap()
 }
+
+#[test]
+fn scoped_remote_context_is_complete_display_only_and_redacted() {
+    use session::{RemoteContext, RemoteContextField};
+    let empty = RemoteContext::empty_value(key());
+    let mut populated = empty.clone();
+    for field in RemoteContextField::ALL {
+        populated = populated.replace(
+            &format!("{}=\n", field.name()),
+            &format!("{}=fixture-{}\n", field.name(), field.name()),
+        );
+    }
+    let parsed = RemoteContext::decode(key(), &populated).unwrap().unwrap();
+    assert_eq!(parsed.key(), key());
+    for field in RemoteContextField::ALL {
+        assert_eq!(
+            parsed.value(field),
+            Some(format!("fixture-{}", field.name()).as_str())
+        );
+    }
+    assert!(!format!("{parsed:?}").contains("fixture-"));
+    assert_eq!(
+        RemoteContext::decode(key(), populated.trim_end_matches('\n')).unwrap(),
+        Some(parsed)
+    );
+    let cleared = RemoteContext::decode(key(), &empty).unwrap().unwrap();
+    assert!(RemoteContextField::ALL
+        .iter()
+        .all(|field| cleared.value(*field).is_none()));
+    assert_eq!(
+        RemoteContext::decode(GenerationKey::new(3, 8).unwrap(), &populated).unwrap(),
+        None
+    );
+}
+
+#[test]
+fn remote_context_rejects_partial_duplicate_unknown_and_hostile_values() {
+    use session::{RemoteContext, MAX_REMOTE_CONTEXT_BYTES};
+    let empty = RemoteContext::empty_value(key());
+    for value in [
+        empty.replace("git_branch=\n", ""),
+        format!("{empty}git_branch=second\n"),
+        empty.replace("git_branch=", "unrecognized="),
+        empty.replace("AMXSSHCTX1", "AMXSSHCTX2"),
+        empty.replace("|3|7|", "|03|7|"),
+        format!("{empty}\n"),
+        "x".repeat(MAX_REMOTE_CONTEXT_BYTES + 1),
+    ] {
+        assert!(RemoteContext::decode(key(), &value).is_err());
+    }
+    for text in [
+        "bad\0value",
+        "bad\nvalue",
+        "bad\rvalue",
+        "bad\tvalue",
+        "bad\u{0085}value",
+        "bad\u{202e}value",
+        "bad\u{2069}value",
+    ] {
+        assert_eq!(
+            RemoteContext::decode(
+                key(),
+                &empty.replace("git_branch=", &format!("git_branch={text}"))
+            ),
+            Err(Error::InvalidFrame)
+        );
+    }
+}
+
+#[test]
+fn remote_context_value_limits_count_utf8_bytes_and_allow_literal_delimiters() {
+    use session::{RemoteContext, RemoteContextField};
+    let empty = RemoteContext::empty_value(key());
+    for value in [
+        "x".repeat(256),
+        "é".repeat(128),
+        "fixture|value=literal".to_owned(),
+    ] {
+        let wire = empty.replace("git_branch=", &format!("git_branch={value}"));
+        assert_eq!(
+            RemoteContext::decode(key(), &wire)
+                .unwrap()
+                .unwrap()
+                .value(RemoteContextField::GitBranch),
+            Some(value.as_str())
+        );
+    }
+    for value in ["x".repeat(257), "é".repeat(129)] {
+        let wire = empty.replace("git_branch=", &format!("git_branch={value}"));
+        assert_eq!(
+            RemoteContext::decode(key(), &wire),
+            Err(Error::InvalidFrame)
+        );
+    }
+}
 fn enhanced() -> Options {
     let mut options = Options::conservative(key());
     options.shell = RemoteShell::Bash;
@@ -76,6 +171,423 @@ fn unknown_options_are_not_guessed() {
             InvocationClass::Passthrough(_)
         ));
     }
+}
+#[test]
+fn wrapper_accepts_known_interactive_options_before_observed_config_review() {
+    for args in [
+        vec!["-A", "host"],
+        vec!["-avv", "host"],
+        vec!["-o", "ServerAliveInterval=30", "host"],
+        vec!["-oIdentityFile=key with spaces", "host"],
+        vec!["-L", "8080:localhost:80", "host"],
+        vec!["-vp2222", "host"],
+        vec!["-i/fixture/界 key", "host"],
+    ] {
+        assert!(
+            matches!(
+                invocation(&args).classify_for_wrapper(true, true),
+                InvocationClass::Interactive { .. }
+            ),
+            "known interactive option was not admitted for observed review: {args:?}"
+        );
+    }
+}
+
+#[test]
+fn wrapper_counts_option_values_not_option_like_contents() {
+    for args in [
+        vec!["-i", "-N", "host"],
+        vec!["-vvi-N", "host"],
+        vec!["-o", "IdentityFile=-N", "host"],
+        vec!["-p", "2222", "-o", "ServerAliveInterval=30", "--", "host"],
+    ] {
+        let request = invocation(&args);
+        assert_eq!(
+            request.classify_for_wrapper(true, true),
+            InvocationClass::Interactive {
+                destination_index: args.len() - 1
+            },
+            "{args:?}"
+        );
+        assert_eq!(request.arguments(), invocation(&args).arguments());
+    }
+}
+
+#[test]
+fn wrapper_does_not_enhance_control_subsystem_query_or_background_modes() {
+    for flag in [
+        "-N",
+        "-n",
+        "-T",
+        "-f",
+        "-s",
+        "-W",
+        "-O",
+        "-G",
+        "-V",
+        "-M",
+        "-MM",
+        "-Q",
+        "-qN",
+        "-vf",
+        "-vvT",
+        "-Ocheck",
+        "-Qcipher",
+        "-Wlocalhost:22",
+    ] {
+        assert_eq!(
+            invocation(&[flag, "host"]).classify_for_wrapper(true, true),
+            InvocationClass::Passthrough(PassReason::TransportOrControl),
+            "{flag}"
+        );
+    }
+}
+
+#[test]
+fn wrapper_leaves_commands_and_nonterminal_streams_native() {
+    for args in [
+        vec!["-A", "host", "uptime"],
+        vec!["host", ""],
+        vec!["--", "host", "-N"],
+        vec!["host", "printf '%s' '$HOME'"],
+    ] {
+        assert_eq!(
+            invocation(&args).classify_for_wrapper(true, true),
+            InvocationClass::Passthrough(PassReason::ExplicitCommand)
+        );
+    }
+    for terminals in [(false, false), (false, true), (true, false)] {
+        assert_eq!(
+            invocation(&["host"]).classify_for_wrapper(terminals.0, terminals.1),
+            InvocationClass::Passthrough(PassReason::NotInteractive)
+        );
+    }
+}
+
+#[test]
+fn wrapper_keeps_incomplete_unknown_and_ambiguous_arguments_native() {
+    for args in [
+        vec!["-"],
+        vec!["--unknown", "host"],
+        vec!["-vZ", "host"],
+        vec!["-p"],
+        vec!["-p", "0", "host"],
+        vec!["-p65536", "host"],
+        vec!["-p+22", "host"],
+        vec!["-o", "", "host"],
+        vec!["-i", "path\nother", "host"],
+        vec!["-界", "host"],
+    ] {
+        assert_eq!(
+            invocation(&args).classify_for_wrapper(true, true),
+            InvocationClass::Passthrough(PassReason::UnsupportedOption),
+            "{args:?}"
+        );
+    }
+    assert_eq!(
+        invocation(&["-v", "--"]).classify_for_wrapper(true, true),
+        InvocationClass::Passthrough(PassReason::NoDestination)
+    );
+    assert_eq!(
+        invocation(&["--", "-host"]).classify_for_wrapper(true, true),
+        InvocationClass::Passthrough(PassReason::AmbiguousDestination)
+    );
+}
+
+const INTERACTIVE_CONFIG: &str = "requesttty auto\nsessiontype default\nstdinnull no\nforkafterauthentication no\ncontrolmaster false\n";
+
+#[test]
+fn effective_configuration_observes_interactive_settings_without_remotecommand() {
+    assert_eq!(
+        EffectiveConfig::parse(INTERACTIVE_CONFIG.as_bytes())
+            .unwrap()
+            .passthrough_reason(),
+        None
+    );
+    for value in ["yes", "force"] {
+        let text =
+            INTERACTIVE_CONFIG.replace("requesttty auto", &format!("requesttty {value}"));
+        assert_eq!(
+            EffectiveConfig::parse(text.as_bytes())
+                .unwrap()
+                .passthrough_reason(),
+            None
+        );
+    }
+    for value in ["no", "auto", "autoask"] {
+        let text = INTERACTIVE_CONFIG
+            .replace("controlmaster false", &format!("controlmaster {value}"));
+        assert_eq!(
+            EffectiveConfig::parse(text.as_bytes())
+                .unwrap()
+                .passthrough_reason(),
+            None
+        );
+    }
+}
+
+#[test]
+fn effective_configuration_keeps_commands_and_noninteractive_modes_native() {
+    for command in ["uptime", "none", "", "none\nidentityfile /fixture/key"] {
+        let text = format!("{INTERACTIVE_CONFIG}remotecommand {command}\n");
+        assert_eq!(
+            EffectiveConfig::parse(text.as_bytes())
+                .unwrap()
+                .passthrough_reason(),
+            Some(PassReason::ExplicitCommand)
+        );
+    }
+    for (before, after, reason) in [
+        (
+            "requesttty auto",
+            "requesttty no",
+            PassReason::NotInteractive,
+        ),
+        ("stdinnull no", "stdinnull yes", PassReason::NotInteractive),
+        (
+            "sessiontype default",
+            "sessiontype none",
+            PassReason::TransportOrControl,
+        ),
+        (
+            "sessiontype default",
+            "sessiontype subsystem",
+            PassReason::TransportOrControl,
+        ),
+        (
+            "forkafterauthentication no",
+            "forkafterauthentication yes",
+            PassReason::TransportOrControl,
+        ),
+        (
+            "controlmaster false",
+            "controlmaster true",
+            PassReason::TransportOrControl,
+        ),
+        (
+            "controlmaster false",
+            "controlmaster ask",
+            PassReason::TransportOrControl,
+        ),
+    ] {
+        let text = INTERACTIVE_CONFIG.replace(before, after);
+        assert_eq!(
+            EffectiveConfig::parse(text.as_bytes())
+                .unwrap()
+                .passthrough_reason(),
+            Some(reason)
+        );
+    }
+}
+
+#[test]
+fn effective_configuration_rejects_incomplete_duplicate_unknown_or_malformed_facts() {
+    for line in INTERACTIVE_CONFIG.lines() {
+        let missing = INTERACTIVE_CONFIG.replace(&format!("{line}\n"), "");
+        assert_eq!(
+            EffectiveConfig::parse(missing.as_bytes()),
+            Err(Error::InvalidConfiguration)
+        );
+        let duplicate = format!("{INTERACTIVE_CONFIG}{line}\n");
+        assert_eq!(
+            EffectiveConfig::parse(duplicate.as_bytes()),
+            Err(Error::InvalidConfiguration)
+        );
+        let name = line.split_once(' ').unwrap().0;
+        let unknown = INTERACTIVE_CONFIG.replace(line, &format!("{name} unsupported"));
+        assert_eq!(
+            EffectiveConfig::parse(unknown.as_bytes()),
+            Err(Error::InvalidConfiguration)
+        );
+    }
+    for extra in [
+        "invalid",
+        " key value",
+        "requesttty auto\0",
+        "remotecommand x\nremotecommand y",
+        "hostname x\x1b",
+    ] {
+        assert_eq!(
+            EffectiveConfig::parse(format!("{INTERACTIVE_CONFIG}{extra}\n").as_bytes()),
+            Err(Error::InvalidConfiguration)
+        );
+    }
+    assert_eq!(
+        EffectiveConfig::parse(b""),
+        Err(Error::InvalidConfiguration)
+    );
+}
+
+#[test]
+fn effective_configuration_discards_private_values_and_accepts_crlf() {
+    let text = format!("host private-canary\nhostname private-canary\nidentityfile /fixture/private-canary\n{INTERACTIVE_CONFIG}").replace('\n', "\r\n");
+    let observed = EffectiveConfig::parse(text.as_bytes()).unwrap();
+    assert_eq!(observed.passthrough_reason(), None);
+    assert!(!format!("{observed:?}").contains("private-canary"));
+    assert!(std::mem::size_of::<EffectiveConfig>() <= 16);
+}
+
+#[test]
+fn effective_configuration_accepts_native_openssh_mixed_case_keywords() {
+    // OpenSSH's real -G dump uses this spelling (including the capital P),
+    // although configuration keywords themselves are case-insensitive.
+    let text = format!("{INTERACTIVE_CONFIG}canonicalizePermittedcnames none\n");
+    assert_eq!(
+        EffectiveConfig::parse(text.as_bytes())
+            .unwrap()
+            .passthrough_reason(),
+        None
+    );
+}
+
+#[test]
+fn effective_configuration_preserves_persistent_automatic_masters() {
+    for master in ["auto", "autoask"] {
+        for persist in ["yes", "30", "3600"] {
+            let text = format!(
+                "{}controlpersist {persist}\n",
+                INTERACTIVE_CONFIG
+                    .replace("controlmaster false", &format!("controlmaster {master}"))
+            );
+            assert_eq!(
+                EffectiveConfig::parse(text.as_bytes())
+                    .unwrap()
+                    .passthrough_reason(),
+                Some(PassReason::TransportOrControl)
+            );
+        }
+        for persist in ["no", "0"] {
+            let text = format!(
+                "{}controlpersist {persist}\n",
+                INTERACTIVE_CONFIG
+                    .replace("controlmaster false", &format!("controlmaster {master}"))
+            );
+            assert_eq!(
+                EffectiveConfig::parse(text.as_bytes())
+                    .unwrap()
+                    .passthrough_reason(),
+                None
+            );
+        }
+    }
+    // ControlMaster=no cannot start a new master. Older -G output may omit
+    // ControlPersist entirely; do not make that optional evidence mandatory.
+    assert_eq!(
+        EffectiveConfig::parse(
+            format!("{INTERACTIVE_CONFIG}controlpersist yes\n").as_bytes()
+        )
+        .unwrap()
+        .passthrough_reason(),
+        None
+    );
+    assert_eq!(
+        EffectiveConfig::parse(INTERACTIVE_CONFIG.as_bytes())
+            .unwrap()
+            .passthrough_reason(),
+        None
+    );
+}
+
+#[test]
+fn native_interactive_configuration_is_independent_of_bootstrap_eligibility() {
+    for master in ["false", "no", "auto", "autoask"] {
+        for persist in ["no", "0", "yes", "30"] {
+            let text = format!(
+                "{}controlpersist {persist}\n",
+                INTERACTIVE_CONFIG
+                    .replace("controlmaster false", &format!("controlmaster {master}"))
+            );
+            let config = EffectiveConfig::parse(text.as_bytes()).unwrap();
+            assert!(config.native_interactive_eligible(), "{master}/{persist}");
+            if matches!(master, "auto" | "autoask") && matches!(persist, "yes" | "30") {
+                assert_eq!(
+                    config.passthrough_reason(),
+                    Some(PassReason::TransportOrControl)
+                );
+            }
+        }
+    }
+    assert!(EffectiveConfig::parse(INTERACTIVE_CONFIG.as_bytes())
+        .unwrap()
+        .native_interactive_eligible());
+    for tty in ["yes", "force"] {
+        let text =
+            INTERACTIVE_CONFIG.replace("requesttty auto", &format!("requesttty {tty}"));
+        assert!(EffectiveConfig::parse(text.as_bytes())
+            .unwrap()
+            .native_interactive_eligible());
+    }
+}
+
+#[test]
+fn native_interactive_configuration_rejects_command_subsystem_detached_and_control_modes()
+{
+    for command in ["uptime", "none", ""] {
+        let text = format!("{INTERACTIVE_CONFIG}remotecommand {command}\n");
+        assert!(!EffectiveConfig::parse(text.as_bytes())
+            .unwrap()
+            .native_interactive_eligible());
+    }
+    for (before, after) in [
+        ("requesttty auto", "requesttty no"),
+        ("sessiontype default", "sessiontype none"),
+        ("sessiontype default", "sessiontype subsystem"),
+        ("stdinnull no", "stdinnull yes"),
+        ("forkafterauthentication no", "forkafterauthentication yes"),
+        ("controlmaster false", "controlmaster true"),
+        ("controlmaster false", "controlmaster yes"),
+        ("controlmaster false", "controlmaster ask"),
+    ] {
+        let text = format!(
+            "{}controlpersist yes\n",
+            INTERACTIVE_CONFIG.replace(before, after)
+        );
+        assert!(
+            !EffectiveConfig::parse(text.as_bytes())
+                .unwrap()
+                .native_interactive_eligible(),
+            "{after}"
+        );
+    }
+}
+
+#[test]
+fn effective_configuration_rejects_ambiguous_persistence_evidence() {
+    for extra in [
+        "controlpersist unsupported\n",
+        "controlpersist -1\n",
+        "controlpersist \n",
+        "controlpersist no\ncontrolpersist yes\n",
+    ] {
+        assert_eq!(
+            EffectiveConfig::parse(format!("{INTERACTIVE_CONFIG}{extra}").as_bytes()),
+            Err(Error::InvalidConfiguration)
+        );
+    }
+}
+
+#[test]
+fn effective_configuration_has_output_line_and_line_count_budgets() {
+    assert_eq!(
+        EffectiveConfig::parse(&vec![b'x'; MAX_EFFECTIVE_CONFIG_BYTES + 1]),
+        Err(Error::ConfigurationLimit)
+    );
+    let valid_line = format!("ignored {}", "x".repeat(4096 - 8));
+    assert!(EffectiveConfig::parse(
+        format!("{INTERACTIVE_CONFIG}{valid_line}\n").as_bytes()
+    )
+    .is_ok());
+    assert_eq!(
+        EffectiveConfig::parse(format!("{INTERACTIVE_CONFIG}{valid_line}x\n").as_bytes()),
+        Err(Error::ConfigurationLimit)
+    );
+    let exactly_full =
+        format!("{INTERACTIVE_CONFIG}{}", "ignored value\n".repeat(1024 - 5));
+    assert!(EffectiveConfig::parse(exactly_full.as_bytes()).is_ok());
+    assert_eq!(
+        EffectiveConfig::parse(format!("{exactly_full}ignored value\n").as_bytes()),
+        Err(Error::ConfigurationLimit)
+    );
 }
 #[test]
 fn missing_and_invalid_option_values_are_native() {
@@ -213,6 +725,7 @@ fn unimplemented_shells_are_explicit_fallbacks() {
         RemoteShell::Zsh,
         RemoteShell::Fish,
         RemoteShell::PowerShell,
+        RemoteShell::Pwsh,
     ] {
         let mut options = enhanced();
         options.shell = shell;

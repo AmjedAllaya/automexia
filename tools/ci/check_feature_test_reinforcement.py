@@ -821,7 +821,7 @@ LOCAL_TOOL_CONTRACTS["local_tool_tests"] += (
     "assert_eq!(result, expected_files)", "assert_eq!(result, expected_matches)",
 )
 LOCAL_TOOL_CONTRACTS["cli_process"] += (
-    "self.completion.pin_members()", "self.completion.is_empty()?",
+    "completion.pin_members()", "completion.is_empty()",
     "windows_completion::members_stopped(&self.members)?", "if self.reaped && tree_empty",
     "if had_lease && !self.reaped", "GetProcessHandleCount", "for _ in 0..20",
     '"native handles grew after completed capture"',
@@ -829,6 +829,8 @@ LOCAL_TOOL_CONTRACTS["cli_process"] += (
     "for _ in 0..4", "for iteration in 0..25", "AMX_PROCESS_RELEASE",
     '"fixture must remain live until the parent pins its identity"',
     '"pinned native descendant remained live after capture; later completion={}"',
+    "fn amx_native_interactive_cancellation_reaps_only_the_owned_leader()",
+    "fn amx_native_interactive_preserves_intentional_background_connection()",
 )
 
 LOCAL_TOOL_CONTRACTS["cli_completion"] = (
@@ -860,8 +862,56 @@ def _validate_local_tool_sources(sources: dict[str, str]) -> None:
     editor = _source_slice(sources["editor"], "fn selected_editor(", "pub fn execute(", "editor preference policy")
     _require_order(editor, ("configured.scheme()?;", "override_editor.unwrap_or(configured)", "selected.scheme()?;"), "disable-before-editor-override")
     _require_fragments(sources["editor"], ('uri.insert(boundary,',), "editor UNC identity")
-    retire = _source_slice(sources["cli_process"], "fn retire(", "fn cleanup(", "native completion")
-    _require_order(retire, ("self.completion.pin_members()", "self.inner.start_kill()", "self.members = members?"), "pin-before-termination")
+    # Captured tools and enhanced sessions retain full Tree ownership. Only the
+    # explicit native interactive entry point may preserve a background master.
+    # Check each owning body so a token in another function cannot satisfy it.
+    process = re.sub(r"\s+", "", re.sub(r"//[^\n]*", "", sources["cli_process"]))
+    interactive = _source_slice(process, "fninteractive(", "fninteractive_native(", "interactive ownership")
+    _require_fragments(interactive, ("interactive_inner(command,cancelled,Ownership::Tree,|_|Ok(()))",), "interactive Tree ownership")
+    native = _source_slice(process, "fninteractive_native(", "enumOwnership", "native interactive ownership")
+    _require_fragments(native, ("interactive_inner(command,cancelled,Ownership::Leader,|_|Ok(()))",), "native Leader ownership")
+    capture = _source_slice(process, "fncapture_inner(", "fncancelled_error(", "captured process ownership")
+    _require_fragments(capture, ("spawn_owned(command,true,Ownership::Tree)?",), "captured Tree ownership")
+    _require_fragments(capture, (
+        "(!upload&&limits.timeout>Duration::from_secs(60))",
+        "(upload&&limits.timeout>Duration::from_secs(120))",
+        "CaptureInput::Upload(snapshot)=>Stdio::from(snapshot)",
+        ".stderr(ifupload{Stdio::inherit()}else{Stdio::piped()})",
+        "ifcleanup.is_err(){returnErr(incomplete_retirement(child));}",
+    ), "bounded explicit upload mode and retained captured ownership")
+    spawn = _source_slice(process, "fnspawn_owned(", "fncapture_inner(", "native job ownership")
+    _require_order(spawn, (
+        "letcompletion=ifownership==Ownership::Tree{Some(windows_completion::CompletionJob::new()?)}else{None};",
+        "ifletSome(completion)=&completion{command.wrap(process_wrap::std::JobObject).wrap(completion.clone());}",
+        "inner:command.spawn()",
+    ), "Tree job wrapping before spawn")
+    interactive_inner = _source_slice(process, "fninteractive_inner(", "fnspawn_owned(", "interactive process completion")
+    _require_order(interactive_inner, (
+        "letmutforeground=ifownership==Ownership::Tree{unix_foreground::Foreground::prepare()?}else{None};",
+        "#[cfg(unix)]letisolated_group=ownership==Ownership::Tree;",
+        "#[cfg(not(unix))]letisolated_group=false;",
+        "spawn_owned(command,isolated_group,ownership)?",
+        "foreground.attach(child.inner.id())?",
+        "foreground.poll_stopped(&cancelled)?",
+        "ifownership==Ownership::Tree{child.retire()?;}",
+        "child.inner.try_wait()", "child.reaped=true", "letcleanup=child.cleanup();",
+        "letrestoration=foreground.as_mut().map(|owner|owner.restore()).transpose();",
+        "ifcleanup.is_err(){returnErr(incomplete_retirement(child));}", "restoration?;",
+    ), "Tree group retirement, native leader reaping and terminal restoration")
+    retained = _source_slice(process, "fnincomplete_retirement(", "implstd::fmt::DisplayforIncompleteRetirement", "retained cleanup owner")
+    _require_fragments(retained, ("child:std::sync::Mutex::new(Some(child))",), "timeout preserves the exact child owner")
+    retry = _source_slice(process, "fnretry_retirement(", "fnspawn_owned(", "retirement retry")
+    _require_order(retry, ("owner.child.lock()", "child.cleanup()?;", "child.take();"), "retry confirms retirement before releasing ownership")
+    retire = _source_slice(process, "fnretire(", "fncleanup(", "native completion")
+    _require_order(retire, (
+        "letmembers=self.completion.as_ref().map(|completion|completion.pin_members()).transpose();",
+        "self.inner.start_kill()", "self.members=members?.unwrap_or_default();",
+    ), "pin-before-termination")
+    cleanup = _source_slice(process, "fncleanup(", "implDropforOwnedChild", "native completion cleanup")
+    _require_fragments(cleanup, (
+        "lettree_empty=self.completion.as_ref().map(|completion|completion.is_empty()).transpose()?.unwrap_or(true)&&windows_completion::members_stopped(&self.members)?;",
+        "ifself.reaped&&tree_empty{returnOk(());}",
+    ), "Tree quiescence and pinned member retirement")
 
 
 def _validate_native_contract_sources(sources: dict[str, str]) -> None:

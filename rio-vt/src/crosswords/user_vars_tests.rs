@@ -36,6 +36,20 @@ fn retained_bytes(terminal: &Crosswords<VoidListener>) -> usize {
         .sum()
 }
 
+#[test]
+fn scoped_remote_metadata_cannot_replace_local_directory() {
+    let mut terminal = terminal();
+    let mut processor = Processor::default();
+    terminal.current_directory = Some(std::path::PathBuf::from("/local/work"));
+    publish(&mut processor, &mut terminal, "terminal_scope_v1",
+        b"AMXSCOPE1|begin|66687aadf862bd776c8fc18b8e9f8e20089714856ee233b3902a591d0d5f2925|1|2|bash");
+    processor.advance(&mut terminal, b"\x1b]7;file://remote/remote/work\x07");
+    assert_eq!(
+        terminal.current_directory, None,
+        "remote paths must not become local discovery or clone inputs"
+    );
+}
+
 fn fill_count(processor: &mut Processor, terminal: &mut Crosswords<VoidListener>) {
     for index in 0..128 {
         publish(processor, terminal, &format!("k{index:03}"), b"v");
@@ -174,7 +188,7 @@ fn user_var_bounds_invalid_encodings_and_empty_name_preserve_previous_value() {
 }
 
 #[test]
-fn user_var_bounds_rejection_does_not_end_active_prompt_or_damage_cells() {
+fn user_var_bounds_rejection_wakes_metadata_without_ending_active_prompt() {
     for full_count in [true, false] {
         let mut terminal = terminal();
         let mut processor = Processor::default();
@@ -193,6 +207,7 @@ fn user_var_bounds_rejection_does_not_end_active_prompt_or_damage_cells() {
         }
         terminal.reset_damage();
         let previous = terminal.user_vars.clone();
+        let cursor = terminal.grid.cursor.pos;
         publish(
             &mut processor,
             &mut terminal,
@@ -207,10 +222,10 @@ fn user_var_bounds_rejection_does_not_end_active_prompt_or_damage_cells() {
             terminal.user_vars == previous,
             "rejected update changed the dictionary"
         );
-        assert_eq!(
-            terminal.peek_damage_event(),
-            None,
-            "rejected data scheduled metadata damage"
+        assert_eq!(terminal.grid.cursor.pos, cursor);
+        assert!(
+            terminal.peek_damage_event().is_some(),
+            "rejected data must invalidate stale display metadata"
         );
     }
 }

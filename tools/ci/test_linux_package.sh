@@ -21,7 +21,7 @@ tar -xzf "$archive" -C "$portable_root"
 portable=$(find "$portable_root" -type f -name automexia -print -quit)
 test -n "$portable"
 portable_dir=$(dirname "$portable")
-for name in automexia amx automexia-suggestion-helper; do
+for name in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
     test -x "$portable_dir/$name"
 done
 "$portable" --version | grep -F "$version"
@@ -32,12 +32,12 @@ rpm -qip "$rpm" >/dev/null
 # Query the RPM manifest directly. Extracting it through rpm2cpio/cpio under
 # pipefail is needlessly fragile and has produced intermittent false failures.
 rpm -qpl "$rpm" | grep -Fx '/usr/bin/automexia' >/dev/null
-for name in amx automexia-suggestion-helper; do
+for name in amx automexia-suggestion-helper automexia-ssh-helper; do
     rpm -qpl "$rpm" | grep -Fx "/usr/bin/$name" >/dev/null
 done
 
 check_installed_runtime() {
-    for name in automexia amx automexia-suggestion-helper; do
+    for name in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
         test -x "/usr/bin/$name"
     done
     /usr/bin/automexia --version | grep -F "$version"
@@ -45,7 +45,7 @@ check_installed_runtime() {
 }
 
 check_uninstalled_runtime() {
-    for name in automexia amx automexia-suggestion-helper; do
+    for name in automexia amx automexia-suggestion-helper automexia-ssh-helper; do
         if test -e "/usr/bin/$name"; then
             echo "Uninstall left /usr/bin/$name behind" >&2
             exit 1

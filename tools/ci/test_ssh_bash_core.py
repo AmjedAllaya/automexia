@@ -31,16 +31,23 @@ MAX_OUTPUT = 256 * 1024
 PROMPT = b'AMX_AUDIT_PROMPT> '
 READY = b'\x1b]1337;SetUserVar=automexia_ssh_ready='
 CWD = b'\x1b]1337;SetUserVar=automexia_ssh_cwd='
+USER = b'\x1b]1337;SetUserVar=automexia_ssh_user='
+CONTEXT = b'\x1b]1337;SetUserVar=automexia_ssh_context='
+CONTEXT_FIELDS = ('git_branch', 'kubernetes_context', 'kubernetes_namespace', 'docker_context',
+                  'terraform_workspace', 'environment', 'aws_profile', 'azure_cloud', 'gcp_project')
+EMPTY_CONTEXT = 'AMXSSHCTX1|3|7|\n' + ''.join(field + '=\n' for field in CONTEXT_FIELDS)
 
 
 def fixture_core() -> str:
     source = (ROOT / 'automexia-ssh-integration/resources/bash-core.bash').read_text(encoding='utf-8')
     values = {
-        '@@RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|1|3').decode(),
-        '@@PROMPT_RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|1|1').decode(),
-        '@@DOWNGRADE_RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|2|1').decode(),
+        '@@RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|1|7').decode(),
+        '@@PROMPT_RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|1|5').decode(),
+        '@@DOWNGRADE_RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|2|5').decode(),
         '@@REVOKE_RECEIPT@@': base64.b64encode(b'AMXSSH1|3|7|3|0').decode(),
         '@@CLEAR_CWD@@': base64.b64encode(b'AMXSSHCWD1|3|7|').decode(),
+        '@@CLEAR_USER@@': base64.b64encode(b'AMXSSHUSER1|3|7|').decode(),
+        '@@CLEAR_CONTEXT@@': base64.b64encode(EMPTY_CONTEXT.encode()).decode(),
         '@@PANE@@': '3', '@@GENERATION@@': '7', '@@PATH_LIMIT@@': '4000',
     }
     for key, value in values.items(): source = source.replace(key, value)
@@ -73,7 +80,9 @@ def setUpModule() -> None:
 
 class Shell:
     def __init__(self, profile: str = '', *, bootstrap: bool = False,
-                 fail_mktemp: bool = False, cwd_name: str = 'project', initial_umask: int = 0o022, extra_bins: dict[str, str] | None = None) -> None:
+                 fail_mktemp: bool = False, cwd_name: str = 'project', initial_umask: int = 0o022, extra_bins: dict[str, str] | None = None,
+                 echo_input: bool = False, user_name: str = 'remote-user',
+                 launch_arguments: list[str] | None = None) -> None:
         import pty
         import termios
         self.temporary = tempfile.TemporaryDirectory(prefix='automexia-ssh-audit-')
@@ -98,6 +107,11 @@ class Shell:
         else:
             rc.write_text(startup + core, encoding='utf-8')
             argv = [BASH, '--noprofile', '--rcfile', str(rc), '-i']
+        if launch_arguments is not None:
+            if not launch_arguments or len(launch_arguments) > 256 or sum(len(arg.encode()) for arg in launch_arguments) > 65536:
+                self.temporary.cleanup()
+                raise ValueError('Fixture launch argument budget exceeded')
+            argv = launch_arguments
         bin_dir = self.root / 'bin'
         bin_dir.mkdir()
         # Constrain bash resolution to the explicitly selected test executable.
@@ -112,7 +126,8 @@ class Shell:
             target.write_text(body, encoding='utf-8')
             target.chmod(0o700)
         env = {'HOME': str(self.root), 'PATH': f'{bin_dir}:/usr/bin:/bin',
-               'TERM': 'xterm-256color', 'TMPDIR': str(self.tmp), 'LC_ALL': 'C.UTF-8'}
+               'TERM': 'xterm-256color', 'TMPDIR': str(self.tmp), 'LC_ALL': 'C.UTF-8',
+               'USER': user_name}
         try:
             self.pid, self.fd = pty.fork()
             if self.pid == 0:
@@ -123,7 +138,10 @@ class Shell:
                 finally:
                     os._exit(127)
             attributes = termios.tcgetattr(self.fd)
-            attributes[3] &= ~(termios.ECHO | termios.ECHONL)
+            if echo_input:
+                attributes[3] |= termios.ECHO
+            else:
+                attributes[3] &= ~(termios.ECHO | termios.ECHONL)
             termios.tcsetattr(self.fd, termios.TCSANOW, attributes)
             self.initial = self.until(PROMPT)
         except BaseException:
@@ -161,13 +179,15 @@ class Shell:
                 raise RuntimeError('Bash fixture exceeded the output ceiling')
 
     def command(self, command: str) -> bytes:
-        data = (command + '\n').encode('utf-8')
+        return self.send((command + '\n').encode('utf-8'), PROMPT)
+
+    def send(self, data: bytes, marker: bytes = PROMPT) -> bytes:
         if len(data) > 8192:
             raise ValueError('Fixture input budget exceeded')
         while data:
             count = os.write(self.fd, data)
             data = data[count:]
-        return self.until(PROMPT)
+        return self.until(marker)
 
     def close(self) -> None:
         if self.closed:
@@ -230,9 +250,9 @@ class ActivationRegressions(unittest.TestCase):
         with Shell() as shell:
             output = shell.initial + shell.command('true')
             self.assertIn(PROMPT, output)
-            self.assertIn(b'\x1b]133;A\x07', output)
+            self.assertIn(b'\x1b]133;A;aid=1\x07', output)
             self.assertIn(b'\x1b]133;B\x07', output)
-            self.assertEqual(advertised(output), 3)
+            self.assertEqual(advertised(output), 7)
 
     def test_04_existing_hook_receives_actual_exit_status(self) -> None:
         with Shell("PROMPT_COMMAND='printf \"AMX_STATUS=%s\\n\" \"$?\"'") as shell:
@@ -242,7 +262,7 @@ class ActivationRegressions(unittest.TestCase):
     def test_05_dynamic_prompt_must_not_false_advertise_markers(self) -> None:
         with Shell("PROMPT_COMMAND='PS1=\"AMX_AUDIT_PROMPT> \"'") as shell:
             output = shell.initial + shell.command('true')
-            self.assertTrue(not (advertised(output) & 1) or b'\x1b]133;A\x07' in output,
+            self.assertTrue(not (advertised(output) & 1) or b'\x1b]133;A;aid=' in output,
                 'Readiness claims prompt markers, but the real prompt loop emits none')
 
     def test_06_readonly_helper_collision_must_not_false_advertise_cwd(self) -> None:
@@ -308,7 +328,7 @@ class AdditionalContracts(unittest.TestCase):
         with Shell('PROMPT_COMMAND=\'PS1="AMX_AUDIT_PROMPT> "\'') as shell:
             for _ in range(8):
                 output = shell.command('true')
-                self.assertEqual(output.count(b'\x1b]133;A\x07'), 1)
+                self.assertEqual(output.count(b'\x1b]133;A;aid='), 1)
     def test_hook_array_preserves_order_and_first_status(self):
         with Shell('PROMPT_COMMAND=(\'printf "FIRST=%s\\n" "$?"\' \'printf "SECOND\\n"\')') as shell:
             data = shell.command('(exit 23)')
@@ -390,12 +410,229 @@ class AdditionalContracts(unittest.TestCase):
             self.assertNotIn(b'ALIAS_CANARY', shell.initial)
     def test_user_printf_alias_cannot_rewrite_metadata(self):
         with Shell("alias printf='echo PRINTF_CANARY'") as shell:
-            self.assertEqual(advertised(shell.initial), 3)
+            self.assertEqual(advertised(shell.initial), 7)
             self.assertNotIn(b'PRINTF_CANARY', shell.initial)
     def test_bootstrap_cleanup_does_not_modify_similarly_named_profile_variables(self):
         with Shell("readonly __amx_rc=profile_owned __amx_dir=profile_owned", bootstrap=True) as shell:
             data=shell.command('builtin printf "%s:%s\\n" "$__amx_rc" "$__amx_dir"')
             self.assertIn(b'profile_owned:profile_owned', data)
+
+
+class CommandLifecycle(unittest.TestCase):
+    def test_context_spacer_and_editor_share_one_stable_prompt_identity(self):
+        with Shell(echo_input=True) as shell:
+            self.assertIn(b'\x1b]133;A;aid=1\x07 \r\n', shell.initial)
+            self.assertIn(b'\x1b]133;P;k=c;aid=1\x07' + PROMPT, shell.initial)
+            for data in [shell.command(''), shell.send(b'\x0c'), shell.send(b'cancel-me\x03')]:
+                self.assertNotIn(b'aid=2', data)
+                self.assertIn(b'\x1b]133;P;k=c;aid=1\x07', data)
+            data = shell.command('true')
+            self.assertIn(b'\x1b]133;A;aid=2\x07 \r\n', data)
+            self.assertIn(b'\x1b]133;P;k=c;aid=2\x07', data)
+
+    def test_real_commands_publish_start_and_original_exit_status(self):
+        profile = 'PROMPT_COMMAND=(\'printf "NATIVE_STATUS=%s\\n" "$?"\' true)'
+        with Shell(profile) as shell:
+            self.assertNotIn(b'\x1b]133;D;', shell.initial)
+            for command, status in [('true', 0), ('false', 1), ('(exit 23)', 23), ('false | true', 0),
+                                    ('set -o pipefail; false | true', 1)]:
+                with self.subTest(command=command):
+                    data = shell.command(command)
+                    self.assertEqual(data.count(b'\x1b]133;C'), 1)
+                    self.assertEqual(re.findall(rb'\x1b]133;D;(\d+)\x07', data), [str(status).encode()])
+                    self.assertIn(f'NATIVE_STATUS={status}'.encode(), data)
+                    self.assertLess(data.index(b'\x1b]133;C'), data.index(b'\x1b]133;D;'))
+
+    def test_empty_enter_does_not_complete_the_previous_command_twice(self):
+        with Shell() as shell:
+            shell.command('false')
+            for _ in range(3):
+                data = shell.command('')
+                self.assertNotIn(b'\x1b]133;C', data)
+                self.assertNotIn(b'\x1b]133;D', data)
+
+    def test_readline_clear_redraws_without_a_new_prompt_or_command(self):
+        with Shell(echo_input=True) as shell:
+            for _ in range(3):
+                data = shell.send(b'\x0c')
+                self.assertNotIn(b'\x1b]133;A', data)
+                self.assertIn(b'\x1b]133;P;k=c;aid=1\x07', data)
+                self.assertNotIn(b'\x1b]133;C', data)
+                self.assertNotIn(b'\x1b]133;D', data)
+
+    def test_cancelled_edit_does_not_publish_a_completed_command(self):
+        with Shell() as shell:
+            data = shell.send(b'not-executed\x03')
+            self.assertNotIn(b'\x1b]133;C', data)
+            self.assertNotIn(b'\x1b]133;D', data)
+            self.assertIn(b'\x1b]133;A', data)
+
+    def test_interrupting_a_running_command_reports_its_real_failure(self):
+        with Shell() as shell:
+            before = shell.send(b'(printf RUNNING; exec sleep 30)\n', b'RUNNING')
+            self.assertIn(b'\x1b]133;C', before)
+            data = shell.send(b'\x03')
+            self.assertEqual(re.findall(rb'\x1b]133;D;(\d+)\x07', data), [b'130'])
+            self.assertNotIn(b'\x1b]133;D', shell.command(''))
+
+    def test_unset_optional_prompts_with_nounset_preserve_native_shell(self):
+        with Shell('unset PS0 PS2; set -u') as shell:
+            data = shell.command('true')
+            self.assertIn(b'\x1b]133;C', data)
+            self.assertIn(b'\x1b]133;D;0\x07', data)
+            self.assertNotIn(b'unbound variable', shell.initial + data)
+
+    def test_native_hooks_can_update_preexecution_text_without_duplicates(self):
+        with Shell('PROMPT_COMMAND=\'PS0="NATIVE_PREEXEC\\n"\'') as shell:
+            for _ in range(3):
+                data = shell.command('true')
+                self.assertEqual(data.count(b'NATIVE_PREEXEC'), 1)
+                self.assertEqual(data.count(b'\x1b]133;C'), 1)
+
+    def test_later_foreign_prompt_revokes_all_owned_prompt_markers(self):
+        with Shell() as shell:
+            data = shell.command("PS1='\\[\\e]133;A\\a\\]AMX_AUDIT_PROMPT> '")
+            self.assertEqual(advertised(data), 0)
+            data = shell.command('true')
+            self.assertNotIn(b'\x1b]133;C', data)
+            self.assertNotIn(b'\x1b]133;D', data)
+            self.assertNotIn(b'\x1b]133;P;k=c', data)
+
+    def test_native_preexecution_text_and_secondary_prompt_are_preserved(self):
+        with Shell('PS0="NATIVE_PREEXEC\\n"; PS2="NATIVE_SECONDARY> "') as shell:
+            first = shell.send(b'printf "%s\\n" "first\n', b'NATIVE_SECONDARY> ')
+            self.assertIn(b'\x1b]133;P;k=s;aid=1\x07', first)
+            self.assertNotIn(b'\x1b]133;C', first)
+            data = shell.send(b'second"\n')
+            self.assertIn(b'NATIVE_PREEXEC', data)
+            self.assertIn(b'first\r\nsecond', data)
+            self.assertEqual(data.count(b'\x1b]133;C'), 1)
+            self.assertIn(b'\x1b]133;D;0\x07', data)
+
+    def test_conflicting_preexecution_and_secondary_prompts_decline(self):
+        for profile in ['readonly PS0="native"', 'readonly PS2="secondary"',
+                        "PS0='\\[\\e]133;C\\a\\]'", "PS2='\\[\\e]133;P;k=s\\a\\]secondary'",
+                        "original='native'; declare -n PS0=original"]:
+            with self.subTest(profile=profile), Shell(profile) as shell:
+                self.assertEqual(advertised(shell.initial), 0)
+
+    def test_redirected_terminal_stream_does_not_capture_prompt_markers(self):
+        with Shell() as shell:
+            # Restore stderr after a prompt without depending on its hidden text.
+            shell.send(b'exec 2>"$HOME/captured-stderr"\nprintf SYNC\n', b'SYNC')
+            shell.send(b'exec 2>/dev/tty\n')
+            captured = (shell.root / 'captured-stderr').read_bytes()
+            self.assertNotIn(b'\x1b]', captured)
+            self.assertIn(PROMPT, captured)
+
+
+def user_frames(output: bytes) -> list[str]:
+    return [base64.b64decode(value, validate=True).decode('utf-8')
+            for value in re.findall(re.escape(USER) + rb'([^\x07]*)\x07', output)]
+
+
+class RemoteUserMetadata(unittest.TestCase):
+    def test_remote_user_is_scoped_encoded_and_replayed(self):
+        with Shell(user_name='remote-user') as shell:
+            for data in [shell.initial, shell.command('true')]:
+                self.assertIn('AMXSSHUSER1|3|7|remote-user', user_frames(data))
+                self.assertNotIn(b'remote-user', data)
+
+    def test_utf8_names_are_bounded_in_bytes(self):
+        for user, expected in [('a' * 256, 'a' * 256), ('ü' * 128, 'ü' * 128),
+                               ('a' * 257, ''), ('ü' * 129, '')]:
+            with self.subTest(bytes=len(user.encode())), Shell(user_name=user) as shell:
+                self.assertEqual(set(user_frames(shell.initial)), {'AMXSSHUSER1|3|7|' + expected})
+
+    def test_control_characters_clear_the_scoped_user(self):
+        for user in ['a\nb', 'a\x1bb', 'a\x7fb', 'a\u0085b']:
+            with self.subTest(user=repr(user)), Shell(user_name=user) as shell:
+                self.assertEqual(set(user_frames(shell.initial)), {'AMXSSHUSER1|3|7|'})
+
+    def test_missing_user_uses_remote_logname_or_explicit_clear(self):
+        with Shell('unset USER; LOGNAME=remote-login') as shell:
+            self.assertIn('AMXSSHUSER1|3|7|remote-login', user_frames(shell.initial))
+        with Shell('unset USER LOGNAME') as shell:
+            self.assertEqual(set(user_frames(shell.initial)), {'AMXSSHUSER1|3|7|'})
+
+    def test_encoder_failure_clears_identity_without_leaking_raw_text(self):
+        with Shell(user_name='remote-user', extra_bins={'base64': '#!/bin/sh\nexit 1\n'}) as shell:
+            self.assertEqual(set(user_frames(shell.initial)), {'AMXSSHUSER1|3|7|'})
+            self.assertNotIn(b'remote-user', shell.initial)
+
+    def test_later_foreign_prompt_revokes_remote_identity(self):
+        with Shell() as shell:
+            data = shell.command("PS1='\\[\\e]133;A\\a\\]AMX_AUDIT_PROMPT> '")
+            self.assertEqual(user_frames(data), ['AMXSSHUSER1|3|7|'])
+
+
+def context_frames(output: bytes) -> list[dict[str, str]]:
+    frames = []
+    for encoded in re.findall(re.escape(CONTEXT) + rb'([^\x07]*)\x07', output):
+        lines = base64.b64decode(encoded, validate=True).decode('utf-8').splitlines()
+        if lines[0] != 'AMXSSHCTX1|3|7|' or len(lines) != 10:
+            raise AssertionError('context scope or complete snapshot contract changed')
+        values = dict(line.split('=', 1) for line in lines[1:])
+        if tuple(values) != CONTEXT_FIELDS:
+            raise AssertionError('context fields changed')
+        frames.append(values)
+    return frames
+
+
+class RemoteContextMetadata(unittest.TestCase):
+    def test_environment_snapshot_is_complete_scoped_and_updates(self):
+        profile = ('GIT_BRANCH=feature; KUBECONTEXT=cluster; KUBE_NAMESPACE=namespace; '
+                   'DOCKER_CONTEXT=engine; TF_WORKSPACE=workspace; AUTOMEXIA_ENV=development; '
+                   'AWS_PROFILE=profile; AZURE_CLOUD_NAME=cloud; CLOUDSDK_CORE_PROJECT=project')
+        expected = dict(zip(CONTEXT_FIELDS, ('feature', 'cluster', 'namespace', 'engine',
+                        'workspace', 'development', 'profile', 'cloud', 'project')))
+        with Shell(profile) as shell:
+            self.assertEqual(context_frames(shell.initial)[-1], expected)
+            data = shell.command('unset GIT_BRANCH KUBECONTEXT KUBE_NAMESPACE DOCKER_CONTEXT TF_WORKSPACE AUTOMEXIA_ENV AWS_PROFILE AZURE_CLOUD_NAME CLOUDSDK_CORE_PROJECT')
+            self.assertEqual(context_frames(data)[-1], dict.fromkeys(CONTEXT_FIELDS, ''))
+
+    def test_context_utf8_byte_limits_and_hostile_values_clear_one_field(self):
+        for value, expected in [('ü' * 128, 'ü' * 128), ('ü' * 129, ''), ('a\nb', ''),
+                                ('a\x1bb', ''), ('a\u0085b', ''), ('a\u202eb', ''),
+                                ('a\u2067b', ''), ('a\u200fb', ''), ('a\u061cb', '')]:
+            with self.subTest(bytes=len(value.encode())), Shell('GIT_BRANCH=' + shlex.quote(value) + '; TF_WORKSPACE=valid') as shell:
+                result = context_frames(shell.initial)[-1]
+                self.assertEqual(result['git_branch'], expected)
+                self.assertEqual(result['terraform_workspace'], 'valid')
+
+    def test_fallback_names_and_fixed_terminal_identity(self):
+        with Shell('KUBE_CONTEXT=fallback; ENVIRONMENT=development; AWS_DEFAULT_PROFILE=profile') as shell:
+            result = context_frames(shell.initial)[-1]
+            self.assertEqual((result['kubernetes_context'], result['environment'], result['aws_profile']),
+                             ('fallback', 'development', 'profile'))
+            data = shell.command("printf 'ENV=%s:%s\\n' \"$COLORTERM\" \"$TERM_PROGRAM\"")
+            self.assertIn(b'ENV=truecolor:Automexia', data)
+
+    def test_readonly_or_indirect_terminal_identity_preserves_native_shell(self):
+        for setup in ['readonly COLORTERM=native', 'readonly TERM_PROGRAM=native',
+                      'native=native; declare -n TERM_PROGRAM=native']:
+            with self.subTest(setup=setup), Shell(setup) as shell:
+                self.assertNotIn(READY, shell.initial)
+                self.assertNotIn(b'\x1b]133;', shell.initial)
+                self.assertNotIn(b'readonly variable', shell.initial)
+                self.assertIn(b'NATIVE_OK', shell.command('printf NATIVE_OK'))
+
+    def test_unchanged_context_is_cached_and_changed_context_encoded_once(self):
+        wrapper = '#!/bin/sh\nprintf x >> "$HOME/encodes"\nexec /usr/bin/base64 "$@"\n'
+        with Shell(extra_bins={'base64': wrapper}) as shell:
+            count = len((shell.root / 'encodes').read_bytes())
+            for _ in range(4): self.assertTrue(context_frames(shell.command('true')))
+            self.assertEqual(len((shell.root / 'encodes').read_bytes()), count)
+            self.assertEqual(context_frames(shell.command('GIT_BRANCH=changed'))[-1]['git_branch'], 'changed')
+            self.assertEqual(len((shell.root / 'encodes').read_bytes()), count + 1)
+
+    def test_encoder_failure_and_revocation_explicitly_clear_context(self):
+        with Shell('GIT_BRANCH=private', extra_bins={'base64': '#!/bin/sh\nexit 1\n'}) as shell:
+            self.assertEqual(context_frames(shell.initial)[-1], dict.fromkeys(CONTEXT_FIELDS, ''))
+            self.assertNotIn(b'private', shell.initial)
+        with Shell('GIT_BRANCH=feature') as shell:
+            data = shell.command("PS1='\\[\\e]133;A\\a\\]AMX_AUDIT_PROMPT> '")
+            self.assertEqual(context_frames(data)[-1], dict.fromkeys(CONTEXT_FIELDS, ''))
 
 
 if __name__ == '__main__':

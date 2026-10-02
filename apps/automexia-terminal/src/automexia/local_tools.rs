@@ -400,7 +400,7 @@ fn resolve_tool(program: &str) -> io::Result<PathBuf> {
             }
         }
     }
-    Err(io::Error::new(io::ErrorKind::NotFound, "required tool is missing; install ripgrep (rg) or tealdeer (tldr) explicitly. Nothing was installed"))
+    Err(io::Error::new(io::ErrorKind::NotFound, "required tool is missing; install the requested tool explicitly. Nothing was installed"))
 }
 
 #[cfg(test)]

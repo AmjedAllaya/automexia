@@ -722,12 +722,27 @@ network authority.
 
 ### extension-contract-runtime
 
-SSH planning remains non-activated. Its canonical dependency/source mutations,
-model/property scope and actual-generator controlling-PTY tests preserve native
-review ownership, permission masks, prompt hooks, redirection and scoped remote
-metadata. The existing application Criterion group measures only bounded local
-planning operations. Live SSH/native GUI and controlled latency are not established
-by these tests. See [current evidence commands](SSH-INTEGRATION-LIBRARY.md#verification).
+SSH planning remains read-only, separate from the explicit `+ssh` wrapper. Model,
+actual-generator shell and CLI tests preserve native review ownership, argument
+and exit/signal behavior, prompt hooks, redirection and bounded remote metadata.
+VT/renderer regressions cover nested/replayed/forged scope ends, reset, full
+metadata buffers, prompt identity collisions, command-status restoration and
+local provider/clone/action/file isolation. Isolated server tests record the
+actual client, server and shells exercised. Native Windows servers, macOS,
+compositor and latency evidence cannot be inferred from a Linux fixture or model
+pass. The existing Criterion group measures bounded local planning operations.
+See [current evidence commands](SSH-INTEGRATION-LIBRARY.md#verification).
+
+Temporary SSH helper tests must cover immutable bounded upload, wrong artifact,
+failed receipt, cancellation, no-exec temporary storage and exact cleanup; the
+native client deadline alone does not establish remote process retirement.
+Actual generated producers must preserve prompt status while their helper is
+paused, dead or full. Exercise complete public snapshots, unchanged revisions,
+invalid-snapshot clearing, stale results, idle config refresh and scanner
+retirement. Run full-buffer metadata publication on native Unix and Windows;
+package inventories must retain the helper and its required trust checks. Fish
+helper uploads remain rejected until a verified nonblocking producer exists;
+ordinary Fish integration must continue passing its own native tests.
 
 Worker tests must gate full queues, blocked handlers, reentrant and panicking
 registration, native thread-local destruction and callback lifetime beyond join.

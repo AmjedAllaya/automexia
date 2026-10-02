@@ -1,6 +1,8 @@
 mod chrome_contract;
 mod completion;
 mod keybindings;
+#[cfg(test)]
+mod portable_package_tests;
 mod renderer_benchmarks;
 mod visual_diff;
 
@@ -2902,10 +2904,16 @@ fn verify_architecture() -> TaskResult {
         "frontend package is outside apps/automexia-terminal",
     )?;
 
-    let private_crates: [(&str, &[&str]); 18] = [
+    let private_crates: [(&str, &[&str]); 19] = [
+        ("automexia-terminal-protocol", &[]),
         (
             "automexia-ssh-integration",
-            &["automexia-connectivity", "base64", "proptest"],
+            &[
+                "automexia-connectivity",
+                "automexia-terminal-protocol",
+                "base64",
+                "proptest",
+            ],
         ),
         (
             "automexia-keybindings",
@@ -3105,6 +3113,9 @@ fn verify_architecture() -> TaskResult {
             package["publish"].as_array().is_some_and(Vec::is_empty),
             &format!("{name} must remain publish = false"),
         )?;
+        if name == "automexia-terminal-protocol" {
+            verify_terminal_protocol_package(package)?;
+        }
         for dependency in package["dependencies"]
             .as_array()
             .ok_or_else(|| format!("{name} dependencies are missing"))?
@@ -4609,7 +4620,7 @@ fn package_check() -> TaskResult {
     Ok(())
 }
 
-fn package_runtime_binaries(binary: &Path, target: &str) -> [PathBuf; 3] {
+fn package_runtime_binaries(binary: &Path, target: &str) -> [PathBuf; 4] {
     let suffix = if target.contains("windows") {
         ".exe"
     } else {
@@ -4619,6 +4630,7 @@ fn package_runtime_binaries(binary: &Path, target: &str) -> [PathBuf; 3] {
         binary.to_path_buf(),
         binary.with_file_name(format!("amx{suffix}")),
         binary.with_file_name(format!("automexia-suggestion-helper{suffix}")),
+        binary.with_file_name(format!("automexia-ssh-helper{suffix}")),
     ]
 }
 
@@ -4805,6 +4817,13 @@ fn package_windows_arm64(
         &define(
             "SuggestionHelperPath",
             &binary.with_file_name("automexia-suggestion-helper.exe"),
+        ),
+    ]);
+    command.args([
+        "-d",
+        &define(
+            "SshHelperPath",
+            &binary.with_file_name("automexia-ssh-helper.exe"),
         ),
     ]);
     command.args([
@@ -5057,6 +5076,10 @@ fn package_linux(
         .env(
             "AUTOMEXIA_SUGGESTION_HELPER_BINARY",
             binary.with_file_name("automexia-suggestion-helper"),
+        )
+        .env(
+            "AUTOMEXIA_SSH_HELPER_BINARY",
+            binary.with_file_name("automexia-ssh-helper"),
         )
         .env("AUTOMEXIA_MANPAGE", &manpage)
         .env("AUTOMEXIA_CHANGELOG", &changelog)
@@ -5861,186 +5884,6 @@ mod tests {
     }
 
     #[test]
-    fn portable_resource_copy_is_bounded_and_preserves_layout() {
-        let temporary = tempfile::tempdir().unwrap();
-        let source = temporary.path().join("source");
-        let destination = temporary.path().join("destination");
-        fs::create_dir_all(source.join("nested")).unwrap();
-        fs::write(source.join("root.ps1"), b"root").unwrap();
-        fs::write(source.join("nested").join("child.cmd"), b"child").unwrap();
-
-        copy_bounded_resource_tree(&source, &destination, 2, 9).unwrap();
-        assert_eq!(fs::read(destination.join("root.ps1")).unwrap(), b"root");
-        assert_eq!(
-            fs::read(destination.join("nested").join("child.cmd")).unwrap(),
-            b"child"
-        );
-
-        let error = copy_bounded_resource_tree(
-            &source,
-            &temporary.path().join("too-small"),
-            1,
-            9,
-        )
-        .unwrap_err();
-        assert!(error.contains("file-count or byte ceiling"));
-    }
-
-    #[test]
-    fn portable_packages_preserve_all_runtime_binaries_and_target_names() {
-        // Windows ships bsdtar with ZIP support; GNU tar uses tar.gz here.
-        let native_extension = if cfg!(windows) { "zip" } else { "tar.gz" };
-        for (target, extension, suffix) in [
-            ("x86_64-pc-windows-msvc", native_extension, ".exe"),
-            ("aarch64-pc-windows-msvc", "tar.gz", ".exe"),
-            ("x86_64-unknown-linux-gnu", "tar.gz", ""),
-            ("aarch64-unknown-linux-gnu", native_extension, ""),
-        ] {
-            let temporary = tempfile::tempdir().unwrap();
-            let source = temporary.path().join("release inputs");
-            let output = temporary.path().join("package output");
-            fs::create_dir_all(&source).unwrap();
-            fs::create_dir_all(&output).unwrap();
-            let names = ["automexia", "amx", "automexia-suggestion-helper"];
-            for name in names {
-                let path = source.join(format!("{name}{suffix}"));
-                fs::write(&path, name).unwrap();
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    fs::set_permissions(path, fs::Permissions::from_mode(0o755)).unwrap();
-                }
-            }
-            if target.contains("windows") {
-                for relative in
-                    ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
-                {
-                    let asset = source.join(relative);
-                    fs::create_dir_all(asset.parent().unwrap()).unwrap();
-                    fs::write(asset, relative.as_bytes()).unwrap();
-                }
-            }
-            let identity = product_identity().unwrap();
-            portable_archive(
-                &identity,
-                target,
-                &source.join(format!("automexia{suffix}")),
-                &output,
-                extension,
-            )
-            .unwrap();
-            let archive = output.join(format!(
-                "{}-{}-{target}.{extension}",
-                identity.package_name, identity.version
-            ));
-            let extracted = temporary.path().join("extracted");
-            fs::create_dir_all(&extracted).unwrap();
-            assert!(Command::new("tar")
-                .arg("-xf")
-                .arg(archive)
-                .arg("-C")
-                .arg(&extracted)
-                .status()
-                .unwrap()
-                .success());
-            if target.contains("windows") {
-                for relative in
-                    ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"]
-                {
-                    assert_eq!(
-                        fs::read(extracted.join(relative)).unwrap(),
-                        relative.as_bytes()
-                    );
-                }
-                assert!(!extracted.join("OpenConsole.exe").exists());
-            }
-            for name in names {
-                let path = extracted.join(format!("{name}{suffix}"));
-                assert_eq!(
-                    fs::read(&path).unwrap(),
-                    name.as_bytes(),
-                    "{target}: {name} must retain the exact supplied bytes"
-                );
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    assert_eq!(
-                        fs::metadata(path).unwrap().permissions().mode() & 0o777,
-                        0o755
-                    );
-                }
-            }
-        }
-    }
-
-    #[test]
-    fn portable_packages_reject_missing_conpty_before_replacing_staging() {
-        for missing in ["conpty.dll", "x64/OpenConsole.exe", "arm64/OpenConsole.exe"] {
-            let temporary = tempfile::tempdir().unwrap();
-            let source = temporary.path().join("release");
-            let output = temporary.path().join("packages");
-            fs::create_dir_all(&source).unwrap();
-            fs::create_dir_all(output.join("portable")).unwrap();
-            let retained = output.join("portable/retained.txt");
-            fs::write(&retained, b"previous package").unwrap();
-            for relative in [
-                "automexia.exe",
-                "amx.exe",
-                "automexia-suggestion-helper.exe",
-                "conpty.dll",
-                "x64/OpenConsole.exe",
-                "arm64/OpenConsole.exe",
-            ] {
-                if relative != missing {
-                    let asset = source.join(relative);
-                    fs::create_dir_all(asset.parent().unwrap()).unwrap();
-                    fs::write(asset, relative.as_bytes()).unwrap();
-                }
-            }
-            assert!(portable_archive(
-                &product_identity().unwrap(),
-                "x86_64-pc-windows-msvc",
-                &source.join("automexia.exe"),
-                &output,
-                "zip"
-            )
-            .is_err());
-            assert_eq!(fs::read(retained).unwrap(), b"previous package");
-        }
-    }
-
-    #[test]
-    fn portable_packages_reject_missing_companions_before_replacing_staging() {
-        for missing in ["amx.exe", "automexia-suggestion-helper.exe"] {
-            let temporary = tempfile::tempdir().unwrap();
-            let source = temporary.path().join("release");
-            let output = temporary.path().join("packages");
-            fs::create_dir_all(&source).unwrap();
-            fs::create_dir_all(output.join("portable")).unwrap();
-            let retained = output.join("portable/retained.txt");
-            fs::write(&retained, b"previous package").unwrap();
-            for name in [
-                "automexia.exe",
-                "amx.exe",
-                "automexia-suggestion-helper.exe",
-            ] {
-                if name != missing {
-                    fs::write(source.join(name), name).unwrap();
-                }
-            }
-            assert!(portable_archive(
-                &product_identity().unwrap(),
-                "x86_64-pc-windows-msvc",
-                &source.join("automexia.exe"),
-                &output,
-                "zip",
-            )
-            .is_err());
-            assert_eq!(fs::read(retained).unwrap(), b"previous package");
-        }
-    }
-
-    #[test]
     fn canonical_identity_matches_release_contract() {
         let identity = product_identity().unwrap();
         assert_eq!(identity.product_name, "Automexia Terminal");
@@ -6630,7 +6473,10 @@ fn verify_ssh_planning_dependency(dependency: &serde_json::Value) -> TaskResult 
     let kind = dependency["kind"].as_str();
     let accepted = matches!(
         (name, kind),
-        ("automexia-connectivity" | "base64", None) | ("proptest", Some("dev"))
+        (
+            "automexia-connectivity" | "automexia-terminal-protocol" | "base64",
+            None
+        ) | ("proptest", Some("dev"))
     );
     require(
         accepted
@@ -6638,6 +6484,27 @@ fn verify_ssh_planning_dependency(dependency: &serde_json::Value) -> TaskResult 
             && dependency["rename"].is_null()
             && dependency["optional"].as_bool() == Some(false),
         "SSH planning dependency changed kind, target, identity, or authority",
+    )
+}
+
+fn verify_terminal_protocol_package(package: &serde_json::Value) -> TaskResult {
+    require(
+        package["dependencies"].as_array().is_some_and(Vec::is_empty)
+            && package["features"]
+                .as_object()
+                .is_some_and(serde_json::Map::is_empty)
+            && package["targets"].as_array().is_some_and(|targets| {
+                targets
+                    .iter()
+                    .filter(|target| target["kind"] == serde_json::json!(["lib"]))
+                    .count()
+                    == 1
+                    && targets.iter().all(|target| {
+                        target["kind"] == serde_json::json!(["lib"])
+                            || target["kind"] == serde_json::json!(["test"])
+                    })
+            }),
+        "terminal protocol acquired dependencies, features, or executable/build authority",
     )
 }
 
@@ -6652,6 +6519,7 @@ mod ssh_planning_dependency_tests {
         for (name, kind) in [
             ("base64", None),
             ("automexia-connectivity", None),
+            ("automexia-terminal-protocol", None),
             ("proptest", Some("dev")),
         ] {
             assert!(verify_ssh_planning_dependency(&dependency(name, kind)).is_ok());
@@ -6679,5 +6547,40 @@ mod ssh_planning_dependency_tests {
         value["rename"] = serde_json::Value::Null;
         value["optional"] = true.into();
         assert!(verify_ssh_planning_dependency(&value).is_err());
+    }
+
+    fn protocol_package() -> serde_json::Value {
+        serde_json::json!({"dependencies":[],"features":{},"targets":[{"kind":["lib"]},{"kind":["test"]}]})
+    }
+    #[test]
+    fn protocol_dependency_free_metadata_is_accepted() {
+        assert!(verify_terminal_protocol_package(&protocol_package()).is_ok());
+    }
+    #[test]
+    fn protocol_rejects_every_dependency_kind_and_target_condition() {
+        for kind in [None, Some("dev"), Some("build")] {
+            for target in [serde_json::Value::Null, "cfg(windows)".into()] {
+                let mut package = protocol_package();
+                let mut value = dependency("base64", kind);
+                value["target"] = target;
+                package["dependencies"] = serde_json::json!([value]);
+                assert!(verify_terminal_protocol_package(&package).is_err());
+            }
+        }
+    }
+    #[test]
+    fn protocol_rejects_features_executables_build_scripts_and_missing_metadata() {
+        for kind in ["bin", "custom-build", "proc-macro", "example", "bench"] {
+            let mut package = protocol_package();
+            package["targets"] = serde_json::json!([{"kind":[kind]}]);
+            assert!(verify_terminal_protocol_package(&package).is_err());
+        }
+        let mut package = protocol_package();
+        package["features"] = serde_json::json!({"runtime":[]});
+        assert!(verify_terminal_protocol_package(&package).is_err());
+        let mut package = protocol_package();
+        package["targets"] = serde_json::json!([]);
+        assert!(verify_terminal_protocol_package(&package).is_err());
+        assert!(verify_terminal_protocol_package(&serde_json::json!({})).is_err());
     }
 }

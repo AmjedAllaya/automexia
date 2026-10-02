@@ -615,6 +615,7 @@ name = "automexia-ssh-integration"
 version = "0.4.0"
 dependencies = [
  "automexia-connectivity",
+ "automexia-terminal-protocol",
  "base64",
  "proptest",
 ]
@@ -691,6 +692,10 @@ dependencies = [
  "windows-sys 0.61.2",
  "winres",
 ]
+
+[[package]]
+name = "automexia-terminal-protocol"
+version = "0.4.0"
 
 [[package]]
 name = "automexia-ui-model"
@@ -4883,6 +4888,7 @@ dependencies = [
 name = "rio-vt"
 version = "0.4.0"
 dependencies = [
+ "automexia-terminal-protocol",
  "base64",
  "bitflags 2.13.1",
  "copypasta",
@@ -4904,6 +4910,7 @@ dependencies = [
  "rustc-hash 2.1.3",
  "serde",
  "serde_json",
+ "sha2 0.11.0",
  "simdutf",
  "smallvec",
  "sugarloaf",

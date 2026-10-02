@@ -157,6 +157,10 @@ fn execute_cli_command(
             command,
             crate::context::launch_broker::MANAGED_SESSION_LAUNCH_ENABLED,
         ),
+        CliCommand::Ssh(command) => {
+            let status = automexia::ssh_wrapper::execute(command, session)?;
+            automexia::ssh_wrapper::exit_with_status(status)
+        }
         CliCommand::ShellIntegration(command) => match &command.action {
             ShellIntegrationAction::Doctor => {
                 println!("{}", shell_integration::status());
