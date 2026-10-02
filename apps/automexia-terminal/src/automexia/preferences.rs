@@ -5,7 +5,7 @@
 //! shortcut never rewrites comments or unrelated configuration keys.
 
 use crate::automexia::package_customizations::{self, PackageOverride};
-use crate::automexia::private_fs::{self, PrivateFsErrorCode};
+use crate::automexia::private_fs::{self, PrivateFsErrorCode, WriteLock};
 use automexia_ui_model::information_bar::{
     preset_recipe, validate_recipe, validate_source_drafts, BarRecipe,
     BarSlotSourceDraft, InformationBarPreset,
@@ -1203,13 +1203,13 @@ fn write_to_root_with_package(
         .transpose()?;
     let state = ensure_state_root(root)?;
     let lock = private_fs::open_private_lock(&lock_path(root))?;
-    match lock.try_lock() {
-        Ok(()) => {}
+    let _lock = match WriteLock::try_acquire(lock) {
+        Ok(lock) => lock,
         Err(TryLockError::WouldBlock) => {
             return Err(PreferenceError::new(PreferenceErrorCode::Busy));
         }
         Err(TryLockError::Error(error)) => return Err(PreferenceError::io(error)),
-    }
+    };
     let primary = primary_path(root);
     let current = read_snapshot(&primary)?;
     // Present invalid/future current data cannot be hidden by a predecessor.

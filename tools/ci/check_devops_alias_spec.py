@@ -10,6 +10,7 @@ import sys
 from typing import Any
 
 import check_command_productivity_cp22 as cp22
+import check_command_productivity_cp31 as cp31
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -470,7 +471,7 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         PERSISTENCE_FILES[1]: {"ExactActionWatchPlan", "WATCH_EVENT_CAPACITY", "RecursiveMode::NonRecursive"},
         PERSISTENCE_FILES[2]: {"read_bounded_regular", "O_NOFOLLOW", "PROTECTED_DACL_SECURITY_INFORMATION"},
         PERSISTENCE_FILES[3]: {"RetainedLastKnownGood", "StaleRevision", "Arc<QuickActionSnapshot>"},
-        PERSISTENCE_FILES[4]: {"actions.previous.toml", "try_lock", "MAX_CACHED_ACTION_BYTES", "recover_previous"},
+        PERSISTENCE_FILES[4]: {"actions.previous.toml", "WriteLock::try_acquire", "MAX_CACHED_ACTION_BYTES", "recover_previous"},
         PERSISTENCE_FILES[5]: {"ActionsAction", "expected_revision", "read_single_action"},
         PERSISTENCE_FILES[6]: {"source_digest", "apply_import", "preview_import"},
         PERSISTENCE_FILES[7]: {"SEARCH_COALESCE_INTERVAL", "forget_route"},
@@ -480,6 +481,10 @@ def validate_model_evidence(root: Path) -> dict[str, int]:
         PERSISTENCE_FILES[11]: {"preview_native_alias_import_file", "apply_native_alias_import", "replace_conflicts"},
         PERSISTENCE_FILES[12]: {"open_existing_read_only", "put_task_bridge", "remove_task_bridge", "trusted_layer"},
     }
+    try:
+        cp31.validate_write_lock_lifecycle(root)
+    except cp31.Cp31Error as error:
+        raise AliasSpecError(str(error)) from error
     for relative, tokens in required_persistence_tokens.items():
         text = bounded_text(
             root / relative,

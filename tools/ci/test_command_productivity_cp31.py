@@ -123,6 +123,72 @@ class Cp31ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(policy.Cp31Error, "missing CP3.1 evidence"):
                 policy.validate_sources(self.contract)
 
+    def reject_lock_mutation(self, relative: str, old: str, new: str) -> None:
+        original = policy.bounded_text
+        target = policy.ROOT / relative
+        self.assertIn(old, original(target))
+
+        def changed(path, maximum=policy.MAX_POLICY_BYTES):
+            source = original(path, maximum)
+            return source.replace(old, new, 1) if path == target else source
+
+        with mock.patch.object(policy, "bounded_text", side_effect=changed):
+            with self.assertRaisesRegex(policy.Cp31Error, "advisory-lock ownership"):
+                policy.validate_write_lock_lifecycle()
+
+    def test_shared_lock_acquisition_and_retirement_cannot_be_inert_evidence(self) -> None:
+        owner = "apps/automexia-terminal/src/automexia/private_fs.rs"
+        for old, new in (
+            ("file.try_lock()?;", "// file.try_lock()?;"),
+            ("let _ = self.file.unlock();", "// let _ = self.file.unlock();"),
+            ("file: File,", "pub file: File,"),
+        ):
+            with self.subTest(fragment=old):
+                self.reject_lock_mutation(owner, old, new)
+
+    def test_all_six_persistence_callers_keep_the_shared_guard(self) -> None:
+        prefix = "apps/automexia-terminal/src/automexia/"
+        for relative, value in (
+            ("quick_actions/store.rs", "lock"),
+            ("quick_actions/aliases.rs", "lock"),
+            ("quick_actions/workspace.rs", "file"),
+            ("connections/library.rs", "lock"),
+            ("connections/receipts.rs", "lock"),
+            ("preferences.rs", "lock"),
+        ):
+            with self.subTest(caller=relative):
+                old = f"WriteLock::try_acquire({value})"
+                self.reject_lock_mutation(prefix + relative, old,
+                                          f"{value}.try_lock() /* {old} */")
+
+    def test_prepared_alias_and_preference_transaction_do_not_release_early(self) -> None:
+        self.reject_lock_mutation(
+            "apps/automexia-terminal/src/automexia/quick_actions/aliases.rs",
+            "_lock: WriteLock,", "_lock: File, // _lock: WriteLock,")
+        self.reject_lock_mutation(
+            "apps/automexia-terminal/src/automexia/preferences.rs",
+            "let _lock = match WriteLock::try_acquire(lock)",
+            "let _ = match WriteLock::try_acquire(lock)")
+
+    def test_shared_lock_check_is_connected_and_uses_the_supplied_root(self) -> None:
+        owner = policy.validate_write_lock_lifecycle
+        with mock.patch.object(policy, "validate_write_lock_lifecycle", wraps=owner) as called:
+            policy.validate_sources(self.contract)
+        called.assert_called_once_with(policy.ROOT)
+        original = policy.bounded_text
+        with tempfile.TemporaryDirectory() as directory:
+            other = Path(directory) / "checkout"
+            paths = []
+
+            def remapped(path, maximum=policy.MAX_POLICY_BYTES):
+                paths.append(path)
+                return original(policy.ROOT / path.relative_to(other), maximum)
+
+            with mock.patch.object(policy, "bounded_text", side_effect=remapped):
+                owner(other)
+        self.assertEqual(len(paths), 7)
+        self.assertTrue(all(path.is_relative_to(other) for path in paths))
+
 
 if __name__ == "__main__":
     unittest.main()

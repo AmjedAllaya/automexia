@@ -469,6 +469,12 @@ Runtime appearance preferences are application-owned and layered over
 hand-edited configuration. Writes use private permissions, temporary files,
 flush, atomic replacement where supported, and bounded recovery. The VT parser,
 renderer, PTY layer, and extensions do not own preference storage.
+The shared private-file adapter owns transaction write-lock guards for settings,
+actions, workspaces and connection records. Guards explicitly unlock before
+closing the file so a concurrently spawned Unix child cannot retain a finished
+transaction's advisory lock during the brief interval before executing its
+program. Each store retains its existing fail-fast busy errors and publication
+boundaries.
 
 The same overlay owns bounded, single-chord catalog shortcut edits. Palette
 recording is capability-free; the application validates the complete candidate

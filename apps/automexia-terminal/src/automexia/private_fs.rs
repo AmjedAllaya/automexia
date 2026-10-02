@@ -4,7 +4,7 @@
 //! private files. It owns no process, network, PTY, renderer, or credential data.
 
 use std::{
-    fs::{self, File, Metadata, OpenOptions},
+    fs::{self, File, Metadata, OpenOptions, TryLockError},
     io::Read,
     path::Path,
 };
@@ -159,6 +159,29 @@ pub(crate) fn open_private_lock(path: &Path) -> Result<File, PrivateFsError> {
     validate_regular(&file.metadata().map_err(PrivateFsError::io)?)?;
     apply_private_permissions(path, false)?;
     Ok(file)
+}
+
+/// Exclusive advisory-lock ownership for one persistence transaction. The
+/// underlying file is deliberately private and cannot be cloned by callers.
+pub(crate) struct WriteLock {
+    file: File,
+}
+
+impl WriteLock {
+    pub(crate) fn try_acquire(file: File) -> Result<Self, TryLockError> {
+        file.try_lock()?;
+        Ok(Self { file })
+    }
+}
+
+impl Drop for WriteLock {
+    fn drop(&mut self) {
+        // Closing alone does not release Unix flock while a fork-before-exec
+        // child retains the open-file description, even with CLOEXEC. Release
+        // at the transaction boundary; callers cannot close or clone this file.
+        // Close remains the native fallback if a filesystem refuses unlock.
+        let _ = self.file.unlock();
+    }
 }
 
 pub(crate) fn reject_link_or_non_file(path: &Path) -> Result<(), PrivateFsError> {
@@ -616,6 +639,60 @@ mod bounded_reader_tests {
                 .unwrap_err()
                 .code(),
             PrivateFsErrorCode::NotRegularFile
+        );
+    }
+}
+
+#[cfg(test)]
+mod write_lock_tests {
+    use super::*;
+
+    #[test]
+    fn write_lock_excludes_a_concurrent_writer_until_the_transaction_ends() {
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join(".fixture.lock");
+        let held = WriteLock::try_acquire(open_private_lock(&path).unwrap()).unwrap();
+        assert!(matches!(
+            WriteLock::try_acquire(open_private_lock(&path).unwrap()),
+            Err(TryLockError::WouldBlock)
+        ));
+        drop(held);
+        assert!(WriteLock::try_acquire(open_private_lock(&path).unwrap()).is_ok());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn an_inherited_description_does_not_extend_a_retired_transaction_lock() {
+        use std::os::fd::AsRawFd;
+        let temporary = tempfile::tempdir().unwrap();
+        let path = temporary.path().join(".fixture.lock");
+        let file = open_private_lock(&path).unwrap();
+        // Duplication shares the same open-file description as fork-before-exec,
+        // without making other parallel tests inherit descriptors themselves.
+        let inherited = file.try_clone().unwrap();
+        // SAFETY: query only; this owned descriptor stays live through the test.
+        assert_ne!(
+            unsafe { libc::fcntl(file.as_raw_fd(), libc::F_GETFD) } & libc::FD_CLOEXEC,
+            0
+        );
+        let held = WriteLock::try_acquire(file).unwrap();
+        assert!(matches!(
+            WriteLock::try_acquire(open_private_lock(&path).unwrap()),
+            Err(TryLockError::WouldBlock)
+        ));
+        drop(held);
+        let next = WriteLock::try_acquire(open_private_lock(&path).unwrap());
+        assert!(
+            next.is_ok(),
+            "inherited descriptor kept a completed transaction busy"
+        );
+        drop(inherited);
+        assert!(
+            matches!(
+                WriteLock::try_acquire(open_private_lock(&path).unwrap()),
+                Err(TryLockError::WouldBlock)
+            ),
+            "closing an old inherited descriptor unlocked the next transaction"
         );
     }
 }

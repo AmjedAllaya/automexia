@@ -8,6 +8,9 @@ from pathlib import Path
 import sys
 from typing import Any
 
+from check_command_productivity import rust_code_without_comments_and_literals
+from check_command_productivity_cp22 import Cp22Error, _rust_item
+
 
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "tests/fixtures/command-productivity/cp31-contract-v1.json"
@@ -178,14 +181,78 @@ def require_tokens(relative: str, tokens: set[str], root: Path = ROOT) -> str:
     return source
 
 
+def validate_write_lock_lifecycle(root: Path = ROOT) -> None:
+    """Connect persistence callers to the one explicit advisory-lock owner.
+
+    Native tests prove the inherited-descriptor behavior; this check rejects
+    disconnected acquisition, early release, and proof left only in comments.
+    """
+    owner_path = "apps/automexia-terminal/src/automexia/private_fs.rs"
+    owner = rust_code_without_comments_and_literals(bounded_text(root / owner_path))
+
+    def compact(source: str) -> str:
+        return "".join(source.split())
+
+    def item(source: str, declaration: str) -> str:
+        try:
+            return _rust_item(source, declaration)
+        except Cp22Error as error:
+            raise Cp31Error(f"advisory-lock ownership is incomplete: {declaration}") from error
+
+    def require(body: str, fragment: str, label: str) -> None:
+        if compact(fragment) not in compact(body):
+            raise Cp31Error(f"advisory-lock ownership is disconnected: {label}")
+
+    if compact(item(owner, "pub(crate) struct WriteLock")) != "file:File,":
+        raise Cp31Error("advisory-lock ownership no longer retains its private file")
+    acquire = item(item(owner, "impl WriteLock"), "pub(crate) fn try_acquire(")
+    if compact(acquire) != "file.try_lock()?;Ok(Self{file})":
+        raise Cp31Error("advisory-lock ownership must acquire the native lock before publication")
+    release = item(item(owner, "impl Drop for WriteLock"), "fn drop(")
+    if compact(release) != "let_=self.file.unlock();":
+        raise Cp31Error("advisory-lock ownership must explicitly unlock before file close")
+    for test in (
+        "write_lock_excludes_a_concurrent_writer_until_the_transaction_ends",
+        "an_inherited_description_does_not_extend_a_retired_transaction_lock",
+    ):
+        item(owner, f"fn {test}(")
+
+    prefix = "apps/automexia-terminal/src/automexia/"
+    for relative in (
+        "quick_actions/store.rs", "quick_actions/aliases.rs",
+        "connections/library.rs", "connections/receipts.rs",
+    ):
+        source = rust_code_without_comments_and_literals(bounded_text(root / prefix / relative))
+        body = item(source, "fn try_write_lock(")
+        require(source, "fn try_write_lock(&self) -> Result<WriteLock,", relative)
+        require(body, "match WriteLock::try_acquire(lock) { Ok(lock) => Ok(lock),", relative)
+        if relative.endswith("aliases.rs"):
+            require(item(source, "pub struct PreparedAliasPublication"),
+                    "_lock: WriteLock,", "prepared alias transaction")
+
+    workspace = rust_code_without_comments_and_literals(
+        bounded_text(root / prefix / "quick_actions/workspace.rs"))
+    require(workspace, "fn try_lock(file: File) -> Result<WriteLock,", "workspace transaction")
+    require(item(workspace, "fn try_lock("),
+            "match WriteLock::try_acquire(file) { Ok(lock) => Ok(lock),", "workspace transaction")
+    require(item(workspace, "fn try_write_lock("),
+            "try_lock(open_lock(&self.lock_path(), false)?)", "workspace source acquisition")
+    preferences = rust_code_without_comments_and_literals(
+        bounded_text(root / prefix / "preferences.rs"))
+    require(item(preferences, "fn write_to_root_with_package("),
+            "let _lock = match WriteLock::try_acquire(lock) { Ok(lock) => lock,",
+            "preference transaction")
+
+
 def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, int]:
     aliases = require_tokens(document["source_files"][0], {
         "AliasProjectionStore", "prepare_transition", "activate_prepared",
         "recover_pending", "current_exact_overrides", "GenerationManifest",
-        "transaction.pending", "try_lock", "sha256_hex", "open_existing",
+        "transaction.pending", "WriteLock::try_acquire", "sha256_hex", "open_existing",
         "pub fn doctor", "activation_path", "cleanup_old_generations",
         "verify_exact_directory_entries", "verify_artifact_identity", "PROJECTION_GENERATOR",
     }, root)
+    validate_write_lock_lifecycle(root)
     missing_tests = sorted(
         name for name in document["required_tests"] if f"fn {name}(" not in aliases
     )

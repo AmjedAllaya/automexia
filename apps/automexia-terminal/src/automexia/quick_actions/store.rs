@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    fs::{self, File, TryLockError},
+    fs::{self, TryLockError},
     io::Write,
     mem,
     path::{Path, PathBuf},
@@ -15,6 +15,7 @@ use automexia_command_productivity::actions::{
 use tempfile::{Builder, NamedTempFile};
 
 use super::secure_fs;
+use crate::automexia::private_fs::WriteLock;
 
 pub const ACTIONS_FILE_NAME: &str = "actions.toml";
 pub const PREVIOUS_ACTIONS_FILE_NAME: &str = "actions.previous.toml";
@@ -555,10 +556,10 @@ impl QuickActionStore {
         }
     }
 
-    fn try_write_lock(&self) -> Result<File, StoreError> {
+    fn try_write_lock(&self) -> Result<WriteLock, StoreError> {
         let lock = secure_fs::open_private_lock(&self.lock_path())?;
-        match lock.try_lock() {
-            Ok(()) => Ok(lock),
+        match WriteLock::try_acquire(lock) {
+            Ok(lock) => Ok(lock),
             Err(TryLockError::WouldBlock) => Err(StoreError::new(StoreErrorCode::Busy)),
             Err(TryLockError::Error(error)) => Err(StoreError::io(error)),
         }
@@ -589,7 +590,7 @@ impl QuickActionStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn hold_write_lock_for_test(&self) -> Result<File, StoreError> {
+    pub(crate) fn hold_write_lock_for_test(&self) -> Result<WriteLock, StoreError> {
         self.try_write_lock()
     }
 }
@@ -956,7 +957,7 @@ mod tests {
     #[test]
     fn oversized_source_is_rejected_before_toml_decode() {
         let (_root, store) = store();
-        let file = File::create(store.source_path()).unwrap();
+        let file = fs::File::create(store.source_path()).unwrap();
         file.set_len(MAX_SOURCE_BYTES as u64 + 1).unwrap();
         assert_eq!(
             store.load().unwrap_err().code(),

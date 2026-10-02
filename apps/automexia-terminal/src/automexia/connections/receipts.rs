@@ -6,7 +6,7 @@
 
 use std::{
     fmt,
-    fs::{self, File, TryLockError},
+    fs::{self, TryLockError},
     io::Write,
     path::{Path, PathBuf},
 };
@@ -19,7 +19,7 @@ use tempfile::NamedTempFile;
 
 use super::persistence_support::BoundedWriter;
 use crate::automexia::private_fs::{
-    self as secure_fs, PrivateFsError, PrivateFsErrorCode,
+    self as secure_fs, PrivateFsError, PrivateFsErrorCode, WriteLock,
 };
 
 pub const MANAGED_RECEIPT_SCHEMA: u16 = 1;
@@ -325,11 +325,11 @@ impl ManagedReceiptStore {
         secure_fs::sync_directory(&self.root).map_err(map_private_fs)
     }
 
-    fn try_write_lock(&self) -> Result<File, ManagedReceiptError> {
+    fn try_write_lock(&self) -> Result<WriteLock, ManagedReceiptError> {
         let lock =
             secure_fs::open_private_lock(&self.lock_path()).map_err(map_private_fs)?;
-        match lock.try_lock() {
-            Ok(()) => Ok(lock),
+        match WriteLock::try_acquire(lock) {
+            Ok(lock) => Ok(lock),
             Err(TryLockError::WouldBlock) => {
                 Err(ManagedReceiptError::new(ManagedReceiptErrorCode::Busy))
             }

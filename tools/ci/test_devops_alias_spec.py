@@ -30,6 +30,23 @@ CONTRACT = json.loads(
 
 
 class AliasSpecificationTests(unittest.TestCase):
+    def test_alias_persistence_requires_the_shared_lock_retirement_owner(self) -> None:
+        owner = POLICY.cp31.validate_write_lock_lifecycle
+        with patch.object(POLICY.cp31, "validate_write_lock_lifecycle", wraps=owner) as called:
+            POLICY.validate_model_evidence(ROOT)
+        called.assert_called_once_with(ROOT)
+        original = POLICY.cp31.bounded_text
+
+        def changed(path, maximum=POLICY.cp31.MAX_POLICY_BYTES):
+            source = original(path, maximum)
+            if path.name == "private_fs.rs":
+                return source.replace("let _ = self.file.unlock();", "// let _ = self.file.unlock();", 1)
+            return source
+
+        with patch.object(POLICY.cp31, "bounded_text", side_effect=changed):
+            with self.assertRaisesRegex(POLICY.AliasSpecError, "explicitly unlock"):
+                POLICY.validate_model_evidence(ROOT)
+
     def test_alias_worker_calls_existing_cp22_owner_with_exact_root(self) -> None:
         POLICY.validate_model_evidence(ROOT)
         owner = POLICY.cp22.validate_worker_lifecycle
@@ -90,6 +107,7 @@ class AliasSpecificationTests(unittest.TestCase):
         POLICY.validate_model_evidence(ROOT)
         read_alias = POLICY.bounded_text
         read_cp22 = POLICY.cp22.bounded_text
+        read_cp31 = POLICY.cp31.bounded_text
         with tempfile.TemporaryDirectory() as directory:
             other_root = Path(directory) / "isolated-checkout"
             paths = []
@@ -102,8 +120,13 @@ class AliasSpecificationTests(unittest.TestCase):
                 paths.append(path)
                 return read_cp22(ROOT / path.relative_to(other_root), maximum)
 
+            def cp31_read(path, maximum=POLICY.cp31.MAX_POLICY_BYTES):
+                paths.append(path)
+                return read_cp31(ROOT / path.relative_to(other_root), maximum)
+
             with patch.object(POLICY, "bounded_text", side_effect=alias_read), \
-                 patch.object(POLICY.cp22, "bounded_text", side_effect=cp22_read):
+                 patch.object(POLICY.cp22, "bounded_text", side_effect=cp22_read), \
+                 patch.object(POLICY.cp31, "bounded_text", side_effect=cp31_read):
                 POLICY.validate_model_evidence(other_root)
             self.assertIn(other_root / POLICY.cp22.EXTENSION_WORKER, paths)
             self.assertIn(other_root / POLICY.PERSISTENCE_FILES[7], paths)

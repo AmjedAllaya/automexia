@@ -23,6 +23,7 @@ use serde::{Deserialize, Serialize};
 use tempfile::{Builder, NamedTempFile};
 
 use super::{secure_fs, StoreErrorCode};
+use crate::automexia::private_fs::WriteLock;
 
 pub const WORKSPACE_ACTION_DIRECTORY_NAME: &str = ".automexia";
 pub const WORKSPACE_ACTION_FILE_NAME: &str = "actions.toml";
@@ -310,7 +311,7 @@ impl WorkspaceActionStore {
         Ok(())
     }
 
-    fn try_write_lock(&self) -> Result<File, WorkspaceError> {
+    fn try_write_lock(&self) -> Result<WriteLock, WorkspaceError> {
         try_lock(open_lock(&self.lock_path(), false)?)
     }
 
@@ -629,9 +630,9 @@ fn open_lock(path: &Path, private: bool) -> Result<File, WorkspaceError> {
     Ok(file)
 }
 
-fn try_lock(file: File) -> Result<File, WorkspaceError> {
-    match file.try_lock() {
-        Ok(()) => Ok(file),
+fn try_lock(file: File) -> Result<WriteLock, WorkspaceError> {
+    match WriteLock::try_acquire(file) {
+        Ok(lock) => Ok(lock),
         Err(TryLockError::WouldBlock) => {
             Err(WorkspaceError::new(WorkspaceErrorCode::Busy))
         }

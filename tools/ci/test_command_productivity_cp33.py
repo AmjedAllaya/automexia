@@ -41,6 +41,23 @@ class Cp33ContractTests(unittest.TestCase):
             },
         )
 
+    def test_workspace_lock_requires_the_shared_acquisition_and_release_owner(self) -> None:
+        owner = policy.cp31.validate_write_lock_lifecycle
+        with mock.patch.object(policy.cp31, "validate_write_lock_lifecycle", wraps=owner) as called:
+            policy.validate_sources(self.contract)
+        called.assert_called_once_with(policy.ROOT)
+        original = policy.cp31.bounded_text
+
+        def changed(path, maximum=policy.cp31.MAX_POLICY_BYTES):
+            source = original(path, maximum)
+            if path.name == "private_fs.rs":
+                return source.replace("let _ = self.file.unlock();", "// let _ = self.file.unlock();", 1)
+            return source
+
+        with mock.patch.object(policy.cp31, "bounded_text", side_effect=changed):
+            with self.assertRaisesRegex(policy.Cp33Error, "explicitly unlock"):
+                policy.validate_sources(self.contract)
+
     def test_contract_inventories_cannot_drift(self) -> None:
         self.validate_mutation(lambda document: document["native_sources"].pop())
         self.validate_mutation(lambda document: document["task_runners"].pop())

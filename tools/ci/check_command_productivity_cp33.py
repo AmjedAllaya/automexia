@@ -8,6 +8,8 @@ from pathlib import Path
 import sys
 from typing import Any
 
+import check_command_productivity_cp31 as cp31
+
 ROOT = Path(__file__).resolve().parents[2]
 CONTRACT = ROOT / "tests/fixtures/command-productivity/cp33-contract-v1.json"
 MAX_POLICY_BYTES = 262_144
@@ -227,7 +229,7 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
             "StaleRevision",
             "Conflict",
             "read_only",
-            "try_lock",
+            "WriteLock::try_acquire",
             "persist(",
         },
         document["source_files"][3]: {
@@ -268,6 +270,10 @@ def validate_sources(document: dict[str, Any], root: Path = ROOT) -> dict[str, i
     }
     for relative, tokens in token_sets.items():
         require_tokens(relative, tokens, root)
+    try:
+        cp31.validate_write_lock_lifecycle(root)
+    except cp31.Cp31Error as error:
+        raise Cp33Error(str(error)) from error
 
     evidence = "\n".join(bounded_text(root / relative) for relative in document["source_files"])
     missing_tests = sorted(

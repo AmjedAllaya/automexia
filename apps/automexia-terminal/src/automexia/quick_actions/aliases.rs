@@ -26,6 +26,7 @@ use sha2::{Digest as _, Sha256};
 use tempfile::Builder;
 
 use super::{secure_fs, QuickActionSnapshot, StoreError, StoreErrorCode};
+use crate::automexia::private_fs::WriteLock;
 
 pub const ALIAS_ROOT_NAME: &str = "aliases";
 pub const ALIAS_CURRENT_FILE: &str = "current";
@@ -210,7 +211,7 @@ pub struct PreparedAliasPublication {
     source_revision: u64,
     ready_bindings: usize,
     decisions: usize,
-    _lock: File,
+    _lock: WriteLock,
 }
 
 impl fmt::Debug for PreparedAliasPublication {
@@ -902,10 +903,10 @@ impl AliasProjectionStore {
         self.inspect_generation(&pointer).map(Some)
     }
 
-    fn try_write_lock(&self) -> Result<File, AliasError> {
+    fn try_write_lock(&self) -> Result<WriteLock, AliasError> {
         let lock = secure_fs::open_private_lock(&self.root.join(ALIAS_LOCK_FILE))?;
-        match lock.try_lock() {
-            Ok(()) => Ok(lock),
+        match WriteLock::try_acquire(lock) {
+            Ok(lock) => Ok(lock),
             Err(TryLockError::WouldBlock) => Err(AliasError::new(AliasErrorCode::Busy)),
             Err(TryLockError::Error(_)) => Err(AliasError::new(AliasErrorCode::Io)),
         }
@@ -1109,7 +1110,7 @@ impl AliasProjectionStore {
     }
 
     #[cfg(test)]
-    pub(crate) fn hold_write_lock_for_test(&self) -> Result<File, AliasError> {
+    pub(crate) fn hold_write_lock_for_test(&self) -> Result<WriteLock, AliasError> {
         self.try_write_lock()
     }
 }
