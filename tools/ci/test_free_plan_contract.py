@@ -20,6 +20,53 @@ CACHE_INITIALIZER = r'''printf 'SCCACHE_GHA_VERSION=automexia-rust-%s-v2\n' "$RU
 
 
 class FreePlanContractTests(unittest.TestCase):
+    def test_python_policy_dependencies_are_installed_in_each_consumer_job(self) -> None:
+        import shlex
+        import yaml
+
+        covered = set()
+        for path in sorted((ROOT / ".github/workflows").glob("*.yml")):
+            workflow = yaml.safe_load(path.read_text(encoding="utf-8"))
+            for name, job in workflow.get("jobs", {}).items():
+                steps = job.get("steps", [])
+                consumers = [
+                    index for index, step in enumerate(steps)
+                    if any(token in step.get("run", "") for token in (
+                        "cargo nextest run --workspace", "cargo test --workspace",
+                        "cargo llvm-cov --workspace", "cargo xtask qa --full",
+                        "tools/ci/repository_protection.py",
+                        "tools/ci/validate_repository.py",
+                        "tools/ci/test_free_plan_contract.py",
+                    ))
+                ]
+                if not consumers:
+                    continue
+                covered.add((path.name, name))
+                with self.subTest(workflow=path.name, job=name):
+                    installs = []
+                    for index, step in enumerate(steps[:min(consumers)]):
+                        script = step.get("run", "").lstrip()
+                        if not script.startswith(("python -m pip install", "python3 -m pip install")):
+                            continue
+                        command = shlex.split(script)
+                        if command[:4] in (["python", "-m", "pip", "install"],
+                                           ["python3", "-m", "pip", "install"]):
+                            if "PyYAML==6.0.3" in command:
+                                self.assertNotIn("if", step)
+                                self.assertFalse(step.get("continue-on-error", False))
+                                installs.append(index)
+                    self.assertTrue(installs, "job must install pinned PyYAML before policy-dependent tests")
+                    # Installing into one interpreter, then selecting another,
+                    # would recreate the hosted missing-module failure.
+                    selectors = [i for i, step in enumerate(steps[:min(consumers)])
+                                 if step.get("uses", "").startswith("actions/setup-python@")]
+                    if selectors:
+                        self.assertLess(max(selectors), max(installs))
+        self.assertIn(("ci.yml", "quality"), covered)
+        self.assertIn(("ci.yml", "release-candidate-coverage"), covered)
+        self.assertIn(("release.yml", "release-quality"), covered)
+        self.assertIn(("linux-early-access.yml", "quality"), covered)
+
     def test_cargo_updates_keep_shared_manifests_and_lockfiles_together(self) -> None:
         import yaml
 
