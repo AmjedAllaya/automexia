@@ -1376,10 +1376,18 @@ fn plain_tag_color_draft_uses_an_outline_in_both_current_and_draft_samples() {
         .iter()
         .any(|shape| matches!(shape, ShapeCall::Arc(..))));
     assert!(
-        !raster
-            .shapes
-            .iter()
-            .any(|shape| matches!(shape, ShapeCall::Rounded(..))),
+        !raster.shapes.iter().any(|shape| match shape {
+            ShapeCall::Rounded([x, y, width, height], _) => {
+                let bounds = Rect {
+                    x: *x,
+                    y: *y,
+                    width: *width,
+                    height: *height,
+                };
+                bounds.intersect(view.color_geometry.preview) == Some(bounds)
+            }
+            _ => false,
+        }),
         "Plain keeps the shared capsule outline without a filled rounded surface"
     );
 }
@@ -2973,6 +2981,129 @@ fn customization_helper_copy_is_smaller_than_controls_without_changing_hit_targe
         view.target_at(center.0, center.1),
         Some(Target::Control(row.id.clone(), 1))
     );
+}
+
+#[test]
+fn menu_polish_navigation_rows_are_compact_whole_row_links() {
+    let mut view = workflow_tag_view();
+    named(&mut view, NamedKey::Escape);
+    view.fit(960.0, 620.0, 16.0);
+    view.paint(&mut Raster::new(1.0), theme());
+    let row = &view.rows[0];
+    assert!(
+        row.bounds.height <= 90.0,
+        "navigation needs no separate Open field"
+    );
+    assert!(
+        row.control.width <= 48.0,
+        "navigation uses a trailing chevron"
+    );
+    let target = view.target_at(row.bounds.x + 16.0, row.bounds.y + 16.0);
+    assert_eq!(target, Some(Target::Control(row.id.clone(), 1)));
+    view.activate_target(target.unwrap());
+    assert_eq!(view.title(), "Information tags");
+}
+
+#[test]
+fn menu_polish_page_keys_follow_the_visible_compact_rows() {
+    let mut view = workflow_tag_view();
+    named(&mut view, NamedKey::Escape);
+    view.fit(960.0, 620.0, 16.0);
+    view.paint(&mut Raster::new(1.0), theme());
+    named(&mut view, NamedKey::Home);
+    named(&mut view, NamedKey::PageDown);
+    assert_eq!(
+        view.view.as_ref().unwrap().focused().unwrap().as_str(),
+        automexia_ui_model::settings::FONT_SIZE,
+        "a page should advance past the six visible compact entries"
+    );
+}
+
+#[test]
+fn menu_polish_controls_fit_beside_labels_and_stack_on_narrow_panes() {
+    for (width, height) in [(960.0, 620.0), (320.0, 420.0)] {
+        let mut view = workflow_tag_view();
+        view.fit(width, height, 16.0);
+        view.paint(&mut Raster::new(1.0), theme());
+        let row = view
+            .rows
+            .iter()
+            .find(|row| row.id.as_str() == "tags.enabled")
+            .unwrap();
+        if width > 600.0 {
+            assert!(row.control.x > row.bounds.x + row.bounds.width * 0.5);
+            assert!(row.bounds.height < 100.0);
+        }
+        assert!(row.control.x >= row.bounds.x);
+        assert!(row.control.x + row.control.width <= row.bounds.x + row.bounds.width);
+        assert!(row.control.y + row.control.height <= row.bounds.y + row.bounds.height);
+        assert_eq!(
+            view.target_at(
+                row.control.x + row.control.width * 0.5,
+                row.control.y + row.control.height * 0.5
+            ),
+            Some(Target::Control(row.id.clone(), 1))
+        );
+    }
+}
+
+#[test]
+fn menu_polish_confirmation_sizes_to_content_and_keeps_safe_actions() {
+    let mut view = workflow_tag_view();
+    view.fit(960.0, 620.0, 16.0);
+    view.activate_target(Target::Reset);
+    let mut raster = Raster::new(1.0);
+    view.paint(&mut raster, theme());
+    let g = view.confirmation_geometry;
+    assert!(
+        g.card.height <= 210.0,
+        "a short confirmation must not leave a blank body"
+    );
+    assert!(g.cancel.x + g.cancel.width < g.accept.x);
+    assert!(g.cancel.height >= 32.0 && g.accept.height >= 32.0);
+    assert!(!view.confirmation.as_ref().unwrap().accept_selected);
+    named(&mut view, NamedKey::Enter);
+    assert!(view.confirmation.is_none());
+    assert!(view.take_customization_intent().is_none());
+}
+
+#[test]
+fn menu_polish_fractional_controls_keep_rounding_without_escaping_clip() {
+    let bounds = Rect {
+        x: 100.25,
+        y: 100.25,
+        width: 32.1,
+        height: 32.1,
+    };
+    let clip = Rect {
+        x: 0.0,
+        y: 0.0,
+        width: 500.0,
+        height: 500.0,
+    };
+    let mut raster = Raster::new(1.5);
+    control(&mut raster, bounds, false, theme(), clip);
+    assert_eq!(
+        raster
+            .shapes
+            .iter()
+            .filter(|shape| matches!(shape, ShapeCall::Rounded(..)))
+            .count(),
+        2,
+        "fully contained fractional controls must keep both rounded layers"
+    );
+    let mut clipped = Raster::new(1.5);
+    let viewport = Rect {
+        y: 110.0,
+        height: 8.0,
+        ..clip
+    };
+    control(&mut clipped, bounds, true, theme(), viewport);
+    assert!(!clipped.rects.is_empty());
+    assert!(clipped
+        .rects
+        .iter()
+        .all(|([_, y, _, h], _)| *y >= 110.0 && y + h <= 118.0));
 }
 
 #[test]
@@ -5206,6 +5337,10 @@ fn workflow_reopened_sheet_restores_writer_feedback_without_overriding_temporary
 #[test]
 fn workflow_active_numeric_selection_and_ime_stay_clipped_during_scrolling() {
     let mut view = workflow_numeric_view();
+    // Compact rows fit the old viewport without scrolling. Keep this fixture
+    // deliberately short so it still exercises a partially clipped editor.
+    view.fit(720.0, 360.0, 14.0);
+    view.paint(&mut Raster::new(1.0), theme());
     let id = view.rows[1].id.clone();
     let input = view.rows[1].control;
     pointer_event(&mut view, input, 1.0, ElementState::Pressed);
@@ -5356,48 +5491,40 @@ fn workflow_output_severity_footer_names_the_color_reset_action() {
     view.paint(&mut actual, theme());
     let bounds = view.geometry.reset;
     let mut expected = Raster::new(1.0);
-    control(&mut expected, bounds, false, theme(), bounds);
+    // Compare the caption's glyphs independently of the rounded surface and
+    // shortcut keycap. A generic Reset caption must still fail this oracle.
+    let caption_font = 14.4;
+    let caption = Rect {
+        x: bounds.x + 6.0,
+        y: bounds.y + (bounds.height - caption_font * 1.45) * 0.5,
+        width: 140.0,
+        height: caption_font * 1.45,
+    };
     label(
         &mut expected,
-        bounds,
+        caption,
         "Reset colors",
-        view.font,
+        caption_font,
         theme().text,
         false,
         bounds,
     );
-    let key_width = expected.text.measure(
-        "R",
-        &DrawOpts {
-            font_size: view.font * 0.8,
-            bold: true,
-            ..Default::default()
-        },
-    ) + 8.0;
-    label(
-        &mut expected,
-        Rect {
-            x: bounds.x + bounds.width - key_width - 2.0,
-            width: key_width,
-            ..bounds
-        },
-        "R",
-        view.font * 0.8,
-        automexia_ui_model::ensure_contrast(
-            crate::renderer::ui_theme::BRAND_CYAN,
-            theme().raised,
-            automexia_ui_model::MIN_TEXT_CONTRAST + 0.1,
-        ),
-        true,
-        bounds,
-    );
-    let actual = actual.pixels(960, 620, true);
-    let expected = expected.pixels(960, 620, true);
-    for y in bounds.y.ceil() as usize..(bounds.y + bounds.height).floor() as usize {
-        for x in bounds.x.ceil() as usize..(bounds.x + bounds.width).floor() as usize {
+    let mut actual_pixels = vec![0; 960 * 620];
+    let mut expected_pixels = vec![0; 960 * 620];
+    actual.text.render_cpu_base(&mut actual_pixels, 960, 620);
+    expected
+        .text
+        .render_cpu_base(&mut expected_pixels, 960, 620);
+    actual.text.render_cpu_modal(&mut actual_pixels, 960, 620);
+    expected
+        .text
+        .render_cpu_modal(&mut expected_pixels, 960, 620);
+    assert!(expected_pixels.iter().any(|pixel| *pixel != 0));
+    for y in caption.y.ceil() as usize..(caption.y + caption.height).floor() as usize {
+        for x in caption.x.ceil() as usize..(caption.x + caption.width).floor() as usize {
             assert_eq!(
-                actual[y * 960 + x],
-                expected[y * 960 + x],
+                actual_pixels[y * 960 + x],
+                expected_pixels[y * 960 + x],
                 "output color footer must say Reset colors"
             );
         }

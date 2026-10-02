@@ -82,6 +82,9 @@ struct Row {
     id: SettingId,
     bounds: Rect,
     control: Rect,
+    label: Rect,
+    help: Rect,
+    navigation: bool,
     lines: Vec<String>,
     label_lines: usize,
     help_line: f32,
@@ -2557,8 +2560,38 @@ impl SettingsView {
         };
         let font = self.font.max(10.0);
         let line = font * 1.45;
-        let width = (self.width - 16.0).max(0.0).min(560.0_f32.max(font * 35.0));
-        let height = (line * 8.0 + 32.0).min((self.height - 16.0).max(0.0));
+        let width = (self.width - 16.0).max(0.0).min(520.0_f32.max(font * 30.0));
+        let title_lines = wrapped(
+            &confirmation.title,
+            (width - 48.0).max(1.0),
+            canvas.text(),
+            &DrawOpts {
+                font_size: font,
+                bold: true,
+                ..DrawOpts::default()
+            },
+        );
+        let description_lines = wrapped(
+            confirmation.description,
+            (width - 48.0).max(1.0),
+            canvas.text(),
+            &DrawOpts {
+                font_size: font * 0.85,
+                ..DrawOpts::default()
+            },
+        );
+        let title_height = title_lines.len().min(2) as f32 * line;
+        let description_height = description_lines.len().min(3) as f32 * line * 0.85;
+        let button_height = (line + 8.0).max(32.0);
+        let height = (40.0
+            + title_height
+            + 8.0
+            + description_height
+            + 20.0
+            + button_height
+            + 8.0
+            + line * 0.75)
+            .min((self.height - 16.0).max(0.0));
         let card = Rect {
             x: (self.width - width) * 0.5,
             y: (self.height - height) * 0.5,
@@ -2573,13 +2606,13 @@ impl SettingsView {
         // Render only this dialog on the Settings modal pass. Underlying labels
         // must not be drawn above an opaque confirmation surface.
         rect(canvas, viewport, theme.background, viewport);
-        control(canvas, card, true, theme, viewport);
+        rounded_surface(canvas, card, theme.surface, viewport);
         self.layout_dirty = false;
         self.caret_rect = Rect::default();
         let body = Rect {
-            x: card.x + 12.0,
-            y: card.y + 12.0,
-            width: (card.width - 24.0).max(0.0),
+            x: card.x + 20.0,
+            y: card.y + 20.0,
+            width: (card.width - 40.0).max(0.0),
             height: line,
         };
         if !self.confirmation_fits() {
@@ -2605,21 +2638,7 @@ impl SettingsView {
             );
             return;
         }
-        let opts = DrawOpts {
-            font_size: font,
-            bold: true,
-            ..DrawOpts::default()
-        };
-        for (index, text) in wrapped(
-            &confirmation.title,
-            (body.width - 8.0).max(0.0),
-            canvas.text(),
-            &opts,
-        )
-        .iter()
-        .take(2)
-        .enumerate()
-        {
+        for (index, text) in title_lines.iter().take(2).enumerate() {
             label(
                 canvas,
                 Rect {
@@ -2633,24 +2652,11 @@ impl SettingsView {
                 card,
             );
         }
-        let opts = DrawOpts {
-            font_size: font * 0.85,
-            ..DrawOpts::default()
-        };
-        for (index, text) in wrapped(
-            confirmation.description,
-            (body.width - 8.0).max(0.0),
-            canvas.text(),
-            &opts,
-        )
-        .iter()
-        .take(3)
-        .enumerate()
-        {
+        for (index, text) in description_lines.iter().take(3).enumerate() {
             label(
                 canvas,
                 Rect {
-                    y: body.y + (2.3 + index as f32) * line,
+                    y: body.y + title_height + 8.0 + index as f32 * line * 0.85,
                     ..body
                 },
                 text,
@@ -2660,11 +2666,12 @@ impl SettingsView {
                 card,
             );
         }
+        let button_width = ((body.width - 8.0) * 0.5).min(font * 10.0);
         let cancel = Rect {
-            y: card.y + card.height - line * 2.0 - 12.0,
-            width: (body.width - 8.0) * 0.5,
-            height: line + 4.0,
-            ..body
+            x: body.x + body.width - button_width * 2.0 - 8.0,
+            y: body.y + title_height + 8.0 + description_height + 20.0,
+            width: button_width,
+            height: button_height,
         };
         let accept = Rect {
             x: cancel.x + cancel.width + 8.0,
@@ -3433,7 +3440,7 @@ impl SettingsView {
         let font = self.font.max(10.0);
         let line = font * 1.45;
         rect(canvas, viewport, theme.background, viewport);
-        rect(canvas, g.card, theme.surface, viewport);
+        rounded_surface(canvas, g.card, theme.surface, viewport);
         label(
             canvas,
             g.title,
@@ -4049,14 +4056,21 @@ impl SettingsView {
         let card = Rect {
             x: margin.min(self.width * 0.5),
             y: margin.min(self.height * 0.5),
-            width: (self.width - 2.0 * margin).clamp(0.0, 960.0),
+            width: (self.width - 2.0 * margin).clamp(
+                0.0,
+                if self.is_category_root() {
+                    760.0
+                } else {
+                    960.0
+                },
+            ),
             height: (self.height - 2.0 * margin).max(0.0),
         };
         let card = Rect {
             x: (self.width - card.width) * 0.5,
             ..card
         };
-        let pad = 8.0_f32.min(card.width * 0.1);
+        let pad = 12.0_f32.min(card.width * 0.1);
         let line = self.font.max(10.0) * 1.45;
         if self.requires_larger_window() {
             let opts = DrawOpts {
@@ -4208,11 +4222,11 @@ impl SettingsView {
         } else {
             (content, Rect::default())
         };
-        let button_h = line + 4.0;
+        let button_h = (line + 8.0).max(32.0);
         let customization_buttons = self.customizations.is_some();
         let button_count = if customization_buttons { 3.0 } else { 2.0 };
-        let button_w =
-            ((content.width - pad * (button_count - 1.0)) / button_count).max(0.0);
+        let button_w = ((content.width - pad * (button_count - 1.0)) / button_count)
+            .clamp(0.0, self.font.max(10.0) * 12.0 + 16.0);
         let button_y = card.y + card.height - footer + pad.min(footer * 0.1);
         let reset = Rect {
             x: content.x,
@@ -4231,8 +4245,7 @@ impl SettingsView {
             Rect::default()
         };
         let close = Rect {
-            x: content.x
-                + (button_w + pad) * if customization_buttons { 2.0 } else { 1.0 },
+            x: content.x + content.width - button_w,
             y: button_y,
             width: button_w,
             height: button_h,
@@ -4277,39 +4290,75 @@ impl SettingsView {
                 let Some(entry) = catalog.get(id) else {
                     continue;
                 };
-                let width = (body.width - 2.0 * pad - 4.0).max(1.0);
-                let label_opts = DrawOpts { bold: true, ..opts };
-                let mut lines = wrapped(&entry.label, width, text, &label_opts);
-                let label_lines = lines.len();
-                lines.extend(visual_description_lines(entry, width, text, &help_opts));
-                if let Some(reason) = entry.availability.reason() {
-                    lines.extend(wrapped(reason, width, text, &help_opts));
-                }
-                if !self.is_category_root() {
-                    lines.extend(wrapped(
-                        &format!(
-                            "{} | {}",
-                            entry.section.label(),
-                            origin_label(entry.origin)
-                        ),
-                        width,
-                        text,
-                        &help_opts,
-                    ));
-                }
-                let value_width = if matches!(entry.kind, SettingKind::Color { .. }) {
-                    (width - line - pad).max(1.0)
+                let width = (body.width - 2.0 * pad).max(1.0);
+                let navigation =
+                    self.is_category_root() || slot_id_from_page(id).is_some();
+                let value = if navigation {
+                    "›".into()
+                } else {
+                    display_value(entry)
+                };
+                let desired_control = if navigation {
+                    36.0
+                } else {
+                    match entry.kind {
+                        SettingKind::Boolean => self.font * 5.2 + 16.0,
+                        SettingKind::Number { .. }
+                        | SettingKind::ContinuousNumber { .. } => self.font * 10.0,
+                        _ => (text.measure(&value, &opts) + 24.0)
+                            .clamp(self.font * 7.0, self.font * 15.0),
+                    }
+                };
+                let min_label = self.font
+                    * if matches!(entry.kind, SettingKind::Boolean) {
+                        8.0
+                    } else {
+                        10.0
+                    };
+                let inline = navigation || width - desired_control - pad >= min_label;
+                let control_width = if inline {
+                    desired_control.min(width)
                 } else {
                     width
                 };
-                let value_lines =
-                    wrapped(&display_value(entry), value_width, text, &opts);
-                let control_h = value_lines.len().max(1) as f32 * line + pad;
+                let text_width = if inline {
+                    (width - control_width - pad).max(1.0)
+                } else {
+                    width
+                };
+                let label_opts = DrawOpts {
+                    bold: navigation,
+                    ..opts
+                };
+                let mut lines =
+                    wrapped(&entry.label, text_width - 8.0, text, &label_opts);
+                let label_lines = lines.len();
+                lines.extend(visual_description_lines(
+                    entry,
+                    text_width - 8.0,
+                    text,
+                    &help_opts,
+                ));
+                if let Some(reason) = entry.availability.reason() {
+                    lines.extend(wrapped(reason, text_width - 8.0, text, &help_opts));
+                }
+                let value_width = if matches!(entry.kind, SettingKind::Color { .. }) {
+                    (control_width - line - pad - 8.0).max(1.0)
+                } else if matches!(entry.kind, SettingKind::Boolean) {
+                    (control_width - 40.0).max(1.0)
+                } else {
+                    (control_width - 16.0).max(1.0)
+                };
+                let value_lines = wrapped(&value, value_width, text, &opts);
+                let control_h = (value_lines.len().max(1) as f32 * line + 8.0).max(32.0);
                 let help_lines = lines.len().saturating_sub(label_lines);
-                let height = label_lines as f32 * line
-                    + help_lines as f32 * help_line
-                    + control_h
-                    + pad * 4.0;
+                let text_height =
+                    label_lines as f32 * line + 4.0 + help_lines as f32 * help_line;
+                let height = if inline {
+                    text_height.max(control_h) + pad * 2.0
+                } else {
+                    text_height + control_h + pad * 3.0
+                };
                 rows.push(Row {
                     id: id.clone(),
                     bounds: Rect {
@@ -4319,17 +4368,38 @@ impl SettingsView {
                         height,
                     },
                     control: Rect {
-                        x: body.x + pad,
-                        y: top + label_lines as f32 * line + pad * 2.0,
-                        width,
+                        x: if inline {
+                            body.x + body.width - pad - control_width
+                        } else {
+                            body.x + pad
+                        },
+                        y: if inline {
+                            top + pad
+                        } else {
+                            top + pad * 2.0 + text_height
+                        },
+                        width: control_width,
                         height: control_h,
                     },
+                    label: Rect {
+                        x: body.x + pad,
+                        y: top + pad,
+                        width: text_width,
+                        height: label_lines as f32 * line,
+                    },
+                    help: Rect {
+                        x: body.x + pad,
+                        y: top + pad + label_lines as f32 * line + 4.0,
+                        width: text_width,
+                        height: help_lines as f32 * help_line,
+                    },
+                    navigation,
                     lines,
                     label_lines,
                     value_lines,
                     help_line,
                 });
-                top += height + pad;
+                top += height + 4.0;
             }
         }
         self.content_height = top;
@@ -4356,12 +4426,23 @@ impl SettingsView {
         for row in &mut rows {
             row.bounds.y += body.y - self.scroll;
             row.control.y += body.y - self.scroll;
+            row.label.y += body.y - self.scroll;
+            row.help.y += body.y - self.scroll;
         }
         self.rows = rows;
         self.layout_dirty = false;
         self.reveal_focus = false;
         if let Some(view) = &mut self.view {
-            view.set_viewport_rows((body.height/(line*5.0)).floor().max(1.0)as usize);
+            view.set_viewport_rows(
+                self.rows
+                    .iter()
+                    .filter(|row| {
+                        row.control.y >= body.y
+                            && row.control.y + row.control.height <= body.y + body.height
+                    })
+                    .count()
+                    .max(1),
+            );
         }
     }
     fn paint(&mut self, canvas: &mut impl Canvas, theme: UiTheme) {
@@ -4379,11 +4460,11 @@ impl SettingsView {
         }
         let g = self.geometry;
         rect(canvas, g.viewport, theme.background, g.viewport);
-        rect(canvas, g.card, theme.surface, g.viewport);
+        rounded_surface(canvas, g.card, theme.surface, g.viewport);
         let font = self.font.max(10.0);
         let line = font * 1.45;
         let help_font = (font * 0.76).max(9.0);
-        let pad = 8.0_f32.min(g.card.width * 0.1);
+        let pad = 12.0_f32.min(g.card.width * 0.1);
         if self.requires_larger_window() {
             for (index, value) in self.compact_lines.iter().enumerate() {
                 label(
@@ -4465,7 +4546,11 @@ impl SettingsView {
         };
         let opts = DrawOpts {
             font_size: font,
-            color: color_u8(theme.text),
+            color: color_u8(if query.is_empty() && self.preedit.is_empty() {
+                theme.muted_text
+            } else {
+                theme.text
+            }),
             ..DrawOpts::default()
         };
         let caret_width = canvas.text().measure(&query[..self.caret], &opts);
@@ -4511,35 +4596,45 @@ impl SettingsView {
             if row.bounds.intersect(g.body).is_none() {
                 continue;
             }
-            let selected =
-                self.view.as_ref().and_then(ViewState::focused) == Some(&row.id);
-            rect(
+            let selected = self.focus == Focus::List
+                && self.view.as_ref().and_then(ViewState::focused) == Some(&row.id);
+            let hovered = self
+                .pointer
+                .is_some_and(|(x, y)| g.body.contains(x, y) && row.bounds.contains(x, y));
+            rounded_surface(
                 canvas,
                 row.bounds,
-                if selected {
+                if selected || hovered {
                     theme.raised
                 } else {
-                    theme.background
+                    theme.surface
                 },
                 g.body,
             );
+            if selected {
+                rect(
+                    canvas,
+                    Rect {
+                        x: row.bounds.x,
+                        y: row.bounds.y + 8.0,
+                        width: 2.0,
+                        height: (row.bounds.height - 16.0).max(0.0),
+                    },
+                    theme.outline,
+                    g.body,
+                );
+            }
             for (index, value) in row.lines.iter().enumerate() {
+                let heading = index < row.label_lines;
+                let area = if heading { row.label } else { row.help };
                 let bounds = Rect {
-                    x: row.bounds.x + pad,
-                    y: if index < row.label_lines {
-                        row.bounds.y + pad + index as f32 * line
+                    y: if heading {
+                        area.y + index as f32 * line
                     } else {
-                        row.control.y
-                            + row.control.height
-                            + pad
-                            + (index - row.label_lines) as f32 * row.help_line
+                        area.y + (index - row.label_lines) as f32 * row.help_line
                     },
-                    width: (row.bounds.width - 2.0 * pad).max(0.0),
-                    height: if index < row.label_lines {
-                        line
-                    } else {
-                        row.help_line
-                    },
+                    height: if heading { line } else { row.help_line },
+                    ..area
                 };
                 label(
                     canvas,
@@ -4555,29 +4650,39 @@ impl SettingsView {
                     } else {
                         theme.muted_text
                     },
-                    index < row.label_lines,
+                    heading && row.navigation,
                     g.body,
                 );
             }
-            control(
-                canvas,
-                row.control,
-                selected && self.focus == Focus::List,
-                theme,
-                g.body,
-            );
+            if row.navigation {
+                label(
+                    canvas,
+                    centered_label(row.control, font),
+                    "›",
+                    font,
+                    if selected || hovered {
+                        theme.outline
+                    } else {
+                        theme.muted_text
+                    },
+                    false,
+                    g.body,
+                );
+                continue;
+            }
+            control(canvas, row.control, selected, theme, g.body);
             let swatch_width = if let Some(SettingValue::Color(color)) = self
                 .catalog
                 .as_ref()
                 .and_then(|catalog| catalog.get(&row.id))
                 .map(|entry| &entry.value)
             {
-                let size = line.min(row.control.height - 4.0);
+                let size = (line - 4.0).min(row.control.height - 8.0);
                 color_swatch(
                     canvas,
                     Rect {
                         x: row.control.x + 4.0,
-                        y: row.control.y + 4.0,
+                        y: row.control.y + (row.control.height - size) * 0.5,
                         width: size,
                         height: size,
                     },
@@ -4594,6 +4699,54 @@ impl SettingsView {
                 .as_ref()
                 .and_then(|catalog| catalog.get(&row.id))
             {
+                if let SettingValue::Boolean(enabled) = entry.value {
+                    let switch = Rect {
+                        x: row.control.x + 8.0,
+                        y: row.control.y + (row.control.height - 14.0) * 0.5,
+                        width: 26.0,
+                        height: 14.0,
+                    };
+                    rounded_fill(
+                        canvas,
+                        switch,
+                        7.0,
+                        if enabled { theme.outline } else { theme.raised },
+                        g.body,
+                    );
+                    rounded_fill(
+                        canvas,
+                        Rect {
+                            x: switch.x + if enabled { 14.0 } else { 2.0 },
+                            y: switch.y + 2.0,
+                            width: 10.0,
+                            height: 10.0,
+                        },
+                        5.0,
+                        if enabled {
+                            theme.background
+                        } else {
+                            theme.muted_text
+                        },
+                        g.body,
+                    );
+                    label(
+                        canvas,
+                        centered_label(
+                            Rect {
+                                x: row.control.x + 38.0,
+                                width: (row.control.width - 42.0).max(0.0),
+                                ..row.control
+                            },
+                            font,
+                        ),
+                        if enabled { "On" } else { "Off" },
+                        font,
+                        theme.text,
+                        false,
+                        g.body,
+                    );
+                    continue;
+                }
                 if matches!(
                     entry.kind,
                     SettingKind::Number { .. } | SettingKind::ContinuousNumber { .. }
@@ -4606,8 +4759,24 @@ impl SettingsView {
                     if editor.is_some() {
                         rect(canvas, input, theme.raised, g.body);
                     }
-                    label(canvas, decrement, "−", font, theme.text, false, g.body);
-                    label(canvas, increment, "+", font, theme.text, false, g.body);
+                    label(
+                        canvas,
+                        centered_label(decrement, font),
+                        "−",
+                        font,
+                        theme.text,
+                        false,
+                        g.body,
+                    );
+                    label(
+                        canvas,
+                        centered_label(increment, font),
+                        "+",
+                        font,
+                        theme.text,
+                        false,
+                        g.body,
+                    );
                     let value = editor.map_or_else(
                         || match &entry.value {
                             SettingValue::Number(value) => number_label(entry, *value),
@@ -4661,7 +4830,7 @@ impl SettingsView {
                     if let Some(clip) = input.intersect(g.body) {
                         canvas.text().draw_clipped(
                             input.x + 8.0 - shift,
-                            input.y + 2.0,
+                            centered_label(input, font).y + 2.0,
                             &shown,
                             &opts,
                             clip.array(),
@@ -4682,9 +4851,12 @@ impl SettingsView {
                 label(
                     canvas,
                     Rect {
-                        x: row.control.x + swatch_width,
-                        y: row.control.y + index as f32 * line,
-                        width: (row.control.width - swatch_width).max(0.0),
+                        x: row.control.x + swatch_width + 4.0,
+                        y: row.control.y
+                            + (row.control.height - row.value_lines.len() as f32 * line)
+                                * 0.5
+                            + index as f32 * line,
+                        width: (row.control.width - swatch_width - 8.0).max(0.0),
                         height: line,
                     },
                     value,
@@ -4865,14 +5037,23 @@ impl SettingsView {
         if panel.width <= 0.0 || panel.height <= 0.0 {
             return;
         }
-        rect(canvas, panel, theme.outline, panel);
+        rounded_surface(
+            canvas,
+            panel,
+            if matches!(self.focus, Focus::Preview | Focus::PreviewButton) {
+                theme.outline
+            } else {
+                theme.raised
+            },
+            panel,
+        );
         let inner = Rect {
             x: panel.x + 1.0,
             y: panel.y + 1.0,
             width: (panel.width - 2.0).max(0.0),
             height: (panel.height - 2.0).max(0.0),
         };
-        rect(canvas, inner, theme.background, panel);
+        rounded_surface(canvas, inner, theme.background, panel);
         let font = self.font.max(10.0);
         let caption = (font * 0.70).max(9.0);
         let title_height = font * 1.45;
@@ -5111,9 +5292,8 @@ impl SettingsView {
             let selected = self.preview_selected.as_ref() == Some(&entry.id);
             let hovered = self.pointer.is_some_and(|(x, y)| row.contains(x, y));
             if selected || hovered {
-                rect(canvas, row, theme.raised, area);
+                control(canvas, row, selected, theme, area);
             }
-            control(canvas, row, selected || hovered, theme, area);
             let state = slot_id_from_page(&entry.id)
                 .and_then(|slot_id| recipe.slots.iter().find(|slot| slot.id == slot_id));
             let is_add = entry.id.as_str() == "tags.add-slot";
@@ -6499,14 +6679,6 @@ fn tag_color_graphic_name(id: &str) -> String {
         .map(str::to_owned)
         .unwrap_or_else(|| role_id.unwrap_or("Custom").replace(['-', '_'], " "))
 }
-fn origin_label(origin: ValueOrigin) -> &'static str {
-    match origin {
-        ValueOrigin::Default => "Default",
-        ValueOrigin::Configuration => "Configuration",
-        ValueOrigin::User => "User override",
-        ValueOrigin::Extension => "Extension",
-    }
-}
 fn display_value(entry: &SettingDescriptor) -> String {
     match &entry.value {
         SettingValue::Boolean(value) => if *value { "On" } else { "Off" }.into(),
@@ -6684,6 +6856,49 @@ fn rect(canvas: &mut impl Canvas, bounds: Rect, color: [f32; 4], clip: Rect) {
         canvas.rect(bounds.array(), color);
     }
 }
+fn rounded_fill(
+    canvas: &mut impl Canvas,
+    bounds: Rect,
+    radius: f32,
+    color: [f32; 4],
+    clip: Rect,
+) {
+    if let Some(visible) = bounds.intersect(clip) {
+        // Subtracting intersected edges can change a fully contained f32 width
+        // by one ULP. Test containment directly so fractional DPI stays rounded.
+        if bounds.x >= clip.x
+            && bounds.y >= clip.y
+            && bounds.x + bounds.width <= clip.x + clip.width
+            && bounds.y + bounds.height <= clip.y + clip.height
+        {
+            canvas.rounded_rect(
+                bounds.array(),
+                radius.min(bounds.height * 0.5).min(bounds.width * 0.5),
+                color,
+            );
+        } else {
+            // Canvas rounded primitives have no scissor. Keep a partially
+            // scrolled control inside its panel instead of leaking its corners.
+            canvas.rect(visible.array(), color);
+        }
+    }
+}
+fn rounded_surface(canvas: &mut impl Canvas, bounds: Rect, color: [f32; 4], clip: Rect) {
+    rounded_fill(
+        canvas,
+        bounds,
+        crate::renderer::ui_theme::CONTROL_RADIUS,
+        color,
+        clip,
+    );
+}
+fn centered_label(bounds: Rect, font: f32) -> Rect {
+    Rect {
+        y: bounds.y + ((bounds.height - font * 1.45) * 0.5).max(0.0),
+        height: (font * 1.45).min(bounds.height),
+        ..bounds
+    }
+}
 fn control(
     canvas: &mut impl Canvas,
     bounds: Rect,
@@ -6691,20 +6906,22 @@ fn control(
     theme: UiTheme,
     clip: Rect,
 ) {
-    rect(
+    rounded_surface(
         canvas,
         bounds,
         if focused { theme.outline } else { theme.raised },
         clip,
     );
-    rect(
+    let border = if focused { 2.0 } else { 1.0 };
+    rounded_fill(
         canvas,
         Rect {
-            x: bounds.x + 2.0,
-            y: bounds.y + 2.0,
-            width: (bounds.width - 4.0).max(0.0),
-            height: (bounds.height - 4.0).max(0.0),
+            x: bounds.x + border,
+            y: bounds.y + border,
+            width: (bounds.width - 2.0 * border).max(0.0),
+            height: (bounds.height - 2.0 * border).max(0.0),
         },
+        crate::renderer::ui_theme::CONTROL_RADIUS - border,
         theme.background,
         clip,
     );
@@ -6727,13 +6944,14 @@ fn action_button(
     clip: Rect,
 ) {
     control(canvas, bounds, state.0, theme, clip);
+    let font = font * 0.9;
     let opts = DrawOpts {
         font_size: font * 0.8,
         bold: true,
         ..DrawOpts::default()
     };
-    let key_width = canvas.text().measure(text.1, &opts) + 8.0;
-    let caption_width = (bounds.width - key_width - 8.0).max(0.0);
+    let key_width = canvas.text().measure(text.1, &opts) + 12.0;
+    let caption_width = (bounds.width - key_width - 20.0).max(0.0);
     let mut caption = text.0;
     let caption_opts = DrawOpts {
         font_size: font,
@@ -6752,10 +6970,14 @@ fn action_button(
         .min(font);
     label(
         canvas,
-        Rect {
-            width: caption_width,
-            ..bounds
-        },
+        centered_label(
+            Rect {
+                x: bounds.x + 6.0,
+                width: caption_width,
+                ..bounds
+            },
+            caption_font,
+        ),
         caption,
         caption_font,
         if state.1 {
@@ -6766,13 +6988,22 @@ fn action_button(
         false,
         clip,
     );
+    let key = Rect {
+        x: bounds.x + (bounds.width - key_width - 7.0).max(0.0),
+        y: bounds.y + (bounds.height - font * 1.4) * 0.5,
+        width: key_width.min(bounds.width),
+        height: font * 1.4,
+    };
+    rounded_fill(
+        canvas,
+        key,
+        crate::renderer::ui_theme::KEYCAP_RADIUS,
+        theme.surface,
+        clip,
+    );
     label(
         canvas,
-        Rect {
-            x: bounds.x + (bounds.width - key_width - 2.0).max(0.0),
-            width: key_width.min(bounds.width),
-            ..bounds
-        },
+        centered_label(key, font * 0.8),
         text.1,
         font * 0.8,
         if state.1 {

@@ -1789,7 +1789,7 @@ fn visual_descriptors(
     }
     let mut format = visual_row(
         presentation::TAG_FORMAT,
-        "Information-bar format".into(),
+        "Layout".into(),
         settings::SettingKind::Choice {
             options: format_options,
         },
@@ -1833,7 +1833,7 @@ fn visual_descriptors(
     };
     let mut bar_style = visual_row(
         "tags.bar-style",
-        "Information-bar shape".into(),
+        "Shape".into(),
         choice_kind(&shape_choices),
         SettingValue::Choice(selected_recipe.visual.id().into()),
         SettingValue::Choice(default_recipe.visual.id().into()),
@@ -1843,7 +1843,7 @@ fn visual_descriptors(
     rows.push(bar_style);
     let mut bar_arrangement = visual_row(
         "tags.bar-arrangement",
-        "Information-bar arrangement".into(),
+        "Arrangement".into(),
         choice_kind(&[
             ("flow", "Flow"),
             ("split", "Left and right"),

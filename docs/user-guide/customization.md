@@ -162,8 +162,8 @@ outside the color field, **A** applies and **R** requests a reset. If the window
 is too small to show the confirmation, enlarge it or press **Esc** to cancel.
 
 Turning Information tags off hides their prompt badges while retaining
-context detection and the saved tag colors. The Information-bar format
-control offers twelve layouts; changing the format updates open terminal
+context detection and the saved tag colors. The **Layout** control
+offers twelve layouts; changing the format updates open terminal
 panes and, outside a temporary reset preview, is saved for the next launch.
 The Information tags page also controls the overall shape, arrangement, and
 **Space between tags**

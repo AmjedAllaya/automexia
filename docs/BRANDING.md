@@ -72,6 +72,11 @@ The palette, Connection Hub and quit confirmation share the renderer's existing
 surface tokens. Modal cards, controls and keycaps use a restrained rounded
 hierarchy; danger controls retain their distinct warning treatment. No blur,
 new motion, font download or terminal-colour override is introduced.
+Settings and Customizations use compact navigation rows with trailing chevrons,
+inline controls that stack in narrow panes, and content-sized confirmations.
+Repeated section/source labels stay out of the visual list; complete setting
+descriptors and availability explanations remain available. Focus outlines and
+shortcut keycaps distinguish interactive controls from passive structure.
 See [visual language](LIQUID-HACKER-UX.md) for scope and validation limits.
 
 Command boundaries use a short, inset status-coloured accent. Continuous

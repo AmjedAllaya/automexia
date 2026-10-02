@@ -1564,6 +1564,11 @@ $wallpaperConfig
             Send-AutomexiaTestControl 'open-customizations:tag-editor'
             $script:testStage = 'customizations root'
             $rootSettings = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.controls | Where-Object id -eq 'tags.enabled').Count -eq 1 }
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                [void][IO.Directory]::CreateDirectory($captureRoot)
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot 'customization-menu.png'))
+            }
             Click-TagBounds ($rootSettings.settings.controls | Where-Object id -eq 'tags.enabled').bounds
             $script:testStage = 'information tag roster'
             $roster = Wait-TagState { param($s) $s.settings.ready -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
