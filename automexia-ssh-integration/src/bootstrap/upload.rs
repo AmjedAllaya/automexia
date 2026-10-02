@@ -18,7 +18,7 @@ pub fn upload_stage_candidate(
     }
     let template = match shell {
         RemoteShell::Bash | RemoteShell::Zsh => {
-            include_str!("../../resources/upload-posix.sh")
+            include_str!("../../resources/upload-posix.sh.in")
         }
         RemoteShell::PowerShell | RemoteShell::Pwsh => {
             include_str!("../../resources/upload-powershell.ps1.in")

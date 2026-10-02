@@ -153,8 +153,8 @@ pub fn contribution(
             let value = compact_label(&namespace, MAX_CONTEXT_CHARS);
             // A kubeconfig read proves only the configured selection. It cannot
             // prove the namespace still exists in the cluster. Preserve failure
-            // and in-flight states while making a completed local read visibly
-            // unverified until a separately authorized cluster probe exists.
+            // and in-flight states and the accessible explanation without
+            // decorating the configured namespace displayed in the tag.
             let kubernetes_freshness = if freshness == Freshness::Current {
                 Freshness::Stale
             } else {
@@ -162,7 +162,7 @@ pub fn contribution(
             };
             push(
                 "kubernetes",
-                format!("{value}?"),
+                value,
                 format!(
                     "Configured Kubernetes context {context}, namespace {namespace}; cluster existence unverified"
                 ),
@@ -399,7 +399,7 @@ mod projection_tests {
                 ),
                 (
                     "kubernetes",
-                    "demo?",
+                    "demo",
                     "Configured Kubernetes context dev-cluster, namespace demo; cluster existence unverified",
                     SegmentRole::Kubernetes,
                     IconKind::Kubernetes,

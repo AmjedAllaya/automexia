@@ -58,7 +58,14 @@ def encoded_stage(nonce: str, size: int, digest: str) -> str:
 class WindowsHelperTransferTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        if not any((POWERSHELL, EXPORTER, SHELL, HELPER)):
+            raise unittest.SkipTest('requires explicit native Windows generated transfer inputs')
+        if not all((POWERSHELL, EXPORTER, SHELL, HELPER)):
+            raise ValueError('all native Windows generated transfer inputs are required')
+        if os.name != 'nt':
+            raise RuntimeError('configured PowerShell transfer tests require native Windows')
         cls.temporary = tempfile.TemporaryDirectory(prefix='automexia-ssh-upload-tests-')
+        cls.addClassCleanup(cls.temporary.cleanup)
         cls.root = Path(cls.temporary.name)
         source = cls.root / 'fixture.cs'
         source.write_text(r'''using System;

@@ -2,7 +2,7 @@
 [[ ${__amx_ssh_active:-0} == 1 ]] || return 0
 (( $+functions[__amx_ssh_helper_prompt] )) && return 0
 [[ ${AMX_SSH_HELPER_FD:-} =~ ^[1-9][0-9]{1,8}$ ]] || return 0
-builtin printf '' 2>/dev/null >&"$AMX_SSH_HELPER_FD" || return 0
+builtin printf '' 2>/dev/null 1>&"$AMX_SSH_HELPER_FD" || return 0
 __amx_ssh_helper_fd=$AMX_SSH_HELPER_FD
 builtin unset AMX_SSH_HELPER_FD
 __amx_ssh_helper_revision=0
@@ -79,7 +79,7 @@ function __amx_ssh_helper_prompt {
     header="AMXREQ1|@@PANE@@|@@GENERATION@@|$__amx_ssh_helper_revision"$'\n'
     # Invalidate prior results before submitting the new bounded request.
     builtin printf '\e]1337;SetUserVar=automexia_ssh_revision=%s\a' "$__amx_ssh_helper_encoded" >&2
-    if ! builtin printf '\0%s%s\0' "$header" "$body" 2>/dev/null >&"$__amx_ssh_helper_fd"; then
+    if ! builtin printf '\0%s%s\0' "$header" "$body" 2>/dev/null 1>&"$__amx_ssh_helper_fd"; then
         __amx_ssh_helper_retire
     fi
     return 0

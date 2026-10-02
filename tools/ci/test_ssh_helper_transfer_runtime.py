@@ -26,6 +26,15 @@ EXPORTER = ''
 
 
 class HelperTransferRuntimeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not IMAGE and not EXPORTER:
+            raise unittest.SkipTest('requires explicit image and actual Rust exporter fixtures')
+        if not IMAGE or not EXPORTER:
+            raise ValueError('both image and actual Rust exporter fixtures are required')
+        if sys.platform != 'linux':
+            raise RuntimeError('configured transfer runtime tests require native Linux')
+
     def test_disconnect_retires_hanging_probe_group_and_exact_lease(self) -> None:
         with runtime.Fixture(IMAGE, executable_temp=True) as fixture:
             nonce = secrets.token_hex(32)

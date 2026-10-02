@@ -4,14 +4,13 @@ from __future__ import annotations
 
 import argparse
 import base64
-import fcntl
 import os
 from pathlib import Path
 import re
 import select
 import signal
 import struct
-import termios
+import sys
 import time
 import unittest
 
@@ -19,8 +18,8 @@ import test_ssh_bash_core as pty_owner
 import test_ssh_wrapper_runtime as runtime
 
 IMAGE = ''
-APPLICATION: Path
-HELPER: Path
+APPLICATION: Path | None = None
+HELPER: Path | None = None
 CONTEXT = re.compile(rb'\x1b\]1337;SetUserVar=automexia_ssh_context_v2=([^\x07]+)\x07')
 FIELDS = ('git_branch kubernetes_context kubernetes_namespace docker_context terraform_workspace '
           'environment aws_profile azure_cloud gcp_project aws_region azure_subscription '
@@ -66,6 +65,12 @@ def wait_context(shell: pty_owner.Shell, expected: dict[str, str], *, after: int
 class HelperRuntimeContracts(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
+        if not IMAGE and APPLICATION is None and HELPER is None:
+            raise unittest.SkipTest('requires explicit image, application and helper fixtures')
+        if not IMAGE or APPLICATION is None or HELPER is None:
+            raise ValueError('all image, application and helper fixtures are required')
+        if sys.platform != 'linux':
+            raise RuntimeError('configured helper runtime tests require native Linux')
         cls.fixture = runtime.Fixture(IMAGE, executable_temp=True)
         cls.fixture.__enter__()
 
@@ -96,6 +101,8 @@ class HelperRuntimeContracts(unittest.TestCase):
         self.assertEqual(output, b'', 'helper left uploaded/startup files behind')
 
     def test_passive_discovery_idle_refresh_revision_changes_and_exact_cleanup(self) -> None:
+        import fcntl
+        import termios
         for name in ('bash', 'zsh'):
             with self.subTest(shell=name):
                 self.put('.git/HEAD', 'ref: refs/heads/fixture-main\n')
@@ -175,6 +182,8 @@ if __name__ == '__main__':
     parser.add_argument('--application', type=Path, required=True)
     parser.add_argument('--helper', type=Path, required=True)
     arguments, remaining = parser.parse_known_args()
+    if sys.platform != 'linux':
+        parser.error('this opt-in fixture requires native Linux process identity checks')
     IMAGE = arguments.image
     APPLICATION = arguments.application.resolve(strict=True)
     HELPER = arguments.helper.resolve(strict=True)

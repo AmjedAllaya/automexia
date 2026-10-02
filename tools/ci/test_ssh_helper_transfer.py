@@ -50,6 +50,13 @@ def bounded(command: list[str], *, timeout: float = 20,
 
 
 class PosixHelperTransferTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        if not EXPORTER:
+            raise unittest.SkipTest('requires an explicit actual Rust helper exporter')
+        if os.name != 'posix' or any(shutil.which(shell) is None for shell in (*SHELLS, 'ssh')):
+            raise RuntimeError('configured transfer tests require native Bash, Zsh and OpenSSH')
+
     def test_unsafe_optional_fish_transport_is_rejected_before_staging(self) -> None:
         code, output = bounded([EXPORTER, 'fish'])
         self.assertNotEqual(code, 0)

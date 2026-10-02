@@ -36,8 +36,10 @@ link is unavailable to the status bar. The entry check and file open are not
 atomic across every parent component; concurrent path replacement and Unix
 network mounts remain limitations of this boundary.
 
-The Kubernetes tag shows a configured namespace with a visible unverified
-marker and an accessible explanation. A completed local refresh replaces the
+The Kubernetes tag shows the configured namespace without a question-mark suffix
+or corner status dot. Its accessible explanation and freshness metadata retain
+the distinction between a configured selection and verified cluster state.
+A completed local refresh replaces the
 previous snapshot, so removal of the kubeconfig selection removes its tag.
 Visible routes reconcile local sources on a three-second background cycle;
 worker saturation may delay completion, and hidden routes refresh when shown.
@@ -57,13 +59,13 @@ or authorize a new capability. Live cluster verification requires a security
 review, a replacement ADR accepted for the exact adapter, two independent
 protected-path approvals on the exact reviewed head, enforced grant binding,
 and applicable native lifecycle and performance evidence before activation.
-Until then, the local-read-only boundary and visible unverified state remain.
+Until then, the local-read-only boundary and unverified metadata remain.
 
 ## Consequences
 
 Users are not told that a configured namespace exists in the cluster unless
 there is actual authorized evidence. Deleting only the remote namespace leaves
-the configured value visibly unverified; local configuration removal clears it
+the configured value and its unverified metadata intact; local configuration removal clears it
 on refresh. Disabling the provider or retiring a session cancels its optional
 state without blocking terminal work. Its tags are removed while core OS/user
 tags and an independently enabled Git branch remain attached to each prompt

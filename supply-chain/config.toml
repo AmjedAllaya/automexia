@@ -351,17 +351,13 @@ exclude = [
     "wasm-coredump-builder",
     "wasm-coredump-encoder",
     "wasm-coredump-types",
-    "wasm-encoder",
-    "wasm-metadata",
     "wasm-mutate",
     "wasm-smith",
     "wasm-wave",
     "wasmi",
     "wasmi_arena",
     "wasmi_core",
-    "wasmparser",
     "wasmparser-nostd",
-    "wasmprinter",
     "wasmtime-asm-macros",
     "wasmtime-c-api-impl",
     "wasmtime-c-api-macros",
@@ -409,8 +405,6 @@ exclude = [
     "wasmtime-wit-bindgen",
     "wasmtime-wizer",
     "wasmtime-wmemcheck",
-    "wast",
-    "wat",
     "web-sys",
     "webpki-root-certs",
     "webpki-roots",
@@ -444,8 +438,6 @@ exclude = [
     "wit-bindgen-rust",
     "wit-bindgen-rust-lib",
     "wit-bindgen-rust-macro",
-    "wit-component",
-    "wit-parser",
     "witx",
     "wstd",
     "wstd-macro",
@@ -2786,30 +2778,6 @@ criteria = "safe-to-deploy"
 version = "0.2.126"
 criteria = "safe-to-deploy"
 
-[[exemptions.wasm-encoder]]
-version = "0.254.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasm-metadata]]
-version = "0.254.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmparser]]
-version = "0.254.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wasmprinter]]
-version = "0.254.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wast]]
-version = "254.0.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wat]]
-version = "1.254.0"
-criteria = "safe-to-deploy"
-
 [[exemptions.wayland-backend]]
 version = "0.3.16"
 criteria = "safe-to-deploy"
@@ -3060,14 +3028,6 @@ criteria = "safe-to-deploy"
 
 [[exemptions.wit-bindgen]]
 version = "0.57.1"
-criteria = "safe-to-deploy"
-
-[[exemptions.wit-component]]
-version = "0.254.0"
-criteria = "safe-to-deploy"
-
-[[exemptions.wit-parser]]
-version = "0.254.0"
 criteria = "safe-to-deploy"
 
 [[exemptions.writeable]]

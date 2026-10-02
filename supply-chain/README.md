@@ -26,3 +26,12 @@ not certify every dependency as safe. Before accepting a future change here:
 
 The directory contains no credentials, host paths, or generated binaries. It is
 reviewed source, not an ignored local cache.
+
+Cargo Vet 0.10.2 applies an import's `exclude` list to ordinary audits, but
+does not apply it to publisher wildcard audits. Do not treat that list as a
+wildcard trust allowlist. The reviewed package scope is the exact publisher and
+audit records checked into `imports.lock`; CI's `cargo vet --locked` does not
+fetch further records. Review every record added by an unlocked refresh before
+accepting it, including its package, publisher, publication date and upstream
+criterion. The [patched-runtime review](reviews/2026-10-wasmtime-security-patch.md)
+records the current 35-package import scope.

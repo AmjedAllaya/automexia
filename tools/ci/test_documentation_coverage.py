@@ -49,6 +49,7 @@ pub entries: Vec<String>,
         self.assertEqual(
             COVERAGE.application_cli_commands(),
             {
+                "+ssh",
                 "actions",
                 "aliases",
                 "docs",
@@ -62,11 +63,12 @@ pub entries: Vec<String>,
                 "repo",
                 "search",
                 "shell-integration",
+                "ssh",
                 "ssh-integration",
                 "workspaces",
             },
         )
-        self.assertEqual(counts["cli_commands"], 15)
+        self.assertEqual(counts["cli_commands"], 17)
         self.assertGreaterEqual(counts["xtask_commands"], 20)
 
     def test_missing_config_key_is_rejected(self) -> None:
@@ -129,6 +131,25 @@ pub entries: Vec<String>,
                 "keyboard reference", {"previewselectedimage"}, "copy paste"
             )
 
+    def test_longer_names_do_not_cover_missing_commands_or_flags(self) -> None:
+        for expected, documented in (
+            ("automexia ssh", "`automexia ssh-integration inspect`"),
+            ("--version", "`--versioned`"),
+        ):
+            with self.subTest(expected=expected):
+                with self.assertRaises(COVERAGE.DocumentationCoverageError):
+                    COVERAGE.require_tokens("CLI reference", {expected}, documented)
+
+    def test_command_boundaries_accept_markdown_and_arguments(self) -> None:
+        for documented in ("`automexia ssh`", "automexia ssh -- host-alias"):
+            with self.subTest(documented=documented):
+                self.assertEqual(
+                    COVERAGE.require_tokens(
+                        "CLI reference", {"automexia ssh"}, documented
+                    ),
+                    1,
+                )
+
     def test_matching_is_case_insensitive(self) -> None:
         self.assertEqual(
             COVERAGE.require_tokens(
@@ -169,6 +190,21 @@ pub entries: Vec<String>,
                 COVERAGE.application_cli_commands(root),
                 {"shell-integration", "quick-actions"},
             )
+
+    def test_application_subcommands_include_explicit_names_and_visible_aliases(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            source = root / "apps" / "automexia-terminal" / "src" / "cli.rs"
+            source.parent.mkdir(parents=True)
+            source.write_text(
+                'pub enum CliCommand {\n'
+                '    /// Run an explicit SSH session.\n'
+                '    #[command(name = "+ssh", visible_alias = "ssh")]\n'
+                '    Ssh(SshCommand),\n'
+                '}\n',
+                encoding="utf-8",
+            )
+            self.assertEqual(COVERAGE.application_cli_commands(root), {"+ssh", "ssh"})
 
     def test_canonical_page_requires_one_level_one_heading(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

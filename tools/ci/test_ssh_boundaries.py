@@ -108,11 +108,11 @@ class Boundaries(unittest.TestCase):
     def test_duplicate_canonical_resource_is_rejected(self):
         self.append('automexia-ssh-integration/src/bootstrap.rs','\nconst X:&str=include_str!("../resources/fish-core.fish");');self.fail()
     def test_upload_resource_cannot_move_to_another_source_owner(self):
-        self.append('automexia-ssh-integration/src/bootstrap.rs','\nconst X:&str=include_str!("../../resources/upload-posix.sh");');self.fail()
+        self.append('automexia-ssh-integration/src/bootstrap.rs','\nconst X:&str=include_str!("../../resources/upload-posix.sh.in");');self.fail()
     def test_duplicate_upload_resource_is_rejected(self):
-        self.append('automexia-ssh-integration/src/bootstrap/upload.rs','\nconst X:&str=include_str!("../../resources/upload-posix.sh");');self.fail()
+        self.append('automexia-ssh-integration/src/bootstrap/upload.rs','\nconst X:&str=include_str!("../../resources/upload-posix.sh.in");');self.fail()
     def test_missing_upload_resource_is_rejected(self):
-        (self.root/'automexia-ssh-integration/resources/upload-posix.sh').unlink()
+        (self.root/'automexia-ssh-integration/resources/upload-posix.sh.in').unlink()
         self.fail()
     def test_missing_powershell_upload_template_is_rejected(self):
         (self.root/'automexia-ssh-integration/resources/upload-powershell.ps1.in').unlink()

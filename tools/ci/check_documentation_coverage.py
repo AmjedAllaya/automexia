@@ -198,11 +198,21 @@ def application_cli_commands(root: Path = ROOT) -> set[str]:
     )
     if not match:
         raise DocumentationCoverageError("could not find application command registry")
-    variants = re.findall(r"^\s*(\w+)\s*\(", match.group("body"), re.MULTILINE)
-    return {
-        re.sub(r"(?<!^)(?=[A-Z])", "-", variant).lower()
-        for variant in variants
-    }
+    commands = set()
+    for variant in re.finditer(
+        r"(?P<attributes>(?:^[ \t]*#\[[^\]]*\]\s*)*)"
+        r"^[ \t]*(?P<variant>\w+)\s*\(",
+        match.group("body"),
+        re.MULTILINE,
+    ):
+        attributes = variant.group("attributes")
+        explicit = re.search(r'\bname\s*=\s*"([^"]+)"', attributes)
+        commands.add(
+            explicit.group(1) if explicit else
+            re.sub(r"(?<!^)(?=[A-Z])", "-", variant.group("variant")).lower()
+        )
+        commands.update(re.findall(r'\bvisible_alias\s*=\s*"([^"]+)"', attributes))
+    return commands
 
 
 def split_usage_alternatives(value: str) -> list[str]:
@@ -270,7 +280,12 @@ def xtask_commands(root: Path = ROOT) -> set[str]:
 
 def require_tokens(owner: str, expected: set[str], content: str) -> int:
     folded = content.casefold().replace("\\|", "|")
-    missing = sorted(token for token in expected if token.casefold() not in folded)
+    missing = sorted(
+        token for token in expected
+        if re.search(
+            rf"(?<![\w-]){re.escape(token.casefold())}(?![\w-])", folded
+        ) is None
+    )
     if missing:
         raise DocumentationCoverageError(
             f"{owner} is missing source-owned entries: {missing}"

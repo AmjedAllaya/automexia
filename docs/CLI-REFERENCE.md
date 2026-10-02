@@ -237,7 +237,8 @@ requirements](user-guide/local-tools.md).
 
 `automexia +ssh --shell bash -- host-alias` starts system OpenSSH with bundled
 remote shell integration. On Windows, invoke `amx +ssh` through the installed
-console launcher. `ssh` is an alias for `+ssh`. Select the account's
+console launcher. `automexia ssh` is an alias for `automexia +ssh`.
+Select the account's
 actual shell with `--shell bash|zsh|fish|powershell|pwsh`; `powershell` selects
 Windows PowerShell and `pwsh` selects PowerShell 7. Native SSH arguments follow
 `--` unchanged. Unknown shells use native SSH; no account-shell syntax is guessed.

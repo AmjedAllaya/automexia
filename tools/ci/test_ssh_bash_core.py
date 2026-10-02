@@ -469,8 +469,20 @@ class CommandLifecycle(unittest.TestCase):
 
     def test_interrupting_a_running_command_reports_its_real_failure(self):
         with Shell() as shell:
-            before = shell.send(b'(printf RUNNING; exec sleep 30)\n', b'RUNNING')
+            # Readiness must come from the blocking child itself. A shell
+            # printf before exec does not prove the interrupt target is running.
+            program = ("import os,time; os.write(1,bytes((82,85,78,78,73,78,71))+b':'"
+                       "+str(os.getpgrp()).encode()+b'\\n'); time.sleep(30)")
+            command = f'({shlex.quote(sys.executable)} -c {shlex.quote(program)})\n'
+            before = shell.send(command.encode(), b'RUNNING:')
             self.assertIn(b'\x1b]133;C', before)
+            child_group = int(shell.until(b'\n').strip())
+            self.assertGreater(child_group, 0)
+            deadline = time.monotonic() + TIMEOUT
+            while os.tcgetpgrp(shell.fd) != child_group:
+                if time.monotonic() >= deadline:
+                    self.fail('running interrupt fixture did not acquire the terminal')
+                time.sleep(.001)
             data = shell.send(b'\x03')
             self.assertEqual(re.findall(rb'\x1b]133;D;(\d+)\x07', data), [b'130'])
             self.assertNotIn(b'\x1b]133;D', shell.command(''))

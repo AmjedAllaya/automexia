@@ -9,9 +9,12 @@ the locked graph and its security fixes; it does not relax the CI criteria.
 
 Use the Bytecode Alliance's published Cargo Vet records at immutable revision
 `f543666f4c59adbc8d22eabb975215fb78595b61`. Cargo Vet's public registry identifies
-this as the Wasmtime project's audit source. The import excludes every package
-in that snapshot except the 27 already-locked Wasmtime, Cranelift and Pulley
-packages. Superseded local exemptions for those packages are removed.
+this as the Wasmtime project's audit source. The reviewed import lock contains
+only the 27 already-locked Wasmtime, Cranelift and Pulley packages. Superseded
+local exemptions for those packages are removed. The configured exclusion list
+does not constrain publisher wildcard audits in Cargo Vet 0.10.2; the
+[subsequent security-patch review](2026-10-wasmtime-security-patch.md) documents
+that limitation and the expanded, explicitly reviewed lock scope.
 
 These are upstream publisher-based trust records, not newly claimed independent
 Automexia audits. Cargo Vet's checked-in import lock records the relevant audit

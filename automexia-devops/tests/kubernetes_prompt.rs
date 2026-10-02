@@ -121,7 +121,7 @@ fn namespace_remains_visible_and_accessible_with_a_long_context_name() {
         .find(|segment| segment.id.as_str() == "kubernetes")
         .unwrap();
     assert_eq!(kube.freshness, Freshness::Stale);
-    assert_eq!(kube.label.as_str(), "sandbox?");
+    assert_eq!(kube.label.as_str(), "sandbox");
     assert!(kube
         .accessibility_label
         .as_str()
@@ -133,12 +133,70 @@ fn namespace_remains_visible_and_accessible_with_a_long_context_name() {
         .iter()
         .find(|segment| segment["id"] == "kubernetes")
         .unwrap();
-    assert_eq!(segment["label"], "sandbox?");
+    assert_eq!(segment["label"], "sandbox");
     assert_eq!(segment["freshness"], "stale");
     let text = segment.to_string();
     assert!(text.contains("fixture-context-with-a-long-descriptive-name"));
     assert!(text.contains("namespace sandbox"));
     assert!(text.contains("cluster existence unverified"));
+}
+
+#[test]
+fn namespace_label_preserves_context_and_freshness_without_decorations() {
+    use automexia_extension_api::{IconKind, SegmentRole};
+
+    for freshness in [
+        Freshness::Current,
+        Freshness::Refreshing,
+        Freshness::Stale,
+        Freshness::Expired,
+        Freshness::Unavailable,
+        Freshness::Error,
+    ] {
+        for (namespace, label) in [("sandbox", "sandbox"), ("", "default")] {
+            let snapshot = DevOpsSnapshot {
+                kubernetes: Some(KubernetesContext {
+                    context: "fixture-cluster".into(),
+                    namespace: namespace.into(),
+                }),
+                ..Default::default()
+            };
+            let projection =
+                contribution(&snapshot, &session(), 1, 2, 3, freshness).unwrap();
+            let kube = projection
+                .segments
+                .iter()
+                .find(|segment| segment.role == SegmentRole::Kubernetes)
+                .unwrap();
+            assert_eq!(kube.label.as_str(), label);
+            assert_eq!(kube.icon, IconKind::Kubernetes);
+            assert_eq!(
+                kube.freshness,
+                if freshness == Freshness::Current {
+                    Freshness::Stale
+                } else {
+                    freshness
+                }
+            );
+            assert_eq!(kube.observed_at_ms, 3);
+            assert_eq!(
+                kube.details_action.as_ref().unwrap().id.as_str(),
+                "devops.kubernetes"
+            );
+            assert!(kube
+                .accessibility_label
+                .as_str()
+                .contains("context fixture-cluster"));
+            assert!(kube
+                .accessibility_label
+                .as_str()
+                .contains(&format!("namespace {label}")));
+            assert!(kube
+                .accessibility_label
+                .as_str()
+                .contains("cluster existence unverified"));
+        }
+    }
 }
 
 #[test]

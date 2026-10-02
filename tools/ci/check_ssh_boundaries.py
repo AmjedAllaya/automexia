@@ -130,7 +130,7 @@ def validate_repository(root: Path = ROOT) -> dict[str, int]:
         '"../resources/fish-core.fish"', '"../resources/powershell-core.ps1"',
     }
     upload_resources = {
-        '"../../resources/upload-posix.sh"',
+        '"../../resources/upload-posix.sh.in"',
         '"../../resources/upload-powershell.ps1.in"',
     }
     resources = {('bootstrap.rs', resource) for resource in core_resources}

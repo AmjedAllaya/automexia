@@ -491,22 +491,6 @@ impl DevOpsStatus {
             paint,
             fragment.shape_position,
         );
-        if let Some(anchor) = kubernetes_freshness_marker(item) {
-            let marker =
-                automexia_ui_model::context_tag_colors(colors.background.0, anchor, 0);
-            let size = (metrics.height * 0.22).clamp(2.0, 4.0);
-            sugarloaf.rounded_rect(
-                None,
-                x + fragment.width - size,
-                y,
-                size,
-                size,
-                marker.foreground,
-                0.0,
-                size * 0.5,
-                ORDER,
-            );
-        }
         #[cfg(feature = "native-gui-test-hooks")]
         self.native_prompt_paints.borrow_mut().push((
             anchor.generation,
@@ -862,7 +846,7 @@ fn remote_segments(
         );
         push(
             "kubernetes",
-            format!("{}?", automexia_ui_model::compact_label(&combined, 27)),
+            automexia_ui_model::compact_label(&combined, 27),
             format!(
                 "{accessible}; remote configured selection, cluster existence unverified"
             ),
@@ -1057,22 +1041,6 @@ fn prompt_bar_item_colors(
             appearance.opacity.get()
         };
     automexia_ui_model::context_tag_colors(colors.background.0, anchor, opacity)
-}
-
-/// An icon-only recipe has no text in which to show the unverified `?`.
-/// Keep its freshness visible inside the existing tag rectangle.
-fn kubernetes_freshness_marker(item: &ResolvedBarItem) -> Option<[u8; 3]> {
-    if item.source_role != Some(automexia_extension_api::SegmentRole::Kubernetes) {
-        return None;
-    }
-    match item.freshness {
-        automexia_extension_api::Freshness::Current => None,
-        automexia_extension_api::Freshness::Refreshing => Some([80, 213, 255]),
-        automexia_extension_api::Freshness::Stale
-        | automexia_extension_api::Freshness::Expired => Some([255, 194, 67]),
-        automexia_extension_api::Freshness::Unavailable
-        | automexia_extension_api::Freshness::Error => Some([255, 98, 115]),
-    }
 }
 
 /// Every vertex stays inside the fragment rectangle supplied by the shared
@@ -1752,6 +1720,19 @@ mod tests {
         status.set_remote_context(&facts, true, Some(&remote));
         status.ensure_live_segments(&facts);
         assert_eq!(status.live_segments.len(), 9);
+        let kubernetes = status
+            .live_segments
+            .iter()
+            .find(|segment| segment.role == SegmentRole::Kubernetes)
+            .unwrap();
+        assert!(!kubernetes.value.ends_with('?'));
+        assert_eq!(
+            kubernetes.freshness,
+            automexia_extension_api::Freshness::Stale
+        );
+        assert!(kubernetes
+            .accessibility_label
+            .contains("cluster existence unverified"));
         for role in [
             SegmentRole::Git,
             SegmentRole::Kubernetes,
@@ -2439,7 +2420,9 @@ mod visual_tag_render_tests {
     use rio_backend::config::{presentation::TagStyle, Config};
 
     #[test]
-    fn icon_only_kubernetes_tag_keeps_unverified_state_visible() {
+    fn kubernetes_freshness_preserves_custom_tag_colors() {
+        use automexia_extension_api::Freshness;
+        let renderer = super::super::Renderer::new(&Config::default());
         let mut item = ResolvedBarItem {
             slot_id: "cluster".into(),
             value: String::new(),
@@ -2450,17 +2433,37 @@ mod visual_tag_render_tests {
             source_role: Some(SegmentRole::Kubernetes),
             icon: Some(IconKind::Kubernetes),
             lane: automexia_ui_model::information_bar::BarLane::Leading,
-            color: None,
+            color: Some([73, 154, 223]),
             freshness: automexia_extension_api::Freshness::Stale,
             observed_at_ms: 1,
             details_action: None,
         };
-        assert!(kubernetes_freshness_marker(&item).is_some());
-        item.freshness = automexia_extension_api::Freshness::Current;
-        assert!(kubernetes_freshness_marker(&item).is_none());
-        item.source_role = Some(SegmentRole::Docker);
-        item.freshness = automexia_extension_api::Freshness::Stale;
-        assert!(kubernetes_freshness_marker(&item).is_none());
+        let expected = automexia_ui_model::context_tag_colors(
+            renderer.named_colors.background.0,
+            [73, 154, 223],
+            renderer.presentation.tags.opacity.get(),
+        );
+        for freshness in [
+            Freshness::Current,
+            Freshness::Refreshing,
+            Freshness::Stale,
+            Freshness::Expired,
+            Freshness::Unavailable,
+            Freshness::Error,
+        ] {
+            item.freshness = freshness;
+            for icon_only in [false, true] {
+                item.icon_only = icon_only;
+                let paint = prompt_bar_item_colors(
+                    renderer.named_colors,
+                    &item,
+                    &renderer.presentation.tags,
+                    BarVisualStyle::Capsule,
+                );
+                assert_eq!(paint.foreground, expected.foreground);
+                assert_eq!(paint.background, expected.background);
+            }
+        }
     }
 
     #[test]
