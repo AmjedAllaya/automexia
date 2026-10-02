@@ -30,4 +30,5 @@ wgpu = ["rio-backend/wgpu"]
 
 [[bench]]
 name = "text_fit"
+path = "benches/text_fit.rs"
 harness = false

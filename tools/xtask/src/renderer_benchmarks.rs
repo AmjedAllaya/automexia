@@ -210,6 +210,66 @@ mod tests {
     }
 
     #[test]
+    fn manifest_only_resolution_retains_only_the_benchmark() {
+        let source = std::fs::read_to_string(
+            crate::root().join("tools/renderer-benchmarks/Cargo.toml"),
+        )
+        .unwrap();
+        let manifest: toml::Table = toml::from_str(&source).unwrap();
+        let mut fixture = toml::Table::new();
+        // Resolve target discovery without fetching or building dependencies.
+        fixture.insert("package".into(), manifest["package"].clone());
+        fixture.insert("bench".into(), manifest["bench"].clone());
+        fixture.insert(
+            "workspace".into(),
+            toml::from_str::<toml::Value>(
+                "[package]\nversion='0.0.0'\nedition='2021'\nrust-version='1.83'\nlicense='MIT'\n",
+            )
+            .unwrap(),
+        );
+        let directory = tempfile::tempdir().unwrap();
+        let root = directory.path();
+        let manifest_path = root.join("Cargo.toml");
+        std::fs::write(&manifest_path, toml::to_string(&fixture).unwrap()).unwrap();
+        // Dependabot writes dummy lib/bin files, but does not fetch benches.
+        // They must stay disabled while the explicit benchmark remains known.
+        std::fs::create_dir(root.join("src")).unwrap();
+        for path in ["src/lib.rs", "src/main.rs", "build.rs"] {
+            std::fs::write(root.join(path), "fn main() {}\n").unwrap();
+        }
+        let mut command = std::process::Command::new(env!("CARGO"));
+        command
+            .args([
+                "metadata",
+                "--offline",
+                "--no-deps",
+                "--format-version",
+                "1",
+            ])
+            .arg("--manifest-path")
+            .arg(&manifest_path)
+            .current_dir(root)
+            .env("CARGO_TARGET_DIR", root.join("target"));
+        let output = crate::run_bounded_capture(
+            command,
+            std::time::Duration::from_secs(30),
+            1024 * 1024,
+        )
+        .unwrap();
+        assert!(output.status.success(), "manifest-only Cargo resolution");
+        let metadata: Value = serde_json::from_slice(&output.stdout).unwrap();
+        let targets = metadata["packages"][0]["targets"].as_array().unwrap();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0]["name"], "text_fit");
+        assert_eq!(targets[0]["kind"], json!(["bench"]));
+        assert_eq!(
+            std::path::Path::new(targets[0]["src_path"].as_str().unwrap()),
+            root.join("benches/text_fit.rs")
+        );
+        assert!(!root.join("benches").exists());
+    }
+
+    #[test]
     fn rejects_backend_drift_and_missing_platform_scope() {
         for (field, value) in [
             ("target", json!("cfg(windows)")),

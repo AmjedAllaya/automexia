@@ -585,6 +585,7 @@ autobenches = false
 build = false
 [[bench]]
 name = "text_fit"
+path = "benches/text_fit.rs"
 harness = false
 '''
         (member / "Cargo.toml").write_text(mutation(manifest), encoding="utf-8")
@@ -611,7 +612,10 @@ harness = false
             lambda text: text + '\n[[test]]\nname = "hidden"\n',
             lambda text: text + '\n[[example]]\nname = "hidden"\n',
             lambda text: text + '\n[[bench]]\nname = "hidden"\n',
-            lambda text: text + 'path = "../outside.rs"\n',
+            lambda text: text.replace('path = "benches/text_fit.rs"', 'path = "../outside.rs"'),
+            lambda text: text.replace('path = "benches/text_fit.rs"', 'path = "benches/hidden.rs"'),
+            lambda text: text.replace('path = "benches/text_fit.rs"', 'path = "/fixture/outside.rs"'),
+            lambda text: text.replace('path = "benches/text_fit.rs"\n', ''),
             lambda text: text + 'required-features = ["hidden"]\n',
             lambda text: text.replace('harness = false', 'harness = true'),
             lambda text: text.replace('harness = false', 'harness = 0'),

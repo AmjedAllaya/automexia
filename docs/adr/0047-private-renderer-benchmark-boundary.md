@@ -14,6 +14,10 @@ visibility without a runtime requirement.
 
 The unpublished `automexia-renderer-benchmarks` workspace package under
 `tools/renderer-benchmarks` contains only the explicit `text_fit` benchmark.
+Its source path is explicitly `benches/text_fit.rs`, so manifest-only dependency
+resolvers retain that target without fetching the benchmark sources. Automatic
+target discovery stays disabled; the source scanner requires this exact path
+and rejects missing sources in the real workspace.
 It includes the application-owned module by path, with no implementation copy.
 The same harness includes the private command-result row-band iterator to measure
 visible-row geometry against the former single-rectangle submission, without

@@ -807,8 +807,9 @@ def renderer_benchmark_source_root(root: Path) -> Path:
     valid_benchmark = (
         isinstance(benchmarks, list) and len(benchmarks) == 1
         and isinstance(benchmarks[0], dict)
-        and set(benchmarks[0]) == {"name", "harness"}
+        and set(benchmarks[0]) == {"name", "path", "harness"}
         and benchmarks[0]["name"] == "text_fit"
+        and benchmarks[0]["path"] == "benches/text_fit.rs"
         and benchmarks[0]["harness"] is False
     )
     disabled = ("autolib", "autobins", "autoexamples", "autotests", "autobenches", "build")
