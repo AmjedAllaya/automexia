@@ -2075,7 +2075,7 @@ fn selected_tag_controls_replace_the_left_half_while_the_live_tags_remain_clicka
 }
 
 #[test]
-fn tag_samples_remain_editable_with_live_devops_detection_on_or_off() {
+fn devops_toggle_hides_preview_tags_and_keyboard_targets() {
     let base = rio_backend::config::Config::default();
     let market = [crate::automexia::marketplace::MarketItem {
         id: crate::automexia::builtins::devops::ID.into(),
@@ -2124,14 +2124,30 @@ fn tag_samples_remain_editable_with_live_devops_detection_on_or_off() {
                 .is_some());
             let mut raster = Raster::new(1.0);
             view.paint(&mut raster, theme());
-            assert!(view
-                .preview_order
-                .iter()
-                .any(|id| id.as_str() == "tags.slot.kubernetes.page"));
-            assert!(view
-                .preview_order
-                .iter()
-                .any(|id| id.as_str() == "tags.slot.terraform.page"));
+            for role in [
+                "production",
+                "kubernetes",
+                "docker",
+                "azure",
+                "aws",
+                "gcp",
+                "unknown-cloud",
+                "terraform",
+                "environment",
+            ] {
+                let page = format!("tags.slot.{role}.page");
+                assert_eq!(
+                    view.preview_order.iter().any(|id| id.as_str() == page),
+                    enabled,
+                    "{role} at {width}px, DevOps enabled={enabled}"
+                );
+                if !enabled {
+                    assert!(!view
+                        .preview_targets
+                        .iter()
+                        .any(|(id, _)| id.as_str() == page));
+                }
+            }
             assert!(view
                 .preview_order
                 .iter()
@@ -2145,10 +2161,8 @@ fn tag_samples_remain_editable_with_live_devops_detection_on_or_off() {
                 assert!(sample_has("tags.slot.windows.page"));
                 assert!(sample_has("tags.slot.git.page"));
                 assert!(sample_has("tags.slot.user.page"));
-                // This is an appearance editor with sample data. Discovery
-                // controls live terminal context, never the design samples.
-                assert!(sample_has("tags.slot.kubernetes.page"));
-                assert!(sample_has("tags.slot.terraform.page"));
+                assert_eq!(sample_has("tags.slot.kubernetes.page"), enabled);
+                assert_eq!(sample_has("tags.slot.terraform.page"), enabled);
             }
             assert!(view.geometry.preview.height > 100.0);
             if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
@@ -2167,6 +2181,107 @@ fn tag_samples_remain_editable_with_live_devops_detection_on_or_off() {
                 )))
                 .unwrap();
             }
+        }
+    }
+}
+
+#[test]
+fn devops_toggle_restores_choices_and_recovers_preview_selection() {
+    let base = rio_backend::config::Config::default();
+    let market = [crate::automexia::marketplace::MarketItem {
+        id: crate::automexia::builtins::devops::ID.into(),
+        name: "DevOps".into(),
+        description: "Local context".into(),
+        installed: true,
+    }];
+    let mut preferences = crate::automexia::preferences::UserPreferences::default();
+    let mut recipe = preferences.visual.information_bar.recipe();
+    let terraform = recipe
+        .slots
+        .iter_mut()
+        .find(|slot| slot.id == "terraform")
+        .unwrap();
+    terraform.enabled = false;
+    terraform.color = Some([17, 43, 91]);
+    preferences.visual.information_bar.use_custom = true;
+    preferences.visual.information_bar.custom_recipe = Some(recipe.clone());
+    let mut view = SettingsView::default();
+    view.fit(960.0, 620.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, &base, &preferences, &market).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("tags.enabled").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view.paint(&mut Raster::new(1.0), theme());
+    view.start_preview_edit();
+    view.preview_selected = Some(SettingId::new("tags.slot.kubernetes.page").unwrap());
+
+    for (revision, enabled) in [(2, false), (3, true), (4, false), (5, true)] {
+        preferences
+            .set_extension_feature_enabled(
+                crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
+                enabled,
+            )
+            .unwrap();
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(revision, &base, &preferences, &market)
+                .unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &preferences,
+                &base,
+            )),
+        );
+        view.paint(&mut Raster::new(1.0), theme());
+        assert_eq!(view.title(), "Information tags");
+        assert!(view.preview_edit_mode);
+        assert!(view
+            .preview_order
+            .contains(view.preview_selected.as_ref().unwrap()));
+        assert_eq!(
+            view.preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.kubernetes.page"),
+            enabled
+        );
+        assert_eq!(
+            view.preview_order
+                .iter()
+                .any(|id| id.as_str() == "tags.slot.terraform.page"),
+            enabled
+        );
+        assert!(
+            !view.preview_targets.iter().any(|(id, bounds)| {
+                id.as_str() == "tags.slot.terraform.page"
+                    && bounds.y < view.preview_tag_list_area.y
+            }),
+            "an individually disabled tag must not be re-enabled by the group toggle"
+        );
+        let saved = view
+            .customizations
+            .as_ref()
+            .unwrap()
+            .slot_pages
+            .as_ref()
+            .unwrap();
+        assert_eq!(saved.preview_recipe(), recipe);
+        assert_eq!(preferences.visual.information_bar.recipe(), recipe);
+        for _ in 0..view.preview_order.len() + 1 {
+            named(&mut view, NamedKey::Tab);
+            assert_eq!(view.focus, Focus::Preview);
+            assert!(view
+                .preview_order
+                .contains(view.preview_selected.as_ref().unwrap()));
         }
     }
 }

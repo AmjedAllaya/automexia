@@ -1,5 +1,6 @@
 //! Bounded, renderer-independent information-bar recipes over admitted context.
 
+use std::borrow::Cow;
 use std::collections::{BTreeMap, BTreeSet};
 
 use automexia_extension_api::{DetailsAction, Freshness, IconKind, SegmentRole};
@@ -512,6 +513,46 @@ pub struct BarRecipe {
     pub slots: Vec<BarSlot>,
 }
 
+impl BarRecipe {
+    /// Project visibility without changing saved slot choices. Both terminal
+    /// bands and the editor use this gate, including literal and icon-only tags.
+    pub fn with_devops_context(&self, enabled: bool) -> Cow<'_, Self> {
+        if enabled || self.slots.iter().all(|slot| !slot_uses_devops(slot)) {
+            return Cow::Borrowed(self);
+        }
+        let mut visible = self.clone();
+        visible.slots.retain(|slot| !slot_uses_devops(slot));
+        Cow::Owned(visible)
+    }
+
+    /// The editor also lists disabled/default slots absent from a preset.
+    pub fn slot_visible_with_devops(&self, id: &str, enabled: bool) -> bool {
+        enabled
+            || !self.slots.iter().find(|slot| slot.id == id).map_or_else(
+                || role_from_id(id).is_some_and(devops_role),
+                slot_uses_devops,
+            )
+    }
+}
+
+fn devops_role(role: SegmentRole) -> bool {
+    !matches!(
+        role,
+        SegmentRole::UbuntuWsl
+            | SegmentRole::Windows
+            | SegmentRole::Git
+            | SegmentRole::User
+    )
+}
+
+fn slot_uses_devops(slot: &BarSlot) -> bool {
+    // A built-in DevOps tag remains in that group when its label is customized.
+    // Independent custom literals and decorative fixed icons need no discovery.
+    role_from_id(&slot.id).is_some_and(devops_role)
+        || matches!(slot.text, BarTextSource::Role(role) if devops_role(role))
+        || matches!(slot.icon, BarIconSource::Role(role) if devops_role(role))
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum BarRecipeError {
     Empty,
@@ -980,6 +1021,90 @@ mod tests {
             prefix: String::new(),
             suffix: String::new(),
         }
+    }
+
+    #[test]
+    fn devops_visibility_preserves_every_preset_and_individual_choice() {
+        for preset in InformationBarPreset::ALL {
+            let mut recipe = preset_recipe(preset);
+            for slot in &mut recipe.slots {
+                if slot.id == "terraform" {
+                    slot.enabled = false;
+                    slot.color = Some([17, 43, 91]);
+                }
+            }
+            let saved = recipe.clone();
+            for enabled in [true, false, true, false, true] {
+                let visible = recipe.with_devops_context(enabled);
+                if enabled {
+                    assert_eq!(*visible, saved);
+                    assert!(matches!(visible, Cow::Borrowed(_)));
+                } else {
+                    assert!(visible.slots.iter().all(|slot| matches!(
+                        slot.id.as_str(),
+                        "ubuntu-wsl" | "windows" | "git" | "user"
+                    )));
+                    for id in [
+                        "production",
+                        "kubernetes",
+                        "docker",
+                        "azure",
+                        "aws",
+                        "gcp",
+                        "unknown-cloud",
+                        "terraform",
+                        "environment",
+                    ] {
+                        assert!(!recipe.slot_visible_with_devops(id, false));
+                    }
+                }
+                assert_eq!(recipe, saved, "visibility must not edit the stored recipe");
+            }
+        }
+    }
+
+    #[test]
+    fn devops_visibility_covers_custom_sources_and_keeps_independent_literals() {
+        let mut recipe = preset_recipe(Default::default());
+        recipe.slots = vec![
+            slot(
+                BarTextSource::Literal("team".into()),
+                BarIconSource::Fixed(IconKind::Kubernetes),
+            ),
+            slot(
+                BarTextSource::Role(SegmentRole::Kubernetes),
+                BarIconSource::TextSource,
+            ),
+            slot(BarTextSource::None, BarIconSource::Role(SegmentRole::Aws)),
+            slot(
+                BarTextSource::Literal("cluster".into()),
+                BarIconSource::Role(SegmentRole::Docker),
+            ),
+            slot(
+                BarTextSource::Literal("workspace".into()),
+                BarIconSource::None,
+            ),
+        ];
+        for (entry, id) in recipe.slots.iter_mut().zip([
+            "custom-1",
+            "custom-2",
+            "custom-3",
+            "windows",
+            "terraform",
+        ]) {
+            entry.id = id.into();
+        }
+        let visible = recipe.with_devops_context(false);
+        assert_eq!(visible.slots.len(), 1);
+        assert_eq!(visible.slots[0].id, "custom-1");
+        assert_eq!(resolve_recipe(&visible, &[]).unwrap()[0].value, "team");
+        assert_eq!(*recipe.with_devops_context(true), recipe);
+        assert_eq!(recipe.slots.len(), 5);
+        assert!(recipe.slot_visible_with_devops("custom-1", false));
+        assert!(!recipe.slot_visible_with_devops("custom-2", false));
+        assert!(!recipe.slot_visible_with_devops("custom-3", false));
+        assert!(!recipe.slot_visible_with_devops("windows", false));
+        assert!(!recipe.slot_visible_with_devops("terraform", false));
     }
 
     #[test]

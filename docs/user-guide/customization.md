@@ -91,9 +91,10 @@ sample or its button in the list below. Its enabled state, text,
 icon, position and appearance controls open in the left half of the same sheet.
 The tag's own color and its inherited role color are separate controls. Use
 the tag list to select disabled tags too. **On** and **Off** describe each tag's
-visibility setting. Every enabled tag has sample data, even when live DevOps
-detection is off or its extension is absent. Real terminal tags still require
-detected context. **E** or the preview's **Edit** button enables stable selection through
+visibility setting. Turning **DevOps detection** off hides its tags in the preview,
+tag list and terminal, including custom tags using DevOps sources. OS, Git, user
+and independent custom-text tags remain. Turning it on restores your saved tag
+choices; real terminal tags still require detected context. **E** or the preview's **Edit** button enables stable selection through
 the same list, including **Add custom tag**. **Terminal output colors** controls
 ordinary command backgrounds and the separate detected-log highlighting.
 **Kubernetes status colors** controls Kubernetes readiness and status colors

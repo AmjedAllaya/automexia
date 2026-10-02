@@ -4950,10 +4950,10 @@ impl SettingsView {
         }
         if self.preview_selector_available() && self.is_tag_preview() {
             if self
-                .preview_entry(
-                    crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID,
-                )
-                .is_some_and(|entry| entry.value == SettingValue::Boolean(false))
+                .customizations
+                .as_ref()
+                .and_then(|navigation| navigation.slot_pages.as_ref())
+                .is_some_and(|snapshot| !snapshot.preview_devops_enabled())
             {
                 let notice_height = (font * 1.45).min(sample.height * 0.18);
                 label(
@@ -4962,7 +4962,7 @@ impl SettingsView {
                         height: notice_height,
                         ..sample
                     },
-                    "Detection off",
+                    "DevOps tags hidden",
                     caption,
                     hint_accent(theme, crate::renderer::ui_theme::BRAND_AMBER),
                     false,
@@ -5187,7 +5187,9 @@ impl SettingsView {
             self.paint_generic_preview(canvas, sample, theme);
             return;
         };
-        let recipe = snapshot.preview_recipe();
+        let configured_recipe = snapshot.preview_recipe();
+        let recipe =
+            configured_recipe.with_devops_context(snapshot.preview_devops_enabled());
         let appearance = snapshot.preview_appearance();
         let foreground = snapshot.preview_foreground();
         let (terminal_background, _) = snapshot.preview_terminal_colors();
@@ -5219,9 +5221,8 @@ impl SettingsView {
             font_size: metrics.font_size,
             ..DrawOpts::default()
         };
-        // Samples let every configured tag be designed without installing a
-        // provider or enabling live discovery. The shared recipe still owns
-        // per-tag visibility, sources, styling and duplicate suppression.
+        // Fictional context uses the same visibility projection as terminal
+        // bands; toggling discovery never changes the saved recipe.
         let segments = preview_segments();
         let mut items = resolve_recipe(&recipe, &segments).unwrap_or_default();
         if matches!(

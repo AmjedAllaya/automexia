@@ -16,6 +16,7 @@ use rio_backend::config::{
 #[derive(Clone)]
 pub(crate) struct SlotPageSnapshot {
     bar: crate::automexia::preferences::InformationBarPreferences,
+    devops_context_enabled: bool,
     tags: TagAppearance,
     foreground: [u8; 3],
     terminal_background: [f32; 4],
@@ -26,6 +27,10 @@ pub(crate) struct SlotPageSnapshot {
 }
 
 impl SlotPageSnapshot {
+    pub(crate) fn preview_devops_enabled(&self) -> bool {
+        self.devops_context_enabled
+    }
+
     pub(crate) fn preview_recipe(
         &self,
     ) -> automexia_ui_model::information_bar::BarRecipe {
@@ -67,6 +72,9 @@ pub(crate) fn slot_page_snapshot(
         .map(|channel| (channel.clamp(0.0, 1.0) * 255.0) as u8);
     SlotPageSnapshot {
         bar: preferences.visual.information_bar.clone(),
+        devops_context_enabled: preferences
+            .extension_feature_enabled(settings_extensions::DEVOPS_CONTEXT_STATUS_ID)
+            .unwrap_or(true),
         tags: effective.presentation.tags,
         foreground: [red, green, blue],
         terminal_background: effective.colors.background.0,
@@ -610,6 +618,9 @@ pub(crate) fn slot_page_actions(
                 .then(|| (id, format!("Custom tag {number}")))
         }));
     for (slot_id, label) in specs {
+        if !recipe.slot_visible_with_devops(&slot_id, snapshot.preview_devops_enabled()) {
+            continue;
+        }
         let mut action = visual_row(
             &format!("tags.slot.{slot_id}.page"),
             label.clone(),

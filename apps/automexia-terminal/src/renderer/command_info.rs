@@ -614,6 +614,72 @@ mod tests {
         }
     }
 
+    #[test]
+    fn devops_toggle_hides_customized_terminal_bands_without_changing_the_recipe() {
+        use automexia_ui_model::information_bar::{BarIconSource, BarTextSource};
+        let mut terminal = Crosswords::new(
+            CrosswordsSize::new(120, 20),
+            rio_backend::ansi::CursorShape::Block,
+            VoidListener {},
+            WindowId::from(0),
+            0,
+            128,
+        );
+        Processor::default().advance(&mut terminal, b"\x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07/work\r\n\x1b]133;P;k=c;aid=1\x07lambda \x1b]133;B\x07");
+        let mut recipe =
+            automexia_ui_model::information_bar::preset_recipe(Default::default());
+        // Literal labels can render even with no current provider contribution.
+        // The display gate must therefore cover more than discovery revocation.
+        for slot in &mut recipe.slots {
+            slot.enabled = true;
+            slot.text = BarTextSource::Literal(slot.id.clone());
+            slot.icon = BarIconSource::None;
+        }
+        let saved = recipe.clone();
+        let mut text = rio_backend::sugarloaf::text::Text::new(&fonts());
+        for enabled in [true, false, true] {
+            let mut content = RenderableContent::default();
+            let mut pane = snapshot(&mut terminal, &mut content);
+            let mut status = devops_status::DevOpsStatus::default();
+            status.prepare_prompt_rows(
+                &pane.session,
+                true,
+                &pane.historical_anchors,
+                pane.live_anchor,
+            );
+            let visible = recipe.with_devops_context(enabled);
+            let (_, paints) = prepare_with_recipe(
+                &mut pane,
+                Some(&status),
+                &mut content,
+                &mut text,
+                true,
+                &visible,
+            );
+            let ids: std::collections::BTreeSet<_> = paints
+                .iter()
+                .map(|paint| paint.items[paint.fragment.item].slot_id.as_str())
+                .collect();
+            for id in ["ubuntu-wsl", "windows", "git", "user"] {
+                assert!(ids.contains(id), "core tag {id} must remain visible");
+            }
+            for id in [
+                "production",
+                "kubernetes",
+                "docker",
+                "azure",
+                "aws",
+                "gcp",
+                "unknown-cloud",
+                "terraform",
+                "environment",
+            ] {
+                assert_eq!(ids.contains(id), enabled, "DevOps tag {id}");
+            }
+            assert_eq!(recipe, saved);
+        }
+    }
+
     fn projected_grid_pixels(
         content: &RenderableContent,
         width: u32,

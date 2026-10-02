@@ -347,9 +347,12 @@ logs. The native output-color fixture checks custom palette pixels on deployment
 StatefulSets, volumes and namespaces before resize. File-context fixtures verify
 cloud, Docker, Terraform and Git selection changes and provider-file removal.
 
-Information-tag editing must supply sample data independently of live discovery,
-retain stable roster navigation across redraws, reveal selected rows and the Add
-action in short panes, and open disabled tags without affecting sibling slots.
+Information-tag editing supplies fictional context while honoring the DevOps
+visibility switch in samples, roster navigation and terminal bands. Off/on cycles
+must preserve saved choices, hide DevOps-backed custom slots, retain core and
+independent custom tags, and recover selection when its tag becomes hidden.
+Retain stable navigation across redraws, reveal selected rows and the Add action
+in short panes, and open individually disabled tags without affecting siblings.
 The Settings view event tests cover scaled pointer press/redraw/release, keyboard
 selection, discovery on/off, and narrow scrolling. The focused Windows
 `resize-stress-windows.ps1 -TagCustomizationOnly` fixture exercises native mouse

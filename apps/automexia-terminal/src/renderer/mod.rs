@@ -1882,6 +1882,10 @@ impl Renderer {
         self.command_result_states
             .retain(|route, _| visible_inactive_routes.contains(route));
 
+        let visible_information_bar = self
+            .information_bar_recipe
+            .with_devops_context(self.devops_context_enabled);
+
         for item in context_manager
             .current_grid_mut()
             .contexts_mut()
@@ -1912,7 +1916,7 @@ impl Renderer {
                 sugarloaf,
                 self.named_colors,
                 &self.presentation,
-                &self.information_bar_recipe,
+                &visible_information_bar,
             ) {
                 context.renderable_content.frame_damage = TerminalDamage::Full;
                 any_panel_dirty = true;

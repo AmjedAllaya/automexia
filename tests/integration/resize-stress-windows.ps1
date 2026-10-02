@@ -1547,6 +1547,17 @@ $wallpaperConfig
             Click-TagBounds $confirmation.settings.confirmation.accept
             $null = Wait-TagState { param($s) $s.settings.ready -and $null -eq $s.settings.confirmation }
         }
+        function Assert-DevOpsTagsHidden($State) {
+            $corePages = @('tags.slot.ubuntu-wsl.page', 'tags.slot.windows.page', 'tags.slot.git.page', 'tags.slot.user.page', 'tags.add-slot')
+            foreach ($target in $State.settings.targets) {
+                if ($target.id -notin $corePages) { throw "DevOps off left a preview target for $($target.id)" }
+            }
+            foreach ($page in $corePages) {
+                if (@($State.settings.targets | Where-Object { $_.roster -and $_.id -eq $page }).Count -ne 1) {
+                    throw "DevOps off removed core roster target $page"
+                }
+            }
+        }
         [void][AutomexiaResizeDriver]::MoveWindow($window, 20, 20, 1200, 780, $true)
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
         try {
@@ -1570,7 +1581,13 @@ $wallpaperConfig
                 $toggle = @($roster.settings.controls | Where-Object id -eq 'extension.automexia.devops.context_status.enabled')
                 if ($toggle.Count -ne 1) { throw 'Live DevOps detection toggle is not reachable' }
                 Click-TagBounds $toggle[0].bounds
-                $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+                $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -eq 5 }
+            }
+            Assert-DevOpsTagsHidden $roster
+            if (-not [string]::IsNullOrWhiteSpace($ModalCaptureDirectory)) {
+                $captureRoot = [IO.Path]::GetFullPath($ModalCaptureDirectory)
+                [void][IO.Directory]::CreateDirectory($captureRoot)
+                [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $captureRoot 'devops-tags-off.png'))
             }
             $ids = @('production', 'ubuntu-wsl', 'windows', 'git', 'kubernetes', 'docker', 'azure', 'aws', 'gcp', 'unknown-cloud', 'terraform', 'environment', 'user')
             # Ordinary edits above may still be saving. Establish disk baseline
@@ -1658,8 +1675,15 @@ $wallpaperConfig
             Confirm-TagAction
             $rootSettings = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection }
             Click-TagBounds ($rootSettings.settings.controls | Where-Object id -eq 'tags.enabled').bounds
-            $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -ge 13 }
+            $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.temporary_defaults -and $s.settings.tags_enabled -and -not $s.settings.devops_detection -and @($s.settings.targets | Where-Object roster).Count -eq 5 }
+            Assert-DevOpsTagsHidden $roster
             if ((Get-CustomizationFixtureHashes) -ne $savedHashes) { throw 'Restore saved changed saved files' }
+            # Restore deliberately returned to detection off. Re-enable it via
+            # the real control before exercising all thirteen tag editors.
+            $script:testStage = 're-enable DevOps tags'
+            Click-TagBounds ($roster.settings.controls | Where-Object id -eq 'extension.automexia.devops.context_status.enabled').bounds
+            $roster = Wait-TagState { param($s) $s.settings.ready -and $s.settings.devops_detection -and -not $s.settings.save_pending -and @($s.settings.targets | Where-Object roster).Count -eq 14 }
+            $savedHashes = Get-CustomizationFixtureHashes
             foreach ($id in $ids) {
                 $script:testStage = "pointer selection of $id"
                 $page = "tags.slot.$id.page"
@@ -1746,7 +1770,8 @@ $wallpaperConfig
                     preview_shortcut_and_tab_cycle = $true; detail_escape_and_shortcut = $true;
                     preview_done_button = $true;
                     reset_restore_confirmation = $true; cancel_keeps_saved_files = $true;
-                    unchanged_prompt = $true; live_detection_off = $true; scale = $selected.scale_factor;
+                    unchanged_prompt = $true; devops_off_hides_samples_and_targets = $true;
+                    devops_on_restores_tags = $true; scale = $selected.scale_factor;
                     temporary_reset_edit_restore = $true; saved_files_unchanged = $true;
                     temporary_close_reopen = $true; repeated_feature_and_global_reset = $true;
                     package_inventory_failure_recovery = $true;
