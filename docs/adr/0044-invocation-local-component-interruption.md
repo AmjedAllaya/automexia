@@ -15,7 +15,7 @@ token may be shared or reused, but completion of one call cannot disarm another.
 The watchdog and guest worker remain joined owners. Worker spawn failure wakes
 and joins the watchdog; a completion drop guard also wakes it during unwind.
 
-The pinned [Wasmtime Store contract](https://docs.rs/wasmtime/48.0.3/wasmtime/struct.Store.html)
+The pinned [Wasmtime Store contract](https://docs.rs/wasmtime/48.0.4/wasmtime/struct.Store.html)
 sets an epoch deadline relative to the engine's current epoch. A one-shot tick
 before store arming is therefore insufficient. Check persistent cancellation
 and the absolute deadline before guest instantiation and at return. Install a

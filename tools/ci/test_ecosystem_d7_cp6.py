@@ -46,20 +46,22 @@ class EcosystemD7Cp6Tests(unittest.TestCase):
         owner = CHECKER.ROOT / "Cargo.toml"
         original_read = Path.read_text
         source = original_read(owner, encoding="utf-8")
-        self.assertIn('wasmtime = { version = "48.0.3"', source)
+        self.assertIn('wasmtime = { version = "48.0.4"', source)
 
-        def read(path, *args, **kwargs):
-            if path == owner:
-                return source.replace(
-                    'wasmtime = { version = "48.0.3"',
-                    'wasmtime = { version = "48.0.1"',
-                    1,
-                )
-            return original_read(path, *args, **kwargs)
+        for vulnerable in ("48.0.1", "48.0.3"):
+            with self.subTest(version=vulnerable):
+                def read(path, *args, **kwargs):
+                    if path == owner:
+                        return source.replace(
+                            'wasmtime = { version = "48.0.4"',
+                            f'wasmtime = {{ version = "{vulnerable}"',
+                            1,
+                        )
+                    return original_read(path, *args, **kwargs)
 
-        with mock.patch.object(Path, "read_text", read):
-            with self.assertRaises(CHECKER.EcosystemContractError):
-                CHECKER.validate_repository()
+                with mock.patch.object(Path, "read_text", read):
+                    with self.assertRaises(CHECKER.EcosystemContractError):
+                        CHECKER.validate_repository()
 
     def test_component_interrupt_guards_and_regressions_cannot_be_removed(self) -> None:
         owner = CHECKER.ROOT / "automexia-ecosystem-runtime/src/sandbox.rs"

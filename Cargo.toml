@@ -162,10 +162,10 @@ configparser = { version = "3.2.0", default-features = false }
 time = { version = "=0.3.55", default-features = false, features = ["std", "parsing"] }
 zip = { version = "=8.6.0", default-features = false, features = ["deflate-flate2-zlib-rs"] }
 ed25519-dalek = { version = "3.0.0", default-features = false, features = ["alloc", "fast", "zeroize"] }
-wasmtime = { version = "48.0.3", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
+wasmtime = { version = "48.0.4", default-features = false, features = ["component-model", "cranelift", "runtime", "std", "wat"] }
 # Keep the tools on the reviewed Wasmtime parser generation (D7/CP6).
-wit-parser = "=0.254.0"
-wat = "=1.254.0"
+wit-parser = "=0.254.2"
+wat = "=1.254.2"
 
 [profile.release]
 strip = "symbols"           # See split-debuginfo - allows us to drop the size by ~65%
