@@ -91,10 +91,11 @@ pub enum AnsiColor {
     Indexed(u8),
 }
 
-#[derive(Debug, Copy, Deserialize, PartialEq, Clone)]
+#[derive(Debug, Copy, Serialize, Deserialize, PartialEq, Clone)]
 pub struct Colors {
     #[serde(
         deserialize_with = "deserialize_to_composition",
+        serialize_with = "serialize_composition",
         default = "defaults::background"
     )]
     /// Background is a special color type called ColorComposition
@@ -103,202 +104,286 @@ pub struct Colors {
     pub background: ColorComposition,
     #[serde(
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         default = "defaults::foreground"
     )]
     pub foreground: ColorArray,
-    #[serde(deserialize_with = "deserialize_to_arr", default = "defaults::blue")]
+    #[serde(
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
+        default = "defaults::blue"
+    )]
     pub blue: ColorArray,
-    #[serde(deserialize_with = "deserialize_to_arr", default = "defaults::green")]
+    #[serde(
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
+        default = "defaults::green"
+    )]
     pub green: ColorArray,
-    #[serde(deserialize_with = "deserialize_to_arr", default = "defaults::red")]
+    #[serde(
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
+        default = "defaults::red"
+    )]
     pub red: ColorArray,
-    #[serde(deserialize_with = "deserialize_to_arr", default = "defaults::yellow")]
+    #[serde(
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
+        default = "defaults::yellow"
+    )]
     pub yellow: ColorArray,
     #[serde(
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         default = "defaults::tabs_active",
         rename = "tabs-active"
     )]
     pub tabs_active: ColorArray,
-    #[serde(default = "defaults::cursor", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::cursor",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub cursor: ColorArray,
     #[serde(
         default = "defaults::vi_cursor",
         rename = "vi-cursor",
-        deserialize_with = "deserialize_to_arr"
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
     )]
     pub vi_cursor: ColorArray,
-    #[serde(default = "defaults::black", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::black",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub black: ColorArray,
-    #[serde(default = "defaults::cyan", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::cyan",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub cyan: ColorArray,
-    #[serde(default = "defaults::magenta", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::magenta",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub magenta: ColorArray,
-    #[serde(default = "defaults::tabs", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::tabs",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub tabs: ColorArray,
-    #[serde(default = "defaults::white", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::white",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub white: ColorArray,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-black"
     )]
     pub dim_black: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-blue"
     )]
     pub dim_blue: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-cyan"
     )]
     pub dim_cyan: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-foreground"
     )]
     pub dim_foreground: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-green"
     )]
     pub dim_green: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-magenta"
     )]
     pub dim_magenta: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-red"
     )]
     pub dim_red: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-white"
     )]
     pub dim_white: Option<ColorArray>,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "dim-yellow"
     )]
     pub dim_yellow: Option<ColorArray>,
     #[serde(
         default = "default_light_black",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-black"
     )]
     pub light_black: ColorArray,
     #[serde(
         default = "default_light_blue",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-blue"
     )]
     pub light_blue: ColorArray,
     #[serde(
         default = "default_light_cyan",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-cyan"
     )]
     pub light_cyan: ColorArray,
     #[serde(
         default = "Option::default",
         deserialize_with = "deserialize_to_arr_opt",
+        serialize_with = "serialize_optional_color",
+        skip_serializing_if = "Option::is_none",
         rename = "light-foreground"
     )]
     pub light_foreground: Option<ColorArray>,
     #[serde(
         default = "default_light_green",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-green"
     )]
     pub light_green: ColorArray,
     #[serde(
         default = "default_light_magenta",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-magenta"
     )]
     pub light_magenta: ColorArray,
     #[serde(
         default = "default_light_red",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-red"
     )]
     pub light_red: ColorArray,
     #[serde(
         default = "default_light_white",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-white"
     )]
     pub light_white: ColorArray,
     #[serde(
         default = "default_light_yellow",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "light-yellow"
     )]
     pub light_yellow: ColorArray,
     #[serde(
         default = "defaults::selection_background",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "selection-background"
     )]
     pub selection_background: ColorArray,
     #[serde(
         default = "defaults::selection_foreground",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "selection-foreground"
     )]
     pub selection_foreground: ColorArray,
-    #[serde(default = "defaults::split", deserialize_with = "deserialize_to_arr")]
+    #[serde(
+        default = "defaults::split",
+        deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color"
+    )]
     pub split: ColorArray,
     #[serde(
         default = "defaults::split_active",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "split-active"
     )]
     pub split_active: ColorArray,
     #[serde(
         default = "defaults::search_match_background",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "search-match-background"
     )]
     pub search_match_background: ColorArray,
     #[serde(
         default = "defaults::search_match_foreground",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "search-match-foreground"
     )]
     pub search_match_foreground: ColorArray,
     #[serde(
         default = "defaults::search_focused_match_background",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "search-focused-match-background"
     )]
     pub search_focused_match_background: ColorArray,
     #[serde(
         default = "defaults::search_focused_match_foreground",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "search-focused-match-foreground"
     )]
     pub search_focused_match_foreground: ColorArray,
     #[serde(
         default = "defaults::hint_foreground",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "hint-foreground"
     )]
     pub hint_foreground: ColorArray,
     #[serde(
         default = "defaults::hint_background",
         deserialize_with = "deserialize_to_arr",
+        serialize_with = "serialize_color",
         rename = "hint-background"
     )]
     pub hint_background: ColorArray,
@@ -631,6 +716,42 @@ where
     match ColorBuilder::from_hex(s, Format::SRGB0_1) {
         Ok(color) => Ok(color.to_wgpu()),
         Err(e) => Err(serde::de::Error::custom(e)),
+    }
+}
+
+fn serialize_color<S: serde::Serializer>(
+    color: &ColorArray,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    if !color
+        .iter()
+        .all(|value| value.is_finite() && (0.0..=1.0).contains(value))
+    {
+        return Err(serde::ser::Error::custom("invalid color channels"));
+    }
+    let [r, g, b, a] = color.map(|value| (value * 255.0).round() as u8);
+    let hex = if a == 255 {
+        format!("#{r:02x}{g:02x}{b:02x}")
+    } else {
+        format!("#{r:02x}{g:02x}{b:02x}{a:02x}")
+    };
+    serializer.serialize_str(&hex)
+}
+
+fn serialize_composition<S: serde::Serializer>(
+    color: &ColorComposition,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    serialize_color(&color.0, serializer)
+}
+
+fn serialize_optional_color<S: serde::Serializer>(
+    color: &Option<ColorArray>,
+    serializer: S,
+) -> Result<S::Ok, S::Error> {
+    match color {
+        Some(color) => serialize_color(color, serializer),
+        None => serializer.serialize_none(),
     }
 }
 

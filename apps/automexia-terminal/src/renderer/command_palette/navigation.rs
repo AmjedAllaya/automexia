@@ -83,6 +83,7 @@ impl Category {
             | ResetFontSize
             | ToggleFullscreen
             | ToggleAppearanceTheme
+            | OpenThemeGallery
             | ListFonts => Self::Appearance,
             OpenSettings | OpenCustomizations => Self::Customizations,
             ConfigEditor | PreviewSelectedImage | ViewTableOutput | OpenMarket

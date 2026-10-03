@@ -116,6 +116,8 @@ impl Application<'_> {
         customizations: bool,
     ) {
         self.cancel_font_edit_for_window(window_id);
+        self.restore_theme_preview();
+        let theme_context = self.theme_context(window_id);
         if customizations {
             self.package_customizations.request_refresh();
         }
@@ -162,6 +164,11 @@ impl Application<'_> {
                 package_pages,
                 slot_pages,
             );
+            route
+                .window
+                .screen
+                .settings_view
+                .set_theme_context(theme_context.clone());
             if self.temporary_customizations.is_some() {
                 route
                     .window
@@ -176,6 +183,11 @@ impl Application<'_> {
             }
         } else {
             route.window.screen.open_settings_view(catalog);
+            route
+                .window
+                .screen
+                .settings_view
+                .set_theme_context(theme_context);
             if self.temporary_customizations.is_some() {
                 route
                     .window
@@ -261,6 +273,15 @@ impl Application<'_> {
         event_loop: &ActiveEventLoop,
         window_id: rio_backend::event::WindowId,
     ) {
+        if let Some(intent) = self
+            .router
+            .routes
+            .get_mut(&window_id)
+            .and_then(|route| route.window.screen.settings_view.take_theme_intent())
+        {
+            self.apply_theme_intent(event_loop, window_id, intent);
+            return;
+        }
         if let Some(intent) = self.router.routes.get_mut(&window_id).and_then(|route| {
             route
                 .window

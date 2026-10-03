@@ -275,6 +275,7 @@ impl From<String> for Action {
             "openconfigeditor" => Some(Action::ConfigEditor),
             "opensettings" => Some(Action::OpenSettings),
             "opencustomizations" => Some(Action::OpenCustomizations),
+            "openthemegallery" => Some(Action::OpenThemeGallery),
             "selectprevtab" => Some(Action::SelectPrevTab),
             "selectnexttab" => Some(Action::SelectNextTab),
             "selectprevlocaltab" => Some(Action::SelectPrevLocalTab),
@@ -477,6 +478,7 @@ pub enum Action {
     ConfigEditor,
     OpenSettings,
     OpenCustomizations,
+    OpenThemeGallery,
 
     /// Create a new Automexia tab.
     TabCreateNew,

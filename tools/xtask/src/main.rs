@@ -2260,6 +2260,7 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
     // Exercise the actual settings controls against retained ordinary/table
     // output in isolated fresh sessions on both compositor implementations.
     for (scenario, switch) in [
+        ("theme-gallery", "-ThemeGalleryOnly"),
         ("tag-shapes", "-TagShapesOnly"),
         ("output-colors", "-OutputColorsOnly"),
         ("command-input-colors", "-CommandInputColorsOnly"),

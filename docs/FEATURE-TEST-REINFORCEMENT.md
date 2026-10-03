@@ -322,6 +322,16 @@ resource ceilings and pixels remain independent of these model-path checks.
 
 ### renderer-fonts-responsive-ui
 
+Theme Gallery shares the existing palette parser and Settings color/text editor.
+Five distinct palettes include light mode; tests cover preview without saved
+edits, Apply, Escape restoration, copy isolation, malformed/oversized files,
+canonical import/export, strict version-10 migration and bounded worker cleanup.
+The native Windows `ThemeGalleryOnly` fixture exercises real arrows, pointer,
+Apply, copy and configuration restoration on CPU/WGPU. Compare preference and
+configuration bytes and inspect fresh captures; native Linux/macOS desktop and
+assistive technology remain external. Chrome labels retain independent quantized
+contrast checks across selected palette surfaces.
+
 Completed-command bands must preserve ANSI foregrounds, skip blank rows, and
 tint ordinary table data while enabled logs and Kubernetes retain separate
 ownership. Numeric opacity controls cover transparent, solid, intermediate,

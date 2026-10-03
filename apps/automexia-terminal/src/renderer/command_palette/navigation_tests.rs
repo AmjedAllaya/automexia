@@ -11,7 +11,10 @@ fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
         let mut palette = CommandPalette::new();
         palette.set_effective_bindings(&bindings, None);
         for command in COMMANDS {
-            if command.action == PaletteAction::OpenCustomizations {
+            if matches!(
+                command.action,
+                PaletteAction::OpenCustomizations | PaletteAction::OpenThemeGallery
+            ) {
                 assert_eq!(palette.command_shortcut(command), "Enter");
                 continue;
             }

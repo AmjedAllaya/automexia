@@ -325,7 +325,10 @@ pub(crate) fn reset_customizations(
                 next.presentation.command_timestamps = Some(true);
                 next.visual.timestamps = Default::default();
             }
-            settings::APPEARANCE_THEME => next.appearance_theme = None,
+            settings::APPEARANCE_THEME => {
+                next.appearance_theme = None;
+                next.theme_selection = None;
+            }
             settings::FONT_SIZE => {
                 next.font_size = None;
                 next.fonts = Default::default();
@@ -690,7 +693,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
     for (label, summary, id, keywords) in [
         (
             "Theme",
-            "Choose light or dark appearance.",
+            "Browse, preview and customize theme palettes.",
             settings::APPEARANCE_THEME,
             ["light", "dark", "system"],
         ),
@@ -705,7 +708,7 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
             ],
         ),
     ] {
-        if let Some(group) = customization_group(
+        if let Some(mut group) = customization_group(
             catalog,
             label,
             summary,
@@ -714,6 +717,9 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
             |row| row == id,
             &keywords,
         ) {
+            if id == settings::APPEARANCE_THEME {
+                group.root_action.description = summary.into();
+            }
             groups.push(group);
         }
     }
@@ -4571,7 +4577,7 @@ mod tests {
     }
 
     #[test]
-    fn available_highlighting_and_unavailable_theme_keep_distinct_category_status() {
+    fn theme_gallery_is_available_without_adaptive_configuration() {
         let snapshot =
             catalog(7, &Config::default(), &UserPreferences::default(), &[]).unwrap();
         let groups = customization_groups(&snapshot);
@@ -4589,7 +4595,11 @@ mod tests {
             settings::Availability::Available
         ));
         let theme = groups.iter().find(|group| group.label == "Theme").unwrap();
-        assert!(theme.root_action.description.contains("unavailable"));
+        assert!(matches!(
+            theme.root_action.availability,
+            settings::Availability::Available
+        ));
+        assert!(!theme.root_action.description.contains("unavailable"));
     }
 
     #[test]

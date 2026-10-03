@@ -16,11 +16,11 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v9.toml`
+Settings choices use the private, versioned `state/user-preferences-v10.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-8 preferences import only when both version-9 snapshots are absent;
+Version-9 preferences import only when both version-10 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 9 adds font and terminal palette overrides. Version 8 added command
+Version 10 adds the selected theme name and validated palette. Version 9 added font and terminal palette overrides. Version 8 added command
 timestamp appearance; version 7 added inline table appearance.
 Version 6 added connected tag shapes. Older files remain unchanged
 for rollback; corrupt or future current snapshots do not fall back to older files.
@@ -276,8 +276,8 @@ oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
 `config.toml` values. Invalid or newer current-version data is never replaced by an
 automatic predecessor import. To clear individual choices, use Reset. To clear all
-runtime overrides, close Automexia and move the version-9 primary and
-previous snapshots and all retained version-1 through version-8 snapshots to a backup; leaving
+runtime overrides, close Automexia and move the version-10 primary and
+previous snapshots and all retained version-1 through version-9 snapshots to a backup; leaving
 older files would import their choices again. This file never stores credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.
 
@@ -307,12 +307,37 @@ clears the saved override and inherits the current configured size. An unsupport
 configured size has an explanatory unavailable control; Customizations does not rewrite
 or clamp the configuration file.
 
-**Appearance** offers **Use configuration**, **Light** and **Dark** when both
-adaptive palettes are loaded. Use configuration and Reset remove the saved
-appearance override: a configured force-theme takes precedence, otherwise the
-host appearance applies. A fixed palette has an unavailable control with an
-explanation; its saved choice is retained. Customizations does not discover or load
-theme files.
+**Theme** opens a visual gallery, also available through **Ctrl/Cmd+K → Theme
+Gallery**. Arrow keys preview a palette in the current window without saving;
+Enter or **Apply** saves it for all windows and the next launch. Escape restores
+the applied palette. **Use configuration** removes both saved theme and legacy
+light/dark appearance overrides. Explicit colors in **Fonts** still take
+precedence. Output, table and Kubernetes customization remain independent.
+
+Five bundled palettes cover Aurora Night, Solar Dusk, Forest Operator, Arctic
+Glass and Arctic Day (light). **Customize** creates a named copy: select Name or a
+palette role and press Enter to use the existing text/color editor, including
+alpha where supported. **Save copy** creates a local file and applies it; Escape
+returns without saving the draft. Bundled files are never changed.
+
+**Import** validates a local UTF-8 TOML and copies its canonical palette into
+`themes/`; it does not apply it until you choose Apply. **Export** writes canonical
+TOML to the chosen destination. The gallery accepts `[colors]` only, with known
+color keys, and shares the normal theme parser and partial-palette defaults.
+It limits each file to 64 KiB, local inventory to 128 files, directory inspection
+to 512 entries and aggregate reads to 4 MiB. Invalid files remain visible with an
+explanation; a failed local library does not remove bundled themes. Linked files
+and directories are refused. Low text contrast is reported before applying.
+File work runs in one bounded background worker with cancellation and a 20-second
+UI timeout; a timed-out worker retains cleanup ownership until it finishes.
+Cancel preserves applied preferences; an already completed copy/export can remain
+on disk. Refresh reloads the local inventory.
+
+The UI stores the applied palette snapshot, so editing/removing a source file
+does not silently change it. Refresh and Apply explicitly adopt source changes.
+Configuration-owned adaptive palettes and the existing appearance shortcut remain
+available when no gallery override is active. No theme browsing rewrites
+`config.toml`, downloads assets, installs fonts or executes theme content.
 
 Font and appearance edits update open windows, panes and inactive local tabs
 through the existing preference owner. Resource changes prepare one font library

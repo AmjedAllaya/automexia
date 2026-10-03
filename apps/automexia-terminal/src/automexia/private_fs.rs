@@ -76,6 +76,11 @@ pub(crate) fn inspect_private_file(path: &Path) -> Result<(), PrivateFsError> {
     Ok(())
 }
 
+/// Inspect an existing directory without changing it (for read-only inventories).
+pub(crate) fn inspect_directory(path: &Path) -> Result<(), PrivateFsError> {
+    validate_directory(&fs::symlink_metadata(path).map_err(PrivateFsError::io)?)
+}
+
 pub(crate) fn read_bounded_regular(
     path: &Path,
     maximum: usize,

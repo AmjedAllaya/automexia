@@ -1341,6 +1341,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn open_theme_gallery(&self) {
+        self.event_proxy
+            .send_event(RioEvent::OpenThemeGallery, self.window_id);
+    }
+
     pub fn open_customizations(&self) {
         self.event_proxy
             .send_event(RioEvent::OpenCustomizations, self.window_id);

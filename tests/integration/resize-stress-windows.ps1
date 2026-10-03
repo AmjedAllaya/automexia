@@ -31,6 +31,7 @@ param(
     [int64]$MaximumImageMemoryGrowth = 134217728,
     [switch]$CloseConfirmationOnly,
     [switch]$TagCustomizationOnly,
+    [switch]$ThemeGalleryOnly,
     [switch]$TagShapesOnly,
     [switch]$OutputColorsOnly,
     [switch]$CommandInputColorsOnly,
@@ -1402,7 +1403,7 @@ $wallpaperConfig
     $env:AUTOMEXIA_NATIVE_TEST_CONTROL = $controlPath
     $env:AUTOMEXIA_CONFIG_HOME = $configRoot
     $env:AUTOMEXIA_VISUAL_TEST_FIXTURE = 's1-standard-v1'
-    $process = Start-Process -FilePath $Binary -WorkingDirectory $root -PassThru
+    $process = Start-Process -FilePath $Binary -WorkingDirectory $root -WindowStyle Hidden -PassThru
 
     # Process.MainWindowHandle can transiently select Winit's internal event
     # target because it is created before Automexia's titled application HWND.
@@ -1495,6 +1496,11 @@ $wallpaperConfig
         return
     }
 
+    if ($ThemeGalleryOnly) {
+        . (Join-Path $PSScriptRoot 'theme-gallery-windows.ps1')
+        Test-AutomexiaThemeGallery
+        return
+    }
     if ($TagCustomizationOnly) {
         $script:testStage = 'native information tag selection'
         function Wait-TagState([scriptblock]$Predicate) {
@@ -1599,7 +1605,7 @@ $wallpaperConfig
             # Ordinary edits above may still be saving. Establish disk baseline
             # only after that receipt, then exercise the real temporary owner.
             $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.save_pending }
-            $preferencePath = Join-Path $configRoot 'state/user-preferences-v9.toml'
+            $preferencePath = Join-Path $configRoot 'state/user-preferences-v10.toml'
             if (-not (Test-Path -LiteralPath $preferencePath -PathType Leaf)) {
                 throw 'The native customization baseline was not saved'
             }
@@ -5461,5 +5467,11 @@ $wallpaperConfig
     }
     Remove-Item -LiteralPath $snapshotPath -Force -ErrorAction SilentlyContinue
     Remove-Item -LiteralPath $controlPath -Force -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $configRoot -Recurse -Force -ErrorAction SilentlyContinue
+    $resolvedFixtureRoot = [IO.Path]::GetFullPath($configRoot)
+    $resolvedTempRoot = [IO.Path]::GetFullPath([IO.Path]::GetTempPath()).TrimEnd('\') + '\'
+    if (-not $resolvedFixtureRoot.StartsWith($resolvedTempRoot, [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFileName($resolvedFixtureRoot) -notmatch '^automexia-resize-config-[0-9a-f]{32}$') {
+        throw 'Refusing cleanup outside the owned temporary configuration root'
+    }
+    Remove-Item -LiteralPath $resolvedFixtureRoot -Recurse -Force -ErrorAction SilentlyContinue
 }

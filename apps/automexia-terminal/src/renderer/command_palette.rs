@@ -285,6 +285,7 @@ enum CommandIcon {
     Code,
     Fullscreen,
     Theme,
+    ThemeGallery,
     Copy,
     Paste,
     Search,
@@ -427,6 +428,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         ToggleFullscreen => RowPresentation {
             icon: CommandIcon::Fullscreen,
             accent: BRAND_BLUE,
+        },
+        OpenThemeGallery => RowPresentation {
+            icon: CommandIcon::ThemeGallery,
+            accent: BRAND_PURPLE,
         },
         ToggleAppearanceTheme => RowPresentation {
             icon: CommandIcon::Theme,
@@ -619,6 +624,11 @@ const COMMANDS: &[Command] = &[
         title: "Close Split or Tab",
         shortcut: SHORTCUT_CLOSE_SURFACE,
         action: PaletteAction::CloseCurrentSplitOrTab,
+    },
+    Command {
+        title: "Theme Gallery",
+        shortcut: "Enter",
+        action: PaletteAction::OpenThemeGallery,
     },
     Command {
         title: "Open Customizations",
@@ -1317,6 +1327,11 @@ fn draw_command_icon(
             canvas.line(19.5, 19.5, 14.0, 19.5);
             canvas.line(8.0, 19.5, 2.5, 19.5);
             canvas.line(2.5, 19.5, 2.5, 14.0);
+        }
+        CommandIcon::ThemeGallery => {
+            for (x, y) in [(2.0, 2.0), (12.0, 2.0), (2.0, 12.0), (12.0, 12.0)] {
+                canvas.outline(x, y, 8.0, 8.0, 2.0);
+            }
         }
         CommandIcon::Theme => {
             canvas.outline(7.0, 7.0, 8.0, 8.0, 4.0);
@@ -3354,6 +3369,15 @@ mod tests {
                 "missing palette shortcut for {}",
                 command.title
             );
+            // Gallery and Customizations are picker entries: Enter activates
+            // the selected row, rather than claiming a global key binding.
+            if command.shortcut == "Enter" {
+                assert!(matches!(
+                    command.action,
+                    PaletteAction::OpenCustomizations | PaletteAction::OpenThemeGallery
+                ));
+                continue;
+            }
             assert!(
                 shortcuts.insert(command.shortcut, command.title).is_none(),
                 "duplicate palette shortcut {}",

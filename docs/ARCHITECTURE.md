@@ -234,6 +234,13 @@ is published only while the editor, pane and settings revision still match.
 Cancellation and a 30-second deadline retain cleanup ownership until work returns.
 Only successful preparation updates the router, existing screens and saved
 preferences; screen font caches and every local tab's metrics refresh together.
+Version-10 preferences add a validated theme snapshot and migrate strict version-9
+snapshots without overwriting them. The Settings-owned gallery uses the existing
+backend `Theme`/`Colors` parser and one indexed descriptor inventory. Application
+owns temporary window preview and durable Apply; a bounded theme-library worker
+owns scanning, validated import, canonical export and duplicate-copy writes.
+See [ADR 0088](adr/0088-theme-gallery-and-preview-transactions.md).
+
 Version-9 preferences add typed font/color overrides and import strict version-8
 snapshots only when the new pair is absent. See
 [the font customization decision](adr/0087-font-customization-and-resource-preparation.md).
@@ -378,7 +385,7 @@ lifecycle invariant.
 
 The private `renderer/ui_theme.rs` owner separates decorative card borders from
 actionable focus outlines and owns shared palette, Hub and confirmation colours.
-Theme text is contrast-corrected against the lightest shared chrome surface with
+Theme text is contrast-corrected against all shared chrome surfaces with
 headroom for byte quantization; terminal colours remain configuration-owned.
 Palette trailing labels use the existing bounded font-measured fitter and retain
 full action values. This adds no dependencies, I/O, workers, animation or state

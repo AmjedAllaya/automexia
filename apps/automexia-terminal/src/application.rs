@@ -37,6 +37,7 @@ use crate::automexia::preferences::{
 
 mod fonts;
 mod settings;
+mod themes;
 
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
 
@@ -262,6 +263,9 @@ pub struct Application<'a> {
     settings_revision: u64,
     font_preparation: crate::font_loading::FontPreparation,
     pending_font: Option<fonts::PendingFont>,
+    theme_library: crate::automexia::theme_gallery_io::ThemeLibrary,
+    pending_theme: Option<themes::PendingTheme>,
+    theme_preview: Option<themes::ThemeTarget>,
     prepared_font: Option<(
         rio_backend::sugarloaf::font::SugarloafFonts,
         rio_backend::sugarloaf::font::FontLibrary,
@@ -350,6 +354,12 @@ impl Application<'_> {
                 event_proxy.clone(),
             ),
             pending_font: None,
+            theme_library: crate::automexia::theme_gallery_io::ThemeLibrary::new(
+                rio_backend::config::config_dir_path(),
+                Some(event_proxy.clone()),
+            ),
+            pending_theme: None,
+            theme_preview: None,
             prepared_font: None,
             base_config,
             config,
@@ -952,6 +962,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // app-wide operation or prevent another Welcome route from retrying.
         self.finish_configuration_creation();
         self.finish_font_preparation(event_loop);
+        self.finish_theme_work(event_loop);
         let window_id = event.window_id;
         match event.payload {
             RioEventType::Rio(RioEvent::Render) => {
@@ -1706,6 +1717,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // Retain existing shortcuts and custom bindings while using the
                 // one feature-organized preference editor.
                 self.open_settings(window_id, true)
+            }
+            RioEventType::Rio(RioEvent::OpenThemeGallery) => {
+                self.open_settings(window_id, true);
+                if let Some(route) = self.router.routes.get_mut(&window_id) {
+                    route.window.screen.settings_view.open_theme_gallery();
+                    route.request_overlay_redraw();
+                }
+                self.apply_settings_edit(event_loop, window_id);
             }
             RioEventType::Rio(RioEvent::OpenCustomizations) => {
                 self.open_settings(window_id, true)
@@ -3512,12 +3531,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
         self.finish_font_preparation(event_loop);
+        self.finish_theme_work(event_loop);
         let scheduled = self.scheduler.update();
         let cleanup = self.router.workers.poll_cleanup();
         let next_wake = scheduled
             .into_iter()
             .chain(cleanup)
             .chain(self.font_preparation.deadline())
+            .chain(self.theme_library.deadline())
             .min();
         let control_flow = match next_wake {
             Some(instant) => ControlFlow::WaitUntil(instant),

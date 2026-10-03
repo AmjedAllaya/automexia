@@ -2712,6 +2712,7 @@ impl Screen<'_> {
                     }
                     Act::OpenSettings => self.context_manager.open_settings(),
                     Act::OpenCustomizations => self.context_manager.open_customizations(),
+                    Act::OpenThemeGallery => self.context_manager.open_theme_gallery(),
                     Act::ConfigEditor => {
                         self.context_manager.switch_to_settings();
                         self.resize_top_or_bottom_line();
@@ -6239,6 +6240,7 @@ impl Screen<'_> {
             }
             PaletteAction::CloseCurrentSplitOrTab => self.close_split_or_tab(clipboard),
             PaletteAction::OpenSettings => self.context_manager.open_settings(),
+            PaletteAction::OpenThemeGallery => self.context_manager.open_theme_gallery(),
             PaletteAction::OpenCustomizations => {
                 self.context_manager.open_customizations()
             }
@@ -7649,6 +7651,7 @@ impl Screen<'_> {
         let _sequence = fields.next();
         match action {
             "open-customizations" => self.context_manager.open_customizations(),
+            "open-themes" => self.context_manager.open_theme_gallery(),
             "open-palette" => {
                 self.renderer.confirm_quit.set_active(false);
                 self.renderer.command_palette.set_enabled(true);

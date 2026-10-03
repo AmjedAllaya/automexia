@@ -304,10 +304,7 @@ impl Config {
         if path.exists() {
             let content =
                 read_bounded_utf8(path, product::MAX_THEME_FILE_BYTES, "theme")?;
-            match toml::from_str::<Theme>(&content) {
-                Ok(decoded) => Ok(decoded),
-                Err(err_message) => Err(format!("error parsing: {err_message:?}")),
-            }
+            Theme::parse(&content).map_err(|error| error.to_string())
         } else {
             Err(String::from("filepath does not exist"))
         }

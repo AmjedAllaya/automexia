@@ -67,6 +67,11 @@ fn preference_child_write() {
                 ..Default::default()
             },
             appearance_theme: Some(AppearanceTheme::Light),
+            theme_selection: automexia_terminal::automexia::theme_gallery::builtins()
+                .into_iter()
+                .find(|theme| theme.id == "builtin:arctic-day")
+                .unwrap()
+                .selection(),
             shortcuts: vec![rio_backend::config::bindings::UiShortcut {
                 action: "CloneSplitRight".into(),
                 trigger: automexia_keybindings::Trigger::new(
@@ -186,6 +191,12 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
         [90.0 / 255.0, 120.0 / 255.0, 150.0 / 255.0, 1.0]
     );
     assert_eq!(effective.force_theme, Some(AppearanceTheme::Light));
+    let selected = restarted.preferences.theme_selection.as_ref().unwrap();
+    assert_eq!(selected.name, "Arctic Day");
+    assert_eq!(
+        effective.colors.background,
+        selected.theme.colors.background
+    );
     assert!(!effective.presentation.inline_tables);
     assert_eq!(
         effective.presentation.tables.border_style,
@@ -308,6 +319,7 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     let effective = reset.preferences.apply_to(&base);
     assert_eq!(effective.fonts.size, 15.25);
     assert_eq!(effective.force_theme, base.force_theme);
+    assert!(reset.preferences.theme_selection.is_none());
     assert!(effective.bindings.ui_shortcuts.is_empty());
     assert_eq!(effective.presentation, base.presentation);
     assert!(effective.presentation.tags.enabled);
@@ -329,11 +341,11 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v9.toml");
+    let current = root.path().join("state/user-preferences-v10.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let original = std::fs::read_to_string(&current)
         .unwrap()
-        .replace("schema-version = 9", "schema-version = 4");
+        .replace("schema-version = 10", "schema-version = 4");
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

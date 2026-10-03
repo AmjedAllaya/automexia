@@ -139,26 +139,59 @@ impl UiTheme {
         configured_foreground: [f32; 4],
         configured_muted: [f32; 4],
     ) -> Self {
-        let background = over(configured_background, [CARD[0], CARD[1], CARD[2], 0.97]);
-        let surface = over(background, [SURFACE[0], SURFACE[1], SURFACE[2], 0.94]);
-        let raised = over(
-            background,
-            [
-                SURFACE_RAISED[0],
-                SURFACE_RAISED[1],
-                SURFACE_RAISED[2],
-                0.88,
-            ],
-        );
+        // Keep the selected palette's hue and light/dark character. These are
+        // opaque application surfaces, so terminal opacity never makes dialogs transparent.
+        let background = over(configured_background, [0.0, 0.0, 0.0, 0.0]);
+        let light =
+            0.2126 * background[0] + 0.7152 * background[1] + 0.0722 * background[2]
+                > 0.5;
+        let mut tint = if light { 0.0 } else { 1.0 };
+        let mut raised = over(background, [tint, tint, tint, 0.075]);
+        let dark_ink = [0.0, 0.0, 0.0, 1.0];
+        let light_ink = [1.0; 4];
+        let anchor = if automexia_ui_model::contrast_ratio(dark_ink, background)
+            > automexia_ui_model::contrast_ratio(light_ink, background)
+        {
+            dark_ink
+        } else {
+            light_ink
+        };
+        // Midtone imports can straddle the black/white contrast crossover.
+        // Shade away from the readable ink so every surface shares safe labels.
+        if automexia_ui_model::contrast_ratio(anchor, raised) < MIN_TEXT_CONTRAST + 0.05 {
+            tint = 1.0 - anchor[0];
+            raised = over(background, [tint, tint, tint, 0.075]);
+        }
+        let surface = over(background, [tint, tint, tint, 0.035]);
+        let label = |color| {
+            let candidate = chrome_label(color, raised);
+            let minimum = |color| {
+                [background, surface, raised]
+                    .into_iter()
+                    .map(|surface| automexia_ui_model::contrast_ratio(color, surface))
+                    .fold(f32::INFINITY, f32::min)
+            };
+            if minimum(candidate) >= MIN_TEXT_CONTRAST + 0.1 {
+                candidate
+            } else {
+                let dark = [0.0, 0.0, 0.0, 1.0];
+                let light = [1.0; 4];
+                if minimum(dark) > minimum(light) {
+                    dark
+                } else {
+                    light
+                }
+            }
+        };
         Self {
             background,
             surface,
             raised,
-            outline: OUTLINE,
-            // Raised is the lightest of these dark surfaces. Resolve against it
+            outline: ensure_contrast(configured_muted, raised, 3.0),
+            // Raised is the lowest-contrast surface. Resolve against it
             // with headroom for the Text API's 8-bit colour conversion.
-            text: chrome_label(configured_foreground, raised),
-            muted_text: chrome_label(configured_muted, raised),
+            text: label(configured_foreground),
+            muted_text: label(configured_muted),
         }
     }
 }
@@ -208,6 +241,25 @@ mod tests {
                         >= MIN_TEXT_CONTRAST,
                     "shared label loses contrast on a surface"
                 );
+            }
+        }
+    }
+
+    #[test]
+    fn imported_midtones_keep_quantized_labels_readable_on_every_surface() {
+        for byte in 0u8..=255 {
+            let gray = f32::from(byte) / 255.0;
+            let theme = UiTheme::resolve([gray, gray, gray, 1.0], [0.6; 4], [0.3; 4]);
+            for surface in [theme.background, theme.surface, theme.raised] {
+                let surface = color_u8(surface).map(|c| f32::from(c) / 255.0);
+                for label in [theme.text, theme.muted_text] {
+                    let label = color_u8(label).map(|c| f32::from(c) / 255.0);
+                    assert!(
+                        automexia_ui_model::contrast_ratio(label, surface)
+                            >= MIN_TEXT_CONTRAST,
+                        "unreadable chrome at gray {byte}"
+                    );
+                }
             }
         }
     }

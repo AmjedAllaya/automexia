@@ -499,9 +499,9 @@ fn island_fills(bg: [f32; 4]) -> IslandFills {
         }
     } else {
         IslandFills {
-            inactive: [0.075, 0.115, 0.16, 0.72],
-            active: [0.035, 0.14, 0.235, 0.96],
-            outline: Some([0.18, 0.32, 0.43, 0.68]),
+            inactive: over(bg, [1.0, 1.0, 1.0, 0.045]),
+            active: over(bg, [1.0, 1.0, 1.0, 0.10]),
+            outline: Some(over(bg, [1.0, 1.0, 1.0, 0.22])),
             close_hover: [1.0, 1.0, 1.0, 0.14],
         }
     }
@@ -3138,11 +3138,11 @@ mod tests {
     fn island_fills_adapt_to_background_luminance() {
         let dark = island_fills([0.06, 0.05, 0.06, 1.0]);
         let light = island_fills([0.98, 0.98, 0.97, 1.0]);
-        // The liquid-hacker dark theme uses a blue-black active card and a
-        // quieter slate sibling. Light themes keep the legacy adaptive
-        // contrast so explicitly configured light palettes remain usable.
+        // Dark fills preserve the theme hue and use opaque surfaces; active
+        // tabs remain visibly brighter. Light themes retain adaptive contrast.
         assert!(dark.active[2] > dark.inactive[2]);
-        assert!(dark.active[3] > dark.inactive[3]);
+        assert_eq!(dark.active[3], 1.0);
+        assert_eq!(dark.inactive[3], 1.0);
         assert_eq!(light.inactive[0], 0.0);
         // On light themes the active island must read as the brighter,
         // elevated card: a strong white overlay against the recessed

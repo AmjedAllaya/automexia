@@ -62,6 +62,8 @@ mod state;
 pub mod suggestions;
 pub mod table_output;
 pub mod theme;
+pub mod theme_gallery;
+pub mod theme_gallery_io;
 pub mod ui;
 #[cfg(feature = "visual-test-hooks")]
 pub mod visual_test_hooks;

@@ -42,8 +42,8 @@ supporting controls. Appearance controls do not rewrite retained output or grant
 execution authority. Platform-specific effects and unsupported settings must not be
 assumed available merely because a theme looks similar on another system.
 
-Application dialogs retain Automexia's blue-black surfaces and brighter focus
-cues. The palette, Connection Hub and quit confirmation use quieter borders and
+Application dialogs follow the selected palette's light/dark character with
+opaque surfaces and brighter focus cues. The palette, Connection Hub and quit confirmation use quieter borders and
 clearer label hierarchy; palette shortcut badges are visually shortened when
 space is limited. This does not change a binding or your terminal font, ANSI
 colours, tab colour, line height or saved settings. No reset or migration is needed.
@@ -84,7 +84,7 @@ and `vi` on Unix unless you override `[editor]`.
 To change supported feature switches inside Automexia, open **Customizations
 → Open Customizations**, or press **Ctrl+Shift+S** (**Cmd+Shift+S** on macOS). The
 shortcut opens the same feature list. It shows separate pages for Information tags,
-Terminal output colors, Kubernetes status colors, Inline tables, Command timestamps, Theme, Font size,
+Terminal output colors, Kubernetes status colors, Inline tables, Command timestamps, Theme, Fonts,
 and features of installed extensions. The **Information tags** page keeps shared
 controls such as visibility, format, shape and spacing. Click a tag in the
 sample or its button in the list below. Its enabled state, text,
@@ -391,6 +391,28 @@ Use `current-working-directory = true` when new sessions should inherit validate
 
 Pane-local tab rails and operational footers follow responsive product rules and do not have a general “turn every visual invariant into a setting” model. This keeps the terminal grid/layout contract predictable.
 
+## Theme Gallery
+
+Open **Ctrl/Cmd+K**, search for **Theme Gallery**, then press Enter. You can also
+open **Customizations → Theme**.
+
+- Use the arrow keys or click a palette to preview it instantly. No settings are
+  saved while browsing. Press Escape to return to the previous appearance.
+- Press Enter or choose **Apply** to keep the selected theme.
+- Choose **Customize** to create a copy. Select its name or a color, then press
+  Enter to edit. **Save copy** adds your palette to the local library and applies it.
+- **Import** adds a validated TOML palette to the library; **Export** saves the
+  current palette as a TOML file. **Refresh** discovers local changes.
+- **Use configuration** removes the UI theme override and follows `config.toml`.
+
+Try **Aurora Night** for cyan/violet, **Solar Dusk** for amber/rose,
+**Forest Operator** for green/mint, **Arctic Glass** for cool slate or
+**Arctic Day** for a light background. Preview labels identify built-in, local and
+saved palettes; unreadable files and low contrast have visible explanations.
+Your explicit **Fonts** colors and separate output/Kubernetes/table choices remain
+in effect. During a temporary Reset preview, restore saved customizations before
+applying a theme.
+
 ## 8. Themes: fixed, adaptive, or forced
 
 The top-level config supports:
@@ -407,11 +429,10 @@ Choose one approach deliberately:
 
 Both adaptive theme files must load successfully. Theme/config failures do not replace the current runtime state with partially parsed values; Automexia keeps the last known-good configuration.
 
-**Settings → Appearance** offers **Use configuration**, **Light** and **Dark**
-when both adaptive palettes are loaded. Use configuration or Reset removes the
-override and follows the configured force-theme, or the host if none is configured.
-A fixed palette explains why this control is unavailable and retains the saved
-choice. Settings does not discover or load named themes.
+**Theme Gallery → Use configuration** removes the saved palette and appearance
+override, restoring the configured theme or adaptive pair. The appearance shortcut
+can switch between Light and Dark when both adaptive palettes are loaded; a saved
+gallery palette takes precedence until you choose **Use configuration**.
 
 The appearance shortcut also saves the selected light/dark choice. To try defaults
 without changing saved files, use **Reset all** in Customizations; **Restore saved**
@@ -421,8 +442,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v9.toml` and `user-preferences-v9.previous.toml`;
-- any retained `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v10.toml` and `user-preferences-v10.previous.toml`;
+- any retained `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from
@@ -488,7 +509,7 @@ The [terminal interaction status](../TERMINAL-INTERACTION-REQUIREMENTS.md)
 identifies current UI and persistence owners. This guide describes only
 settings supported by current source, not additional configuration options.
 
-The Customizations sheet edits fonts and terminal colors, supported adaptive appearance,
+The Customizations sheet edits fonts and terminal colors, theme palettes and supported adaptive appearance,
 output-presentation switches and declared built-in extension presentation controls.
 It groups these controls by feature and does not expose every `config.toml` option.
 It does not yet edit every setting in this guide. Existing font, appearance and

@@ -33,8 +33,12 @@ use unicode_segmentation::UnicodeSegmentation;
 
 #[path = "settings_table_preview.rs"]
 mod table_preview;
+#[path = "settings_theme_gallery.rs"]
+mod theme_gallery;
 #[path = "settings_timestamp_preview.rs"]
 mod timestamp_preview;
+use theme_gallery::{Gallery, GalleryTarget};
+pub(crate) use theme_gallery::{ThemeContext, ThemeIntent};
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Rect {
@@ -208,6 +212,7 @@ struct ColorGeometry {
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 enum Target {
+    Theme(GalleryTarget),
     Confirmation(bool),
     Search,
     Back,
@@ -307,6 +312,11 @@ impl Canvas for Sugarloaf<'_> {
 
 #[derive(Default)]
 pub(crate) struct SettingsView {
+    gallery: Option<Gallery>,
+    theme_context: Option<ThemeContext>,
+    theme_generation: u64,
+    pending_theme: Option<ThemeIntent>,
+    theme_editor_backup: Option<(Catalog, ViewState)>,
     catalog: Option<Catalog>,
     view: Option<ViewState>,
     customizations: Option<CustomizationNavigation>,
@@ -571,6 +581,9 @@ impl SettingsView {
         self.reveal_focus = true;
     }
     pub(crate) fn close(&mut self) {
+        self.gallery = None;
+        self.pending_theme = None;
+        self.theme_editor_backup = None;
         self.catalog = None;
         self.view = None;
         self.customizations = None;
@@ -661,6 +674,7 @@ impl SettingsView {
             .collect();
         serde_json::json!({
             "open": self.is_open(), "ready": ready,
+            "gallery": self.gallery_snapshot(),
             "active_slot": self.customizations.as_ref()
                 .and_then(|navigation| navigation.active_slot.as_ref()).map(SettingId::as_str),
             "active_category": self.customizations.as_ref()
@@ -944,6 +958,10 @@ impl SettingsView {
         let Some(key) = self.view.as_ref().and_then(ViewState::focused).cloned() else {
             return;
         };
+        if key.as_str() == automexia_ui_model::settings::APPEARANCE_THEME {
+            self.open_theme_gallery();
+            return;
+        }
         let Some(navigation) = self.customizations.as_mut() else {
             return;
         };
@@ -1941,6 +1959,9 @@ impl SettingsView {
     }
     #[cfg(test)]
     pub(crate) fn accessibility_summary(&self) -> String {
+        if let Some(summary) = self.gallery_summary() {
+            return summary;
+        }
         if let Some(confirmation) = &self.confirmation {
             return format!(
                 "{} {} Cancel: Escape. {}: Y. Tab selects; Enter activates {}.",
@@ -2086,6 +2107,10 @@ impl SettingsView {
         }
         if self.numeric_editor.is_some() {
             self.numeric_key(key, text, modifiers, repeat);
+            return;
+        }
+        if self.gallery.is_some() {
+            self.gallery_key(key, modifiers, repeat);
             return;
         }
         if self.is_category_detail()
@@ -3078,6 +3103,7 @@ impl SettingsView {
         if self.color_editor.take().is_none() {
             return;
         }
+        self.restore_gallery_catalog();
         self.preedit.clear();
         self.pressed = None;
         self.touch = None;
@@ -3805,6 +3831,9 @@ impl SettingsView {
             })
             .map(|(_, focus)| Target::Color(focus));
         }
+        if self.gallery.is_some() {
+            return self.gallery_target(x, y);
+        }
         if self.layout_dirty || !self.geometry.card.contains(x, y) {
             return None;
         }
@@ -3931,6 +3960,7 @@ impl SettingsView {
             self.cancel_numeric();
         }
         match target {
+            Target::Theme(target) => self.gallery_activate(target),
             Target::Confirmation(_) => {}
             Target::Color(focus) => {
                 if let Some(editor) = &mut self.color_editor {
@@ -4023,6 +4053,10 @@ impl SettingsView {
         if self.color_editor.is_some() || !delta.is_finite() || delta == 0.0 {
             return;
         }
+        if self.gallery.is_some() {
+            self.gallery_scroll(delta);
+            return;
+        }
         self.scroll = (self.scroll + delta).clamp(
             0.0,
             (self.content_height - self.geometry.body.height).max(0.0),
@@ -4045,6 +4079,10 @@ impl SettingsView {
             self.prepare_color(viewport);
             self.layout_dirty = false;
             self.reveal_focus = false;
+            return;
+        }
+        if self.gallery.is_some() {
+            self.prepare_gallery(viewport);
             return;
         }
         let margin: f32 = if self.width < 360.0 || self.height < 300.0 {
@@ -4477,6 +4515,10 @@ impl SettingsView {
         self.prepare(canvas.text());
         if self.color_editor.is_some() {
             self.paint_color(canvas, theme);
+            return;
+        }
+        if self.gallery.is_some() {
+            self.paint_gallery(canvas, theme);
             return;
         }
         let g = self.geometry;
