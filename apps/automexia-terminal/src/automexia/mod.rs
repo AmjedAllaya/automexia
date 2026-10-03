@@ -18,6 +18,8 @@ pub mod ecosystem;
 pub mod editor;
 #[doc(hidden)]
 pub mod export;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod font_preferences;
 pub mod ghostty_migration;
 pub mod google;
 #[doc(hidden)]

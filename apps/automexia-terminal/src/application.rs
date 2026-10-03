@@ -35,6 +35,7 @@ use crate::automexia::preferences::{
     MAX_FONT_POINTS, MIN_FONT_POINTS,
 };
 
+mod fonts;
 mod settings;
 
 const CUSTOM_RESIZE_BORDER_PX: f64 = 6.0;
@@ -259,6 +260,12 @@ pub struct Application<'a> {
     package_customizations:
         crate::automexia::package_customizations::PackageCustomizationService,
     settings_revision: u64,
+    font_preparation: crate::font_loading::FontPreparation,
+    pending_font: Option<fonts::PendingFont>,
+    prepared_font: Option<(
+        rio_backend::sugarloaf::font::SugarloafFonts,
+        rio_backend::sugarloaf::font::FontLibrary,
+    )>,
     event_proxy: EventProxy,
     router: Router<'a>,
     scheduler: Scheduler,
@@ -307,6 +314,9 @@ impl Application<'_> {
                 matches!(
                     preference_load.source,
                     runtime_preferences::PreferenceSource::Previous
+                        | runtime_preferences::PreferenceSource::Version8Previous
+                        | runtime_preferences::PreferenceSource::Version7Previous
+                        | runtime_preferences::PreferenceSource::Version6Previous
                         | runtime_preferences::PreferenceSource::Version5Previous
                         | runtime_preferences::PreferenceSource::Version4Previous
                         | runtime_preferences::PreferenceSource::Version3Previous
@@ -336,6 +346,11 @@ impl Application<'_> {
 
         let mut application = Application {
             settings_revision: 1,
+            font_preparation: crate::font_loading::FontPreparation::new(
+                event_proxy.clone(),
+            ),
+            pending_font: None,
+            prepared_font: None,
             base_config,
             config,
             user_preferences,
@@ -381,6 +396,7 @@ impl Application<'_> {
         event_loop: &ActiveEventLoop,
         has_font_updates: bool,
     ) {
+        let old_line_height = self.config.line_height;
         self.config = resolve_runtime_preference_config(
             &self.base_config,
             &self.user_preferences,
@@ -390,11 +406,19 @@ impl Application<'_> {
             self.user_preferences.visual.information_bar.recipe(),
         );
 
+        let prepared = self.take_prepared_font();
+        if let Some(library) = &prepared {
+            *self.router.font_library = library.clone();
+        }
+        let has_font_updates = has_font_updates
+            || prepared.is_some()
+            || old_line_height != self.config.line_height;
         for route in self.router.routes.values_mut() {
-            route
-                .window
-                .screen
-                .update_runtime_preferences(&self.config, has_font_updates);
+            route.window.screen.update_runtime_preferences(
+                &self.config,
+                has_font_updates,
+                prepared.as_ref(),
+            );
             route.window.configure_window(&self.config);
             route.request_redraw();
         }
@@ -927,6 +951,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // Drain before window lookup: a closed target must not strand the one
         // app-wide operation or prevent another Welcome route from retrying.
         self.finish_configuration_creation();
+        self.finish_font_preparation(event_loop);
         let window_id = event.window_id;
         match event.payload {
             RioEventType::Rio(RioEvent::Render) => {
@@ -3320,7 +3345,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 route
                     .window
                     .screen
-                    .update_runtime_preferences(&self.config, false);
+                    .update_runtime_preferences(&self.config, false, None);
                 route.window.configure_window(&self.config);
                 if route.window.screen.settings_view.is_open() {
                     route.window.winit_window.set_cursor(CursorIcon::Default);
@@ -3486,9 +3511,14 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.finish_font_preparation(event_loop);
         let scheduled = self.scheduler.update();
         let cleanup = self.router.workers.poll_cleanup();
-        let next_wake = scheduled.into_iter().chain(cleanup).min();
+        let next_wake = scheduled
+            .into_iter()
+            .chain(cleanup)
+            .chain(self.font_preparation.deadline())
+            .min();
         let control_flow = match next_wake {
             Some(instant) => ControlFlow::WaitUntil(instant),
             None => ControlFlow::Wait,

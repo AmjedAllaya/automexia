@@ -61,6 +61,11 @@ fn preference_child_write() {
     let preferences = match std::env::var(CHILD_MODE).as_deref() {
         Ok("set") => UserPreferences {
             font_size: Some(23.5),
+            fonts: automexia_terminal::automexia::font_preferences::FontPreferences {
+                family: Some("Example Mono".into()), line_height: Some(1.5), ligatures: Some(false),
+                colors: [(automexia_terminal::automexia::font_preferences::FontColor::Foreground, Rgb::from_bytes([90, 120, 150]))].into(),
+                ..Default::default()
+            },
             appearance_theme: Some(AppearanceTheme::Light),
             shortcuts: vec![rio_backend::config::bindings::UiShortcut {
                 action: "CloneSplitRight".into(),
@@ -170,6 +175,16 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     base.force_theme = Some(AppearanceTheme::Dark);
     let effective = restarted.preferences.apply_to(&base);
     assert_eq!(effective.fonts.size, 23.5);
+    assert_eq!(effective.fonts.family.as_deref(), Some("Example Mono"));
+    assert_eq!(effective.line_height, 1.5);
+    assert_eq!(
+        effective.fonts.features.as_deref(),
+        Some(["liga=0".to_string(), "calt=0".to_string()].as_slice())
+    );
+    assert_eq!(
+        effective.colors.foreground,
+        [90.0 / 255.0, 120.0 / 255.0, 150.0 / 255.0, 1.0]
+    );
     assert_eq!(effective.force_theme, Some(AppearanceTheme::Light));
     assert!(!effective.presentation.inline_tables);
     assert_eq!(
@@ -314,11 +329,11 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v8.toml");
+    let current = root.path().join("state/user-preferences-v9.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let original = std::fs::read_to_string(&current)
         .unwrap()
-        .replace("schema-version = 8", "schema-version = 4");
+        .replace("schema-version = 9", "schema-version = 4");
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

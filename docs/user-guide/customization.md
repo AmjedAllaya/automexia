@@ -332,10 +332,23 @@ The chosen size is saved automatically and restored before the first window is
 created on the next launch. Reset clears that saved override and returns every
 pane to the current configured size.
 
-**Settings → Font size** uses the same saved value. Its controls change one point
-within 6–100 points while retaining fractional sizes; Reset inherits configuration.
-All local tabs update, including inactive ones. Font family and features remain
-configuration-owned.
+**Customizations → Fonts** includes terminal size, installed family, regular and
+bold weights, bold/italic faces, line spacing, ligatures, hinting, box glyphs and
+OpenType features. Text, selection, cursor, background and ANSI palette colors
+have separate color controls. The live sample shows the active font and colors.
+Use the search field to find a control, Tab to move focus, and Enter to edit.
+
+Family names refer to installed fonts; the page does not install fonts. Font
+family also applies to interface text. Loading happens in the background. Keep
+the editor open until the change finishes; a missing font or failed load leaves
+the current font active with an explanation. Size and color edits apply immediately.
+All windows, panes and local tabs update, including inactive ones.
+
+Reset default previews configured values after confirmation; Restore saved
+returns to your earlier choices. Individual resets remove just that override.
+Explicit application colors and separate output/Kubernetes highlight colors remain
+in control. [The font reference](../CONFIGURATION.md#runtime-font-and-appearance)
+lists limits and advanced options that remain in configuration.
 
 Use runtime zoom for a convenient remembered preference and config for the
 declarative default you want Reset to recover. The UI does not rewrite or
@@ -408,8 +421,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v8.toml` and `user-preferences-v8.previous.toml`;
-- any retained `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v9.toml` and `user-preferences-v9.previous.toml`;
+- any retained `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from
@@ -475,7 +488,7 @@ The [terminal interaction status](../TERMINAL-INTERACTION-REQUIREMENTS.md)
 identifies current UI and persistence owners. This guide describes only
 settings supported by current source, not additional configuration options.
 
-The Customizations sheet edits font size, supported adaptive appearance,
+The Customizations sheet edits fonts and terminal colors, supported adaptive appearance,
 output-presentation switches and declared built-in extension presentation controls.
 It groups these controls by feature and does not expose every `config.toml` option.
 It does not yet edit every setting in this guide. Existing font, appearance and

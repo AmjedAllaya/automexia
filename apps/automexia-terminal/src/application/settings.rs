@@ -115,6 +115,7 @@ impl Application<'_> {
         window_id: rio_backend::event::WindowId,
         customizations: bool,
     ) {
+        self.cancel_font_edit_for_window(window_id);
         if customizations {
             self.package_customizations.request_refresh();
         }
@@ -278,6 +279,15 @@ impl Application<'_> {
         else {
             return;
         };
+        self.apply_settings_value(event_loop, window_id, edit);
+    }
+
+    pub(super) fn apply_settings_value(
+        &mut self,
+        event_loop: &ActiveEventLoop,
+        window_id: rio_backend::event::WindowId,
+        edit: automexia_ui_model::settings::Edit,
+    ) {
         if edit.id.as_str().starts_with("extension.pkg_") {
             let result = self
                 .package_pages()
@@ -328,6 +338,13 @@ impl Application<'_> {
                 return;
             }
         };
+        if self.defer_font_change(
+            window_id,
+            &candidate,
+            fonts::FontAction::Edit(edit.clone()),
+        ) {
+            return;
+        }
         if !publish_devops_feature_preferences(&candidate) {
             if let Some(route) = self.router.routes.get_mut(&window_id) {
                 route.window.screen.settings_view.set_status(
@@ -337,11 +354,13 @@ impl Application<'_> {
             }
             return;
         }
-        if matches!(
-            edit.id.as_str(),
-            automexia_ui_model::settings::FONT_SIZE
-                | automexia_ui_model::settings::APPEARANCE_THEME
-        ) {
+        if edit.id.as_str().starts_with("fonts.")
+            || matches!(
+                edit.id.as_str(),
+                automexia_ui_model::settings::FONT_SIZE
+                    | automexia_ui_model::settings::APPEARANCE_THEME
+            )
+        {
             let font_changed = candidate.apply_to(&self.base_config).fonts.size
                 != self.config.fonts.size;
             self.user_preferences = candidate;
@@ -458,12 +477,13 @@ impl Application<'_> {
         }
     }
 
-    fn apply_customization_intent(
+    pub(super) fn apply_customization_intent(
         &mut self,
         event_loop: &ActiveEventLoop,
         window_id: rio_backend::event::WindowId,
         intent: CustomizationIntent,
     ) {
+        let font_action = fonts::FontAction::Intent(intent.clone());
         match intent {
             CustomizationIntent::Reset { revision, scope } => {
                 let candidate =
@@ -487,6 +507,9 @@ impl Application<'_> {
                     }
                     return;
                 };
+                if self.defer_font_change(window_id, &candidate, font_action) {
+                    return;
+                }
                 if !publish_devops_feature_preferences(&candidate) {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
                         route
@@ -545,6 +568,9 @@ impl Application<'_> {
                 } else {
                     None
                 };
+                if self.defer_font_change(window_id, &saved, font_action) {
+                    return;
+                }
                 if !publish_devops_feature_preferences(&saved) {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
                         route.window.screen.settings_view.set_status(

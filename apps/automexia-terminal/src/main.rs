@@ -11,6 +11,7 @@ mod bindings;
 mod config_creation;
 mod constants;
 mod context;
+mod font_loading;
 mod global_hotkey;
 mod grid_emit;
 mod hints;

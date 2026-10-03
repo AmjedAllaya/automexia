@@ -3,10 +3,13 @@ use crate::automexia::{
     marketplace::MarketItem, package_customizations::PackageCustomizationPages,
     preferences::UserPreferences, settings_extensions,
 };
+#[path = "settings_font_catalog.rs"]
+mod fonts;
 #[path = "settings_table_catalog.rs"]
 mod tables;
 #[path = "settings_timestamp_catalog.rs"]
 mod timestamps;
+
 use automexia_ui_model::settings::{
     self, Catalog, Change, CoreOrigins, CoreValues, Edit, SettingValue, SettingsError,
     ValueOrigin,
@@ -19,6 +22,7 @@ use rio_backend::config::{
 
 #[derive(Clone)]
 pub(crate) struct SlotPageSnapshot {
+    font: fonts::Snapshot,
     bar: crate::automexia::preferences::InformationBarPreferences,
     devops_context_enabled: bool,
     tags: TagAppearance,
@@ -38,6 +42,11 @@ pub(crate) struct SlotPageSnapshot {
 }
 
 impl SlotPageSnapshot {
+    pub(crate) fn preview_fonts(
+        &self,
+    ) -> (&rio_backend::sugarloaf::font::SugarloafFonts, f32, Colors) {
+        (&self.font.fonts, self.font.line_height, self.font.palette)
+    }
     pub(crate) fn preview_timestamps(
         &self,
     ) -> (
@@ -92,6 +101,7 @@ pub(crate) fn slot_page_snapshot_with_config(
         .foreground
         .map(|channel| (channel.clamp(0.0, 1.0) * 255.0) as u8);
     SlotPageSnapshot {
+        font: fonts::Snapshot::new(base, effective, preferences),
         bar: preferences.visual.information_bar.clone(),
         devops_context_enabled: preferences
             .extension_feature_enabled(settings_extensions::DEVOPS_CONTEXT_STATUS_ID)
@@ -155,6 +165,32 @@ fn table_settings_catalog(
     )?;
     append_opacity_controls(&mut rows)?;
     Catalog::new(revision, rows)
+}
+
+pub(crate) fn font_page_catalog(
+    full: &Catalog,
+    snapshot: &SlotPageSnapshot,
+) -> Result<Catalog, SettingsError> {
+    let mut rows = vec![full
+        .get(&settings::SettingId::new(settings::FONT_SIZE)?)
+        .ok_or(SettingsError::UnknownSetting)?
+        .clone()];
+    rows[0].label = "Terminal font size".into();
+    rows.extend(fonts::descriptors(&snapshot.font)?);
+    Catalog::new(full.revision(), rows)
+}
+fn font_settings_catalog(
+    revision: u64,
+    base: &Config,
+    preferences: &UserPreferences,
+    palette: &Colors,
+) -> Result<Catalog, SettingsError> {
+    let mut effective = preferences.apply_to(base);
+    effective.colors = *palette;
+    Catalog::new(
+        revision,
+        fonts::descriptors(&fonts::Snapshot::new(base, &effective, preferences))?,
+    )
 }
 
 pub(crate) fn timestamp_page_catalog(
@@ -290,7 +326,10 @@ pub(crate) fn reset_customizations(
                 next.visual.timestamps = Default::default();
             }
             settings::APPEARANCE_THEME => next.appearance_theme = None,
-            settings::FONT_SIZE => next.font_size = None,
+            settings::FONT_SIZE => {
+                next.font_size = None;
+                next.fonts = Default::default();
+            }
             id if settings_extensions::is_known_boolean_feature(id) => next
                 .reset_extension_feature(id)
                 .map_err(|_| SettingsError::InvalidValue)?,
@@ -656,10 +695,14 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
             ["light", "dark", "system"],
         ),
         (
-            "Font size",
-            "Adjust terminal text size.",
+            "Fonts",
+            "Customize font family, size, styles and colors.",
             settings::FONT_SIZE,
-            ["text", "size", "type"],
+            [
+                "family type weight",
+                "text size spacing ligatures",
+                "colors palette rendering",
+            ],
         ),
     ] {
         if let Some(group) = customization_group(
@@ -1059,6 +1102,9 @@ pub(crate) fn apply_edit_with_palette(
     } else if edit.id.as_str().starts_with("tables.") {
         table_settings_catalog(revision, base, preferences, palette)?
             .validate_edit(edit)?;
+    } else if edit.id.as_str().starts_with("fonts.") {
+        font_settings_catalog(revision, base, preferences, palette)?
+            .validate_edit(edit)?;
     } else if edit.id.as_str().starts_with("timestamps.") {
         timestamp_settings_catalog(revision, base, preferences, palette)?
             .validate_edit(edit)?;
@@ -1139,7 +1185,9 @@ pub(crate) fn apply_edit_with_palette(
         }
         _ => {}
     }
-    if apply_slot_edit(&mut candidate, edit)? || apply_visual_edit(&mut candidate, edit)?
+    if fonts::apply(&mut candidate, edit)?
+        || apply_slot_edit(&mut candidate, edit)?
+        || apply_visual_edit(&mut candidate, edit)?
     {
         return Ok(candidate);
     }
@@ -5628,5 +5676,22 @@ mod visual_catalog_tests {
             .availability
             .reason()
             .is_none());
+    }
+}
+
+#[cfg(test)]
+mod fonts_entry_regression {
+    use super::*;
+
+    #[test]
+    fn fonts_customization_replaces_the_size_only_group() {
+        let catalog =
+            catalog(1, &Config::default(), &UserPreferences::default(), &[]).unwrap();
+        let groups = customization_groups(&catalog);
+        let group = groups
+            .iter()
+            .find(|g| g.key.as_str() == settings::FONT_SIZE)
+            .unwrap();
+        assert_eq!(group.label, "Fonts");
     }
 }

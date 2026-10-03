@@ -251,19 +251,26 @@ impl Screen<'_> {
     }
 
     /// Apply already-resolved runtime preferences using loaded resources.
-    /// Config reload remains the sole owner of font discovery, filters and images.
+    /// The application supplies already-prepared fonts; filters and images remain
+    /// owned by configuration reload. No resource discovery runs here.
     pub(crate) fn update_runtime_preferences(
         &mut self,
         config: &rio_backend::config::Config,
         font_changed: bool,
+        prepared: Option<&rio_backend::sugarloaf::font::FontLibrary>,
     ) {
+        if let Some(library) = prepared {
+            self.sugarloaf.update_font(library);
+        }
         if font_changed {
             self.sugarloaf.style_mut().font_size = config.fonts.size;
+            self.sugarloaf.style_mut().line_height = config.line_height;
             self.grid_rasterizer.clear_font_caches();
             for grid in self.grids.values_mut() {
                 grid.clear_atlas();
             }
             for grid in self.context_manager.contexts_mut() {
+                grid.update_line_height(config.line_height);
                 for item in grid.contexts_mut().values_mut() {
                     rebaseline_preference_item(
                         item,

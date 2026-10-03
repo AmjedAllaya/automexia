@@ -108,7 +108,7 @@ fn timestamps_v8_overlay_reset_and_invalid_values_are_isolated() {
         "unknown = true",
     ] {
         assert!(parse_snapshot(
-            format!("schema-version = 8\n[visual.timestamps]\n{body}\n").as_bytes()
+            format!("schema-version = 9\n[visual.timestamps]\n{body}\n").as_bytes()
         )
         .is_err());
     }

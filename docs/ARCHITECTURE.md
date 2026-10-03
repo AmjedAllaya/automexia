@@ -227,6 +227,17 @@ or initialize an unused backend. The CPU presentation cache is invalidated by
 that same reload boundary, so unchanged draw-instance bytes cannot suppress
 the repaint after a font change.
 
+The Fonts customization page uses the existing application preference overlay
+and Sugarloaf font library. One bounded preparation worker admits one request;
+font discovery/loading stays off input and rendering threads. A prepared library
+is published only while the editor, pane and settings revision still match.
+Cancellation and a 30-second deadline retain cleanup ownership until work returns.
+Only successful preparation updates the router, existing screens and saved
+preferences; screen font caches and every local tab's metrics refresh together.
+Version-9 preferences add typed font/color overrides and import strict version-8
+snapshots only when the new pair is absent. See
+[the font customization decision](adr/0087-font-customization-and-resource-preparation.md).
+
 Responsive label fitting has a renderer-local implementation in
 apps/automexia-terminal/src/renderer/text_fit.rs; the responsive surface owns
 the active-font adapter. It measures whole candidates with the same DrawOpts

@@ -31,9 +31,10 @@ use std::{
 };
 use tempfile::Builder;
 
-const SCHEMA_VERSION: u16 = 8;
+const SCHEMA_VERSION: u16 = 9;
 const STATE_DIRECTORY: &str = "state";
-const PRIMARY_FILE: &str = "user-preferences-v8.toml";
+const PRIMARY_FILE: &str = "user-preferences-v9.toml";
+const VERSION8_PRIMARY_FILE: &str = "user-preferences-v8.toml";
 const VERSION7_PRIMARY_FILE: &str = "user-preferences-v7.toml";
 const VERSION6_PRIMARY_FILE: &str = "user-preferences-v6.toml";
 const VERSION5_PRIMARY_FILE: &str = "user-preferences-v5.toml";
@@ -41,7 +42,8 @@ const VERSION4_PRIMARY_FILE: &str = "user-preferences-v4.toml";
 const VERSION3_PRIMARY_FILE: &str = "user-preferences-v3.toml";
 const PREDECESSOR_PRIMARY_FILE: &str = "user-preferences-v2.toml";
 const LEGACY_PRIMARY_FILE: &str = "user-preferences-v1.toml";
-const PREVIOUS_FILE: &str = "user-preferences-v8.previous.toml";
+const PREVIOUS_FILE: &str = "user-preferences-v9.previous.toml";
+const VERSION8_PREVIOUS_FILE: &str = "user-preferences-v8.previous.toml";
 const VERSION7_PREVIOUS_FILE: &str = "user-preferences-v7.previous.toml";
 const VERSION6_PREVIOUS_FILE: &str = "user-preferences-v6.previous.toml";
 const VERSION5_PREVIOUS_FILE: &str = "user-preferences-v5.previous.toml";
@@ -49,7 +51,7 @@ const VERSION4_PREVIOUS_FILE: &str = "user-preferences-v4.previous.toml";
 const VERSION3_PREVIOUS_FILE: &str = "user-preferences-v3.previous.toml";
 const PREDECESSOR_PREVIOUS_FILE: &str = "user-preferences-v2.previous.toml";
 const LEGACY_PREVIOUS_FILE: &str = "user-preferences-v1.previous.toml";
-const LOCK_FILE: &str = "user-preferences-v8.lock";
+const LOCK_FILE: &str = "user-preferences-v9.lock";
 const STAGING_PREFIX: &str = ".user-preferences-";
 pub const MAX_PREFERENCE_BYTES: usize = 16 * 1024;
 pub const MAX_PACKAGE_PREFERENCE_BYTES: usize = 8 * 1024 * 1024;
@@ -424,6 +426,7 @@ fn validate_extension_features(
 
 #[derive(Clone, Debug, Default, PartialEq)]
 pub struct UserPreferences {
+    pub fonts: super::font_preferences::FontPreferences,
     pub font_size: Option<f32>,
     pub appearance_theme: Option<AppearanceTheme>,
     pub shortcuts: Vec<rio_backend::config::bindings::UiShortcut>,
@@ -436,6 +439,7 @@ pub struct UserPreferences {
 impl UserPreferences {
     pub fn apply_to(&self, base: &Config) -> Config {
         let mut effective = base.clone();
+        self.fonts.apply_to(&mut effective);
         if let Some(font_size) = self.font_size {
             effective.fonts.size = font_size;
         }
@@ -493,6 +497,9 @@ impl UserPreferences {
 
     fn validate(&self) -> Result<(), PreferenceError> {
         validate_extension_features(&self.extension_features)?;
+        if !self.fonts.is_valid() {
+            return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+        }
         if !self.visual.information_bar.is_valid() {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
@@ -513,6 +520,11 @@ impl UserPreferences {
 #[derive(Debug, Deserialize, Serialize)]
 #[serde(deny_unknown_fields)]
 struct StoredPreferences {
+    #[serde(
+        default,
+        skip_serializing_if = "super::font_preferences::FontPreferences::is_empty"
+    )]
+    fonts: super::font_preferences::FontPreferences,
     #[serde(rename = "schema-version")]
     schema_version: u16,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
@@ -650,6 +662,7 @@ impl TryFrom<StoredPreferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            fonts: stored.fonts,
             font_size: stored.font_size,
             appearance_theme: stored.appearance_theme,
             shortcuts: stored.shortcuts,
@@ -678,6 +691,7 @@ impl TryFrom<Version4Preferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            fonts: Default::default(),
             font_size: stored.font_size,
             appearance_theme: stored.appearance_theme,
             shortcuts: stored.shortcuts,
@@ -707,6 +721,7 @@ impl TryFrom<Version3Preferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            fonts: Default::default(),
             font_size: stored.font_size,
             appearance_theme: stored.appearance_theme,
             shortcuts: stored.shortcuts,
@@ -733,6 +748,7 @@ impl TryFrom<Version2Preferences> for UserPreferences {
             return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
         }
         let preferences = Self {
+            fonts: Default::default(),
             font_size: stored.font_size,
             appearance_theme: stored.appearance_theme,
             shortcuts: stored.shortcuts,
@@ -750,6 +766,7 @@ impl From<&UserPreferences> for StoredPreferences {
     fn from(preferences: &UserPreferences) -> Self {
         Self {
             schema_version: SCHEMA_VERSION,
+            fonts: preferences.fonts.clone(),
             shortcuts: preferences.shortcuts.clone(),
             font_size: preferences.font_size,
             appearance_theme: preferences.appearance_theme,
@@ -765,6 +782,8 @@ pub enum PreferenceSource {
     Defaults,
     Primary,
     Previous,
+    Version8,
+    Version8Previous,
     Version7,
     Version7Previous,
     Version6,
@@ -847,12 +866,45 @@ fn read_version4_snapshot(
         })
 }
 
+/// v8 is a strict read-only rollback format; even an empty new section is rejected.
+fn parse_version8_snapshot(bytes: &[u8]) -> Result<UserPreferences, PreferenceError> {
+    let text = std::str::from_utf8(bytes)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    let value: toml::Value = toml::from_str(text)
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    if value.get("fonts").is_some() {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    let mut stored: StoredPreferences = value
+        .try_into()
+        .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    if stored.schema_version != 8 {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
+    stored.schema_version = SCHEMA_VERSION;
+    stored.try_into()
+}
+fn read_version8_snapshot(
+    path: &Path,
+) -> Result<Option<UserPreferences>, PreferenceError> {
+    private_fs::read_bounded_regular(path, MAX_PREFERENCE_BYTES)
+        .map_err(Into::into)
+        .and_then(|bytes| {
+            bytes
+                .map(|bytes| parse_version8_snapshot(&bytes))
+                .transpose()
+        })
+}
+
 /// Keep timestamp fields out of all predecessor schemas, including empty tables.
 fn parse_pre_timestamp_snapshot(bytes: &[u8]) -> Result<toml::Value, PreferenceError> {
     let text = std::str::from_utf8(bytes)
         .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
     let value: toml::Value = toml::from_str(text)
         .map_err(|_| PreferenceError::new(PreferenceErrorCode::InvalidData))?;
+    if value.get("fonts").is_some() {
+        return Err(PreferenceError::new(PreferenceErrorCode::InvalidData));
+    }
     if value
         .get("visual")
         .and_then(|v| v.get("timestamps"))
@@ -1078,6 +1130,15 @@ pub fn load_from_root(root: &Path) -> LoadOutcome {
         PreferenceSource::Primary,
         PreferenceSource::Previous,
     )
+    .or_else(|| {
+        load_pair(
+            &state_root(root).join(VERSION8_PRIMARY_FILE),
+            &state_root(root).join(VERSION8_PREVIOUS_FILE),
+            read_version8_snapshot,
+            PreferenceSource::Version8,
+            PreferenceSource::Version8Previous,
+        )
+    })
     .or_else(|| {
         load_pair(
             &state_root(root).join(VERSION7_PRIMARY_FILE),
@@ -1321,27 +1382,33 @@ fn write_to_root_with_package(
     // Present invalid/future current data cannot be hidden by a predecessor.
     let previous = read_snapshot(&previous_path(root))?;
     if current.is_none() && previous.is_none() {
-        let version7 = read_version7_snapshot(&state.join(VERSION7_PRIMARY_FILE))?;
-        let version7_previous =
-            read_version7_snapshot(&state.join(VERSION7_PREVIOUS_FILE))?;
-        if version7.is_none() && version7_previous.is_none() {
-            let version6 = read_version6_snapshot(&state.join(VERSION6_PRIMARY_FILE))?;
-            let version6_previous =
-                read_version6_snapshot(&state.join(VERSION6_PREVIOUS_FILE))?;
-            if version6.is_none() && version6_previous.is_none() {
-                let version5 =
-                    read_version5_snapshot(&state.join(VERSION5_PRIMARY_FILE))?;
-                let version5_previous =
-                    read_version5_snapshot(&state.join(VERSION5_PREVIOUS_FILE))?;
-                if version5.is_none() && version5_previous.is_none() {
-                    // Only an absent current pair permits migration. Preserve strict v4,
-                    // v3 and v2 rollback bytes, including failed transactions.
-                    read_version4_snapshot(&state.join(VERSION4_PRIMARY_FILE))?;
-                    read_version4_snapshot(&state.join(VERSION4_PREVIOUS_FILE))?;
-                    read_version3_snapshot(&state.join(VERSION3_PRIMARY_FILE))?;
-                    read_version3_snapshot(&state.join(VERSION3_PREVIOUS_FILE))?;
-                    read_version2_snapshot(&state.join(PREDECESSOR_PRIMARY_FILE))?;
-                    read_version2_snapshot(&state.join(PREDECESSOR_PREVIOUS_FILE))?;
+        let version8 = read_version8_snapshot(&state.join(VERSION8_PRIMARY_FILE))?;
+        let version8_previous =
+            read_version8_snapshot(&state.join(VERSION8_PREVIOUS_FILE))?;
+        if version8.is_none() && version8_previous.is_none() {
+            let version7 = read_version7_snapshot(&state.join(VERSION7_PRIMARY_FILE))?;
+            let version7_previous =
+                read_version7_snapshot(&state.join(VERSION7_PREVIOUS_FILE))?;
+            if version7.is_none() && version7_previous.is_none() {
+                let version6 =
+                    read_version6_snapshot(&state.join(VERSION6_PRIMARY_FILE))?;
+                let version6_previous =
+                    read_version6_snapshot(&state.join(VERSION6_PREVIOUS_FILE))?;
+                if version6.is_none() && version6_previous.is_none() {
+                    let version5 =
+                        read_version5_snapshot(&state.join(VERSION5_PRIMARY_FILE))?;
+                    let version5_previous =
+                        read_version5_snapshot(&state.join(VERSION5_PREVIOUS_FILE))?;
+                    if version5.is_none() && version5_previous.is_none() {
+                        // Only an absent current pair permits migration. Preserve strict v4,
+                        // v3 and v2 rollback bytes, including failed transactions.
+                        read_version4_snapshot(&state.join(VERSION4_PRIMARY_FILE))?;
+                        read_version4_snapshot(&state.join(VERSION4_PREVIOUS_FILE))?;
+                        read_version3_snapshot(&state.join(VERSION3_PRIMARY_FILE))?;
+                        read_version3_snapshot(&state.join(VERSION3_PREVIOUS_FILE))?;
+                        read_version2_snapshot(&state.join(PREDECESSOR_PRIMARY_FILE))?;
+                        read_version2_snapshot(&state.join(PREDECESSOR_PREVIOUS_FILE))?;
+                    }
                 }
             }
         }
@@ -1797,7 +1864,7 @@ mod tests {
         write_to_root(root.path(), &second).unwrap();
         std::fs::write(
             primary_path(root.path()),
-            b"schema-version = 8\nfont-size = nan",
+            b"schema-version = 9\nfont-size = nan",
         )
         .unwrap();
 
@@ -1814,9 +1881,9 @@ mod tests {
         let cases = [
             b"not toml".to_vec(),
             format!("schema-version = {}", SCHEMA_VERSION + 1).into_bytes(),
-            b"schema-version = 8\nunknown = true".to_vec(),
-            b"schema-version = 8\nfont-size = 5.99".to_vec(),
-            b"schema-version = 8\nfont-size = 100.01".to_vec(),
+            b"schema-version = 9\nunknown = true".to_vec(),
+            b"schema-version = 9\nfont-size = 5.99".to_vec(),
+            b"schema-version = 9\nfont-size = 100.01".to_vec(),
             vec![b'x'; MAX_PREFERENCE_BYTES + 1],
         ];
 
@@ -2145,3 +2212,7 @@ mod table_v7_tests;
 #[cfg(test)]
 #[path = "preferences_v8_tests.rs"]
 mod timestamp_v8_tests;
+
+#[cfg(test)]
+#[path = "preferences_v9_tests.rs"]
+mod fonts_v9_tests;

@@ -84,7 +84,7 @@ fn settings_toggle_and_customizations_focus_share_one_catalog_without_cross_edit
     assert!(labels.contains(&"Inline tables"));
     assert!(labels.contains(&"Command timestamps"));
     assert!(labels.contains(&"Theme"));
-    assert!(labels.contains(&"Font size"));
+    assert!(labels.contains(&"Fonts"));
     assert!(!labels.iter().any(|label| label.contains("DevOps")));
     assert!(!labels.contains(&"Git branch tag"));
     assert!(categories
@@ -5809,35 +5809,126 @@ fn workflow_font_preview_labels_and_draws_the_supported_size_boundaries() {
         let mut actual = Raster::new(1.0);
         view.paint_font_preview(&mut actual, sample, theme());
         let mut expected = Raster::new(1.0);
+        let row = Rect {
+            y: sample.y + 11.2 * 1.8,
+            height: size,
+            ..sample
+        };
         rect(&mut expected, sample, theme().background, sample);
-        let caption = 11.2;
         label(
             &mut expected,
-            Rect {
-                height: caption * 1.6,
-                ..sample
-            },
-            &format!("{size} pt text"),
-            caption,
-            theme().muted_text,
-            false,
-            sample,
-        );
-        label(
-            &mut expected,
-            Rect {
-                y: sample.y + caption * 1.8,
-                height: sample.height - caption * 1.8,
-                ..sample
-            },
+            row,
             "Aa 0123 λ",
             size,
             theme().text,
             false,
             sample,
         );
-        assert!(actual.pixels(720, 260, true) == expected.pixels(720, 260, true),
-            "the preview must show {size} pt, without silently clamping its text or label");
+        let actual_pixels = actual.pixels(720, 260, true);
+        let expected_pixels = expected.pixels(720, 260, true);
+        for y in (row.y.ceil() as usize)..((row.y + row.height).floor() as usize).min(250)
+        {
+            assert_eq!(
+                &actual_pixels[y * 720 + 10..y * 720 + 710],
+                &expected_pixels[y * 720 + 10..y * 720 + 710],
+                "preview must draw the actual {size} pt text without silently scaling it"
+            );
+        }
+    }
+}
+
+#[test]
+fn fonts_menu_navigation_edit_refresh_reset_restore_and_scaled_preview() {
+    use crate::automexia::font_preferences::FontColor;
+    use rio_backend::config::presentation::Rgb;
+    let base = rio_backend::config::Config::default();
+    let mut original = crate::automexia::preferences::UserPreferences::default();
+    original
+        .fonts
+        .colors
+        .insert(FontColor::Foreground, Rgb::from_bytes([220, 210, 170]));
+    original.fonts.line_height = Some(1.4);
+    for (width, height, scale) in [
+        (960.0, 620.0, 1.0),
+        (640.0, 480.0, 1.25),
+        (1280.0, 800.0, 2.0),
+    ] {
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &original,
+                &original.apply_to(&base),
+                &base,
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(automexia_ui_model::settings::FONT_SIZE).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(view.title(), "Fonts");
+        assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 34);
+        let id = SettingId::new("fonts.line-height").unwrap();
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        named(&mut view, NamedKey::ArrowRight);
+        let edit = view.take_edit().unwrap();
+        assert_eq!(edit.id, id);
+        let changed =
+            crate::settings_catalog::apply_edit(1, &base, &original, &[], &edit).unwrap();
+        assert!((changed.fonts.line_height.unwrap() - 1.5).abs() < 0.001);
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &changed,
+                &changed.apply_to(&base),
+                &base,
+            )),
+        );
+        assert_eq!(view.title(), "Fonts");
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        let (w, h) = ((width * scale) as u32, (height * scale) as u32);
+        let pixels = raster.pixels(w, h, true);
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            image_rs::RgbImage::from_fn(w, h, |x, y| {
+                let pixel = pixels[(y * w + x) as usize];
+                image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+            })
+            .save(directory.join(format!("fonts-{w}x{h}.png")))
+            .unwrap();
+        }
+        view.activate_target(Target::Reset);
+        assert!(view.confirmation.is_some());
+        named(&mut view, NamedKey::Escape);
+        assert!(view.take_customization_intent().is_none());
+        view.activate_target(Target::Reset);
+        confirm_requested_settings_action(&mut view);
+        assert_eq!(
+            view.take_customization_intent(),
+            Some(CustomizationIntent::Reset {
+                revision: 2,
+                scope: CustomizationResetScope::Group(
+                    SettingId::new(automexia_ui_model::settings::FONT_SIZE).unwrap()
+                )
+            })
+        );
+        view.set_temporary_customizations(true);
+        view.activate_target(Target::Restore);
+        confirm_requested_settings_action(&mut view);
+        assert_eq!(
+            view.take_customization_intent(),
+            Some(CustomizationIntent::RestoreSaved)
+        );
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(view.title(), "Customizations");
     }
 }
 

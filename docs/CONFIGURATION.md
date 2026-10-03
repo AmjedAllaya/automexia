@@ -16,11 +16,12 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v8.toml`
+Settings choices use the private, versioned `state/user-preferences-v9.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-7 preferences import only when both version-8 snapshots are absent;
+Version-8 preferences import only when both version-9 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 8 adds command timestamp appearance; version 7 added inline table appearance.
+Version 9 adds font and terminal palette overrides. Version 8 added command
+timestamp appearance; version 7 added inline table appearance.
 Version 6 added connected tag shapes. Older files remain unchanged
 for rollback; corrupt or future current snapshots do not fall back to older files.
 `AUTOMEXIA_CONFIG_HOME` replaces the complete root. `AUTOMEXIA_LOG_LEVEL`
@@ -261,6 +262,7 @@ Automexia automatically saves the settings that can be changed directly from
 the running UI:
 
 - font size changed with `Ctrl`/`Cmd` plus `+`, `-`, or `0`;
+- font family, weights, styles, spacing, features and terminal colors from Fonts;
 - the forced light/dark appearance selected by the appearance shortcut;
 - shortcut overrides saved by the existing palette shortcut editor;
 - table formatting, status highlighting and command timestamp display;
@@ -272,16 +274,33 @@ Writes are coalesced off the input/rendering path, bounded to 16 KiB, restricted
 to the current user, and retain one last-known-good snapshot. A malformed,
 oversized, linked, permission-denied, or contended file never replaces live
 configuration; Automexia reports a warning and uses the recovered snapshot or
-`config.toml` values. Invalid or newer version-4 data is never replaced by an
+`config.toml` values. Invalid or newer current-version data is never replaced by an
 automatic predecessor import. To clear individual choices, use Reset. To clear all
-runtime overrides, close Automexia and remove the version-4 primary and
-previous snapshots and any retained version-3, version-2 or version-1 snapshots; leaving
+runtime overrides, close Automexia and move the version-9 primary and
+previous snapshots and all retained version-1 through version-8 snapshots to a backup; leaving
 older files would import their choices again. This file never stores credentials, terminal contents,
 history, paths, tabs, panes, sessions, or provider state.
 
 ## Runtime font and appearance
 
-Customizations includes **Font size**, using the existing 6–100 point runtime range.
+Customizations includes **Fonts**, with these controls:
+
+- terminal size (6–100 points), installed family, regular/bold weights (100–900);
+- bold and italic faces, line spacing (0.8–3 times), ligatures, hinting and box glyphs;
+- OpenType features (up to 32 comma-separated four-character tags, optionally `=0`
+  or `=1`, within 128 bytes); the Ligatures choice overrides `liga` and `calt`;
+- default, bright and dim text, terminal background, cursor, selection colors,
+  and the 16 normal/bright ANSI palette colors.
+
+Family names are limited to 128 bytes and cannot contain path separators or
+control characters. Font family and faces are shared by terminal and interface
+text. Settings text follows the terminal size within its existing 10–32 point
+limits. Actual weights,
+ligatures and hinting depend on the installed font and platform renderer.
+Explicit application RGB and custom output/Kubernetes colors retain their owners.
+Window transparency remains an appearance setting.
+
+The font-size control uses the existing runtime range.
 The arrow controls change one point while retaining fractional sizes; the center
 field also accepts a typed value within the allowed range. Reset
 clears the saved override and inherits the current configured size. An unsupported
@@ -296,9 +315,18 @@ explanation; its saved choice is retained. Customizations does not discover or l
 theme files.
 
 Font and appearance edits update open windows, panes and inactive local tabs
-through the existing preference owner. They reuse loaded fonts and palettes,
-without reloading background images or rewriting configuration. The same
-asynchronous writer persists these existing preference fields.
+through the existing preference owner. Resource changes prepare one font library
+on a bounded background worker before publishing. Missing fonts, loading failures
+or a 30-second timeout leave the current choices active and show an explanation.
+Closing the editor, switching its pane or changing settings cancels stale results.
+Size, spacing and palette edits reuse loaded fonts; adaptive palette overrides apply
+to both loaded appearances. These changes never reload background images or rewrite
+configuration. The existing asynchronous writer persists the overrides.
+
+Reset default previews the configured Fonts values after confirmation; Restore saved
+returns to the earlier choices. Individual value resets clear only that override.
+Per-face named styles, symbol maps and additional font directories remain in
+`config.toml`. No fonts are installed or downloaded by this page.
 
 ## Output presentation
 

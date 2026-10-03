@@ -5996,49 +5996,157 @@ impl SettingsView {
     }
 
     fn paint_font_preview(&self, canvas: &mut impl Canvas, sample: Rect, theme: UiTheme) {
-        let (background, foreground) = self
+        let snapshot = self
             .customizations
             .as_ref()
-            .and_then(|navigation| navigation.slot_pages.as_ref())
-            .map_or(
-                (theme.background, theme.text),
-                SlotPageSnapshot::preview_terminal_colors,
-            );
+            .and_then(|nav| nav.slot_pages.as_ref());
+        let fallback = rio_backend::sugarloaf::font::SugarloafFonts::default();
+        let fallback_palette = rio_backend::config::colors::Colors::default();
+        let (fonts, height, palette) = snapshot.map_or(
+            (&fallback, 1.0, fallback_palette),
+            SlotPageSnapshot::preview_fonts,
+        );
+        let (mut background, mut foreground) = snapshot.map_or(
+            (theme.background, theme.text),
+            SlotPageSnapshot::preview_terminal_colors,
+        );
+        use crate::automexia::font_preferences::FontColor;
+        let selected_color = self
+            .view
+            .as_ref()
+            .and_then(|view| view.focused())
+            .and_then(|id| id.as_str().strip_prefix("fonts.colors."))
+            .and_then(FontColor::from_id);
+        match selected_color {
+            Some(FontColor::SelectionText | FontColor::SelectionBackground) => {
+                background = palette.selection_background;
+                foreground = palette.selection_foreground;
+            }
+            Some(FontColor::Background | FontColor::Cursor) | None => {}
+            Some(key) => foreground = key.get(&palette),
+        }
         rect(canvas, sample, background, sample);
         let size = self
             .preview_entry(automexia_ui_model::settings::FONT_SIZE)
-            .and_then(|entry| match &entry.value {
-                SettingValue::Number(size) if size.is_finite() => Some(*size as f32),
+            .and_then(|entry| match entry.value {
+                SettingValue::Number(size) if size.is_finite() => Some(size as f32),
                 _ => None,
             })
-            .unwrap_or(self.font);
+            .unwrap_or(fonts.size);
         let caption = (self.font * 0.70).clamp(9.0, 15.0);
+        let family = fonts.family.as_deref().unwrap_or(&fonts.regular.family);
         label(
             canvas,
             Rect {
                 height: caption * 1.6,
                 ..sample
             },
-            &format!("{size} pt text"),
+            &selected_color.map_or_else(
+                || format!("{size} pt · {family}"),
+                |key| format!("{} · {size} pt", key.label()),
+            ),
             caption,
             theme.muted_text,
             false,
             sample,
         );
-        let letters = Rect {
-            y: sample.y + caption * 1.8,
-            height: (sample.height - caption * 1.8).max(0.0),
+        let start_y = sample.y + caption * 1.8;
+        let row_height = size * height;
+        for (index, (value, bold, italic)) in [
+            ("Aa 0123 λ", false, false),
+            ("Bold · Italic", true, true),
+            ("-> => != ===", false, false),
+        ]
+        .into_iter()
+        .enumerate()
+        {
+            let bounds = Rect {
+                y: start_y + index as f32 * row_height,
+                height: row_height,
+                ..sample
+            };
+            if let Some(clip) = bounds.intersect(sample) {
+                canvas.text().draw_clipped(
+                    bounds.x + 4.0,
+                    bounds.y + 2.0,
+                    value,
+                    &DrawOpts {
+                        font_size: size,
+                        color: color_u8(foreground),
+                        bold,
+                        italic,
+                        ..DrawOpts::default()
+                    },
+                    clip.array(),
+                );
+            }
+        }
+        if snapshot.is_some() {
+            let text_width = canvas.text().measure(
+                "Aa 0123 λ ",
+                &DrawOpts {
+                    font_size: size,
+                    ..DrawOpts::default()
+                },
+            );
+            rect(
+                canvas,
+                Rect {
+                    x: sample.x + 4.0 + text_width,
+                    y: start_y + 2.0,
+                    width: size * 0.55,
+                    height: size,
+                },
+                palette.cursor,
+                sample,
+            );
+        }
+        let selection = Rect {
+            y: start_y + 3.0 * row_height + 8.0,
+            height: caption * 1.8,
             ..sample
         };
+        rect(canvas, selection, palette.selection_background, sample);
         label(
             canvas,
-            letters,
-            "Aa 0123 λ",
-            size,
-            foreground,
+            selection,
+            "Selected text",
+            caption,
+            palette.selection_foreground,
             false,
             sample,
         );
+        let colors = [
+            palette.black,
+            palette.red,
+            palette.green,
+            palette.yellow,
+            palette.blue,
+            palette.magenta,
+            palette.cyan,
+            palette.white,
+            palette.light_black,
+            palette.light_red,
+            palette.light_green,
+            palette.light_yellow,
+            palette.light_blue,
+            palette.light_magenta,
+            palette.light_cyan,
+            palette.light_white,
+        ];
+        let cell_width = sample.width / 8.0;
+        for (index, color) in colors.into_iter().enumerate() {
+            let cell = Rect {
+                x: sample.x + (index % 8) as f32 * cell_width,
+                y: selection.y
+                    + selection.height
+                    + 8.0
+                    + (index / 8) as f32 * (caption * 1.5),
+                width: cell_width - 3.0,
+                height: caption * 1.5 - 3.0,
+            };
+            rect(canvas, cell, color, sample);
+        }
     }
 
     fn paint_generic_preview(
@@ -6454,6 +6562,16 @@ fn detail_catalog_with_slots(
     group: &CustomizationGroup,
     snapshot: Option<&SlotPageSnapshot>,
 ) -> Option<Catalog> {
+    if group.key.as_str() == automexia_ui_model::settings::FONT_SIZE {
+        if let Some(snapshot) = snapshot {
+            return crate::settings_catalog::font_page_catalog(full, snapshot).ok();
+        }
+    }
+    if group.key.as_str() == automexia_ui_model::settings::FONT_SIZE {
+        if let Some(snapshot) = snapshot {
+            return crate::settings_catalog::font_page_catalog(full, snapshot).ok();
+        }
+    }
     if group.key.as_str() == automexia_ui_model::settings::INLINE_TABLES {
         if let Some(snapshot) = snapshot {
             return crate::settings_catalog::table_page_catalog(full, snapshot).ok();
