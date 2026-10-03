@@ -551,6 +551,7 @@ struct NativeWindowSnapshot {
     grid_height: f32,
     grid_margin: Margin,
     active_tab_profile: Option<String>,
+    window_tab_titles: Vec<String>,
     palette_enabled: bool,
     palette_scroll_offset: usize,
     palette_selected_index: usize,
@@ -762,6 +763,7 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["window_tab_titles"] = serde_json::json!(window.window_tab_titles);
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
     snapshot["renderer_backend"] = serde_json::json!(window.renderer_backend);
     snapshot["renderer_grid_count"] = serde_json::json!(window.renderer_grid_count);
@@ -6695,6 +6697,10 @@ impl Screen<'_> {
                     active_tab_profile: self
                         .context_manager
                         .tab_profile_identity(self.context_manager.current_index()),
+                    window_tab_titles: self.renderer.island.as_ref().map_or_else(
+                        Vec::new,
+                        |island| island.native_test_tab_titles(&self.context_manager),
+                    ),
                     palette_enabled: self.renderer.command_palette.is_enabled(),
                     palette_scroll_offset: palette_scroll_state.0,
                     palette_selected_index: palette_scroll_state.1,
@@ -7723,6 +7729,10 @@ impl Screen<'_> {
                 if self.create_tab_context() {
                     self.mark_dirty();
                 }
+            }
+            "clear-parked-tabs" => {
+                self.context_manager.clear_parked_topologies();
+                self.mark_dirty();
             }
             "clone-right" => self.clone_split_right(),
             "clone-down" => self.clone_split_down(),

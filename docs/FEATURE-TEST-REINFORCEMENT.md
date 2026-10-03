@@ -582,6 +582,12 @@ masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
 
+Rapid tab startup must resolve the default title before any shell output,
+exhaust unavailable fields and preserve literal OSC title data. Queue native
+Ctrl+T and Ctrl+F4 bursts without startup waits; compare all displayed titles
+with the expected profile and check exact counts and selection through close
+and reopen. Keep native platform results distinct from formatter/model tests.
+
 Both application damage-notification paths must mark the affected pane dirty
 before deciding whether its window may redraw. Cover inactive siblings and
 multiple pending panes, unchanged suppression, stale routes and restoration

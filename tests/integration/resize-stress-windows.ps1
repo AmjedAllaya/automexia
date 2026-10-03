@@ -189,6 +189,26 @@ public static class AutomexiaResizeDriver {
         };
     }
 
+    public static bool SendControlBurst(IntPtr hWnd, ushort key, int count) {
+        if (count < 1 || count > 16 || !ActivateWindow(hWnd)) return false;
+        var inputs = new List<NativeInput>(count * 4);
+        for (int i = 0; i < count; i++) {
+            inputs.Add(KeyboardInput(0x11, false));
+            inputs.Add(KeyboardInput(key, false));
+            inputs.Add(KeyboardInput(key, true));
+            inputs.Add(KeyboardInput(0x11, true));
+        }
+        uint sent = SendInput((uint)inputs.Count, inputs.ToArray(),
+            Marshal.SizeOf(typeof(NativeInput)));
+        if (sent != inputs.Count) {
+            SendInput(2, new NativeInput[] {
+                KeyboardInput(key, true), KeyboardInput(0x11, true)
+            }, Marshal.SizeOf(typeof(NativeInput)));
+            return false;
+        }
+        return true;
+    }
+
     public static bool ReplaceColorHex(IntPtr hWnd, string hex) {
         // Queue one real, ordered Ctrl+A and typed batch. Re-activating the
         // foreground window for every key attaches input threads, which resets
@@ -2287,6 +2307,55 @@ $wallpaperConfig
         -not [bool]$topTab.full_path_visible) {
         Write-Host ($topTab | ConvertTo-Json -Depth 8)
         throw 'The new Ctrl+T session did not publish its complete prompt automatically'
+    }
+    # Queue physical Ctrl+T presses without waiting for shell startup or a
+    # rendered frame. Check every published frame, including inactive tabs,
+    # then close and repeat while prior PTYs are retiring.
+    for ($burst = 0; $burst -lt 2; $burst++) {
+        $script:testStage = 'rapid top-level tab startup and retirement'
+        if (-not [AutomexiaResizeDriver]::SendControlBurst($window, 0x54, 6)) {
+            throw 'Could not queue the native new-tab burst'
+        }
+        $burstDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $topTab = Read-AutomexiaSnapshot -AfterSequence ([int64]$topTab.sequence)
+            $titles = @($topTab.window_tab_titles)
+            if ($titles.Count -ne [int]$topTab.window_tab_count -or
+                @($titles | Where-Object { $_ -cne 'PowerShell' }).Count -ne 0) {
+                throw 'A startup frame exposed a placeholder or wrong profile in the tab strip'
+            }
+        } while ([int]$topTab.window_tab_count -lt 8 -and [DateTime]::UtcNow -lt $burstDeadline)
+        if ([int]$topTab.window_tab_count -ne 8 -or [int]$topTab.active_window_tab_index -ne 7) {
+            throw 'Rapid new-tab input was lost or selected the wrong tab'
+        }
+        if (-not [AutomexiaResizeDriver]::SendControlBurst($window, 0x73, 6)) {
+            throw 'Could not queue the native close-tab burst'
+        }
+        $burstDeadline = [DateTime]::UtcNow.AddSeconds(15)
+        do {
+            $topTab = Read-AutomexiaSnapshot -AfterSequence ([int64]$topTab.sequence)
+        } while ([int]$topTab.window_tab_count -gt 2 -and [DateTime]::UtcNow -lt $burstDeadline)
+        if ([int]$topTab.window_tab_count -ne 2 -or [int]$topTab.active_window_tab_index -ne 1 -or
+            @($topTab.window_tab_titles | Where-Object { $_ -cne 'PowerShell' }).Count -ne 0) {
+            throw 'Rapid closing or late shell output changed the surviving tabs'
+        }
+    }
+    if ([int]$topTab.owned_route_count -ne 10) {
+        throw 'Rapid closing did not retain exactly two visible and eight undoable sessions'
+    }
+    # Ctrl+F4 deliberately retains live sessions for Undo Close (bounded to
+    # eight). Purge these fixtures via the same owner as the inspector's
+    # confirmed Clear action before unrelated resource-growth measurements.
+    $clearParkedControl = 'clear-parked-tabs:rapid-tab-fixtures'
+    Send-AutomexiaTestControl $clearParkedControl
+    $clearParkedDeadline = [DateTime]::UtcNow.AddSeconds(6)
+    do {
+        $topTab = Read-AutomexiaSnapshot -AfterSequence ([int64]$topTab.sequence)
+    } while (([string]$topTab.last_control -ne $clearParkedControl -or
+        [int]$topTab.owned_route_count -ne 2) -and [DateTime]::UtcNow -lt $clearParkedDeadline)
+    if ([string]$topTab.last_control -ne $clearParkedControl -or
+        [int]$topTab.owned_route_count -ne 2) {
+        throw 'Rapid-tab fixture cleanup did not retire every retained route'
     }
     $initial = $topTab
     $initialPanel = Get-ActiveAutomexiaPanel $initial

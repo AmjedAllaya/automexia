@@ -122,152 +122,82 @@ pub fn update_title<T: rio_backend::event::EventListener>(
         }
     }
 
-    let mut new_template = template.to_owned();
-
-    let re = regex::Regex::new(r"\{\{(.*?)\}\}").unwrap();
-    for (to_replace_str, [variable]) in re.captures_iter(template).map(|c| c.extract()) {
-        let variables = if to_replace_str.contains("||") {
-            variable.split("||").collect()
-        } else {
-            vec![variable]
-        };
-
-        let mut matched = false;
-        for (i, scoped_variable) in variables.iter().enumerate() {
-            if matched {
-                break;
-            }
-
-            let var = scoped_variable.to_owned().trim().to_lowercase();
-            match var.as_str() {
-                "columns" => {
-                    new_template = new_template
-                        .replace(to_replace_str, &context.dimension.columns.to_string());
-                    matched = true;
-                }
-                "lines" => {
-                    new_template = new_template
-                        .replace(to_replace_str, &context.dimension.lines.to_string());
-                    matched = true;
-                }
-                "title" => {
-                    let terminal_title = {
-                        let terminal = context.terminal.lock();
-                        terminal.title.to_string()
-                    };
-
-                    // In case it has a fallback and title is empty
-                    // or
-                    // In case is the last then we need to erase variables either way
-                    let is_only_one = variables.len() == 1;
-                    let is_last = i == variables.len() - 1;
-                    if is_only_one || is_last {
-                        new_template =
-                            new_template.replace(to_replace_str, &terminal_title);
-                        continue;
-                    }
-
-                    if !terminal_title.is_empty() {
-                        new_template =
-                            new_template.replace(to_replace_str, &terminal_title);
-                        matched = true;
-                    }
-                }
-                "program" => {
-                    #[cfg(unix)]
-                    {
+    // The grammar is fixed; compile once instead of once per tab per refresh.
+    static VARIABLES: std::sync::LazyLock<regex::Regex> =
+        std::sync::LazyLock::new(|| {
+            regex::Regex::new(r"\{\{(.*?)\}\}").expect("fixed title template grammar")
+        });
+    let (terminal_title, current_directory) = {
+        let terminal = context.terminal.lock();
+        (
+            terminal.title.to_string(),
+            terminal.current_directory.clone(),
+        )
+    };
+    VARIABLES
+        .replace_all(template, |captures: &regex::Captures<'_>| {
+            let mut recognized = false;
+            for variable in captures[1].split("||") {
+                let value = match variable.trim().to_ascii_lowercase().as_str() {
+                    "columns" => context.dimension.columns.to_string(),
+                    "lines" => context.dimension.lines.to_string(),
+                    "title" => terminal_title.clone(),
+                    "program" => {
+                        #[cfg(unix)]
                         let program = teletypewriter::foreground_process_name(
                             *context.main_fd,
                             context.shell_pid,
                         );
-
-                        new_template = new_template.replace(to_replace_str, &program);
-                        matched = true;
+                        #[cfg(not(unix))]
+                        let program = String::new();
+                        if program.is_empty() {
+                            context
+                                .launch_descriptor
+                                .program()
+                                .unwrap_or_default()
+                                .to_owned()
+                        } else {
+                            program
+                        }
                     }
+                    "absolute_path" | "relative_path" => {
+                        let path = current_directory
+                            .as_ref()
+                            .and_then(|path| path.to_str())
+                            .map(ToOwned::to_owned);
+                        #[cfg(unix)]
+                        let path = path.or_else(|| {
+                            teletypewriter::foreground_process_path(
+                                *context.main_fd,
+                                context.shell_pid,
+                            )
+                            .ok()
+                            .map(|path| path.to_string_lossy().into_owned())
+                        });
+                        let path = path.unwrap_or_default();
+                        if variable.trim().eq_ignore_ascii_case("relative_path") {
+                            shorten_path(&path)
+                        } else {
+                            path
+                        }
+                    }
+                    _ => continue,
+                };
+                recognized = true;
+                if !value.is_empty() {
+                    return value;
                 }
-                "absolute_path" => {
-                    {
-                        let terminal = context.terminal.lock();
-                        if let Some(current_directory) = &terminal.current_directory {
-                            if let Ok(dir_str) =
-                                current_directory.clone().into_os_string().into_string()
-                            {
-                                new_template =
-                                    new_template.replace(to_replace_str, &dir_str);
-                                matched = true;
-                                continue;
-                            }
-                        };
-                    }
-
-                    #[cfg(unix)]
-                    {
-                        let path = teletypewriter::foreground_process_path(
-                            *context.main_fd,
-                            context.shell_pid,
-                        )
-                        .map(|p| p.to_string_lossy().to_string())
-                        .unwrap_or_default();
-
-                        // In case it has a fallback and path is empty
-                        // or
-                        // In case is the last then we need to erase variables either way
-                        let is_only_one = variables.len() == 1;
-                        let is_last = i == variables.len() - 1;
-                        if is_only_one || is_last {
-                            new_template = new_template.replace(to_replace_str, &path);
-                            continue;
-                        }
-
-                        if !path.is_empty() {
-                            new_template = new_template.replace(to_replace_str, &path);
-                            matched = true;
-                        }
-                    }
-                }
-                "relative_path" => {
-                    {
-                        let terminal = context.terminal.lock();
-                        if let Some(current_directory) = &terminal.current_directory {
-                            if let Ok(dir_str) =
-                                current_directory.clone().into_os_string().into_string()
-                            {
-                                new_template = new_template
-                                    .replace(to_replace_str, &shorten_path(&dir_str));
-                                matched = true;
-                                continue;
-                            }
-                        };
-                    }
-
-                    #[cfg(unix)]
-                    {
-                        let path = teletypewriter::foreground_process_path(
-                            *context.main_fd,
-                            context.shell_pid,
-                        )
-                        .map(|p| shorten_path(&p.to_string_lossy()))
-                        .unwrap_or_default();
-
-                        let is_only_one = variables.len() == 1;
-                        let is_last = i == variables.len() - 1;
-                        if is_only_one || is_last {
-                            new_template = new_template.replace(to_replace_str, &path);
-                            continue;
-                        }
-
-                        if !path.is_empty() {
-                            new_template = new_template.replace(to_replace_str, &path);
-                            matched = true;
-                        }
-                    }
-                }
-                _ => {}
             }
-        }
-    }
-
-    new_template
+            // Known fields may be unavailable while the shell starts. Never
+            // expose their template syntax; preserve unknown fields literally
+            // for compatibility. replace_all does not reparse shell title data.
+            if recognized {
+                String::new()
+            } else {
+                captures[0].to_owned()
+            }
+        })
+        .into_owned()
 }
 
 #[cfg(test)]
@@ -275,10 +205,78 @@ pub mod test {
     use super::*;
     use crate::context::create_mock_context;
     use crate::context::ContextDimension;
+    use crate::context::ContextManager;
     use rio_backend::config::layout::Margin;
     use rio_backend::event::VoidListener;
     use rio_backend::event::WindowId;
     use rio_backend::sugarloaf::layout::TextDimensions;
+
+    #[cfg(windows)]
+    #[test]
+    fn rapid_tabs_resolve_default_title_before_shell_output() {
+        let mut manager =
+            ContextManager::start_with_capacity(16, VoidListener {}, WindowId::from(83))
+                .unwrap();
+        for _ in 1..16 {
+            manager.add_context(true, 0);
+        }
+        manager.update_titles();
+        for index in 0..16 {
+            assert_eq!(
+                manager.tab_profile_identity(index).as_deref(),
+                Some("powershell")
+            );
+            assert_eq!(manager.title(index).unwrap().content, "powershell");
+        }
+        // Background output belongs only to its route, even when shells start
+        // in a different order from their tabs.
+        manager.set_current(7);
+        manager.current().terminal.lock().title = "Ready seven".into();
+        assert_eq!(
+            update_title("{{ TITLE || PROGRAM }}", manager.current()),
+            "Ready seven"
+        );
+        manager.set_current(8);
+        assert_eq!(
+            update_title("{{ TITLE || PROGRAM }}", manager.current()),
+            "powershell"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn unavailable_title_fields_exhaust_without_exposing_template() {
+        let manager =
+            ContextManager::start_with_capacity(1, VoidListener {}, WindowId::from(84))
+                .unwrap();
+        assert_eq!(
+            update_title("{{ TITLE || RELATIVE_PATH }}", manager.current()),
+            ""
+        );
+        assert_eq!(
+            update_title("{{ ABSOLUTE_PATH || COLUMNS }}", manager.current()),
+            manager.current().dimension.columns.to_string()
+        );
+        assert_eq!(
+            update_title("literal {{ FUTURE_VARIABLE }}", manager.current()),
+            "literal {{ FUTURE_VARIABLE }}"
+        );
+    }
+
+    #[test]
+    fn terminal_title_is_literal_data_not_another_template() {
+        let manager =
+            ContextManager::start_with_capacity(1, VoidListener {}, WindowId::from(85))
+                .unwrap();
+        manager.current().terminal.lock().title = "{{ COLUMNS }}".into();
+        assert_eq!(
+            update_title("{{ TITLE }} / {{ COLUMNS }}", manager.current()),
+            format!(
+                "{{{{ COLUMNS }}}} / {}",
+                manager.current().dimension.columns
+            ),
+        );
+    }
 
     #[test]
     fn test_update_title() {

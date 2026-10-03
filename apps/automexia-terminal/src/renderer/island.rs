@@ -2327,6 +2327,19 @@ impl Island {
         // Default fallback - show tab number
         String::from("~")
     }
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn native_test_tab_titles(
+        &self,
+        context_manager: &ContextManager<EventProxy>,
+    ) -> Vec<String> {
+        (0..context_manager.len())
+            .map(|index| {
+                normalized_profile_title(&self.get_title_for_tab(context_manager, index))
+                    .into_owned()
+            })
+            .collect()
+    }
 }
 
 fn normalized_profile_title(raw: &str) -> Cow<'_, str> {
