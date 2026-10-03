@@ -25,6 +25,9 @@ use rio_backend::{
 
 const SENTINEL: u32 = 0x00112233;
 
+#[path = "table_appearance_tests.rs"]
+mod table_appearance_tests;
+
 #[test]
 fn non_pod_kubernetes_tables_keep_their_palette_after_tabulation() {
     for source in [

@@ -30,7 +30,7 @@ fn visual_current_writer_has_one_new_schema_and_preserves_v2_rollback_bytes() {
         .expect("the sole writer must publish a current snapshot");
     assert!(std::str::from_utf8(&bytes)
         .unwrap()
-        .contains("schema-version = 6"));
+        .contains("schema-version = 7"));
     assert!(lock_path(root.path()).is_file());
     assert!(!state_root(root.path())
         .join("user-preferences-v2.lock")
@@ -402,7 +402,7 @@ fn visual_v5_strict_current_and_predecessor_codecs_cannot_impersonate_each_other
     .is_err());
     assert!(parse_snapshot(b"schema-version = 5\n").is_err());
     let current = parse_version5_snapshot(b"schema-version = 5\n").unwrap();
-    assert_eq!(current, parse_snapshot(b"schema-version = 6\n").unwrap());
+    assert_eq!(current, parse_snapshot(b"schema-version = 7\n").unwrap());
     let predecessor = parse_version2_snapshot(b"schema-version = 2\n").unwrap();
     assert_eq!(current, predecessor);
 }

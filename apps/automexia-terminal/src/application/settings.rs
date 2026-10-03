@@ -137,7 +137,11 @@ impl Application<'_> {
         let package_projection_failed = package_pages.is_err();
         let package_pages = package_pages.unwrap_or(None);
         let slot_pages = customizations.then(|| {
-            settings_catalog::slot_page_snapshot(&self.user_preferences, &self.config)
+            settings_catalog::slot_page_snapshot_with_config(
+                &self.user_preferences,
+                &self.config,
+                &self.base_config,
+            )
         });
         let package_status = self.package_customizations.status();
         let save_status = self.preference_writer.save_status();
@@ -213,8 +217,11 @@ impl Application<'_> {
             &market,
             &self.config.colors,
         );
-        let slot_pages =
-            settings_catalog::slot_page_snapshot(&self.user_preferences, &self.config);
+        let slot_pages = settings_catalog::slot_page_snapshot_with_config(
+            &self.user_preferences,
+            &self.config,
+            &self.base_config,
+        );
         for route in self.router.routes.values_mut() {
             if !route.window.screen.settings_view.is_open() {
                 continue;

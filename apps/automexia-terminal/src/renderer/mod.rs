@@ -27,6 +27,7 @@ pub(crate) mod session_metadata;
 mod session_metadata_tests;
 mod suggestion_text;
 pub mod suggestions;
+pub(crate) mod table_style;
 pub(crate) mod text_fit;
 pub mod trail_cursor;
 pub(crate) mod ui_theme;
@@ -1985,6 +1986,7 @@ impl Renderer {
                 scale_factor,
                 inline_tables::PaintOptions {
                     colors: self.named_colors,
+                    tables: self.presentation.tables,
                     command_output: self
                         .presentation
                         .command_output_highlighting

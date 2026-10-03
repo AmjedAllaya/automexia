@@ -31,11 +31,8 @@ use rio_window::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
-const TABLE_PREVIEW_ROWS: [[&str; 3]; 3] = [
-    ["NAME", "READY", "STATUS"],
-    ["gateway-with-long-name", "0/1", "Running"],
-    ["postgres", "1/1", "Running"],
-];
+#[path = "settings_table_preview.rs"]
+mod table_preview;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Rect {
@@ -4181,6 +4178,13 @@ impl SettingsView {
                 && self.preview_selector_available())
                 || self.is_tag_preview();
             let tag_preview = self.is_tag_preview();
+            let table_preview = self
+                .customizations
+                .as_ref()
+                .and_then(|navigation| navigation.active_key.as_ref())
+                .is_some_and(|key| {
+                    key.as_str() == automexia_ui_model::settings::INLINE_TABLES
+                });
             let preview_height = (content.height
                 * if tag_preview {
                     0.68
@@ -4195,6 +4199,10 @@ impl SettingsView {
                         10.5
                     } else if editing_preview {
                         9.5
+                    } else if table_preview {
+                        // Keep a header and both stripe colors visible in the
+                        // stacked layout, without reducing the sample text size.
+                        7.0
                     } else {
                         5.5
                     },
@@ -5920,147 +5928,6 @@ impl SettingsView {
         }
     }
 
-    fn paint_table_preview(
-        &self,
-        canvas: &mut impl Canvas,
-        sample: Rect,
-        theme: UiTheme,
-    ) {
-        use crate::automexia::presentation::{
-            KUBERNETES_BACKGROUND_BINDINGS, KUBERNETES_COLOR_BINDINGS,
-        };
-        let (background, foreground) = self
-            .customizations
-            .as_ref()
-            .and_then(|navigation| navigation.slot_pages.as_ref())
-            .map_or(
-                (theme.background, theme.text),
-                SlotPageSnapshot::preview_terminal_colors,
-            );
-        rect(canvas, sample, background, sample);
-        let font = (self.font * 0.68).clamp(9.0, 15.0);
-        let line = font * 1.55;
-        let bordered = self.preview_bool(automexia_ui_model::settings::INLINE_TABLES);
-        let opts = DrawOpts {
-            font_size: font,
-            ..DrawOpts::default()
-        };
-        let columns = [0.35, 0.19, 0.46];
-        let mut y = sample.y;
-        for (index, values) in TABLE_PREVIEW_ROWS.into_iter().enumerate() {
-            let mut widths = [0.0_f32; 3];
-            let mut texts = [Vec::new(), Vec::new(), Vec::new()];
-            for column in 0..3 {
-                widths[column] = sample.width * columns[column];
-                texts[column] = wrapped(
-                    values[column],
-                    (widths[column] - 10.0).max(1.0),
-                    canvas.text(),
-                    &opts,
-                );
-            }
-            let lines = texts.iter().map(Vec::len).max().unwrap_or(1).max(1);
-            let height = lines as f32 * line + 4.0;
-            if y + height > sample.y + sample.height {
-                break;
-            }
-            let row = Rect {
-                y,
-                height,
-                ..sample
-            };
-            // The real Kubernetes classifier assigns information, warning and
-            // success to these same fixed rows, including unready Running pods.
-            let severity = match index {
-                0 => 3,
-                1 => 1,
-                _ => 2,
-            };
-            let (color, fill) = self.preview_status_colors(
-                &KUBERNETES_COLOR_BINDINGS[severity],
-                &KUBERNETES_BACKGROUND_BINDINGS[severity],
-                foreground,
-                automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING,
-                "kubernetes.style",
-            );
-            if let Some(fill) = fill {
-                rect(canvas, row, fill, sample);
-            }
-            let mut x = sample.x;
-            for column in 0..3 {
-                let cell = Rect {
-                    x,
-                    y,
-                    width: widths[column],
-                    height,
-                };
-                for (line_index, value) in texts[column].iter().enumerate() {
-                    label(
-                        canvas,
-                        Rect {
-                            y: y + line_index as f32 * line,
-                            height: line,
-                            ..cell
-                        },
-                        value,
-                        font,
-                        color,
-                        index == 0,
-                        cell,
-                    );
-                }
-                if bordered {
-                    rect(
-                        canvas,
-                        Rect {
-                            x,
-                            y,
-                            width: 1.0,
-                            height,
-                        },
-                        theme.outline,
-                        sample,
-                    );
-                }
-                x += widths[column];
-            }
-            if bordered {
-                rect(
-                    canvas,
-                    Rect {
-                        x: sample.x + sample.width - 1.0,
-                        y,
-                        width: 1.0,
-                        height,
-                    },
-                    theme.outline,
-                    sample,
-                );
-                rect(
-                    canvas,
-                    Rect {
-                        y,
-                        height: 1.0,
-                        ..sample
-                    },
-                    theme.outline,
-                    sample,
-                );
-                rect(
-                    canvas,
-                    Rect {
-                        y: y + height - 1.0,
-                        height: 1.0,
-                        ..sample
-                    },
-                    theme.outline,
-                    sample,
-                );
-            }
-            y += height;
-        }
-    }
-
     fn paint_timestamp_preview(
         &self,
         canvas: &mut impl Canvas,
@@ -6598,8 +6465,13 @@ fn detail_catalog(full: &Catalog, group: &CustomizationGroup) -> Option<Catalog>
 fn detail_catalog_with_slots(
     full: &Catalog,
     group: &CustomizationGroup,
-    _snapshot: Option<&SlotPageSnapshot>,
+    snapshot: Option<&SlotPageSnapshot>,
 ) -> Option<Catalog> {
+    if group.key.as_str() == automexia_ui_model::settings::INLINE_TABLES {
+        if let Some(snapshot) = snapshot {
+            return crate::settings_catalog::table_page_catalog(full, snapshot).ok();
+        }
+    }
     detail_catalog(full, group)
 }
 fn preview_detail_catalog(

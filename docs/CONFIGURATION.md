@@ -16,11 +16,11 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v6.toml`
+Settings choices use the private, versioned `state/user-preferences-v7.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-5 preferences import only when both version-6 snapshots are absent;
+Version-6 preferences import only when both version-7 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 6 adds connected information-tag shapes. Older files remain unchanged
+Version 7 adds inline table appearance; version 6 added connected tag shapes. Older files remain unchanged
 for rollback; corrupt or future current snapshots do not fall back to older files.
 `AUTOMEXIA_CONFIG_HOME` replaces the complete root. `AUTOMEXIA_LOG_LEVEL`
 overrides the configured log level. For v0.4 only, `RIO_CONFIG_HOME` is a
@@ -330,6 +330,49 @@ command-timestamps = true
 | `presentation.output-highlighting` | `true` | Color detected logs and general statuses, independently of command backgrounds and Kubernetes. |
 | `presentation.kubernetes-highlighting` | `true` | Color recognized Kubernetes readiness and status rows in Customizations → Kubernetes status colors. |
 | `presentation.command-timestamps` | `true` | Show completion timestamps. Disabling this keeps exit status, duration and terminal-owned command metadata. |
+
+Open **Inline tables** to choose solid, dashed, dotted, double or no borders,
+adjust their weight, and toggle the outer frame, row separators, column separators
+and header separator independently. Choose **Alternating backgrounds** for zebra
+rows, alternating columns or a checkerboard. Wrapped lines retain their logical
+row color. Header, ordinary and alternate cells have separate text/background
+colors; border and background colors also have opacity controls. The sample
+uses ordinary file data so status highlighting does not mask your choices.
+Explicit terminal colors, selection and enabled semantic status colors keep
+priority in real output. Disabling inline tables retains these appearance choices.
+
+Configuration equivalents are optional overrides under `[presentation.tables]`:
+
+| Key | Default | Values / effect |
+|---|---|---|
+| `border-style` | `"solid"` | `"none"`, `"solid"`, `"dashed"`, `"dotted"`, `"double"`. |
+| `border-weight` | `"thin"` | `"thin"`, `"medium"`, `"thick"`. |
+| `outer-border` | `true` | Draw the table frame. |
+| `row-lines` | `true` | Draw separators between data rows. |
+| `column-lines` | `true` | Draw separators between columns. |
+| `header-separator` | `true` | Draw the line beneath the header. |
+| `header-bold` | `false` | Use bold header text. |
+| `banding` | `"none"` | `"none"`, `"rows"`, `"columns"`, `"checkerboard"`. |
+| `border-color` | Theme outline | `#RRGGBBAA`; alpha controls border opacity. |
+| `header-foreground` | Terminal foreground | `#RRGGBB`. |
+| `header-background` | Theme raised surface | `#RRGGBBAA`. |
+| `body-foreground` | Terminal foreground | `#RRGGBB`. |
+| `body-background` | Terminal background | `#RRGGBBAA`. |
+| `alternate-foreground` | Body foreground | `#RRGGBB`. |
+| `alternate-background` | Theme raised surface | `#RRGGBBAA`. |
+
+For a striped table without internal rules:
+
+```toml
+[presentation.tables]
+banding = "rows"
+row-lines = false
+column-lines = false
+border-style = "dotted"
+border-color = "#60708080"
+header-background = "#243848FF"
+alternate-background = "#20304080"
+```
 
 Open **Information tags** in Customizations to show or hide the prompt tags,
 choose one of twelve **Information-bar format** presets, adjust **Space between

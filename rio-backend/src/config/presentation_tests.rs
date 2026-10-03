@@ -1,5 +1,25 @@
 use super::Config;
 
+#[test]
+fn inline_table_appearance_accepts_independent_borders_headers_and_banding() {
+    let source = "[presentation.tables]\nborder-style = 'dashed'\nborder-weight = 'medium'\nrow-lines = false\ncolumn-lines = true\nbanding = 'rows'\nborder-color = '#abcdef80'\nheader-foreground = '#123456'\nheader-background = '#11223344'\nbody-background = '#22334455'\nalternate-background = '#33445566'\n";
+    let config: Config =
+        toml::from_str(source).expect("table appearance must be configurable");
+    let value: toml::Value = toml::from_str(&presentation_document(&config)).unwrap();
+    assert_eq!(
+        value["presentation"]["tables"]["border-style"].as_str(),
+        Some("dashed")
+    );
+    assert_eq!(
+        value["presentation"]["tables"]["banding"].as_str(),
+        Some("rows")
+    );
+    assert_eq!(
+        value["presentation"]["tables"]["row-lines"].as_bool(),
+        Some(false)
+    );
+}
+
 fn presentation_document(config: &Config) -> String {
     #[derive(serde::Serialize)]
     struct Document<'a> {
@@ -357,4 +377,19 @@ fn visual_config_rejects_unknown_nested_fields_and_untrusted_color_values() {
     >::new("private-placeholder"))
     .unwrap_err();
     assert_eq!(error.to_string(), "invalid appearance hex color");
+}
+#[test]
+fn inline_table_appearance_rejects_invalid_fields_types_and_colors() {
+    for value in [
+        "border-style = 'zigzag'",
+        "border-weight = 9",
+        "banding = 'random'",
+        "row-lines = 'yes'",
+        "header-foreground = '#12345678'",
+        "header-background = 'transparent'",
+        "unknown = true",
+    ] {
+        let source = format!("[presentation.tables]\n{value}\n");
+        assert!(toml::from_str::<super::Config>(&source).is_err(), "{value}");
+    }
 }

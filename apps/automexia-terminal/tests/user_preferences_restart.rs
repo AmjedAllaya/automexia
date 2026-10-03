@@ -14,7 +14,10 @@ use automexia_ui_model::information_bar::{
     preset_recipe, BarIconSource, BarSlotSourceDraft, BarTextSource, InformationBarPreset,
 };
 use rio_backend::config::{
-    presentation::{HighlightStyle, Rgb, Rgba, TagStyle},
+    presentation::{
+        HighlightStyle, Rgb, Rgba, TableAppearance, TableBanding, TableBorderStyle,
+        TagStyle,
+    },
     theme::AppearanceTheme,
     Config,
 };
@@ -78,6 +81,14 @@ fn preference_child_write() {
                 command_timestamps: Some(false),
             },
             visual: VisualPreferences {
+                tables: TableAppearance {
+                    border_style: Some(TableBorderStyle::Dotted),
+                    banding: Some(TableBanding::Rows),
+                    header_foreground: Some(Rgb::from_bytes([10, 20, 30])),
+                    alternate_background: Some(Rgba::from_bytes([20, 40, 60, 128])),
+                    column_lines: Some(false),
+                    ..Default::default()
+                },
                 tags: TagAppearancePreferences {
                     enabled: Some(false),
                     style: Some(TagStyle::Plain),
@@ -155,6 +166,23 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     assert_eq!(effective.fonts.size, 23.5);
     assert_eq!(effective.force_theme, Some(AppearanceTheme::Light));
     assert!(!effective.presentation.inline_tables);
+    assert_eq!(
+        effective.presentation.tables.border_style,
+        Some(TableBorderStyle::Dotted)
+    );
+    assert_eq!(
+        effective.presentation.tables.banding,
+        Some(TableBanding::Rows)
+    );
+    assert_eq!(
+        effective.presentation.tables.header_foreground,
+        Some(Rgb::from_bytes([10, 20, 30]))
+    );
+    assert_eq!(
+        effective.presentation.tables.alternate_background,
+        Some(Rgba::from_bytes([20, 40, 60, 128]))
+    );
+    assert_eq!(effective.presentation.tables.column_lines, Some(false));
     assert!(!effective.presentation.output_highlighting);
     assert!(!effective.presentation.command_output_highlighting);
     assert!(effective.presentation.kubernetes_highlighting);
@@ -268,11 +296,11 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v6.toml");
+    let current = root.path().join("state/user-preferences-v7.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let original = std::fs::read_to_string(&current)
         .unwrap()
-        .replace("schema-version = 6", "schema-version = 4");
+        .replace("schema-version = 7", "schema-version = 4");
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

@@ -1487,17 +1487,23 @@ fn every_information_bar_preset_has_a_bounded_live_sample_and_shared_arrangement
 }
 
 #[test]
-fn table_preview_keeps_borders_but_obeys_only_the_kubernetes_highlighting_switch() {
+fn table_preview_uses_saved_appearance_and_ignores_status_switches() {
+    use rio_backend::config::presentation::{Rgba, TableBanding, TableBorderStyle};
     let base = rio_backend::config::Config::default();
-    let mut original = crate::automexia::preferences::UserPreferences::default();
-    original.presentation.output_highlighting = Some(false);
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    prefs.visual.tables.banding = Some(TableBanding::Rows);
+    prefs.visual.tables.border_style = Some(TableBorderStyle::None);
+    prefs.visual.tables.header_background = Some(Rgba::from_bytes([20, 30, 40, 255]));
+    prefs.visual.tables.body_background = Some(Rgba::from_bytes([50, 60, 70, 255]));
+    prefs.visual.tables.alternate_background = Some(Rgba::from_bytes([80, 90, 100, 255]));
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);
     view.open_customizations_with_slots(
-        crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+        crate::settings_catalog::catalog(1, &base, &prefs, &[]).unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
-            &original, &base,
+            &prefs,
+            &prefs.apply_to(&base),
         )),
     );
     assert!(view
@@ -1507,79 +1513,145 @@ fn table_preview_keeps_borders_but_obeys_only_the_kubernetes_highlighting_switch
         .focus(&SettingId::new(INLINE_TABLES).unwrap()));
     view.focus = Focus::List;
     named(&mut view, NamedKey::Enter);
-    let mut on = Raster::new(1.0);
-    view.paint(&mut on, theme());
-    let tinted = |raster: &Raster| {
-        raster.rects.iter().any(|(_, color)| {
-            color
-                .iter()
-                .zip([96.0 / 255.0, 69.0 / 255.0, 0.0, 78.0 / 255.0])
-                .all(|(actual, expected)| (actual - expected).abs() < 0.001)
-        })
+    let sample = Rect {
+        x: 10.0,
+        y: 10.0,
+        width: 500.0,
+        height: 300.0,
     };
-    assert!(tinted(&on));
-    let borders = |raster: &Raster| {
-        raster
-            .rects
+    let mut original = Raster::new(1.0);
+    view.paint_table_preview(&mut original, sample, theme());
+    for expected in [[20u8, 30, 40], [50, 60, 70], [80, 90, 100]] {
+        assert!(original.rects.iter().any(|(_, color)| color[..3]
             .iter()
-            .filter(|(bounds, _)| bounds[2] == 1.0 && bounds[3] > 10.0)
-            .count()
-    };
-    assert!(borders(&on) >= 3);
-    let disabled = crate::settings_catalog::apply_edit(
-        1,
-        &base,
-        &original,
-        &[],
-        &Edit {
-            revision: 1,
-            id: SettingId::new(automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING)
-                .unwrap(),
-            change: Change::Set(SettingValue::Boolean(false)),
-        },
-    )
-    .unwrap();
+            .zip(expected)
+            .all(|(v, e)| (v - f32::from(e) / 255.0).abs() < 0.001)));
+    }
+    for kube in [false, true] {
+        prefs.presentation.kubernetes_highlighting = Some(kube);
+        prefs.presentation.output_highlighting = Some(!kube);
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(2, &base, &prefs, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &prefs,
+                &prefs.apply_to(&base),
+            )),
+        );
+        let mut painted = Raster::new(1.0);
+        view.paint_table_preview(&mut painted, sample, theme());
+        assert_eq!(
+            painted.rects, original.rects,
+            "table sample has no semantic statuses"
+        );
+    }
+    prefs.presentation.inline_tables = Some(false);
     view.refresh_with_resources(
-        crate::settings_catalog::catalog(2, &base, &disabled, &[]).unwrap(),
+        crate::settings_catalog::catalog(3, &base, &prefs, &[]).unwrap(),
         None,
         Some(crate::settings_catalog::slot_page_snapshot(
-            &disabled,
-            &disabled.apply_to(&base),
+            &prefs,
+            &prefs.apply_to(&base),
         )),
     );
-    let mut off = Raster::new(1.0);
-    view.paint(&mut off, theme());
-    assert!(!tinted(&off));
-    assert!(borders(&off) >= 3);
-
-    let mut logs_only = disabled;
-    logs_only.presentation.output_highlighting = Some(true);
-    view.refresh_with_resources(
-        crate::settings_catalog::catalog(3, &base, &logs_only, &[]).unwrap(),
-        None,
-        Some(crate::settings_catalog::slot_page_snapshot(
-            &logs_only,
-            &logs_only.apply_to(&base),
-        )),
-    );
-    let mut logs = Raster::new(1.0);
-    view.paint(&mut logs, theme());
-    assert!(!tinted(&logs), "log colors cannot color a Kubernetes table");
-    assert!(borders(&logs) >= 3);
+    let mut disabled = Raster::new(1.0);
+    view.paint_table_preview(&mut disabled, sample, theme());
+    assert!(disabled
+        .rects
+        .iter()
+        .all(|(_, color)| *color == base.colors.background.0));
+    assert_eq!(prefs.visual.tables.banding, Some(TableBanding::Rows));
 }
 
 #[test]
-fn table_preview_rows_have_the_same_kubernetes_meaning_as_terminal_output() {
-    use crate::automexia::output_semantics::{classify_row, OutputDomain};
-    use automexia_extension_api::SemanticSeverity;
-    for (row, expected) in TABLE_PREVIEW_ROWS.into_iter().zip([
-        SemanticSeverity::Info,
-        SemanticSeverity::Warning,
-        SemanticSeverity::Success,
-    ]) {
-        let actual = classify_row(&row.join("  ")).unwrap();
-        assert_eq!(actual.domain, OutputDomain::Kubernetes);
-        assert_eq!(actual.severity, Some(expected));
+fn inline_table_menu_keyboard_edits_refresh_preview_and_survive_layout_changes() {
+    use rio_backend::config::presentation::{Rgba, TableBanding};
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    prefs.visual.tables.row_lines = Some(false);
+    prefs.visual.tables.column_lines = Some(false);
+    prefs.visual.tables.alternate_background = Some(Rgba::from_bytes([30, 50, 70, 128]));
+    for (width, height, scale) in [
+        (960.0, 620.0, 1.0),
+        (640.0, 480.0, 1.25),
+        (1280.0, 800.0, 2.0),
+    ] {
+        let original = prefs.clone();
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &original,
+                &original.apply_to(&base),
+                &base,
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(INLINE_TABLES).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        let id = SettingId::new("tables.banding").unwrap();
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::ArrowRight);
+        let edit = view.take_edit().unwrap();
+        assert_eq!(edit.id, id);
+        assert_eq!(
+            edit.change,
+            Change::Set(SettingValue::Choice("rows".into()))
+        );
+        let changed =
+            crate::settings_catalog::apply_edit(1, &base, &original, &[], &edit).unwrap();
+        assert_eq!(changed.visual.tables.banding, Some(TableBanding::Rows));
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &changed,
+                &changed.apply_to(&base),
+                &base,
+            )),
+        );
+        assert_eq!(view.title(), "Inline tables");
+        assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 20);
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        let stripe = [30.0 / 255.0, 50.0 / 255.0, 70.0 / 255.0];
+        assert!(
+            raster.rects.iter().any(|(bounds, color)| {
+                bounds[0] >= view.geometry.preview.x
+                    && bounds[1] >= view.geometry.preview.y
+                    && (0..3).all(|i| {
+                        (color[i]
+                            - (stripe[i] * 128.0 / 255.0
+                                + base.colors.background.0[i] * 127.0 / 255.0))
+                            .abs()
+                            < 0.001
+                    })
+            }),
+            "the compact preview must show an alternate data row"
+        );
+        assert!(!raster.rects.is_empty());
+        let (w, h) = ((width * scale) as u32, (height * scale) as u32);
+        let pixels = raster.pixels(w, h, true);
+        assert!(pixels.iter().any(|pixel| *pixel != 0x00112233));
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            image_rs::RgbImage::from_fn(w, h, |x, y| {
+                let pixel = pixels[(y * w + x) as usize];
+                image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+            })
+            .save(directory.join(format!("inline-tables-{w}x{h}.png")))
+            .unwrap();
+        }
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(view.title(), "Customizations");
     }
 }
 
@@ -5540,7 +5612,7 @@ fn workflow_output_severity_footer_names_the_color_reset_action() {
 }
 
 #[test]
-fn workflow_table_preview_uses_the_selected_kubernetes_warning_background_rgba() {
+fn workflow_table_preview_uses_the_selected_header_background_rgba() {
     let base = rio_backend::config::Config::default();
     let mut original = crate::automexia::preferences::UserPreferences::default();
     let log_color = [220, 10, 20, 111];
@@ -5554,7 +5626,7 @@ fn workflow_table_preview_uses_the_selected_kubernetes_warning_background_rgba()
         &[],
         &Edit {
             revision: 1,
-            id: SettingId::new("kubernetes.backgrounds.warning").unwrap(),
+            id: SettingId::new("tables.backgrounds.header").unwrap(),
             change: Change::Set(SettingValue::Color([10, 200, 30, 180])),
         },
     )
@@ -5578,7 +5650,15 @@ fn workflow_table_preview_uses_the_selected_kubernetes_warning_background_rgba()
     named(&mut view, NamedKey::Enter);
     let mut raster = Raster::new(1.0);
     view.paint(&mut raster, theme());
-    let expected = [10.0 / 255.0, 200.0 / 255.0, 30.0 / 255.0, 180.0 / 255.0];
+    let alpha = 180.0 / 255.0;
+    let expected = [10.0 / 255.0, 200.0 / 255.0, 30.0 / 255.0, 1.0];
+    let expected = std::array::from_fn::<_, 4, _>(|i| {
+        if i == 3 {
+            1.0
+        } else {
+            expected[i] * alpha + base.colors.background.0[i] * (1.0 - alpha)
+        }
+    });
     assert!(
         raster.rects.iter().any(|(bounds, color)| {
             bounds[0] >= view.geometry.preview.x
@@ -5588,7 +5668,7 @@ fn workflow_table_preview_uses_the_selected_kubernetes_warning_background_rgba()
                     .zip(expected)
                     .all(|(actual, expected)| (actual - expected).abs() < 0.001)
         }),
-        "table warning row must preview the exact configured RGBA background"
+        "table header must preview the configured background with its opacity"
     );
     let log_color = log_color.map(|channel| f32::from(channel) / 255.0);
     assert!(
@@ -5596,7 +5676,7 @@ fn workflow_table_preview_uses_the_selected_kubernetes_warning_background_rgba()
             .iter()
             .zip(log_color)
             .all(|(actual, expected)| (actual - expected).abs() < 0.001)),
-        "the generic log palette must not color the Kubernetes table sample"
+        "the generic log palette must not color the ordinary table sample"
     );
 }
 

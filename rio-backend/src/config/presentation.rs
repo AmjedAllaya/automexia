@@ -1,10 +1,12 @@
 //! User-configurable presentation of ordinary terminal output.
 
 mod appearance;
+mod tables;
 pub use appearance::{
     AppearanceValueError, CommandOutputAppearance, HighlightAppearance, HighlightColors,
     HighlightStyle, OpacityPercent, Rgb, Rgba, TagAppearance, TagColors, TagStyle,
 };
+pub use tables::{TableAppearance, TableBanding, TableBorderStyle, TableBorderWeight};
 
 use serde::{Deserialize, Serialize};
 
@@ -20,6 +22,7 @@ pub struct Presentation {
     pub highlight: HighlightAppearance,
     pub command_output: CommandOutputAppearance,
     pub kubernetes: HighlightAppearance,
+    pub tables: TableAppearance,
 }
 
 impl Default for Presentation {
@@ -34,6 +37,7 @@ impl Default for Presentation {
             highlight: HighlightAppearance::default(),
             command_output: CommandOutputAppearance::default(),
             kubernetes: HighlightAppearance::default(),
+            tables: TableAppearance::default(),
         }
     }
 }
@@ -57,6 +61,7 @@ impl<'de> Deserialize<'de> for Presentation {
             highlight: HighlightAppearance,
             command_output: CommandOutputAppearance,
             kubernetes: Option<HighlightAppearance>,
+            tables: TableAppearance,
         }
         impl Default for ConfigFields {
             fn default() -> Self {
@@ -71,6 +76,7 @@ impl<'de> Deserialize<'de> for Presentation {
                     highlight: base.highlight,
                     command_output: base.command_output,
                     kubernetes: None,
+                    tables: TableAppearance::default(),
                 }
             }
         }
@@ -87,6 +93,7 @@ impl<'de> Deserialize<'de> for Presentation {
             highlight: fields.highlight,
             command_output: fields.command_output,
             kubernetes: fields.kubernetes.unwrap_or(fields.highlight),
+            tables: fields.tables,
         })
     }
 }

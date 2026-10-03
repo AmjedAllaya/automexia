@@ -1,0 +1,283 @@
+//! Shared table appearance for the terminal and customization sample.
+use super::ui_theme::{self, UiTheme};
+use rio_backend::config::{
+    colors::Colors,
+    presentation::{TableAppearance, TableBorderStyle},
+};
+
+#[derive(Clone, Copy)]
+pub(crate) struct TableStyle {
+    pub appearance: TableAppearance,
+    background: [f32; 4],
+    theme: UiTheme,
+}
+
+impl TableStyle {
+    pub fn new(appearance: TableAppearance, colors: Colors) -> Self {
+        Self {
+            appearance,
+            background: colors.background.0,
+            theme: UiTheme::resolve(colors.background.0, colors.foreground, colors.tabs),
+        }
+    }
+    pub fn color_defaults(colors: Colors) -> [[f32; 4]; 7] {
+        let theme = UiTheme::resolve(colors.background.0, colors.foreground, colors.tabs);
+        [
+            colors.foreground,
+            colors.foreground,
+            colors.foreground,
+            [theme.outline[0], theme.outline[1], theme.outline[2], 0.4],
+            theme.raised,
+            colors.background.0,
+            theme.raised,
+        ]
+    }
+    pub fn background(self, header: bool, row: usize, column: usize) -> [f32; 4] {
+        let a = self.appearance;
+        let alternate = a.banding.unwrap_or_default().alternate(row, column);
+        let color = if header {
+            a.header_background
+        } else if alternate {
+            a.alternate_background
+        } else {
+            a.body_background
+        };
+        color.map_or_else(
+            || {
+                if header || alternate {
+                    self.theme.raised
+                } else {
+                    self.background
+                }
+            },
+            |color| ui_theme::over(self.background, color.to_color_array()),
+        )
+    }
+    pub fn foreground(self, header: bool, row: usize, column: usize) -> Option<[f32; 4]> {
+        let a = self.appearance;
+        if header {
+            a.header_foreground
+        } else if a.banding.unwrap_or_default().alternate(row, column) {
+            a.alternate_foreground.or(a.body_foreground)
+        } else {
+            a.body_foreground
+        }
+        .map(|color| color.to_color_array())
+    }
+    pub fn border_color(self, header: bool) -> [f32; 4] {
+        self.appearance.border_color.map_or_else(
+            || {
+                if header {
+                    self.theme.outline
+                } else {
+                    ui_theme::over(
+                        self.background,
+                        [
+                            self.theme.outline[0],
+                            self.theme.outline[1],
+                            self.theme.outline[2],
+                            0.4,
+                        ],
+                    )
+                }
+            },
+            |color| color.to_color_array(),
+        )
+    }
+    pub fn stroke(self, scale: f32) -> f32 {
+        self.appearance.border_weight.unwrap_or_default().pixels()
+            * if self.appearance.border_style.unwrap_or_default()
+                == TableBorderStyle::Double
+            {
+                3.0
+            } else {
+                1.0
+            }
+            / scale
+    }
+    pub fn line(
+        self,
+        bounds: [f32; 4],
+        clip: [f32; 4],
+        vertical: bool,
+        header: bool,
+        paint: impl FnMut([f32; 4], [f32; 4]),
+    ) {
+        patterned_rule(
+            bounds,
+            clip,
+            vertical,
+            self.appearance.border_style.unwrap_or_default(),
+            self.border_color(header),
+            paint,
+        );
+    }
+}
+
+fn clip_rect([x, y, w, h]: [f32; 4], [l, t, r, b]: [f32; 4]) -> Option<[f32; 4]> {
+    let (right, bottom) = ((x + w).min(r), (y + h).min(b));
+    let (x, y) = (x.max(l), y.max(t));
+    (right > x && bottom > y).then_some([x, y, right - x, bottom - y])
+}
+
+/// Allocation-free, pane-clipped rules. Work depends on visible length only;
+/// even hostile dimensions cannot request more than 2048 patterned segments.
+pub(crate) fn patterned_rule(
+    bounds: [f32; 4],
+    clip: [f32; 4],
+    vertical: bool,
+    style: TableBorderStyle,
+    color: [f32; 4],
+    mut paint: impl FnMut([f32; 4], [f32; 4]),
+) {
+    if style == TableBorderStyle::None
+        || color[3] <= 0.0
+        || !bounds.iter().chain(clip.iter()).all(|n| n.is_finite())
+    {
+        return;
+    }
+    let Some(visible) = clip_rect(bounds, clip) else {
+        return;
+    };
+    let clip = [
+        visible[0],
+        visible[1],
+        visible[0] + visible[2],
+        visible[1] + visible[3],
+    ];
+    let mut emit = |rect| {
+        if let Some(rect) = clip_rect(rect, clip) {
+            paint(rect, color);
+        }
+    };
+    let along = usize::from(vertical);
+    let across = 1 - along;
+    let thickness = bounds[across + 2];
+    if thickness <= 0.0 {
+        return;
+    }
+    if style == TableBorderStyle::Solid {
+        emit(visible);
+        return;
+    }
+    if style == TableBorderStyle::Double {
+        let mut edge = bounds;
+        edge[across + 2] = thickness / 3.0;
+        emit(edge);
+        edge[across] += thickness * 2.0 / 3.0;
+        emit(edge);
+        return;
+    }
+    let dash = thickness
+        * if style == TableBorderStyle::Dashed {
+            4.0
+        } else {
+            1.0
+        };
+    let period = (dash + thickness * 2.0).max(visible[along + 2] / 2047.0);
+    let first = visible[along] - (visible[along] - bounds[along]).rem_euclid(period);
+    let end = visible[along] + visible[along + 2];
+    for index in 0..2048 {
+        let at = first + index as f32 * period;
+        if at >= end {
+            break;
+        }
+        let mut segment = bounds;
+        segment[along] = at;
+        segment[along + 2] = dash.min(period);
+        emit(segment);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn patterned_rules_have_gaps_and_never_escape_the_rule_or_pane() {
+        for vertical in [false, true] {
+            for (style, expected) in [
+                (TableBorderStyle::None, vec![]),
+                (TableBorderStyle::Solid, vec![(3.0, 8.0)]),
+                (TableBorderStyle::Dashed, vec![(3.0, 3.0), (8.0, 3.0)]),
+                (TableBorderStyle::Dotted, vec![(5.0, 1.0), (8.0, 1.0)]),
+                (TableBorderStyle::Double, vec![(3.0, 8.0), (3.0, 8.0)]),
+            ] {
+                let (bounds, clip) = if vertical {
+                    ([4.0, 2.0, 1.0, 9.0], [0.0, 3.0, 10.0, 20.0])
+                } else {
+                    ([2.0, 4.0, 9.0, 1.0], [3.0, 0.0, 20.0, 10.0])
+                };
+                let mut actual = Vec::new();
+                patterned_rule(bounds, clip, vertical, style, [1.0; 4], |rect, _| {
+                    actual.push((
+                        rect[usize::from(vertical)],
+                        rect[usize::from(vertical) + 2],
+                    ));
+                    assert!(rect[0] >= 3.0 && rect[1] >= 3.0);
+                    assert!(rect[0] + rect[2] <= if vertical { 5.0 } else { 11.0 });
+                    assert!(rect[1] + rect[3] <= if vertical { 11.0 } else { 5.0 });
+                });
+                assert_eq!(actual, expected, "{style:?}, vertical={vertical}");
+            }
+        }
+    }
+
+    #[test]
+    fn patterned_rules_reject_nonfinite_sizes_and_bound_extreme_work() {
+        let mut count = 0;
+        for n in [f32::NAN, f32::INFINITY, f32::NEG_INFINITY, -2.0, 0.0] {
+            patterned_rule(
+                [0.0, 0.0, n, 1.0],
+                [0.0, 0.0, 10.0, 10.0],
+                false,
+                TableBorderStyle::Dotted,
+                [1.0; 4],
+                |_, _| count += 1,
+            );
+        }
+        assert_eq!(count, 0);
+        patterned_rule(
+            [0.0, 0.0, 1e20, 0.01],
+            [0.0, 0.0, 1e20, 100.0],
+            false,
+            TableBorderStyle::Dotted,
+            [1.0; 4],
+            |_, _| count += 1,
+        );
+        assert!((1..=2048).contains(&count));
+    }
+
+    #[test]
+    fn table_background_and_border_opacity_are_independent() {
+        use rio_backend::config::presentation::Rgba;
+        let mut colors = Colors::default();
+        colors.background.0 = [0.0, 0.0, 0.0, 1.0];
+        let style = TableStyle::new(
+            TableAppearance {
+                header_background: Some(Rgba::from_bytes([255, 0, 0, 128])),
+                body_background: Some(Rgba::from_bytes([0, 255, 0, 0])),
+                border_color: Some(Rgba::from_bytes([0, 0, 255, 255])),
+                ..Default::default()
+            },
+            colors,
+        );
+        assert_eq!(style.background(true, 0, 0), [128.0 / 255.0, 0.0, 0.0, 1.0]);
+        assert_eq!(style.background(false, 0, 0), [0.0, 0.0, 0.0, 1.0]);
+        assert_eq!(style.border_color(false), [0.0, 0.0, 1.0, 1.0]);
+        let transparent = TableStyle::new(
+            TableAppearance {
+                border_color: Some(Rgba::from_bytes([255, 0, 0, 0])),
+                ..Default::default()
+            },
+            colors,
+        );
+        transparent.line(
+            [0.0, 0.0, 100.0, 1.0],
+            [0.0, 0.0, 100.0, 100.0],
+            false,
+            false,
+            |_, _| panic!("zero-opacity border must not erase stripes"),
+        );
+    }
+}

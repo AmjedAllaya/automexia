@@ -10,6 +10,7 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[2]
 CONFIG_STRUCTS = {
+    "rio-backend/src/config/presentation/tables.rs": {"TableAppearance"},
     "rio-backend/src/config/mod.rs": {
         "Config",
         "Shell",

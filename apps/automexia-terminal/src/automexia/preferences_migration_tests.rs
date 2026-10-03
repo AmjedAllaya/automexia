@@ -9,12 +9,12 @@ fn fixture(root: &Path, name: &str, bytes: &[u8]) {
 fn new_snapshots_use_v6_without_creating_predecessor_writers() {
     let root = tempfile::tempdir().unwrap();
     write_to_root(root.path(), &UserPreferences::default()).unwrap();
-    let path = state_root(root.path()).join("user-preferences-v6.toml");
+    let path = state_root(root.path()).join("user-preferences-v7.toml");
     assert!(path.is_file(), "new preferences must use the v6 path");
     let bytes = fs::read(path).unwrap();
     assert!(std::str::from_utf8(&bytes)
         .unwrap()
-        .contains("schema-version = 6"));
+        .contains("schema-version = 7"));
     assert!(!state_root(root.path())
         .join("user-preferences-v5.toml")
         .exists());

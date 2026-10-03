@@ -4,7 +4,9 @@ use crate::context::renderable::RenderableContent;
 use automexia_ui_model::tables::TableRowKind;
 use rio_backend::config::{
     colors::{AnsiColor, NamedColor},
-    presentation::{CommandOutputAppearance, HighlightAppearance, HighlightStyle},
+    presentation::{
+        CommandOutputAppearance, HighlightAppearance, HighlightStyle, TableAppearance,
+    },
 };
 use rio_backend::crosswords::style::{Style, StyleFlags};
 use rio_backend::{
@@ -44,6 +46,7 @@ fn clipped_rect(
 #[derive(Clone, Copy)]
 pub(super) struct PaintOptions<'a> {
     pub colors: Colors,
+    pub tables: TableAppearance,
     pub highlight: Option<HighlightAppearance>,
     pub kubernetes_highlight: Option<HighlightAppearance>,
     pub preserve_selection_foreground: bool,
@@ -58,6 +61,7 @@ impl Default for PaintOptions<'_> {
     fn default() -> Self {
         Self {
             colors: Colors::default(),
+            tables: TableAppearance::default(),
             highlight: None,
             kubernetes_highlight: None,
             preserve_selection_foreground: false,
@@ -96,17 +100,19 @@ pub(super) fn draw(
         x + content.columns as f32 * cell_w,
         y + content.screen_lines as f32 * cell_h,
     ];
-    let stroke = 1.0 / scale;
+    let table_style = super::table_style::TableStyle::new(options.tables, colors);
+    let stroke = table_style.stroke(scale);
     let snap = |v: f32| (v * scale).round() / scale;
-    let rule = ui_theme::over(
-        theme.background,
-        [theme.outline[0], theme.outline[1], theme.outline[2], 0.4],
-    );
     for (si, surface) in content.inline_tables.surfaces.iter().enumerate() {
         let mut classifier = crate::automexia::output_semantics::RowClassifier::default();
         let width = surface.layout.width as f32 * cell_w;
         let mut extent: Option<(f32, f32)> = None;
+        let mut data_rows = 0;
         for (ri, row) in surface.layout.rows.iter().enumerate() {
+            let data_row = data_rows;
+            if row.kind != TableRowKind::Header && row.kind != TableRowKind::Rule {
+                data_rows += 1;
+            }
             // Visit retained headers even when their painted rows are offscreen.
             // One pane-local classifier owns both raw and tabulated output.
             let classification = classifier.classify(&surface.table.source()[ri]);
@@ -194,7 +200,6 @@ pub(super) fn draw(
                 ))
             })
             .flatten();
-            let row_background = status_background.or(command_background);
             let edge = snap((top + bottom) / 2.0);
             let extent_top = if is_rule { edge } else { top };
             let extent_bottom = if is_rule { edge + stroke } else { bottom };
@@ -204,14 +209,14 @@ pub(super) fn draw(
             if let Some(rect) = clipped_rect([x, top, width, bottom - top], clip) {
                 canvas.rect(
                     rect,
-                    if is_header {
-                        theme.raised
-                    } else if let Some(color) = row_background {
-                        ui_theme::over(colors.background.0, color)
-                    } else if is_rule {
+                    if is_rule {
                         theme.background
+                    } else if is_header && options.tables.header_background.is_some() {
+                        table_style.background(true, data_row, 0)
+                    } else if let Some(color) = status_background.or(command_background) {
+                        ui_theme::over(colors.background.0, color)
                     } else {
-                        colors.background.0
+                        table_style.background(is_header, data_row, 0)
                     },
                 );
             }
@@ -220,8 +225,20 @@ pub(super) fn draw(
                     .checked_sub(1)
                     .and_then(|previous| surface.layout.rows.get(previous))
                     .is_some_and(|previous| previous.kind == TableRowKind::Header);
-                if let Some(rect) = clipped_rect([x, edge, width, stroke], clip) {
-                    canvas.rect(rect, if after_header { theme.outline } else { rule });
+                if if ri == 0 || ri + 1 == surface.layout.rows.len() {
+                    options.tables.outer_border.unwrap_or(true)
+                } else if after_header {
+                    options.tables.header_separator.unwrap_or(true)
+                } else {
+                    options.tables.row_lines.unwrap_or(true)
+                } {
+                    table_style.line(
+                        [x, edge, width, stroke],
+                        clip,
+                        false,
+                        after_header,
+                        |rect, color| canvas.rect(rect, color),
+                    );
                 }
                 continue;
             }
@@ -232,23 +249,32 @@ pub(super) fn draw(
                 .rows
                 .get(ri + 1)
                 .is_some_and(|next| next.kind == TableRowKind::Rule);
-            let border = if is_header { theme.outline } else { rule };
-            if !next_is_rule {
-                if let Some(rect) =
-                    clipped_rect([x, snap(bottom - stroke), width, stroke], clip)
-                {
-                    canvas.rect(rect, border);
-                }
-            }
-            if is_header && ri == 0 {
-                if let Some(rect) = clipped_rect([x, snap(top), width, stroke], clip) {
-                    canvas.rect(rect, rule);
-                }
-            }
             for (ci, cell) in row.cells.iter().enumerate() {
                 let column = &surface.layout.columns[ci];
                 let cell_left = x + column.content_x as f32 * cell_w;
                 let cell_right = cell_left + column.content_width as f32 * cell_w;
+                let decoration = table_style.background(is_header, data_row, ci);
+                let cell_background =
+                    if is_header && options.tables.header_background.is_some() {
+                        decoration
+                    } else if let Some(color) = status_background {
+                        ui_theme::over(colors.background.0, color)
+                    } else if let Some(color) = command_background {
+                        ui_theme::over(decoration, color)
+                    } else {
+                        decoration
+                    };
+                if let Some(bounds) = clipped_rect(
+                    [
+                        x + column.x as f32 * cell_w,
+                        top,
+                        column.width as f32 * cell_w,
+                        bottom - top,
+                    ],
+                    clip,
+                ) {
+                    canvas.rect(bounds, cell_background);
+                }
                 for (line, fragment) in cell.fragments.iter().enumerate() {
                     let line_top = top + line as f32 * cell_h;
                     if line_top + cell_h <= clip[1] || line_top >= clip[3] {
@@ -257,9 +283,9 @@ pub(super) fn draw(
                     let Some(bounds) = clipped_rect(
                         [
                             cell_left,
-                            line_top + stroke,
+                            line_top + 1.0 / scale,
                             cell_right - cell_left,
-                            cell_h - 2.0 * stroke,
+                            cell_h - 2.0 / scale,
                         ],
                         clip,
                     ) else {
@@ -292,9 +318,6 @@ pub(super) fn draw(
                                 }
                                 bg = colors.selection_background;
                             } else {
-                                if is_header && bg == colors.background.0 {
-                                    bg = theme.raised;
-                                }
                                 // Keep source ANSI colors and inverse video.
                                 // Selection above retains its configured
                                 // foreground-preservation and background rules.
@@ -303,7 +326,13 @@ pub(super) fn draw(
                                         style.fg,
                                         AnsiColor::Named(NamedColor::Foreground)
                                     ) {
-                                        if let Some(color) = row_foreground {
+                                        let custom = table_style
+                                            .foreground(is_header, data_row, ci);
+                                        if let Some(color) = if is_header {
+                                            custom.or(row_foreground)
+                                        } else {
+                                            row_foreground.or(custom)
+                                        } {
                                             fg = color;
                                         }
                                     }
@@ -311,9 +340,7 @@ pub(super) fn draw(
                                         style.bg,
                                         AnsiColor::Named(NamedColor::Background)
                                     ) {
-                                        if let Some(color) = row_background {
-                                            bg = ui_theme::over(bg, color);
-                                        }
+                                        bg = cell_background;
                                     }
                                 }
                             }
@@ -324,7 +351,9 @@ pub(super) fn draw(
                             let opts = DrawOpts {
                                 font_size: font,
                                 color: color_u8(fg),
-                                bold: style.flags.contains(StyleFlags::BOLD),
+                                bold: style.flags.contains(StyleFlags::BOLD)
+                                    || (is_header
+                                        && options.tables.header_bold.unwrap_or(false)),
                                 italic: style.flags.contains(StyleFlags::ITALIC),
                                 ..DrawOpts::default()
                             };
@@ -439,11 +468,45 @@ pub(super) fn draw(
                     }
                 }
             }
+            let last = ri + 1 == surface.layout.rows.len();
+            let boundary_enabled = if last {
+                options.tables.outer_border.unwrap_or(true)
+            } else if is_header {
+                options.tables.header_separator.unwrap_or(true)
+            } else {
+                options.tables.row_lines.unwrap_or(true)
+            };
+            if !next_is_rule && boundary_enabled {
+                table_style.line(
+                    [x, snap(bottom - stroke), width, stroke],
+                    clip,
+                    false,
+                    is_header,
+                    |rect, color| canvas.rect(rect, color),
+                );
+            }
+            if ri == 0 && options.tables.outer_border.unwrap_or(true) {
+                table_style.line(
+                    [x, snap(top), width, stroke],
+                    clip,
+                    false,
+                    false,
+                    |rect, color| canvas.rect(rect, color),
+                );
+            }
         }
         if let Some((top, bottom)) = extent {
             for boundary in std::iter::once(0)
                 .chain(surface.layout.columns.iter().map(|c| c.x + c.width))
             {
+                let outer = boundary == 0 || boundary == surface.layout.width;
+                if !if outer {
+                    options.tables.outer_border.unwrap_or(true)
+                } else {
+                    options.tables.column_lines.unwrap_or(true)
+                } {
+                    continue;
+                }
                 let border_x = snap(
                     x + boundary as f32 * cell_w
                         - (if boundary == surface.layout.width {
@@ -452,11 +515,13 @@ pub(super) fn draw(
                             0.0
                         }),
                 );
-                if let Some(rect) =
-                    clipped_rect([border_x, top, stroke, bottom - top], clip)
-                {
-                    canvas.rect(rect, rule);
-                }
+                table_style.line(
+                    [border_x, top, stroke, bottom - top],
+                    clip,
+                    true,
+                    false,
+                    |rect, color| canvas.rect(rect, color),
+                );
             }
         }
     }

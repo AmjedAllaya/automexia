@@ -105,6 +105,16 @@ through wrapping; resource names do not decide health. Unknown states stay
 neutral, and resources without health evidence are informational. Custom output
 needs recognizable headers, resource prefixes or condition fields; arbitrary
 JSON/YAML and custom-resource semantics are not inferred.
+**Inline tables** has separate controls for border style (solid, dashed, dotted,
+double or none), thickness, outer frame and row/column/header separators. Choose
+**Alternating backgrounds → Alternating rows** for zebra stripes like a file
+listing, or select alternating columns or a checkerboard. Header, cell and
+alternate text/background colors are independent; border and background opacity
+can be adjusted from 0% to 100%. Wrapped cells keep the same stripe. These
+controls update the file-table sample immediately. Source ANSI colors, selections
+and enabled Kubernetes status colors keep priority in actual terminal output.
+Turning inline tables off keeps your choices for when you enable them again.
+
 Each page keeps shared switches and styles in the list; its
 interactive preview opens the selected sample's colors. Disabling either feature
 keeps its saved colors. Command backgrounds preserve ANSI text, explicit source
@@ -387,8 +397,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v6.toml` and `user-preferences-v6.previous.toml`;
-- any retained `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v7.toml` and `user-preferences-v7.previous.toml`;
+- any retained `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from

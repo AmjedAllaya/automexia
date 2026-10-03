@@ -3,6 +3,8 @@ use crate::automexia::{
     marketplace::MarketItem, package_customizations::PackageCustomizationPages,
     preferences::UserPreferences, settings_extensions,
 };
+#[path = "settings_table_catalog.rs"]
+mod tables;
 use automexia_ui_model::settings::{
     self, Catalog, Change, CoreOrigins, CoreValues, Edit, SettingValue, SettingsError,
     ValueOrigin,
@@ -18,6 +20,10 @@ pub(crate) struct SlotPageSnapshot {
     bar: crate::automexia::preferences::InformationBarPreferences,
     devops_context_enabled: bool,
     tags: TagAppearance,
+    tables: rio_backend::config::presentation::TableAppearance,
+    table_base: rio_backend::config::presentation::TableAppearance,
+    table_user: rio_backend::config::presentation::TableAppearance,
+    palette: Colors,
     foreground: [u8; 3],
     terminal_background: [f32; 4],
     terminal_foreground: [f32; 4],
@@ -27,6 +33,11 @@ pub(crate) struct SlotPageSnapshot {
 }
 
 impl SlotPageSnapshot {
+    pub(crate) fn preview_tables(
+        &self,
+    ) -> (rio_backend::config::presentation::TableAppearance, Colors) {
+        (self.tables, self.palette)
+    }
     pub(crate) fn preview_devops_enabled(&self) -> bool {
         self.devops_context_enabled
     }
@@ -62,9 +73,10 @@ impl SlotPageSnapshot {
     }
 }
 
-pub(crate) fn slot_page_snapshot(
+pub(crate) fn slot_page_snapshot_with_config(
     preferences: &UserPreferences,
     effective: &Config,
+    base: &Config,
 ) -> SlotPageSnapshot {
     let [red, green, blue, _] = effective
         .colors
@@ -76,6 +88,10 @@ pub(crate) fn slot_page_snapshot(
             .extension_feature_enabled(settings_extensions::DEVOPS_CONTEXT_STATUS_ID)
             .unwrap_or(true),
         tags: effective.presentation.tags,
+        tables: effective.presentation.tables,
+        table_base: base.presentation.tables,
+        table_user: preferences.visual.tables,
+        palette: effective.colors,
         foreground: [red, green, blue],
         terminal_background: effective.colors.background.0,
         terminal_foreground: effective.colors.foreground,
@@ -83,6 +99,50 @@ pub(crate) fn slot_page_snapshot(
         terminal_failure: effective.colors.red,
         terminal_neutral: effective.colors.blue,
     }
+}
+
+#[cfg(test)]
+pub(crate) fn slot_page_snapshot(
+    preferences: &UserPreferences,
+    effective: &Config,
+) -> SlotPageSnapshot {
+    slot_page_snapshot_with_config(preferences, effective, &Config::default())
+}
+
+pub(crate) fn table_page_catalog(
+    full: &Catalog,
+    snapshot: &SlotPageSnapshot,
+) -> Result<Catalog, SettingsError> {
+    let mut rows = vec![full
+        .get(&settings::SettingId::new(settings::INLINE_TABLES)?)
+        .ok_or(SettingsError::UnknownSetting)?
+        .clone()];
+    rows.extend(tables::descriptors(
+        &snapshot.table_base,
+        &snapshot.tables,
+        &snapshot.table_user,
+        &snapshot.palette,
+    )?);
+    append_opacity_controls(&mut rows)?;
+    Catalog::new(full.revision(), rows)
+}
+
+fn table_settings_catalog(
+    revision: u64,
+    base: &Config,
+    preferences: &UserPreferences,
+    palette: &Colors,
+) -> Result<Catalog, SettingsError> {
+    let mut effective = base.presentation.tables;
+    preferences.visual.tables.overlay(&mut effective);
+    let mut rows = tables::descriptors(
+        &base.presentation.tables,
+        &effective,
+        &preferences.visual.tables,
+        palette,
+    )?;
+    append_opacity_controls(&mut rows)?;
+    Catalog::new(revision, rows)
 }
 
 fn values(config: &Config) -> CoreValues {
@@ -170,7 +230,10 @@ pub(crate) fn reset_customizations(
                 next.presentation.kubernetes_highlighting = Some(true);
                 next.visual.kubernetes = Default::default();
             }
-            settings::INLINE_TABLES => next.presentation.inline_tables = Some(true),
+            settings::INLINE_TABLES => {
+                next.presentation.inline_tables = Some(true);
+                next.visual.tables = Default::default();
+            }
             settings::COMMAND_TIMESTAMPS => {
                 next.presentation.command_timestamps = Some(true)
             }
@@ -498,9 +561,14 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
     for (label, summary, id, keywords) in [
         (
             "Inline tables",
-            "Border and wrap table cells.",
+            "Style borders, headers and alternating rows or columns.",
             settings::INLINE_TABLES,
-            ["border", "header", "cell", "wrap"],
+            [
+                "border dashed dotted double opacity",
+                "header colors",
+                "rows columns stripes zebra checkerboard",
+                "wrap",
+            ],
         ),
         (
             "Command timestamps",
@@ -515,7 +583,9 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
             summary,
             id,
             Some(id),
-            |row| row == id,
+            |row| {
+                row == id || (id == settings::INLINE_TABLES && row.starts_with("tables."))
+            },
             &keywords,
         ) {
             groups.push(group);
@@ -923,8 +993,15 @@ pub(crate) fn apply_edit_with_palette(
         if field == "page" {
             return Err(SettingsError::InvalidValue);
         }
-        let snapshot = slot_page_snapshot(preferences, &preferences.apply_to(base));
+        let snapshot = slot_page_snapshot_with_config(
+            preferences,
+            &preferences.apply_to(base),
+            base,
+        );
         slot_page_catalog(revision, &snapshot, slot_id)?.validate_edit(edit)?;
+    } else if edit.id.as_str().starts_with("tables.") {
+        table_settings_catalog(revision, base, preferences, palette)?
+            .validate_edit(edit)?;
     } else {
         catalog_with_palette(revision, base, preferences, market, palette)?
             .validate_edit(edit)?;
@@ -937,10 +1014,17 @@ pub(crate) fn apply_edit_with_palette(
         .as_str()
         .split_once(".opacity.")
         .filter(|(domain, _)| {
-            matches!(*domain, "command_output" | "output" | "kubernetes")
+            matches!(
+                *domain,
+                "command_output" | "output" | "kubernetes" | "tables"
+            )
         }) {
         let id = settings::SettingId::new(format!("{domain}.backgrounds.{status}"))?;
-        let full = catalog_with_palette(revision, base, preferences, market, palette)?;
+        let full = if domain == "tables" {
+            table_settings_catalog(revision, base, preferences, palette)?
+        } else {
+            catalog_with_palette(revision, base, preferences, market, palette)?
+        };
         let row = full.get(&id).ok_or(SettingsError::UnknownSetting)?;
         let (SettingValue::Color(mut color), SettingValue::Color(default)) =
             (&row.value, &row.default)
@@ -2165,6 +2249,13 @@ fn visual_descriptors(
     // Keep the controls alongside the background in each preview detail page.
     // All validation, direct typing, keyboard stepping and reset use the
     // existing numeric editor and the single color preference owner.
+    append_opacity_controls(&mut rows)?;
+    Ok(rows)
+}
+
+fn append_opacity_controls(
+    rows: &mut Vec<settings::SettingDescriptor>,
+) -> Result<(), SettingsError> {
     let opacity = rows
         .iter()
         .filter_map(|row| {
@@ -2177,7 +2268,11 @@ fn visual_descriptors(
             Some(
                 visual_row(
                     &format!("{domain}.opacity.{status}"),
-                    "Background opacity (%)".into(),
+                    if domain == "tables" {
+                        format!("{} opacity (%)", row.label)
+                    } else {
+                        "Background opacity (%)".into()
+                    },
                     settings::SettingKind::Number {
                         min: 0.0,
                         max: 100.0,
@@ -2195,7 +2290,7 @@ fn visual_descriptors(
         })
         .collect::<Result<Vec<_>, _>>()?;
     rows.extend(opacity);
-    Ok(rows)
+    Ok(())
 }
 
 fn rgb_change(change: &Change) -> Result<Option<Rgb>, SettingsError> {
@@ -2212,6 +2307,9 @@ fn apply_visual_edit(
     candidate: &mut UserPreferences,
     edit: &Edit,
 ) -> Result<bool, SettingsError> {
+    if tables::apply(candidate, edit)? {
+        return Ok(true);
+    }
     use crate::automexia::presentation::{
         self, COMMAND_OUTPUT_BACKGROUND_BINDINGS, KUBERNETES_BACKGROUND_BINDINGS,
         KUBERNETES_COLOR_BINDINGS, OUTPUT_BACKGROUND_BINDINGS, OUTPUT_COLOR_BINDINGS,
