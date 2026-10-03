@@ -34,7 +34,15 @@ function Test-AutomexiaCommandInputColors {
     }
     function Assert-InputColors([string]$Name, [string]$Draft = 'docker ps -a', [int[]]$CommandRgb = @(181, 140, 255), [int[]]$OptionRgb = @(181, 140, 255)) {
         if ($ClearShortcutOnly) { Test-AutomexiaClearShortcut $Name; return }
-        $empty = [string](Get-ActiveAutomexiaPanel (Read-AutomexiaSnapshot)).raw_cursor_line_text
+        # A shell identity receipt can precede its new prompt after nested CMD
+        # exits. Capture the erase oracle only from the completed empty prompt.
+        $script:testStage = "empty prompt before typed command colors: $Name"
+        $baseline = Wait-InputState { param($s)
+            $panel = Get-ActiveAutomexiaPanel $s
+            $panel.shell_prompt_active -and
+                ([string]$panel.raw_cursor_line_text).Trim() -eq [string][char]0x03bb
+        }
+        $empty = [string](Get-ActiveAutomexiaPanel $baseline).raw_cursor_line_text
         $script:testStage = "typed command colors: $Name"
         $control = 'write-text:input-color-' + $Name + ':' + $Draft
         Send-AutomexiaTestControl $control

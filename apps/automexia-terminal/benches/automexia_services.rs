@@ -527,7 +527,8 @@ fn ssh_integration(c: &mut Criterion) {
         ("reject_wrong_pane", b"AMXSSH1|4|7|1|3".as_slice()),
         (
             "reject_unimplemented_capability",
-            b"AMXSSH1|3|7|1|4".as_slice(),
+            // Bit 4 now reports command status; bit 8 is still unsupported.
+            b"AMXSSH1|3|7|1|8".as_slice(),
         ),
     ] {
         group.bench_function(label, |b| {
@@ -535,8 +536,14 @@ fn ssh_integration(c: &mut Criterion) {
                 let mut state = Negotiation::new(key, 0, 1000).unwrap();
                 let result = state.receive(black_box(frame), 1);
                 if label == "accept_scoped_receipt" {
+                    assert!(matches!(result, Ok(true)));
                     assert_eq!(state.capabilities().bits(), 3);
                 } else {
+                    if label == "reject_unimplemented_capability" {
+                        assert!(result.is_err());
+                    } else {
+                        assert!(matches!(result, Ok(false)));
+                    }
                     assert_eq!(state.capabilities().bits(), 0);
                 }
                 black_box((result, state))
