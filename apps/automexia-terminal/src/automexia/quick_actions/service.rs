@@ -182,6 +182,14 @@ impl QuickActionService {
         snapshot: Arc<QuickActionSnapshot>,
     ) -> Result<Arc<QuickActionSnapshot>, StoreError> {
         let mut state = self.state.write();
+        // The monitor may publish this exact committed generation between the
+        // atomic store write and this acknowledgment. Preserve its snapshot and
+        // any later diagnostic instead of reporting our successful save as stale.
+        if snapshot.revision() == state.snapshot.revision()
+            && snapshot.digest() == state.snapshot.digest()
+        {
+            return Ok(Arc::clone(&state.snapshot));
+        }
         if snapshot.revision() <= state.snapshot.revision() {
             return Err(StoreError::new(StoreErrorCode::StaleRevision));
         }
@@ -245,6 +253,54 @@ mod tests {
             enabled: true,
             alias_projection: None,
         }
+    }
+
+    #[test]
+    fn committed_save_succeeds_when_monitor_publishes_its_generation_first() {
+        let root = tempfile::tempdir().unwrap();
+        let store =
+            QuickActionStore::open_or_create(root.path().join("actions")).unwrap();
+        let service = QuickActionService::open(store.clone()).unwrap();
+        // Force the real save/monitor interleaving at the publication boundary.
+        let committed = store.create(0, action("saved")).unwrap();
+        assert_eq!(service.refresh(), RefreshOutcome::Published { revision: 1 });
+        let published = service.snapshot();
+        let acknowledged = service.publish_saved(committed).unwrap();
+        assert!(Arc::ptr_eq(&acknowledged, &published));
+        assert_eq!(service.status(), ServiceStatus::Fresh { revision: 1 });
+
+        // A later monitor error must not be erased by the save acknowledgment.
+        fs::write(store.source_path(), b"malformed = [").unwrap();
+        service.refresh();
+        let retained_status = service.status();
+        assert!(matches!(retained_status, ServiceStatus::Stale { .. }));
+        service.publish_saved(acknowledged).unwrap();
+        assert_eq!(service.status(), retained_status);
+    }
+
+    #[test]
+    fn save_publication_rejects_equal_revision_conflicts_and_older_generations() {
+        let root = tempfile::tempdir().unwrap();
+        let store =
+            QuickActionStore::open_or_create(root.path().join("actions")).unwrap();
+        let service = QuickActionService::open(store.clone()).unwrap();
+        let original = service.create(0, action("original")).unwrap();
+        let conflict_root = tempfile::tempdir().unwrap();
+        let conflict_store =
+            QuickActionStore::open_or_create(conflict_root.path().join("actions"))
+                .unwrap();
+        let conflicting = conflict_store.create(0, action("different")).unwrap();
+        assert_eq!(
+            service.publish_saved(conflicting).unwrap_err().code(),
+            StoreErrorCode::StaleRevision
+        );
+        assert!(Arc::ptr_eq(&service.snapshot(), &original));
+        let newer = service.create(1, action("newer")).unwrap();
+        assert_eq!(
+            service.publish_saved(original).unwrap_err().code(),
+            StoreErrorCode::StaleRevision
+        );
+        assert!(Arc::ptr_eq(&service.snapshot(), &newer));
     }
 
     #[test]

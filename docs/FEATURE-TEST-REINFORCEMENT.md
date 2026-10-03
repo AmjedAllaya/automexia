@@ -1208,6 +1208,10 @@ Reinforce list, search, review, insert-without-Enter, copy, placeholder binding,
 risk confirmation, import/export, keyboard access, redaction, and route/generation
 isolation without granting launch authority.
 
+Force the save/monitor publication interleaving with a real store: acknowledging
+the identical committed revision and digest succeeds without replacing a later
+diagnostic. Equal-revision conflicts and older snapshots remain rejected.
+
 Search allocation changes must preserve exact scalar scores and string-level
 Unicode lowercase (including final sigma), word boundaries, repeated and missing
 subsequences, maximum candidates/queries and deterministic result limits. Keep
