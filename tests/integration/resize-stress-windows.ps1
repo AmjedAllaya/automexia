@@ -1461,7 +1461,8 @@ $wallpaperConfig
     # The first prompt can precede the background visual-fixture publication.
     # Require the complete fixed context before using it as the later CMD
     # comparison oracle; comparing a partial startup snapshot races discovery.
-    $fixtureSegments = @('main', 'platform?', 'eu-west-1', 'local', 'workspace', 'demo')
+    # Namespace freshness remains metadata; the visible label has no decoration.
+    $fixtureSegments = @('main', 'platform', 'eu-west-1', 'local', 'workspace', 'demo')
     $fixtureDeadline = [DateTime]::UtcNow.AddSeconds(15)
     while (@($fixtureSegments | Where-Object { $_ -notin @($initialPanel.context_segments) }).Count -gt 0 -and
            [DateTime]::UtcNow -lt $fixtureDeadline) {
@@ -3533,15 +3534,23 @@ $wallpaperConfig
     # navigation shortcut and prove the marker is absent there.
     $marker = 'AUTOMEXIA_CLONE_ONLY_73491'
     $script:testStage = 'write to cloned split'
-    Send-AutomexiaTestControl "write-line:2:Write-Output $marker"
+    # Command echo already contains the marker. Keep a deliberate delay so this
+    # fixture proves completion readiness before asserting idle-pane isolation.
+    Send-AutomexiaTestControl "write-line:2:Start-Sleep -Milliseconds 1500; Write-Output $marker"
     $cloneOutput = Read-AutomexiaSnapshot -AfterSequence ([int64]$focusedRight.sequence)
     $outputDeadline = [DateTime]::UtcNow.AddSeconds(10)
-    while (-not ((Get-ActiveAutomexiaPanel $cloneOutput).visible_text -like "*$marker*") -and
+    while ((-not ((Get-ActiveAutomexiaPanel $cloneOutput).visible_text -like "*$marker*") -or
+            -not [bool](Get-ActiveAutomexiaPanel $cloneOutput).shell_prompt_active -or
+            [int64]$cloneOutput.latest_prompt_id -le [int64]$focusedRight.latest_prompt_id) -and
            [DateTime]::UtcNow -lt $outputDeadline) {
         $cloneOutput = Read-AutomexiaSnapshot -AfterSequence ([int64]$cloneOutput.sequence)
     }
     if (-not ((Get-ActiveAutomexiaPanel $cloneOutput).visible_text -like "*$marker*")) {
         throw 'The cloned PowerShell PTY did not receive its independent input'
+    }
+    if (-not [bool](Get-ActiveAutomexiaPanel $cloneOutput).shell_prompt_active -or
+        [int64]$cloneOutput.latest_prompt_id -le [int64]$focusedRight.latest_prompt_id) {
+        throw 'Clone marker was observed before the command completed and a fresh prompt became active'
     }
 
     $script:testStage = 'return to source split'
@@ -3601,7 +3610,14 @@ $wallpaperConfig
         [int64]$sourceBeforeCommandJump.raw_cursor_prompt_id -or
         [int64]$rightAfterCommandJump.raw_cursor_prompt_id -ne
         [int64]$rightBeforeCommandJump.raw_cursor_prompt_id) {
-        throw 'Selected-pane command navigation leaked input into a PTY'
+        throw ('Selected-pane command navigation changed cursor state ' +
+            '(source prompt {0}->{1}, clone prompt {2}->{3}; source text changed={4}, clone text changed={5})' -f
+            [int64]$sourceBeforeCommandJump.raw_cursor_prompt_id,
+            [int64]$sourceAfterCommandJump.raw_cursor_prompt_id,
+            [int64]$rightBeforeCommandJump.raw_cursor_prompt_id,
+            [int64]$rightAfterCommandJump.raw_cursor_prompt_id,
+            ([string]$sourceAfterCommandJump.raw_cursor_line_text -ne [string]$sourceBeforeCommandJump.raw_cursor_line_text),
+            ([string]$rightAfterCommandJump.raw_cursor_line_text -ne [string]$rightBeforeCommandJump.raw_cursor_line_text))
     }
     $sourceRestored = $sourceCommandJump
     for ($jump = 0; $jump -lt 64 -and
@@ -4116,10 +4132,13 @@ $wallpaperConfig
         Write-Host ($preview | ConvertTo-Json -Depth 10)
         throw 'Native image quick look did not publish its painted image rectangle'
     }
-    $overlayX = [int][Math]::Floor([double]$overlayRect[0])
-    $overlayY = [int][Math]::Floor([double]$overlayRect[1])
-    $overlayWidth = [int][Math]::Ceiling([double]$overlayRect[2])
-    $overlayHeight = [int][Math]::Ceiling([double]$overlayRect[3])
+    # Compare fully contained physical pixels. Rounding a fractional origin
+    # outward includes card/background edge pixels on CPU while WGPU blends
+    # that same edge; those are not samples of the image body under test.
+    $overlayX = [int][Math]::Ceiling([double]$overlayRect[0])
+    $overlayY = [int][Math]::Ceiling([double]$overlayRect[1])
+    $overlayWidth = [int][Math]::Floor([double]$overlayRect[0] + [double]$overlayRect[2]) - $overlayX
+    $overlayHeight = [int][Math]::Floor([double]$overlayRect[1] + [double]$overlayRect[3]) - $overlayY
     if ($overlayWidth -lt 8 -or $overlayHeight -lt 8) {
         throw "Native image quick look published an unusable image rectangle: $overlayWidth x $overlayHeight"
     }

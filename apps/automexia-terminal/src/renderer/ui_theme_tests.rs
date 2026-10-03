@@ -1,5 +1,34 @@
 use super::*;
 
+#[test]
+fn glass_layers_stay_bounded_and_opaque_at_all_control_sizes() {
+    for width in [0.5, 1.0, 3.0, 24.0, 34.0, 240.0, 4096.0] {
+        for height in [0.5, 1.0, 3.0, 24.0, 34.0, 48.0] {
+            let rect = [12.25, 5.5, width, height];
+            let layers = glass_layers(rect, 9.0, SURFACE, BORDER).unwrap();
+            assert_eq!(layers.len(), 4, "decoration cost stays constant");
+            for layer in layers {
+                let [x, y, w, h] = layer.rect;
+                assert!(x >= rect[0] && y >= rect[1]);
+                assert!(w >= 0.0 && h >= 0.0);
+                assert!(x + w <= rect[0] + width + 0.001);
+                assert!(y + h <= rect[1] + height + 0.001);
+                assert!(layer.radius >= 0.0 && layer.radius <= w.min(h) * 0.5 + 0.001);
+                assert_eq!(layer.color[3], 1.0);
+                assert!(contrast(color_u8(TEXT), color_u8(layer.color)) >= 4.5);
+            }
+        }
+    }
+    for rect in [
+        [0.0, 0.0, 0.0, 32.0],
+        [0.0, 0.0, -1.0, 32.0],
+        [f32::NAN, 0.0, 32.0, 32.0],
+        [0.0, 0.0, f32::INFINITY, 32.0],
+    ] {
+        assert!(glass_layers(rect, 8.0, SURFACE, BORDER).is_none());
+    }
+}
+
 // Independent f64 sRGB oracle, including the byte conversion used by Text.
 fn luminance(bytes: [u8; 4]) -> f64 {
     let linear = bytes.map(|value| {

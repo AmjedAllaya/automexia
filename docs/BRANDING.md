@@ -69,8 +69,10 @@ labels remain regular-weight, with bold reserved for headings and active titles.
 Palette key labels use 11 logical pixels and fit within a bounded trailing area.
 
 The palette, Connection Hub and quit confirmation share the renderer's existing
-surface tokens. Modal cards, controls and keycaps use a restrained rounded
-hierarchy; danger controls retain their distinct warning treatment. No blur,
+surface tokens. Tab and caption plates add static upper reflections and soft
+edges through existing renderer primitives. Modal cards, controls and keycaps
+use a restrained rounded hierarchy; danger controls retain their distinct warning
+treatment. No blur,
 new motion, font download or terminal-colour override is introduced.
 Settings and Customizations use compact navigation rows with trailing chevrons,
 inline controls that stack in narrow panes, and content-sized confirmations.

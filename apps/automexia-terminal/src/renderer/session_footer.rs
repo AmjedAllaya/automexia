@@ -265,11 +265,15 @@ fn draw_footer(
     background: [f32; 4],
 ) {
     let outline = if state.is_active {
-        [0.05, 0.62, 0.88, 0.72]
+        if state.pane_count > 1 {
+            [0.12, 0.65, 0.82, 0.9]
+        } else {
+            [0.18, 0.33, 0.43, 0.70]
+        }
     } else {
         over(background, [0.10, 0.20, 0.28, 0.58])
     };
-    let fill = over(background, [0.008, 0.035, 0.058, 0.95]);
+    let fill = over(background, [0.02, 0.045, 0.066, 0.97]);
     sugarloaf.rect(
         None,
         geometry.surface.x,
@@ -285,7 +289,7 @@ fn draw_footer(
         geometry.surface.y,
         geometry.surface.x + geometry.surface.width,
         geometry.surface.y,
-        if state.is_active { 1.4 } else { 1.0 },
+        1.0,
         0.0,
         outline,
         28,
@@ -318,14 +322,14 @@ fn draw_footer(
     let compact = geometry.surface.width < 300.0;
     let value_font_size = if compact { 10.5 } else { 12.0 };
     let quiet_font_size = if compact { 10.0 } else { 11.5 };
-    let horizontal_padding = if compact { 7.0 } else { 12.0 };
+    let horizontal_padding = if compact { 7.0 } else { 14.0 };
     let text_y = center_y - value_font_size * 0.5 - 0.5;
     let value_opts = DrawOpts {
         font_size: value_font_size,
         color: if state.is_active {
             [190, 210, 224, 255]
         } else {
-            [126, 147, 164, 220]
+            [154, 172, 184, 255]
         },
         ..DrawOpts::default()
     };
@@ -390,7 +394,7 @@ fn draw_footer(
     let left_limit = right_x - 12.0;
     let quiet_opts = DrawOpts {
         font_size: quiet_font_size,
-        color: [105, 132, 151, if state.is_active { 235 } else { 185 }],
+        color: [154, 172, 184, 255],
         ..DrawOpts::default()
     };
     if state.pane_count > 1 {
@@ -532,7 +536,7 @@ fn draw_right_status(
     separator: [f32; 4],
     separate_from_right: bool,
 ) -> bool {
-    const SEPARATOR_SPACE: f32 = 16.0;
+    const SEPARATOR_SPACE: f32 = 20.0;
     let width = status_text_width(sugarloaf, label, opts.font_size);
     let required = width
         + if separate_from_right {
@@ -548,9 +552,9 @@ fn draw_right_status(
         *right_x -= SEPARATOR_SPACE * 0.5;
         sugarloaf.line(
             *right_x,
-            center_y - 7.0,
+            center_y - 5.0,
             *right_x,
-            center_y + 7.0,
+            center_y + 5.0,
             1.0,
             0.0,
             separator,

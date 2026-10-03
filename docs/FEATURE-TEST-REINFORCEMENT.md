@@ -446,6 +446,10 @@ existing icon meaning and configured terminal colours/fonts. Reject one-channel
 token drift and loss of all-surface contrast requirements in checker mutations.
 Inspect controlled specimens without treating them as native app captures; exact
 CPU/GPU frames and assistive-technology delivery remain external when unavailable.
+Static glass additionally requires finite/tiny geometry bounds, at most four
+primitives per plate, opaque resolved fills, upper-only caption reflections and
+unchanged configured table colors. Verify shared spacing/hit metrics across
+densities and scales, including active/hover/pressed/unfocused controls.
 
 Command-result row bands require parser-created Kubernetes, container and generic
 table fixtures, Unicode/wrapped rows, retained selection/copy and scroll/resize

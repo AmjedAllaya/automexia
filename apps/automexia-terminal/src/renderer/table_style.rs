@@ -26,7 +26,12 @@ impl TableStyle {
             colors.foreground,
             colors.foreground,
             colors.foreground,
-            [theme.outline[0], theme.outline[1], theme.outline[2], 0.4],
+            [
+                ui_theme::BORDER[0],
+                ui_theme::BORDER[1],
+                ui_theme::BORDER[2],
+                0.65,
+            ],
             theme.raised,
             colors.background.0,
             theme.raised,
@@ -68,15 +73,15 @@ impl TableStyle {
         self.appearance.border_color.map_or_else(
             || {
                 if header {
-                    self.theme.outline
+                    ui_theme::BORDER
                 } else {
                     ui_theme::over(
                         self.background,
                         [
-                            self.theme.outline[0],
-                            self.theme.outline[1],
-                            self.theme.outline[2],
-                            0.4,
+                            ui_theme::BORDER[0],
+                            ui_theme::BORDER[1],
+                            ui_theme::BORDER[2],
+                            0.65,
                         ],
                     )
                 }
@@ -246,6 +251,39 @@ mod tests {
             |_, _| count += 1,
         );
         assert!((1..=2048).contains(&count));
+    }
+
+    #[test]
+    fn decorative_table_defaults_stay_quiet_and_preserve_explicit_colors() {
+        use rio_backend::config::presentation::Rgba;
+        let colors = Colors::default();
+        let style = TableStyle::new(TableAppearance::default(), colors);
+        // Literal neutral blue-grey edge; focus cyan belongs to controls.
+        assert_eq!(
+            ui_theme::color_u8(style.border_color(true)),
+            [41, 65, 79, 255]
+        );
+        for header in [true, false] {
+            assert!(style.border_color(header)[1] < 0.3);
+        }
+        let defaults = TableStyle::color_defaults(colors);
+        assert_eq!(
+            ui_theme::over(colors.background.0, defaults[3]),
+            style.border_color(false)
+        );
+        let custom = TableStyle::new(
+            TableAppearance {
+                border_color: Some(Rgba::from_bytes([198, 41, 123, 77])),
+                ..Default::default()
+            },
+            colors,
+        );
+        for header in [true, false] {
+            assert_eq!(
+                custom.border_color(header),
+                [198.0 / 255.0, 41.0 / 255.0, 123.0 / 255.0, 77.0 / 255.0]
+            );
+        }
     }
 
     #[test]

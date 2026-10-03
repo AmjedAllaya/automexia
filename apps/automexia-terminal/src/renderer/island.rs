@@ -10,8 +10,8 @@ use crate::context::ContextManager;
 use crate::renderer::helpers::spring::Spring;
 use crate::renderer::responsive::{ChromeMetrics, Viewport};
 use crate::renderer::ui_theme::{
-    color_u8 as theme_color_u8, UiTheme, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN,
-    BRAND_PURPLE,
+    color_u8 as theme_color_u8, draw_glass, glass_layers, over as opaque_over, UiTheme,
+    BORDER, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN, BRAND_PURPLE,
 };
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -22,7 +22,7 @@ use std::time::Instant;
 
 /// Native liquid-hacker title/tab row height in logical pixels.
 #[cfg(test)]
-pub const ISLAND_HEIGHT: f32 = 42.0;
+pub const ISLAND_HEIGHT: f32 = 44.0;
 const PROGRESS_BAR_HEIGHT: f32 = 3.0;
 
 const PROGRESS_BAR_TIMEOUT_SECS: u64 = 15;
@@ -30,10 +30,10 @@ const PROGRESS_BAR_TIMEOUT_SECS: u64 = 15;
 const TAB_PADDING_X: f32 = 16.0;
 const PROFILE_TITLE_OFFSET_X: f32 = 18.0;
 #[cfg(test)]
-const TAB_GAP: f32 = 5.0;
+const TAB_GAP: f32 = 7.0;
 #[cfg(test)]
-const TAB_INSET_Y: f32 = 4.0;
-const TAB_RADIUS: f32 = 8.0;
+const TAB_INSET_Y: f32 = 5.0;
+const TAB_RADIUS: f32 = 9.0;
 const TITLE_ELLIPSIS: char = '…';
 const DRAG_THRESHOLD: f32 = 4.0;
 const DRAG_ANIMATION_LENGTH: f32 = 0.15;
@@ -499,9 +499,9 @@ fn island_fills(bg: [f32; 4]) -> IslandFills {
         }
     } else {
         IslandFills {
-            inactive: [0.08, 0.12, 0.17, 0.32],
-            active: [0.015, 0.13, 0.26, 0.94],
-            outline: Some([0.05, 0.24, 0.43, 0.62]),
+            inactive: [0.075, 0.115, 0.16, 0.72],
+            active: [0.035, 0.14, 0.235, 0.96],
+            outline: Some([0.18, 0.32, 0.43, 0.68]),
             close_hover: [1.0, 1.0, 1.0, 0.14],
         }
     }
@@ -531,29 +531,10 @@ fn draw_island(
     punch: Option<[f32; 4]>,
     order: u8,
 ) {
-    match outline {
-        Some(ring) => {
-            sugarloaf.rounded_rect(None, x, y, w, h, ring, 0.05, radius, order);
-            let fw = (w - 2.0).max(0.0);
-            let fh = (h - 2.0).max(0.0);
-            let fr = (radius - 1.0).clamp(0.0, fw.min(fh) / 2.0);
-            if let Some(bg) = punch {
-                sugarloaf.rounded_rect(
-                    None,
-                    x + 1.0,
-                    y + 1.0,
-                    fw,
-                    fh,
-                    bg,
-                    0.05,
-                    fr,
-                    order,
-                );
-            }
-            sugarloaf.rounded_rect(None, x + 1.0, y + 1.0, fw, fh, fill, 0.05, fr, order);
-        }
-        None => sugarloaf.rounded_rect(None, x, y, w, h, fill, 0.05, radius, order),
-    }
+    let base = punch.unwrap_or(fill);
+    let fill = crate::renderer::ui_theme::over(base, fill);
+    let edge = crate::renderer::ui_theme::over(base, outline.unwrap_or(fill));
+    draw_glass(sugarloaf, [x, y, w, h], radius, fill, edge, order);
 }
 
 #[inline]
@@ -1295,7 +1276,7 @@ impl Island {
             0.0,
             logical_width,
             metrics.header_height,
-            [0.012, 0.025, 0.043, 0.97],
+            opaque_over(bg_color, [0.018, 0.035, 0.055, 0.97]),
             0.0,
             0,
         );
@@ -1306,7 +1287,7 @@ impl Island {
             metrics.header_height - 1.0,
             1.0,
             0.0,
-            [0.10, 0.17, 0.24, 0.92],
+            [0.12, 0.21, 0.28, 0.62],
             1,
         );
         draw_pane_local_tab_rails(
@@ -1321,15 +1302,12 @@ impl Island {
             let app_size = metrics.app_button_size;
             let app_x = metrics.app_button_x;
             let app_y = (metrics.header_height - app_size) / 2.0;
-            sugarloaf.rounded_rect(
-                None,
-                app_x,
-                app_y,
-                app_size,
-                app_size,
-                [0.10, 0.12, 0.15, 0.96],
-                0.04,
-                5.0,
+            draw_glass(
+                sugarloaf,
+                [app_x, app_y, app_size, app_size],
+                8.0,
+                opaque_over(bg_color, [0.065, 0.10, 0.14, 0.96]),
+                opaque_over(bg_color, [BORDER[0], BORDER[1], BORDER[2], 0.6]),
                 2,
             );
             draw_terminal_mark(
@@ -1607,17 +1585,31 @@ impl Island {
         // New-tab and profile-menu affordances live after the last tab. They
         // stay visible because `tab_strip_layout` reserves this width.
         let actions_x = layout.actions_x;
-        if layout.show_new_tab && matches!(self.chrome_hover, Some(ChromeAction::NewTab))
-        {
-            sugarloaf.rounded_rect(
-                None,
-                actions_x,
-                layout.tab_inset_y,
-                metrics.action_button_size,
-                metrics.header_height - layout.tab_inset_y * 2.0,
-                [0.12, 0.22, 0.32, 0.72],
-                0.05,
-                6.0,
+        if layout.show_new_tab {
+            let hovered = matches!(self.chrome_hover, Some(ChromeAction::NewTab));
+            let size = 32.0_f32.min(metrics.header_height - layout.tab_inset_y * 2.0);
+            draw_glass(
+                sugarloaf,
+                [
+                    actions_x + (metrics.action_button_size - size) * 0.5,
+                    (metrics.header_height - size) * 0.5,
+                    size,
+                    size,
+                ],
+                8.0,
+                opaque_over(
+                    bg_color,
+                    [0.075, 0.15, 0.21, if hovered { 0.94 } else { 0.6 }],
+                ),
+                opaque_over(
+                    bg_color,
+                    [
+                        BORDER[0],
+                        BORDER[1],
+                        BORDER[2],
+                        if hovered { 0.95 } else { 0.55 },
+                    ],
+                ),
                 3,
             );
         }
@@ -2396,18 +2388,9 @@ fn draw_command_center_button(
     } else {
         [0.008, 0.045, 0.078, 0.86]
     };
-    sugarloaf.rounded_rect(None, x, y, width, height, outline, 0.05, 8.0, 3);
-    sugarloaf.rounded_rect(
-        None,
-        x + 1.0,
-        y + 1.0,
-        (width - 2.0).max(0.0),
-        (height - 2.0).max(0.0),
-        fill,
-        0.051,
-        7.0,
-        3,
-    );
+    let fill = crate::renderer::ui_theme::over(crate::renderer::ui_theme::CARD, fill);
+    let outline = crate::renderer::ui_theme::over(fill, outline);
+    draw_glass(sugarloaf, [x, y, width, height], 8.0, fill, outline, 3);
 
     let dot_color = if hovered {
         [0.10, 0.88, 1.0, 1.0]
@@ -2514,18 +2497,20 @@ fn draw_pane_local_tab_rails(
             } else {
                 [0.012, 0.052, 0.086, 0.90]
             };
-            sugarloaf.rounded_rect(
-                None, tab.x, tab.y, tab.width, tab.height, outline, 0.05, 7.0, 21,
-            );
-            sugarloaf.rounded_rect(
-                None,
-                tab.x + 1.0,
-                tab.y + 1.0,
-                (tab.width - 2.0).max(0.0),
-                (tab.height - 2.0).max(0.0),
-                fill,
-                0.05,
-                6.0,
+            draw_glass(
+                sugarloaf,
+                [tab.x, tab.y, tab.width, tab.height],
+                7.0,
+                crate::renderer::ui_theme::over(rail_fill, fill),
+                crate::renderer::ui_theme::over(
+                    rail_fill,
+                    [
+                        outline[0],
+                        outline[1],
+                        outline[2],
+                        if is_active { 0.65 } else { 0.5 },
+                    ],
+                ),
                 22,
             );
 
@@ -2729,38 +2714,38 @@ fn draw_window_controls(
         let pressed_here = pressed == Some(action) && hovered;
         let fill = window_control_fill(theme, action, hovered, pressed_here, focused);
         let accent = window_control_accent(action);
-        if hovered {
-            sugarloaf.rounded_rect(
-                button.x,
-                button.y,
-                button.width,
-                button.height,
-                muted_alpha(accent, if pressed_here { 0.94 } else { 0.72 }),
-                0.03,
-                8.0,
-                ORDER,
-            );
-            sugarloaf.rounded_rect(
-                button.x + 1.0,
-                button.y + 1.0,
-                (button.width - 2.0).max(1.0),
-                (button.height - 2.0).max(1.0),
-                fill,
-                0.03,
-                7.0,
-                ORDER + 1,
-            );
-        } else {
-            sugarloaf.rounded_rect(
-                button.x,
-                button.y,
-                button.width,
-                button.height,
-                fill,
-                0.03,
-                8.0,
-                ORDER,
-            );
+        let edge = over(
+            fill,
+            if hovered {
+                muted_alpha(accent, if pressed_here { 0.80 } else { 0.60 })
+            } else {
+                [
+                    BORDER[0],
+                    BORDER[1],
+                    BORDER[2],
+                    if focused { 0.65 } else { 0.35 },
+                ]
+            },
+        );
+        if let Some(layers) = glass_layers(
+            [button.x, button.y, button.width, button.height],
+            8.0,
+            fill,
+            edge,
+        ) {
+            for layer in layers {
+                let [x, y, width, height] = layer.rect;
+                sugarloaf.rounded_rect(
+                    x,
+                    y,
+                    width,
+                    height,
+                    layer.color,
+                    0.03,
+                    layer.radius,
+                    ORDER,
+                );
+            }
         }
 
         let glyph_color = muted_alpha(
@@ -3204,7 +3189,7 @@ mod tests {
             Some(ChromeAction::NewTab)
         );
         assert_eq!(
-            island.chrome_action_at(1_280.0, 760.0, 1.0, 2, actions_x + 42.0, 33.0),
+            island.chrome_action_at(1_280.0, 760.0, 1.0, 2, actions_x + 44.0, 33.0),
             Some(ChromeAction::OpenPalette)
         );
         assert_eq!(
@@ -3315,8 +3300,9 @@ mod tests {
                                 RecordedWindowControlOp::RoundedRect {
                                     width,
                                     height,
+                                    y,
                                     ..
-                                } if *height <= 2.0 && *width >= 8.0
+                                } if *height <= 2.0 && *width >= 8.0 && *y > 8.0
                             )
                         })
                         .collect();
@@ -3325,14 +3311,63 @@ mod tests {
                         "caption controls must not paint decorative underline rails: {decorative_rails:#?}"
                     );
 
-                    let expected_ops =
-                        7 + usize::from(hover.is_some()) + if maximized { 2 } else { 0 };
+                    let expected_ops = 16 + if maximized { 2 } else { 0 };
                     assert_eq!(
                         canvas.ops.len(),
                         expected_ops,
                         "unexpected layers for hover={hover:?}, pressed={pressed:?}, maximized={maximized}, focused={focused}"
                     );
                 }
+            }
+        }
+    }
+
+    #[test]
+    fn glass_caption_reflections_are_inside_the_top_edge_in_every_state() {
+        let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);
+        for hover in [None, Some(ChromeAction::CloseWindow)] {
+            let mut canvas = RecordingWindowControlCanvas::default();
+            draw_window_controls(
+                &mut canvas,
+                WindowControlRenderContext {
+                    theme,
+                    hover,
+                    pressed: hover,
+                    maximized: false,
+                    focused: true,
+                    header_height: 46.0,
+                    controls_x: 100.0,
+                    button_width: 42.0,
+                },
+            );
+            let highlights: Vec<_> = canvas
+                .ops
+                .iter()
+                .filter_map(|op| {
+                    if let RecordedWindowControlOp::RoundedRect {
+                        x,
+                        y,
+                        width,
+                        height,
+                        ..
+                    } = op
+                    {
+                        if *height <= 1.0 && *width >= 8.0 {
+                            return Some((*x, *y, *width));
+                        }
+                    }
+                    None
+                })
+                .collect();
+            assert_eq!(
+                highlights.len(),
+                3,
+                "each caption control has a subtle upper reflection"
+            );
+            for (index, (x, y, width)) in highlights.iter().enumerate() {
+                assert!(*x >= 100.0 + index as f32 * 42.0 + 5.0);
+                assert!(*x + *width < 100.0 + (index + 1) as f32 * 42.0);
+                assert!(*y >= 6.0 && *y <= 8.0, "no decorative underline");
             }
         }
     }

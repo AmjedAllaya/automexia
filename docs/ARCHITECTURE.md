@@ -383,6 +383,9 @@ headroom for byte quantization; terminal colours remain configuration-owned.
 Palette trailing labels use the existing bounded font-measured fitter and retain
 full action values. This adds no dependencies, I/O, workers, animation or state
 owner. Existing modal geometry, input routing and vector-icon owners are retained.
+Static tab/caption glass layers also live in `renderer/ui_theme.rs`: four bounded
+rounded primitives per surface, with no backdrop sampling or animation. Viewport
+metrics remain the single owner of chrome drawing, hit testing and grid reservation.
 
 The renderer consumes immutable, generation-labelled snapshots. Expensive
 layout, search, image, font, or accessibility work is bounded and cancellable.

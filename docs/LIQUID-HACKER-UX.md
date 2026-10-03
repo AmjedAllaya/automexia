@@ -46,6 +46,28 @@ and [non-text contrast](https://www.w3.org/WAI/WCAG22/Understanding/non-text-con
 The controlled colour strip and real-font specimen are not native app captures.
 Native CPU/GPU frames and screen-reader assessments remain separate evidence.
 
+### Restrained glass finish
+
+The existing dark layout retains its colored icons and terminal-first hierarchy.
+Comfortable chrome uses a 44-pixel header, 7-pixel gaps between tab plates and
+42-pixel action slots; compact and minimum windows retain density-specific
+reservations. Drawing, pointer targets and terminal grid reservation share the
+same viewport metrics. Rounded tab and caption plates have a soft edge and a
+small upper reflection, rendered with four bounded ordinary primitives. The
+finish is static, uses opaque resolved fills, and requires no backdrop capture,
+blur pass or idle animation. Modal backplates remain opaque.
+
+The single-pane footer uses a quiet dividing line; an active split pane retains
+its brighter boundary. Footer values have wider spacing and shorter separators.
+Default table rules use neutral blue-grey instead of focus cyan. Explicit table
+colors/opacity, tag shapes, output/status colors, fonts and ANSI content remain
+configuration-owned. There is no preference migration.
+
+Controlled tests cover finite/tiny geometry, upper-only caption reflections,
+state/scale hit targets and explicit table colors. Native Windows CPU/WGPU
+rendering is checked separately; other compositor and assistive-technology
+combinations require their own evidence.
+
 ### Grid and interaction
 
 Terminal content owns the available grid. Chrome uses bounded geometry, never

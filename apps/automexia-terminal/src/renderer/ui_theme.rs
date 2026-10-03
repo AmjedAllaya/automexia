@@ -25,6 +25,102 @@ pub(crate) const MUTED_TEXT: [f32; 4] = [0.604, 0.675, 0.722, 1.0];
 pub(crate) const CARD_RADIUS: f32 = 14.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
 pub(crate) const KEYCAP_RADIUS: f32 = 5.0;
+
+/// Static glass is resolved into ordinary bounded primitives shared by the
+/// CPU and GPU renderers. It does not sample/blur terminal contents or animate.
+#[derive(Clone, Copy, Debug)]
+pub(crate) struct GlassLayer {
+    pub rect: [f32; 4],
+    pub radius: f32,
+    pub color: [f32; 4],
+}
+
+pub(crate) fn glass_layers(
+    rect: [f32; 4],
+    radius: f32,
+    fill: [f32; 4],
+    edge: [f32; 4],
+) -> Option<[GlassLayer; 4]> {
+    let [x, y, width, height] = rect;
+    if !rect.iter().all(|value| value.is_finite())
+        || !radius.is_finite()
+        || width <= 0.0
+        || height <= 0.0
+        || !(x + width).is_finite()
+        || !(y + height).is_finite()
+    {
+        return None;
+    }
+    let radius = radius.clamp(0.0, width.min(height) * 0.5);
+    let inset = 1.0_f32.min(width * 0.5).min(height * 0.5);
+    let inner = [
+        x + inset,
+        y + inset,
+        width - inset * 2.0,
+        height - inset * 2.0,
+    ];
+    let reflection_inset = (radius + 1.0).max(3.0).min(width * 0.5);
+    let reflection_width = (width - reflection_inset * 2.0).max(0.0);
+    let reflection_height = 3.0_f32.min(inner[3] * 0.15);
+    Some([
+        GlassLayer {
+            rect,
+            radius,
+            color: edge,
+        },
+        GlassLayer {
+            rect: inner,
+            radius: (radius - inset).max(0.0),
+            color: fill,
+        },
+        GlassLayer {
+            rect: [
+                x + reflection_inset,
+                y + inset,
+                reflection_width,
+                reflection_height,
+            ],
+            radius: reflection_height.min(reflection_width) * 0.5,
+            color: over(fill, [0.78, 0.90, 1.0, 0.035]),
+        },
+        GlassLayer {
+            rect: [
+                x + reflection_inset,
+                y + inset,
+                reflection_width,
+                0.8_f32.min(reflection_height),
+            ],
+            radius: 0.4_f32.min(reflection_height.min(reflection_width) * 0.5),
+            color: over(fill, [0.85, 0.94, 1.0, 0.12]),
+        },
+    ])
+}
+
+pub(crate) fn draw_glass(
+    sugarloaf: &mut rio_backend::sugarloaf::Sugarloaf,
+    rect: [f32; 4],
+    radius: f32,
+    fill: [f32; 4],
+    edge: [f32; 4],
+    order: u8,
+) {
+    if let Some(layers) = glass_layers(rect, radius, fill, edge) {
+        for layer in layers {
+            let [x, y, width, height] = layer.rect;
+            sugarloaf.rounded_rect(
+                None,
+                x,
+                y,
+                width,
+                height,
+                layer.color,
+                0.05,
+                layer.radius,
+                order,
+            );
+        }
+    }
+}
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub(crate) struct UiTheme {
     pub(crate) background: [f32; 4],
