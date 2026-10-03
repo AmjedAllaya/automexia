@@ -33,6 +33,8 @@ use unicode_segmentation::UnicodeSegmentation;
 
 #[path = "settings_table_preview.rs"]
 mod table_preview;
+#[path = "settings_timestamp_preview.rs"]
+mod timestamp_preview;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq)]
 struct Rect {
@@ -4185,6 +4187,13 @@ impl SettingsView {
                 .is_some_and(|key| {
                     key.as_str() == automexia_ui_model::settings::INLINE_TABLES
                 });
+            let timestamp_preview = self
+                .customizations
+                .as_ref()
+                .and_then(|navigation| navigation.active_key.as_ref())
+                .is_some_and(|key| {
+                    key.as_str() == automexia_ui_model::settings::COMMAND_TIMESTAMPS
+                });
             let preview_height = (content.height
                 * if tag_preview {
                     0.68
@@ -4199,6 +4208,10 @@ impl SettingsView {
                         10.5
                     } else if editing_preview {
                         9.5
+                    } else if timestamp_preview {
+                        // Keep date, tags, time and a command visible when
+                        // timestamp components occupy three separate rows.
+                        8.5
                     } else if table_preview {
                         // Keep a header and both stripe colors visible in the
                         // stacked layout, without reducing the sample text size.
@@ -5928,29 +5941,6 @@ impl SettingsView {
         }
     }
 
-    fn paint_timestamp_preview(
-        &self,
-        canvas: &mut impl Canvas,
-        sample: Rect,
-        theme: UiTheme,
-    ) {
-        let font = (self.font * 0.72).clamp(9.0, 16.0);
-        let shown = self.preview_bool(automexia_ui_model::settings::COMMAND_TIMESTAMPS);
-        let text = timestamp_preview_label(shown);
-        let (background, foreground) = self
-            .customizations
-            .as_ref()
-            .and_then(|navigation| navigation.slot_pages.as_ref())
-            .map_or((theme.background, theme.text), |snapshot| {
-                (
-                    snapshot.preview_terminal_colors().0,
-                    snapshot.preview_success_color(),
-                )
-            });
-        rect(canvas, sample, background, sample);
-        label(canvas, sample, text, font, foreground, false, sample);
-    }
-
     fn paint_theme_preview(
         &self,
         canvas: &mut impl Canvas,
@@ -6177,12 +6167,9 @@ impl SettingsView {
     }
 }
 
-fn timestamp_preview_label(shown: bool) -> &'static str {
-    if shown {
-        "✓  104ms  ·  2026-09-30 12:34:56"
-    } else {
-        "✓  104ms"
-    }
+#[cfg(test)]
+fn timestamp_preview_label(shown: bool) -> String {
+    timestamp_preview::sample_text(Default::default(), shown, Some(0), Some(104)).text
 }
 
 fn preview_segments() -> Vec<automexia_ui_model::Segment> {
@@ -6470,6 +6457,11 @@ fn detail_catalog_with_slots(
     if group.key.as_str() == automexia_ui_model::settings::INLINE_TABLES {
         if let Some(snapshot) = snapshot {
             return crate::settings_catalog::table_page_catalog(full, snapshot).ok();
+        }
+    }
+    if group.key.as_str() == automexia_ui_model::settings::COMMAND_TIMESTAMPS {
+        if let Some(snapshot) = snapshot {
+            return crate::settings_catalog::timestamp_page_catalog(full, snapshot).ok();
         }
     }
     detail_catalog(full, group)

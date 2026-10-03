@@ -115,6 +115,17 @@ controls update the file-table sample immediately. Source ANSI colors, selection
 and enabled Kubernetes status colors keep priority in actual terminal output.
 Turning inline tables off keeps your choices for when you enable them again.
 
+**Command timestamps** offers separate date and time formats, 12/24-hour clocks,
+precision, weekday and time-zone labels. Choose where the date, time and result
+appear independently: left/right of the tags, or above/below them. Change their
+order and separators when they share a position. Status, duration and exit-code
+visibility are separate choices, with automatic or fixed duration formats.
+Text size, bold, individual colors and a label background with opacity update the
+live sample. **Use status colors** follows success/failure accents unless an
+individual color overrides it. These settings do not alter output highlighting.
+Turning **Show date and time** off keeps your choices and leaves the result controls
+active. Reset and Restore saved require confirmation, as on the other pages.
+
 Each page keeps shared switches and styles in the list; its
 interactive preview opens the selected sample's colors. Disabling either feature
 keeps its saved colors. Command backgrounds preserve ANSI text, explicit source
@@ -397,8 +408,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v7.toml` and `user-preferences-v7.previous.toml`;
-- any retained `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v8.toml` and `user-preferences-v8.previous.toml`;
+- any retained `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from

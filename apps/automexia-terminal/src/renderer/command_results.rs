@@ -7,7 +7,7 @@
 use std::time::{Duration, Instant};
 
 use rio_backend::config::colors::Colors;
-use rio_backend::config::presentation::CommandOutputAppearance;
+use rio_backend::config::presentation::{CommandOutputAppearance, TimestampAppearance};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
@@ -20,6 +20,7 @@ pub(super) struct ResultOptions<'a> {
     pub allow_animation: bool,
     pub prefer_untagged: bool,
     pub show_timestamps: bool,
+    pub timestamps: TimestampAppearance,
     pub background: Option<CommandOutputAppearance>,
     pub protected_rows: &'a [bool],
 }
@@ -475,6 +476,7 @@ impl CommandResults {
             allow_animation,
             prefer_untagged,
             show_timestamps,
+            timestamps,
             background,
             protected_rows,
         } = options;
@@ -506,31 +508,23 @@ impl CommandResults {
             self.native_paints.clear();
             self.native_backgrounds.clear();
         }
+        let mut fallback_labels = Vec::new();
         for anchor in anchors {
-            let timestamp = show_timestamps
-                .then(|| command_timestamp_label(anchor.completed_at))
-                .flatten();
-            let presentation = command_result_presentation(
-                anchor.exit_code,
-                command_elapsed_ms(anchor.elapsed_ms),
-                timestamp.as_deref(),
-            );
-            let accent_color = match presentation.tone {
-                CommandResultTone::Success => colors.green,
-                CommandResultTone::Failure => colors.red,
-                CommandResultTone::Neutral => colors.blue,
-            };
+            let accent_color = result_label_color(colors, anchor.exit_code);
             let metrics = result_label_metrics(anchor.height);
-            let Some(top_inset) = automexia_ui_model::prompt_context_top_inset(
+            if automexia_ui_model::prompt_context_top_inset(
                 anchor.height,
                 metrics.height,
                 true,
-            ) else {
+            )
+            .is_none()
+            {
                 continue;
-            };
+            }
             let opts = DrawOpts {
-                font_size: metrics.font_size,
-                color: color_to_u8(accent_color),
+                font_size: metrics.font_size
+                    * timestamps.size.unwrap_or_default().scale(),
+                bold: timestamps.bold.unwrap_or(false),
                 ..DrawOpts::default()
             };
 
@@ -572,60 +566,47 @@ impl CommandResults {
             {
                 continue;
             }
-            let maximum_width = result_label_maximum_width(anchor.width);
-            let Some((label, text_width)) =
-                fitting_command_result_label(&presentation, |candidate| {
-                    let width = sugarloaf.text_mut().measure(candidate, &opts);
-                    (width <= maximum_width).then_some(width)
+            if let Some(label) =
+                fallback_completion(anchor, show_timestamps, timestamps, |value| {
+                    sugarloaf.text_mut().measure(value, &opts)
                 })
-            else {
-                continue;
-            };
-            let x = anchor.x + anchor.width - text_width - RESULT_LABEL_RIGHT_INSET;
-            let tag_y = anchor.y + top_inset;
-            let y = tag_y + (metrics.height - metrics.font_size) * 0.5 - 1.0;
-            sugarloaf.text_mut().draw(x, y, label, &opts);
-            #[cfg(feature = "native-gui-test-hooks")]
             {
-                self.native_paints.push((
-                    anchor.generation,
-                    anchor.key,
-                    [x, tag_y, text_width, metrics.height],
-                ));
-                if native_label_target == Some(CommandResultIdentity::from(anchor)) {
-                    self.native_label = Some(label.to_owned());
-                }
+                fallback_labels.push(label);
             }
         }
-        for label in planned_labels {
+        for label in planned_labels.iter().chain(&fallback_labels) {
             let anchor = &label.anchor;
             let metrics = result_label_metrics(anchor.height);
-            let color = result_label_color(colors, anchor.exit_code);
-            #[cfg(feature = "native-gui-test-hooks")]
-            let inset = automexia_ui_model::prompt_context_top_inset(
-                anchor.height,
-                metrics.height,
-                true,
-            )
-            .unwrap_or(0.0);
+            let paint = super::timestamps::TimestampPaint {
+                appearance: timestamps,
+                colors,
+                exit_code: anchor.exit_code,
+                origin: [anchor.x, anchor.y],
+                metrics: [anchor.height, metrics.font_size, metrics.height],
+                clip: [
+                    anchor.x,
+                    vertical_bounds[0],
+                    anchor.width,
+                    vertical_bounds[1] - vertical_bounds[0],
+                ],
+            };
             #[cfg(feature = "native-gui-test-hooks")]
             let mut bounds: Option<[f32; 4]> = None;
             for fragment in &label.fragments {
-                let Some(text) = label.text.get(fragment.bytes.clone()) else {
-                    continue;
-                };
-                #[cfg(feature = "native-gui-test-hooks")]
-                let x = anchor.x + 2.0 + fragment.x + fragment.padding + fragment.leading;
-                #[cfg(feature = "native-gui-test-hooks")]
-                let y = anchor.y + fragment.row as f32 * anchor.height + inset;
-                super::command_info::draw_fragment_text(
-                    sugarloaf.text_mut(),
-                    text,
-                    fragment,
-                    [anchor.x, anchor.y],
-                    [anchor.height, metrics.font_size, metrics.height],
-                    color_to_u8(color),
-                );
+                let [x, y, width, height] = paint.bounds(fragment);
+                if paint.background()[3] > 0.0 {
+                    sugarloaf.rect(
+                        None,
+                        x,
+                        y,
+                        width,
+                        height,
+                        paint.background(),
+                        0.0,
+                        ORDER - 1,
+                    );
+                }
+                paint.draw(sugarloaf.text_mut(), &label.text, &label.spans, fragment);
                 #[cfg(feature = "native-gui-test-hooks")]
                 {
                     let width =
@@ -656,6 +637,48 @@ impl CommandResults {
     }
 }
 
+/// Without a verified blank semantic row we cannot move text over native cells
+/// or allocate display rows. Keep the protected right-hand fallback lane, using
+/// the same formatting and colors, and omit the clock only if it cannot fit.
+fn fallback_completion(
+    anchor: &CommandResultAnchor,
+    show: bool,
+    appearance: TimestampAppearance,
+    mut measure: impl FnMut(&str) -> f32,
+) -> Option<CompletionLabel> {
+    use rio_backend::config::presentation::TimestampPosition;
+    let appearance = TimestampAppearance {
+        date_position: Some(TimestampPosition::Right),
+        time_position: Some(TimestampPosition::Right),
+        result_position: Some(TimestampPosition::Right),
+        ..appearance
+    };
+    let width = result_label_maximum_width(anchor.width);
+    for clock in [show, false] {
+        let text = completion_text(anchor, clock, appearance);
+        if text.text.is_empty() {
+            return None;
+        }
+        let band =
+            text.pack(&[], width, 0.0, &[], None, 0.0, |_, value| measure(value))?;
+        if band.rows <= 1 {
+            let mut anchor = *anchor;
+            anchor.x += anchor.width - width - RESULT_LABEL_RIGHT_INSET - 2.0;
+            anchor.width = width + 2.0;
+            return Some(CompletionLabel {
+                anchor,
+                text: text.text,
+                spans: text.spans,
+                fragments: band.fragments,
+            });
+        }
+        if !clock {
+            break;
+        }
+    }
+    None
+}
+
 fn result_label_color(colors: Colors, exit_code: Option<i32>) -> [f32; 4] {
     match exit_code {
         Some(0) => colors.green,
@@ -664,25 +687,76 @@ fn result_label_color(colors: Colors, exit_code: Option<i32>) -> [f32; 4] {
     }
 }
 
+#[cfg(test)]
 pub(super) fn complete_result_label(
     anchor: &CommandResultAnchor,
     show_timestamps: bool,
 ) -> String {
-    let timestamp = show_timestamps
-        .then(|| command_timestamp_label(anchor.completed_at))
-        .flatten();
-    command_result_presentation(
-        anchor.exit_code,
-        command_elapsed_ms(anchor.elapsed_ms),
-        timestamp.as_deref(),
-    )
-    .labels
-    .into_iter()
-    .flatten()
-    .next()
-    .unwrap_or_default()
+    completion_text(anchor, show_timestamps, Default::default()).text
 }
 
+pub(super) fn completion_text(
+    anchor: &CommandResultAnchor,
+    show_timestamps: bool,
+    appearance: TimestampAppearance,
+) -> super::timestamps::TimestampText {
+    let stamp = anchor.completed_at;
+    #[cfg(feature = "visual-test-hooks")]
+    let stamp = if let Some(label) =
+        crate::automexia::visual_test_hooks::frozen_command_datetime_label()
+    {
+        let mut stamp = stamp;
+        if let Some(value) = stamp.as_mut() {
+            // Test overrides have a validated ISO form; parsing still fails closed.
+            if let Some(frozen) = frozen_calendar(label) {
+                *value = frozen;
+            }
+        }
+        stamp
+    } else {
+        stamp
+    };
+    super::timestamps::TimestampText::new(
+        appearance,
+        show_timestamps,
+        stamp,
+        anchor.exit_code,
+        command_elapsed_ms(anchor.elapsed_ms),
+    )
+}
+
+#[cfg(feature = "visual-test-hooks")]
+fn frozen_calendar(
+    label: &str,
+) -> Option<rio_backend::crosswords::grid::row::SemanticCommandTimestamp> {
+    compact_command_timestamp(label)?;
+    let year = label.get(0..4)?.parse::<u16>().ok()?;
+    let month = label.get(5..7)?.parse::<u8>().ok()?;
+    let day = label.get(8..10)?.parse::<u8>().ok()?;
+    let hour = label.get(11..13)?.parse::<u8>().ok()?;
+    let minute = label.get(14..16)?.parse::<u8>().ok()?;
+    let second = label.get(17..19)?.parse::<u8>().ok()?;
+    let date = time::Date::from_calendar_date(
+        i32::from(year),
+        time::Month::try_from(month).ok()?,
+        day,
+    )
+    .ok()?;
+    let datetime = date.with_hms(hour, minute, second).ok()?.assume_utc();
+    Some(
+        rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
+            unix_ms: u64::try_from(datetime.unix_timestamp_nanos() / 1_000_000).ok()?,
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+        },
+    )
+}
+
+#[cfg(test)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum CommandResultTone {
     Success,
@@ -690,12 +764,14 @@ enum CommandResultTone {
     Neutral,
 }
 
+#[cfg(test)]
 #[derive(Debug, PartialEq, Eq)]
 struct CommandResultPresentation {
     tone: CommandResultTone,
     labels: [Option<String>; 4],
 }
 
+#[cfg(test)]
 fn command_timestamp_label(
     timestamp: Option<rio_backend::crosswords::grid::row::SemanticCommandTimestamp>,
 ) -> Option<String> {
@@ -728,6 +804,7 @@ fn command_elapsed_ms(elapsed_ms: Option<u64>) -> Option<u64> {
     elapsed_ms
 }
 
+#[cfg(any(test, feature = "visual-test-hooks"))]
 fn compact_command_timestamp(label: &str) -> Option<String> {
     let bytes = label.as_bytes();
     if bytes.len() != 19
@@ -745,6 +822,7 @@ fn compact_command_timestamp(label: &str) -> Option<String> {
     Some(label[5..16].to_owned())
 }
 
+#[cfg(test)]
 fn command_result_presentation(
     exit_code: Option<i32>,
     elapsed_ms: Option<u64>,
@@ -773,6 +851,7 @@ fn command_result_presentation(
     CommandResultPresentation { tone, labels }
 }
 
+#[cfg(test)]
 fn fitting_command_result_label<T>(
     presentation: &CommandResultPresentation,
     mut fits: impl FnMut(&str) -> Option<T>,
@@ -784,7 +863,7 @@ fn fitting_command_result_label<T>(
         .find_map(|label| fits(label).map(|measurement| (label.as_str(), measurement)))
 }
 
-fn format_duration(elapsed_ms: u64) -> String {
+pub(super) fn format_duration(elapsed_ms: u64) -> String {
     if elapsed_ms < 1_000 {
         format!("{elapsed_ms}ms")
     } else if elapsed_ms < 60_000 {
@@ -796,15 +875,6 @@ fn format_duration(elapsed_ms: u64) -> String {
             (elapsed_ms % 60_000) / 1_000
         )
     }
-}
-
-fn color_to_u8(color: [f32; 4]) -> [u8; 4] {
-    [
-        (color[0] * 255.0) as u8,
-        (color[1] * 255.0) as u8,
-        (color[2] * 255.0) as u8,
-        (color[3] * 255.0) as u8,
-    ]
 }
 
 #[cfg(test)]
@@ -840,6 +910,16 @@ mod tests {
 
     use super::*;
 
+    #[cfg(feature = "visual-test-hooks")]
+    #[test]
+    fn frozen_timestamp_epoch_and_calendar_are_consistent_for_utc_and_milliseconds() {
+        let frozen = frozen_calendar("2000-01-01 00:00:00").unwrap();
+        assert_eq!(frozen.unix_ms, 946_684_800_000);
+        assert_eq!((frozen.year, frozen.month, frozen.day), (2000, 1, 1));
+        assert!(frozen_calendar("2000-02-30 00:00:00").is_none());
+        assert!(frozen_calendar("bad").is_none());
+    }
+
     fn timestamp() -> rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
         rio_backend::crosswords::grid::row::SemanticCommandTimestamp {
             unix_ms: 1_777_575_942_000,
@@ -850,6 +930,59 @@ mod tests {
             minute: 5,
             second: 42,
         }
+    }
+
+    #[test]
+    fn timestamp_legacy_fallback_uses_selected_format_and_never_expands_native_rows() {
+        use rio_backend::config::presentation::{
+            TimestampDateFormat, TimestampPosition, TimestampTimeFormat,
+        };
+        let anchor = CommandResultAnchor {
+            generation: Some(7),
+            key: 42,
+            x: 4.0,
+            y: 40.0,
+            width: 1400.0,
+            height: 20.0,
+            output_top: Some(0.0),
+            separates_next_prompt: true,
+            exit_code: Some(2),
+            elapsed_ms: Some(18),
+            completed_at: Some(timestamp()),
+        };
+        let appearance = TimestampAppearance {
+            date_format: Some(TimestampDateFormat::DayMonthName),
+            time_format: Some(TimestampTimeFormat::Hour12),
+            date_position: Some(TimestampPosition::AboveLeft),
+            ..Default::default()
+        };
+        let label = fallback_completion(&anchor, true, appearance, |text| {
+            text.chars().count() as f32 * 6.0
+        })
+        .unwrap();
+        assert_eq!(label.text, "×  18ms  ·  26 Aug 2026 07:05:42 PM");
+        assert!(label.fragments.iter().all(|f| f.row == 0));
+        let narrow = CommandResultAnchor {
+            width: 160.0,
+            ..anchor
+        };
+        let compact = fallback_completion(&narrow, true, appearance, |text| {
+            text.chars().count() as f32 * 6.0
+        })
+        .unwrap();
+        assert_eq!(compact.text, "×  18ms");
+        assert!(fallback_completion(
+            &anchor,
+            false,
+            TimestampAppearance {
+                show_status: Some(false),
+                show_duration: Some(false),
+                ..appearance
+            },
+            |_| 10.0
+        )
+        .is_none());
+        assert_eq!(label.anchor.completed_at, anchor.completed_at);
     }
     #[test]
     fn presentation_timestamp_toggle_keeps_status_duration_and_metadata() {

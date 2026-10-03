@@ -16,11 +16,12 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v7.toml`
+Settings choices use the private, versioned `state/user-preferences-v8.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-6 preferences import only when both version-7 snapshots are absent;
+Version-7 preferences import only when both version-8 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 7 adds inline table appearance; version 6 added connected tag shapes. Older files remain unchanged
+Version 8 adds command timestamp appearance; version 7 added inline table appearance.
+Version 6 added connected tag shapes. Older files remain unchanged
 for rollback; corrupt or future current snapshots do not fall back to older files.
 `AUTOMEXIA_CONFIG_HOME` replaces the complete root. `AUTOMEXIA_LOG_LEVEL`
 overrides the configured log level. For v0.4 only, `RIO_CONFIG_HOME` is a
@@ -317,6 +318,42 @@ command-timestamps = true
 | `presentation.output-highlighting` | `true` | Color detected logs and general statuses, independently of command backgrounds and Kubernetes. |
 | `presentation.kubernetes-highlighting` | `true` | Color recognized Kubernetes readiness and status rows in Customizations → Kubernetes status colors. |
 | `presentation.command-timestamps` | `true` | Show completion timestamps. Disabling this keeps exit status, duration and terminal-owned command metadata. |
+
+**Command timestamps** customizes the date, time and result independently. Each
+can appear before/after the tags or on a row above/below them, aligned left or
+right. Components in the same position follow the selected order and separators.
+Verified command-information rows wrap without changing terminal text or copied
+output. Legacy anchors without a verified blank row keep a safe right-hand lane;
+if the clock cannot fit there, only the enabled result details are shown.
+
+Optional overrides under `[presentation.timestamps]`:
+
+| Key | Default | Values / effect |
+|---|---|---|
+| `date-format` | `"year-month-day"` | `"year-month-day"`, `"day-month-year"`, `"month-day-year"`, `"day-month-name"`, `"month-name-day"`, `"hidden"`. Named months use English. |
+| `date-separator` | `"dash"` | `"dash"`, `"slash"`, `"dot"`, `"space"`; numeric dates only. |
+| `time-format` | `"24-hour"` | `"24-hour"`, `"12-hour"` with AM/PM, or `"hidden"`. |
+| `precision` | `"seconds"` | `"minutes"`, `"seconds"`, `"milliseconds"`. |
+| `timezone` | `"recorded"` | Local calendar values captured at completion, or `"utc"` derived from that completion's epoch. No live timezone lookup. |
+| `weekday` | `false` | Prefix the date with the English weekday. |
+| `zone-label` | `false` | Append UTC or the captured local offset; follows the date if time is hidden. |
+| `date-position`, `time-position`, `result-position` | `"right"` | Independently choose `"left"`, `"right"`, `"above-left"`, `"above-right"`, `"below-left"`, `"below-right"`. |
+| `order` | `"result-date-time"` | Any of the six permutations of `result`, `date`, `time`, joined with hyphens. |
+| `separator` | `"dot"` | `"dot"`, `"space"`, `"pipe"`, `"dash"` between result and clock components sharing a position. |
+| `date-time-separator` | `"space"` | The same choices, between adjacent date and time. |
+| `show-status`, `show-duration` | `true` | Independent visibility; unknown status uses a neutral symbol and missing duration reads `done`. |
+| `show-exit-code` | `false` | Show the shell's reported numeric exit code; `?` means unavailable. |
+| `duration-format` | `"auto"` | `"auto"`, `"milliseconds"`, `"seconds"`, `"clock"` (hours:minutes:seconds.milliseconds). |
+| `size` | `"normal"` | `"small"`, `"normal"`, `"large"`, relative to information-tag text. |
+| `bold` | `false` | Emphasize completion text. |
+| `status-colors` | `true` | Follow the theme's success/failure/unknown accents; false follows normal text. |
+| `date-color`, `time-color`, `result-color` | inherited | Independent `#RRGGBB` overrides. Reset removes the UI override. |
+| `background` | transparent | Label-only `#RRGGBBAA`; the UI also exposes opacity from 0% to 100%. |
+
+Date/time visibility does not erase captured command metadata or appearance
+choices. Result controls remain independent of the date/time switch. Label colors
+and backgrounds do not change command-output, log, table or Kubernetes colors.
+The live sample uses the terminal's formatter, layout and text styling.
 
 Open **Inline tables** to choose solid, dashed, dotted, double or no borders,
 adjust their weight, and toggle the outer frame, row separators, column separators

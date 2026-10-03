@@ -16,7 +16,7 @@ use automexia_ui_model::information_bar::{
 use rio_backend::config::{
     presentation::{
         HighlightStyle, Rgb, Rgba, TableAppearance, TableBanding, TableBorderStyle,
-        TagStyle,
+        TagStyle, TimestampAppearance, TimestampDateFormat, TimestampPosition,
     },
     theme::AppearanceTheme,
     Config,
@@ -81,6 +81,12 @@ fn preference_child_write() {
                 command_timestamps: Some(false),
             },
             visual: VisualPreferences {
+                timestamps: TimestampAppearance {
+                    date_format: Some(TimestampDateFormat::DayMonthYear),
+                    time_position: Some(TimestampPosition::BelowRight),
+                    background: Some(Rgba::from_bytes([40, 50, 60, 128])),
+                    ..Default::default()
+                },
                 tables: TableAppearance {
                     border_style: Some(TableBorderStyle::Dotted),
                     banding: Some(TableBanding::Rows),
@@ -187,6 +193,18 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
     assert!(!effective.presentation.command_output_highlighting);
     assert!(effective.presentation.kubernetes_highlighting);
     assert!(!effective.presentation.command_timestamps);
+    assert_eq!(
+        effective.presentation.timestamps.date_format,
+        Some(TimestampDateFormat::DayMonthYear)
+    );
+    assert_eq!(
+        effective.presentation.timestamps.time_position,
+        Some(TimestampPosition::BelowRight)
+    );
+    assert_eq!(
+        effective.presentation.timestamps.background,
+        Some(Rgba::from_bytes([40, 50, 60, 128]))
+    );
     assert!(!effective.presentation.tags.enabled);
     assert_eq!(effective.presentation.tags.style, TagStyle::Plain);
     assert_eq!(
@@ -296,11 +314,11 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v7.toml");
+    let current = root.path().join("state/user-preferences-v8.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let original = std::fs::read_to_string(&current)
         .unwrap()
-        .replace("schema-version = 7", "schema-version = 4");
+        .replace("schema-version = 8", "schema-version = 4");
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

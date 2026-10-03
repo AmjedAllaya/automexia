@@ -1598,7 +1598,7 @@ $wallpaperConfig
             # Ordinary edits above may still be saving. Establish disk baseline
             # only after that receipt, then exercise the real temporary owner.
             $roster = Wait-TagState { param($s) $s.settings.ready -and -not $s.settings.save_pending }
-            $preferencePath = Join-Path $configRoot 'state/user-preferences-v7.toml'
+            $preferencePath = Join-Path $configRoot 'state/user-preferences-v8.toml'
             if (-not (Test-Path -LiteralPath $preferencePath -PathType Leaf)) {
                 throw 'The native customization baseline was not saved'
             }

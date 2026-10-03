@@ -29,6 +29,7 @@ mod suggestion_text;
 pub mod suggestions;
 pub(crate) mod table_style;
 pub(crate) mod text_fit;
+pub(crate) mod timestamps;
 pub mod trail_cursor;
 pub(crate) mod ui_theme;
 pub mod utils;
@@ -2184,6 +2185,7 @@ impl Renderer {
                 ),
                 prefer_untagged: prefer_untagged_results,
                 show_timestamps: self.presentation.command_timestamps,
+                timestamps: self.presentation.timestamps,
                 background: self
                     .presentation
                     .command_output_highlighting
@@ -2216,6 +2218,7 @@ impl Renderer {
                         ),
                         prefer_untagged: prefer_untagged_results,
                         show_timestamps: self.presentation.command_timestamps,
+                        timestamps: self.presentation.timestamps,
                         background: self
                             .presentation
                             .command_output_highlighting

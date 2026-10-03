@@ -5,6 +5,8 @@ use crate::automexia::{
 };
 #[path = "settings_table_catalog.rs"]
 mod tables;
+#[path = "settings_timestamp_catalog.rs"]
+mod timestamps;
 use automexia_ui_model::settings::{
     self, Catalog, Change, CoreOrigins, CoreValues, Edit, SettingValue, SettingsError,
     ValueOrigin,
@@ -23,6 +25,9 @@ pub(crate) struct SlotPageSnapshot {
     tables: rio_backend::config::presentation::TableAppearance,
     table_base: rio_backend::config::presentation::TableAppearance,
     table_user: rio_backend::config::presentation::TableAppearance,
+    timestamps: rio_backend::config::presentation::TimestampAppearance,
+    timestamp_base: rio_backend::config::presentation::TimestampAppearance,
+    timestamp_user: rio_backend::config::presentation::TimestampAppearance,
     palette: Colors,
     foreground: [u8; 3],
     terminal_background: [f32; 4],
@@ -33,6 +38,14 @@ pub(crate) struct SlotPageSnapshot {
 }
 
 impl SlotPageSnapshot {
+    pub(crate) fn preview_timestamps(
+        &self,
+    ) -> (
+        rio_backend::config::presentation::TimestampAppearance,
+        Colors,
+    ) {
+        (self.timestamps, self.palette)
+    }
     pub(crate) fn preview_tables(
         &self,
     ) -> (rio_backend::config::presentation::TableAppearance, Colors) {
@@ -58,10 +71,6 @@ impl SlotPageSnapshot {
 
     pub(crate) fn preview_terminal_colors(&self) -> ([f32; 4], [f32; 4]) {
         (self.terminal_background, self.terminal_foreground)
-    }
-
-    pub(crate) fn preview_success_color(&self) -> [f32; 4] {
-        self.terminal_success
     }
 
     pub(crate) fn preview_command_colors(&self) -> [[f32; 4]; 3] {
@@ -91,6 +100,9 @@ pub(crate) fn slot_page_snapshot_with_config(
         tables: effective.presentation.tables,
         table_base: base.presentation.tables,
         table_user: preferences.visual.tables,
+        timestamps: effective.presentation.timestamps,
+        timestamp_base: base.presentation.timestamps,
+        timestamp_user: preferences.visual.timestamps,
         palette: effective.colors,
         foreground: [red, green, blue],
         terminal_background: effective.colors.background.0,
@@ -139,6 +151,45 @@ fn table_settings_catalog(
         &base.presentation.tables,
         &effective,
         &preferences.visual.tables,
+        palette,
+    )?;
+    append_opacity_controls(&mut rows)?;
+    Catalog::new(revision, rows)
+}
+
+pub(crate) fn timestamp_page_catalog(
+    full: &Catalog,
+    snapshot: &SlotPageSnapshot,
+) -> Result<Catalog, SettingsError> {
+    let mut rows = vec![full
+        .get(&settings::SettingId::new(settings::COMMAND_TIMESTAMPS)?)
+        .ok_or(SettingsError::UnknownSetting)?
+        .clone()];
+    rows[0].label = "Show date and time".into();
+    rows[0].description =
+        "Hide or show the clock; result controls below are independent.".into();
+    rows.extend(timestamps::descriptors(
+        &snapshot.timestamp_base,
+        &snapshot.timestamps,
+        &snapshot.timestamp_user,
+        &snapshot.palette,
+    )?);
+    append_opacity_controls(&mut rows)?;
+    Catalog::new(full.revision(), rows)
+}
+
+fn timestamp_settings_catalog(
+    revision: u64,
+    base: &Config,
+    preferences: &UserPreferences,
+    palette: &Colors,
+) -> Result<Catalog, SettingsError> {
+    let mut effective = base.presentation.timestamps;
+    preferences.visual.timestamps.overlay(&mut effective);
+    let mut rows = timestamps::descriptors(
+        &base.presentation.timestamps,
+        &effective,
+        &preferences.visual.timestamps,
         palette,
     )?;
     append_opacity_controls(&mut rows)?;
@@ -235,7 +286,8 @@ pub(crate) fn reset_customizations(
                 next.visual.tables = Default::default();
             }
             settings::COMMAND_TIMESTAMPS => {
-                next.presentation.command_timestamps = Some(true)
+                next.presentation.command_timestamps = Some(true);
+                next.visual.timestamps = Default::default();
             }
             settings::APPEARANCE_THEME => next.appearance_theme = None,
             settings::FONT_SIZE => next.font_size = None,
@@ -572,9 +624,14 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
         ),
         (
             "Command timestamps",
-            "Show command finish times.",
+            "Format and place date, time and command results.",
             settings::COMMAND_TIMESTAMPS,
-            ["time", "date", "clock", "completion"],
+            [
+                "time date format",
+                "position alignment",
+                "clock timezone",
+                "completion colors opacity",
+            ],
         ),
     ] {
         if let Some(group) = customization_group(
@@ -1002,6 +1059,9 @@ pub(crate) fn apply_edit_with_palette(
     } else if edit.id.as_str().starts_with("tables.") {
         table_settings_catalog(revision, base, preferences, palette)?
             .validate_edit(edit)?;
+    } else if edit.id.as_str().starts_with("timestamps.") {
+        timestamp_settings_catalog(revision, base, preferences, palette)?
+            .validate_edit(edit)?;
     } else {
         catalog_with_palette(revision, base, preferences, market, palette)?
             .validate_edit(edit)?;
@@ -1016,12 +1076,14 @@ pub(crate) fn apply_edit_with_palette(
         .filter(|(domain, _)| {
             matches!(
                 *domain,
-                "command_output" | "output" | "kubernetes" | "tables"
+                "command_output" | "output" | "kubernetes" | "tables" | "timestamps"
             )
         }) {
         let id = settings::SettingId::new(format!("{domain}.backgrounds.{status}"))?;
         let full = if domain == "tables" {
             table_settings_catalog(revision, base, preferences, palette)?
+        } else if domain == "timestamps" {
+            timestamp_settings_catalog(revision, base, preferences, palette)?
         } else {
             catalog_with_palette(revision, base, preferences, market, palette)?
         };
@@ -2268,7 +2330,7 @@ fn append_opacity_controls(
             Some(
                 visual_row(
                     &format!("{domain}.opacity.{status}"),
-                    if domain == "tables" {
+                    if matches!(domain, "tables" | "timestamps") {
                         format!("{} opacity (%)", row.label)
                     } else {
                         "Background opacity (%)".into()
@@ -2308,6 +2370,9 @@ fn apply_visual_edit(
     edit: &Edit,
 ) -> Result<bool, SettingsError> {
     if tables::apply(candidate, edit)? {
+        return Ok(true);
+    }
+    if timestamps::apply(candidate, edit)? {
         return Ok(true);
     }
     use crate::automexia::presentation::{

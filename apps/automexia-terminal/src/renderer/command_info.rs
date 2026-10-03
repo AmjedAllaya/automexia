@@ -1,11 +1,11 @@
 //! One layout authority for optional context and core completion information.
 
-use super::{command_results, devops_status, SemanticPaneRenderState};
+use super::{
+    command_results, devops_status, timestamps::TimestampText, SemanticPaneRenderState,
+};
 #[cfg(test)]
 use crate::automexia::ui::command_info::{pack, pack_with_layout};
-use crate::automexia::ui::command_info::{
-    pack_with_tag_joins, Band, CompletionLabel, Fragment, Label,
-};
+use crate::automexia::ui::command_info::{Band, CompletionLabel, Fragment, Label};
 use crate::automexia::ui::{CommandResultAnchor, PromptAnchor};
 use crate::context::renderable::RenderableContent;
 use automexia_ui_model::information_bar::{
@@ -20,7 +20,7 @@ struct Header {
     row: usize,
     prompt: Option<PromptAnchor>,
     result: Option<CommandResultAnchor>,
-    completion: String,
+    completion: TimestampText,
     band: Band,
     items: Vec<ResolvedBarItem>,
 }
@@ -133,6 +133,7 @@ pub(super) fn layout(
         content,
         sugarloaf.text_mut(),
         presentation.command_timestamps,
+        presentation.timestamps,
         recipe,
     );
     if let Some(status) = status {
@@ -168,6 +169,7 @@ fn prepare_with_recipe(
     content: &mut RenderableContent,
     text_engine: &mut rio_backend::sugarloaf::text::Text,
     show_timestamps: bool,
+    timestamp_appearance: rio_backend::config::presentation::TimestampAppearance,
     recipe: &BarRecipe,
 ) -> (bool, Vec<PromptPaint>) {
     let mut prompts = Vec::new();
@@ -197,7 +199,7 @@ fn prepare_with_recipe(
                         row,
                         prompt: None,
                         result: None,
-                        completion: String::new(),
+                        completion: TimestampText::default(),
                         band: Band::default(),
                         items: Vec::new(),
                     })
@@ -212,13 +214,16 @@ fn prepare_with_recipe(
                 row,
                 prompt: None,
                 result: None,
-                completion: String::new(),
+                completion: TimestampText::default(),
                 band: Band::default(),
                 items: Vec::new(),
             });
             header.result = Some(*anchor);
-            header.completion =
-                command_results::complete_result_label(anchor, show_timestamps);
+            header.completion = command_results::completion_text(
+                anchor,
+                show_timestamps,
+                timestamp_appearance,
+            );
         }
     }
     let metrics = devops_status::prompt_tag_metrics(height);
@@ -252,7 +257,7 @@ fn prepare_with_recipe(
         let available_width = (width - 12.0).max(1.0);
         let (padding, gap, break_before, trailing_start) =
             bar_layout_hints(recipe, &header.items, metrics, available_width);
-        let mut labels: Vec<_> = header
+        let labels: Vec<_> = header
             .items
             .iter()
             .map(|item| Label {
@@ -264,19 +269,17 @@ fn prepare_with_recipe(
                 align_end: false,
             })
             .collect();
-        if header.result.is_some() {
-            labels.push(Label {
-                text: &header.completion,
-                leading: 0.0,
-                padding: 0.0,
-                align_end: true,
-            });
-        }
         let options = DrawOpts {
             font_size: metrics.font_size,
             ..DrawOpts::default()
         };
-        if let Some(band) = pack_with_tag_joins(
+        let timestamp_options = DrawOpts {
+            font_size: metrics.font_size
+                * timestamp_appearance.size.unwrap_or_default().scale(),
+            bold: timestamp_appearance.bold.unwrap_or(false),
+            ..DrawOpts::default()
+        };
+        if let Some(band) = header.completion.pack(
             &labels,
             available_width,
             gap,
@@ -287,7 +290,16 @@ fn prepare_with_recipe(
                 metrics.height,
                 available_width,
             ),
-            |_, text| text_engine.measure(text, &options),
+            |completion, text| {
+                text_engine.measure(
+                    text,
+                    if completion {
+                        &timestamp_options
+                    } else {
+                        &options
+                    },
+                )
+            },
         ) {
             spans.push((header.row, band.rows));
             header.band = band;
@@ -341,7 +353,8 @@ fn prepare_with_recipe(
             anchor.y = project_y(anchor.y);
             CompletionLabel {
                 anchor,
-                text: header.completion,
+                text: header.completion.text,
+                spans: header.completion.spans,
                 fragments: Vec::new(),
             }
         });
@@ -387,8 +400,15 @@ fn prepare(
     show_timestamps: bool,
 ) -> (bool, Vec<(PromptAnchor, Fragment)>) {
     let recipe = automexia_ui_model::information_bar::preset_recipe(Default::default());
-    let (changed, paints) =
-        prepare_with_recipe(pane, status, content, text_engine, show_timestamps, &recipe);
+    let (changed, paints) = prepare_with_recipe(
+        pane,
+        status,
+        content,
+        text_engine,
+        show_timestamps,
+        Default::default(),
+        &recipe,
+    );
     (
         changed,
         paints
@@ -602,6 +622,7 @@ mod tests {
             &mut content,
             &mut text,
             true,
+            Default::default(),
             &recipe,
         );
         assert!(!paints.is_empty());
@@ -654,6 +675,7 @@ mod tests {
                 &mut content,
                 &mut text,
                 true,
+                Default::default(),
                 &visible,
             );
             let ids: std::collections::BTreeSet<_> = paints
@@ -1092,6 +1114,74 @@ mod tests {
                 assert_eq!(pane.command_results[0].completed_at, result.completed_at);
                 assert_eq!(pane.command_results[0].elapsed_ms, result.elapsed_ms);
                 assert_eq!(pane.command_results[0].exit_code, result.exit_code);
+            }
+        }
+    }
+
+    #[test]
+    fn timestamp_positions_recompose_real_prompt_bands_without_mutating_terminal_rows() {
+        use rio_backend::config::presentation::{TimestampAppearance, TimestampPosition};
+        let stream = b"\x1b]133;A;aid=1\x07 \r\n\x1b]133;P;k=c;aid=1\x07/work\r\n\x1b]133;P;k=c;aid=1\x07lambda one\x1b]133;B\x07\r\n\x1b]133;C\x07output\r\n\x1b]133;D;0\x07\x1b]133;A;aid=2\x07 \r\n\x1b]133;P;k=c;aid=2\x07/work\r\n\x1b]133;P;k=c;aid=2\x07lambda \x1b]133;B\x07";
+        for cols in [80, 24, 12, 80] {
+            let mut terminal = Crosswords::new(
+                CrosswordsSize::new(cols, 48),
+                rio_backend::ansi::CursorShape::Block,
+                VoidListener {},
+                WindowId::from(0),
+                0,
+                256,
+            );
+            let mut parser = Processor::default();
+            for chunk in stream.chunks(3) {
+                parser.advance(&mut terminal, chunk);
+            }
+            let mut content = RenderableContent::default();
+            let mut text_engine = rio_backend::sugarloaf::text::Text::new(&fonts());
+            text_engine.init_cpu();
+            let recipe =
+                automexia_ui_model::information_bar::preset_recipe(Default::default());
+            for position in TimestampPosition::ALL {
+                let mut pane = snapshot(&mut terminal, &mut content);
+                let mut status = devops_status::DevOpsStatus::default();
+                status.prepare_prompt_rows(
+                    &pane.session,
+                    true,
+                    &pane.historical_anchors,
+                    pane.live_anchor,
+                );
+                let source = content.visible_rows.clone();
+                let cursor = terminal.grid.cursor.pos;
+                let result = pane.command_results[0];
+                let appearance = TimestampAppearance {
+                    date_position: Some(*position),
+                    time_position: Some(TimestampPosition::BelowRight),
+                    result_position: Some(TimestampPosition::AboveLeft),
+                    ..Default::default()
+                };
+                let (_, prompts) = prepare_with_recipe(
+                    &mut pane,
+                    Some(&status),
+                    &mut content,
+                    &mut text_engine,
+                    true,
+                    appearance,
+                    &recipe,
+                );
+                assert!(!prompts.is_empty());
+                assert_eq!(pane.completion_labels.len(), 1);
+                let label = &pane.completion_labels[0];
+                let restored: String = label
+                    .fragments
+                    .iter()
+                    .map(|fragment| &label.text[fragment.bytes.clone()])
+                    .collect();
+                assert_eq!(restored, label.text);
+                assert!(restored.contains("2026-01-01"));
+                assert!(restored.contains("12:00:00"));
+                assert_eq!(content.visible_rows, source);
+                assert_eq!(terminal.grid.cursor.pos, cursor);
+                assert_eq!(pane.command_results[0].completed_at, result.completed_at);
+                assert_eq!(pane.command_results[0].key, result.key);
             }
         }
     }

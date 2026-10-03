@@ -2,11 +2,13 @@
 
 mod appearance;
 mod tables;
+mod timestamps;
 pub use appearance::{
     AppearanceValueError, CommandOutputAppearance, HighlightAppearance, HighlightColors,
     HighlightStyle, OpacityPercent, Rgb, Rgba, TagAppearance, TagColors, TagStyle,
 };
 pub use tables::{TableAppearance, TableBanding, TableBorderStyle, TableBorderWeight};
+pub use timestamps::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -23,6 +25,7 @@ pub struct Presentation {
     pub command_output: CommandOutputAppearance,
     pub kubernetes: HighlightAppearance,
     pub tables: TableAppearance,
+    pub timestamps: TimestampAppearance,
 }
 
 impl Default for Presentation {
@@ -38,6 +41,7 @@ impl Default for Presentation {
             command_output: CommandOutputAppearance::default(),
             kubernetes: HighlightAppearance::default(),
             tables: TableAppearance::default(),
+            timestamps: TimestampAppearance::default(),
         }
     }
 }
@@ -62,6 +66,7 @@ impl<'de> Deserialize<'de> for Presentation {
             command_output: CommandOutputAppearance,
             kubernetes: Option<HighlightAppearance>,
             tables: TableAppearance,
+            timestamps: TimestampAppearance,
         }
         impl Default for ConfigFields {
             fn default() -> Self {
@@ -77,6 +82,7 @@ impl<'de> Deserialize<'de> for Presentation {
                     command_output: base.command_output,
                     kubernetes: None,
                     tables: TableAppearance::default(),
+                    timestamps: TimestampAppearance::default(),
                 }
             }
         }
@@ -94,6 +100,23 @@ impl<'de> Deserialize<'de> for Presentation {
             command_output: fields.command_output,
             kubernetes: fields.kubernetes.unwrap_or(fields.highlight),
             tables: fields.tables,
+            timestamps: fields.timestamps,
         })
+    }
+}
+
+#[cfg(test)]
+mod timestamp_config_tests {
+    use super::*;
+
+    #[test]
+    fn command_timestamp_customization_config_is_admitted_and_round_trips() {
+        let source = "[timestamps]\ndate-format = 'day-month-year'\ntime-format = '12-hour'\ndate-position = 'above-left'\ntime-position = 'below-right'\nbackground = '#12345680'\n";
+        let parsed: Presentation =
+            toml::from_str(source).expect("timestamp appearance is configurable");
+        let encoded = toml::to_string(&parsed).unwrap();
+        assert!(encoded.contains("date-format = \"day-month-year\""));
+        assert!(encoded.contains("time-position = \"below-right\""));
+        assert_eq!(toml::from_str::<Presentation>(&encoded).unwrap(), parsed);
     }
 }

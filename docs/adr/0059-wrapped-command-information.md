@@ -37,8 +37,8 @@ View state is neither persisted nor shared between panes or tabs.
 
 ## Resource and trust boundaries
 
-No dependency, filesystem access, provider request, worker, timer or persistence
-is added. Labels are bounded to 16 items and 1,024 bytes each, below which the
+The wrapping mechanism adds no filesystem access, provider request, worker or timer.
+Labels are bounded to 16 tags and three completion groups, 1,024 bytes each, below which the
 existing contribution validation still applies. Geometry must be finite.
 Grapheme splitting always advances; an indivisible glyph wider than the usable
 line scales down. Prefix storage is bounded by 65,535 native display rows and
@@ -67,5 +67,27 @@ claiming accessibility certification. Native buffer coordinates remain distinct
 from display layout, also illustrated by the
 [xterm.js buffer contract](https://xtermjs.org/docs/api/terminal/interfaces/ibuffer/).
 
-Rollback removes the application projection and restores the earlier painters;
-there is no schema, profile, history or credential migration to undo.
+## Configurable completion presentation
+
+The backend's optional `TimestampAppearance` is the typed configuration contract.
+The application uses a lazy settings catalogue, keeping the main catalogue's
+extension capacity unchanged. Its v8 preference overlay imports strict v7 records
+only when both current snapshots are absent; predecessors remain unchanged for
+rollback. Invalid or future snapshots cannot be overwritten by migration.
+
+`renderer/timestamps.rs` supplies pure formatting, component placement and text
+paint to both the terminal and settings preview. Date, time and result form at
+most three groups in six bounded positions. The existing band projection remains
+the only coordinate owner. Metadata never joins tag shapes or changes captured
+completion identity, native cells, copied output or highlight ownership. Unproven
+legacy rows retain a bounded right-hand fallback, using the same formatting and
+style, and omit the clock when it cannot fit safely.
+
+Calendar conversion and weekday calculation use the already reviewed workspace
+`time` dependency with its existing features. No locale, timezone database or OS
+clock lookup runs on the renderer path. Recorded local fields retain their
+execution-time meaning; UTC derives from the stored epoch. Invalid calendar values
+omit date/time instead of panicking. Preset formats bound both work and output.
+
+Rollback may retain v8 files while an older binary reads the unchanged v7 pair.
+The terminal's semantic timestamps and shell protocol do not need migration.

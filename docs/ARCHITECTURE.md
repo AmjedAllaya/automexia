@@ -295,6 +295,12 @@ and copied output remain unchanged. Unexpanded frames have an allocation-free
 identity map. See [ADR 0059](adr/0059-wrapped-command-information.md) for limits,
 ownership, compatibility and validation boundaries.
 
+Completion date/time/result appearance is typed in backend presentation config.
+The app's timestamp formatter, band placement and text painter are shared by the
+terminal and live settings preview. Its lazy catalogue avoids reducing extension
+capacity, and the v8 preference overlay preserves strict read-only v7 migration.
+Calendar conversion uses the existing workspace `time` crate without renderer I/O.
+
 ## VT control-string trust boundary
 
 The existing Kitty image ingress retains received bytes only. Declared transfer

@@ -52,7 +52,7 @@ fn shape_v6_never_hides_corrupt_or_future_current_data_with_v5() {
     for current in [PRIMARY_FILE, PREVIOUS_FILE] {
         for bytes in [
             b"schema-version = 99\n".as_slice(),
-            b"schema-version = 7\nunknown = true\n",
+            b"schema-version = 8\nunknown = true\n",
         ] {
             let root = tempfile::tempdir().unwrap();
             fixture(
@@ -111,7 +111,7 @@ fn new_shapes_cannot_be_smuggled_into_legacy_v4_or_v5_records() {
         for version in [4, 5] {
             let root = tempfile::tempdir().unwrap();
             let old = current
-                .replace("schema-version = 7", &format!("schema-version = {version}"));
+                .replace("schema-version = 8", &format!("schema-version = {version}"));
             fixture(
                 root.path(),
                 &format!("user-preferences-v{version}.toml"),

@@ -2822,12 +2822,118 @@ fn timestamp_preview_uses_the_runtime_status_duration_separator_spacing() {
 }
 
 #[test]
+fn timestamp_menu_edits_refresh_preview_keep_focus_and_confirm_resets() {
+    use rio_backend::config::presentation::*;
+    let base = rio_backend::config::Config::default();
+    let mut original = crate::automexia::preferences::UserPreferences::default();
+    original.visual.timestamps.date_position = Some(TimestampPosition::AboveLeft);
+    original.visual.timestamps.time_position = Some(TimestampPosition::BelowRight);
+    original.visual.timestamps.date_color = Some(Rgb::from_bytes([255, 190, 70]));
+    original.visual.timestamps.time_color = Some(Rgb::from_bytes([30, 210, 255]));
+    original.visual.timestamps.background = Some(Rgba::from_bytes([70, 90, 110, 90]));
+    for (width, height, scale) in [
+        (960.0, 620.0, 1.0),
+        (640.0, 480.0, 1.25),
+        (1280.0, 800.0, 2.0),
+    ] {
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &original, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &original,
+                &original.apply_to(&base),
+                &base,
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(COMMAND_TIMESTAMPS).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(view.title(), "Command timestamps");
+        assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 26);
+        let id = SettingId::new("timestamps.time-format").unwrap();
+        assert!(view.view.as_mut().unwrap().focus(&id));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::ArrowRight);
+        let edit = view.take_edit().unwrap();
+        assert_eq!(edit.id, id);
+        assert_eq!(
+            edit.change,
+            Change::Set(SettingValue::Choice("12-hour".into()))
+        );
+        let changed =
+            crate::settings_catalog::apply_edit(1, &base, &original, &[], &edit).unwrap();
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(2, &base, &changed, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &changed,
+                &changed.apply_to(&base),
+                &base,
+            )),
+        );
+        assert_eq!(view.title(), "Command timestamps");
+        assert!(timestamp_preview::sample_text(
+            changed.visual.timestamps,
+            true,
+            Some(0),
+            Some(104)
+        )
+        .text
+        .contains("PM"));
+        let mut raster = Raster::new(scale);
+        view.paint(&mut raster, theme());
+        let (w, h) = ((width * scale) as u32, (height * scale) as u32);
+        let pixels = raster.pixels(w, h, true);
+        if let Some(directory) = std::env::var_os("AUTOMEXIA_SETTINGS_PREVIEW_DIR") {
+            let directory = std::path::PathBuf::from(directory);
+            std::fs::create_dir_all(&directory).unwrap();
+            image_rs::RgbImage::from_fn(w, h, |x, y| {
+                let pixel = pixels[(y * w + x) as usize];
+                image_rs::Rgb([(pixel >> 16) as u8, (pixel >> 8) as u8, pixel as u8])
+            })
+            .save(directory.join(format!("timestamps-{w}x{h}.png")))
+            .unwrap();
+        }
+        view.activate_target(Target::Reset);
+        assert!(view.confirmation.is_some());
+        named(&mut view, NamedKey::Escape);
+        assert!(view.take_customization_intent().is_none());
+        view.activate_target(Target::Reset);
+        confirm_requested_settings_action(&mut view);
+        assert_eq!(
+            view.take_customization_intent(),
+            Some(CustomizationIntent::Reset {
+                revision: 2,
+                scope: CustomizationResetScope::Group(
+                    SettingId::new(COMMAND_TIMESTAMPS).unwrap()
+                )
+            })
+        );
+        view.set_temporary_customizations(true);
+        view.activate_target(Target::Restore);
+        confirm_requested_settings_action(&mut view);
+        assert_eq!(
+            view.take_customization_intent(),
+            Some(CustomizationIntent::RestoreSaved)
+        );
+        named(&mut view, NamedKey::Escape);
+        assert_eq!(view.title(), "Customizations");
+    }
+}
+
+#[test]
 fn timestamp_preview_paints_the_effective_terminal_success_accent() {
     let mut base = rio_backend::config::Config::default();
     base.colors.green = [1.0, 0.0, 1.0, 1.0];
     let preferences = crate::automexia::preferences::UserPreferences::default();
     let snapshot = crate::settings_catalog::slot_page_snapshot(&preferences, &base);
-    assert_eq!(snapshot.preview_success_color(), base.colors.green);
+    assert_eq!(snapshot.preview_timestamps().1.green, base.colors.green);
     let mut view = SettingsView::default();
     view.fit(960.0, 620.0, 16.0);
     view.open_customizations_with_slots(

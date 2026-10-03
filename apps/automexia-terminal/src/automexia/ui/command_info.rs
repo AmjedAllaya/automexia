@@ -5,8 +5,8 @@ use std::ops::Range;
 use unicode_segmentation::UnicodeSegmentation;
 
 // A validated recipe contributes at most 16 slots; a command-completion label
-// may share its semantic row without silently dropping the final slot.
-const MAX_ITEMS: usize = 17;
+// shares its semantic row with up to three independently placed completion parts.
+const MAX_ITEMS: usize = 19;
 const MAX_LABEL_BYTES: usize = 1024;
 
 pub struct Label<'a> {
@@ -41,6 +41,20 @@ pub struct CompletionLabel {
     pub anchor: super::CommandResultAnchor,
     pub text: String,
     pub fragments: Vec<Fragment>,
+    pub spans: Vec<CompletionSpan>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum CompletionPart {
+    Result,
+    Date,
+    Time,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CompletionSpan {
+    pub bytes: Range<usize>,
+    pub part: CompletionPart,
 }
 
 /// Pack all source bytes without an ellipsis or a hidden-item list. The usual
@@ -120,7 +134,13 @@ pub fn pack_with_tag_joins(
         }
         if trailing_start == Some(item) {
             let mut trailing_width = 0.0;
-            for (offset, trailing) in labels[item..].iter().enumerate() {
+            let end = break_before
+                .iter()
+                .copied()
+                .filter(|index| *index > item)
+                .min()
+                .unwrap_or(labels.len());
+            for (offset, trailing) in labels[item..end].iter().enumerate() {
                 let measured = measure(item + offset, trailing.text);
                 if !measured.is_finite() || measured < 0.0 {
                     return None;
@@ -128,7 +148,7 @@ pub fn pack_with_tag_joins(
                 let padding = trailing.padding.min(width * 0.08);
                 let leading = trailing.leading.min(width * 0.3);
                 trailing_width += padding * 2.0 + leading + measured;
-                if offset + 1 < labels.len() - item {
+                if offset + 1 < end - item {
                     trailing_width += gap;
                     if !trailing.align_end && !labels[item + offset + 1].align_end {
                         trailing_width -= overlap.min(padding).min(width * 0.08);
@@ -145,7 +165,9 @@ pub fn pack_with_tag_joins(
         }
         if x > 0.0 && trailing_start != Some(item) && !label.align_end {
             if let Some(previous) = band.fragments.last().filter(|fragment| {
-                fragment.row == row && !labels[fragment.item].align_end
+                fragment.row == row
+                    && !labels[fragment.item].align_end
+                    && fragment.padding > 0.0
             }) {
                 x -= overlap
                     .min(label.padding)
@@ -261,6 +283,8 @@ pub fn pack_with_tag_joins(
             current.row != previous.row
                 || labels[current.item].align_end
                 || labels[previous.item].align_end
+                || labels[current.item].padding == 0.0
+                || labels[previous.item].padding == 0.0
                 || (current.item != previous.item && trailing_start == Some(current.item))
         };
         let first =
