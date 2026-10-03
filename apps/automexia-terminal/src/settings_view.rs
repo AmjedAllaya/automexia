@@ -37,6 +37,8 @@ mod table_preview;
 mod theme_gallery;
 #[path = "settings_timestamp_preview.rs"]
 mod timestamp_preview;
+#[path = "settings_window_controls_preview.rs"]
+mod window_controls_preview;
 use theme_gallery::{Gallery, GalleryTarget};
 pub(crate) use theme_gallery::{ThemeContext, ThemeIntent};
 
@@ -699,6 +701,9 @@ impl SettingsView {
             "pointer": self.pointer, "pressed": self.pressed.is_some(),
             "devops_detection": self.preview_bool(crate::automexia::settings_extensions::DEVOPS_CONTEXT_STATUS_ID),
             "targets": targets, "controls": controls,
+            "window_controls_style": self.customizations.as_ref().and_then(|n| n.slot_pages.as_ref())
+                .map(|snapshot| snapshot.preview_window_controls().0.style.unwrap_or_default().id()),
+            "preview_bounds": self.geometry.preview.array(),
             "search_button": self.geometry.search.array(),
             "search_bytes": self.query().len(),
             "close_button": self.geometry.close.array(),
@@ -5252,6 +5257,9 @@ impl SettingsView {
             Some(automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING) => {
                 self.paint_kubernetes_preview(canvas, sample, theme, &mut interactive)
             }
+            Some(crate::settings_catalog::WINDOW_CONTROLS) => {
+                self.paint_window_controls_preview(canvas, sample, theme);
+            }
             Some(automexia_ui_model::settings::INLINE_TABLES) => {
                 self.paint_table_preview(canvas, sample, theme)
             }
@@ -6604,6 +6612,12 @@ fn detail_catalog_with_slots(
     group: &CustomizationGroup,
     snapshot: Option<&SlotPageSnapshot>,
 ) -> Option<Catalog> {
+    if group.key.as_str() == crate::settings_catalog::WINDOW_CONTROLS {
+        if let Some(snapshot) = snapshot {
+            return crate::settings_catalog::window_controls_page_catalog(full, snapshot)
+                .ok();
+        }
+    }
     if group.key.as_str() == automexia_ui_model::settings::FONT_SIZE {
         if let Some(snapshot) = snapshot {
             return crate::settings_catalog::font_page_catalog(full, snapshot).ok();

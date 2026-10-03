@@ -9,6 +9,9 @@ mod fonts;
 mod tables;
 #[path = "settings_timestamp_catalog.rs"]
 mod timestamps;
+#[path = "settings_window_controls_catalog.rs"]
+mod window_controls;
+pub(crate) const WINDOW_CONTROLS: &str = "window-controls.style";
 
 use automexia_ui_model::settings::{
     self, Catalog, Change, CoreOrigins, CoreValues, Edit, SettingValue, SettingsError,
@@ -29,6 +32,9 @@ pub(crate) struct SlotPageSnapshot {
     tables: rio_backend::config::presentation::TableAppearance,
     table_base: rio_backend::config::presentation::TableAppearance,
     table_user: rio_backend::config::presentation::TableAppearance,
+    controls: rio_backend::config::presentation::WindowControlsAppearance,
+    controls_base: rio_backend::config::presentation::WindowControlsAppearance,
+    controls_user: rio_backend::config::presentation::WindowControlsAppearance,
     timestamps: rio_backend::config::presentation::TimestampAppearance,
     timestamp_base: rio_backend::config::presentation::TimestampAppearance,
     timestamp_user: rio_backend::config::presentation::TimestampAppearance,
@@ -42,6 +48,14 @@ pub(crate) struct SlotPageSnapshot {
 }
 
 impl SlotPageSnapshot {
+    pub(crate) fn preview_window_controls(
+        &self,
+    ) -> (
+        rio_backend::config::presentation::WindowControlsAppearance,
+        Colors,
+    ) {
+        (self.controls, self.palette)
+    }
     pub(crate) fn preview_fonts(
         &self,
     ) -> (&rio_backend::sugarloaf::font::SugarloafFonts, f32, Colors) {
@@ -110,6 +124,9 @@ pub(crate) fn slot_page_snapshot_with_config(
         tables: effective.presentation.tables,
         table_base: base.presentation.tables,
         table_user: preferences.visual.tables,
+        controls: effective.presentation.window_controls,
+        controls_base: base.presentation.window_controls,
+        controls_user: preferences.visual.window_controls,
         timestamps: effective.presentation.timestamps,
         timestamp_base: base.presentation.timestamps,
         timestamp_user: preferences.visual.timestamps,
@@ -129,6 +146,22 @@ pub(crate) fn slot_page_snapshot(
     effective: &Config,
 ) -> SlotPageSnapshot {
     slot_page_snapshot_with_config(preferences, effective, &Config::default())
+}
+
+pub(crate) fn window_controls_page_catalog(
+    full: &Catalog,
+    snapshot: &SlotPageSnapshot,
+) -> Result<Catalog, SettingsError> {
+    Catalog::new(
+        full.revision(),
+        window_controls::descriptors(
+            snapshot.controls_base,
+            snapshot.controls,
+            snapshot.controls_user,
+            &snapshot.palette,
+            snapshot.controls.style.unwrap_or_default(),
+        )?,
+    )
 }
 
 pub(crate) fn table_page_catalog(
@@ -328,6 +361,9 @@ pub(crate) fn reset_customizations(
             settings::APPEARANCE_THEME => {
                 next.appearance_theme = None;
                 next.theme_selection = None;
+            }
+            WINDOW_CONTROLS => {
+                next.visual.window_controls = Default::default();
             }
             settings::FONT_SIZE => {
                 next.font_size = None;
@@ -696,6 +732,16 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
             "Browse, preview and customize theme palettes.",
             settings::APPEARANCE_THEME,
             ["light", "dark", "system"],
+        ),
+        (
+            "Window controls",
+            "Choose a button style and customize its appearance.",
+            WINDOW_CONTROLS,
+            [
+                "minimize maximize restore close",
+                "buttons glass circles outline",
+                "size spacing colors opacity",
+            ],
         ),
         (
             "Fonts",
@@ -1105,6 +1151,10 @@ pub(crate) fn apply_edit_with_palette(
             base,
         );
         slot_page_catalog(revision, &snapshot, slot_id)?.validate_edit(edit)?;
+    } else if edit.id.as_str().starts_with("window-controls.") {
+        window_controls::catalog(revision, base, preferences, palette, edit.id.as_str())?
+            .validate_edit(edit)?;
+        return window_controls::apply(base, preferences, edit, palette);
     } else if edit.id.as_str().starts_with("tables.") {
         table_settings_catalog(revision, base, preferences, palette)?
             .validate_edit(edit)?;
@@ -1956,6 +2006,11 @@ fn visual_descriptors(
         TAG_COLOR_BINDINGS,
     };
     let mut rows = Vec::with_capacity(48);
+    rows.push(window_controls::style_row(
+        base.presentation.window_controls,
+        effective.presentation.window_controls,
+        preferences.visual.window_controls,
+    )?);
     let mut enabled = visual_row(
         presentation::TAG_ENABLED,
         "Show information tags".into(),
@@ -3396,7 +3451,7 @@ mod tests {
         let snapshot = catalog(7, &base, &preferences, &installed()).unwrap();
         assert!(snapshot.entries().len() <= settings::MAX_SETTINGS);
         let groups = customization_groups(&snapshot);
-        assert_eq!(groups.len(), 7);
+        assert_eq!(groups.len(), 8);
         let actions = tag_actions(&preferences, &base);
         assert_eq!(actions.len(), 13);
         assert!(actions
@@ -4337,7 +4392,7 @@ mod tests {
         );
         assert!(groups.iter().all(|group| group.label != "DevOps detection"));
         assert!(groups.iter().all(|group| group.label != "Git branch tag"));
-        assert_eq!(groups.len(), 7);
+        assert_eq!(groups.len(), 8);
         assert_eq!(tag_actions(&prefs, &base).len(), 13);
         assert_eq!(groups[0].members[0].as_str(), "tags.enabled");
         assert_eq!(
@@ -4474,7 +4529,7 @@ mod tests {
 
         let without_extension = catalog(8, &base, &prefs, &[]).unwrap();
         let groups = customization_groups(&without_extension);
-        assert_eq!(groups.len(), 7);
+        assert_eq!(groups.len(), 8);
         assert!(groups.iter().all(|group| {
             group.key.as_str() != settings_extensions::DEVOPS_CONTEXT_STATUS_ID
                 && group.key.as_str() != settings_extensions::DEVOPS_GIT_STATUS_ID
@@ -5703,5 +5758,17 @@ mod fonts_entry_regression {
             .find(|g| g.key.as_str() == settings::FONT_SIZE)
             .unwrap();
         assert_eq!(group.label, "Fonts");
+    }
+}
+
+#[cfg(test)]
+mod window_controls_entry_regression {
+    use super::*;
+    #[test]
+    fn window_controls_have_a_discoverable_customization_page() {
+        let catalog =
+            catalog(1, &Config::default(), &UserPreferences::default(), &[]).unwrap();
+        let groups = customization_groups(&catalog);
+        assert!(groups.iter().any(|g| g.label == "Window controls"));
     }
 }

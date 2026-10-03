@@ -129,6 +129,55 @@ function Test-AutomexiaThemeGallery {
         Send-AutomexiaTestControl ('open-customizations:' + [guid]::NewGuid().ToString('N'))
         $null = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.open}
         $null = Capture-ThemeSurface 'customizations'
+        $script:testStage = 'window control styles ' + $Name
+        function Open-WindowControls {
+            Send-AutomexiaTestControl ('open-customizations:' + [guid]::NewGuid().ToString('N'))
+            $root = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.open -and $null -eq $s.settings.active_category}
+            Click-Theme $root.settings.search_button
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window,0x41,$false,$true,$false)) { throw 'Caption search selection failed' }
+            foreach ($key in @(0x57,0x49,0x4E,0x44,0x4F,0x57)) { Theme-Key $key }
+            $root = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.search_bytes -eq 6 -and @($s.settings.controls | Where-Object id -eq 'window-controls.style').Count -eq 1}
+            Click-Theme ($root.settings.controls | Where-Object id -eq 'window-controls.style').bounds
+            return Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.active_category -eq 'window-controls.style'}
+        }
+        $page = Open-WindowControls
+        $digests = [Collections.Generic.HashSet[string]]::new()
+        foreach ($style in @('soft','glass','outline','circles')) {
+            for ($attempt=0; $attempt -lt 4 -and $page.settings.window_controls_style -ne $style; $attempt++) {
+                Click-Theme ($page.settings.controls | Where-Object id -eq 'window-controls.style').bounds
+                $prior = $page.settings.window_controls_style
+                $page = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.window_controls_style -ne $prior}
+            }
+            if ($page.settings.window_controls_style -ne $style) { throw 'Caption style did not apply' }
+            $null = Capture-ThemeSurface ('window-controls-'+$style)
+            $preview=@($page.settings.preview_bounds)
+            Click-Theme @($preview[0],($preview[1]+40),[Math]::Min(140,$preview[2]),38)
+            $page=Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.active_category -eq 'window-controls.style' -and -not $s.confirm_quit_active}
+            # Settings is opaque and covers the caption. Close it to verify the
+            # real buttons rather than sampling the overlay's unchanged surface.
+            Click-Theme $page.settings.close_button
+            $null = Wait-ThemeState {param($s) -not $s.settings.open}
+            $bitmap = [Drawing.Bitmap]::new((Capture-ThemeSurface ('window-controls-'+$style+'-titlebar')))
+            try {
+                # Only the real title-bar buttons: preview text cannot satisfy this oracle.
+                $bytes = [Collections.Generic.List[byte]]::new()
+                for ($py=4; $py -lt [int](38*$scale); $py++) {
+                    for ($px=$bitmap.Width-[int](126*$scale); $px -lt $bitmap.Width-2; $px++) {
+                        $pixel=$bitmap.GetPixel($px,$py)
+                        $bytes.Add($pixel.R); $bytes.Add($pixel.G); $bytes.Add($pixel.B)
+                    }
+                }
+                $sha=[Security.Cryptography.SHA256]::Create()
+                try { $digest=[Convert]::ToBase64String($sha.ComputeHash($bytes.ToArray())) } finally { $sha.Dispose() }
+                if (-not $digests.Add($digest)) { throw 'Caption style did not change actual title-bar pixels' }
+            } finally { $bitmap.Dispose() }
+            $page = Open-WindowControls
+        }
+        # Return the disposable fixture to Soft before unrelated theme scenarios.
+        Click-Theme ($page.settings.controls | Where-Object id -eq 'window-controls.style').bounds
+        $null=Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.window_controls_style -eq 'soft'}
+        Theme-Key 0x1B
+        $null=Wait-ThemeState {param($s) $s.settings.ready -and $null -eq $s.settings.active_category}
         Theme-Key 0x1B
         $null = Wait-ThemeState {param($s) -not $s.settings.open}
         Send-AutomexiaTestControl ('confirm-quit:' + [guid]::NewGuid().ToString('N'))
@@ -148,7 +197,7 @@ function Test-AutomexiaThemeGallery {
         $null = Wait-ThemeState {param($s) -not $s.search_active}
     }
     function Preference-Text {
-        $path = Join-Path $configRoot 'state/user-preferences-v10.toml'
+        $path = Join-Path $configRoot 'state/user-preferences-v11.toml'
         for ($attempt = 0; $attempt -lt 80; $attempt++) {
             $stream = $null
             $reader = $null

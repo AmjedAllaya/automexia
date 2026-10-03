@@ -241,6 +241,11 @@ owns temporary window preview and durable Apply; a bounded theme-library worker
 owns scanning, validated import, canonical export and duplicate-copy writes.
 See [ADR 0088](adr/0088-theme-gallery-and-preview-transactions.md).
 
+Version-11 preferences add four bounded caption-style profiles while preserving
+version-10 rollback snapshots. The existing island caption painter also draws
+nonexecuting Settings previews; the screen's native action owner and hit slots
+remain unchanged. See [ADR 0089](adr/0089-window-control-style-profiles.md).
+
 Version-9 preferences add typed font/color overrides and import strict version-8
 snapshots only when the new pair is absent. See
 [the font customization decision](adr/0087-font-customization-and-resource-preparation.md).

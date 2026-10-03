@@ -1564,6 +1564,105 @@ fn table_preview_uses_saved_appearance_and_ignores_status_switches() {
 }
 
 #[test]
+fn window_controls_preview_is_bounded_nonexecuting_and_keyboard_editable() {
+    use crate::settings_catalog::WINDOW_CONTROLS;
+    use rio_backend::config::presentation::WindowControlStyle;
+    let base = rio_backend::config::Config::default();
+    for (width, height) in [(960.0, 620.0), (580.0, 520.0)] {
+        let mut prefs = crate::automexia::preferences::UserPreferences::default();
+        let mut view = SettingsView::default();
+        view.fit(width, height, 16.0);
+        view.open_customizations_with_slots(
+            crate::settings_catalog::catalog(1, &base, &prefs, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &prefs, &base, &base,
+            )),
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(WINDOW_CONTROLS).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::Enter);
+        assert_eq!(
+            view.customizations
+                .as_ref()
+                .unwrap()
+                .active_key
+                .as_ref()
+                .unwrap()
+                .as_str(),
+            WINDOW_CONTROLS
+        );
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new(WINDOW_CONTROLS).unwrap()));
+        view.focus = Focus::List;
+        named(&mut view, NamedKey::ArrowRight);
+        let edit = view.take_edit().unwrap();
+        assert_eq!(
+            edit.change,
+            Change::Set(SettingValue::Choice("glass".into()))
+        );
+        prefs =
+            crate::settings_catalog::apply_edit(1, &base, &prefs, &[], &edit).unwrap();
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(2, &base, &prefs, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                &prefs,
+                &prefs.apply_to(&base),
+                &base,
+            )),
+        );
+        assert_eq!(
+            prefs.visual.window_controls.style,
+            Some(WindowControlStyle::Glass)
+        );
+        let mut raster = Raster::new(1.25);
+        view.paint(&mut raster, theme());
+        assert!(
+            view.preview_targets.is_empty(),
+            "caption samples never become window-action targets"
+        );
+        assert!(view.take_edit().is_none());
+        for sample in [
+            Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 150.0,
+                height: 74.0,
+            },
+            Rect {
+                x: 10.0,
+                y: 10.0,
+                width: 400.0,
+                height: 560.0,
+            },
+        ] {
+            let mut raster = Raster::new(1.25);
+            view.paint_window_controls_preview(&mut raster, sample, theme());
+            assert!(!raster.shapes.is_empty());
+            for ([x, y, w, h], _) in raster.rects {
+                assert!(
+                    x >= sample.x
+                        && y >= sample.y
+                        && x + w <= sample.x + sample.width + 0.01
+                        && y + h <= sample.y + sample.height + 0.01
+                );
+            }
+        }
+        named(&mut view, NamedKey::Escape);
+        assert!(view.is_open());
+        assert!(view.customizations.as_ref().unwrap().active_key.is_none());
+    }
+}
+
+#[test]
 fn inline_table_menu_keyboard_edits_refresh_preview_and_survive_layout_changes() {
     use rio_backend::config::presentation::{Rgba, TableBanding};
     let base = rio_backend::config::Config::default();
@@ -3192,7 +3291,7 @@ fn menu_polish_page_keys_follow_the_visible_compact_rows() {
     named(&mut view, NamedKey::PageDown);
     assert_eq!(
         view.view.as_ref().unwrap().focused().unwrap().as_str(),
-        automexia_ui_model::settings::FONT_SIZE,
+        crate::settings_catalog::WINDOW_CONTROLS,
         "a page should advance past the six visible compact entries"
     );
 }

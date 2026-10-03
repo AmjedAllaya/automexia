@@ -472,6 +472,9 @@ Static glass additionally requires finite/tiny geometry bounds, at most four
 primitives per plate, opaque resolved fills, upper-only caption reflections and
 unchanged configured table colors. Verify shared spacing/hit metrics across
 densities and scales, including active/hover/pressed/unfocused controls.
+Caption style profiles also require per-style config/UI roundtrips, strict v11
+migration with unchanged predecessor bytes, nonexecuting responsive previews,
+contrast on custom fills, and real title-bar pixel differences for all four styles.
 
 Command-result row bands require parser-created Kubernetes, container and generic
 table fixtures, Unicode/wrapped rows, retained selection/copy and scroll/resize

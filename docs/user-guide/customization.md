@@ -119,6 +119,16 @@ colors and source ANSI/status colors keep their existing precedence. Table text
 uses the terminal font baseline, preserving descenders beside dense borders.
 Turning inline tables off keeps your choices for when you enable them again.
 
+**Window controls** offers Soft, Glass, Outline and Circles for the title-bar
+buttons. Each style remembers its own size, spacing, icon size and weight, colors,
+background and border opacity, hover tint and inactive intensity. Soft, Glass and
+Outline also offer corner roundness. The live preview compares designs and shows
+hover, pressed/restore and inactive states when space allows; its buttons cannot
+minimize or close the window. Actual click targets remain unchanged. Colors follow
+the theme until edited, with readable icon contrast on custom fills. Reset default
+temporarily resets all four profiles; Restore saved returns to your saved choices.
+These options apply to Automexia's own title bar, not platform-native decorations.
+
 **Command timestamps** offers separate date and time formats, 12/24-hour clocks,
 precision, weekday and time-zone labels. Choose where the date, time and result
 appear independently: left/right of the tags, or above/below them. Change their
@@ -449,8 +459,8 @@ that value's saved override when no temporary preview is active.
 For a deliberate persistent reset, first close every Automexia instance. Back up
 and move only these snapshots out of the configuration root's `state/` directory:
 
-- `user-preferences-v10.toml` and `user-preferences-v10.previous.toml`;
-- any retained `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
+- `user-preferences-v11.toml` and `user-preferences-v11.previous.toml`;
+- any retained `user-preferences-v10.toml`, `user-preferences-v9.toml`, `user-preferences-v8.toml`, `user-preferences-v7.toml`, `user-preferences-v6.toml`, `user-preferences-v5.toml`, `user-preferences-v4.toml`, `user-preferences-v3.toml`, `user-preferences-v2.toml`,
   `user-preferences-v1.toml`, and their matching `.previous.toml` files.
 
 Moving both current and older snapshots prevents recovery or migration from

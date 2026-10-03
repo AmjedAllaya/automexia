@@ -16,11 +16,12 @@ Automexia uses one writable product root:
 
 The root contains `config.toml`, `themes/`, `extensions/`, `logs/`, and
 application-owned `state/`. Runtime font, appearance, shortcut and supported
-Settings choices use the private, versioned `state/user-preferences-v10.toml`
+Settings choices use the private, versioned `state/user-preferences-v11.toml`
 overlay. It contains explicit UI overrides, not a second general configuration.
-Version-9 preferences import only when both version-10 snapshots are absent;
+Version-10 preferences import only when both version-11 snapshots are absent;
 older versions import only when every newer snapshot pair is absent.
-Version 10 adds the selected theme name and validated palette. Version 9 added font and terminal palette overrides. Version 8 added command
+Version 11 adds independent window-control style profiles. Version 10 added the
+selected theme name and validated palette. Version 9 added font and terminal palette overrides. Version 8 added command
 timestamp appearance; version 7 added inline table appearance.
 Version 6 added connected tag shapes. Older files remain unchanged
 for rollback; corrupt or future current snapshots do not fall back to older files.

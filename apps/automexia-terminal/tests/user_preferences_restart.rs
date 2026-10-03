@@ -17,6 +17,8 @@ use rio_backend::config::{
     presentation::{
         HighlightStyle, Rgb, Rgba, TableAppearance, TableBanding, TableBorderStyle,
         TagStyle, TimestampAppearance, TimestampDateFormat, TimestampPosition,
+        WindowControlProfile, WindowControlStyle, WindowControlWeight,
+        WindowControlsAppearance,
     },
     theme::AppearanceTheme,
     Config,
@@ -91,6 +93,19 @@ fn preference_child_write() {
                 command_timestamps: Some(false),
             },
             visual: VisualPreferences {
+                window_controls: WindowControlsAppearance {
+                    style: Some(WindowControlStyle::Circles),
+                    circles: WindowControlProfile {
+                        icon_weight: Some(WindowControlWeight::Bold),
+                        close: Some(Rgb::from_bytes([160, 30, 40])),
+                        ..Default::default()
+                    },
+                    glass: WindowControlProfile {
+                        background: Some(Rgba::from_bytes([10, 20, 30, 64])),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
                 timestamps: TimestampAppearance {
                     date_format: Some(TimestampDateFormat::DayMonthYear),
                     time_position: Some(TimestampPosition::BelowRight),
@@ -198,6 +213,22 @@ fn saved_preferences_survive_real_process_restart_and_reset_without_config_mutat
         selected.theme.colors.background
     );
     assert!(!effective.presentation.inline_tables);
+    assert_eq!(
+        effective.presentation.window_controls.style,
+        Some(WindowControlStyle::Circles)
+    );
+    assert_eq!(
+        effective.presentation.window_controls.circles.icon_weight,
+        Some(WindowControlWeight::Bold)
+    );
+    assert_eq!(
+        effective.presentation.window_controls.circles.close,
+        Some(Rgb::from_bytes([160, 30, 40]))
+    );
+    assert_eq!(
+        effective.presentation.window_controls.glass.background,
+        Some(Rgba::from_bytes([10, 20, 30, 64]))
+    );
     assert_eq!(
         effective.presentation.tables.border_style,
         Some(TableBorderStyle::Dotted)
@@ -341,11 +372,11 @@ fn legacy_v4_import_survives_restart_and_keeps_kubernetes_independent() {
     // Create fixture permissions through the real private writer, then retain
     // only fields supported by the predecessor. This is test data, not migration.
     write_to_root(root.path(), &legacy).unwrap();
-    let current = root.path().join("state/user-preferences-v10.toml");
+    let current = root.path().join("state/user-preferences-v11.toml");
     let previous = root.path().join("state/user-preferences-v4.toml");
     let original = std::fs::read_to_string(&current)
         .unwrap()
-        .replace("schema-version = 10", "schema-version = 4");
+        .replace("schema-version = 11", "schema-version = 4");
     std::fs::write(&current, &original).unwrap();
     std::fs::rename(&current, &previous).unwrap();
     assert!(!current.exists());

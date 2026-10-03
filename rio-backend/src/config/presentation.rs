@@ -3,12 +3,14 @@
 mod appearance;
 mod tables;
 mod timestamps;
+mod window_controls;
 pub use appearance::{
     AppearanceValueError, CommandOutputAppearance, HighlightAppearance, HighlightColors,
     HighlightStyle, OpacityPercent, Rgb, Rgba, TagAppearance, TagColors, TagStyle,
 };
 pub use tables::{TableAppearance, TableBanding, TableBorderStyle, TableBorderWeight};
 pub use timestamps::*;
+pub use window_controls::*;
 
 use serde::{Deserialize, Serialize};
 
@@ -26,6 +28,7 @@ pub struct Presentation {
     pub kubernetes: HighlightAppearance,
     pub tables: TableAppearance,
     pub timestamps: TimestampAppearance,
+    pub window_controls: WindowControlsAppearance,
 }
 
 impl Default for Presentation {
@@ -42,6 +45,7 @@ impl Default for Presentation {
             kubernetes: HighlightAppearance::default(),
             tables: TableAppearance::default(),
             timestamps: TimestampAppearance::default(),
+            window_controls: WindowControlsAppearance::default(),
         }
     }
 }
@@ -67,6 +71,7 @@ impl<'de> Deserialize<'de> for Presentation {
             kubernetes: Option<HighlightAppearance>,
             tables: TableAppearance,
             timestamps: TimestampAppearance,
+            window_controls: WindowControlsAppearance,
         }
         impl Default for ConfigFields {
             fn default() -> Self {
@@ -83,6 +88,7 @@ impl<'de> Deserialize<'de> for Presentation {
                     kubernetes: None,
                     tables: TableAppearance::default(),
                     timestamps: TimestampAppearance::default(),
+                    window_controls: WindowControlsAppearance::default(),
                 }
             }
         }
@@ -101,6 +107,7 @@ impl<'de> Deserialize<'de> for Presentation {
             kubernetes: fields.kubernetes.unwrap_or(fields.highlight),
             tables: fields.tables,
             timestamps: fields.timestamps,
+            window_controls: fields.window_controls,
         })
     }
 }

@@ -12,6 +12,10 @@ use crate::renderer::responsive::{ChromeMetrics, Viewport};
 use crate::renderer::ui_theme::{
     color_u8 as theme_color_u8, draw_glass, glass_layers, over as opaque_over, UiTheme,
 };
+use rio_backend::config::presentation::{
+    WindowControlProfile, WindowControlSize, WindowControlSpacing, WindowControlStyle,
+    WindowControlWeight, WindowControlsAppearance,
+};
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::{Attributes, Sugarloaf};
@@ -151,15 +155,16 @@ struct WindowControlVisualLayout {
 }
 
 #[derive(Clone, Copy)]
-struct WindowControlRenderContext {
-    theme: UiTheme,
-    hover: Option<ChromeAction>,
-    pressed: Option<ChromeAction>,
-    maximized: bool,
-    focused: bool,
-    header_height: f32,
-    controls_x: f32,
-    button_width: f32,
+pub(crate) struct WindowControlRenderContext {
+    pub appearance: WindowControlsAppearance,
+    pub theme: UiTheme,
+    pub hover: Option<ChromeAction>,
+    pub pressed: Option<ChromeAction>,
+    pub maximized: bool,
+    pub focused: bool,
+    pub header_height: f32,
+    pub controls_x: f32,
+    pub button_width: f32,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -212,24 +217,77 @@ pub(crate) fn window_control_release_matches(
     released_over == Some(pressed)
 }
 
-fn window_control_fill(
+pub(crate) fn window_control_color_defaults(
     theme: UiTheme,
+    style: WindowControlStyle,
+) -> [[f32; 4]; 5] {
+    let background = match style {
+        WindowControlStyle::Soft => muted_alpha(theme.text, 0.045),
+        WindowControlStyle::Glass => muted_alpha(theme.accent, 0.065),
+        WindowControlStyle::Outline => muted_alpha(theme.text, 0.0),
+        WindowControlStyle::Circles => muted_alpha(theme.text, 0.08),
+    };
+    [
+        theme.accent,
+        theme.purple,
+        theme.danger,
+        background,
+        muted_alpha(
+            theme.border,
+            if style == WindowControlStyle::Outline {
+                0.85
+            } else {
+                0.40
+            },
+        ),
+    ]
+}
+
+fn window_control_colors(
+    theme: UiTheme,
+    style: WindowControlStyle,
+    profile: WindowControlProfile,
     action: ChromeAction,
     hovered: bool,
     pressed: bool,
     focused: bool,
-) -> [f32; 4] {
-    let alpha = if pressed {
-        0.34
-    } else if hovered {
-        0.22
-    } else if focused {
-        0.055
+) -> ([f32; 4], [f32; 4], [f32; 4]) {
+    let defaults = window_control_color_defaults(theme, style);
+    let accent = match action {
+        ChromeAction::Minimize => profile.minimize.map(|v| v.to_color_array()),
+        ChromeAction::Maximize => profile.maximize.map(|v| v.to_color_array()),
+        ChromeAction::CloseWindow => profile.close.map(|v| v.to_color_array()),
+        _ => None,
+    }
+    .unwrap_or_else(|| window_control_accent(action, theme));
+    let inactive = if focused {
+        1.0
     } else {
-        0.025
+        profile.inactive_opacity.map_or(0.65, |v| v.as_alpha())
     };
-    let accent = window_control_accent(action, theme);
-    over(theme.surface, [accent[0], accent[1], accent[2], alpha])
+    let background = profile
+        .background
+        .map_or(defaults[3], |v| v.to_color_array());
+    let mut fill = over(theme.surface, muted_alpha(background, inactive));
+    let strength = profile.hover_strength.map_or(0.16, |v| v.as_alpha());
+    if hovered {
+        // A pressed control always has feedback, even with hover tint disabled.
+        fill = over(
+            fill,
+            muted_alpha(
+                accent,
+                if pressed {
+                    (strength + 0.12).min(1.0)
+                } else {
+                    strength
+                },
+            ),
+        );
+    }
+    let border = profile.border.map_or(defaults[4], |v| v.to_color_array());
+    let edge = over(fill, muted_alpha(border, inactive));
+    let glyph = over(fill, muted_alpha(accent, inactive));
+    (fill, edge, super::ui_theme::readable_on(glyph, fill))
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1252,6 +1310,7 @@ impl Island {
 
     /// Render tabs using equal-width layout
     #[inline]
+    #[allow(clippy::too_many_arguments)]
     pub fn render(
         &mut self,
         sugarloaf: &mut Sugarloaf,
@@ -1260,6 +1319,7 @@ impl Island {
         bg_color: [f32; 4],
         window_focused: bool,
         theme: &UiTheme,
+        window_controls: WindowControlsAppearance,
     ) {
         let (window_width, window_height, scale_factor) = dimensions;
         let num_tabs = context_manager.len();
@@ -1639,6 +1699,7 @@ impl Island {
             draw_window_controls(
                 sugarloaf,
                 WindowControlRenderContext {
+                    appearance: window_controls,
                     theme,
                     hover: self.chrome_hover,
                     pressed: self.chrome_pressed,
@@ -2575,7 +2636,7 @@ fn draw_pane_local_tab_rails(
     }
 }
 
-trait WindowControlCanvas {
+pub(crate) trait WindowControlCanvas {
     #[allow(clippy::too_many_arguments)]
     fn rounded_rect(
         &mut self,
@@ -2606,7 +2667,8 @@ trait WindowControlCanvas {
         &mut self,
         center_x: f32,
         color: [f32; 4],
-        hovered: bool,
+        size: f32,
+        weight: f32,
         center_y: f32,
         order: u8,
     );
@@ -2656,20 +2718,44 @@ impl WindowControlCanvas for Sugarloaf<'_> {
         &mut self,
         center_x: f32,
         color: [f32; 4],
-        hovered: bool,
+        size: f32,
+        weight: f32,
         center_y: f32,
         order: u8,
     ) {
-        draw_close_button(self, center_x, color, hovered, center_y, order);
+        let half = size * 0.5;
+        Sugarloaf::line(
+            self,
+            center_x - half,
+            center_y - half,
+            center_x + half,
+            center_y + half,
+            weight,
+            0.0,
+            color,
+            order,
+        );
+        Sugarloaf::line(
+            self,
+            center_x - half,
+            center_y + half,
+            center_x + half,
+            center_y - half,
+            weight,
+            0.0,
+            color,
+            order,
+        );
     }
 }
 
-fn draw_window_controls(
-    sugarloaf: &mut impl WindowControlCanvas,
+pub(crate) fn draw_window_controls(
+    canvas: &mut impl WindowControlCanvas,
     context: WindowControlRenderContext,
 ) {
     const ORDER: u8 = 5;
     let WindowControlRenderContext {
+        appearance,
         theme,
         hover,
         pressed,
@@ -2679,113 +2765,178 @@ fn draw_window_controls(
         controls_x,
         button_width,
     } = context;
+    if ![header_height, controls_x, button_width]
+        .iter()
+        .all(|v| v.is_finite())
+        || header_height < 12.0
+        || button_width < 12.0
+    {
+        return;
+    }
+    let style = appearance.style.unwrap_or_default();
+    let profile = *appearance.profile(style);
     let layout = window_control_visual_layout(header_height, controls_x, button_width);
-
-    let actions = [
+    for (index, action) in [
         ChromeAction::Minimize,
         ChromeAction::Maximize,
         ChromeAction::CloseWindow,
-    ];
-    for (index, action) in actions.into_iter().enumerate() {
-        let button = layout.buttons[index];
-        let hovered = hover == Some(action);
-        let pressed_here = pressed == Some(action) && hovered;
-        let fill = window_control_fill(theme, action, hovered, pressed_here, focused);
-        let accent = window_control_accent(action, theme);
-        let edge = over(
-            fill,
-            if hovered {
-                muted_alpha(accent, if pressed_here { 0.80 } else { 0.60 })
-            } else {
-                [
-                    theme.border[0],
-                    theme.border[1],
-                    theme.border[2],
-                    if focused { 0.65 } else { 0.35 },
-                ]
-            },
-        );
-        if let Some(layers) = glass_layers(
-            [button.x, button.y, button.width, button.height],
-            8.0,
-            fill,
-            edge,
-        ) {
-            for layer in layers {
-                let [x, y, width, height] = layer.rect;
-                sugarloaf.rounded_rect(
-                    x,
-                    y,
-                    width,
-                    height,
-                    layer.color,
-                    0.03,
-                    layer.radius,
-                    ORDER,
-                );
-            }
-        }
-
-        let glyph_color = muted_alpha(
-            accent,
-            if focused {
-                if hovered {
-                    1.0
-                } else {
-                    0.84
-                }
-            } else {
-                0.42
-            },
-        );
-        let glyph_color = super::ui_theme::readable_on(over(fill, glyph_color), fill);
+    ]
+    .into_iter()
+    .enumerate()
+    {
+        let mut button = layout.buttons[index];
         let center_x = button.x + button.width * 0.5;
-        let center_y = button.y + button.height * 0.5 - 1.0;
+        let center_y = header_height * 0.5;
+        let scale = match profile.size.unwrap_or_default() {
+            WindowControlSize::Compact => 0.8,
+            WindowControlSize::Standard => 1.0,
+            WindowControlSize::Large => 1.12,
+        };
+        let inset = match profile.spacing.unwrap_or_default() {
+            WindowControlSpacing::Tight => 2.0,
+            WindowControlSpacing::Balanced => 5.0,
+            WindowControlSpacing::Airy => 8.0,
+        };
+        button.width = ((button_width - inset * 2.0) * scale)
+            .clamp(4.0, (button_width - 2.0).max(4.0));
+        button.height =
+            (button.height * scale).clamp(4.0, (header_height - 4.0).max(4.0));
+        if style == WindowControlStyle::Circles {
+            // Circles are normally height-limited. Apply the spacing inset to
+            // their diameter too, so each gap choice remains visible without
+            // moving the action centers or changing the full click targets.
+            button.width = (button.height + (5.0 - inset) * 2.0)
+                .min(button.width)
+                .clamp(4.0, (header_height - 4.0).max(4.0));
+            button.height = button.width;
+        }
+        button.x = center_x - button.width * 0.5;
+        button.y = center_y - button.height * 0.5;
+        let radius = button.width.min(button.height)
+            * 0.5
+            * if style == WindowControlStyle::Circles {
+                1.0
+            } else {
+                profile.roundness.map_or(0.45, |v| v.as_alpha())
+            };
+        let hovered = hover == Some(action);
+        let pressed_here = hovered && pressed == Some(action);
+        let (fill, edge, glyph_color) = window_control_colors(
+            theme,
+            style,
+            profile,
+            action,
+            hovered,
+            pressed_here,
+            focused,
+        );
+        if style == WindowControlStyle::Glass {
+            if let Some(layers) = glass_layers(
+                [button.x, button.y, button.width, button.height],
+                radius,
+                fill,
+                edge,
+            ) {
+                for layer in layers {
+                    let [x, y, w, h] = layer.rect;
+                    canvas.rounded_rect(
+                        x,
+                        y,
+                        w,
+                        h,
+                        layer.color,
+                        0.03,
+                        layer.radius,
+                        ORDER,
+                    );
+                }
+            }
+        } else {
+            canvas.rounded_rect(
+                button.x,
+                button.y,
+                button.width,
+                button.height,
+                edge,
+                0.03,
+                radius,
+                ORDER,
+            );
+            canvas.rounded_rect(
+                button.x + 1.0,
+                button.y + 1.0,
+                (button.width - 2.0).max(1.0),
+                (button.height - 2.0).max(1.0),
+                fill,
+                0.02,
+                (radius - 1.0).max(0.0),
+                ORDER + 1,
+            );
+        }
+        let requested_size: f32 = match profile.icon_size.unwrap_or_default() {
+            WindowControlSize::Compact => 9.0,
+            WindowControlSize::Standard => 11.0,
+            WindowControlSize::Large => 14.0,
+        };
+        let size = requested_size.min((button.width.min(button.height) - 6.0).max(2.0));
+        let weight: f32 = match profile.icon_weight.unwrap_or_default() {
+            WindowControlWeight::Fine => 1.0,
+            WindowControlWeight::Regular => 1.5,
+            WindowControlWeight::Bold => 2.0,
+        };
+        let weight = weight.min(size * 0.25);
+        let half = size * 0.5;
         match window_control_glyph(action, maximized) {
-            WindowControlGlyph::Minimize => sugarloaf.line(
-                center_x - 6.0,
-                center_y + 3.0,
-                center_x + 6.0,
-                center_y + 3.0,
-                1.6,
+            WindowControlGlyph::Minimize => canvas.line(
+                center_x - half,
+                center_y,
+                center_x + half,
+                center_y,
+                weight,
                 0.0,
                 glyph_color,
                 ORDER + 3,
             ),
             WindowControlGlyph::Maximize => draw_window_control_box(
-                sugarloaf,
-                center_x - 6.0,
-                center_y - 6.0,
-                12.0,
+                canvas,
+                [center_x - half, center_y - half, size, weight],
                 glyph_color,
                 fill,
                 ORDER + 3,
             ),
             WindowControlGlyph::Restore => {
+                let offset = size * 0.24;
                 draw_window_control_box(
-                    sugarloaf,
-                    center_x - 3.0,
-                    center_y - 6.0,
-                    9.0,
+                    canvas,
+                    [
+                        center_x - half + offset,
+                        center_y - half,
+                        size - offset,
+                        weight,
+                    ],
                     glyph_color,
                     fill,
                     ORDER + 2,
                 );
                 draw_window_control_box(
-                    sugarloaf,
-                    center_x - 6.0,
-                    center_y - 3.0,
-                    9.0,
+                    canvas,
+                    [
+                        center_x - half,
+                        center_y - half + offset,
+                        size - offset,
+                        weight,
+                    ],
                     glyph_color,
                     fill,
-                    ORDER + 3,
+                    ORDER + 4,
                 );
             }
-            WindowControlGlyph::Close => sugarloaf.close_glyph(
+            WindowControlGlyph::Close => canvas.close_glyph(
                 center_x,
                 glyph_color,
-                hovered || pressed_here,
-                center_y + 1.0,
+                size,
+                weight,
+                center_y,
                 ORDER + 3,
             ),
         }
@@ -2793,23 +2944,21 @@ fn draw_window_controls(
 }
 
 fn draw_window_control_box(
-    sugarloaf: &mut impl WindowControlCanvas,
-    x: f32,
-    y: f32,
-    size: f32,
+    canvas: &mut impl WindowControlCanvas,
+    [x, y, size, weight]: [f32; 4],
     color: [f32; 4],
     fill: [f32; 4],
     order: u8,
 ) {
-    sugarloaf.rounded_rect(x, y, size, size, color, 0.0, 3.0, order);
-    sugarloaf.rounded_rect(
-        x + 1.5,
-        y + 1.5,
-        (size - 3.0).max(1.0),
-        (size - 3.0).max(1.0),
+    canvas.rounded_rect(x, y, size, size, color, 0.0, 1.5, order);
+    canvas.rounded_rect(
+        x + weight,
+        y + weight,
+        (size - weight * 2.0).max(0.5),
+        (size - weight * 2.0).max(0.5),
         fill,
         0.0,
-        1.8,
+        (1.5 - weight).max(0.0),
         order + 1,
     );
 }
@@ -2941,13 +3090,14 @@ mod tests {
             &mut self,
             center_x: f32,
             _color: [f32; 4],
-            hovered: bool,
+            _size: f32,
+            _weight: f32,
             center_y: f32,
             order: u8,
         ) {
             self.ops.push(RecordedWindowControlOp::CloseGlyph {
                 center_x,
-                hovered,
+                hovered: false,
                 center_y,
                 order,
             });
@@ -3269,14 +3419,213 @@ mod tests {
         );
 
         let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);
-        let rest = window_control_fill(theme, ChromeAction::Minimize, false, false, true);
-        let hover = window_control_fill(theme, ChromeAction::Minimize, true, false, true);
-        let held = window_control_fill(theme, ChromeAction::Minimize, true, true, true);
-        let inactive =
-            window_control_fill(theme, ChromeAction::Minimize, false, false, false);
+        let rest = window_control_colors(
+            theme,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+            ChromeAction::Minimize,
+            false,
+            false,
+            true,
+        );
+        let hover = window_control_colors(
+            theme,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+            ChromeAction::Minimize,
+            true,
+            false,
+            true,
+        );
+        let held = window_control_colors(
+            theme,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+            ChromeAction::Minimize,
+            true,
+            true,
+            true,
+        );
+        let inactive = window_control_colors(
+            theme,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+            ChromeAction::Minimize,
+            false,
+            false,
+            false,
+        );
         assert_ne!(rest, hover);
         assert_ne!(hover, held);
         assert_ne!(rest, inactive);
+    }
+
+    #[test]
+    fn window_controls_keep_contrast_for_every_style_theme_and_state() {
+        for palette in crate::automexia::theme_gallery::builtins()
+            .into_iter()
+            .map(|e| e.theme.unwrap().colors)
+        {
+            let theme = UiTheme::from_colors(&palette);
+            for &style in WindowControlStyle::ALL {
+                for focused in [true, false] {
+                    for (hover, pressed) in [(false, false), (true, false), (true, true)]
+                    {
+                        for action in [
+                            ChromeAction::Minimize,
+                            ChromeAction::Maximize,
+                            ChromeAction::CloseWindow,
+                        ] {
+                            for profile in [WindowControlProfile::default(),WindowControlProfile {
+                                background:Some(rio_backend::config::presentation::Rgba::from_bytes([245,245,245,255])),
+                                close:Some(rio_backend::config::presentation::Rgb::from_bytes([250,250,250])),
+                                ..Default::default()
+                            }] {
+                                let (fill,_,glyph)=window_control_colors(theme,style,profile,action,hover,pressed,focused);
+                                assert!(automexia_ui_model::contrast_ratio(glyph,fill)>=4.5);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn window_controls_circle_spacing_changes_the_visible_gap() {
+        let mut diameters = Vec::new();
+        for &spacing in WindowControlSpacing::ALL {
+            let mut appearance = WindowControlsAppearance {
+                style: Some(WindowControlStyle::Circles),
+                ..Default::default()
+            };
+            appearance.circles.spacing = Some(spacing);
+            let mut canvas = RecordingWindowControlCanvas::default();
+            draw_window_controls(
+                &mut canvas,
+                WindowControlRenderContext {
+                    appearance,
+                    theme: UiTheme::from_colors(&Default::default()),
+                    hover: None,
+                    pressed: None,
+                    maximized: false,
+                    focused: true,
+                    header_height: 38.0,
+                    controls_x: 0.0,
+                    button_width: 46.0,
+                },
+            );
+            let RecordedWindowControlOp::RoundedRect { width, height, .. } =
+                canvas.ops[0]
+            else {
+                panic!("the first primitive must be the button surface");
+            };
+            assert_eq!(width, height);
+            diameters.push(width);
+        }
+        assert!(diameters[0] > diameters[1] && diameters[1] > diameters[2]);
+    }
+
+    #[test]
+    fn window_controls_styles_are_distinct_and_bounded_for_all_size_choices() {
+        let theme = UiTheme::from_colors(&rio_backend::config::colors::Colors::default());
+        let mut designs = Vec::new();
+        for &style in WindowControlStyle::ALL {
+            for &size in WindowControlSize::ALL {
+                for &spacing in WindowControlSpacing::ALL {
+                    for (header, width) in
+                        [(12.0, 12.0), (32.0, 24.0), (46.0, 42.0), (64.0, 56.0)]
+                    {
+                        let mut appearance = WindowControlsAppearance {
+                            style: Some(style),
+                            ..Default::default()
+                        };
+                        *appearance.profile_mut(style) = WindowControlProfile {
+                            size: Some(size),
+                            spacing: Some(spacing),
+                            icon_size: Some(WindowControlSize::Large),
+                            icon_weight: Some(WindowControlWeight::Bold),
+                            ..Default::default()
+                        };
+                        let mut canvas = RecordingWindowControlCanvas::default();
+                        draw_window_controls(
+                            &mut canvas,
+                            WindowControlRenderContext {
+                                appearance,
+                                theme,
+                                hover: Some(ChromeAction::Maximize),
+                                pressed: Some(ChromeAction::Maximize),
+                                maximized: true,
+                                focused: true,
+                                header_height: header,
+                                controls_x: 0.0,
+                                button_width: width,
+                            },
+                        );
+                        assert!(!canvas.ops.is_empty());
+                        for op in &canvas.ops {
+                            if let RecordedWindowControlOp::RoundedRect {
+                                x,
+                                y,
+                                width: w,
+                                height: h,
+                                ..
+                            } = op
+                            {
+                                assert!(
+                                    *x >= 0.0
+                                        && *y >= 0.0
+                                        && x + w <= width * 3.0 + 0.001
+                                        && y + h <= header + 0.001,
+                                    "{style:?}: {op:?}"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+            let mut canvas = RecordingWindowControlCanvas::default();
+            draw_window_controls(
+                &mut canvas,
+                WindowControlRenderContext {
+                    appearance: WindowControlsAppearance {
+                        style: Some(style),
+                        ..Default::default()
+                    },
+                    theme,
+                    hover: None,
+                    pressed: None,
+                    maximized: false,
+                    focused: true,
+                    header_height: 46.0,
+                    controls_x: 0.0,
+                    button_width: 42.0,
+                },
+            );
+            designs.push(canvas.ops);
+        }
+        // Soft and Outline share geometry; their paint colors are deliberately different.
+        assert_ne!(designs[0], designs[1]);
+        assert_ne!(designs[0], designs[3]);
+        let soft = window_control_colors(
+            theme,
+            WindowControlStyle::Soft,
+            WindowControlProfile::default(),
+            ChromeAction::Minimize,
+            false,
+            false,
+            true,
+        );
+        let outline = window_control_colors(
+            theme,
+            WindowControlStyle::Outline,
+            WindowControlProfile::default(),
+            ChromeAction::Minimize,
+            false,
+            false,
+            true,
+        );
+        assert_ne!(soft, outline);
     }
 
     #[test]
@@ -3301,6 +3650,10 @@ mod tests {
                     draw_window_controls(
                         &mut canvas,
                         WindowControlRenderContext {
+                            appearance: WindowControlsAppearance {
+                                style: Some(WindowControlStyle::Glass),
+                                ..Default::default()
+                            },
                             theme,
                             hover,
                             pressed,
@@ -3351,6 +3704,10 @@ mod tests {
             draw_window_controls(
                 &mut canvas,
                 WindowControlRenderContext {
+                    appearance: WindowControlsAppearance {
+                        style: Some(WindowControlStyle::Glass),
+                        ..Default::default()
+                    },
                     theme,
                     hover,
                     pressed: hover,

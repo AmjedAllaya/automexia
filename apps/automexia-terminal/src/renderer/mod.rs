@@ -1884,6 +1884,7 @@ impl Renderer {
                 island_bg,
                 self.is_window_focused,
                 &ui_theme::UiTheme::from_colors(&chrome_colors),
+                self.presentation.window_controls,
             );
         }
 

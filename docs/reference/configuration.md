@@ -347,6 +347,27 @@ command-timestamps = true
 | `presentation.kubernetes-highlighting` | `true` | Color recognized Kubernetes readiness and status rows in Customizations → Kubernetes status colors. |
 | `presentation.command-timestamps` | `true` | Show completion timestamps. Disabling this keeps exit status, duration and terminal-owned command metadata. |
 
+**Window controls** styles Automexia-owned minimize, maximize/restore and close
+buttons. `[presentation.window-controls]` accepts `style = "soft"` (the default),
+`"glass"`, `"outline"` or `"circles"`. Each style has its own optional profile,
+such as `[presentation.window-controls.glass]`:
+
+| Key | Default | Values / effect |
+|---|---|---|
+| `size` | `"standard"` | `"compact"`, `"standard"`, `"large"`; changes visible size within the existing click targets. |
+| `spacing` | `"balanced"` | `"tight"`, `"balanced"`, `"airy"`; gap between visible buttons. |
+| `roundness` | `45` | Integer 0–100 percent; Circles always stays circular. |
+| `icon-size` | `"standard"` | `"compact"`, `"standard"`, `"large"`; fits inside the chosen button size. |
+| `icon-weight` | `"regular"` | `"fine"`, `"regular"`, `"bold"`. |
+| `hover-strength` | `16` | Integer 0–100 percent; pressing adds stronger feedback. |
+| `inactive-opacity` | `65` | Integer 0–100 percent; inactive surfaces dim while icons retain readable contrast. |
+| `minimize`, `maximize`, `close` | Theme colors | Six-digit RGB icon colors. `maximize` also colors the restore icon. |
+| `background`, `border` | Style and theme | RGB or RGBA hex colors; the alpha channel controls opacity. |
+
+These settings do not change platform-native decorations. The UI saves edits per
+style, uses the same painter for previews, and never activates window actions from
+a preview. Background and border opacity controls edit their RGBA alpha bytes.
+
 **Command timestamps** customizes the date, time and result independently. Each
 can appear before/after the tags or on a row above/below them, aligned left or
 right. Components in the same position follow the selected order and separators.
