@@ -350,4 +350,32 @@ class ArtifactTests(unittest.TestCase):
         for item in ([], None, {'target': 42}, {'target': {'name':'helper', 'kind': None}}):
             with self.assertRaises(ValueError): compiled_executable(json.dumps(item).encode(), 'helper', 'bin')
 
+class FailureDiagnosticTests(unittest.TestCase):
+    def test_python_failure_keeps_test_shell_and_exception_type_only(self):
+        from check_ssh_library import failure_summary
+        output = ("ERROR: test_prompt (__main__.AdapterTests.test_prompt) (shell='fish')\n"
+                  "Traceback: private-path\nTimeoutError: private-output\n"
+                  "FAIL: test_status (__main__.AdapterTests.test_status) (profile='private-profile')\n"
+                  "AssertionError: private-value\n")
+        self.assertEqual(failure_summary(output), [
+            'ERROR test_prompt [fish]: TimeoutError', 'FAIL test_status: AssertionError'])
+
+    def test_python_failure_bounds_records_and_rejects_free_text(self):
+        from check_ssh_library import failure_summary
+        self.assertEqual(failure_summary('private output\nTimeoutError: private output'), [])
+        self.assertEqual(failure_summary('ERROR: private/name (fixture)\n'), [])
+        output = 'ERROR: test_prompt (__main__.Tests.test_prompt)\n' * 1000
+        self.assertEqual(len(failure_summary(output)), 20)
+
+    def test_failed_orchestrated_suite_reports_redacted_diagnostic(self):
+        from contextlib import redirect_stdout
+        from io import StringIO
+        output = StringIO()
+        fixture = b'ERROR: test_prompt (__main__.Tests.test_prompt)\nTimeoutError: private-value\n'
+        with redirect_stdout(output), self.assertRaises(ValueError):
+            OrchestrationTests().invoke(bash=None, windows_shells={'pwsh': 'pwsh'}, adapter_output=fixture)
+        self.assertIn('ERROR test_prompt: TimeoutError', output.getvalue())
+        self.assertNotIn('private-value', output.getvalue())
+
+
 if __name__ == '__main__': unittest.main()

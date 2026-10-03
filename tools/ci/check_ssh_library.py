@@ -25,6 +25,28 @@ def clean(output: bytes | str) -> str:
     return ANSI.sub('', output).replace('\r\n', '\n').replace('\r', '\n')
 
 
+def failure_summary(output: bytes | str) -> list[str]:
+    """Expose bounded unittest identities, never fixture output or tracebacks."""
+    summaries: list[str] = []
+    for block in re.split(r'(?m)^(?=(?:ERROR|FAIL): )', clean(output)):
+        match = re.match(r'(ERROR|FAIL): (test_[A-Za-z0-9_]{1,160}) '
+                         r'\([A-Za-z0-9_.]{1,240}\)([^\n]*)\n', block)
+        if match is None:
+            continue
+        shell = re.search(r"\(shell='(bash|zsh|fish|powershell|pwsh)'\)", match[3])
+        kind = re.search(r'(?m)^(AssertionError|TimeoutError|RuntimeError|OSError|'
+                         r'ValueError|IndexError|KeyError|TypeError|ImportError):', block)
+        summary = f'{match[1]} {match[2]}'
+        if shell:
+            summary += f' [{shell[1]}]'
+        if kind:
+            summary += f': {kind[1]}'
+        summaries.append(summary)
+        if len(summaries) == 20:
+            break
+    return summaries
+
+
 def test_count(output: bytes | str, kind: str) -> int:
     text = clean(output)
     if kind == 'python':
@@ -335,6 +357,10 @@ def verify(root: Path, report_dir: Path, *, baseline=False, ready=False,
         except ValueError as error:
             entry['status'] = 'failed'
             entry['diagnostic'] = str(error)
+            if kind == 'python':
+                entry['test_failures'] = failure_summary(bytes(output))
+                for summary in entry['test_failures']:
+                    print(f'[ssh-library] {summary}', flush=True)
             (report_dir / 'result.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
             raise ValueError(f'{label}: {error}. Log: {path}') from error
     (report_dir / 'result.json').write_text(json.dumps(result, indent=2) + '\n', encoding='utf-8')
