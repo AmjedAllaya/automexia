@@ -63,6 +63,23 @@ function Test-AutomexiaThemeGallery {
             }
             return $matches
         }
+        $script:testStage = 'themed dense table readability ' + $Name
+        $previous = Read-AutomexiaSnapshot
+        # Fictional, deterministic file rows exercise dates, descenders and long names.
+        Send-AutomexiaTestControl ("write-line:theme-table-" + $Name + ":Write-Output @('Mode   Last Modified       Size   Name','d----  2026-01-02 09:30    2048   glyphs_and_queries','-a---  2026-01-03 12:45    4096   application.toml','-a---  2026-01-04 16:10    8192   deployment-notes.md','-a---  2026-01-05 08:15    512    package.json','-a---  2026-01-06 10:20    128    registry.log','-a---  2026-01-07 18:25    64     typography.txt')")
+        $table = Wait-ThemeState {param($s) $s.command_result_key -ne $previous.command_result_key -and $s.inline_table_count -ge 1 -and $null -ne $s.command_result_surface}
+        $bitmap = [Drawing.Bitmap]::new((Capture-ThemeSurface 'table'))
+        try {
+            $area = @($table.command_result_surface)
+            $tableScale = [double]$table.scale_factor
+            $rect = @(($area[0]*$tableScale),($area[1]*$tableScale),(($area[0]+$area[2])*$tableScale),(($area[1]+$area[3])*$tableScale))
+            # Literal independent palette expectations, not production tint helpers.
+            $stripe = if ($Name -eq 'solar-dusk') { @(33,25,22) } else { @(235,239,244) }
+            $heading = if ($Name -eq 'solar-dusk') { @(40,33,29) } else { @(228,233,237) }
+            if ((Matching-ThemePixels $bitmap $rect $stripe) -lt 100 -or
+                (Matching-ThemePixels $bitmap $rect $heading) -lt 100 -or
+                (Matching-ThemePixels $bitmap $rect $Foreground) -lt 60) {throw 'Themed table lost subtle backgrounds or readable glyphs'}
+        } finally { $bitmap.Dispose() }
         $scale = [double](Read-AutomexiaSnapshot).scale_factor
         $script:testStage = 'applied header and footer ' + $Name
         $bitmap = [Drawing.Bitmap]::new((Capture-ThemeSurface 'terminal'))
@@ -91,7 +108,17 @@ function Test-AutomexiaThemeGallery {
             if ($category -eq 0) {
                 Theme-Key 0x71
                 $null = Wait-ThemeState {param($s) $s.palette_accessibility_summary.StartsWith('Edit shortcut dialog;')}
-                $null = Capture-ThemeSurface 'shortcut-editor'
+                $shortcutCapture = Capture-ThemeSurface 'shortcut-editor'
+                $shortcutBitmap = [Drawing.Bitmap]::new($shortcutCapture)
+                try {
+                    # The fixed-size fixture exposes antialiased rounded corners.
+                    # Compare all RGB samples directly with the desktop, so the
+                    # GDI+ marker pattern cannot silently blacken the saved PNG.
+                    $cornerX = [int][Math]::Floor(($shortcutBitmap.Width - 520*$scale)/2)
+                    $cornerY = [int][Math]::Floor(($shortcutBitmap.Height - 270*$scale)/2)
+                    [AutomexiaResizeDriver]::VerifyCapturedDesktopRegion(
+                        $window,$shortcutCapture,$cornerX,$cornerY,24,24)
+                } finally { $shortcutBitmap.Dispose() }
                 Theme-Key 0x1B
                 $null = Wait-ThemeState {param($s) $s.palette_accessibility_summary.StartsWith($categories[$category]+';')}
             }

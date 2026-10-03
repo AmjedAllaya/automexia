@@ -25,6 +25,14 @@ foreground and background styles remain authoritative; unsupported decorations
 retain ordinary rendering. Geometry and glyph ink are clipped to cell and pane
 bounds, with one shared border between adjacent cells.
 
+Table shading belongs to the shared application table-style owner, with quieter
+automatic header and stripe tints than menu-selection surfaces. Inherited text
+receives contrast correction after background composition; explicit table text,
+ANSI, inverse, selection and semantic overrides retain their established order.
+The existing Sugarloaf Text cell adapter accepts a terminal baseline, supplied
+by the canonical cell metrics. Each shaped font run uses its own cached ascent
+against that baseline; no duplicate metric cache or table row projection is added.
+
 There are no added dependencies, workers, external capabilities, filesystem or
 network operations, persistent records, or public configuration changes. Closed
 or replaced pane state releases the snapshot. Unsupported program modes, uncertain

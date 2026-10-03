@@ -113,6 +113,10 @@ alternate text/background colors are independent; border and background opacity
 can be adjusted from 0% to 100%. Wrapped cells keep the same stripe. These
 controls update the file-table sample immediately. Source ANSI colors, selections
 and enabled Kubernetes status colors keep priority in actual terminal output.
+Automatic header and stripe backgrounds use subtle theme tints. Inherited text
+adapts for contrast against the final cell background; explicitly chosen text
+colors and source ANSI/status colors keep their existing precedence. Table text
+uses the terminal font baseline, preserving descenders beside dense borders.
 Turning inline tables off keeps your choices for when you enable them again.
 
 **Command timestamps** offers separate date and time formats, 12/24-hour clocks,

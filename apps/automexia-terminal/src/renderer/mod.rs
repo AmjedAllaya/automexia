@@ -1996,6 +1996,9 @@ impl Renderer {
                 inline_tables::PaintOptions {
                     colors: self.named_colors,
                     tables: self.presentation.tables,
+                    cell_baseline: Some(
+                        context.dimension.cell.cell_baseline as f32 / scale_factor,
+                    ),
                     command_output: self
                         .presentation
                         .command_output_highlighting

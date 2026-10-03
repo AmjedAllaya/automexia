@@ -548,6 +548,110 @@ public static class AutomexiaResizeDriver {
         public string DialogPixelDigest;
     }
 
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateCompatibleDC(IntPtr source);
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr CreateCompatibleBitmap(IntPtr source, int width, int height);
+    [DllImport("gdi32.dll", SetLastError = true)]
+    private static extern IntPtr SelectObject(IntPtr dc, IntPtr value);
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteDC(IntPtr dc);
+    [DllImport("gdi32.dll")]
+    private static extern bool DeleteObject(IntPtr value);
+
+    // Capture composited desktop RGB directly into a GDI-owned bitmap.
+    // Graphics.GetHdc on a GDI+ bitmap uses a sentinel pattern; real colors
+    // matching that pattern disappear during ReleaseHdc (Microsoft KB 311221).
+    private static Bitmap CaptureDesktopBitmap(int x, int y, int width, int height) {
+        if (width < 1 || height < 1 || (long)width * height > 67108864) {
+            throw new ArgumentOutOfRangeException("width");
+        }
+        IntPtr screen = GetDC(IntPtr.Zero);
+        IntPtr destination = IntPtr.Zero;
+        IntPtr bitmap = IntPtr.Zero;
+        IntPtr previous = IntPtr.Zero;
+        try {
+            if (screen == IntPtr.Zero) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            destination = CreateCompatibleDC(screen);
+            if (destination == IntPtr.Zero) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            bitmap = CreateCompatibleBitmap(screen, width, height);
+            if (bitmap == IntPtr.Zero) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            previous = SelectObject(destination, bitmap);
+            if (previous == IntPtr.Zero || previous == new IntPtr(-1)) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            const uint SourceCopy = 0x00CC0020;
+            const uint CaptureLayered = 0x40000000;
+            if (!BitBlt(destination, 0, 0, width, height, screen, x, y, SourceCopy | CaptureLayered)) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            // FromHbitmap copies the composited RGB before native handles retire.
+            // The existing ARGB digest checks the resulting opaque PNG without
+            // masking or tolerating any differences in visible RGB channels.
+            return Image.FromHbitmap(bitmap);
+        } finally {
+            if (previous != IntPtr.Zero && previous != new IntPtr(-1)) {
+                SelectObject(destination, previous);
+            }
+            if (bitmap != IntPtr.Zero) { DeleteObject(bitmap); }
+            if (destination != IntPtr.Zero) { DeleteDC(destination); }
+            if (screen != IntPtr.Zero) { ReleaseDC(IntPtr.Zero, screen); }
+        }
+    }
+
+    [DllImport("gdi32.dll")]
+    private static extern uint GetPixel(IntPtr dc, int x, int y);
+
+    // Independent RGB oracle for a small, stable fixture region. This reads
+    // the screen directly instead of reusing the bitmap/PNG capture path.
+    public static void VerifyCapturedDesktopRegion(
+        IntPtr hWnd, string path, int x, int y, int width, int height) {
+        if (width < 1 || height < 1 || width > 32 || height > 32) {
+            throw new ArgumentOutOfRangeException("width");
+        }
+        RequireExclusiveCaptureOwnership(hWnd);
+        IntPtr previous = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        if (previous == IntPtr.Zero) {
+            throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+        }
+        IntPtr screen = IntPtr.Zero;
+        try {
+            Point origin = new Point { X = 0, Y = 0 };
+            if (!ClientToScreen(hWnd, ref origin)) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            screen = GetDC(IntPtr.Zero);
+            if (screen == IntPtr.Zero) {
+                throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
+            }
+            using (var bitmap = new Bitmap(path)) {
+                if (x < 0 || y < 0 || x > bitmap.Width - width || y > bitmap.Height - height) {
+                    throw new ArgumentOutOfRangeException("x");
+                }
+                for (int py = y; py < y + height; py++) {
+                    for (int px = x; px < x + width; px++) {
+                        uint expected = GetPixel(screen, origin.X + px, origin.Y + py);
+                        Color actual = bitmap.GetPixel(px, py);
+                        uint rgb = (uint)(actual.R | actual.G << 8 | actual.B << 16);
+                        if (expected == 0xffffffff || rgb != expected || actual.A != 255) {
+                            throw new InvalidOperationException(
+                                "Retained capture differs from desktop RGB at " + px + "," + py);
+                        }
+                    }
+                }
+            }
+        } finally {
+            if (screen != IntPtr.Zero) { ReleaseDC(IntPtr.Zero, screen); }
+            SetThreadDpiAwarenessContext(previous);
+        }
+    }
+
     public static FrameStats CaptureClientFrame(IntPtr hWnd, string outputPath) {
         // An opt-in artifact must use physical client pixels. PowerShell is
         // normally DPI-unaware, so its logical GetClientRect dimensions crop
@@ -564,21 +668,22 @@ public static class AutomexiaResizeDriver {
             try {
                 DateTime deadline = DateTime.UtcNow.AddSeconds(3);
                 FrameStats previousFrame = CaptureClientFrameCore(hWnd, null);
+                bool framesEqual = false;
                 do {
                     System.Threading.Thread.Sleep(25);
                     FrameStats current = CaptureClientFrameCore(hWnd, outputPath);
+                    framesEqual = String.Equals(previousFrame.PixelDigest,
+                        current.PixelDigest, StringComparison.Ordinal);
                     if (previousFrame.NonOpaquePixelCount == 0 &&
-                        current.NonOpaquePixelCount == 0 &&
-                        String.Equals(
-                        previousFrame.PixelDigest,
-                        current.PixelDigest,
-                        StringComparison.Ordinal)) {
+                        current.NonOpaquePixelCount == 0 && framesEqual) {
                         return current;
                     }
                     previousFrame = current;
                 } while (DateTime.UtcNow < deadline);
                 throw new InvalidOperationException(
-                    "Automexia client frame did not reach two identical full-pixel captures");
+                    "Automexia client frame did not reach two identical full-pixel captures (opaque)" +
+                    "; final pair identical=" + framesEqual +
+                    "; non-opaque pixels=" + previousFrame.NonOpaquePixelCount);
             } finally {
                 SetThreadDpiAwarenessContext(previous);
             }
@@ -634,28 +739,7 @@ public static class AutomexiaResizeDriver {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         }
 
-        using (var bitmap = new Bitmap(width, height, PixelFormat.Format32bppArgb)) {
-            using (var graphics = Graphics.FromImage(bitmap)) {
-                IntPtr destination = graphics.GetHdc();
-                IntPtr screen = GetDC(IntPtr.Zero);
-                if (screen == IntPtr.Zero) {
-                    graphics.ReleaseHdc(destination);
-                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                }
-                try {
-                    const uint SourceCopy = 0x00CC0020;
-                    const uint CaptureLayered = 0x40000000;
-                    if (!BitBlt(
-                        destination, 0, 0, width, height,
-                        screen, origin.X, origin.Y, SourceCopy | CaptureLayered)) {
-                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                    }
-                } finally {
-                    ReleaseDC(IntPtr.Zero, screen);
-                    graphics.ReleaseHdc(destination);
-                }
-            }
-
+        using (var bitmap = CaptureDesktopBitmap(origin.X, origin.Y, width, height)) {
             var buckets = new HashSet<int>();
             var bucketCounts = new Dictionary<int, int>();
             int dominantColorBucket = -1;
@@ -810,30 +894,8 @@ public static class AutomexiaResizeDriver {
             throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
         }
 
-        using (var bitmap = new Bitmap(
-            clippedWidth, clippedHeight, PixelFormat.Format32bppArgb)) {
-            using (var graphics = Graphics.FromImage(bitmap)) {
-                IntPtr destination = graphics.GetHdc();
-                IntPtr screen = GetDC(IntPtr.Zero);
-                if (screen == IntPtr.Zero) {
-                    graphics.ReleaseHdc(destination);
-                    throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                }
-                try {
-                    const uint SourceCopy = 0x00CC0020;
-                    const uint CaptureLayered = 0x40000000;
-                    if (!BitBlt(
-                        destination, 0, 0, clippedWidth, clippedHeight,
-                        screen, origin.X + left, origin.Y + top,
-                        SourceCopy | CaptureLayered)) {
-                        throw new System.ComponentModel.Win32Exception(Marshal.GetLastWin32Error());
-                    }
-                } finally {
-                    ReleaseDC(IntPtr.Zero, screen);
-                    graphics.ReleaseHdc(destination);
-                }
-            }
-
+        using (var bitmap = CaptureDesktopBitmap(
+            origin.X + left, origin.Y + top, clippedWidth, clippedHeight)) {
             var buckets = new HashSet<int>();
             int minimumLuminance = 255;
             int maximumLuminance = 0;
@@ -1386,6 +1448,11 @@ $wallpaperConfig
         # Solid backgrounds make reference silhouettes unambiguous in captures.
         # This applies only to the fixture's disposable configuration root.
         $config += "`n[presentation.tags]`nstyle = 'tinted'`nopacity = 100`n"
+    }
+    if ($ThemeGalleryOnly) {
+        # Exercise dense table decoration in each applied dark/light theme.
+        # These choices belong only to this disposable fixture configuration.
+        $config += "`n[presentation]`ncommand-output-highlighting = false`noutput-highlighting = false`n[presentation.tables]`nborder-style = 'dashed'`nborder-weight = 'thick'`nbanding = 'columns'`nheader-bold = true`n"
     }
     if ($CommandInputColorsOnly) {
         # Literal palette oracle for Fish's native ANSI styles. It must not be

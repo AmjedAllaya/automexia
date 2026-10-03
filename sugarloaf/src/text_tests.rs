@@ -8,6 +8,73 @@ fn fixture_fonts() -> FontLibrary {
     )
 }
 
+#[test]
+fn fixed_cell_baseline_preserves_descenders_styles_and_fractional_scale() {
+    let sample = "Hjpqy";
+    let anchors: Vec<_> = (0..sample.len())
+        .map(|column| TextCellAnchor {
+            byte_offset: column,
+            column,
+        })
+        .collect();
+    for scale in [1.0, 1.25, 1.5, 2.0, 4.0] {
+        for bold in [false, true] {
+            let mut actual = Text::new(&fixture_fonts());
+            let mut expected = Text::new(&fixture_fonts());
+            for text in [&mut actual, &mut expected] {
+                text.init_cpu();
+                text.set_scale_factor(scale);
+            }
+            let opts = DrawOpts {
+                font_size: 20.0,
+                bold,
+                ..Default::default()
+            };
+            let baseline = 30.0;
+            let ascent =
+                f32::from(expected.shape_for(sample, &opts).unwrap().ascent_px) / scale;
+            actual.draw_cells_baseline_clipped(
+                8.0,
+                baseline,
+                sample,
+                &opts,
+                TextCellLayout {
+                    cell_width: 14.0,
+                    anchors: &anchors,
+                },
+                [0.0, 0.0, 100.0, 42.0],
+            );
+            // The established top-origin API is an independent positioning oracle.
+            expected.draw_cells_clipped(
+                8.0,
+                baseline - ascent,
+                sample,
+                &opts,
+                TextCellLayout {
+                    cell_width: 14.0,
+                    anchors: &anchors,
+                },
+                [0.0, 0.0, 100.0, 42.0],
+            );
+            assert!(!actual.instances.is_empty());
+            assert_same_instances(&actual.instances, &expected.instances);
+            let before = actual.instances.len();
+            actual.draw_cells_baseline_clipped(
+                8.0,
+                f32::NAN,
+                sample,
+                &opts,
+                TextCellLayout {
+                    cell_width: 14.0,
+                    anchors: &anchors,
+                },
+                [0.0, 0.0, 100.0, 42.0],
+            );
+            assert_eq!(actual.instances.len(), before);
+        }
+    }
+}
+
 fn fixture_library(font: FontData) -> FontLibrary {
     let mut data = FontLibraryData::default();
     data.insert(font);

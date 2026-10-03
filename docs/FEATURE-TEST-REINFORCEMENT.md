@@ -411,6 +411,15 @@ actual parser/reflow capture, partial soft-wrap scroll round trips, empty-cell
 hit mapping, mixed-script fallback, mouse-mode invalidation and source copying.
 Shared borders and clipped glyph quads need independent raster bounds at
 fractional scales; selected substrings must paint only their source cells.
+Table tint hierarchy and inherited-text contrast cover dark/light palettes and
+custom backgrounds; explicit text, ANSI and semantic colors retain priority.
+Canonical-baseline glyph tests cover descenders, dense borders and fractional
+scales. ThemeGalleryOnly includes real dense table output in applied dark/light
+themes; native desktops and assistive technology remain separate evidence.
+Native client captures use direct GDI bitmaps to preserve every composited RGB
+color, including colors matching GDI+'s internal marker pattern. A bounded
+direct-screen RGB oracle checks retained rounded dialog edges. Exact full-frame
+stability checks remain mandatory; desktop capture does not measure swapchain alpha.
 The bounded model and snapshot benchmarks do not establish native compositor,
 physical input or assistive-technology delivery. See
 [the protocol](TESTING.md#inline-header-tables).

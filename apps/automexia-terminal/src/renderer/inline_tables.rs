@@ -47,6 +47,8 @@ fn clipped_rect(
 pub(super) struct PaintOptions<'a> {
     pub colors: Colors,
     pub tables: TableAppearance,
+    /// Canonical terminal baseline, logical pixels measured from cell bottom.
+    pub cell_baseline: Option<f32>,
     pub highlight: Option<HighlightAppearance>,
     pub kubernetes_highlight: Option<HighlightAppearance>,
     pub preserve_selection_foreground: bool,
@@ -62,6 +64,7 @@ impl Default for PaintOptions<'_> {
         Self {
             colors: Colors::default(),
             tables: TableAppearance::default(),
+            cell_baseline: None,
             highlight: None,
             kubernetes_highlight: None,
             preserve_selection_foreground: false,
@@ -254,6 +257,12 @@ pub(super) fn draw(
                 let cell_left = x + column.content_x as f32 * cell_w;
                 let cell_right = cell_left + column.content_width as f32 * cell_w;
                 let decoration = table_style.background(is_header, data_row, ci);
+                let custom_foreground = table_style.foreground(is_header, data_row, ci);
+                let foreground_override = if is_header {
+                    custom_foreground.or(row_foreground)
+                } else {
+                    row_foreground.or(custom_foreground)
+                };
                 let cell_background =
                     if is_header && options.tables.header_background.is_some() {
                         decoration
@@ -326,13 +335,7 @@ pub(super) fn draw(
                                         style.fg,
                                         AnsiColor::Named(NamedColor::Foreground)
                                     ) {
-                                        let custom = table_style
-                                            .foreground(is_header, data_row, ci);
-                                        if let Some(color) = if is_header {
-                                            custom.or(row_foreground)
-                                        } else {
-                                            row_foreground.or(custom)
-                                        } {
+                                        if let Some(color) = foreground_override {
                                             fg = color;
                                         }
                                     }
@@ -341,6 +344,14 @@ pub(super) fn draw(
                                         AnsiColor::Named(NamedColor::Background)
                                     ) {
                                         bg = cell_background;
+                                        if foreground_override.is_none()
+                                            && matches!(
+                                                style.fg,
+                                                AnsiColor::Named(NamedColor::Foreground)
+                                            )
+                                        {
+                                            fg = table_style.inherited_foreground(fg, bg);
+                                        }
                                     }
                                 }
                             }
@@ -372,17 +383,32 @@ pub(super) fn draw(
                                 glyph_column +=
                                     crate::automexia::inline_tables::cell_width(grapheme);
                             }
-                            canvas.text().draw_cells_clipped(
-                                left,
-                                line_top + (cell_h - font).max(0.0) / 2.0,
-                                run_text,
-                                &opts,
-                                TextCellLayout {
-                                    cell_width: cell_w,
-                                    anchors: &anchors,
-                                },
-                                run_clip,
-                            );
+                            let layout = TextCellLayout {
+                                cell_width: cell_w,
+                                anchors: &anchors,
+                            };
+                            if let Some(baseline) = options
+                                .cell_baseline
+                                .filter(|v| v.is_finite() && *v >= 0.0 && *v <= cell_h)
+                            {
+                                canvas.text().draw_cells_baseline_clipped(
+                                    left,
+                                    line_top + cell_h - baseline,
+                                    run_text,
+                                    &opts,
+                                    layout,
+                                    run_clip,
+                                );
+                            } else {
+                                canvas.text().draw_cells_clipped(
+                                    left,
+                                    line_top + (cell_h - font).max(0.0) / 2.0,
+                                    run_text,
+                                    &opts,
+                                    layout,
+                                    run_clip,
+                                );
+                            }
                             if hovered {
                                 if let Some(underline) = clipped_rect(
                                     [

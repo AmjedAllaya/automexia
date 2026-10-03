@@ -396,6 +396,32 @@ impl Text {
         layout: TextCellLayout<'_>,
         clip: [f32; 4],
     ) {
+        self.draw_cells_anchored([x, y], text, opts, layout, clip, false);
+    }
+
+    /// Draw fixed-cell text on the caller's canonical terminal baseline.
+    /// Each fallback run retains its own ascent, while sharing that baseline.
+    pub fn draw_cells_baseline_clipped(
+        &mut self,
+        x: f32,
+        baseline: f32,
+        text: &str,
+        opts: &DrawOpts,
+        layout: TextCellLayout<'_>,
+        clip: [f32; 4],
+    ) {
+        self.draw_cells_anchored([x, baseline], text, opts, layout, clip, true);
+    }
+
+    fn draw_cells_anchored(
+        &mut self,
+        [x, y]: [f32; 2],
+        text: &str,
+        opts: &DrawOpts,
+        layout: TextCellLayout<'_>,
+        clip: [f32; 4],
+        baseline: bool,
+    ) {
         let Some(bounds) = self.clip_bounds(x, y, clip) else {
             return;
         };
@@ -444,7 +470,14 @@ impl Text {
             };
             if let Some(run) = self.shape_for(&text[byte_start..byte_end], &run_opts) {
                 self.emit_cell_instances(
-                    [x, y],
+                    [
+                        x,
+                        if baseline {
+                            y - f32::from(run.ascent_px) / self.scale_factor
+                        } else {
+                            y
+                        },
+                    ],
                     &run,
                     opts,
                     layout.cell_width,

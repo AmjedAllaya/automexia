@@ -71,9 +71,12 @@ impl SettingsView {
                 };
                 let (foreground, background) = if enabled {
                     (
-                        style
-                            .foreground(header, row, column)
-                            .unwrap_or(colors.foreground),
+                        style.foreground(header, row, column).unwrap_or_else(|| {
+                            style.inherited_foreground(
+                                colors.foreground,
+                                style.background(header, row, column),
+                            )
+                        }),
                         style.background(header, row, column),
                     )
                 } else {

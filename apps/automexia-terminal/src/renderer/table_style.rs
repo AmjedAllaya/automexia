@@ -13,6 +13,11 @@ pub(crate) struct TableStyle {
 }
 
 impl TableStyle {
+    // Tables are persistent reading surfaces, unlike transient menu selections.
+    // Byte-aligned alpha keeps the editor's inherited swatch and paint identical.
+    const HEADER_ALPHA: f32 = 18.0 / 255.0;
+    const STRIPE_ALPHA: f32 = 9.0 / 255.0;
+
     pub fn new(appearance: TableAppearance, colors: Colors) -> Self {
         Self {
             appearance,
@@ -27,9 +32,19 @@ impl TableStyle {
             colors.foreground,
             colors.foreground,
             [theme.border[0], theme.border[1], theme.border[2], 0.65],
-            theme.raised,
+            [
+                theme.text[0],
+                theme.text[1],
+                theme.text[2],
+                Self::HEADER_ALPHA,
+            ],
             colors.background.0,
-            theme.raised,
+            [
+                theme.text[0],
+                theme.text[1],
+                theme.text[2],
+                Self::STRIPE_ALPHA,
+            ],
         ]
     }
     pub fn background(self, header: bool, row: usize, column: usize) -> [f32; 4] {
@@ -45,13 +60,30 @@ impl TableStyle {
         color.map_or_else(
             || {
                 if header || alternate {
-                    self.theme.raised
+                    ui_theme::over(
+                        self.background,
+                        [
+                            self.theme.text[0],
+                            self.theme.text[1],
+                            self.theme.text[2],
+                            if header {
+                                Self::HEADER_ALPHA
+                            } else {
+                                Self::STRIPE_ALPHA
+                            },
+                        ],
+                    )
                 } else {
                     self.background
                 }
             },
             |color| ui_theme::over(self.background, color.to_color_array()),
         )
+    }
+    /// Only inherited text uses automatic contrast. Explicit table, ANSI,
+    /// selection and semantic colors retain their existing precedence.
+    pub fn inherited_foreground(self, color: [f32; 4], background: [f32; 4]) -> [f32; 4] {
+        ui_theme::readable_on(color, background)
     }
     pub fn foreground(self, header: bool, row: usize, column: usize) -> Option<[f32; 4]> {
         let a = self.appearance;
@@ -192,6 +224,43 @@ pub(crate) fn patterned_rule(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn automatic_table_shading_is_quieter_than_selected_menu_surfaces() {
+        use rio_backend::config::presentation::TableBanding;
+        for colors in std::iter::once(Colors::default()).chain(
+            crate::automexia::theme_gallery::builtins()
+                .into_iter()
+                .map(|entry| entry.theme.unwrap().colors),
+        ) {
+            let style = TableStyle::new(
+                TableAppearance {
+                    banding: Some(TableBanding::Rows),
+                    ..Default::default()
+                },
+                colors,
+            );
+            let body = style.background(false, 0, 0);
+            let stripe = style.background(false, 1, 0);
+            let header = style.background(true, 0, 0);
+            assert_eq!(body, colors.background.0);
+            assert_ne!(ui_theme::color_u8(body), ui_theme::color_u8(stripe));
+            for channel in 0..3 {
+                assert!((stripe[channel] - body[channel]).abs() <= 0.055);
+                assert!((header[channel] - body[channel]).abs() <= 0.105);
+            }
+            assert!(
+                automexia_ui_model::contrast_ratio(header, body)
+                    > automexia_ui_model::contrast_ratio(stripe, body)
+            );
+            for background in [body, stripe, header] {
+                assert!(
+                    automexia_ui_model::contrast_ratio(colors.foreground, background)
+                        >= 4.5
+                );
+            }
+        }
+    }
 
     #[test]
     fn patterned_rules_have_gaps_and_never_escape_the_rule_or_pane() {
