@@ -4,6 +4,7 @@
 //! without writing escape sequences into the PTY, and its reserved height is
 //! removed from the terminal grid by `layout::pane_footer_reserved_height`.
 
+use super::ui_theme::{color_u8, UiTheme};
 use crate::context::ContextManager;
 use crate::layout::pane_footer_reserved_height;
 use crate::renderer::search::SearchRect;
@@ -123,7 +124,7 @@ impl SessionFooter {
         &self,
         sugarloaf: &mut Sugarloaf,
         context_manager: &ContextManager<T>,
-        background: [f32; 4],
+        theme: &UiTheme,
         suppressed_route: Option<usize>,
     ) where
         T: EventListener + Clone + Send + 'static,
@@ -167,7 +168,7 @@ impl SessionFooter {
                 is_active,
                 compatibility: self.compatibility.get(&context.route_id),
             };
-            draw_footer(sugarloaf, geometry, state, background);
+            draw_footer(sugarloaf, geometry, state, theme);
         }
     }
 }
@@ -262,18 +263,14 @@ fn draw_footer(
     sugarloaf: &mut Sugarloaf,
     geometry: FooterGeometry,
     state: FooterRenderState<'_>,
-    background: [f32; 4],
+    theme: &UiTheme,
 ) {
-    let outline = if state.is_active {
-        if state.pane_count > 1 {
-            [0.12, 0.65, 0.82, 0.9]
-        } else {
-            [0.18, 0.33, 0.43, 0.70]
-        }
+    let outline = if state.is_active && state.pane_count > 1 {
+        theme.accent
     } else {
-        over(background, [0.10, 0.20, 0.28, 0.58])
+        theme.border
     };
-    let fill = over(background, [0.02, 0.045, 0.066, 0.97]);
+    let fill = theme.surface;
     sugarloaf.rect(
         None,
         geometry.surface.x,
@@ -327,17 +324,13 @@ fn draw_footer(
     let value_opts = DrawOpts {
         font_size: value_font_size,
         color: if state.is_active {
-            [190, 210, 224, 255]
+            color_u8(theme.text)
         } else {
-            [154, 172, 184, 255]
+            color_u8(theme.muted_text)
         },
         ..DrawOpts::default()
     };
-    let separator = if state.is_active {
-        [0.22, 0.34, 0.43, 0.72]
-    } else {
-        [0.15, 0.24, 0.31, 0.52]
-    };
+    let separator = theme.border;
     let min_x = geometry.surface.x + horizontal_padding;
     let mut right_x = geometry.surface.x + geometry.surface.width - horizontal_padding;
     let mut has_status = draw_right_status(
@@ -394,7 +387,7 @@ fn draw_footer(
     let left_limit = right_x - 12.0;
     let quiet_opts = DrawOpts {
         font_size: quiet_font_size,
-        color: [154, 172, 184, 255],
+        color: color_u8(theme.muted_text),
         ..DrawOpts::default()
     };
     if state.pane_count > 1 {
@@ -422,7 +415,7 @@ fn draw_footer(
     if state.is_active {
         if let Some(compatibility) = state.compatibility {
             let accent_opts = DrawOpts {
-                color: [48, 190, 238, 255],
+                color: color_u8(theme.accent),
                 ..quiet_opts
             };
             if let Some(profile) = &compatibility.profile {
@@ -443,7 +436,7 @@ fn draw_footer(
                     text_y,
                     "CHORD …",
                     DrawOpts {
-                        color: [244, 184, 66, 255],
+                        color: color_u8(theme.warning),
                         ..quiet_opts
                     },
                 );
@@ -478,7 +471,7 @@ fn draw_footer(
                     text_y,
                     &diagnostics,
                     DrawOpts {
-                        color: [244, 184, 66, 255],
+                        color: color_u8(theme.warning),
                         ..quiet_opts
                     },
                 );
@@ -487,7 +480,7 @@ fn draw_footer(
     }
     if state.display_offset > 0 {
         let history_opts = DrawOpts {
-            color: [235, 181, 92, 255],
+            color: color_u8(theme.warning),
             ..quiet_opts
         };
         let history = format!("HISTORY +{}", state.display_offset);
@@ -501,7 +494,7 @@ fn draw_footer(
         );
     } else if state.has_selection {
         let selection_opts = DrawOpts {
-            color: [235, 181, 92, 255],
+            color: color_u8(theme.warning),
             ..quiet_opts
         };
         let _ = draw_left_status(
@@ -679,16 +672,6 @@ fn current_clock_label() -> String {
 fn utc_clock_label(seconds: u64) -> String {
     let minutes = (seconds / 60) % (24 * 60);
     format_clock((minutes / 60) as u16, (minutes % 60) as u16)
-}
-
-fn over(background: [f32; 4], foreground: [f32; 4]) -> [f32; 4] {
-    let alpha = foreground[3].clamp(0.0, 1.0);
-    [
-        foreground[0] * alpha + background[0] * (1.0 - alpha),
-        foreground[1] * alpha + background[1] * (1.0 - alpha),
-        foreground[2] * alpha + background[2] * (1.0 - alpha),
-        1.0,
-    ]
 }
 
 #[cfg(test)]

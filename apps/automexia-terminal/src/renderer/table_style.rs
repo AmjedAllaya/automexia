@@ -17,21 +17,16 @@ impl TableStyle {
         Self {
             appearance,
             background: colors.background.0,
-            theme: UiTheme::resolve(colors.background.0, colors.foreground, colors.tabs),
+            theme: UiTheme::from_colors(&colors),
         }
     }
     pub fn color_defaults(colors: Colors) -> [[f32; 4]; 7] {
-        let theme = UiTheme::resolve(colors.background.0, colors.foreground, colors.tabs);
+        let theme = UiTheme::from_colors(&colors);
         [
             colors.foreground,
             colors.foreground,
             colors.foreground,
-            [
-                ui_theme::BORDER[0],
-                ui_theme::BORDER[1],
-                ui_theme::BORDER[2],
-                0.65,
-            ],
+            [theme.border[0], theme.border[1], theme.border[2], 0.65],
             theme.raised,
             colors.background.0,
             theme.raised,
@@ -73,14 +68,14 @@ impl TableStyle {
         self.appearance.border_color.map_or_else(
             || {
                 if header {
-                    ui_theme::BORDER
+                    self.theme.border
                 } else {
                     ui_theme::over(
                         self.background,
                         [
-                            ui_theme::BORDER[0],
-                            ui_theme::BORDER[1],
-                            ui_theme::BORDER[2],
+                            self.theme.border[0],
+                            self.theme.border[1],
+                            self.theme.border[2],
                             0.65,
                         ],
                     )
@@ -258,11 +253,21 @@ mod tests {
         use rio_backend::config::presentation::Rgba;
         let colors = Colors::default();
         let style = TableStyle::new(TableAppearance::default(), colors);
-        // Literal neutral blue-grey edge; focus cyan belongs to controls.
-        assert_eq!(
-            ui_theme::color_u8(style.border_color(true)),
-            [41, 65, 79, 255]
+        // Decoration remains quieter than focus while following the palette.
+        assert!(
+            automexia_ui_model::contrast_ratio(
+                style.border_color(true),
+                colors.background.0
+            ) < 3.0
         );
+        let mut borders = Vec::new();
+        for entry in crate::automexia::theme_gallery::builtins() {
+            let colors = entry.theme.unwrap().colors;
+            let styled = TableStyle::new(TableAppearance::default(), colors);
+            borders.push(ui_theme::color_u8(styled.border_color(true)));
+        }
+        assert_ne!(borders[0], borders[1]);
+        assert_ne!(borders[1], borders[4]);
         for header in [true, false] {
             assert!(style.border_color(header)[1] < 0.3);
         }

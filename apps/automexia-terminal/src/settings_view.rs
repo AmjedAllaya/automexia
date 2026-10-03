@@ -5175,9 +5175,9 @@ impl SettingsView {
             hint_accent(
                 theme,
                 if self.preview_edit_mode {
-                    crate::renderer::ui_theme::BRAND_LIME
+                    theme.success
                 } else {
-                    crate::renderer::ui_theme::BRAND_CYAN
+                    theme.accent
                 },
             ),
             true,
@@ -5208,7 +5208,7 @@ impl SettingsView {
                     },
                     "DevOps tags hidden",
                     caption,
-                    hint_accent(theme, crate::renderer::ui_theme::BRAND_AMBER),
+                    hint_accent(theme, theme.warning),
                     false,
                     sample,
                 );
@@ -7031,7 +7031,7 @@ fn action_button(
         text.1,
         font * 0.8,
         if state.1 {
-            hint_accent(theme, crate::renderer::ui_theme::BRAND_CYAN)
+            hint_accent(theme, theme.accent)
         } else {
             theme.muted_text
         },
@@ -7068,16 +7068,12 @@ fn shortcut_hint(
             run(" | ", theme.muted_text, false);
         }
         if let Some((key, action)) = part.split_once(':') {
-            let accent = hint_accent(theme, crate::renderer::ui_theme::BRAND_CYAN);
+            let accent = hint_accent(theme, theme.accent);
             run(key, accent, true);
             run(":", accent, true);
             run(action, theme.text, false);
         } else if part == "Saved" {
-            run(
-                part,
-                hint_accent(theme, crate::renderer::ui_theme::BRAND_LIME),
-                false,
-            );
+            run(part, hint_accent(theme, theme.success), false);
         } else {
             run(part, theme.text, false);
         }

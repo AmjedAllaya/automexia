@@ -14,13 +14,20 @@ pub(crate) const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
 pub(crate) const MODAL_SCRIM: [f32; 4] = [0.0, 0.012, 0.028, 0.82];
 pub(crate) const MODAL_SHADOW: [f32; 4] = [0.0, 0.0, 0.0, 0.52];
+#[cfg(test)]
 pub(crate) const CARD: [f32; 4] = [0.027, 0.047, 0.067, 1.0];
+#[cfg(test)]
 pub(crate) const SURFACE: [f32; 4] = [0.055, 0.094, 0.129, 1.0];
+#[cfg(test)]
 pub(crate) const SURFACE_RAISED: [f32; 4] = [0.082, 0.176, 0.231, 1.0];
 /// Decorative edges must not substitute for the brighter focus/selection cue.
+#[cfg(test)]
 pub(crate) const BORDER: [f32; 4] = [0.161, 0.255, 0.310, 1.0];
+#[cfg(test)]
 pub(crate) const OUTLINE: [f32; 4] = [0.20, 0.68, 0.80, 1.0];
+#[cfg(test)]
 pub(crate) const TEXT: [f32; 4] = [0.882, 0.914, 0.937, 1.0];
+#[cfg(test)]
 pub(crate) const MUTED_TEXT: [f32; 4] = [0.604, 0.675, 0.722, 1.0];
 pub(crate) const CARD_RADIUS: f32 = 14.0;
 pub(crate) const CONTROL_RADIUS: f32 = 8.0;
@@ -126,12 +133,75 @@ pub(crate) struct UiTheme {
     pub(crate) background: [f32; 4],
     pub(crate) surface: [f32; 4],
     pub(crate) raised: [f32; 4],
+    pub(crate) border: [f32; 4],
     pub(crate) outline: [f32; 4],
     pub(crate) text: [f32; 4],
     pub(crate) muted_text: [f32; 4],
+    pub(crate) accent: [f32; 4],
+    pub(crate) blue: [f32; 4],
+    pub(crate) purple: [f32; 4],
+    pub(crate) success: [f32; 4],
+    pub(crate) warning: [f32; 4],
+    pub(crate) danger: [f32; 4],
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub(crate) enum UiAccent {
+    Cyan,
+    Blue,
+    Purple,
+    Success,
+    Warning,
+    Danger,
+}
+
+impl UiAccent {
+    pub(crate) fn color(self, theme: &UiTheme) -> [f32; 4] {
+        match self {
+            Self::Cyan => theme.accent,
+            Self::Blue => theme.blue,
+            Self::Purple => theme.purple,
+            Self::Success => theme.success,
+            Self::Warning => theme.warning,
+            Self::Danger => theme.danger,
+        }
+    }
 }
 
 impl UiTheme {
+    /// One palette projection for every application-owned surface. Terminal
+    /// semantic colors and explicit tag/table/output overrides are separate.
+    pub(crate) fn from_colors(colors: &rio_backend::config::colors::Colors) -> Self {
+        let mut theme = Self::resolve(
+            colors.background.0,
+            colors.foreground,
+            colors.dim_foreground.unwrap_or(colors.foreground),
+        );
+        theme.accent = theme.label(colors.cyan);
+        theme.blue = theme.label(colors.blue);
+        theme.purple = theme.label(colors.magenta);
+        theme.success = theme.label(colors.green);
+        theme.warning = theme.label(colors.yellow);
+        theme.danger = theme.label(colors.red);
+        theme
+    }
+
+    /// Keep labels legible across the card, input and selected-row surfaces.
+    pub(crate) fn label(self, color: [f32; 4]) -> [f32; 4] {
+        let candidate = readable_on(color, self.raised);
+        if [self.background, self.surface, self.raised]
+            .into_iter()
+            .all(|surface| {
+                automexia_ui_model::contrast_ratio(candidate, surface)
+                    >= MIN_TEXT_CONTRAST + 0.05
+            })
+        {
+            candidate
+        } else {
+            self.text
+        }
+    }
+
     /// Resolve stable application chrome while retaining configured foreground
     /// intent when it satisfies the project contrast floor.
     pub(crate) fn resolve(
@@ -183,17 +253,32 @@ impl UiTheme {
                 }
             }
         };
+        let muted_text = label(configured_muted);
         Self {
             background,
             surface,
             raised,
+            border: over(
+                background,
+                [muted_text[0], muted_text[1], muted_text[2], 0.22],
+            ),
             outline: ensure_contrast(configured_muted, raised, 3.0),
             // Raised is the lowest-contrast surface. Resolve against it
             // with headroom for the Text API's 8-bit colour conversion.
             text: label(configured_foreground),
-            muted_text: label(configured_muted),
+            muted_text,
+            accent: label(BRAND_CYAN),
+            blue: label(BRAND_BLUE),
+            purple: label(BRAND_PURPLE),
+            success: label(BRAND_LIME),
+            warning: label(BRAND_AMBER),
+            danger: label(BRAND_CORAL),
         }
     }
+}
+
+pub(crate) fn readable_on(color: [f32; 4], surface: [f32; 4]) -> [f32; 4] {
+    chrome_label(color, surface)
 }
 
 fn chrome_label(mut color: [f32; 4], surface: [f32; 4]) -> [f32; 4] {

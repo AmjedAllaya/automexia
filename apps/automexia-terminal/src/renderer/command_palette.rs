@@ -9,13 +9,8 @@ use crate::bindings::shortcut::{legacy_binding_target, palette_binding_target};
 use crate::renderer::responsive::{elide_end, elide_start, Viewport};
 use crate::renderer::scrollbar;
 use crate::renderer::ui_theme::{
-    color_u8, BORDER as OUTLINE_COLOR, BRAND_AMBER, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN,
-    BRAND_LIME, BRAND_PURPLE, CARD as BG_COLOR, CARD_RADIUS, CONTROL_RADIUS,
-    KEYCAP_RADIUS, MODAL_SCRIM as BACKDROP_COLOR, MODAL_SHADOW as SHADOW_COLOR,
-    MUTED_TEXT as DIM_TEXT_COLOR, MUTED_TEXT as SHORTCUT_TEXT_COLOR,
-    OUTLINE as INPUT_OUTLINE_COLOR, SURFACE as INPUT_BG_COLOR,
-    SURFACE as SHORTCUT_BG_COLOR, SURFACE_RAISED as SELECTED_BG_COLOR,
-    TEXT as TEXT_COLOR,
+    color_u8, UiAccent, UiTheme, CARD_RADIUS, CONTROL_RADIUS, KEYCAP_RADIUS,
+    MODAL_SCRIM as BACKDROP_COLOR, MODAL_SHADOW as SHADOW_COLOR,
 };
 use automexia_ui_model::quick_actions::{
     QuickActionListItem, QuickActionReviewView, QuickActionRisk,
@@ -69,8 +64,6 @@ const SEPARATOR_HEIGHT: f32 = 1.0;
 const RESULTS_MARGIN_TOP: f32 = 8.0;
 const CARET_WIDTH: f32 = 1.5;
 const CARET_BLINK_MS: u128 = 500;
-
-const SEPARATOR_COLOR: [f32; 4] = OUTLINE_COLOR;
 
 fn trailing_label_max_width(input_width: f32) -> f32 {
     if !input_width.is_finite() {
@@ -307,7 +300,7 @@ enum CommandIcon {
 #[derive(Clone, Copy, Debug, PartialEq)]
 struct RowPresentation {
     icon: CommandIcon,
-    accent: [f32; 4],
+    accent: UiAccent,
 }
 
 fn command_presentation(action: PaletteAction) -> RowPresentation {
@@ -315,187 +308,187 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
     match action {
         TabCreate => RowPresentation {
             icon: CommandIcon::TabAdd,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         LocalTabCreate => RowPresentation {
             icon: CommandIcon::LocalTabAdd,
-            accent: BRAND_LIME,
+            accent: UiAccent::Success,
         },
         TabClose => RowPresentation {
             icon: CommandIcon::TabClose,
-            accent: BRAND_CORAL,
+            accent: UiAccent::Danger,
         },
         TabCloseUnfocused => RowPresentation {
             icon: CommandIcon::TabsClose,
-            accent: BRAND_CORAL,
+            accent: UiAccent::Danger,
         },
         CloseCurrentSplitOrTab => RowPresentation {
             icon: CommandIcon::Close,
-            accent: BRAND_CORAL,
+            accent: UiAccent::Danger,
         },
         SelectNextTab => RowPresentation {
             icon: CommandIcon::TabNext,
-            accent: BRAND_BLUE,
+            accent: UiAccent::Blue,
         },
         SelectPrevTab => RowPresentation {
             icon: CommandIcon::TabPrevious,
-            accent: BRAND_BLUE,
+            accent: UiAccent::Blue,
         },
         SelectNextLocalTab => RowPresentation {
             icon: CommandIcon::LocalTabNext,
-            accent: BRAND_LIME,
+            accent: UiAccent::Success,
         },
         SelectPrevLocalTab => RowPresentation {
             icon: CommandIcon::LocalTabPrevious,
-            accent: BRAND_LIME,
+            accent: UiAccent::Success,
         },
         SplitRight => RowPresentation {
             icon: CommandIcon::SplitRight,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         SplitDown => RowPresentation {
             icon: CommandIcon::SplitDown,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         CloneSplitRight => RowPresentation {
             icon: CommandIcon::CloneSplitRight,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         CloneSplitDown => RowPresentation {
             icon: CommandIcon::CloneSplitDown,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         SelectNextSplit => RowPresentation {
             icon: CommandIcon::PaneNext,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         SelectPrevSplit => RowPresentation {
             icon: CommandIcon::PanePrevious,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         SelectPaneLeft => RowPresentation {
             icon: CommandIcon::FocusLeft,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         SelectPaneRight => RowPresentation {
             icon: CommandIcon::FocusRight,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         SelectPaneUp => RowPresentation {
             icon: CommandIcon::FocusUp,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         SelectPaneDown => RowPresentation {
             icon: CommandIcon::FocusDown,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         OpenSettings => RowPresentation {
             icon: CommandIcon::Settings,
-            accent: BRAND_AMBER,
+            accent: UiAccent::Warning,
         },
         OpenCustomizations => RowPresentation {
             icon: CommandIcon::Customizations,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         ConfigEditor => RowPresentation {
             icon: CommandIcon::ConfigFile,
-            accent: BRAND_AMBER,
+            accent: UiAccent::Warning,
         },
         WindowCreateNew => RowPresentation {
             icon: CommandIcon::WindowAdd,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         IncreaseFontSize => RowPresentation {
             icon: CommandIcon::FontIncrease,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         DecreaseFontSize => RowPresentation {
             icon: CommandIcon::FontDecrease,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         ResetFontSize => RowPresentation {
             icon: CommandIcon::FontReset,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         ListFonts => RowPresentation {
             icon: CommandIcon::Font,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         ToggleViMode => RowPresentation {
             icon: CommandIcon::Code,
-            accent: BRAND_LIME,
+            accent: UiAccent::Success,
         },
         ToggleFullscreen => RowPresentation {
             icon: CommandIcon::Fullscreen,
-            accent: BRAND_BLUE,
+            accent: UiAccent::Blue,
         },
         OpenThemeGallery => RowPresentation {
             icon: CommandIcon::ThemeGallery,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         ToggleAppearanceTheme => RowPresentation {
             icon: CommandIcon::Theme,
-            accent: BRAND_AMBER,
+            accent: UiAccent::Warning,
         },
         Copy => RowPresentation {
             icon: CommandIcon::Copy,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         Paste => RowPresentation {
             icon: CommandIcon::Paste,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         ScrollToPreviousCommand => RowPresentation {
             icon: CommandIcon::History,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         ScrollToNextCommand => RowPresentation {
             icon: CommandIcon::HistoryNext,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         SearchForward => RowPresentation {
             icon: CommandIcon::Search,
-            accent: BRAND_BLUE,
+            accent: UiAccent::Blue,
         },
         SearchBackward => RowPresentation {
             icon: CommandIcon::SearchBackward,
-            accent: BRAND_BLUE,
+            accent: UiAccent::Blue,
         },
         SearchGlobalForward => RowPresentation {
             icon: CommandIcon::SearchGlobalForward,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         SearchGlobalBackward => RowPresentation {
             icon: CommandIcon::SearchGlobalBackward,
-            accent: BRAND_PURPLE,
+            accent: UiAccent::Purple,
         },
         ViewTableOutput => RowPresentation {
             icon: CommandIcon::Table,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         PreviewSelectedImage => RowPresentation {
             icon: CommandIcon::Image,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         ClearScreen => RowPresentation {
             icon: CommandIcon::ClearScreen,
-            accent: BRAND_AMBER,
+            accent: UiAccent::Warning,
         },
         OpenMarket => RowPresentation {
             icon: CommandIcon::Extension,
-            accent: BRAND_LIME,
+            accent: UiAccent::Success,
         },
         OpenConnections => RowPresentation {
             icon: CommandIcon::Connections,
-            accent: BRAND_BLUE,
+            accent: UiAccent::Blue,
         },
         OpenActions => RowPresentation {
             icon: CommandIcon::QuickActions,
-            accent: BRAND_CYAN,
+            accent: UiAccent::Cyan,
         },
         Quit => RowPresentation {
             icon: CommandIcon::Power,
-            accent: BRAND_CORAL,
+            accent: UiAccent::Danger,
         },
     }
 }
@@ -884,29 +877,29 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Navigation(Some(category)) => category.presentation(),
             PaletteRow::Navigation(None) => RowPresentation {
                 icon: CommandIcon::Back,
-                accent: BRAND_CYAN,
+                accent: UiAccent::Cyan,
             },
             PaletteRow::Command { action, .. } => command_presentation(action),
             PaletteRow::Font { .. } => RowPresentation {
                 icon: CommandIcon::Font,
-                accent: BRAND_PURPLE,
+                accent: UiAccent::Purple,
             },
             PaletteRow::Market {
                 installed: true, ..
             } => RowPresentation {
                 icon: CommandIcon::Extension,
-                accent: BRAND_LIME,
+                accent: UiAccent::Success,
             },
             PaletteRow::Market {
                 installed: false, ..
             } => RowPresentation {
                 icon: CommandIcon::Extension,
-                accent: BRAND_CYAN,
+                accent: UiAccent::Cyan,
             },
             PaletteRow::QuickAction { item } if item.provider_context => {
                 RowPresentation {
                     icon: CommandIcon::Connections,
-                    accent: BRAND_CYAN,
+                    accent: UiAccent::Cyan,
                 }
             }
             PaletteRow::QuickAction { item } => RowPresentation {
@@ -915,15 +908,15 @@ impl<'a> PaletteRow<'a> {
             },
             PaletteRow::QuickActionNotice { .. } => RowPresentation {
                 icon: CommandIcon::History,
-                accent: BRAND_BLUE,
+                accent: UiAccent::Blue,
             },
             PaletteRow::PlaceholderContinue => RowPresentation {
                 icon: CommandIcon::TabNext,
-                accent: BRAND_CYAN,
+                accent: UiAccent::Cyan,
             },
             PaletteRow::ReviewCommand { .. } => RowPresentation {
                 icon: CommandIcon::Code,
-                accent: BRAND_BLUE,
+                accent: UiAccent::Blue,
             },
             PaletteRow::ReviewInsert { risk, .. } => RowPresentation {
                 icon: CommandIcon::Paste,
@@ -946,11 +939,11 @@ const fn risk_label(risk: QuickActionRisk) -> &'static str {
     }
 }
 
-const fn risk_accent(risk: QuickActionRisk) -> [f32; 4] {
+const fn risk_accent(risk: QuickActionRisk) -> UiAccent {
     match risk {
-        QuickActionRisk::ReadOnly => BRAND_LIME,
-        QuickActionRisk::Mutating => BRAND_AMBER,
-        QuickActionRisk::Destructive | QuickActionRisk::Privileged => BRAND_CORAL,
+        QuickActionRisk::ReadOnly => UiAccent::Success,
+        QuickActionRisk::Mutating => UiAccent::Warning,
+        QuickActionRisk::Destructive | QuickActionRisk::Privileged => UiAccent::Danger,
     }
 }
 
@@ -2464,14 +2457,19 @@ impl CommandPalette {
         false
     }
 
-    pub fn render(&mut self, sugarloaf: &mut Sugarloaf, dimensions: (f32, f32, f32)) {
+    pub(crate) fn render(
+        &mut self,
+        sugarloaf: &mut Sugarloaf,
+        dimensions: (f32, f32, f32),
+        theme: &UiTheme,
+    ) {
         if !self.enabled {
             // Immediate mode: not drawing == not visible.
             return;
         }
 
         if self.is_editing_shortcut() {
-            self.render_shortcut_editor(sugarloaf, dimensions);
+            self.render_shortcut_editor(sugarloaf, dimensions, theme);
             return;
         }
 
@@ -2526,8 +2524,8 @@ impl CommandPalette {
             palette_height,
             1.0,
             PALETTE_CORNER_RADIUS,
-            OUTLINE_COLOR,
-            BG_COLOR,
+            theme.border,
+            theme.background,
             DEPTH_BG + 0.01,
             ORDER,
         );
@@ -2544,8 +2542,8 @@ impl CommandPalette {
             INPUT_HEIGHT - 4.0,
             1.0,
             CONTROL_RADIUS,
-            INPUT_OUTLINE_COLOR,
-            INPUT_BG_COLOR,
+            theme.accent,
+            theme.surface,
             DEPTH_ELEMENT,
             ORDER,
         );
@@ -2559,8 +2557,8 @@ impl CommandPalette {
                     height,
                     1.0,
                     KEYCAP_RADIUS,
-                    OUTLINE_COLOR,
-                    SHORTCUT_BG_COLOR,
+                    theme.border,
+                    theme.surface,
                     DEPTH_ELEMENT + 0.02,
                     ORDER,
                 );
@@ -2569,13 +2567,13 @@ impl CommandPalette {
                     CommandIcon::Back,
                     x + 4.0,
                     y + 4.0,
-                    BRAND_CYAN,
-                    SHORTCUT_BG_COLOR,
+                    theme.accent,
+                    theme.surface,
                 );
                 if width > 28.0 {
                     let opts = DrawOpts {
                         font_size: SHORTCUT_FONT_SIZE,
-                        color: color_u8(TEXT_COLOR),
+                        color: color_u8(theme.text),
                         ..DrawOpts::default()
                     };
                     sugarloaf.text_mut().draw(x + 30.0, y + 7.0, "Back", &opts);
@@ -2587,8 +2585,8 @@ impl CommandPalette {
                     CommandIcon::Search,
                     input_x + 13.0,
                     input_y + 11.0,
-                    BRAND_CYAN,
-                    INPUT_BG_COLOR,
+                    theme.accent,
+                    theme.surface,
                 );
                 INPUT_ICON_WELL
             };
@@ -2602,14 +2600,14 @@ impl CommandPalette {
             25.0,
             1.0,
             KEYCAP_RADIUS,
-            OUTLINE_COLOR,
-            SHORTCUT_BG_COLOR,
+            theme.border,
+            theme.surface,
             DEPTH_ELEMENT + 0.01,
             ORDER,
         );
         let esc_opts = DrawOpts {
             font_size: SHORTCUT_FONT_SIZE,
-            color: color_u8(SHORTCUT_TEXT_COLOR),
+            color: color_u8(theme.muted_text),
             ..DrawOpts::default()
         };
         sugarloaf
@@ -2633,9 +2631,9 @@ impl CommandPalette {
             - 18.0)
             .max(0.0);
         let text_color = if self.query.is_empty() {
-            DIM_TEXT_COLOR
+            theme.muted_text
         } else {
-            TEXT_COLOR
+            theme.text
         };
 
         let text_x = input_x + INPUT_PADDING_X + input_icon_well;
@@ -2680,7 +2678,7 @@ impl CommandPalette {
                 caret_y,
                 CARET_WIDTH,
                 caret_height,
-                TEXT_COLOR,
+                theme.text,
                 DEPTH_ELEMENT,
                 ORDER,
             );
@@ -2693,7 +2691,7 @@ impl CommandPalette {
             sep_y,
             palette_width - PALETTE_PADDING * 2.0,
             SEPARATOR_HEIGHT,
-            SEPARATOR_COLOR,
+            theme.border,
             DEPTH_ELEMENT,
             ORDER,
         );
@@ -2720,7 +2718,7 @@ impl CommandPalette {
                     item_y,
                     input_width,
                     RESULT_ITEM_HEIGHT - 2.0,
-                    SELECTED_BG_COLOR,
+                    theme.raised,
                     DEPTH_ELEMENT,
                     CONTROL_RADIUS,
                     ORDER,
@@ -2731,7 +2729,7 @@ impl CommandPalette {
                     item_y + 11.0,
                     2.0,
                     RESULT_ITEM_HEIGHT - 24.0,
-                    BRAND_CYAN,
+                    theme.accent,
                     DEPTH_ELEMENT + 0.02,
                     1.0,
                     ORDER,
@@ -2741,25 +2739,25 @@ impl CommandPalette {
             let icon_x = input_x + 14.0;
             let icon_y = item_y + (RESULT_ITEM_HEIGHT - RESULT_ICON_SIZE) / 2.0 - 1.0;
             let row_fill_color = if is_selected {
-                SELECTED_BG_COLOR
+                theme.raised
             } else {
-                BG_COLOR
+                theme.background
             };
             draw_command_icon(
                 sugarloaf,
                 presentation.icon,
                 icon_x,
                 icon_y,
-                presentation.accent,
+                presentation.accent.color(theme),
                 row_fill_color,
             );
 
             let result_opts = DrawOpts {
                 font_size: RESULT_FONT_SIZE,
                 color: color_u8(if is_selected {
-                    TEXT_COLOR
+                    theme.text
                 } else {
-                    [0.68, 0.78, 0.86, 1.0]
+                    theme.muted_text
                 }),
                 ..DrawOpts::default()
             };
@@ -2769,9 +2767,9 @@ impl CommandPalette {
             let shortcut_opts = DrawOpts {
                 font_size: SHORTCUT_FONT_SIZE,
                 color: color_u8(if is_selected {
-                    TEXT_COLOR
+                    theme.text
                 } else {
-                    SHORTCUT_TEXT_COLOR
+                    theme.muted_text
                 }),
                 ..DrawOpts::default()
             };
@@ -2819,7 +2817,7 @@ impl CommandPalette {
                     shortcut_y,
                     keycap_width,
                     24.0,
-                    SHORTCUT_BG_COLOR,
+                    theme.surface,
                     DEPTH_ELEMENT + 0.01,
                     KEYCAP_RADIUS,
                     ORDER,
@@ -2834,17 +2832,17 @@ impl CommandPalette {
 
             if is_font_row {
                 let stroke_color = if is_selected {
-                    TEXT_COLOR
+                    theme.text
                 } else {
-                    SHORTCUT_TEXT_COLOR
+                    theme.muted_text
                 };
                 // Cutout inside each page uses the row's own background
                 // so the border reads as a clean outline on either
                 // palette-bg (idle) or selection-highlight-bg (hovered).
                 let row_fill_color = if is_selected {
-                    SELECTED_BG_COLOR
+                    theme.raised
                 } else {
-                    BG_COLOR
+                    theme.background
                 };
                 let icon_x = input_x + input_width - 15.0 - COPY_ICON_W;
                 let icon_y = item_y + (RESULT_ITEM_HEIGHT - COPY_ICON_H) / 2.0 - 1.0;
@@ -2863,7 +2861,7 @@ impl CommandPalette {
         if filtered.is_empty() {
             let empty_opts = DrawOpts {
                 font_size: RESULT_FONT_SIZE,
-                color: color_u8(DIM_TEXT_COLOR),
+                color: color_u8(theme.muted_text),
                 ..DrawOpts::default()
             };
             let empty = "No matching Automexia actions";
@@ -2916,12 +2914,13 @@ impl CommandPalette {
                 false,
                 DEPTH_ELEMENT + 0.05,
                 ORDER,
+                theme,
             );
         }
         if matches!(self.mode, PaletteMode::Commands) && palette_width >= 300.0 {
             let opts = DrawOpts {
                 font_size: 9.0,
-                color: color_u8(DIM_TEXT_COLOR),
+                color: color_u8(theme.muted_text),
                 ..DrawOpts::default()
             };
             sugarloaf.text_mut().draw(
@@ -3001,9 +3000,18 @@ mod tests {
     fn every_command_has_a_vector_icon_and_opaque_accent() {
         for command in COMMANDS {
             let presentation = command_presentation(command.action);
-            assert_eq!(presentation.accent[3], 1.0, "accent: {}", command.title);
+            assert_eq!(
+                presentation.accent.color(&UiTheme::from_colors(
+                    &rio_backend::config::colors::Colors::default()
+                ))[3],
+                1.0,
+                "accent: {}",
+                command.title
+            );
             assert!(
-                presentation.accent[..3]
+                presentation.accent.color(&UiTheme::from_colors(
+                    &rio_backend::config::colors::Colors::default()
+                ))[..3]
                     .iter()
                     .all(|channel| channel.is_finite()),
                 "non-finite icon accent: {}",
@@ -3095,15 +3103,15 @@ mod tests {
     fn destructive_automexia_and_pane_commands_have_distinct_roles() {
         assert_eq!(
             command_presentation(PaletteAction::Quit).accent,
-            BRAND_CORAL
+            UiAccent::Danger
         );
         assert_eq!(
             command_presentation(PaletteAction::OpenMarket).accent,
-            BRAND_LIME
+            UiAccent::Success
         );
         assert_eq!(
             command_presentation(PaletteAction::SplitRight).accent,
-            BRAND_PURPLE
+            UiAccent::Purple
         );
         assert_ne!(
             command_presentation(PaletteAction::OpenMarket).icon,
@@ -3871,7 +3879,7 @@ mod tests {
         );
         let row = PaletteRow::QuickAction { item: &item };
         assert_eq!(row.presentation().icon, CommandIcon::Connections);
-        assert_eq!(row.presentation().accent, BRAND_CYAN);
+        assert_eq!(row.presentation().accent, UiAccent::Cyan);
         assert_eq!(row.shortcut(), item.metadata_label);
 
         let mut palette = CommandPalette::new();

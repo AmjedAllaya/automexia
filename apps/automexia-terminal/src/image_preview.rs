@@ -439,6 +439,7 @@ impl ImagePreview {
         route_id: usize,
         rich_text_id: usize,
         pane: [f32; 4],
+        colors: &rio_backend::config::colors::Colors,
     ) {
         let Some(ready) = self.ready.as_ref() else {
             return;
@@ -461,6 +462,12 @@ impl ImagePreview {
         };
         let card = geometry.card.map(|value| value / scale);
         let image = geometry.image;
+        let mut background = colors.background.0;
+        background[3] = 1.0;
+        let readable = |color| {
+            let color = automexia_ui_model::ensure_contrast(color, background, 4.65);
+            color.map(|channel| (channel.clamp(0.0, 1.0) * 255.0) as u8)
+        };
         sugarloaf.rounded_rect(
             None,
             card[0] + 4.0,
@@ -473,15 +480,7 @@ impl ImagePreview {
             34,
         );
         sugarloaf.rounded_rect(
-            None,
-            card[0],
-            card[1],
-            card[2],
-            card[3],
-            [0.008, 0.027, 0.050, 0.985],
-            0.0,
-            12.0,
-            35,
+            None, card[0], card[1], card[2], card[3], background, 0.0, 12.0, 35,
         );
         sugarloaf.line(
             card[0],
@@ -490,7 +489,7 @@ impl ImagePreview {
             card[1],
             1.25,
             0.0,
-            [0.063, 0.72, 0.96, 0.92],
+            automexia_ui_model::ensure_contrast(colors.cyan, background, 3.1),
             36,
         );
         sugarloaf.push_image_overlay(
@@ -519,13 +518,13 @@ impl ImagePreview {
         );
         let title_opts = DrawOpts {
             font_size: 13.0,
-            color: [220, 239, 250, 255],
+            color: readable(colors.foreground),
             bold: true,
             ..DrawOpts::default()
         };
         let detail_opts = DrawOpts {
             font_size: 10.5,
-            color: [116, 155, 180, 255],
+            color: readable(colors.dim_foreground.unwrap_or(colors.foreground)),
             ..DrawOpts::default()
         };
         let detail_width = sugarloaf.text_mut().measure(&details, &detail_opts);

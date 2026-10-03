@@ -6827,16 +6827,18 @@ impl Screen<'_> {
             })
         };
         if let Some((route_id, rich_text_id, pane)) = preview_panel {
-            self.image_preview
-                .draw(&mut self.sugarloaf, route_id, rich_text_id, pane);
+            self.image_preview.draw(
+                &mut self.sugarloaf,
+                route_id,
+                rich_text_id,
+                pane,
+                &self.renderer.named_colors,
+            );
         }
         let preview_visible = self.image_preview.is_visible();
         self.fit_table_view();
-        let table_theme = crate::renderer::ui_theme::UiTheme::resolve(
-            self.renderer.named_colors.background.0,
-            crate::renderer::ui_theme::TEXT,
-            crate::renderer::ui_theme::MUTED_TEXT,
-        );
+        let table_theme =
+            crate::renderer::ui_theme::UiTheme::from_colors(&self.renderer.named_colors);
         self.table_view.draw(&mut self.sugarloaf, table_theme);
         crate::hints::preview::draw(&mut self.sugarloaf, &self.hint_state, table_theme);
         self.fit_settings_view();

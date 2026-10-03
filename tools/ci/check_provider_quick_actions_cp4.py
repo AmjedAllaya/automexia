@@ -157,7 +157,8 @@ REQUIRED_SOURCE_TOKENS = {
     "apps/automexia-terminal/src/renderer/command_palette.rs": {
         "item.provider_context",
         "CommandIcon::Connections",
-        "BRAND_CYAN",
+        "UiAccent::Cyan",
+        "presentation.accent.color(theme)",
         "command_context_label",
     },
 }

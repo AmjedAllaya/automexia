@@ -12,18 +12,9 @@ use crate::automexia::connections::{
     MetadataChangeReview, ReviewedGrantFile,
 };
 use crate::renderer::responsive::Viewport;
-use crate::renderer::ui_theme::{
-    color_u8, BORDER, BRAND_AMBER as WARNING, BRAND_CORAL, BRAND_CYAN as CYAN,
-    BRAND_LIME as SUCCESS, BRAND_PURPLE as VIOLET, CARD, CARD_RADIUS,
-    MODAL_SCRIM as SCRIM, MUTED_TEXT, SURFACE, SURFACE_RAISED, TEXT,
-};
+use crate::renderer::ui_theme::{color_u8, UiTheme, CARD_RADIUS, MODAL_SCRIM as SCRIM};
 
 const ORDER: u8 = 20;
-const SELECTED: [f32; 4] = [0.016, 0.17, 0.24, 1.0];
-const PRIMARY: [f32; 4] = [0.0, 0.32, 0.46, 1.0];
-const DISABLED: [f32; 4] = [0.12, 0.13, 0.15, 1.0];
-const FAVORITE: [f32; 4] = [0.96, 0.74, 0.25, 1.0];
-const RECENT: [f32; 4] = [0.32, 0.84, 0.72, 1.0];
 const SETUP_CARD_MAX_WIDTH: f32 = 840.0;
 const SETUP_CARD_MAX_HEIGHT: f32 = 500.0;
 const LITERAL_CARD_MAX_WIDTH: f32 = 840.0;
@@ -395,7 +386,12 @@ impl ConnectionHub {
         Some(ConnectionHubHit::Inert)
     }
 
-    pub fn render(&self, sugarloaf: &mut Sugarloaf, dimensions: (f32, f32, f32)) {
+    pub(crate) fn render(
+        &self,
+        sugarloaf: &mut Sugarloaf,
+        dimensions: (f32, f32, f32),
+        theme: &UiTheme,
+    ) {
         let Some(presentation) = self.presentation.as_ref() else {
             return;
         };
@@ -412,22 +408,27 @@ impl ConnectionHub {
             0.0,
             ORDER,
         );
-        rounded(sugarloaf, layout.card, BORDER, CARD_RADIUS);
+        rounded(sugarloaf, layout.card, theme.border, CARD_RADIUS);
         rounded(
             sugarloaf,
             inset(layout.card, 1.0),
             if presentation.view.reduced_transparency {
-                CARD
+                theme.background
             } else {
-                [CARD[0], CARD[1], CARD[2], 0.98]
+                [
+                    theme.background[0],
+                    theme.background[1],
+                    theme.background[2],
+                    0.98,
+                ]
             },
             13.0,
         );
 
-        let title = text(18.0, color_u8(TEXT), true);
-        let body = text(13.0, color_u8(TEXT), false);
-        let small = text(11.0, color_u8(MUTED_TEXT), false);
-        let label = text(12.0, color_u8(TEXT), false);
+        let title = text(18.0, color_u8(theme.text), true);
+        let body = text(13.0, color_u8(theme.text), false);
+        let small = text(11.0, color_u8(theme.muted_text), false);
+        let label = text(12.0, color_u8(theme.text), false);
         let operation_status = operation_status(presentation);
         let left = layout.card.x + if layout.compact { 14.0 } else { 22.0 };
 
@@ -437,14 +438,14 @@ impl ConnectionHub {
             width: 32.0,
             height: 32.0,
         };
-        rounded(sugarloaf, brand, SURFACE_RAISED, 9.0);
+        rounded(sugarloaf, brand, theme.raised, 9.0);
         draw_hub_icon(
             sugarloaf,
             HubIcon::Connections,
             brand.x + 5.0,
             brand.y + 5.0,
-            CYAN,
-            SURFACE_RAISED,
+            theme.accent,
+            theme.raised,
         );
         let hub_title = if layout.compact && layout.card.width < 430.0 {
             "Hub"
@@ -491,6 +492,7 @@ impl ConnectionHub {
                 "C",
                 connections_active,
                 &label,
+                theme,
             );
             section_tab(
                 sugarloaf,
@@ -502,6 +504,7 @@ impl ConnectionHub {
                     HubRoute::Workspaces | HubRoute::WorkspaceReview
                 ),
                 &label,
+                theme,
             );
             section_tab(
                 sugarloaf,
@@ -513,10 +516,11 @@ impl ConnectionHub {
                     HubRoute::Providers | HubRoute::ProviderReview
                 ),
                 &label,
+                theme,
             );
-            close_button(sugarloaf, layout.close, &label);
+            close_button(sugarloaf, layout.close, &label, theme);
         } else {
-            close_button(sugarloaf, layout.close, &label);
+            close_button(sugarloaf, layout.close, &label, theme);
         }
 
         if matches!(
@@ -530,6 +534,7 @@ impl ConnectionHub {
                 &body,
                 &small,
                 &label,
+                theme,
             );
             render_status_footer(
                 sugarloaf,
@@ -538,6 +543,7 @@ impl ConnectionHub {
                 left,
                 &operation_status,
                 &small,
+                theme,
             );
             sugarloaf.end_modal_layer();
             return;
@@ -553,6 +559,7 @@ impl ConnectionHub {
                 &body,
                 &small,
                 &label,
+                theme,
             );
             render_status_footer(
                 sugarloaf,
@@ -561,20 +568,21 @@ impl ConnectionHub {
                 left,
                 &operation_status,
                 &small,
+                theme,
             );
             sugarloaf.end_modal_layer();
             return;
         }
 
         if layout.catalog_chrome_visible {
-            rounded(sugarloaf, layout.search, SURFACE, 8.0);
+            rounded(sugarloaf, layout.search, theme.surface, 8.0);
             draw_hub_icon(
                 sugarloaf,
                 HubIcon::Search,
                 layout.search.x + 11.0,
                 layout.search.y + 8.0,
-                CYAN,
-                SURFACE,
+                theme.accent,
+                theme.surface,
             );
             let query = if let (None, Some(preedit)) = (
                 &presentation.tag_editor,
@@ -600,9 +608,12 @@ impl ConnectionHub {
                     Some("L"),
                 ),
                 HubIcon::Connections,
-                SURFACE_RAISED,
-                CYAN,
-                &label,
+                theme.raised,
+                theme.accent,
+                HubControlStyle {
+                    options: &label,
+                    theme,
+                },
             );
             action_button_with_shortcut(
                 sugarloaf,
@@ -616,9 +627,12 @@ impl ConnectionHub {
                     Some("F"),
                 ),
                 HubIcon::FolderAdd,
-                PRIMARY,
-                [0.90, 0.98, 1.0, 1.0],
-                &label,
+                theme.raised,
+                theme.text,
+                HubControlStyle {
+                    options: &label,
+                    theme,
+                },
             );
 
             let grouping = grouping_label(presentation.catalog_query.grouping);
@@ -654,7 +668,13 @@ impl ConnectionHub {
                 HubIcon::Source,
                 HubIcon::Clear,
             ];
-            let filter_colors = [VIOLET, FAVORITE, RECENT, CYAN, WARNING];
+            let filter_colors = [
+                theme.purple,
+                theme.warning,
+                theme.success,
+                theme.accent,
+                theme.warning,
+            ];
             for (index, rect) in layout.filters.iter().copied().enumerate() {
                 if index == 4 && !filters_are_active(presentation) {
                     continue;
@@ -666,7 +686,10 @@ impl ConnectionHub {
                     filter_icons[index],
                     filter_colors[index],
                     filter_active[index],
-                    &small,
+                    HubControlStyle {
+                        options: &small,
+                        theme,
+                    },
                 );
             }
         } else if presentation.view.route == HubRoute::Results
@@ -678,18 +701,24 @@ impl ConnectionHub {
                 layout.review_host,
                 ("Enter host", Some("L")),
                 HubIcon::Connections,
-                SURFACE_RAISED,
-                CYAN,
-                &label,
+                theme.raised,
+                theme.accent,
+                HubControlStyle {
+                    options: &label,
+                    theme,
+                },
             );
             action_button_with_shortcut(
                 sugarloaf,
                 layout.review_files,
                 ("Choose different files", Some("F")),
                 HubIcon::FolderAdd,
-                SURFACE_RAISED,
-                CYAN,
-                &label,
+                theme.raised,
+                theme.accent,
+                HubControlStyle {
+                    options: &label,
+                    theme,
+                },
             );
         }
 
@@ -699,13 +728,16 @@ impl ConnectionHub {
                 rect,
                 "Scan selected files",
                 HubIcon::Status,
-                PRIMARY,
-                [0.90, 0.98, 1.0, 1.0],
-                &label,
+                theme.raised,
+                theme.text,
+                HubControlStyle {
+                    options: &label,
+                    theme,
+                },
             );
         }
         if let Some(rect) = layout.cancel_scan {
-            button(sugarloaf, rect, "Cancel", false, &label);
+            button(sugarloaf, rect, "Cancel", false, &label, theme);
         }
 
         for (visible_index, row) in presentation.view.rows.iter().enumerate() {
@@ -716,7 +748,11 @@ impl ConnectionHub {
             rounded(
                 sugarloaf,
                 row_rect,
-                if row.selected { SELECTED } else { SURFACE },
+                if row.selected {
+                    theme.raised
+                } else {
+                    theme.surface
+                },
                 7.0,
             );
             let group = presentation
@@ -759,15 +795,23 @@ impl ConnectionHub {
                 HubIcon::Favorite,
                 favorite_rect.x + 6.0,
                 favorite_rect.y + (favorite_rect.height - 22.0) * 0.5,
-                if row.favorite { FAVORITE } else { CYAN },
-                if row.selected { SELECTED } else { SURFACE },
+                if row.favorite {
+                    theme.warning
+                } else {
+                    theme.accent
+                },
+                if row.selected {
+                    theme.raised
+                } else {
+                    theme.surface
+                },
             );
         }
 
         if let (Some(inspector), Some(entry)) =
             (layout.inspector, presentation.selected_entry.as_ref())
         {
-            rounded(sugarloaf, inspector, SURFACE, 8.0);
+            rounded(sugarloaf, inspector, theme.surface, 8.0);
             sugarloaf.text_mut().draw(
                 inspector.x + 14.0,
                 inspector.y + 14.0,
@@ -798,7 +842,14 @@ impl ConnectionHub {
                 );
             }
             if let Some(edit_tags) = layout.edit_tags {
-                button(sugarloaf, edit_tags, "Edit public tags (T)", false, &label);
+                button(
+                    sugarloaf,
+                    edit_tags,
+                    "Edit public tags (T)",
+                    false,
+                    &label,
+                    theme,
+                );
             }
             sugarloaf.text_mut().draw(
                 inspector.x + 14.0,
@@ -809,18 +860,18 @@ impl ConnectionHub {
         }
 
         if let Some(panel) = layout.connection_review_panel {
-            render_connection_review(sugarloaf, panel, &layout, presentation);
+            render_connection_review(sugarloaf, panel, &layout, presentation, theme);
         }
 
         if let Some(panel) = layout.setup_panel {
             render_setup_state(
                 sugarloaf,
                 panel,
-                layout.review_host,
-                layout.review_files,
+                [layout.review_host, layout.review_files],
                 presentation,
                 &operation_status,
                 layout.compact,
+                theme,
             );
         } else if presentation.view.rows.is_empty()
             && layout.review_panel.is_none()
@@ -854,6 +905,7 @@ impl ConnectionHub {
                 panel,
                 files,
                 presentation.grant_review_offset,
+                theme,
             );
         }
 
@@ -878,9 +930,12 @@ impl ConnectionHub {
                     panel,
                     [host_field, user_field, port_field],
                     [value, user, port],
-                    presentation.ime_preedit.as_deref(),
-                    presentation.literal_destination_diagnostic,
+                    LiteralEditorFeedback {
+                        ime_preedit: presentation.ime_preedit.as_deref(),
+                        diagnostic: presentation.literal_destination_diagnostic,
+                    },
                     &presentation.view.focus,
+                    theme,
                 );
             } else if let Some(value) = presentation.tag_editor.as_deref() {
                 render_tag_editor(
@@ -888,9 +943,10 @@ impl ConnectionHub {
                     panel,
                     value,
                     presentation.ime_preedit.as_deref(),
+                    theme,
                 );
             } else if let Some(review) = presentation.metadata_review.as_ref() {
-                render_metadata_review(sugarloaf, panel, review);
+                render_metadata_review(sugarloaf, panel, review, theme);
             }
             if let Some(confirm) = layout.overlay_confirm {
                 let (caption, disabled) = if presentation.literal_destination.is_some() {
@@ -900,10 +956,10 @@ impl ConnectionHub {
                 } else {
                     ("Save reviewed change", false)
                 };
-                button(sugarloaf, confirm, caption, disabled, &label);
+                button(sugarloaf, confirm, caption, disabled, &label, theme);
             }
             if let Some(cancel) = layout.overlay_cancel {
-                button(sugarloaf, cancel, "Cancel", false, &label);
+                button(sugarloaf, cancel, "Cancel", false, &label, theme);
             }
         }
 
@@ -915,6 +971,7 @@ impl ConnectionHub {
                 left,
                 &operation_status,
                 &small,
+                theme,
             );
         }
         sugarloaf.end_modal_layer();
@@ -1689,9 +1746,10 @@ fn render_provider_surface(
     body: &DrawOpts,
     small: &DrawOpts,
     label: &DrawOpts,
+    theme: &UiTheme,
 ) {
     let geometry = provider_layout(presentation, layout);
-    rounded(sugarloaf, geometry.panel, SURFACE, 10.0);
+    rounded(sugarloaf, geometry.panel, theme.surface, 10.0);
     if presentation.view.route == HubRoute::Providers {
         sugarloaf.text_mut().draw(
             geometry.panel.x + 14.0,
@@ -1716,9 +1774,9 @@ fn render_provider_surface(
                 sugarloaf,
                 rect,
                 if row.selected {
-                    SELECTED
+                    theme.raised
                 } else {
-                    SURFACE_RAISED
+                    theme.surface
                 },
                 8.0,
             );
@@ -1748,16 +1806,19 @@ fn render_provider_surface(
                 primary,
                 "Review provider",
                 HubIcon::Status,
-                PRIMARY,
-                [0.90, 0.98, 1.0, 1.0],
-                label,
+                theme.raised,
+                theme.text,
+                HubControlStyle {
+                    options: label,
+                    theme,
+                },
             );
         }
         return;
     }
 
     if let Some(back) = geometry.back {
-        button(sugarloaf, back, "← Providers", false, label);
+        button(sugarloaf, back, "← Providers", false, label, theme);
     }
     let Some(review) = presentation.provider_review.as_ref() else {
         sugarloaf.text_mut().draw(
@@ -1795,7 +1856,7 @@ fn render_provider_surface(
             width: (geometry.panel.width - 28.0).max(1.0),
             height: 42.0,
         };
-        rounded(sugarloaf, card, SURFACE_RAISED, 7.0);
+        rounded(sugarloaf, card, theme.raised, 7.0);
         sugarloaf
             .text_mut()
             .draw(card.x + 10.0, card.y + 5.0, heading, small);
@@ -1813,7 +1874,14 @@ fn render_provider_surface(
         small,
     );
     if let Some(primary) = geometry.primary {
-        button(sugarloaf, primary, "Activation gates pending", true, label);
+        button(
+            sugarloaf,
+            primary,
+            "Activation gates pending",
+            true,
+            label,
+            theme,
+        );
     }
 }
 fn render_workspace_surface(
@@ -1823,9 +1891,10 @@ fn render_workspace_surface(
     body: &DrawOpts,
     small: &DrawOpts,
     label: &DrawOpts,
+    theme: &UiTheme,
 ) {
     let geometry = workspace_layout(presentation, layout);
-    rounded(sugarloaf, geometry.panel, SURFACE, 10.0);
+    rounded(sugarloaf, geometry.panel, theme.surface, 10.0);
     if presentation.view.route == HubRoute::Workspaces {
         sugarloaf.text_mut().draw(
             geometry.panel.x + 14.0,
@@ -1865,9 +1934,9 @@ fn render_workspace_surface(
                 sugarloaf,
                 rect,
                 if row.selected {
-                    SELECTED
+                    theme.raised
                 } else {
-                    SURFACE_RAISED
+                    theme.surface
                 },
                 8.0,
             );
@@ -1894,16 +1963,19 @@ fn render_workspace_surface(
                 primary,
                 "Review restore",
                 HubIcon::Status,
-                PRIMARY,
-                [0.90, 0.98, 1.0, 1.0],
-                label,
+                theme.raised,
+                theme.text,
+                HubControlStyle {
+                    options: label,
+                    theme,
+                },
             );
         }
         return;
     }
 
     if let Some(back) = geometry.back {
-        button(sugarloaf, back, "← Workspaces", false, label);
+        button(sugarloaf, back, "← Workspaces", false, label, theme);
     }
     let Some(review) = presentation.workspace_restore.as_ref() else {
         sugarloaf.text_mut().draw(
@@ -1939,7 +2011,7 @@ fn render_workspace_surface(
             width: (geometry.panel.width - 28.0).max(1.0),
             height: 40.0,
         };
-        rounded(sugarloaf, rect, SURFACE_RAISED, 7.0);
+        rounded(sugarloaf, rect, theme.raised, 7.0);
         sugarloaf.text_mut().draw(
             rect.x + 10.0,
             rect.y + 6.0,
@@ -1960,7 +2032,14 @@ fn render_workspace_surface(
         small,
     );
     if let Some(primary) = geometry.primary {
-        button(sugarloaf, primary, "Activation gates pending", true, label);
+        button(
+            sugarloaf,
+            primary,
+            "Activation gates pending",
+            true,
+            label,
+            theme,
+        );
     }
 }
 
@@ -2000,13 +2079,13 @@ fn tunnel_review_summary(tunnel: &TunnelReviewView) -> String {
     )
 }
 
-fn tunnel_review_color(tunnel: &TunnelReviewView) -> [f32; 4] {
+fn tunnel_review_color(tunnel: &TunnelReviewView, theme: &UiTheme) -> [f32; 4] {
     if tunnel.blocking {
-        WARNING
+        theme.warning
     } else if tunnel.state_label == "Ready" {
-        SUCCESS
+        theme.success
     } else {
-        CYAN
+        theme.accent
     }
 }
 
@@ -2015,13 +2094,14 @@ fn render_connection_review(
     panel: Rect,
     layout: &Layout,
     presentation: &HubControllerPresentation,
+    theme: &UiTheme,
 ) {
-    let body = text(12.0, [183, 211, 226, 255], false);
-    let small = text(10.0, [139, 177, 198, 255], false);
-    let label = text(12.0, [241, 250, 255, 255], true);
-    rounded(sugarloaf, panel, SURFACE, 10.0);
+    let body = text(12.0, color_u8(theme.text), false);
+    let small = text(10.0, color_u8(theme.muted_text), false);
+    let label = text(12.0, color_u8(theme.text), true);
+    rounded(sugarloaf, panel, theme.surface, 10.0);
     if let Some(back) = layout.connection_review_back {
-        button(sugarloaf, back, "← Back", false, &label);
+        button(sugarloaf, back, "← Back", false, &label, theme);
     }
     if panel.height >= 180.0 {
         sugarloaf.text_mut().draw(
@@ -2040,14 +2120,14 @@ fn render_connection_review(
 
     if let Some(review) = presentation.direct_openssh_review.as_ref() {
         let groups = [
-            ("Connection", HubIcon::Connections, CYAN, [1, 0, 2]),
-            ("Safety", HubIcon::Shield, WARNING, [4, 5, 6]),
-            ("Launch", HubIcon::Status, VIOLET, [3, 7, 8]),
+            ("Connection", HubIcon::Connections, theme.accent, [1, 0, 2]),
+            ("Safety", HubIcon::Shield, theme.warning, [4, 5, 6]),
+            ("Launch", HubIcon::Status, theme.purple, [3, 7, 8]),
         ];
         for (card, (heading, icon, color, indices)) in
             layout.connection_review_cards.iter().copied().zip(groups)
         {
-            rounded(sugarloaf, card, SURFACE_RAISED, 8.0);
+            rounded(sugarloaf, card, theme.raised, 8.0);
             if card.height >= 30.0 {
                 draw_hub_icon(
                     sugarloaf,
@@ -2055,7 +2135,7 @@ fn render_connection_review(
                     card.x + 10.0,
                     card.y + 7.0,
                     color,
-                    SURFACE_RAISED,
+                    theme.raised,
                 );
                 sugarloaf
                     .text_mut()
@@ -2098,8 +2178,8 @@ fn render_connection_review(
                         HubIcon::Connections,
                         card.x + 9.0,
                         card.y + 49.0,
-                        tunnel_review_color(tunnel),
-                        SURFACE_RAISED,
+                        tunnel_review_color(tunnel, theme),
+                        theme.raised,
                     );
                     sugarloaf.text_mut().draw(
                         card.x + 39.0,
@@ -2206,7 +2286,7 @@ fn render_connection_review(
                     primary.x,
                     primary.y - 19.0,
                     &truncated(&status, 72),
-                    &text(10.0, [255, 163, 72, 255], true),
+                    &text(10.0, color_u8(theme.warning), true),
                 );
             }
         }
@@ -2220,7 +2300,14 @@ fn render_connection_review(
                 .as_ref()
                 .map_or("Allow once", |review| review.primary_label)
         };
-        button(sugarloaf, primary, caption, !approval_enabled, &label);
+        button(
+            sugarloaf,
+            primary,
+            caption,
+            !approval_enabled,
+            &label,
+            theme,
+        );
     }
     if let Some(session) = layout.connection_review_session {
         button(
@@ -2235,10 +2322,11 @@ fn render_connection_review(
             },
             !(approval_enabled && allow_session_enabled),
             &label,
+            theme,
         );
     }
     if let Some(deny) = layout.connection_review_deny {
-        button(sugarloaf, deny, "Deny  D", !approval_enabled, &label);
+        button(sugarloaf, deny, "Deny  D", !approval_enabled, &label, theme);
     }
 }
 
@@ -2313,20 +2401,21 @@ fn setup_copy<'a>(
 fn render_setup_state(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
-    host_action: Rect,
-    file_action: Rect,
+    actions: [Rect; 2],
     presentation: &HubControllerPresentation,
     operation_status: &str,
     compact: bool,
+    theme: &UiTheme,
 ) {
+    let [host_action, file_action] = actions;
     let heading = text(
         if compact { 16.0 } else { 18.0 },
-        [241, 250, 255, 255],
+        color_u8(theme.text),
         true,
     );
-    let body = text(13.0, [183, 211, 226, 255], false);
-    let small = text(11.0, [139, 177, 198, 255], false);
-    let label = text(12.0, [241, 250, 255, 255], true);
+    let body = text(13.0, color_u8(theme.text), false);
+    let small = text(11.0, color_u8(theme.muted_text), false);
+    let label = text(12.0, color_u8(theme.text), true);
     let detailed = panel.width >= 340.0 && panel.height >= 220.0;
     let state = presentation.view.content_state;
     let copy = setup_copy(presentation, operation_status);
@@ -2334,9 +2423,9 @@ fn render_setup_state(
         if matches!(presentation.grant_review, GrantReviewState::Error { .. })
             || state == HubContentState::Error
         {
-            WARNING
+            theme.warning
         } else {
-            VIOLET
+            theme.purple
         };
 
     if detailed {
@@ -2349,14 +2438,14 @@ fn render_setup_state(
             width: 44.0,
             height: 44.0,
         };
-        rounded(sugarloaf, orb, SURFACE_RAISED, 14.0);
+        rounded(sugarloaf, orb, theme.raised, 14.0);
         draw_hub_icon(
             sugarloaf,
             HubIcon::Connections,
             orb.x + 11.0,
             orb.y + 11.0,
             icon_color,
-            SURFACE_RAISED,
+            theme.raised,
         );
         draw_centered(
             sugarloaf,
@@ -2383,8 +2472,8 @@ fn render_setup_state(
             HubIcon::Shield,
             safety_x,
             content_y + 119.0,
-            SUCCESS,
-            CARD,
+            theme.success,
+            theme.background,
         );
         sugarloaf.text_mut().draw(
             safety_x + 29.0,
@@ -2409,18 +2498,24 @@ fn render_setup_state(
         host_action,
         (if compact { "Host" } else { "Enter host" }, Some("L")),
         HubIcon::Connections,
-        SURFACE_RAISED,
-        CYAN,
-        &label,
+        theme.raised,
+        theme.accent,
+        HubControlStyle {
+            options: &label,
+            theme,
+        },
     );
     action_button_with_shortcut(
         sugarloaf,
         file_action,
         (copy.action, Some("F")),
         HubIcon::FolderAdd,
-        PRIMARY,
-        [0.90, 0.98, 1.0, 1.0],
-        &label,
+        theme.raised,
+        theme.text,
+        HubControlStyle {
+            options: &label,
+            theme,
+        },
     );
 }
 
@@ -2431,6 +2526,7 @@ fn render_status_footer(
     left: f32,
     operation_status: &str,
     options: &DrawOpts,
+    theme: &UiTheme,
 ) {
     let footer = Rect {
         x: left,
@@ -2441,7 +2537,7 @@ fn render_status_footer(
         .max(1.0),
         height: 30.0,
     };
-    rounded(sugarloaf, footer, SURFACE_RAISED, 9.0);
+    rounded(sugarloaf, footer, theme.raised, 9.0);
     let warning = matches!(presentation.grant_review, GrantReviewState::Error { .. })
         || matches!(
             presentation.view.content_state,
@@ -2451,11 +2547,11 @@ fn render_status_footer(
                 | HubContentState::Error
         );
     let icon_color = if warning {
-        WARNING
+        theme.warning
     } else if presentation.view.content_state == HubContentState::Loading {
-        CYAN
+        theme.accent
     } else {
-        SUCCESS
+        theme.success
     };
     draw_hub_icon(
         sugarloaf,
@@ -2463,7 +2559,7 @@ fn render_status_footer(
         footer.x + 10.0,
         footer.y + 4.0,
         icon_color,
-        SURFACE_RAISED,
+        theme.raised,
     );
     let summary = status_summary(presentation, operation_status);
     sugarloaf.text_mut().draw(
@@ -2775,21 +2871,30 @@ fn source_label(source: Option<HubCatalogSource>) -> &'static str {
     }
 }
 
+struct LiteralEditorFeedback<'a> {
+    ime_preedit: Option<&'a str>,
+    diagnostic: Option<&'a str>,
+}
+
 fn render_literal_destination_editor(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
     fields: [Rect; 3],
     values: [&str; 3],
-    ime_preedit: Option<&str>,
-    diagnostic: Option<&str>,
+    feedback: LiteralEditorFeedback<'_>,
     focus: &HubFocus,
+    theme: &UiTheme,
 ) {
-    rounded(sugarloaf, panel, SURFACE, 12.0);
+    let LiteralEditorFeedback {
+        ime_preedit,
+        diagnostic,
+    } = feedback;
+    rounded(sugarloaf, panel, theme.surface, 12.0);
     let tiny = panel.height < 180.0;
-    let heading = text(15.0, [238, 249, 255, 255], true);
-    let body = text(13.0, [177, 207, 224, 255], false);
-    let small = text(11.0, [125, 164, 187, 255], false);
-    let warning = text(11.0, [255, 166, 92, 255], false);
+    let heading = text(15.0, color_u8(theme.text), true);
+    let body = text(13.0, color_u8(theme.text), false);
+    let small = text(11.0, color_u8(theme.muted_text), false);
+    let warning = text(11.0, color_u8(theme.warning), false);
     if !tiny {
         let orb = Rect {
             x: panel.x + 14.0,
@@ -2797,14 +2902,14 @@ fn render_literal_destination_editor(
             width: 34.0,
             height: 34.0,
         };
-        rounded(sugarloaf, orb, SURFACE_RAISED, 10.0);
+        rounded(sugarloaf, orb, theme.raised, 10.0);
         draw_hub_icon(
             sugarloaf,
             HubIcon::Connections,
             orb.x + 6.0,
             orb.y + 6.0,
-            CYAN,
-            SURFACE_RAISED,
+            theme.accent,
+            theme.raised,
         );
         sugarloaf.text_mut().draw(
             panel.x + 58.0,
@@ -2839,7 +2944,11 @@ fn render_literal_destination_editor(
         rounded(
             sugarloaf,
             fields[index],
-            if focused { SELECTED } else { CARD },
+            if focused {
+                theme.raised
+            } else {
+                theme.background
+            },
             7.0,
         );
         let composed = if focused {
@@ -2885,11 +2994,12 @@ fn render_tag_editor(
     panel: Rect,
     value: &str,
     ime_preedit: Option<&str>,
+    theme: &UiTheme,
 ) {
-    rounded(sugarloaf, panel, SURFACE, 8.0);
-    let heading = text(15.0, [238, 249, 255, 255], true);
-    let body = text(13.0, [177, 207, 224, 255], false);
-    let small = text(11.0, [125, 164, 187, 255], false);
+    rounded(sugarloaf, panel, theme.surface, 8.0);
+    let heading = text(15.0, color_u8(theme.text), true);
+    let body = text(13.0, color_u8(theme.text), false);
+    let small = text(11.0, color_u8(theme.muted_text), false);
     sugarloaf.text_mut().draw(
         panel.x + 14.0,
         panel.y + 16.0,
@@ -2908,7 +3018,7 @@ fn render_tag_editor(
         width: (panel.width - 28.0).max(1.0),
         height: 42.0,
     };
-    rounded(sugarloaf, field, CARD, 7.0);
+    rounded(sugarloaf, field, theme.background, 7.0);
     let composed = format!("{}{}", value, ime_preedit.unwrap_or_default());
     let visible = if composed.is_empty() {
         "No tags".to_owned()
@@ -2930,11 +3040,12 @@ fn render_metadata_review(
     sugarloaf: &mut Sugarloaf,
     panel: Rect,
     review: &MetadataChangeReview,
+    theme: &UiTheme,
 ) {
-    rounded(sugarloaf, panel, SURFACE, 8.0);
-    let heading = text(15.0, [238, 249, 255, 255], true);
-    let body = text(13.0, [177, 207, 224, 255], false);
-    let small = text(11.0, [125, 164, 187, 255], false);
+    rounded(sugarloaf, panel, theme.surface, 8.0);
+    let heading = text(15.0, color_u8(theme.text), true);
+    let body = text(13.0, color_u8(theme.text), false);
+    let small = text(11.0, color_u8(theme.muted_text), false);
     sugarloaf.text_mut().draw(
         panel.x + 14.0,
         panel.y + 16.0,
@@ -2988,11 +3099,12 @@ fn render_grant_review(
     panel: Rect,
     files: &[ReviewedGrantFile],
     selected: usize,
+    theme: &UiTheme,
 ) {
-    rounded(sugarloaf, panel, SURFACE, 8.0);
-    let heading = text(14.0, [238, 249, 255, 255], true);
-    let body = text(12.0, [177, 207, 224, 255], false);
-    let small = text(11.0, [125, 164, 187, 255], false);
+    rounded(sugarloaf, panel, theme.surface, 8.0);
+    let heading = text(14.0, color_u8(theme.text), true);
+    let body = text(12.0, color_u8(theme.text), false);
+    let small = text(11.0, color_u8(theme.muted_text), false);
     sugarloaf.text_mut().draw(
         panel.x + 14.0,
         panel.y + 13.0,
@@ -3026,7 +3138,11 @@ fn render_grant_review(
         rounded(
             sugarloaf,
             row,
-            if index == selected { SELECTED } else { CARD },
+            if index == selected {
+                theme.raised
+            } else {
+                theme.background
+            },
             5.0,
         );
         let kind = match file.kind {
@@ -3096,6 +3212,12 @@ fn text(font_size: f32, color: [u8; 4], bold: bool) -> DrawOpts {
     }
 }
 
+#[derive(Clone, Copy)]
+struct HubControlStyle<'a> {
+    options: &'a DrawOpts,
+    theme: &'a UiTheme,
+}
+
 fn filter_button(
     sugarloaf: &mut Sugarloaf,
     rect: Rect,
@@ -3103,9 +3225,10 @@ fn filter_button(
     icon: HubIcon,
     icon_color: [f32; 4],
     active: bool,
-    options: &DrawOpts,
+    style: HubControlStyle<'_>,
 ) {
-    let fill = if active { SELECTED } else { SURFACE };
+    let HubControlStyle { options, theme } = style;
+    let fill = if active { theme.raised } else { theme.surface };
     rounded(sugarloaf, rect, fill, 8.0);
     let maximum = (((rect.width - 34.0) / 7.0).floor() as usize).max(3);
     let visible = truncated(label, maximum);
@@ -3135,8 +3258,9 @@ fn action_button(
     icon: HubIcon,
     fill: [f32; 4],
     icon_color: [f32; 4],
-    options: &DrawOpts,
+    style: HubControlStyle<'_>,
 ) {
+    let HubControlStyle { options, theme } = style;
     action_button_with_shortcut(
         sugarloaf,
         rect,
@@ -3144,7 +3268,7 @@ fn action_button(
         icon,
         fill,
         icon_color,
-        options,
+        HubControlStyle { options, theme },
     );
 }
 
@@ -3155,8 +3279,9 @@ fn action_button_with_shortcut(
     icon: HubIcon,
     fill: [f32; 4],
     icon_color: [f32; 4],
-    options: &DrawOpts,
+    style: HubControlStyle<'_>,
 ) {
+    let HubControlStyle { options, theme } = style;
     let (label, shortcut) = label;
     rounded(sugarloaf, rect, fill, 9.0);
     let shortcut_space = if shortcut.is_some() { 31.0 } else { 0.0 };
@@ -3187,8 +3312,8 @@ fn action_button_with_shortcut(
             width: 20.0,
             height: 20.0,
         };
-        rounded(sugarloaf, key, CARD, 6.0);
-        let key_options = text(9.0, [177, 221, 237, 255], true);
+        rounded(sugarloaf, key, theme.background, 6.0);
+        let key_options = text(9.0, color_u8(theme.muted_text), true);
         let width = sugarloaf.text_mut().measure(shortcut, &key_options);
         sugarloaf.text_mut().draw(
             key.x + (key.width - width) * 0.5,
@@ -3205,10 +3330,15 @@ fn section_tab(
     shortcut: &str,
     selected: bool,
     options: &DrawOpts,
+    theme: &UiTheme,
 ) {
-    let fill = if selected { SELECTED } else { SURFACE };
+    let fill = if selected {
+        theme.raised
+    } else {
+        theme.surface
+    };
     rounded(sugarloaf, rect, fill, 10.0);
-    let key_options = text(9.0, [177, 221, 237, 255], true);
+    let key_options = text(9.0, color_u8(theme.muted_text), true);
     let key_width = 20.0;
     let label_width = sugarloaf.text_mut().measure(label, options);
     let content_width = if label.is_empty() {
@@ -3238,7 +3368,11 @@ fn section_tab(
     rounded(
         sugarloaf,
         key,
-        if selected { CARD } else { SURFACE_RAISED },
+        if selected {
+            theme.background
+        } else {
+            theme.raised
+        },
         6.0,
     );
     let width = sugarloaf.text_mut().measure(shortcut, &key_options);
@@ -3250,9 +3384,14 @@ fn section_tab(
     );
 }
 
-fn close_button(sugarloaf: &mut Sugarloaf, rect: Rect, options: &DrawOpts) {
-    rounded(sugarloaf, rect, SURFACE, 10.0);
-    let close = text(options.font_size, color_u8(BRAND_CORAL), true);
+fn close_button(
+    sugarloaf: &mut Sugarloaf,
+    rect: Rect,
+    options: &DrawOpts,
+    theme: &UiTheme,
+) {
+    rounded(sugarloaf, rect, theme.surface, 10.0);
+    let close = text(options.font_size, color_u8(theme.danger), true);
     let width = sugarloaf.text_mut().measure("×", &close);
     sugarloaf.text_mut().draw(
         rect.x + (rect.width - width) * 0.5,
@@ -3268,11 +3407,16 @@ fn button(
     label: &str,
     disabled: bool,
     options: &DrawOpts,
+    theme: &UiTheme,
 ) {
     rounded(
         sugarloaf,
         rect,
-        if disabled { DISABLED } else { SELECTED },
+        if disabled {
+            theme.surface
+        } else {
+            theme.raised
+        },
         7.0,
     );
     let width = sugarloaf.text_mut().measure(label, options);
@@ -3641,7 +3785,14 @@ mod tests {
                 tunnel_review_summary(tunnel),
                 "Remote · 0.0.0.0:8443 → 127.0.0.1:443 · Planned"
             );
-            assert_eq!(tunnel_review_color(tunnel), WARNING);
+            assert_eq!(
+                tunnel_review_color(
+                    tunnel,
+                    &UiTheme::from_colors(&rio_backend::config::colors::Colors::default())
+                ),
+                UiTheme::from_colors(&rio_backend::config::colors::Colors::default())
+                    .warning
+            );
         }
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
@@ -3869,13 +4020,15 @@ mod tests {
     fn connection_hub_brand_text_and_keycaps_meet_contrast_floor() {
         use automexia_ui_model::{contrast_ratio, MIN_TEXT_CONTRAST};
 
-        for (foreground, background) in [
-            ([0.90, 0.98, 1.0, 1.0], PRIMARY),
-            (CYAN, SURFACE_RAISED),
-            ([177.0 / 255.0, 221.0 / 255.0, 237.0 / 255.0, 1.0], CARD),
-            (BRAND_CORAL, SURFACE),
-        ] {
-            assert!(contrast_ratio(foreground, background) >= MIN_TEXT_CONTRAST);
+        for entry in crate::automexia::theme_gallery::builtins() {
+            let theme = UiTheme::from_colors(&entry.theme.unwrap().colors);
+            for background in [theme.background, theme.surface, theme.raised] {
+                for foreground in
+                    [theme.text, theme.muted_text, theme.accent, theme.danger]
+                {
+                    assert!(contrast_ratio(foreground, background) >= MIN_TEXT_CONTRAST);
+                }
+            }
         }
     }
 

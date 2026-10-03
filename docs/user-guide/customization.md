@@ -409,6 +409,9 @@ Try **Aurora Night** for cyan/violet, **Solar Dusk** for amber/rose,
 **Forest Operator** for green/mint, **Arctic Glass** for cool slate or
 **Arctic Day** for a light background. Preview labels identify built-in, local and
 saved palettes; unreadable files and low contrast have visible explanations.
+The header, tab titles, pane footers, menus and their categories, settings and
+dialogs follow the previewed or applied theme. Tab labels remain readable even
+with a custom tab color. Escape restores these surfaces along with the terminal.
 Your explicit **Fonts** colors and separate output/Kubernetes/table choices remain
 in effect. During a temporary Reset preview, restore saved customizations before
 applying a theme.

@@ -5,15 +5,11 @@
 
 use crate::renderer::responsive::Viewport;
 use crate::renderer::ui_theme::{
-    BORDER, CARD, MODAL_SCRIM as SCRIM, MODAL_SHADOW as SHADOW, OUTLINE,
-    SURFACE as CANCEL, SURFACE_RAISED as CANCEL_HOVER,
+    color_u8, UiTheme, MODAL_SCRIM as SCRIM, MODAL_SHADOW as SHADOW,
 };
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-const QUIT: [f32; 4] = [0.37, 0.025, 0.07, 1.0];
-const QUIT_HOVER: [f32; 4] = [0.53, 0.03, 0.11, 1.0];
-const QUIT_OUTLINE: [f32; 4] = [1.0, 0.30, 0.42, 1.0];
 const ORDER: u8 = 20;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -170,7 +166,12 @@ impl ConfirmQuit {
         self.hovered
     }
 
-    pub fn render(&self, sugarloaf: &mut Sugarloaf, dimensions: (f32, f32, f32)) {
+    pub(crate) fn render(
+        &self,
+        sugarloaf: &mut Sugarloaf,
+        dimensions: (f32, f32, f32),
+        theme: &UiTheme,
+    ) {
         if !self.active {
             return;
         }
@@ -204,7 +205,7 @@ impl ConfirmQuit {
             card.y,
             card.width,
             card.height,
-            BORDER,
+            theme.outline,
             14.0,
         );
         rounded(
@@ -213,7 +214,7 @@ impl ConfirmQuit {
             card.y + 1.0,
             (card.width - 2.0).max(1.0),
             (card.height - 2.0).max(1.0),
-            CARD,
+            theme.background,
             13.0,
         );
         rounded(
@@ -222,30 +223,30 @@ impl ConfirmQuit {
             card.y + 17.0,
             36.0_f32.min((card.width - 40.0).max(1.0)),
             3.0,
-            OUTLINE,
+            theme.accent,
             2.0,
         );
 
         let title = DrawOpts {
             font_size: if layout.compact { 15.0 } else { 18.0 },
-            color: [235, 247, 255, 255],
+            color: color_u8(theme.text),
             bold: true,
             ..DrawOpts::default()
         };
         let body = DrawOpts {
             font_size: 13.0,
-            color: [164, 190, 207, 255],
+            color: color_u8(theme.muted_text),
             ..DrawOpts::default()
         };
         let label = DrawOpts {
             font_size: if layout.compact { 12.0 } else { 13.0 },
-            color: [238, 249, 255, 255],
+            color: color_u8(theme.text),
             bold: true,
             ..DrawOpts::default()
         };
         let key = DrawOpts {
             font_size: 11.0,
-            color: [119, 157, 181, 255],
+            color: color_u8(theme.muted_text),
             bold: true,
             ..DrawOpts::default()
         };
@@ -275,11 +276,11 @@ impl ConfirmQuit {
             sugarloaf,
             layout.cancel,
             if self.hovered == Some(ConfirmQuitAction::Cancel) {
-                CANCEL_HOVER
+                theme.raised
             } else {
-                CANCEL
+                theme.surface
             },
-            OUTLINE,
+            theme.accent,
             if layout.tiny { "N" } else { "Cancel" },
             if layout.tiny { "" } else { "Esc / N" },
             &label,
@@ -289,11 +290,11 @@ impl ConfirmQuit {
             sugarloaf,
             layout.quit,
             if self.hovered == Some(ConfirmQuitAction::Quit) {
-                QUIT_HOVER
+                theme.raised
             } else {
-                QUIT
+                theme.surface
             },
-            QUIT_OUTLINE,
+            theme.danger,
             if layout.tiny { "Y" } else { "Close" },
             if layout.tiny { "" } else { "Y" },
             &label,
@@ -414,8 +415,12 @@ mod tests {
 
     #[test]
     fn modal_surfaces_are_opaque_and_scrim_is_strong() {
-        for surface in [CARD, CANCEL, QUIT] {
-            assert_eq!(surface[3], 1.0);
+        for entry in crate::automexia::theme_gallery::builtins() {
+            let theme = UiTheme::from_colors(&entry.theme.unwrap().colors);
+            for surface in [theme.background, theme.surface, theme.raised] {
+                assert_eq!(surface[3], 1.0);
+                assert!(automexia_ui_model::contrast_ratio(theme.text, surface) >= 4.5);
+            }
         }
         let [_, _, _, scrim_alpha] = SCRIM;
         assert!(scrim_alpha >= 0.75);

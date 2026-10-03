@@ -11,7 +11,6 @@ use crate::renderer::helpers::spring::Spring;
 use crate::renderer::responsive::{ChromeMetrics, Viewport};
 use crate::renderer::ui_theme::{
     color_u8 as theme_color_u8, draw_glass, glass_layers, over as opaque_over, UiTheme,
-    BORDER, BRAND_BLUE, BRAND_CORAL, BRAND_CYAN, BRAND_PURPLE,
 };
 use rio_backend::event::{EventProxy, ProgressReport, ProgressState};
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -79,7 +78,7 @@ struct PickerRenderContext {
     selected_color: Option<[f32; 4]>,
     header_height: f32,
     logical_width: f32,
-    configured_background: [f32; 4],
+    theme: UiTheme,
 }
 
 fn picker_width() -> f32 {
@@ -185,12 +184,12 @@ fn window_control_visual_layout(
     WindowControlVisualLayout { buttons }
 }
 
-fn window_control_accent(action: ChromeAction) -> [f32; 4] {
+fn window_control_accent(action: ChromeAction, theme: UiTheme) -> [f32; 4] {
     match action {
-        ChromeAction::Minimize => BRAND_CYAN,
-        ChromeAction::Maximize => BRAND_PURPLE,
-        ChromeAction::CloseWindow => BRAND_CORAL,
-        ChromeAction::NewTab | ChromeAction::OpenPalette => BRAND_BLUE,
+        ChromeAction::Minimize => theme.accent,
+        ChromeAction::Maximize => theme.purple,
+        ChromeAction::CloseWindow => theme.danger,
+        ChromeAction::NewTab | ChromeAction::OpenPalette => theme.blue,
     }
 }
 
@@ -229,7 +228,7 @@ fn window_control_fill(
     } else {
         0.025
     };
-    let accent = window_control_accent(action);
+    let accent = window_control_accent(action, theme);
     over(theme.surface, [accent[0], accent[1], accent[2], alpha])
 }
 
@@ -1260,6 +1259,7 @@ impl Island {
         context_manager: &ContextManager<EventProxy>,
         bg_color: [f32; 4],
         window_focused: bool,
+        theme: &UiTheme,
     ) {
         let (window_width, window_height, scale_factor) = dimensions;
         let num_tabs = context_manager.len();
@@ -1276,7 +1276,7 @@ impl Island {
             0.0,
             logical_width,
             metrics.header_height,
-            opaque_over(bg_color, [0.018, 0.035, 0.055, 0.97]),
+            theme.surface,
             0.0,
             0,
         );
@@ -1287,15 +1287,15 @@ impl Island {
             metrics.header_height - 1.0,
             1.0,
             0.0,
-            [0.12, 0.21, 0.28, 0.62],
+            theme.border,
             1,
         );
         draw_pane_local_tab_rails(
             sugarloaf,
             metrics,
             context_manager,
-            bg_color,
             scale_factor,
+            theme,
         );
         #[cfg(not(target_os = "macos"))]
         if metrics.show_app_button {
@@ -1306,14 +1306,15 @@ impl Island {
                 sugarloaf,
                 [app_x, app_y, app_size, app_size],
                 8.0,
-                opaque_over(bg_color, [0.065, 0.10, 0.14, 0.96]),
-                opaque_over(bg_color, [BORDER[0], BORDER[1], BORDER[2], 0.6]),
+                theme.raised,
+                theme.border,
                 2,
             );
             draw_terminal_mark(
                 sugarloaf,
                 app_x + (app_size - 20.0) / 2.0,
                 app_y + (app_size - 16.0) / 2.0,
+                theme,
             );
         }
 
@@ -1438,6 +1439,21 @@ impl Island {
                 layout.title_font_size,
             );
 
+            let fill = match context_manager.custom_color(tab_index) {
+                Some(mut custom) => {
+                    if !is_active {
+                        custom[3] *= INACTIVE_CUSTOM_MUTE;
+                    }
+                    custom
+                }
+                None => {
+                    if is_active {
+                        fills.active
+                    } else {
+                        fills.inactive
+                    }
+                }
+            };
             let text_color = if single {
                 match context_manager.custom_color(tab_index) {
                     Some(mut custom) => {
@@ -1452,6 +1468,7 @@ impl Island {
                 self.inactive_text_color
             };
 
+            let text_color = tab_title_color(text_color, bg_color, fill);
             let title_opts = DrawOpts {
                 font_size: layout.title_font_size,
                 color: color_u8(text_color),
@@ -1488,7 +1505,11 @@ impl Island {
                 let icon = profile_icon(&raw_title);
                 let icon_opts = DrawOpts {
                     font_size: layout.profile_icon_size,
-                    color: color_u8(profile_accent(&raw_title, is_active)),
+                    color: color_u8(tab_title_color(
+                        profile_accent(&raw_title, is_active),
+                        bg_color,
+                        fill,
+                    )),
                     ..DrawOpts::default()
                 };
                 let icon_width = sugarloaf.text_mut().measure(icon, &icon_opts);
@@ -1524,21 +1545,6 @@ impl Island {
                 layout.tab_gap,
                 layout.tab_inset_y,
             );
-            let fill = match context_manager.custom_color(tab_index) {
-                Some(mut custom) => {
-                    if !is_active {
-                        custom[3] *= INACTIVE_CUSTOM_MUTE;
-                    }
-                    custom
-                }
-                None => {
-                    if is_active {
-                        fills.active
-                    } else {
-                        fills.inactive
-                    }
-                }
-            };
             draw_island(
                 sugarloaf,
                 ix,
@@ -1570,7 +1576,7 @@ impl Island {
                     draw_close_button(
                         sugarloaf,
                         cx,
-                        self.active_text_color,
+                        text_color,
                         self.close_hover,
                         metrics.header_height / 2.0,
                         4,
@@ -1597,25 +1603,14 @@ impl Island {
                     size,
                 ],
                 8.0,
-                opaque_over(
-                    bg_color,
-                    [0.075, 0.15, 0.21, if hovered { 0.94 } else { 0.6 }],
-                ),
-                opaque_over(
-                    bg_color,
-                    [
-                        BORDER[0],
-                        BORDER[1],
-                        BORDER[2],
-                        if hovered { 0.95 } else { 0.55 },
-                    ],
-                ),
+                if hovered { theme.raised } else { theme.surface },
+                if hovered { theme.accent } else { theme.border },
                 3,
             );
         }
         let action_opts = DrawOpts {
             font_size: metrics.action_glyph_size,
-            color: [230, 238, 245, 242],
+            color: color_u8(theme.text),
             ..DrawOpts::default()
         };
         if layout.show_new_tab {
@@ -1635,15 +1630,12 @@ impl Island {
                 metrics.action_button_size,
                 metrics.header_height - layout.tab_inset_y * 2.0,
                 matches!(self.chrome_hover, Some(ChromeAction::OpenPalette)),
+                theme,
             );
         }
 
         if self.custom_chrome {
-            let theme = UiTheme::resolve(
-                bg_color,
-                self.active_text_color,
-                self.inactive_text_color,
-            );
+            let theme = *theme;
             draw_window_controls(
                 sugarloaf,
                 WindowControlRenderContext {
@@ -1711,7 +1703,7 @@ impl Island {
                 draw_close_button(
                     sugarloaf,
                     cx,
-                    self.active_text_color,
+                    tab_title_color(self.active_text_color, bg_color, fill),
                     false,
                     metrics.header_height / 2.0,
                     12,
@@ -1729,7 +1721,11 @@ impl Island {
                 );
                 let title_opts = DrawOpts {
                     font_size: layout.title_font_size,
-                    color: color_u8(self.active_text_color),
+                    color: color_u8(tab_title_color(
+                        self.active_text_color,
+                        bg_color,
+                        fill,
+                    )),
                     ..DrawOpts::default()
                 };
                 let ui = sugarloaf.text_mut();
@@ -1756,7 +1752,7 @@ impl Island {
                         selected_color: selected,
                         header_height: metrics.header_height,
                         logical_width,
-                        configured_background: bg_color,
+                        theme: *theme,
                     },
                 );
             } else {
@@ -1980,13 +1976,8 @@ impl Island {
             selected_color,
             header_height,
             logical_width,
-            configured_background,
+            theme,
         } = context;
-        let theme = UiTheme::resolve(
-            configured_background,
-            self.active_text_color,
-            self.inactive_text_color,
-        );
         let bg_width = picker_width();
         let bg_x = (tab_x + (tab_width - bg_width) / 2.0)
             .clamp(0.0, (logical_width - bg_width).max(0.0));
@@ -2012,7 +2003,7 @@ impl Island {
             bg_y,
             bg_width,
             PICKER_HEIGHT,
-            BRAND_PURPLE,
+            theme.purple,
             0.0,
             10.0,
             10,
@@ -2031,7 +2022,7 @@ impl Island {
 
         let heading = DrawOpts {
             font_size: 10.5,
-            color: theme_color_u8(BRAND_PURPLE),
+            color: theme_color_u8(theme.purple),
             bold: true,
             ..DrawOpts::default()
         };
@@ -2053,7 +2044,7 @@ impl Island {
                     swatch_y - 2.0,
                     PICKER_SWATCH_SIZE + 4.0,
                     PICKER_SWATCH_SIZE + 4.0,
-                    BRAND_CYAN,
+                    theme.accent,
                     0.0,
                     7.0,
                     10,
@@ -2103,7 +2094,7 @@ impl Island {
                 swatch_y - 2.0,
                 PICKER_SWATCH_SIZE + 4.0,
                 PICKER_SWATCH_SIZE + 4.0,
-                BRAND_CYAN,
+                theme.accent,
                 0.0,
                 7.0,
                 10,
@@ -2137,7 +2128,7 @@ impl Island {
             input_y,
             inner_width,
             PICKER_INPUT_HEIGHT,
-            theme.outline,
+            theme.accent,
             0.0,
             7.0,
             10,
@@ -2211,7 +2202,7 @@ impl Island {
                     input_y + 6.0,
                     1.5,
                     PICKER_INPUT_HEIGHT - 12.0,
-                    BRAND_CYAN,
+                    theme.accent,
                     0.0,
                     10,
                 );
@@ -2348,10 +2339,18 @@ fn profile_accent(title: &str, active: bool) -> [f32; 4] {
     color
 }
 
+fn tab_title_color(
+    foreground: [f32; 4],
+    background: [f32; 4],
+    fill: [f32; 4],
+) -> [f32; 4] {
+    super::ui_theme::readable_on(foreground, opaque_over(background, fill))
+}
+
 #[cfg(not(target_os = "macos"))]
-fn draw_terminal_mark(sugarloaf: &mut Sugarloaf, x: f32, y: f32) {
-    let line = [0.90, 0.94, 0.97, 0.96];
-    let inner = [0.10, 0.12, 0.15, 0.96];
+fn draw_terminal_mark(sugarloaf: &mut Sugarloaf, x: f32, y: f32, theme: &UiTheme) {
+    let line = theme.text;
+    let inner = theme.surface;
     sugarloaf.rounded_rect(None, x, y, 20.0, 16.0, line, 0.04, 2.5, 4);
     sugarloaf.rounded_rect(None, x + 1.4, y + 1.4, 17.2, 13.2, inner, 0.04, 1.5, 5);
     sugarloaf.line(x + 4.5, y + 5.0, x + 7.5, y + 8.0, 1.25, 0.0, line, 6);
@@ -2369,6 +2368,7 @@ fn draw_command_center_button(
     width: f32,
     height: f32,
     hovered: bool,
+    theme: &UiTheme,
 ) {
     // Preserve a 40 px interaction slot while matching the quieter optical
     // weight of the adjacent tab with a smaller visible plate.
@@ -2378,30 +2378,11 @@ fn draw_command_center_button(
     let y = y + (height - visual_height) * 0.5;
     let width = visual_width;
     let height = visual_height;
-    let outline = if hovered {
-        [0.08, 0.72, 0.96, 0.94]
-    } else {
-        [0.055, 0.24, 0.36, 0.70]
-    };
-    let fill = if hovered {
-        [0.018, 0.13, 0.21, 0.96]
-    } else {
-        [0.008, 0.045, 0.078, 0.86]
-    };
-    let fill = crate::renderer::ui_theme::over(crate::renderer::ui_theme::CARD, fill);
-    let outline = crate::renderer::ui_theme::over(fill, outline);
+    let outline = if hovered { theme.accent } else { theme.border };
+    let fill = if hovered { theme.raised } else { theme.surface };
     draw_glass(sugarloaf, [x, y, width, height], 8.0, fill, outline, 3);
-
-    let dot_color = if hovered {
-        [0.10, 0.88, 1.0, 1.0]
-    } else {
-        [0.10, 0.70, 0.90, 0.94]
-    };
-    let line_color = if hovered {
-        [0.72, 0.91, 1.0, 0.98]
-    } else {
-        [0.46, 0.69, 0.82, 0.90]
-    };
+    let dot_color = theme.accent;
+    let line_color = theme.text;
     let start_x = x + (width - 18.0) / 2.0;
     let start_y = y + (height - 14.0) / 2.0;
     for (index, line_width) in [11.0, 8.0, 13.0].into_iter().enumerate() {
@@ -2424,8 +2405,8 @@ fn draw_pane_local_tab_rails(
     sugarloaf: &mut Sugarloaf,
     metrics: ChromeMetrics,
     context_manager: &ContextManager<EventProxy>,
-    bg_color: [f32; 4],
     scale_factor: f32,
+    theme: &UiTheme,
 ) {
     let grid = context_manager.current_grid();
     let root_origin = [grid.scaled_margin.left, grid.scaled_margin.top];
@@ -2448,11 +2429,11 @@ fn draw_pane_local_tab_rails(
         };
         let pane_is_active = key == grid.current;
         let rail_outline = if pane_is_active {
-            over(bg_color, [0.06, 0.58, 0.82, 0.82])
+            theme.accent
         } else {
-            over(bg_color, [0.06, 0.22, 0.34, 0.68])
+            theme.border
         };
-        let rail_fill = over(bg_color, [0.01, 0.045, 0.075, 0.94]);
+        let rail_fill = theme.surface;
         sugarloaf.rounded_rect(
             None,
             rail[0] + 2.0,
@@ -2488,15 +2469,16 @@ fn draw_pane_local_tab_rails(
                 .unwrap_or_else(|| format!("Session {}", tab.index + 1));
             let accent = profile_accent(&title, is_active);
             let outline = if is_active {
-                accent
+                theme.accent
             } else {
-                [0.10, 0.22, 0.31, 0.88]
+                theme.border
             };
             let fill = if is_active {
-                [0.018, 0.105, 0.17, 0.98]
+                theme.raised
             } else {
-                [0.012, 0.052, 0.086, 0.90]
+                theme.surface
             };
+            let accent = super::ui_theme::readable_on(accent, fill);
             draw_glass(
                 sugarloaf,
                 [tab.x, tab.y, tab.width, tab.height],
@@ -2545,9 +2527,9 @@ fn draw_pane_local_tab_rails(
                 let opts = DrawOpts {
                     font_size,
                     color: color_u8(if is_active {
-                        [0.90, 0.97, 1.0, 1.0]
+                        theme.text
                     } else {
-                        [0.60, 0.72, 0.81, 1.0]
+                        theme.muted_text
                     }),
                     bold: is_active,
                     ..DrawOpts::default()
@@ -2563,11 +2545,7 @@ fn draw_pane_local_tab_rails(
                 draw_close_button(
                     sugarloaf,
                     tab.x + tab.width - 14.0,
-                    if is_active {
-                        accent
-                    } else {
-                        [0.48, 0.58, 0.66, 0.9]
-                    },
+                    if is_active { accent } else { theme.muted_text },
                     false,
                     tab.y + tab.height / 2.0,
                     24,
@@ -2583,14 +2561,14 @@ fn draw_pane_local_tab_rails(
                 add.y,
                 add.width,
                 add.height,
-                [0.08, 0.25, 0.36, 0.94],
+                theme.raised,
                 0.05,
                 7.0,
                 21,
             );
             let cx = add.x + add.width / 2.0;
             let cy = add.y + add.height / 2.0;
-            let accent = [0.20, 0.82, 1.0, 1.0];
+            let accent = theme.accent;
             sugarloaf.line(cx - 5.0, cy, cx + 5.0, cy, 1.8, 0.0, accent, 24);
             sugarloaf.line(cx, cy - 5.0, cx, cy + 5.0, 1.8, 0.0, accent, 24);
         }
@@ -2713,16 +2691,16 @@ fn draw_window_controls(
         let hovered = hover == Some(action);
         let pressed_here = pressed == Some(action) && hovered;
         let fill = window_control_fill(theme, action, hovered, pressed_here, focused);
-        let accent = window_control_accent(action);
+        let accent = window_control_accent(action, theme);
         let edge = over(
             fill,
             if hovered {
                 muted_alpha(accent, if pressed_here { 0.80 } else { 0.60 })
             } else {
                 [
-                    BORDER[0],
-                    BORDER[1],
-                    BORDER[2],
+                    theme.border[0],
+                    theme.border[1],
+                    theme.border[2],
                     if focused { 0.65 } else { 0.35 },
                 ]
             },
@@ -2760,6 +2738,7 @@ fn draw_window_controls(
                 0.42
             },
         );
+        let glyph_color = super::ui_theme::readable_on(over(fill, glyph_color), fill);
         let center_x = button.x + button.width * 0.5;
         let center_y = button.y + button.height * 0.5 - 1.0;
         match window_control_glyph(action, maximized) {
@@ -2853,6 +2832,36 @@ fn color_u8(c: [f32; 4]) -> [u8; 4] {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn tab_titles_remain_readable_with_legacy_imports_and_custom_fills() {
+        for entry in crate::automexia::theme_gallery::builtins() {
+            let colors = entry.theme.unwrap().colors;
+            let fills = island_fills(colors.background.0);
+            for fill in [
+                fills.active,
+                fills.inactive,
+                [1.0; 4],
+                [0.0; 4],
+                [0.9, 0.15, 0.6, 0.5],
+                [0.4, 0.4, 0.4, 1.0],
+            ] {
+                for requested in [colors.tabs, colors.tabs_active, [0.01; 4], [0.99; 4]] {
+                    let ink =
+                        color_u8(tab_title_color(requested, colors.background.0, fill))
+                            .map(|channel| f32::from(channel) / 255.0);
+                    let surface = color_u8(opaque_over(colors.background.0, fill))
+                        .map(|channel| f32::from(channel) / 255.0);
+                    assert!(
+                        automexia_ui_model::contrast_ratio(ink, surface) >= 4.5,
+                        "{}",
+                        entry.name
+                    );
+                    assert_eq!(ink[3], 1.0);
+                }
+            }
+        }
+    }
 
     #[derive(Debug, PartialEq)]
     enum RecordedWindowControlOp {
@@ -3239,12 +3248,24 @@ mod tests {
             previous_right = Some(button.x + button.width);
         }
         assert_ne!(
-            window_control_accent(ChromeAction::Minimize),
-            window_control_accent(ChromeAction::Maximize)
+            window_control_accent(
+                ChromeAction::Minimize,
+                UiTheme::from_colors(&rio_backend::config::colors::Colors::default())
+            ),
+            window_control_accent(
+                ChromeAction::Maximize,
+                UiTheme::from_colors(&rio_backend::config::colors::Colors::default())
+            )
         );
         assert_ne!(
-            window_control_accent(ChromeAction::Maximize),
-            window_control_accent(ChromeAction::CloseWindow)
+            window_control_accent(
+                ChromeAction::Maximize,
+                UiTheme::from_colors(&rio_backend::config::colors::Colors::default())
+            ),
+            window_control_accent(
+                ChromeAction::CloseWindow,
+                UiTheme::from_colors(&rio_backend::config::colors::Colors::default())
+            )
         );
 
         let theme = UiTheme::resolve([0.01, 0.04, 0.08, 1.0], [0.9; 4], [0.6; 4]);

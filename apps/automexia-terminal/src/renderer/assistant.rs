@@ -9,9 +9,7 @@
 //! keyboard, IME, wheel, and dropped-file events while it is active.
 
 use crate::renderer::responsive::{elide_end, Viewport};
-use crate::renderer::ui_theme::{
-    color_u8, UiTheme, BRAND_AMBER, BRAND_CORAL, BRAND_CYAN, MODAL_SCRIM, MODAL_SHADOW,
-};
+use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SCRIM, MODAL_SHADOW};
 use rio_backend::config::colors::Colors;
 use rio_backend::error::{RioError, RioErrorLevel};
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -214,12 +212,11 @@ impl AssistantOverlay {
         let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = self.layout(dimensions);
         let card = layout.card;
-        let theme =
-            UiTheme::resolve(colors.background.0, colors.foreground, colors.black);
+        let theme = UiTheme::from_colors(colors);
         let severity = if error.level == RioErrorLevel::Error {
-            BRAND_CORAL
+            theme.danger
         } else {
-            BRAND_AMBER
+            theme.warning
         };
         let severity_label = if error.level == RioErrorLevel::Error {
             "ERROR"
@@ -374,7 +371,7 @@ impl AssistantOverlay {
         );
         let docs = DrawOpts {
             font_size: if layout.tiny { 11.0 } else { 12.5 },
-            color: color_u8(BRAND_CYAN),
+            color: color_u8(theme.accent),
             bold: true,
             ..DrawOpts::default()
         };

@@ -1,7 +1,5 @@
 use crate::renderer::responsive::{elide_end, Viewport};
-use crate::renderer::ui_theme::{
-    color_u8, UiTheme, BRAND_CYAN, BRAND_PURPLE, MODAL_SHADOW,
-};
+use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SHADOW};
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
@@ -77,7 +75,7 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors, creating: bool) {
     let dimensions = (window.width, window.height, scale);
     let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
     let layout = welcome_layout(dimensions);
-    let theme = UiTheme::resolve(colors.background.0, colors.foreground, colors.black);
+    let theme = UiTheme::from_colors(colors);
 
     sugarloaf.rect(
         None,
@@ -105,7 +103,7 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors, creating: bool) {
         layout.card.y,
         layout.card.width,
         layout.card.height,
-        BRAND_PURPLE,
+        theme.purple,
         16.0,
     );
     rounded(
@@ -134,7 +132,7 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors, creating: bool) {
     };
     let icon_x = layout.card.x + (layout.card.width - icon_size) * 0.5;
     let icon_y = layout.card.y + inset;
-    draw_terminal_mark(sugarloaf, icon_x, icon_y, icon_size, theme.background);
+    draw_terminal_mark(sugarloaf, icon_x, icon_y, icon_size, &theme);
 
     let title_size = if layout.tiny {
         13.0
@@ -184,7 +182,7 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors, creating: bool) {
         layout.action.y,
         layout.action.width,
         2.0,
-        BRAND_CYAN,
+        theme.accent,
         1.0,
     );
     let action_label = action_label(layout, creating);
@@ -195,7 +193,7 @@ pub fn screen(sugarloaf: &mut Sugarloaf, colors: &Colors, creating: bool) {
         layout.action.y + (layout.action.height - 12.5) * 0.5,
         (layout.action.width - 16.0).max(1.0),
         12.5,
-        BRAND_CYAN,
+        theme.accent,
         true,
     );
 }
@@ -221,21 +219,21 @@ fn draw_terminal_mark(
     x: f32,
     y: f32,
     size: f32,
-    background: [f32; 4],
+    theme: &UiTheme,
 ) {
-    rounded(sugarloaf, x, y, size, size, BRAND_PURPLE, 10.0);
+    rounded(sugarloaf, x, y, size, size, theme.purple, 10.0);
     rounded(
         sugarloaf,
         x + 2.0,
         y + 2.0,
         (size - 4.0).max(1.0),
         (size - 4.0).max(1.0),
-        background,
+        theme.background,
         8.0,
     );
     let opts = DrawOpts {
         font_size: (size * 0.38).max(10.0),
-        color: color_u8(BRAND_CYAN),
+        color: color_u8(theme.accent),
         bold: true,
         ..DrawOpts::default()
     };

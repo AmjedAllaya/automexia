@@ -369,6 +369,7 @@ impl CommandPalette {
         &self,
         sugarloaf: &mut Sugarloaf,
         dimensions: (f32, f32, f32),
+        theme: &UiTheme,
     ) {
         let Some(editor) = &self.shortcut_editor else {
             return;
@@ -386,30 +387,40 @@ impl CommandPalette {
             DEPTH_BACKDROP,
             ORDER,
         );
-        sugarloaf.rounded_rect(None, x, y, w, h, BG_COLOR, DEPTH_BG, CARD_RADIUS, ORDER);
+        sugarloaf.rounded_rect(
+            None,
+            x,
+            y,
+            w,
+            h,
+            theme.background,
+            DEPTH_BG,
+            CARD_RADIUS,
+            ORDER,
+        );
         let candidate = editor
             .candidate
             .as_ref()
             .map_or_else(|| "Press shortcut keys".into(), ToString::to_string);
         let current = format!("Current: {}", editor.current);
         let lines = [
-            ("Edit shortcut", 18.0, TEXT_COLOR),
-            (editor.title, 14.0, DIM_TEXT_COLOR),
-            (current.as_str(), 11.0, DIM_TEXT_COLOR),
-            (candidate.as_str(), 18.0, BRAND_CYAN),
+            ("Edit shortcut", 18.0, theme.text),
+            (editor.title, 14.0, theme.muted_text),
+            (current.as_str(), 11.0, theme.muted_text),
+            (candidate.as_str(), 18.0, theme.accent),
             (
                 editor.error.as_deref().unwrap_or(editor.message),
                 11.0,
                 if editor.error.is_some() {
-                    BRAND_CORAL
+                    theme.danger
                 } else {
-                    DIM_TEXT_COLOR
+                    theme.muted_text
                 },
             ),
             (
                 "Enter saves · Esc returns · Tab moves · Reset restores config",
                 10.0,
-                DIM_TEXT_COLOR,
+                theme.muted_text,
             ),
         ];
         let mut ly = y + 14.0;
@@ -434,11 +445,7 @@ impl CommandPalette {
                 by,
                 bw,
                 bh,
-                if active {
-                    SELECTED_BG_COLOR
-                } else {
-                    INPUT_BG_COLOR
-                },
+                if active { theme.raised } else { theme.surface },
                 DEPTH_ELEMENT,
                 CONTROL_RADIUS,
                 ORDER,
@@ -448,7 +455,7 @@ impl CommandPalette {
             }
             let opts = DrawOpts {
                 font_size: 12.0,
-                color: color_u8(if active { BRAND_CYAN } else { TEXT_COLOR }),
+                color: color_u8(if active { theme.accent } else { theme.text }),
                 ..DrawOpts::default()
             };
             let label = if i == 0 {

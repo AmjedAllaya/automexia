@@ -1,9 +1,6 @@
 //! Capability-free grouping of the existing application command catalog.
 
-use super::{
-    CommandIcon, PaletteAction, RowPresentation, BRAND_AMBER, BRAND_BLUE, BRAND_CYAN,
-    BRAND_LIME, BRAND_PURPLE,
-};
+use super::{CommandIcon, PaletteAction, RowPresentation, UiAccent};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(super) enum Category {
@@ -41,13 +38,13 @@ impl Category {
 
     pub(super) fn presentation(self) -> RowPresentation {
         let (icon, accent) = match self {
-            Self::Tabs => (CommandIcon::TabAdd, BRAND_CYAN),
-            Self::Panes => (CommandIcon::SplitRight, BRAND_PURPLE),
-            Self::Search => (CommandIcon::Search, BRAND_BLUE),
-            Self::Input => (CommandIcon::Paste, BRAND_LIME),
-            Self::Appearance => (CommandIcon::Theme, BRAND_AMBER),
-            Self::Customizations => (CommandIcon::Customizations, BRAND_CYAN),
-            Self::Tools => (CommandIcon::Toolbox, BRAND_CYAN),
+            Self::Tabs => (CommandIcon::TabAdd, UiAccent::Cyan),
+            Self::Panes => (CommandIcon::SplitRight, UiAccent::Purple),
+            Self::Search => (CommandIcon::Search, UiAccent::Blue),
+            Self::Input => (CommandIcon::Paste, UiAccent::Success),
+            Self::Appearance => (CommandIcon::Theme, UiAccent::Warning),
+            Self::Customizations => (CommandIcon::Customizations, UiAccent::Cyan),
+            Self::Tools => (CommandIcon::Toolbox, UiAccent::Cyan),
         };
         RowPresentation { icon, accent }
     }

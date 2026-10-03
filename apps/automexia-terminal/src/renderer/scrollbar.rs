@@ -3,6 +3,7 @@
 // This source code is licensed under the MIT license found in the
 // LICENSE file in the root directory of this source tree.
 
+use super::ui_theme::UiTheme;
 use rio_backend::sugarloaf::Sugarloaf;
 use std::time::Instant;
 
@@ -18,10 +19,6 @@ const SCROLLBAR_HIT_WIDTH: f32 = 14.0;
 // Timing
 pub const FADE_OUT_DELAY_MS: u128 = 2000;
 pub const FADE_OUT_DURATION_MS: u128 = 300;
-
-// Cyan/blue application-chrome role from the liquid-hacker palette.
-pub const SCROLLBAR_COLOR: [f32; 4] = [0.063, 0.88, 1.0, 0.45];
-pub const SCROLLBAR_DRAG_COLOR: [f32; 4] = [0.18, 0.58, 0.96, 0.82];
 
 // Depth / order for the terminal-surface scrollbar (render on top of
 // content but below overlays). Palette / other UIs pick their own
@@ -89,8 +86,7 @@ pub fn compute_thumb(
 }
 
 /// Paint a single scrollbar thumb — the one and only way Automexia renders a
-/// scrollbar. Uses `SCROLLBAR_COLOR` (or `SCROLLBAR_DRAG_COLOR` if
-/// `dragging`) modulated by `opacity`. `opacity <= 0.0` is a no-op so
+/// scrollbar. Uses theme accents modulated by drag state and `opacity`. `opacity <= 0.0` is a no-op so
 /// callers can pipe the fade helper straight in.
 ///
 /// `depth` + `order` let callers place the thumb above their own
@@ -99,7 +95,7 @@ pub fn compute_thumb(
 /// command palette uses a higher order so the bar isn't swallowed by
 /// the palette's backdrop/bg rects.
 #[allow(clippy::too_many_arguments)]
-pub fn draw_thumb(
+pub(crate) fn draw_thumb(
     sugarloaf: &mut Sugarloaf,
     x: f32,
     y: f32,
@@ -108,16 +104,14 @@ pub fn draw_thumb(
     dragging: bool,
     depth: f32,
     order: u8,
+    theme: &UiTheme,
 ) {
     if opacity <= 0.0 {
         return;
     }
-    let base = if dragging {
-        SCROLLBAR_DRAG_COLOR
-    } else {
-        SCROLLBAR_COLOR
-    };
-    let color = [base[0], base[1], base[2], base[3] * opacity];
+    let base = if dragging { theme.blue } else { theme.accent };
+    let alpha = if dragging { 0.82 } else { 0.45 };
+    let color = [base[0], base[1], base[2], alpha * opacity];
     sugarloaf.rounded_rect(
         None,
         x,
@@ -381,7 +375,7 @@ impl Scrollbar {
 
     /// Render a scrollbar for a given panel.
     #[allow(clippy::too_many_arguments)]
-    pub fn render(
+    pub(crate) fn render(
         &self,
         sugarloaf: &mut Sugarloaf,
         panel_rect: [f32; 4],
@@ -391,6 +385,7 @@ impl Scrollbar {
         screen_lines: usize,
         rich_text_id: usize,
         grid_margin: (f32, f32),
+        theme: &UiTheme,
     ) {
         if !self.enabled || history_size == 0 {
             return;
@@ -423,6 +418,7 @@ impl Scrollbar {
             is_dragging,
             TERMINAL_DEPTH,
             TERMINAL_ORDER,
+            theme,
         );
     }
 
@@ -480,16 +476,6 @@ impl Scrollbar {
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn scrollbar_uses_distinct_branded_idle_and_drag_roles() {
-        const {
-            assert!(SCROLLBAR_COLOR[2] > SCROLLBAR_COLOR[0]);
-            assert!(SCROLLBAR_COLOR[1] > SCROLLBAR_COLOR[0]);
-            assert!(SCROLLBAR_DRAG_COLOR[3] > SCROLLBAR_COLOR[3]);
-        }
-        assert_ne!(SCROLLBAR_COLOR, SCROLLBAR_DRAG_COLOR);
-    }
 
     #[test]
     fn opacity_zero_when_never_scrolled() {

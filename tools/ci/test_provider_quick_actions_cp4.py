@@ -66,6 +66,20 @@ class CP4ContractTests(unittest.TestCase):
             with self.assertRaisesRegex(policy.CP4ContractError, "runtime authority"):
                 policy.validate_sources(self.contract)
 
+    def test_palette_accent_role_and_theme_projection_are_required(self) -> None:
+        original = policy.bounded_text
+        for token in ("UiAccent::Cyan", "presentation.accent.color(theme)"):
+            with self.subTest(token=token):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    if path.name == "command_palette.rs":
+                        source = source.replace(token, "BRAND_CYAN")
+                    return source
+
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaisesRegex(policy.CP4ContractError, "missing CP4 source"):
+                        policy.validate_sources(self.contract)
+
     def test_interactive_provider_adapter_import_is_rejected(self) -> None:
         original = policy.bounded_text
 

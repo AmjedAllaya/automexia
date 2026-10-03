@@ -1062,7 +1062,11 @@ impl Renderer {
         if self.confirm_quit.is_active() {
             let size = sugarloaf.window_size();
             let dimensions = (size.width, size.height, sugarloaf.scale_factor());
-            self.confirm_quit.render(sugarloaf, dimensions);
+            self.confirm_quit.render(
+                sugarloaf,
+                dimensions,
+                &ui_theme::UiTheme::from_colors(&self.named_colors),
+            );
         }
     }
 
@@ -1542,6 +1546,7 @@ impl Renderer {
         context_manager: &mut ContextManager<EventProxy>,
     ) -> (Option<crate::context::renderable::WindowUpdate>, bool) {
         let extension_state_changed = self.sync_extension_state();
+        let ui_theme = ui_theme::UiTheme::from_colors(&self.named_colors);
         let mut any_panel_dirty = false;
         let grid = context_manager.current_grid_mut();
         let active_route = grid.current().route_id;
@@ -1870,12 +1875,15 @@ impl Renderer {
                 .last_window_bg
                 .map(|c| [c.r as f32, c.g as f32, c.b as f32, c.a as f32])
                 .unwrap_or(self.named_colors.background.0);
+            let mut chrome_colors = self.named_colors;
+            chrome_colors.background.0 = island_bg;
             island.render(
                 sugarloaf,
                 (window_size.width, window_size.height, scale_factor),
                 context_manager,
                 island_bg,
                 self.is_window_focused,
+                &ui_theme::UiTheme::from_colors(&chrome_colors),
             );
         }
 
@@ -2264,7 +2272,7 @@ impl Renderer {
         self.session_footer.render(
             sugarloaf,
             context_manager,
-            self.named_colors.background.0,
+            &ui_theme,
             suppressed_footer_route,
         );
         let pane_footer = suppressed_footer_route.and_then(|route_id| {
@@ -2295,9 +2303,11 @@ impl Renderer {
         // Screen records the exclusive close confirmation after every overlay,
         // including those owned outside Renderer (settings, tables and hints).
         if self.connection_hub.is_active() {
-            self.connection_hub.render(sugarloaf, modal_dimensions);
+            self.connection_hub
+                .render(sugarloaf, modal_dimensions, &ui_theme);
         } else if self.command_palette.is_enabled() {
-            self.command_palette.render(sugarloaf, modal_dimensions);
+            self.command_palette
+                .render(sugarloaf, modal_dimensions, &ui_theme);
         } else if self.assistant.is_active() {
             self.assistant
                 .render(sugarloaf, modal_dimensions, &self.named_colors);
@@ -2324,6 +2334,7 @@ impl Renderer {
                 state.screen_lines,
                 state.rich_text_id,
                 grid_margin_sb,
+                &ui_theme,
             );
         }
 

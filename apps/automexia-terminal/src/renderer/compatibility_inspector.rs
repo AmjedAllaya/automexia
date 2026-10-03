@@ -5,10 +5,7 @@
 //! never takes PTY, filesystem, process, or configuration authority.
 
 use crate::renderer::responsive::{elide_end, Viewport};
-use crate::renderer::ui_theme::{
-    color_u8, UiTheme, BRAND_AMBER, BRAND_BLUE, BRAND_CYAN, BRAND_LIME, MODAL_SCRIM,
-    MODAL_SHADOW,
-};
+use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SCRIM, MODAL_SHADOW};
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
@@ -358,8 +355,7 @@ impl CompatibilityInspector {
         let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = self.layout(dimensions);
         let card = layout.card;
-        let theme =
-            UiTheme::resolve(colors.background.0, colors.foreground, colors.black);
+        let theme = UiTheme::from_colors(colors);
 
         sugarloaf.begin_modal_layer();
         sugarloaf.rect(
@@ -387,7 +383,7 @@ impl CompatibilityInspector {
             card.y,
             card.width,
             card.height,
-            BRAND_BLUE,
+            theme.blue,
             14.0,
         );
         rounded(
@@ -414,7 +410,7 @@ impl CompatibilityInspector {
                 card.y + inset,
                 74.0,
                 24.0,
-                BRAND_BLUE,
+                theme.blue,
                 7.0,
             );
             let badge = DrawOpts {
@@ -460,7 +456,7 @@ impl CompatibilityInspector {
                 .enumerate()
             {
                 let color = if line == "  ✓ none" {
-                    color_u8(BRAND_LIME)
+                    color_u8(theme.success)
                 } else {
                     color_u8(theme.text)
                 };
@@ -478,7 +474,7 @@ impl CompatibilityInspector {
                     let restore_fill = if self.hovered_action
                         == Some(CompatibilityInspectorAction::RestoreNewest)
                     {
-                        BRAND_LIME
+                        theme.success
                     } else {
                         theme.raised
                     };
@@ -493,10 +489,10 @@ impl CompatibilityInspector {
                     );
                     let restore = DrawOpts {
                         font_size: 11.0,
-                        color: color_u8(if restore_fill == BRAND_LIME {
+                        color: color_u8(if restore_fill == theme.success {
                             theme.background
                         } else {
-                            BRAND_LIME
+                            theme.success
                         }),
                         bold: true,
                         ..DrawOpts::default()
@@ -514,7 +510,7 @@ impl CompatibilityInspector {
                         CompatibilityInspectorAction::ClearParked
                     };
                     let clear_fill = if self.hovered_action == Some(clear_action) {
-                        BRAND_AMBER
+                        theme.warning
                     } else {
                         theme.raised
                     };
@@ -529,10 +525,10 @@ impl CompatibilityInspector {
                     );
                     let clear = DrawOpts {
                         font_size: 11.0,
-                        color: color_u8(if clear_fill == BRAND_AMBER {
+                        color: color_u8(if clear_fill == theme.warning {
                             theme.background
                         } else {
-                            BRAND_AMBER
+                            theme.warning
                         }),
                         bold: true,
                         ..DrawOpts::default()
@@ -583,7 +579,7 @@ impl CompatibilityInspector {
         );
         let close = DrawOpts {
             font_size: 16.0,
-            color: color_u8(BRAND_CYAN),
+            color: color_u8(theme.accent),
             bold: true,
             ..DrawOpts::default()
         };

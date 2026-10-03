@@ -93,7 +93,7 @@ pub(super) fn draw(
     }
     let colors = options.colors;
     let now = std::time::Instant::now();
-    let theme = UiTheme::resolve(colors.background.0, colors.foreground, colors.tabs);
+    let theme = UiTheme::from_colors(&colors);
     let clip = [
         x,
         y,

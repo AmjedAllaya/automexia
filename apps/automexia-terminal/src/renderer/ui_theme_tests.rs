@@ -1,6 +1,63 @@
 use super::*;
 
 #[test]
+fn palette_roles_follow_every_builtin_and_remain_readable_in_light_and_dark_menus() {
+    let mut surfaces = Vec::new();
+    for entry in crate::automexia::theme_gallery::builtins() {
+        let palette = entry.theme.unwrap().colors;
+        let theme = UiTheme::from_colors(&palette);
+        assert_eq!(color_u8(theme.background), color_u8(palette.background.0));
+        surfaces.push(color_u8(theme.surface));
+        for surface in [theme.background, theme.surface, theme.raised] {
+            for ink in [
+                theme.text,
+                theme.muted_text,
+                theme.accent,
+                theme.blue,
+                theme.purple,
+                theme.success,
+                theme.warning,
+                theme.danger,
+            ] {
+                assert!(
+                    contrast(color_u8(ink), color_u8(surface)) >= 4.5,
+                    "{}",
+                    entry.name
+                );
+            }
+            assert_eq!(color_u8(surface)[3], 255);
+        }
+    }
+    surfaces.sort();
+    surfaces.dedup();
+    assert_eq!(
+        surfaces.len(),
+        5,
+        "each theme must reach application surfaces"
+    );
+}
+
+#[test]
+fn imported_palette_accents_cannot_make_menu_labels_unreadable() {
+    for byte in 0u8..=255 {
+        let gray = f32::from(byte) / 255.0;
+        let mut colors = rio_backend::config::colors::Colors::default();
+        colors.background.0 = [gray, gray, gray, 0.3];
+        colors.foreground = [gray, gray, gray, 0.0];
+        colors.cyan = [gray, 0.25, 0.8, 0.2];
+        let theme = UiTheme::from_colors(&colors);
+        for surface in [theme.background, theme.surface, theme.raised] {
+            for ink in [theme.text, theme.muted_text, theme.accent] {
+                assert!(
+                    contrast(color_u8(ink), color_u8(surface)) >= 4.5,
+                    "gray {byte}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn glass_layers_stay_bounded_and_opaque_at_all_control_sizes() {
     for width in [0.5, 1.0, 3.0, 24.0, 34.0, 240.0, 4096.0] {
         for height in [0.5, 1.0, 3.0, 24.0, 34.0, 48.0] {

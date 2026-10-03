@@ -330,7 +330,10 @@ The native Windows `ThemeGalleryOnly` fixture exercises real arrows, pointer,
 Apply, copy and configuration restoration on CPU/WGPU. Compare preference and
 configuration bytes and inspect fresh captures; native Linux/macOS desktop and
 assistive technology remain external. Chrome labels retain independent quantized
-contrast checks across selected palette surfaces.
+contrast checks across selected palette surfaces, imported midtones, inactive
+tabs and custom fills. Applied dark/light native checkpoints assert header,
+footer, title and all seven command-category colors against literal palette
+values, with retained Customizations and close-dialog captures.
 
 Completed-command bands must preserve ANSI foregrounds, skip blank rows, and
 tint ordinary table data while enabled logs and Kubernetes retain separate

@@ -43,7 +43,13 @@ old files remain for rollback and future/corrupt files never silently downgrade.
 Use configuration clears theme/legacy appearance overrides. Font palette choices
 remain explicit higher-priority overrides; semantic output, Kubernetes, table,
 tag and application-supplied RGB ownership is unchanged. App chrome adapts its
-surfaces to palette lightness/hue while retaining opaque dialogs and readable text.
+surfaces and semantic accents through the existing immutable `UiTheme` projection.
+Headers, pane tab rails, footers, all command categories, settings, search,
+connection views and dialogs consume this same effective palette. Tab colors are
+foregrounds; contrast is checked against each actual tab fill, including older
+saved palettes and custom fills. Decorative borders remain distinct from focus
+indicators. Dialogs remain opaque and explicit semantic color overrides retain
+their own ownership. No palette scanning occurs during painting.
 
 ## Consequences and evidence
 
@@ -55,5 +61,8 @@ occupy the single worker until the OS call returns. No theme execution is allowe
 Parser, strict migration, canonical I/O, cancellation, copy isolation, keyboard,
 layout and chrome-contrast tests exercise the owning paths. The Windows native
 ThemeGalleryOnly fixture checks five palettes, cancel, Apply, copy and configuration
-on CPU/WGPU. Linux/macOS compositor and assistive-technology evidence remain
-external; unit tests are not substitutes for those environments.
+on CPU/WGPU. Applied dark/light checkpoints check header, footer, title and every
+command-category surface against independent palette values; retained captures
+cover Customizations and close dialogs. Quantized contrast tests include imported
+midtone palettes, inactive tabs and custom tab fills. Linux/macOS compositor and
+assistive-technology evidence remain external; unit tests are not substitutes for those environments.

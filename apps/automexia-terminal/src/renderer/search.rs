@@ -704,14 +704,15 @@ impl SearchOverlay {
         };
         self.last_layout = Some(layout);
 
+        let theme = super::ui_theme::UiTheme::from_colors(colors);
         let accent = match self.scope {
-            SearchScope::Pane { .. } => colors.cyan,
-            SearchScope::Workspace => colors.magenta,
+            SearchScope::Pane { .. } => theme.accent,
+            SearchScope::Workspace => theme.purple,
         };
-        let background = over(colors.background.0, [0.005, 0.025, 0.055, 0.97]);
-        let input_background = over(background, [0.03, 0.12, 0.19, 0.82]);
-        let hover_background = over(background, [0.08, 0.28, 0.40, 0.90]);
-        let dim_text = colors.dim_foreground.unwrap_or(colors.tabs);
+        let background = theme.surface;
+        let input_background = theme.background;
+        let hover_background = theme.raised;
+        let dim_text = theme.muted_text;
         let surface_radius = if layout.floating { 12.0 } else { 0.0 };
 
         if layout.floating {
@@ -796,7 +797,10 @@ impl SearchOverlay {
                 );
                 let scope_opts = DrawOpts {
                     font_size: SCOPE_FONT_SIZE,
-                    color: color_u8(if selected { accent } else { dim_text }),
+                    color: color_u8(super::ui_theme::readable_on(
+                        if selected { accent } else { dim_text },
+                        fill,
+                    )),
                     ..DrawOpts::default()
                 };
                 let label_width = sugarloaf.text_mut().measure(label, &scope_opts);
@@ -868,7 +872,7 @@ impl SearchOverlay {
             color: color_u8(if active_search.is_empty() {
                 dim_text
             } else {
-                colors.foreground
+                theme.text
             }),
             ..DrawOpts::default()
         };
@@ -922,9 +926,9 @@ impl SearchOverlay {
             let button_opts = DrawOpts {
                 font_size: BUTTON_FONT_SIZE,
                 color: color_u8(if action == SearchOverlayAction::Close {
-                    colors.red
+                    theme.danger
                 } else {
-                    colors.foreground
+                    theme.text
                 }),
                 ..DrawOpts::default()
             };

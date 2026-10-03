@@ -239,6 +239,21 @@ pub fn edit_color(theme: &Theme, key: &str, color: [u8; 4]) -> Result<Theme, The
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn builtin_tab_foregrounds_are_legible_on_their_palette() {
+        for entry in builtins() {
+            let colors = entry.selection().unwrap().theme.colors;
+            for foreground in [colors.tabs, colors.tabs_active] {
+                assert!(
+                    automexia_ui_model::contrast_ratio(foreground, colors.background.0)
+                        >= 4.5,
+                    "{} supplies an unreadable tab foreground",
+                    entry.name
+                );
+            }
+        }
+    }
     #[test]
     fn gallery_builtins_are_distinct_valid_and_legible() {
         let themes = builtins();

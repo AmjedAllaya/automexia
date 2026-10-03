@@ -8,9 +8,7 @@ use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
-use super::ui_theme::{
-    color_u8, UiTheme, BRAND_AMBER, BRAND_CORAL, BRAND_CYAN, BRAND_LIME, BRAND_PURPLE,
-};
+use super::ui_theme::{color_u8, UiTheme};
 
 const ORDER: u8 = 28;
 const DEPTH_SHADOW: f32 = 0.04;
@@ -95,8 +93,7 @@ impl SuggestionOverlay {
         let Some(surface) = self.surface.as_ref() else {
             return;
         };
-        let muted = colors.dim_foreground.unwrap_or(colors.tabs);
-        let theme = UiTheme::resolve(colors.background.0, colors.foreground, muted);
+        let theme = UiTheme::from_colors(colors);
         let outline = if surface.high_contrast {
             theme.text
         } else {
@@ -158,7 +155,7 @@ impl SuggestionOverlay {
             "SUGGESTIONS",
             surface.bounds.width * 0.6,
             HEADER_FONT,
-            BRAND_CYAN,
+            theme.accent,
         );
         draw_text_right(
             sugarloaf,
@@ -176,7 +173,7 @@ impl SuggestionOverlay {
             self.row_bounds.push(layout.bounds);
             if option.selected || option.pointer_highlighted {
                 let color = if option.selected {
-                    [BRAND_CYAN[0], BRAND_CYAN[1], BRAND_CYAN[2], 0.18]
+                    [theme.accent[0], theme.accent[1], theme.accent[2], 0.18]
                 } else {
                     [theme.raised[0], theme.raised[1], theme.raised[2], 0.82]
                 };
@@ -193,7 +190,7 @@ impl SuggestionOverlay {
                 );
             }
 
-            let kind_color = kind_color(&option.kind);
+            let kind_color = kind_color(&option.kind, &theme);
             sugarloaf.rounded_rect(
                 None,
                 layout.icon.x,
@@ -227,7 +224,7 @@ impl SuggestionOverlay {
                 layout.value_width,
                 VALUE_FONT,
                 theme.text,
-                BRAND_CYAN,
+                theme.accent,
             );
             if surface.show_description {
                 draw_text(
@@ -250,11 +247,11 @@ impl SuggestionOverlay {
                     theme.muted_text,
                 );
                 let risk_color = if option.risk == "destructive" {
-                    BRAND_CORAL
+                    theme.danger
                 } else if option.risk == "changes state" {
-                    BRAND_AMBER
+                    theme.warning
                 } else {
-                    BRAND_LIME
+                    theme.success
                 };
                 draw_text_right(
                     sugarloaf,
@@ -282,14 +279,14 @@ fn kind_icon(kind: &str) -> &'static str {
     }
 }
 
-fn kind_color(kind: &str) -> [f32; 4] {
+fn kind_color(kind: &str, theme: &UiTheme) -> [f32; 4] {
     match kind {
-        "command" => BRAND_CYAN,
-        "option" | "argument" => BRAND_PURPLE,
-        "path" => BRAND_LIME,
-        "history" => BRAND_AMBER,
-        "action" => BRAND_CORAL,
-        _ => BRAND_CYAN,
+        "command" => theme.accent,
+        "option" | "argument" => theme.purple,
+        "path" => theme.success,
+        "history" => theme.warning,
+        "action" => theme.danger,
+        _ => theme.accent,
     }
 }
 

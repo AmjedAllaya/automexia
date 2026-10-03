@@ -45,6 +45,81 @@ function Test-AutomexiaThemeGallery {
             [void][AutomexiaResizeDriver]::CaptureClientFrame($window,[IO.Path]::ChangeExtension($ResultCapture,($Name+'.png')))
         }
     }
+    function Check-ThemeChrome([string]$Name, [int[]]$Surface, [int[]]$Foreground) {
+        function Capture-ThemeSurface([string]$Suffix) {
+            $path = if ([string]::IsNullOrWhiteSpace($ResultCapture)) {
+                Join-Path $configRoot ('theme-' + $Name + '-' + $Suffix + '.png')
+            } else { [IO.Path]::ChangeExtension($ResultCapture,($Name+'-'+$Suffix+'.png')) }
+            [void][AutomexiaResizeDriver]::CaptureClientFrame($window,$path)
+            return $path
+        }
+        function Matching-ThemePixels($Bitmap, [double[]]$Rect, [int[]]$Rgb) {
+            $matches = 0
+            for ($y=[int]$Rect[1]; $y -lt [Math]::Min($Bitmap.Height,$Rect[3]); $y+=2) {
+                for ($x=[int]$Rect[0]; $x -lt [Math]::Min($Bitmap.Width,$Rect[2]); $x+=2) {
+                    $pixel = $Bitmap.GetPixel($x,$y)
+                    if ([Math]::Abs($pixel.R-$Rgb[0]) -le 3 -and [Math]::Abs($pixel.G-$Rgb[1]) -le 3 -and [Math]::Abs($pixel.B-$Rgb[2]) -le 3) { $matches++ }
+                }
+            }
+            return $matches
+        }
+        $scale = [double](Read-AutomexiaSnapshot).scale_factor
+        $script:testStage = 'applied header and footer ' + $Name
+        $bitmap = [Drawing.Bitmap]::new((Capture-ThemeSurface 'terminal'))
+        try {
+            $header = @(($bitmap.Width*0.4),(4*$scale),($bitmap.Width*0.7),(28*$scale))
+            $footer = @((30*$scale),($bitmap.Height-55*$scale),($bitmap.Width*0.6),($bitmap.Height-2*$scale))
+            $title = @((70*$scale),(4*$scale),(270*$scale),(40*$scale))
+            if ((Matching-ThemePixels $bitmap $header $Surface) -lt 300) {throw 'Header did not follow the applied theme'}
+            if ((Matching-ThemePixels $bitmap $footer $Surface) -lt 300) {throw 'Footer did not follow the applied theme'}
+            if ((Matching-ThemePixels $bitmap $title $Foreground) -lt 12) {throw 'Header title lost its readable theme foreground'}
+        } finally { $bitmap.Dispose() }
+        $categories = @('Tabs & Windows','Panes & Sessions','Search & History','Clipboard & Input','Appearance','Customizations','Tools')
+        for ($category=0; $category -lt $categories.Count; $category++) {
+            $script:testStage = 'themed command category ' + $categories[$category]
+            Send-AutomexiaTestControl ('open-palette:' + [guid]::NewGuid().ToString('N'))
+            $null = Wait-ThemeState {param($s) $s.palette_enabled -and $s.palette_accessibility_summary.StartsWith('Command categories;')}
+            for ($row=0; $row -lt $category; $row++) { Theme-Key 0x28 }
+            $null = Wait-ThemeState {param($s) $s.palette_selected_index -eq $category}
+            Theme-Key 0x0D
+            $null = Wait-ThemeState {param($s) $s.palette_enabled -and $s.palette_accessibility_summary.StartsWith($categories[$category]+';')}
+            $bitmap = [Drawing.Bitmap]::new((Capture-ThemeSurface ('category-'+$category)))
+            try {
+                $input = @(($bitmap.Width*0.5),(100*$scale),($bitmap.Width*0.5+30*$scale),(112*$scale))
+                if ((Matching-ThemePixels $bitmap $input $Surface) -lt 30) {throw 'Menu category kept an old theme surface'}
+            } finally { $bitmap.Dispose() }
+            if ($category -eq 0) {
+                Theme-Key 0x71
+                $null = Wait-ThemeState {param($s) $s.palette_accessibility_summary.StartsWith('Edit shortcut dialog;')}
+                $null = Capture-ThemeSurface 'shortcut-editor'
+                Theme-Key 0x1B
+                $null = Wait-ThemeState {param($s) $s.palette_accessibility_summary.StartsWith($categories[$category]+';')}
+            }
+            Send-AutomexiaTestControl ('dismiss-modal:' + [guid]::NewGuid().ToString('N'))
+            $null = Wait-ThemeState {param($s) -not $s.palette_enabled}
+        }
+        $script:testStage = 'themed customization and close dialog ' + $Name
+        Send-AutomexiaTestControl ('open-customizations:' + [guid]::NewGuid().ToString('N'))
+        $null = Wait-ThemeState {param($s) $s.settings.ready -and $s.settings.open}
+        $null = Capture-ThemeSurface 'customizations'
+        Theme-Key 0x1B
+        $null = Wait-ThemeState {param($s) -not $s.settings.open}
+        Send-AutomexiaTestControl ('confirm-quit:' + [guid]::NewGuid().ToString('N'))
+        $null = Wait-ThemeState {param($s) $s.confirm_quit_active}
+        $null = Capture-ThemeSurface 'close'
+        Theme-Key 0x1B
+        $null = Wait-ThemeState {param($s) -not $s.confirm_quit_active}
+        Send-AutomexiaTestControl ('open-connection-hub:' + [guid]::NewGuid().ToString('N'))
+        $null = Wait-ThemeState {param($s) $s.connection_hub_active}
+        $null = Capture-ThemeSurface 'connections'
+        Theme-Key 0x1B
+        $null = Wait-ThemeState {param($s) -not $s.connection_hub_active}
+        Send-AutomexiaTestControl ('open-pane-search:' + [guid]::NewGuid().ToString('N'))
+        $null = Wait-ThemeState {param($s) $s.search_active}
+        $null = Capture-ThemeSurface 'search'
+        Theme-Key 0x1B
+        $null = Wait-ThemeState {param($s) -not $s.search_active}
+    }
     function Preference-Text {
         $path = Join-Path $configRoot 'state/user-preferences-v10.toml'
         for ($attempt = 0; $attempt -lt 80; $attempt++) {
@@ -99,6 +174,14 @@ function Test-AutomexiaThemeGallery {
         $deadline = [DateTime]::UtcNow.AddSeconds(12)
         while ((Preference-Text) -notmatch 'Solar Dusk' -and [DateTime]::UtcNow -lt $deadline) {Start-Sleep -Milliseconds 50}
         if ((Preference-Text) -notmatch 'Solar Dusk') {throw 'Applied theme was not saved'}
+        # Independent literal palette/surface oracles catch fixed header/footer
+        # skins and fill values accidentally consumed as tab text colors.
+        Check-ThemeChrome 'solar-dusk' @(33,26,23) @(242,230,216)
+        $null = Open-Themes
+        $null = Select-Theme 'arctic-day'
+        Theme-Key 0x0D
+        $null = Wait-ThemeState {param($s) -not $s.settings.open}
+        Check-ThemeChrome 'arctic-day' @(233,237,241) @(37,55,68)
         $script:testStage = 'customize a copy using the shared color editor'
         $state = Open-Themes
         $state = Select-Theme 'forest-operator'
@@ -123,7 +206,7 @@ function Test-AutomexiaThemeGallery {
         while ((Preference-Text) -match 'theme-selection' -and [DateTime]::UtcNow -lt $deadline) {Start-Sleep -Milliseconds 50}
         if ((Preference-Text) -match 'theme-selection') {throw 'Use configuration left a theme override'}
         if ([IO.File]::ReadAllText((Join-Path $configRoot 'config.toml')) -ne $originalConfig) {throw 'Theme gallery modified config.toml'}
-        Write-Host "Native theme gallery passed: $expectedRendererBackend; five previews, cancel, apply, copy, configuration."
+        Write-Host "Native theme gallery passed: $expectedRendererBackend; five previews, cancel, apply, copy, configuration, dark/light chrome and seven menu categories."
     } finally {
         [void][AutomexiaResizeDriver]::SetCaptureTopmost($window,$false)
     }
