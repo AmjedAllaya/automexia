@@ -88,6 +88,39 @@ pub(crate) fn read_bounded_regular(
     read_bounded_regular_with_policy(path, maximum, true)
 }
 
+/// Shared durable replacement primitive. Each store owns its lock, schema and
+/// previous-generation policy; this adapter owns only private file replacement.
+pub(crate) fn atomic_write_private(
+    parent: &Path,
+    destination: &Path,
+    bytes: &[u8],
+    maximum: usize,
+    prefix: &str,
+) -> Result<(), PrivateFsError> {
+    use std::io::Write as _;
+    if bytes.len() > maximum {
+        return Err(PrivateFsError::new(PrivateFsErrorCode::SourceTooLarge));
+    }
+    validate_private_child_directory(parent)?;
+    let mut staged = tempfile::Builder::new()
+        .prefix(prefix)
+        .tempfile_in(parent)
+        .map_err(PrivateFsError::io)?;
+    apply_private_file_permissions(staged.path())?;
+    staged.write_all(bytes).map_err(PrivateFsError::io)?;
+    staged
+        .as_file_mut()
+        .sync_all()
+        .map_err(PrivateFsError::io)?;
+    reject_link_or_non_file(destination)?;
+    let file = staged
+        .persist(destination)
+        .map_err(|error| PrivateFsError::io(error.error))?;
+    apply_private_file_permissions(destination)?;
+    file.sync_all().map_err(PrivateFsError::io)?;
+    sync_directory(parent)
+}
+
 pub(crate) fn read_bounded_untrusted_regular(
     path: &Path,
     maximum: usize,

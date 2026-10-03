@@ -1059,7 +1059,7 @@ impl Renderer {
     /// Final modal producer for both terminal and Welcome frames. Covered UI
     /// keeps its state, while its queued modal pixels are replaced by Quit.
     pub(crate) fn render_close_confirmation(&self, sugarloaf: &mut Sugarloaf) {
-        if self.confirm_quit.is_active() {
+        if self.confirm_quit.is_active() || self.confirm_quit.has_notice() {
             let size = sugarloaf.window_size();
             let dimensions = (size.width, size.height, sugarloaf.scale_factor());
             self.confirm_quit.render(

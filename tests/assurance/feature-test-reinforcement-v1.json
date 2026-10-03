@@ -86,6 +86,86 @@
       "exit_criteria": ["Supported native platforms prove exact input routing in all declared shell and pane combinations Hyperlink native desktop, clipboard, OS handler and screen-reader results remain external until exercised.", "IME, assistive-technology, or OS clipboard combinations not executed remain external Focused core table source requires bounded model, parser, input, geometry, pixels and benchmark evidence; native desktop and screen-reader claims require independent native artifacts.", "Inline table model, source mapping and controlled raster evidence remain separate from native desktop and assistive-technology delivery.", "Application route regressions prove pending-state retention; actual window-manager focus/occlusion restoration remains native evidence for each claimed platform."]
     },
     {
+      "id": "workspace-session-recovery",
+      "risk": "critical",
+      "current_assurance": "partially-enforced",
+      "plan_anchor": "workspace-session-recovery",
+      "flags": {
+        "visual": true,
+        "native": true,
+        "security": true,
+        "persistence": true,
+        "performance": true
+      },
+      "test_layers": [
+        "unit-contract",
+        "property-fuzz",
+        "boundary-table",
+        "integration",
+        "native-e2e",
+        "visual-pixel",
+        "accessibility",
+        "performance-resource",
+        "recovery-migration",
+        "mutation-checker"
+      ],
+      "oracles": [
+        "exact-state",
+        "byte-exact",
+        "model-invariant",
+        "side-effect-absence",
+        "native-process-tree",
+        "storage-roundtrip",
+        "resource-ceiling",
+        "human-reviewed",
+        "pixel-exact",
+        "accessibility-tree-event",
+        "latency-ratchet"
+      ],
+      "interaction_partners": [
+        "windows-tabs-sessions-input",
+        "renderer-fonts-responsive-ui",
+        "shell-integration-listings",
+        "identity-config-migration"
+      ],
+      "needed_tests": [
+        "Boundary topology-only schema: reject credentials, environment, commands, future versions, oversized files, cycles, unreachable nodes, invalid selection and geometry.",
+        "Private storage: exclusive process ownership, interrupted primary recovery, corrupt or unsafe targets, coalesced checkpoints, final flush and Start clean without backup resurrection.",
+        "Real layout: nested split direction and ratios, pane-local tabs, active selection, fresh IDs, excluded profiles and empty-branch collapse. Inactive terminal metadata and stable restored profile identity remain independent of redraw and display labels.",
+        "Native startup: crash/restart, zero children before explicit choice, close-choice preservation, independent live PTYs, fresh checkpoint publication, normal close and Escape input isolation.",
+        "SSH stays disconnected without persisted destinations or automatic network/authentication/helper effects; local missing folders fall back, unavailable profiles remain isolated.",
+        "Cancellation, changed configuration, stale results, multiple instances, bounded windows/sessions, DPI/monitor changes and small themed dialog behavior; unexecuted platform and screen-reader cases remain external.",
+        "Controlled dialog pixels and keyboard focus require exact raster comparison; native accessibility tree events and cross-platform startup latency need separate evidence before completion claims."
+      ],
+      "verification_reinforcements": [
+        "Compare newly written topology with the pre-crash checkpoint and count independent native shell processes; placeholder counts alone cannot prove restore.",
+        "Require no child process before consent and no snapshot change when dismissing the startup choice; model tests are not native restart evidence.",
+        "Keep storage, layout, native compositor and assistive-technology evidence distinct. Do not infer Linux/macOS or guest filesystem behavior from Windows tests."
+      ],
+      "checker_reinforcements": [
+        "Reject extra persisted session fields, execution authority in storage, missing exclusive private locking, and removal of the explicit startup choice.",
+        "Architecture mutation tests must reject each boundary violation independently; ordinary tests still exercise storage and fresh topology restoration."
+      ],
+      "evidence_owners": [
+        "apps/automexia-terminal/src/automexia/session_recovery/mod.rs",
+        "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+        "apps/automexia-terminal/src/application/recovery.rs",
+        "apps/automexia-terminal/src/layout/recovery.rs",
+        "apps/automexia-terminal/src/context/recovery.rs",
+        "apps/automexia-terminal/src/renderer/confirm_quit.rs",
+        "tests/integration/session-recovery-windows.ps1",
+        "tools/ci/check_session_recovery.py",
+        "tools/ci/test_session_recovery.py",
+        "apps/automexia-terminal/src/automexia/private_fs.rs",
+        "apps/automexia-terminal/src/renderer/session_metadata.rs",
+        "rio-backend/src/config/mod.rs"
+      ],
+      "exit_criteria": [
+        "Owning storage/model/layout tests and repository checks pass; native crash/restart proves consent, new PTYs, exact layout and clean-start input isolation.",
+        "Native Linux/macOS desktops, guest path failures and screen-reader delivery remain external unless exercised; report such limitations explicitly."
+      ]
+    },
+    {
       "id": "ghostty-compatibility-g0-g6",
       "risk": "high",
       "current_assurance": "partially-enforced",

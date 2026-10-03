@@ -253,6 +253,17 @@ impl Route<'_> {
             );
         }
 
+        if self
+            .window
+            .screen
+            .renderer
+            .confirm_quit
+            .recovery_key(key_event)
+        {
+            self.request_overlay_redraw();
+            return RouteKeyIntent::Consumed;
+        }
+
         let modal_target = modal_key_target(
             self.window.screen.renderer.confirm_quit.is_active(),
             self.window.screen.renderer.command_palette.is_enabled(),

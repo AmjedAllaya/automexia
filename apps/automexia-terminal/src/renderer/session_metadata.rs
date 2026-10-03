@@ -27,7 +27,7 @@ pub(crate) enum MetadataReadiness {
 }
 
 /// Per-terminal admission state. It is never copied into a cloned terminal.
-#[derive(Default)]
+#[derive(Clone, Default)]
 pub(crate) struct ShellMetadataState {
     readiness: MetadataReadiness,
     framing_seen: bool,
@@ -89,6 +89,29 @@ impl Admission {
 impl ShellMetadataState {
     pub(crate) fn readiness(&self) -> MetadataReadiness {
         self.readiness
+    }
+
+    /// Read the current admitted identity even when this terminal has not been
+    /// painted. Reuse frame validation without mutating the renderer's state.
+    pub(crate) fn current_identity<'a, T: EventListener>(
+        &self,
+        terminal: &'a Crosswords<T>,
+    ) -> Option<(Option<&'a str>, Option<&'a str>)> {
+        let mut observation = self.clone();
+        let admitted = observation.observe(terminal);
+        if observation.readiness != MetadataReadiness::Complete {
+            return None;
+        }
+        Some((
+            admitted
+                .value(terminal, SHELL_NAME)
+                .filter(|v| valid_value(v) && !v.trim().is_empty())
+                .map(String::as_str),
+            admitted
+                .value(terminal, "automexia_distro")
+                .filter(|v| valid_value(v) && !v.trim().is_empty())
+                .map(String::as_str),
+        ))
     }
 
     fn retain(&mut self, readiness: MetadataReadiness) -> Admission {

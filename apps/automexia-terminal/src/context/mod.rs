@@ -3,6 +3,7 @@ pub mod external_tool_runner;
 pub mod launch;
 pub mod launch_broker;
 pub(crate) mod paste;
+mod recovery;
 pub mod renderable;
 pub mod title;
 
@@ -170,6 +171,8 @@ pub struct Context<T: EventListener> {
     pub shell_pid: u32,
     /// Immutable launch intent used to create independent session clones.
     pub launch_descriptor: SessionLaunchDescriptor,
+    /// Typed recovery identity, separate from user-facing launch labels.
+    recovery_profile: Option<crate::automexia::session_recovery::Profile>,
     /// Non-secret identity capsule owned by this route. Clones always receive
     /// a new session ID and never share this object or extension cache state.
     pub environment_capsule: EnvironmentCapsule,
@@ -267,6 +270,7 @@ impl<T: EventListener> Context<T> {
 
 #[derive(Clone, Default)]
 pub struct ContextManagerConfig {
+    pub defer_initial_pty: bool,
     pub workers: PtyWorkerRegistry,
     /// Build contexts without spawning a PTY (see
     /// `create_dead_context`). Unit tests fork one real `$SHELL` per
@@ -366,6 +370,7 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         main_fd: Arc::new(-1),
         shell_pid: 1,
         launch_descriptor,
+        recovery_profile: None,
         environment_capsule,
         messenger: Messenger::new(sender),
         renderable_content: RenderableContent::new(Cursor::default()),
@@ -539,6 +544,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             main_fd,
             shell_pid,
             launch_descriptor,
+            recovery_profile: None,
             environment_capsule,
             messenger,
             terminal,
@@ -824,6 +830,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             main_fd,
             shell_pid,
             launch_descriptor,
+            recovery_profile: None,
             environment_capsule,
             messenger,
             terminal,
@@ -851,35 +858,45 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         scaled_margin: Margin,
         sugarloaf_errors: Option<SugarloafErrors>,
     ) -> Result<Self, Box<dyn Error>> {
-        let initial_context = match ContextManager::create_context(
-            cursor_state,
-            event_proxy.clone(),
-            window_id,
-            rich_text_id,
-            size,
-            &ctx_config,
-        ) {
-            Ok(context) => context,
-            Err(err_message) => {
-                tracing::error!("{:?}", err_message);
+        let initial_context = if ctx_config.defer_initial_pty {
+            create_dead_context(
+                event_proxy.clone(),
+                window_id,
+                ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst),
+                rich_text_id,
+                size,
+            )
+        } else {
+            match ContextManager::create_context(
+                cursor_state,
+                event_proxy.clone(),
+                window_id,
+                rich_text_id,
+                size,
+                &ctx_config,
+            ) {
+                Ok(context) => context,
+                Err(err_message) => {
+                    tracing::error!("{:?}", err_message);
 
-                event_proxy.send_event(
-                    RioEvent::ReportToAssistant(RioError {
-                        report: RioErrorType::InitializationError(
-                            err_message.to_string(),
-                        ),
-                        level: RioErrorLevel::Error,
-                    }),
-                    window_id,
-                );
+                    event_proxy.send_event(
+                        RioEvent::ReportToAssistant(RioError {
+                            report: RioErrorType::InitializationError(
+                                err_message.to_string(),
+                            ),
+                            level: RioErrorLevel::Error,
+                        }),
+                        window_id,
+                    );
 
-                create_dead_context(
-                    event_proxy.clone(),
-                    window_id,
-                    route_id,
-                    0,
-                    ContextDimension::default(),
-                )
+                    create_dead_context(
+                        event_proxy.clone(),
+                        window_id,
+                        route_id,
+                        0,
+                        ContextDimension::default(),
+                    )
+                }
             }
         };
 
@@ -2402,6 +2419,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         );
 
         let context_manager_config = ContextManagerConfig {
+            defer_initial_pty: false,
             workers: self.config.workers.clone(),
             #[cfg(test)]
             dead_pty: false,

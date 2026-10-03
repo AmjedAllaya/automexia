@@ -138,6 +138,114 @@
       }
     },
     {
+      "id": "workspace-session-recovery",
+      "title": "Topology-only workspace save and crash recovery",
+      "components": [
+        "apps/automexia-terminal",
+        "rio-backend",
+        "automexia-extension-runtime"
+      ],
+      "documentation": {
+        "guide": [
+          "docs/user-guide/session-recovery.md"
+        ],
+        "reference": [
+          "docs/CONFIGURATION.md#session-recovery",
+          "docs/TESTING.md#workspace-recovery"
+        ],
+        "explanation": [
+          "docs/adr/0090-topology-only-workspace-recovery.md"
+        ]
+      },
+      "quality": {
+        "correctness": {
+          "level": "pr",
+          "evidence": [
+            "apps/automexia-terminal/src/automexia/session_recovery/mod.rs",
+            "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+            "apps/automexia-terminal/src/layout/recovery.rs",
+            "apps/automexia-terminal/src/context/recovery.rs"
+          ]
+        },
+        "security": {
+          "level": "pr",
+          "evidence": [
+            "apps/automexia-terminal/src/automexia/session_recovery/mod.rs",
+            "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+            "tools/ci/check_session_recovery.py",
+            "tools/ci/test_session_recovery.py"
+          ]
+        },
+        "performance": {
+          "level": "controlled",
+          "evidence": [
+            "apps/automexia-terminal/src/application/recovery.rs",
+            "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+            "tests/integration/session-recovery-windows.ps1"
+          ],
+          "rationale": "Bounded capture, coalescing and paced native restore; broader startup latency remains external."
+        },
+        "resource_lifetime": {
+          "level": "controlled",
+          "evidence": [
+            "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+            "apps/automexia-terminal/src/context/recovery.rs",
+            "tests/integration/session-recovery-windows.ps1"
+          ]
+        },
+        "storage_hygiene": {
+          "level": "pr",
+          "evidence": [
+            "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+            "apps/automexia-terminal/src/automexia/private_fs.rs"
+          ]
+        },
+        "resilience": {
+          "level": "controlled",
+          "evidence": [
+            "apps/automexia-terminal/src/automexia/session_recovery/store.rs",
+            "apps/automexia-terminal/src/application/recovery.rs",
+            "tests/integration/session-recovery-windows.ps1"
+          ]
+        },
+        "visual_quality": {
+          "level": "controlled",
+          "evidence": [
+            "apps/automexia-terminal/src/renderer/confirm_quit.rs",
+            "tests/integration/session-recovery-windows.ps1"
+          ]
+        },
+        "accessibility": {
+          "level": "external",
+          "evidence": [
+            "apps/automexia-terminal/src/renderer/confirm_quit.rs",
+            "docs/ACCESSIBILITY.md"
+          ],
+          "rationale": "Keyboard and visible focus are covered; native screen-reader delivery remains external."
+        }
+      },
+      "platforms": {
+        "windows": {
+          "level": "controlled",
+          "evidence": [
+            "tests/integration/session-recovery-windows.ps1"
+          ]
+        },
+        "linux": {
+          "level": "external",
+          "evidence": [
+            "docs/TESTING.md#workspace-recovery"
+          ]
+        },
+        "macos": {
+          "level": "external",
+          "evidence": [
+            "docs/TESTING.md#workspace-recovery"
+          ]
+        }
+      }
+    },
+    {
       "id": "ghostty-compatibility-g0-g6",
       "title": "Versioned Ghostty keybinding profiles, compatibility actions, migration, inspector, and bounded topology history",
       "components": ["automexia-keybindings", "apps/automexia-terminal", "rio-backend", "rio-vt"],

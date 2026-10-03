@@ -1775,3 +1775,20 @@ strict discrete-number validation. Controlled appearance-sheet rasters use the
 actual catalogue; they do not prove native terminal palette presentation. The
 restart fixture persists fractional font values and restores a configured
 forced theme after Reset.
+
+## Workspace recovery
+
+`cargo test -p automexia-terminal --lib session_recovery` checks hostile/oversized
+snapshots, private ownership, interrupted primary recovery, future schemas,
+coalescing, missing local directories and Start clean. Binary `recovery` tests
+exercise actual layout conversion, nested ratios, pane-local tabs, opt-outs and
+fresh route identities. `tools/ci/check_session_recovery.py` and its mutation
+tests protect schema/launch/storage boundaries without replacing runtime tests.
+
+The Windows native renderer gate includes `resize-stress-windows.ps1
+-SessionRecoveryOnly` on CPU and WGPU. It checkpoints real shells, force-closes
+the app, verifies zero child processes before consent, dismisses without altering
+the checkpoint, restores six independent shells, compares topology and fresh
+checkpoint publication, then verifies normal close and Escape/Start clean.
+Native Linux/macOS, WSL guest filesystem recovery and assistive-technology
+results remain external until separately exercised.

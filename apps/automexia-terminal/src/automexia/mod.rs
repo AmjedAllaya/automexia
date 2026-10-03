@@ -46,6 +46,7 @@ pub mod repository_open;
 pub mod runtime;
 #[doc(hidden)]
 pub mod semantic_surfaces;
+pub mod session_recovery;
 pub mod settings_extensions;
 #[cfg(target_os = "windows")]
 pub mod shell;

@@ -39,7 +39,8 @@ param(
     [string]$CommandInputWslDistro,
     [switch]$CommandInputPowerShell7,
     [switch]$ConnectionHubOnly,
-    [switch]$UseCpuRenderer
+    [switch]$UseCpuRenderer,
+    [switch]$SessionRecoveryOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1481,6 +1482,12 @@ $wallpaperConfig
         # the native compositor's color-space conversion.
         $config += "`n[colors]`nyellow = '#B4D2B4'`ncyan = '#B4B4D2'`n"
     }
+    if ($SessionRecoveryOnly) {
+        # The fixture owns an explicit starting directory even before inactive
+        # shells publish their first complete metadata frame.
+        $recoveryDirectory = $root.Replace('\', '/').Replace('"', '\"')
+        $config = "working-dir = `"$recoveryDirectory`"`n" + $config
+    } else { $config += "`n[session-recovery]`nenabled = false`n" }
     [System.IO.File]::WriteAllText(
         (Join-Path $configRoot 'config.toml'),
         $config,
@@ -1539,6 +1546,10 @@ $wallpaperConfig
         [bool]$initial.visual_test_animations_enabled) {
         Write-Host ($initial | ConvertTo-Json -Depth 4)
         throw 'The deterministic S1 visual fixture did not freeze clock and animation state'
+    }
+    if ($SessionRecoveryOnly) {
+        . (Join-Path $PSScriptRoot 'session-recovery-windows.ps1')
+        return
     }
     $expectedRendererBackend = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }
     if ([string]$initial.renderer_backend -ne $expectedRendererBackend) {
@@ -2326,6 +2337,7 @@ $wallpaperConfig
             }
         } while ([int]$topTab.window_tab_count -lt 8 -and [DateTime]::UtcNow -lt $burstDeadline)
         if ([int]$topTab.window_tab_count -ne 8 -or [int]$topTab.active_window_tab_index -ne 7) {
+            Write-Host ("Rapid-tab observation: burst={0} tabs={1} selected={2} sequence={3}" -f $burst, $topTab.window_tab_count, $topTab.active_window_tab_index, $topTab.sequence)
             throw 'Rapid new-tab input was lost or selected the wrong tab'
         }
         if (-not [AutomexiaResizeDriver]::SendControlBurst($window, 0x73, 6)) {

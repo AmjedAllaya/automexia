@@ -48,6 +48,12 @@ pub enum ConfirmQuitAction {
 pub struct ConfirmQuit {
     active: bool,
     hovered: Option<ConfirmQuitAction>,
+    recovery: bool,
+    loading: bool,
+    choice: Option<bool>,
+    selected_restore: bool,
+    held: Option<rio_window::keyboard::Key>,
+    notice: Option<(&'static str, std::time::Instant)>,
 }
 
 impl ConfirmQuit {
@@ -60,6 +66,105 @@ impl ConfirmQuit {
         if !active {
             self.hovered = None;
         }
+    }
+
+    pub(crate) fn show_recovery(&mut self, loading: bool) {
+        self.active = true;
+        self.recovery = true;
+        self.loading = loading;
+        self.choice = None;
+        self.held = None;
+        self.selected_restore = false;
+        self.hovered = if loading {
+            None
+        } else {
+            Some(ConfirmQuitAction::Cancel)
+        };
+    }
+    pub(crate) fn is_recovery(&self) -> bool {
+        self.active && self.recovery
+    }
+    #[cfg(feature = "native-gui-test-hooks")]
+    pub(crate) fn recovery_ready(&self) -> bool {
+        self.is_recovery() && !self.loading
+    }
+    pub(crate) fn choose_recovery(&mut self, restore: bool) {
+        if self.is_recovery() && !self.loading {
+            self.choice = Some(restore);
+            self.loading = true;
+        }
+    }
+    pub(crate) fn take_recovery_choice(&mut self) -> Option<bool> {
+        self.choice.take()
+    }
+    pub(crate) fn finish_recovery(&mut self) {
+        self.active = false;
+        self.recovery = false;
+        self.loading = false;
+        self.choice = None;
+        self.hovered = None;
+    }
+    pub(crate) fn notice(&mut self, text: &'static str) {
+        self.notice = Some((
+            text,
+            std::time::Instant::now() + std::time::Duration::from_secs(15),
+        ));
+    }
+    pub(crate) fn has_notice(&self) -> bool {
+        self.notice
+            .is_some_and(|(_, until)| std::time::Instant::now() < until)
+    }
+    pub(crate) fn recovery_key(&mut self, event: &rio_window::event::KeyEvent) -> bool {
+        self.recovery_key_event(&event.logical_key, event.state, event.repeat)
+    }
+    fn recovery_key_event(
+        &mut self,
+        key: &rio_window::keyboard::Key,
+        state: rio_window::event::ElementState,
+        repeat: bool,
+    ) -> bool {
+        use rio_window::{
+            event::ElementState,
+            keyboard::{Key, NamedKey},
+        };
+        if state == ElementState::Released && self.held.as_ref() == Some(key) {
+            self.held = None;
+            if self.is_recovery() && !self.loading {
+                match key {
+                    Key::Named(NamedKey::Escape) => self.choose_recovery(false),
+                    Key::Named(NamedKey::Enter) => {
+                        self.choose_recovery(self.selected_restore)
+                    }
+                    Key::Character(c) if c.eq_ignore_ascii_case("r") => {
+                        self.choose_recovery(true)
+                    }
+                    Key::Character(c) if c.eq_ignore_ascii_case("s") => {
+                        self.choose_recovery(false)
+                    }
+                    _ => {}
+                }
+            }
+            return true;
+        }
+        if !self.is_recovery() {
+            return false;
+        }
+        if state == ElementState::Pressed && !repeat {
+            match key {
+                Key::Named(
+                    NamedKey::Tab | NamedKey::ArrowLeft | NamedKey::ArrowRight,
+                ) => {
+                    self.selected_restore = !self.selected_restore;
+                    self.hovered = Some(if self.selected_restore {
+                        ConfirmQuitAction::Quit
+                    } else {
+                        ConfirmQuitAction::Cancel
+                    });
+                }
+                _ => self.held = Some(key.clone()),
+            }
+        }
+        true
     }
 
     fn layout(dimensions: (f32, f32, f32)) -> Layout {
@@ -134,7 +239,7 @@ impl ConfirmQuit {
         mouse_y: f32,
         dimensions: (f32, f32, f32),
     ) -> Option<ConfirmQuitAction> {
-        if !self.active {
+        if !self.active || self.loading {
             return None;
         }
         let layout = Self::layout(dimensions);
@@ -173,6 +278,40 @@ impl ConfirmQuit {
         theme: &UiTheme,
     ) {
         if !self.active {
+            if let Some((message, _)) = self
+                .notice
+                .filter(|(_, until)| std::time::Instant::now() < *until)
+            {
+                let viewport =
+                    Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
+                let width = (viewport.width - 24.0).clamp(1.0, 720.0);
+                rounded(
+                    sugarloaf,
+                    12.0,
+                    (viewport.height - 62.0).max(0.0),
+                    width,
+                    32.0,
+                    theme.surface,
+                    8.0,
+                );
+                let options = DrawOpts {
+                    font_size: 12.0,
+                    color: color_u8(theme.text),
+                    ..DrawOpts::default()
+                };
+                let message = crate::renderer::responsive::elide_end(
+                    sugarloaf,
+                    message,
+                    (width - 16.0).max(0.0),
+                    &options,
+                );
+                sugarloaf.text_mut().draw(
+                    20.0,
+                    (viewport.height - 53.0).max(0.0),
+                    &message,
+                    &options,
+                );
+            }
             return;
         }
         let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
@@ -253,25 +392,48 @@ impl ConfirmQuit {
         let text_x = card.x + if layout.compact { 12.0 } else { 24.0 };
         let title_y = card.y + if layout.compact { 17.0 } else { 31.0 };
         if !layout.tiny {
-            sugarloaf
-                .text_mut()
-                .draw(text_x, title_y, "Close Automexia?", &title);
+            sugarloaf.text_mut().draw(
+                text_x,
+                title_y,
+                if self.recovery {
+                    if self.loading {
+                        "Preparing workspace…"
+                    } else {
+                        "Restore previous workspace?"
+                    }
+                } else {
+                    "Close Automexia?"
+                },
+                &title,
+            );
         }
         if !layout.compact {
             sugarloaf.text_mut().draw(
                 text_x,
                 title_y + 37.0,
-                "All running sessions in this window will be closed.",
+                if self.recovery {
+                    "Reopen your tabs and splits in fresh terminals."
+                } else {
+                    "All running sessions in this window will be closed."
+                },
                 &body,
             );
             sugarloaf.text_mut().draw(
                 text_x,
                 title_y + 62.0,
-                "This action cannot be undone.",
+                if self.recovery {
+                    "Commands and SSH connections will not resume."
+                } else {
+                    "This action cannot be undone."
+                },
                 &body,
             );
         }
 
+        if self.loading {
+            sugarloaf.end_modal_layer();
+            return;
+        }
         button(
             sugarloaf,
             layout.cancel,
@@ -281,8 +443,24 @@ impl ConfirmQuit {
                 theme.surface
             },
             theme.accent,
-            if layout.tiny { "N" } else { "Cancel" },
-            if layout.tiny { "" } else { "Esc / N" },
+            if self.recovery {
+                if layout.tiny {
+                    "S"
+                } else {
+                    "Start clean"
+                }
+            } else if layout.tiny {
+                "N"
+            } else {
+                "Cancel"
+            },
+            if layout.tiny {
+                ""
+            } else if self.recovery {
+                "Esc / S"
+            } else {
+                "Esc / N"
+            },
             &label,
             &key,
         );
@@ -294,9 +472,29 @@ impl ConfirmQuit {
             } else {
                 theme.surface
             },
-            theme.danger,
-            if layout.tiny { "Y" } else { "Close" },
-            if layout.tiny { "" } else { "Y" },
+            if self.recovery {
+                theme.accent
+            } else {
+                theme.danger
+            },
+            if self.recovery {
+                if layout.tiny {
+                    "R"
+                } else {
+                    "Restore"
+                }
+            } else if layout.tiny {
+                "Y"
+            } else {
+                "Close"
+            },
+            if layout.tiny {
+                ""
+            } else if self.recovery {
+                "R"
+            } else {
+                "Y"
+            },
             &label,
             &key,
         );
@@ -361,6 +559,60 @@ fn button(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rio_window::{
+        event::ElementState,
+        keyboard::{Key, NamedKey},
+    };
+
+    #[test]
+    fn recovery_completion_restores_normal_quit_buttons() {
+        let mut dialog = ConfirmQuit::default();
+        dialog.show_recovery(false);
+        dialog.choose_recovery(true);
+        dialog.finish_recovery();
+        dialog.set_active(true);
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConfirmQuit::layout(dimensions);
+        assert_eq!(
+            dialog.hit_test(layout.quit.x + 1.0, layout.quit.y + 1.0, dimensions),
+            Some(ConfirmQuitAction::Quit)
+        );
+        assert_eq!(dialog.take_recovery_choice(), None);
+    }
+
+    #[test]
+    fn recovery_loading_keys_cannot_activate_a_later_choice() {
+        let mut dialog = ConfirmQuit::default();
+        dialog.show_recovery(true);
+        let key = Key::Character("r".into());
+        assert!(dialog.recovery_key_event(&key, ElementState::Pressed, false));
+        dialog.show_recovery(false);
+        assert!(dialog.recovery_key_event(&key, ElementState::Released, false));
+        assert_eq!(dialog.take_recovery_choice(), None);
+    }
+
+    #[test]
+    fn recovery_keyboard_defaults_to_clean_and_requires_deliberate_release() {
+        let mut dialog = ConfirmQuit::default();
+        dialog.show_recovery(false);
+        let enter = Key::Named(NamedKey::Enter);
+        dialog.recovery_key_event(&enter, ElementState::Pressed, true);
+        dialog.recovery_key_event(&enter, ElementState::Released, false);
+        assert_eq!(dialog.take_recovery_choice(), None);
+        dialog.recovery_key_event(&enter, ElementState::Pressed, false);
+        assert_eq!(dialog.take_recovery_choice(), None);
+        dialog.recovery_key_event(&enter, ElementState::Released, false);
+        assert_eq!(dialog.take_recovery_choice(), Some(false));
+        dialog.show_recovery(false);
+        dialog.recovery_key_event(
+            &Key::Named(NamedKey::Tab),
+            ElementState::Pressed,
+            false,
+        );
+        dialog.recovery_key_event(&enter, ElementState::Pressed, false);
+        dialog.recovery_key_event(&enter, ElementState::Released, false);
+        assert_eq!(dialog.take_recovery_choice(), Some(true));
+    }
 
     #[test]
     fn layout_stays_inside_extreme_viewports() {

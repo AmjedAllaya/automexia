@@ -2256,6 +2256,25 @@ fn test_resize_stress(native_gui: bool) -> TaskResult {
         cpu_command.arg("-ResultCapture").arg(capture);
     }
     run_command(cpu_command, "native Windows CPU GUI resize stress")?;
+    for cpu in [false, true] {
+        let mut recovery = Command::new("powershell.exe");
+        recovery.args([
+            "-NoLogo",
+            "-NoProfile",
+            "-NonInteractive",
+            "-File",
+            "tests/integration/resize-stress-windows.ps1",
+            "-Binary",
+            binary,
+            "-SessionRecoveryOnly",
+        ]);
+        if cpu {
+            recovery.arg("-UseCpuRenderer");
+        }
+        recovery.current_dir(root());
+        run_command(recovery, "native workspace crash recovery")?;
+    }
+
     verify_native_image_backend_equivalence(&wgpu_report, &cpu_report)?;
     // Exercise the actual settings controls against retained ordinary/table
     // output in isolated fresh sessions on both compositor implementations.
@@ -2883,6 +2902,8 @@ fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_command_productivity_cp33.py")?;
     run_python("tools/ci/check_provider_quick_actions_cp4.py")?;
     run_python("tools/ci/check_session_launch_d0.py")?;
+    run_python("tools/ci/check_session_recovery.py")?;
+    run_python("tools/ci/test_session_recovery.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
     run_python("tools/ci/check_ecosystem_d7_cp6.py")?;
     run_python("tools/ci/check_ghostty_compatibility.py")?;

@@ -36,6 +36,7 @@ use crate::automexia::preferences::{
 };
 
 mod fonts;
+mod recovery;
 mod settings;
 mod themes;
 
@@ -250,6 +251,7 @@ fn logical_wheel_pixels(physical_pixels: f64, scale_factor: f32) -> f64 {
 }
 
 pub struct Application<'a> {
+    recovery: recovery::Recovery,
     /// Parsed config before runtime UI preferences are layered onto it.
     base_config: rio_backend::config::Config,
     config: rio_backend::config::Config,
@@ -349,6 +351,7 @@ impl Application<'_> {
         rio_notifier::request_authorization();
 
         let mut application = Application {
+            recovery: recovery::Recovery::new(&config, event_proxy.clone()),
             settings_revision: 1,
             font_preparation: crate::font_loading::FontPreparation::new(
                 event_proxy.clone(),
@@ -631,6 +634,10 @@ impl Application<'_> {
     /// only application-level per-window destruction path; explicit Quit is
     /// deliberately separate and remains process-wide.
     fn close_window_route(&mut self, window_id: rio_backend::event::WindowId) -> bool {
+        if self.router.routes.len() == 1 {
+            self.checkpoint_recovery(true);
+        }
+        self.recovery_window_closed(window_id);
         let (route_ids, shutdown_requests) = self
             .router
             .routes
@@ -685,6 +692,8 @@ impl Application<'_> {
     }
 
     fn request_application_exit(&mut self, event_loop: &ActiveEventLoop) {
+        self.checkpoint_recovery(true);
+        self.recovery.cancel();
         self.router.config_creation.request_shutdown();
         self.router.hide_windows_for_exit();
         let shutdown_requests = self.router.request_pty_shutdown();
@@ -872,6 +881,10 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             ) {
                 if let Some(route) = target.and_then(|id| self.router.routes.get_mut(&id))
                 {
+                    if route.window.screen.renderer.confirm_quit.is_recovery() {
+                        self.request_application_exit(event_loop);
+                        return;
+                    }
                     route.window.winit_window.set_visible(true);
                     route.window.winit_window.set_minimized(false);
                     route.window.winit_window.focus_window();
@@ -929,13 +942,33 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             .or_else(|| event_loop.system_theme());
         update_colors_based_on_theme(&mut self.config, theme);
 
+        let mut startup_config = self.config.clone();
+        startup_config.defer_initial_pty = (cause == StartCause::Init
+            && self.recovery.defers_startup())
+            || (cause == StartCause::MacOSReopen && self.recovery.reopen());
         self.router.create_window(
             event_loop,
             self.event_proxy.clone(),
-            &self.config,
+            &startup_config,
             None,
             self.app_id.as_deref(),
         );
+        if startup_config.defer_initial_pty {
+            self.recovery.window = self.router.routes.keys().next().copied();
+            if let Some(route) = self
+                .recovery
+                .window
+                .and_then(|window| self.router.routes.get_mut(&window))
+            {
+                route
+                    .window
+                    .screen
+                    .renderer
+                    .confirm_quit
+                    .show_recovery(!self.recovery.choice_ready());
+                route.request_redraw();
+            }
+        }
 
         if cause == StartCause::Init {
             self.setup_quake_hotkey();
@@ -1479,6 +1512,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             }
             RioEventType::Rio(RioEvent::UpdateTitles) => {
                 self.router.update_titles();
+                self.checkpoint_recovery(false);
                 self.report_preference_write_failure();
             }
             RioEventType::Rio(RioEvent::MouseCursorDirty) => {
@@ -1650,11 +1684,15 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::CloseWindow) => {
+                let recovering =
+                    self.router.routes.get(&window_id).is_some_and(|route| {
+                        route.window.screen.renderer.confirm_quit.is_recovery()
+                    });
                 if close_requires_confirmation(
                     CloseIntent::Window {
                         window_count: self.router.routes.len(),
                     },
-                    self.config.confirm_before_quit,
+                    self.config.confirm_before_quit && !recovering,
                 ) {
                     if let Some(route) = self.router.routes.get_mut(&window_id) {
                         route.confirm_quit();
@@ -1893,7 +1931,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             WindowEvent::CloseRequested => {
                 if close_requires_confirmation(
                     CloseIntent::Window { window_count },
-                    self.config.confirm_before_quit,
+                    self.config.confirm_before_quit
+                        && !route.window.screen.renderer.confirm_quit.is_recovery(),
                 ) {
                     route.confirm_quit();
                     return;
@@ -1946,6 +1985,25 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
                 if route.window.screen.renderer.confirm_quit.is_active() {
+                    if route.window.screen.renderer.confirm_quit.is_recovery() {
+                        if state == ElementState::Released && button == MouseButton::Left
+                        {
+                            let scale = route.window.screen.sugarloaf.scale_factor();
+                            let size = route.window.screen.sugarloaf.window_size();
+                            if let Some(action) =
+                                route.window.screen.renderer.confirm_quit.hit_test(
+                                    route.window.screen.mouse.x as f32 / scale,
+                                    route.window.screen.mouse.y as f32 / scale,
+                                    (size.width, size.height, scale),
+                                )
+                            {
+                                route.window.screen.renderer.confirm_quit.choose_recovery(
+                                    action == crate::renderer::confirm_quit::ConfirmQuitAction::Quit);
+                                route.request_redraw();
+                            }
+                        }
+                        return;
+                    }
                     if state == ElementState::Pressed && button == MouseButton::Left {
                         let scale = route.window.screen.sugarloaf.scale_factor();
                         let size = route.window.screen.sugarloaf.window_size();
@@ -3530,6 +3588,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     }
 
     fn about_to_wait(&mut self, event_loop: &ActiveEventLoop) {
+        self.poll_recovery(event_loop);
         self.finish_font_preparation(event_loop);
         self.finish_theme_work(event_loop);
         let scheduled = self.scheduler.update();
@@ -3539,6 +3598,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             .chain(cleanup)
             .chain(self.font_preparation.deadline())
             .chain(self.theme_library.deadline())
+            .chain(self.recovery.deadline())
             .min();
         let control_flow = match next_wake {
             Some(instant) => ControlFlow::WaitUntil(instant),
@@ -3610,6 +3670,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
     // This is irreversible - if this event is emitted, it is guaranteed to be the last event that gets emitted.
     // You generally want to treat this as an “do on quit” event.
     fn exiting(&mut self, _event_loop: &ActiveEventLoop) {
+        self.checkpoint_recovery(true);
         // OS-driven termination may bypass the explicit Quit event. Start every
         // owned PTY concurrently before waiting on settings, services, or route
         // destructors in that path as well.
@@ -3620,6 +3681,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         // Destroy native surfaces before service waits, including backends
         // without visibility control. Context drops only retire worker leases.
         self.router.routes.clear();
+        self.recovery.shutdown();
         if !self
             .router
             .config_creation

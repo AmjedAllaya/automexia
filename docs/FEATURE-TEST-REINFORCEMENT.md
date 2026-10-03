@@ -1456,3 +1456,14 @@ Every documentation change must prove:
 Exact private schemas, algorithms, provider matrices, future workflows, market
 plans, pricing, and commercial packaging must never be copied into a public
 fixture merely to satisfy a checker.
+
+### workspace-session-recovery
+
+Workspace recovery requires bounded topology-only serialization, unknown-field
+and future-schema rejection, private exclusive ownership, interrupted-write
+recovery, coalesced saves, opt-out pruning and fresh PTY identities. Compare actual
+nested split/local-tab topology through crash/restart, prove no process before
+consent, preserve checkpoints when closing the choice, and consume activation
+keys. Inactive sessions use admitted terminal metadata; restored profile types
+remain stable across executable normalization. SSH metadata cannot become launch authority. Native desktop/guest/AT gaps
+remain explicit. Architecture mutation checks complement storage/layout/native tests.

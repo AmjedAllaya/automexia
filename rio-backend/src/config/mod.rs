@@ -101,8 +101,47 @@ impl Default for Developer {
     }
 }
 
+/// Recovery policy is configuration, while workspace data lives separately.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
+pub struct SessionRecovery {
+    pub enabled: bool,
+    #[serde(deserialize_with = "deserialize_recovery_exclusions")]
+    pub excluded_profiles: Vec<String>,
+}
+
+fn deserialize_recovery_exclusions<'de, D>(
+    deserializer: D,
+) -> Result<Vec<String>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    let values = Vec::<String>::deserialize(deserializer)?;
+    if values.len() > 128
+        || values.iter().any(|value| {
+            value.is_empty() || value.len() > 132 || value.chars().any(char::is_control)
+        })
+    {
+        return Err(serde::de::Error::custom("session recovery exclusions require at most 128 nonempty profile names, each at most 132 bytes without control characters"));
+    }
+    Ok(values)
+}
+impl Default for SessionRecovery {
+    fn default() -> Self {
+        Self {
+            enabled: true,
+            excluded_profiles: Vec::new(),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
+    #[serde(default, rename = "session-recovery")]
+    pub session_recovery: SessionRecovery,
+    /// Application-owned startup placeholder; never serialized as configuration.
+    #[serde(skip)]
+    pub defer_initial_pty: bool,
     #[serde(default)]
     pub cursor: CursorConfig,
     #[serde(default = "Navigation::default")]
@@ -630,6 +669,8 @@ impl Config {
 impl Default for Config {
     fn default() -> Self {
         Config {
+            session_recovery: SessionRecovery::default(),
+            defer_initial_pty: false,
             cursor: CursorConfig::default(),
             editor: default_editor(),
             adaptive_theme: None,
@@ -695,6 +736,47 @@ mod tests {
     use std::fs;
     use std::io::Write;
     use sugarloaf::font::fonts::parse_unicode;
+
+    #[test]
+    fn session_recovery_configuration_is_explicit_and_runtime_state_is_not_saved() {
+        let mut config = create_temporary_config(
+            "session-recovery",
+            "[session-recovery]\nenabled = false\nexcluded-profiles = ['cmd', 'wsl:Example']\n",
+        );
+        assert!(!config.session_recovery.enabled);
+        assert_eq!(
+            config.session_recovery.excluded_profiles,
+            ["cmd", "wsl:Example"]
+        );
+        assert!(
+            create_temporary_config("empty-recovery", "")
+                .session_recovery
+                .enabled
+        );
+        config.defer_initial_pty = true;
+        let encoded = toml::to_string(&config).unwrap();
+        assert!(encoded.contains("[session-recovery]"));
+        assert!(!encoded.contains("defer_initial_pty"));
+        assert!(!encoded.contains("defer-initial-pty"));
+        let value: toml::Value = toml::from_str(&encoded).unwrap();
+        let policy: SessionRecovery =
+            value["session-recovery"].clone().try_into().unwrap();
+        assert_eq!(policy, config.session_recovery);
+        assert!(
+            !toml::from_str::<Config>("defer_initial_pty = true")
+                .unwrap()
+                .defer_initial_pty
+        );
+        let too_many = vec!["'cmd'"; 129].join(",");
+        assert!(toml::from_str::<Config>(&format!(
+            "[session-recovery]\nexcluded-profiles = [{too_many}]\n"
+        ))
+        .is_err());
+        assert!(toml::from_str::<Config>(
+            "[session-recovery]\nexcluded-profiles = ['']\n"
+        )
+        .is_err());
+    }
 
     fn tmp_dir() -> tempfile::TempDir {
         tempfile::tempdir().unwrap()

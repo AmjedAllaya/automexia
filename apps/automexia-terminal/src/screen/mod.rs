@@ -559,6 +559,8 @@ struct NativeWindowSnapshot {
     palette_total_results: usize,
     palette_accessibility_summary: Option<String>,
     confirm_quit_active: bool,
+    recovery_active: bool,
+    recovery_ready: bool,
     settings: serde_json::Value,
     connection_hub_active: bool,
     connection_hub_route: Option<&'static str>,
@@ -763,6 +765,8 @@ fn write_native_resize_snapshot(
         "panel_count": panels.len(),
         "panels": panels,
     });
+    snapshot["recovery_active"] = serde_json::json!(window.recovery_active);
+    snapshot["recovery_ready"] = serde_json::json!(window.recovery_ready);
     snapshot["window_tab_titles"] = serde_json::json!(window.window_tab_titles);
     snapshot["semantic_rows"] = serde_json::json!(semantic_rows);
     snapshot["renderer_backend"] = serde_json::json!(window.renderer_backend);
@@ -1115,6 +1119,7 @@ impl Screen<'_> {
         );
 
         let context_manager_config = context::ContextManagerConfig {
+            defer_initial_pty: config.defer_initial_pty,
             workers,
             #[cfg(test)]
             dead_pty: false,
@@ -6708,6 +6713,8 @@ impl Screen<'_> {
                     palette_total_results: palette_scroll_state.3,
                     palette_accessibility_summary: self.renderer.command_palette.accessibility_summary(),
                     confirm_quit_active: self.renderer.confirm_quit.is_active(),
+                    recovery_active: self.renderer.confirm_quit.is_recovery(),
+                    recovery_ready: self.renderer.confirm_quit.recovery_ready(),
                     settings: self.settings_view.native_test_snapshot(),
                     connection_hub_active: self.connection_hub.is_active(),
                     connection_hub_route: self

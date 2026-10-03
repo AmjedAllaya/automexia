@@ -1,5 +1,6 @@
 #[cfg(test)]
 mod compute_tests;
+mod recovery;
 
 use crate::context::Context;
 use crate::mouse::Mouse;

@@ -23,13 +23,11 @@ use serde::{Deserialize, Serialize};
 use std::{
     collections::BTreeMap,
     fs::{self, TryLockError},
-    io::Write,
     path::{Path, PathBuf},
     sync::{Arc, Condvar, Mutex},
     thread::JoinHandle,
     time::{Duration, Instant},
 };
-use tempfile::Builder;
 
 const SCHEMA_VERSION: u16 = 11;
 const STATE_DIRECTORY: &str = "state";
@@ -1443,27 +1441,8 @@ fn persist_bounded_bytes(
     bytes: &[u8],
     maximum: usize,
 ) -> Result<(), PreferenceError> {
-    if bytes.len() > maximum {
-        return Err(PreferenceError::new(PreferenceErrorCode::SourceTooLarge));
-    }
-    let mut staged = Builder::new()
-        .prefix(STAGING_PREFIX)
-        .tempfile_in(parent)
-        .map_err(PreferenceError::io)?;
-    private_fs::apply_private_file_permissions(staged.path())?;
-    staged.write_all(bytes).map_err(PreferenceError::io)?;
-    staged
-        .as_file_mut()
-        .sync_all()
-        .map_err(PreferenceError::io)?;
-    private_fs::reject_link_or_non_file(destination)?;
-    let file = staged
-        .persist(destination)
-        .map_err(|error| PreferenceError::io(error.error))?;
-    private_fs::apply_private_file_permissions(destination)?;
-    file.sync_all().map_err(PreferenceError::io)?;
-    private_fs::sync_directory(parent)?;
-    Ok(())
+    private_fs::atomic_write_private(parent, destination, bytes, maximum, STAGING_PREFIX)
+        .map_err(Into::into)
 }
 
 fn persist_bytes(

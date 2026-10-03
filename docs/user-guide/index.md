@@ -9,6 +9,7 @@ terminal behavior.
 - [Install Automexia](../INSTALLATION.md)
 - [Start and launch](start-and-launch.md)
 - [Terminal workspace](workspace.md)
+- [Session recovery](session-recovery.md)
 - [Shortcuts](shortcuts.md)
 - [Troubleshooting](../TROUBLESHOOTING.md)
 
