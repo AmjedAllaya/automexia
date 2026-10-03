@@ -10,6 +10,7 @@ import base64
 import os
 from pathlib import Path
 import re
+import shlex
 import shutil
 import tempfile
 import unittest
@@ -36,7 +37,7 @@ def generated(shell: str) -> tuple[str, str]:
 
 class NativeShell(harness.Shell):
     """Reuse read/input/output limits and process-group retirement unchanged."""
-    def __init__(self, shell: str, profile: str = '', *, initial_umask: int = 0o022, count_encoding: bool = False):
+    def __init__(self, shell: str, profile: str = '', *, initial_umask: int = 0o022, count_encoding: bool = False, zsh_env: str = ''):
         import pty
         import termios
         executable = shutil.which(shell)
@@ -54,6 +55,10 @@ class NativeShell(harness.Shell):
         self.pending = bytearray()
         self.closed = False
         if shell == 'zsh':
+            # Test prompt/status hooks independently of host-wide completion
+            # caches and compaudit questions. This Ubuntu fixture switch does
+            # not accept insecure completions or change the product bootstrap.
+            (self.root / '.zshenv').write_text('skip_global_compinit=1\n' + zsh_env, encoding='utf-8')
             (self.root / '.zshrc').write_text('PROMPT="AMX_AUDIT_PROMPT> "\n' + profile, encoding='utf-8')
         else:
             config = self.root / '.config/fish'
@@ -92,6 +97,23 @@ class NativeShell(harness.Shell):
 
 @unittest.skipUnless(os.name == 'posix', 'requires native Unix PTY')
 class AdapterTests(unittest.TestCase):
+    def test_zsh_fixture_isolates_global_completion_without_skipping_native_profiles(self):
+        # Ubuntu's system zshrc runs compinit. Hosted images can contain writable
+        # completion paths, causing an unrelated interactive security question.
+        with tempfile.TemporaryDirectory(prefix='automexia-completion-fixture-') as directory:
+            completion = Path(directory) / 'completions'
+            completion.mkdir()
+            (completion / '_fixture').write_text('#compdef fixture\nreturn 0\n', encoding='utf-8')
+            completion.chmod(0o777)
+            environment = ('builtin printf "NATIVE_ENV\\n"\n'
+                           f'fpath=({shlex.quote(str(completion))} $fpath)\n')
+            with NativeShell('zsh', 'builtin printf "NATIVE_PROFILE\\n"\n', zsh_env=environment) as session:
+                self.assertEqual(session.initial.count(b'NATIVE_ENV'), 2)
+                self.assertEqual(session.initial.count(b'NATIVE_PROFILE'), 1)
+                self.assertNotIn(b'insecure directories', session.initial)
+                self.assertEqual(harness.advertised(session.initial), 7)
+                self.assertIn(b'\x1b]133;D;1\x07', session.command('false'))
+
     def test_unchanged_prompt_recovers_optional_metadata_without_reencoding(self):
         corrupt = b'\x1b]1337;SetUserVar=automexia_ssh_user=!!!!\x07\x1b]1337;SetUserVar=automexia_ssh_context=!!!!\x07'
         command = "printf '\\e]1337;SetUserVar=automexia_ssh_user=!!!!\\a\\e]1337;SetUserVar=automexia_ssh_context=!!!!\\a'"
