@@ -119,6 +119,7 @@ fn document() -> ConnectionLibraryDocument {
             recipes: vec![recipe],
         },
         workspaces: WorkspaceDocumentV1::default(),
+        credential_sources: CredentialSourcesDocumentV1::default(),
         preferences: HubPreferences {
             grouping: HubCatalogGrouping::Environment,
             favorites_only: true,
@@ -127,6 +128,118 @@ fn document() -> ConnectionLibraryDocument {
             source: Some(HubCatalogSource::SavedProfile),
         },
     }
+}
+
+#[test]
+fn external_credential_sources_round_trip_and_never_enter_exports() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let source = CredentialSourceV1 {
+        schema_version: 1,
+        id: "work-vault".into(),
+        revision: 1,
+        display_name: "Work vault".into(),
+        provider: CredentialProvider::OnePassword,
+        endpoint: SshAgentEndpoint::UnixSocket {
+            path: "/run/example/agent.sock".into(),
+        },
+    };
+    let preview = preview_library_edit(
+        &ConnectionLibraryDocument::default(),
+        LibraryEdit::PutCredentialSource {
+            expected_entity_revision: None,
+            source: source.clone(),
+        },
+    )
+    .unwrap();
+    let saved = store.commit_edit(&preview).unwrap();
+    assert_eq!(
+        store.load().unwrap().document.credential_sources.sources,
+        [source]
+    );
+    let exported = store.preview_export_redacted(&saved).unwrap();
+    let exported = String::from_utf8(exported.bytes).unwrap();
+    assert!(!exported.contains("work-vault"));
+    assert!(!exported.contains("agent.sock"));
+}
+
+#[test]
+fn schema_two_library_migration_is_preview_only_and_adds_no_credentials() {
+    let temporary = tempfile::tempdir().unwrap();
+    let store =
+        ConnectionLibraryStore::open(temporary.path().join("connections")).unwrap();
+    let current = store
+        .compare_and_swap(0, &ConnectionLibraryDocument::default())
+        .unwrap();
+    let mut legacy = serde_json::to_value(current).unwrap();
+    legacy["schema_version"] = 2.into();
+    legacy.as_object_mut().unwrap().remove("credential_sources");
+    let bytes = serde_json::to_vec(&legacy).unwrap();
+    std::fs::write(store.path(), &bytes).unwrap();
+    let loaded = store.load().unwrap();
+    assert_eq!(loaded.origin, LibraryLoadOrigin::PrimaryMigrationPreview);
+    assert!(loaded.document.credential_sources.sources.is_empty());
+    assert_eq!(std::fs::read(store.path()).unwrap(), bytes);
+}
+
+#[test]
+fn changing_an_agent_source_invalidates_bound_profile_approval_and_prevents_dangling_removal(
+) {
+    let mut current = document();
+    current.credential_sources.sources.push(CredentialSourceV1 {
+        schema_version: 1,
+        id: "work-vault".into(),
+        revision: 1,
+        display_name: "Work vault".into(),
+        provider: CredentialProvider::OnePassword,
+        endpoint: SshAgentEndpoint::System,
+    });
+    let profile = &mut current.profiles.profiles[0];
+    profile.identity.kind = IdentityKind::Agent;
+    profile.identity.owner = "credential-source".into();
+    profile.identity.reference = OpaqueReference::new("work-vault");
+    current
+        .workspaces
+        .workspaces
+        .push(workspace(&current.profiles.profiles[0]));
+    assert!(preview_library_edit(
+        &current,
+        LibraryEdit::RemoveCredentialSource {
+            expected_entity_revision: 1,
+            source_id: "work-vault".into(),
+        }
+    )
+    .is_err());
+    let mut source = current.credential_sources.sources[0].clone();
+    source.revision = 2;
+    source.provider = CredentialProvider::Bitwarden;
+    source.display_name = "Renamed vault".into();
+    let review = preview_library_edit(
+        &current,
+        LibraryEdit::PutCredentialSource {
+            expected_entity_revision: Some(1),
+            source,
+        },
+    )
+    .unwrap();
+    assert_eq!(review.document.profiles.profiles[0].revision, 2);
+    assert_eq!(
+        review.document.profiles.profiles[0].identity.public_label,
+        "Renamed vault"
+    );
+    assert!(review.document.profiles.profiles[0]
+        .approval_fingerprint
+        .is_none());
+    assert_eq!(review.invalidated_approval_count, 2);
+    let linked = &review.document.workspaces.workspaces[0];
+    assert!(linked.approval_fingerprint.is_none());
+    assert_eq!(linked.revision, 2);
+    assert_eq!(linked.connections[0].profile_revision, 2);
+    assert_eq!(
+        linked.connections[0].profile_fingerprint,
+        fingerprint_profile(&review.document.profiles.profiles[0]).unwrap()
+    );
 }
 #[test]
 fn mismatched_recipe_reference_fingerprint_is_rejected_by_the_library() {

@@ -13,12 +13,14 @@ use std::{
 };
 
 use automexia_connectivity::connections::{
-    fingerprint_profile, fingerprint_recipe, validate_profile_document,
-    validate_recipe_document, validate_workspace, validate_workspace_document,
-    AutomationRecipeDocumentV1, AutomationRecipeV1, ConnectionProfileDocumentV1,
-    ConnectionProfileV1, ConnectionSource, EnvironmentKind, EnvironmentRisk,
-    IdentityKind, OpaqueReference, SourceKind, TransportDescriptor, WorkspaceDocumentV1,
-    WorkspaceIntentV1, MAX_PROFILES, MAX_RECIPES, MAX_WORKSPACES,
+    fingerprint_profile, fingerprint_recipe, validate_credential_source,
+    validate_credential_sources, validate_profile_document, validate_recipe_document,
+    validate_workspace, validate_workspace_document, AutomationRecipeDocumentV1,
+    AutomationRecipeV1, ConnectionProfileDocumentV1, ConnectionProfileV1,
+    ConnectionSource, CredentialSourceV1, CredentialSourcesDocumentV1, EnvironmentKind,
+    EnvironmentRisk, IdentityKind, OpaqueReference, SourceKind, TransportDescriptor,
+    WorkspaceDocumentV1, WorkspaceIntentV1, MAX_CREDENTIAL_SOURCES, MAX_PROFILES,
+    MAX_RECIPES, MAX_WORKSPACES,
 };
 use automexia_ui_model::connection_hub::{HubCatalogGrouping, HubCatalogSource};
 use serde::{Deserialize, Serialize};
@@ -30,7 +32,10 @@ use crate::automexia::private_fs::{
     self as secure_fs, PrivateFsError, PrivateFsErrorCode, WriteLock,
 };
 
-pub const CONNECTION_LIBRARY_SCHEMA: u16 = 2;
+pub const CONNECTION_LIBRARY_SCHEMA: u16 = 3;
+// Export intentionally excludes all local credential sources and bindings.
+const CONNECTION_LIBRARY_TRANSFER_SCHEMA: u16 = 2;
+pub const CREDENTIAL_SOURCE_IDENTITY_OWNER: &str = "credential-source";
 // Keep the established private filenames so schema-1 recovery remains atomic;
 // the document version, not its path, selects the reviewed migration.
 pub const CONNECTION_LIBRARY_FILE: &str = "library.v1.json";
@@ -60,6 +65,8 @@ pub struct ConnectionLibraryDocument {
     #[serde(default)]
     pub workspaces: WorkspaceDocumentV1,
     pub preferences: HubPreferences,
+    #[serde(default)]
+    pub credential_sources: CredentialSourcesDocumentV1,
 }
 
 impl Default for ConnectionLibraryDocument {
@@ -79,6 +86,7 @@ impl Default for ConnectionLibraryDocument {
             },
             workspaces: WorkspaceDocumentV1::default(),
             preferences: HubPreferences::default(),
+            credential_sources: CredentialSourcesDocumentV1::default(),
         }
     }
 }
@@ -112,6 +120,14 @@ pub struct LibraryLoadResult {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum LibraryEdit {
+    PutCredentialSource {
+        expected_entity_revision: Option<u64>,
+        source: CredentialSourceV1,
+    },
+    RemoveCredentialSource {
+        expected_entity_revision: u64,
+        source_id: String,
+    },
     PutProfile {
         expected_entity_revision: Option<u64>,
         profile: Box<ConnectionProfileV1>,
@@ -375,7 +391,7 @@ impl ConnectionLibraryStore {
     ) -> Result<LibraryExportPreview, LibraryError> {
         validate_document(document)?;
         let transfer = LibraryTransferDocument {
-            schema_version: CONNECTION_LIBRARY_SCHEMA,
+            schema_version: CONNECTION_LIBRARY_TRANSFER_SCHEMA,
             redacted: true,
             profiles: document
                 .profiles
@@ -601,6 +617,8 @@ fn validate_document(document: &ConnectionLibraryDocument) -> Result<(), Library
         .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
     validate_workspace_document(&document.workspaces)
         .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
+    validate_credential_sources(&document.credential_sources)
+        .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
     let recipes = document
         .recipes
         .recipes
@@ -612,6 +630,18 @@ fn validate_document(document: &ConnectionLibraryDocument) -> Result<(), Library
         .collect::<Result<HashMap<_, _>, _>>()
         .map_err(|_| LibraryError::new(LibraryErrorCode::ModelRejected))?;
     for profile in &document.profiles.profiles {
+        if profile.identity.owner == CREDENTIAL_SOURCE_IDENTITY_OWNER
+            && (profile.identity.kind != IdentityKind::Agent
+                || profile.provider
+                    != automexia_connectivity::connections::ProviderKind::Ssh
+                || !document
+                    .credential_sources
+                    .sources
+                    .iter()
+                    .any(|source| source.id == profile.identity.reference.as_str()))
+        {
+            return Err(LibraryError::new(LibraryErrorCode::ModelRejected));
+        }
         for reference in &profile.recipe_references {
             let Some((revision, fingerprint)) = recipes.get(reference.id.as_str()) else {
                 return Err(LibraryError::new(LibraryErrorCode::ModelRejected));
@@ -909,10 +939,16 @@ fn read_optional_bytes(
         })?;
     let migrated = match document.schema_version {
         CONNECTION_LIBRARY_SCHEMA => false,
-        1 if document.workspaces.workspaces.is_empty() => {
+        1 if document.workspaces.workspaces.is_empty()
+            && document.credential_sources.sources.is_empty() =>
+        {
             document.schema_version = CONNECTION_LIBRARY_SCHEMA;
             document.workspaces.schema_version = 1;
             document.workspaces.revision = document.revision;
+            true
+        }
+        2 if document.credential_sources.sources.is_empty() => {
+            document.schema_version = CONNECTION_LIBRARY_SCHEMA;
             true
         }
         _ => {
@@ -996,6 +1032,56 @@ pub fn preview_library_edit(
     let mut document = current.clone();
     let mut invalidated_approval_count = 0usize;
     let changed_entity = match edit {
+        LibraryEdit::PutCredentialSource {
+            expected_entity_revision,
+            source,
+        } => {
+            validate_credential_source(&source)
+                .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?;
+            let index = document
+                .credential_sources
+                .sources
+                .iter()
+                .position(|candidate| candidate.id == source.id);
+            validate_entity_revision(
+                index.map(|index| document.credential_sources.sources[index].revision),
+                expected_entity_revision,
+                source.revision,
+            )?;
+            let source_id = source.id.clone();
+            if let Some(index) = index {
+                document.credential_sources.sources[index] = source;
+                invalidated_approval_count +=
+                    invalidate_credential_bindings(&mut document, &source_id)?;
+            } else {
+                if document.credential_sources.sources.len() >= MAX_CREDENTIAL_SOURCES {
+                    return Err(LibraryError::new(LibraryErrorCode::InvalidEdit));
+                }
+                document.credential_sources.sources.push(source);
+            }
+            format!("credential-source:{source_id}")
+        }
+        LibraryEdit::RemoveCredentialSource {
+            expected_entity_revision,
+            source_id,
+        } => {
+            if document.profiles.profiles.iter().any(|profile| {
+                profile.identity.owner == CREDENTIAL_SOURCE_IDENTITY_OWNER
+                    && profile.identity.reference.as_str() == source_id
+            }) {
+                return Err(LibraryError::new(LibraryErrorCode::InvalidEdit));
+            }
+            let index = document
+                .credential_sources
+                .sources
+                .iter()
+                .position(|source| {
+                    source.id == source_id && source.revision == expected_entity_revision
+                })
+                .ok_or_else(|| LibraryError::new(LibraryErrorCode::EntityNotFound))?;
+            document.credential_sources.sources.remove(index);
+            format!("credential-source:{source_id}")
+        }
         LibraryEdit::PutProfile {
             expected_entity_revision,
             profile,
@@ -1243,6 +1329,54 @@ pub fn preview_library_edit(
     })
 }
 
+fn invalidate_credential_bindings(
+    document: &mut ConnectionLibraryDocument,
+    source_id: &str,
+) -> Result<usize, LibraryError> {
+    let source_label = document
+        .credential_sources
+        .sources
+        .iter()
+        .find(|source| source.id == source_id)
+        .map(|source| source.display_name.clone())
+        .ok_or_else(|| LibraryError::new(LibraryErrorCode::EntityNotFound))?;
+    let mut changed = HashMap::new();
+    let mut invalidated = 0;
+    for profile in &mut document.profiles.profiles {
+        if profile.identity.owner != CREDENTIAL_SOURCE_IDENTITY_OWNER
+            || profile.identity.reference.as_str() != source_id
+        {
+            continue;
+        }
+        profile.revision = next_entity_revision(profile.revision)?;
+        profile.identity.public_label.clone_from(&source_label);
+        invalidated += clear_approval(&mut profile.approval_fingerprint);
+        changed.insert(
+            profile.id.clone(),
+            (
+                profile.revision,
+                fingerprint_profile(profile)
+                    .map_err(|_| LibraryError::new(LibraryErrorCode::InvalidEdit))?,
+            ),
+        );
+    }
+    for workspace in &mut document.workspaces.workspaces {
+        let mut affected = false;
+        for connection in &mut workspace.connections {
+            if let Some((revision, fingerprint)) = changed.get(&connection.profile_id) {
+                connection.profile_revision = *revision;
+                connection.profile_fingerprint.clone_from(fingerprint);
+                affected = true;
+            }
+        }
+        if affected {
+            workspace.revision = next_entity_revision(workspace.revision)?;
+            invalidated += clear_approval(&mut workspace.approval_fingerprint);
+        }
+    }
+    Ok(invalidated)
+}
+
 fn build_import_preview(
     current: &ConnectionLibraryDocument,
     bytes: &[u8],
@@ -1252,7 +1386,8 @@ fn build_import_preview(
     }
     let transfer: LibraryTransferDocument = serde_json::from_slice(bytes)
         .map_err(|_| LibraryError::new(LibraryErrorCode::TransferRejected))?;
-    if transfer.schema_version != CONNECTION_LIBRARY_SCHEMA || !transfer.redacted {
+    if transfer.schema_version != CONNECTION_LIBRARY_TRANSFER_SCHEMA || !transfer.redacted
+    {
         return Err(LibraryError::new(LibraryErrorCode::TransferRejected));
     }
     validate_transfer(&transfer)?;

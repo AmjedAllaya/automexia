@@ -1,4 +1,4 @@
-//! Screen-side input adapter for the read-only Connection Hub.
+//! Screen-side input adapter for the Connection Hub.
 
 use std::path::PathBuf;
 
@@ -52,7 +52,10 @@ fn mnemonic_letter(logical_key: &Key, physical_key: PhysicalKey) -> Option<char>
             PhysicalKey::Code(KeyCode::KeyC) => Some('c'),
             PhysicalKey::Code(KeyCode::KeyF) => Some('f'),
             PhysicalKey::Code(KeyCode::KeyL) => Some('l'),
+            PhysicalKey::Code(KeyCode::KeyK) => Some('k'),
+            PhysicalKey::Code(KeyCode::KeyN) => Some('n'),
             PhysicalKey::Code(KeyCode::KeyP) => Some('p'),
+            PhysicalKey::Code(KeyCode::KeyV) => Some('v'),
             PhysicalKey::Code(KeyCode::KeyW) => Some('w'),
             _ => None,
         },
@@ -93,6 +96,8 @@ enum HubSectionShortcut {
     Connections,
     Workspaces,
     Providers,
+    Credentials,
+    Profiles,
 }
 
 fn hub_section_shortcut(
@@ -117,6 +122,8 @@ fn hub_section_shortcut(
         Some('c') => Some(HubSectionShortcut::Connections),
         Some('w') => Some(HubSectionShortcut::Workspaces),
         Some('p') => Some(HubSectionShortcut::Providers),
+        Some('k') => Some(HubSectionShortcut::Credentials),
+        Some('n') => Some(HubSectionShortcut::Profiles),
         _ => None,
     }
 }
@@ -155,6 +162,48 @@ fn managed_approval_action(
         }
         _ => None,
     }
+}
+
+fn hub_paste_shortcut(key: &Key, modifiers: ModifiersState) -> bool {
+    if modifiers.alt_key() {
+        return false;
+    }
+    match key {
+        Key::Character(value) if value.eq_ignore_ascii_case("v") => {
+            modifiers.control_key() || modifiers.super_key()
+        }
+        Key::Named(NamedKey::Insert) => modifiers == ModifiersState::SHIFT,
+        _ => false,
+    }
+}
+
+fn apply_managed_availability(
+    presentation: &mut crate::automexia::connections::HubControllerPresentation,
+    diagnostic: Option<&'static str>,
+) {
+    let Some(diagnostic) = diagnostic else { return };
+    let Some(review) = &mut presentation.direct_openssh_review else {
+        return;
+    };
+    review.approval_action_enabled = false;
+    review.allow_session_enabled = false;
+    review.primary_label = "Managed connection unavailable";
+    let reason = "Managed connections require protected activation; use system OpenSSH in a terminal.";
+    review.warnings.push(reason.into());
+    for node in &mut review.accessibility_tree {
+        if matches!(
+            node.id.as_str(),
+            "direct-openssh-decision-allow-once"
+                | "direct-openssh-decision-allow-session"
+        ) {
+            node.disabled = true;
+            node.focusable = false;
+            node.description = reason.into();
+        }
+    }
+    presentation
+        .direct_openssh_diagnostic
+        .get_or_insert(diagnostic);
 }
 
 fn managed_launch_diagnostic(
@@ -405,13 +454,18 @@ impl Screen<'_> {
         self.connection_hub.sync();
         let size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor().max(f32::EPSILON);
-        let presentation = self.connection_hub.presentation(
+        let mut presentation = self.connection_hub.presentation(
             Viewport::new(size.width / scale, size.height / scale, 1.0),
             HubVisualPreferences {
                 high_contrast: false,
                 reduced_motion: true,
                 reduced_transparency: false,
             },
+        );
+        let activation = self.external_tool_runner.managed_openssh_activation_error();
+        apply_managed_availability(
+            &mut presentation,
+            activation.as_ref().map(managed_launch_diagnostic),
         );
         self.renderer
             .connection_hub
@@ -430,6 +484,187 @@ impl Screen<'_> {
             return true;
         }
         let modifiers = self.modifiers.state();
+
+        // Winit reports a physical space as NamedKey::Space on native platforms.
+        // Feed every focused Hub field through the same bounded text owner as IME
+        // and paste, rather than dropping the key or invoking a catalog shortcut.
+        if key_event.logical_key == Key::Named(NamedKey::Space)
+            && !modifiers.control_key()
+            && !modifiers.alt_key()
+            && !modifiers.super_key()
+            && self.connection_hub.text_input_active()
+        {
+            let _ = self.connection_hub.commit_ime(" ");
+            self.sync_connection_hub();
+            self.mark_dirty();
+            return true;
+        }
+
+        if hub_paste_shortcut(&key_event.logical_key, modifiers) {
+            if self.connection_hub.text_input_active() {
+                if let Ok(value) = clipboard.try_get(ClipboardType::Clipboard) {
+                    let _ = self.connection_hub.commit_ime(&value);
+                }
+            }
+            self.sync_connection_hub();
+            self.mark_dirty();
+            return true;
+        }
+        if let Some(editor) = self.connection_hub.profile_editor() {
+            use crate::automexia::connections::{ProfileAction as Action, ProfileFocus};
+            let typing = editor.text_focused();
+            let action = match &key_event.logical_key {
+                Key::Character(value)
+                    if typing
+                        && value.eq_ignore_ascii_case("a")
+                        && (modifiers.control_key() || modifiers.super_key())
+                        && !modifiers.alt_key() =>
+                {
+                    Some(Action::SelectAll)
+                }
+                Key::Named(NamedKey::Escape) => Some(Action::Key(HubKey::Escape)),
+                Key::Named(NamedKey::Tab) => {
+                    Some(Action::Key(if modifiers.shift_key() {
+                        HubKey::ShiftTab
+                    } else {
+                        HubKey::Tab
+                    }))
+                }
+                Key::Named(NamedKey::Enter) => Some(Action::Key(HubKey::Enter)),
+                Key::Named(NamedKey::ArrowUp) => Some(Action::Key(HubKey::Up)),
+                Key::Named(NamedKey::ArrowDown) => Some(Action::Key(HubKey::Down)),
+                Key::Named(NamedKey::ArrowLeft)
+                    if editor.focus == ProfileFocus::Source =>
+                {
+                    Some(Action::CycleSource(false))
+                }
+                Key::Named(NamedKey::ArrowRight)
+                    if editor.focus == ProfileFocus::Source =>
+                {
+                    Some(Action::CycleSource(true))
+                }
+                Key::Named(NamedKey::Backspace) if typing => Some(Action::Backspace),
+                Key::Named(NamedKey::Delete) if editor.draft.is_none() => {
+                    Some(Action::Remove)
+                }
+                Key::Unidentified(_)
+                    if !typing
+                        && editor.draft.is_none()
+                        && !modifiers.control_key()
+                        && !modifiers.alt_key()
+                        && !modifiers.super_key()
+                        && mnemonic_letter(
+                            &key_event.logical_key,
+                            key_event.physical_key,
+                        ) == Some('n') =>
+                {
+                    Some(Action::Add)
+                }
+                Key::Character(value)
+                    if !modifiers.super_key()
+                        && ((!modifiers.control_key() && !modifiers.alt_key())
+                            || (typing
+                                && modifiers.control_key()
+                                && modifiers.alt_key())) =>
+                {
+                    if typing {
+                        Some(Action::Append(value.to_string()))
+                    } else if value.eq_ignore_ascii_case("n") && editor.draft.is_none() {
+                        Some(Action::Add)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(action) = action {
+                let route = self.context_manager.current().route_id;
+                let wake = self.context_manager.devops_refresh_completion(route);
+                self.connection_hub.profile_action(action, wake);
+            }
+            self.sync_connection_hub();
+            self.mark_dirty();
+            return true;
+        }
+
+        if let Some(editor) = self.connection_hub.credential_editor() {
+            use crate::automexia::connections::{
+                CredentialAction as Action, CredentialFocus,
+            };
+            let typing = editor.text_focused();
+            let action = match &key_event.logical_key {
+                Key::Character(value)
+                    if typing
+                        && value.eq_ignore_ascii_case("a")
+                        && (modifiers.control_key() || modifiers.super_key())
+                        && !modifiers.alt_key() =>
+                {
+                    Some(Action::SelectAll)
+                }
+                Key::Named(NamedKey::Escape) => Some(Action::Key(HubKey::Escape)),
+                Key::Named(NamedKey::Tab) => {
+                    Some(Action::Key(if modifiers.shift_key() {
+                        HubKey::ShiftTab
+                    } else {
+                        HubKey::Tab
+                    }))
+                }
+                Key::Named(NamedKey::Enter) => Some(Action::Key(HubKey::Enter)),
+                Key::Named(NamedKey::ArrowUp) => Some(Action::Key(HubKey::Up)),
+                Key::Named(NamedKey::ArrowDown) => Some(Action::Key(HubKey::Down)),
+                Key::Named(NamedKey::ArrowLeft)
+                    if editor.focus == CredentialFocus::Provider =>
+                {
+                    Some(Action::PreviousProvider)
+                }
+                Key::Named(NamedKey::ArrowRight)
+                    if editor.focus == CredentialFocus::Provider =>
+                {
+                    Some(Action::NextProvider)
+                }
+                Key::Named(NamedKey::Backspace) if typing => Some(Action::Backspace),
+                Key::Named(NamedKey::Delete) if editor.draft.is_none() => {
+                    Some(Action::Remove)
+                }
+                Key::Unidentified(_)
+                    if !typing
+                        && editor.draft.is_none()
+                        && !modifiers.control_key()
+                        && !modifiers.alt_key()
+                        && !modifiers.super_key()
+                        && mnemonic_letter(
+                            &key_event.logical_key,
+                            key_event.physical_key,
+                        ) == Some('n') =>
+                {
+                    Some(Action::Add)
+                }
+                Key::Character(value)
+                    if !modifiers.super_key()
+                        && ((!modifiers.control_key() && !modifiers.alt_key())
+                            || (typing
+                                && modifiers.control_key()
+                                && modifiers.alt_key())) =>
+                {
+                    if typing {
+                        Some(Action::Append(value.to_string()))
+                    } else if value.eq_ignore_ascii_case("n") && editor.draft.is_none() {
+                        Some(Action::Add)
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            };
+            if let Some(action) = action {
+                let route = self.context_manager.current().route_id;
+                let wake = self.context_manager.devops_refresh_completion(route);
+                self.connection_hub.credential_action(action, wake);
+            }
+            self.sync_connection_hub();
+            self.mark_dirty();
+            return true;
+        }
 
         if let Some(review) = self.connection_hub.pending_grant_review_request() {
             let handled = match &key_event.logical_key {
@@ -573,13 +808,18 @@ impl Screen<'_> {
                     if let Some(preparation) =
                         self.connection_hub.direct_openssh_preparation()
                     {
-                        clipboard.set(
-                            ClipboardType::Clipboard,
-                            preparation.user_owned_command(),
-                        );
-                        self.connection_hub.report_direct_openssh_diagnostic(
-                            "connection-trust-command-copied",
-                        );
+                        let copied = clipboard
+                            .try_set(
+                                ClipboardType::Clipboard,
+                                preparation.user_owned_command(),
+                            )
+                            .is_ok();
+                        self.connection_hub
+                            .report_direct_openssh_diagnostic(if copied {
+                                "connection-trust-command-copied"
+                            } else {
+                                "connection-trust-copy-failed"
+                            });
                     }
                     self.sync_connection_hub();
                     self.mark_dirty();
@@ -629,6 +869,8 @@ impl Screen<'_> {
                 HubSectionShortcut::Connections => self.connection_hub.open_connections(),
                 HubSectionShortcut::Workspaces => self.connection_hub.open_workspaces(),
                 HubSectionShortcut::Providers => self.connection_hub.open_providers(),
+                HubSectionShortcut::Credentials => self.connection_hub.open_credentials(),
+                HubSectionShortcut::Profiles => self.connection_hub.open_profiles(),
             };
             if switched {
                 self.sync_connection_hub();
@@ -712,6 +954,13 @@ impl Screen<'_> {
             {
                 Some(HubKey::Find)
             }
+            Key::Named(NamedKey::Space)
+                if !modifiers.control_key()
+                    && !modifiers.alt_key()
+                    && !modifiers.super_key() =>
+            {
+                Some(HubKey::Space)
+            }
             Key::Character(value) if value.as_str() == " " => Some(HubKey::Space),
             _ => None,
         };
@@ -748,6 +997,20 @@ impl Screen<'_> {
             .map_or(0, |catalog| catalog.visible_range.start);
         let route_id = self.context_manager.current().route_id;
         match hit {
+            ConnectionHubHit::OpenProfiles => {
+                let _ = self.connection_hub.open_profiles();
+            }
+            ConnectionHubHit::Profile(action) => {
+                let wake = self.context_manager.devops_refresh_completion(route_id);
+                self.connection_hub.profile_action(action, wake);
+            }
+            ConnectionHubHit::OpenCredentials => {
+                let _ = self.connection_hub.open_credentials();
+            }
+            ConnectionHubHit::Credential(action) => {
+                let wake = self.context_manager.devops_refresh_completion(route_id);
+                self.connection_hub.credential_action(action, wake);
+            }
             ConnectionHubHit::Search => self.connection_hub.focus_search(),
             ConnectionHubHit::OpenConnections => {
                 let _ = self.connection_hub.open_connections();
@@ -1089,6 +1352,23 @@ mod tests {
         );
         assert_eq!(
             hub_section_shortcut(
+                &Key::Unidentified(rio_window::keyboard::NativeKey::Unidentified),
+                PhysicalKey::Code(KeyCode::KeyK),
+                none,
+                &HubFocus::Results,
+                HubRoute::Results,
+            ),
+            Some(HubSectionShortcut::Credentials)
+        );
+        assert_eq!(
+            mnemonic_letter(
+                &Key::Unidentified(rio_window::keyboard::NativeKey::Unidentified),
+                PhysicalKey::Code(KeyCode::KeyN)
+            ),
+            Some('n')
+        );
+        assert_eq!(
+            hub_section_shortcut(
                 &Key::Character("c".into()),
                 PhysicalKey::Code(KeyCode::KeyC),
                 none,
@@ -1191,5 +1471,91 @@ mod tests {
         apply_openssh_review_completion(&mut controller, Ok(review));
 
         assert!(controller.direct_openssh_binding(NOW_MS + 1).is_ok());
+
+        let mut presentation = controller.presentation(
+            Viewport::new(1280.0, 800.0, 1.0),
+            HubVisualPreferences::default(),
+        );
+        apply_managed_availability(
+            &mut presentation,
+            Some("connection-launch-protected-review-pending"),
+        );
+        let review = presentation.direct_openssh_review.unwrap();
+        assert!(!review.approval_action_enabled);
+        assert!(!review.allow_session_enabled);
+        for id in [
+            "direct-openssh-decision-allow-once",
+            "direct-openssh-decision-allow-session",
+        ] {
+            let node = review
+                .accessibility_tree
+                .iter()
+                .find(|node| node.id == id)
+                .unwrap();
+            assert!(node.disabled);
+            assert!(!node.focusable);
+            assert!(node.description.contains("protected activation"));
+        }
+        assert!(review
+            .accessibility_tree
+            .iter()
+            .any(|node| node.id == "direct-openssh-trust-copy" && !node.disabled));
+    }
+
+    #[test]
+    fn paste_shortcuts_support_platform_conventions_without_stealing_altgr() {
+        let key = Key::Character("v".into());
+        for modifiers in [
+            ModifiersState::CONTROL,
+            ModifiersState::CONTROL | ModifiersState::SHIFT,
+            ModifiersState::SUPER,
+        ] {
+            assert!(hub_paste_shortcut(&key, modifiers));
+        }
+        for modifiers in [
+            ModifiersState::empty(),
+            ModifiersState::SHIFT,
+            ModifiersState::CONTROL | ModifiersState::ALT,
+        ] {
+            assert!(!hub_paste_shortcut(&key, modifiers));
+        }
+        assert!(hub_paste_shortcut(
+            &Key::Named(NamedKey::Insert),
+            ModifiersState::SHIFT
+        ));
+        assert!(!hub_paste_shortcut(
+            &Key::Named(NamedKey::Enter),
+            ModifiersState::CONTROL
+        ));
+    }
+}
+#[test]
+fn saved_and_vault_shortcuts_do_not_steal_favorites_or_text() {
+    let none = ModifiersState::empty();
+    for (letter, code, expected) in [
+        ("v", KeyCode::KeyV, None),
+        ("k", KeyCode::KeyK, Some(HubSectionShortcut::Credentials)),
+        ("n", KeyCode::KeyN, Some(HubSectionShortcut::Profiles)),
+    ] {
+        assert_eq!(
+            hub_section_shortcut(
+                &Key::Character(letter.into()),
+                PhysicalKey::Code(code),
+                none,
+                &HubFocus::Results,
+                HubRoute::Results
+            ),
+            expected
+        );
+        assert_eq!(
+            hub_section_shortcut(
+                &Key::Character(letter.into()),
+                PhysicalKey::Code(code),
+                none,
+                &HubFocus::Search,
+                HubRoute::Results
+            ),
+            None
+        );
     }
 }

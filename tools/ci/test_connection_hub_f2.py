@@ -31,8 +31,8 @@ class F2ContractTests(unittest.TestCase):
         self.assertEqual(
             policy.validate_repository(),
             {
-                "models": 9,
-                "tests": 51,
+                "models": 10,
+                "tests": 61,
                 "providers": 10,
                 "auth_states": 19,
                 "layouts": 4,
@@ -50,6 +50,21 @@ class F2ContractTests(unittest.TestCase):
         self.validate_mutation(
             lambda document: document["authorities"].__setitem__("network", True)
         )
+
+    def test_credential_schema_validation_and_approval_invalidation_are_required(self) -> None:
+        original = policy.bounded_text
+        for token in (
+            "CONNECTION_LIBRARY_SCHEMA: u16 = 3",
+            "validate_credential_sources(&document.credential_sources)",
+            "invalidate_credential_bindings(&mut document, &source_id)?",
+        ):
+            with self.subTest(token=token):
+                def mutated(path, maximum=policy.MAX_EVIDENCE_BYTES):
+                    source = original(path, maximum)
+                    return source.replace(token, "removed_boundary") if path.name == "library.rs" else source
+                with mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                    with self.assertRaises(policy.F2ContractError):
+                        policy.validate_sources(self.contract)
 
     def test_provider_state_layout_or_status_drift_is_rejected(self) -> None:
         self.validate_mutation(lambda document: document["providers"].pop())

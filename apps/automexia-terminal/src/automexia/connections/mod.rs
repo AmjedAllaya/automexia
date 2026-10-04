@@ -1,9 +1,11 @@
 //! Application-owned composition for the non-executing Connection Hub.
 
 mod controller;
+mod credential_editor;
 mod direct_openssh;
 mod library;
 mod persistence_support;
+mod profile_editor;
 mod provider_transients;
 mod providers;
 mod receipts;
@@ -14,8 +16,14 @@ pub use controller::{
     ConnectionHubController, DisabledHubAction, HubControllerEffect,
     HubControllerPresentation,
 };
+pub use credential_editor::{
+    CredentialAction, CredentialEditor, CredentialEffect, CredentialFocus,
+};
 #[doc(hidden)]
 pub use direct_openssh::{CurrentDirectOpenSshReview, CurrentDirectOpenSshReviewError};
+pub use profile_editor::{
+    ProfileAction, ProfileDraft, ProfileEditor, ProfileEffect, ProfileFocus,
+};
 
 pub use library::{
     preview_library_edit, ConnectionLibraryDocument, ConnectionLibraryStore,

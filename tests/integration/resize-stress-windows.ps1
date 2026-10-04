@@ -2159,6 +2159,103 @@ $wallpaperConfig
             throw 'Focused native Connection Hub setup frame is blank or unreadable'
         }
 
+        $script:testStage = 'credential source keyboard workflow'
+        if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x4B, $false)) {
+            throw 'Could not deliver the native vaults shortcut'
+        }
+        $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubSetupPresented.sequence)
+        $vaultDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [bool]$vault.connection_hub_credentials_active -and [DateTime]::UtcNow -lt $vaultDeadline) {
+            $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
+        }
+        if (-not [bool]$vault.connection_hub_credentials_active) { throw 'K did not open credential sources' }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x4E, $false)
+        $vaultDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [bool]$vault.connection_hub_credentials_editing -and [DateTime]::UtcNow -lt $vaultDeadline) {
+            $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
+        }
+        if (-not [bool]$vault.connection_hub_credentials_editing) { throw 'N did not start a new source' }
+        # F belongs to the focused editor; it must not open the outer Hub file picker.
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x46, $false)
+        $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
+        if (-not [bool]$vault.connection_hub_credentials_editing) { throw 'Typing escaped the vault editor' }
+        if ($null -ne $modalCaptureRoot) {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
+            try { [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $modalCaptureRoot "credential-editor-$rendererName.png")) }
+            finally { [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false) }
+        }
+        foreach ($unusedTab in 1..2) { [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x09, $false) }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x0D, $false)
+        $vaultDeadline = [DateTime]::UtcNow.AddSeconds(8)
+        while (([bool]$vault.connection_hub_credentials_editing -or [int]$vault.connection_hub_credentials_count -ne 1) -and [DateTime]::UtcNow -lt $vaultDeadline) {
+            $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
+        }
+        if ([bool]$vault.connection_hub_credentials_editing -or [int]$vault.connection_hub_credentials_count -ne 1) { throw 'Keyboard source save did not finish' }
+        if ($null -ne $modalCaptureRoot) {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
+            try { [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $modalCaptureRoot "credential-sources-$rendererName.png")) }
+            finally { [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false) }
+        }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        $vaultDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([bool]$vault.connection_hub_credentials_active -and [DateTime]::UtcNow -lt $vaultDeadline) {
+            $vault = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
+        }
+        if ([bool]$vault.connection_hub_credentials_active -or -not [bool]$vault.connection_hub_active) { throw 'Escape did not restore Hub focus' }
+
+        $script:testStage = 'saved connection keyboard workflow'
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x4E, $false)
+        $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$vault.sequence)
+        $savedDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [bool]$saved.connection_hub_profiles_active -and [DateTime]::UtcNow -lt $savedDeadline) {
+            $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+        }
+        if (-not [bool]$saved.connection_hub_profiles_active) { throw 'N did not open saved connections' }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x4E, $false)
+        $savedDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while (-not [bool]$saved.connection_hub_profiles_editing -and [DateTime]::UtcNow -lt $savedDeadline) {
+            $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+        }
+        if (-not [bool]$saved.connection_hub_profiles_editing) { throw 'N did not open the saved connection form' }
+        foreach ($fieldText in @('Team shell', 'shell.example.test', 'operator', '2222')) {
+            if (-not [AutomexiaResizeDriver]::SendActionText($window, $fieldText, $false)) { throw 'Could not type saved connection field' }
+            $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+            # Text uses the real input queue. Posting WM_KEYDOWN for Tab can
+            # overtake its final character and insert it into the next field.
+            if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x09, $false, $false, $false)) { throw 'Could not move between saved connection fields' }
+            $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+        }
+        # Source is focused. Choose the external source just added, then Save.
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x27, $true, $false, $false)) { throw 'Could not select the saved credential source' }
+        $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+        if ($null -ne $modalCaptureRoot) {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $true)
+            try { [void][AutomexiaResizeDriver]::CaptureClientFrame($window, (Join-Path $modalCaptureRoot "saved-connection-editor-$rendererName.png")) }
+            finally { [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false) }
+        }
+        if (-not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x09, $false, $false, $false) -or
+            -not [AutomexiaResizeDriver]::SendModifiedKeyTap($window, 0x0D, $false, $false, $false)) { throw 'Could not save the connection with the keyboard' }
+        $savedDeadline = [DateTime]::UtcNow.AddSeconds(8)
+        while (([bool]$saved.connection_hub_profiles_editing -or [int]$saved.connection_hub_profiles_count -ne 1) -and [DateTime]::UtcNow -lt $savedDeadline) {
+            $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+        }
+        if ([bool]$saved.connection_hub_profiles_editing -or [int]$saved.connection_hub_profiles_count -ne 1) { throw 'Saved connection was not published after save' }
+        $savedLibrary = Get-Content -LiteralPath (Join-Path $configRoot 'connections/library.v1.json') -Raw | ConvertFrom-Json
+        if ([string]$savedLibrary.profiles.profiles[0].display_name -cne 'Team shell') {
+            throw 'The saved connection name did not preserve the exact typed text, including spaces'
+        }
+        if ([string]$savedLibrary.profiles.profiles[0].transport.host -cne 'shell.example.test' -or
+            [string]$savedLibrary.profiles.profiles[0].transport.user -cne 'operator' -or
+            [int]$savedLibrary.profiles.profiles[0].transport.port -ne 2222) {
+            throw 'The saved connection fields did not preserve exact typed text across Tab navigation'
+        }
+        [void][AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)
+        $savedDeadline = [DateTime]::UtcNow.AddSeconds(5)
+        while ([bool]$saved.connection_hub_profiles_active -and [DateTime]::UtcNow -lt $savedDeadline) {
+            $saved = Read-AutomexiaSnapshot -AfterSequence ([int64]$saved.sequence)
+        }
+        if ([bool]$saved.connection_hub_profiles_active -or -not [bool]$saved.connection_hub_active) { throw 'Saved connections did not return to Hub' }
+
         $script:testStage = 'focused connection hub direct-entry composition'
         if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x4C, $false)) {
             throw 'Could not deliver the native Connection Hub L mnemonic'
@@ -2208,29 +2305,39 @@ $wallpaperConfig
         $inner = if ($cardWidth -lt 650.0) { 12.0 } else { 20.0 }
         $closeX = [int][Math]::Round(($cardX + $cardWidth - $inner - 20.0) * $hubScale)
         $closeY = [int][Math]::Round(($cardY + 32.0) * $hubScale)
-        $closeLParam = [IntPtr](($closeX -band 0xffff) -bor (($closeY -band 0xffff) -shl 16))
-        if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient(
-                $window, $closeX, $closeY) -or
-            -not [AutomexiaResizeDriver]::PostMessage(
-                $window, 0x0200, [IntPtr]::Zero, $closeLParam)) {
-            throw 'Could not move to the focused direct-entry close target'
+        # Keep the owned fixture above other desktop windows for the entire
+        # pointer transaction, not only its screenshot. Otherwise native leave/
+        # movement messages can change the hit between the snapshot and click.
+        if (-not [AutomexiaResizeDriver]::SetCaptureTopmost($window, $true) -or
+            -not [AutomexiaResizeDriver]::ActivateWindow($window)) {
+            throw 'Could not keep the focused Hub pointer target visible'
         }
-        $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubDirectPresented.sequence)
-        $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
-        while ([string]$hubPointerReady.connection_hub_pointer_hit -ne
-                'CancelLiteralDestination' -and
-               [DateTime]::UtcNow -lt $hubDeadline) {
-            $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
+        try {
+        # Use only the DPI-aware physical input owner. A second posted move is
+        # virtualized by Windows and can race in at an extra scale-factor offset.
+        $hubPointerReady = $hubDirectPresented
+        foreach ($targetX in @(($closeX + 6), $closeX)) {
+            if (-not [AutomexiaResizeDriver]::MovePhysicalPointerToClient($window, $targetX, $closeY)) {
+                throw 'Could not move to the focused direct-entry close target'
+            }
+            $hubDeadline = [DateTime]::UtcNow.AddSeconds(5)
+            do {
+                $hubPointerReady = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
+            } while (([Math]::Abs([double]$hubPointerReady.pointer.x - $targetX) -gt 1 -or
+                      [Math]::Abs([double]$hubPointerReady.pointer.y - $closeY) -gt 1) -and
+                     [DateTime]::UtcNow -lt $hubDeadline)
+            if ([Math]::Abs([double]$hubPointerReady.pointer.x - $targetX) -gt 1 -or
+                [Math]::Abs([double]$hubPointerReady.pointer.y - $closeY) -gt 1) {
+                throw 'The Hub pointer did not reach the exact physical target'
+            }
         }
         if ([string]$hubPointerReady.connection_hub_pointer_hit -ne
             'CancelLiteralDestination') {
             Write-Host ($hubPointerReady | ConvertTo-Json -Depth 8)
             throw 'The physical pointer did not resolve to direct-entry Cancel'
         }
-        if (-not [AutomexiaResizeDriver]::PostMessage(
-                $window, 0x0201, [IntPtr]1, $closeLParam) -or
-            -not [AutomexiaResizeDriver]::PostMessage(
-                $window, 0x0202, [IntPtr]::Zero, $closeLParam)) {
+        if (-not [AutomexiaResizeDriver]::SendPhysicalLeftClick(
+                $window, $closeX, $closeY)) {
             throw 'Could not click the focused direct-entry close target'
         }
         $hubCancelled = Read-AutomexiaSnapshot -AfterSequence ([int64]$hubPointerReady.sequence)
@@ -2250,6 +2357,9 @@ $wallpaperConfig
                 [string]$terminalBefore.raw_cursor_line_text) {
             Write-Host ($hubCancelled | ConvertTo-Json -Depth 8)
             throw 'Native close did not cancel only direct entry or changed terminal state'
+        }
+        } finally {
+            [void][AutomexiaResizeDriver]::SetCaptureTopmost($window, $false)
         }
 
         if (-not [AutomexiaResizeDriver]::PostKeyTap($window, 0x1B, $false)) {
@@ -2276,6 +2386,8 @@ $wallpaperConfig
                 mode = 'connection-hub-only'
                 renderer = $rendererName
                 fixture = [string]$initial.visual_test_fixture
+                credential_source_saved = $true
+                source_bound_profile_saved = $true
                 setup = [ordered]@{
                     frame = @($setupFrame.Width, $setupFrame.Height)
                     distinct_color_buckets = $setupFrame.DistinctColorBuckets

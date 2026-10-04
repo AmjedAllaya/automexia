@@ -5,6 +5,7 @@
 //! intent and produce immutable dry-run plans for later application-owned review.
 
 mod automation;
+mod credential_sources;
 mod direct_openssh;
 mod documents;
 mod model;
@@ -17,6 +18,7 @@ mod validation;
 mod workspace;
 
 pub use automation::*;
+pub use credential_sources::*;
 pub use direct_openssh::{
     parse_direct_openssh_agent_identities, prepare_direct_openssh,
     prepare_direct_openssh_identity_status, review_direct_openssh,

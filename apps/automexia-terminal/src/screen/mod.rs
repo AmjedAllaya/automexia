@@ -525,6 +525,12 @@ struct NativeWindowSnapshot {
     connection_hub_active: bool,
     connection_hub_route: Option<&'static str>,
     connection_hub_literal_entry: bool,
+    connection_hub_credentials_active: bool,
+    connection_hub_credentials_editing: bool,
+    connection_hub_credentials_count: usize,
+    connection_hub_profiles_active: bool,
+    connection_hub_profiles_editing: bool,
+    connection_hub_profiles_count: usize,
     connection_hub_pointer_hit: Option<String>,
     connection_hub_last_hit: Option<String>,
     compatibility_inspector_active: bool,
@@ -740,6 +746,18 @@ fn write_native_resize_snapshot(
     snapshot["connection_hub_route"] = serde_json::json!(window.connection_hub_route);
     snapshot["connection_hub_literal_entry"] =
         serde_json::json!(window.connection_hub_literal_entry);
+    snapshot["connection_hub_credentials_active"] =
+        serde_json::json!(window.connection_hub_credentials_active);
+    snapshot["connection_hub_credentials_editing"] =
+        serde_json::json!(window.connection_hub_credentials_editing);
+    snapshot["connection_hub_credentials_count"] =
+        serde_json::json!(window.connection_hub_credentials_count);
+    snapshot["connection_hub_profiles_active"] =
+        serde_json::json!(window.connection_hub_profiles_active);
+    snapshot["connection_hub_profiles_editing"] =
+        serde_json::json!(window.connection_hub_profiles_editing);
+    snapshot["connection_hub_profiles_count"] =
+        serde_json::json!(window.connection_hub_profiles_count);
     snapshot["connection_hub_pointer_hit"] =
         serde_json::json!(window.connection_hub_pointer_hit);
     snapshot["connection_hub_last_hit"] =
@@ -6724,6 +6742,12 @@ impl Screen<'_> {
                     connection_hub_literal_entry: self
                         .connection_hub
                         .literal_destination_entry_is_active(),
+                    connection_hub_credentials_active: self.connection_hub.credential_editor().is_some(),
+                    connection_hub_credentials_editing: self.connection_hub.credential_editor().is_some_and(|editor| editor.draft.is_some()),
+                    connection_hub_credentials_count: self.connection_hub.credential_editor().map_or(0, |editor| editor.sources.len()),
+                    connection_hub_profiles_active: self.connection_hub.profile_editor().is_some(),
+                    connection_hub_profiles_editing: self.connection_hub.profile_editor().is_some_and(|editor| editor.draft.is_some()),
+                    connection_hub_profiles_count: self.connection_hub.profile_editor().map_or(0, |editor| editor.library.profiles.profiles.len()),
                     connection_hub_pointer_hit: self
                         .renderer
                         .connection_hub

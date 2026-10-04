@@ -8,7 +8,8 @@ use std::{
 };
 
 use automexia_connectivity::connections::{
-    AuthState, DirectOpenSshPreparation, EnvironmentRisk, ProviderCapsule, ProviderKind,
+    AuthState, ConnectionProfileV1, DirectOpenSshPreparation, EnvironmentRisk,
+    ProviderCapsule, ProviderKind,
 };
 use automexia_devops_ssh::{
     scan_inventory_cancellable, ConnectionMetadata, ConnectionRecord, GrantKind,
@@ -18,7 +19,8 @@ use automexia_devops_ssh::{
 };
 use automexia_extension_runtime::CompletionWake;
 use automexia_ui_model::connection_hub::{
-    ConnectionCatalogEntry, ConnectionSummary, HubCatalogSource,
+    project_connection_catalog, ConnectionCatalogEntry, ConnectionCatalogQuery,
+    ConnectionSummary, HubCatalogSource,
 };
 
 use super::direct_openssh::{
@@ -27,6 +29,8 @@ use super::direct_openssh::{
 use super::library::{
     ConnectionLibraryDocument, ConnectionLibraryStore, HubPreferences, LibraryLoadOrigin,
 };
+
+mod library_worker;
 use super::receipts::{
     ManagedReceiptDocument, ManagedReceiptLoadOrigin, ManagedReceiptPersistenceState,
     ManagedReceiptRecord, ManagedReceiptSink, ManagedReceiptStore, MAX_MANAGED_RECEIPTS,
@@ -74,6 +78,7 @@ const WORK_QUEUE_CAPACITY: usize = 2;
 const STORE_DIAGNOSTIC: &str = "connection-private-store-unavailable";
 const METADATA_DIAGNOSTIC: &str = "connection-metadata-write-failed";
 const RECEIPT_STORE_DIAGNOSTIC: &str = "connection-receipt-store-unavailable";
+const CATALOG_DIAGNOSTIC: &str = "connection-catalog-limit-or-invalid-data";
 const MAX_REVIEW_PATH_DISPLAY_BYTES: usize = 1_024;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -88,6 +93,7 @@ pub enum HubStoreState {
 pub enum HubRuntimeErrorCode {
     WorkerUnavailable,
     WorkerBusy,
+    RequestIdExhausted,
     StoreUnavailable,
     InvalidSelection,
     StaleReview,
@@ -105,6 +111,7 @@ impl HubRuntimeErrorCode {
         match self {
             Self::WorkerUnavailable => "connection-worker-unavailable",
             Self::WorkerBusy => WORKER_BUSY_DIAGNOSTIC,
+            Self::RequestIdExhausted => "connection-request-generation-exhausted",
             Self::StoreUnavailable => "connection-private-store-unavailable",
             Self::InvalidSelection => "connection-selection-invalid",
             Self::StaleReview => "connection-selection-review-stale",
@@ -218,6 +225,7 @@ pub struct HubRuntimeSnapshot {
     pub catalog: Arc<Vec<ConnectionCatalogEntry>>,
     pub grant_review: GrantReviewState,
     pub metadata_change: HubMetadataChangeState,
+    pub library_change: HubMetadataChangeState,
     pub metadata_revision: u64,
     pub store_state: HubStoreState,
     pub receipt_store_state: HubStoreState,
@@ -267,6 +275,10 @@ enum Work {
         cancellation: ScanCancellation,
     },
     ApplyMetadata(MetadataChangeReview),
+    ApplyLibrary {
+        expected_revision: u64,
+        edit: Box<super::library::LibraryEdit>,
+    },
     FlushReceipts,
     #[cfg(test)]
     TestBarrier {
@@ -283,7 +295,7 @@ struct WorkRequest {
 
 struct WorkerStores {
     metadata: MetadataStore,
-    _library: Option<ConnectionLibraryStore>,
+    library: Option<ConnectionLibraryStore>,
     receipts: Option<ManagedReceiptStore>,
 }
 
@@ -301,6 +313,7 @@ struct RuntimeData {
     grant_review: GrantReviewState,
     reviewed_grants: Option<(u64, Vec<InventoryGrant>)>,
     metadata_change: HubMetadataChangeState,
+    library_change: HubMetadataChangeState,
     store_state: HubStoreState,
     receipt_store_state: HubStoreState,
     receipt_records: Arc<Vec<ManagedReceiptRecord>>,
@@ -390,6 +403,7 @@ impl ConnectionHubRuntime {
                 grant_review: GrantReviewState::None,
                 reviewed_grants: None,
                 metadata_change: HubMetadataChangeState::Idle,
+                library_change: HubMetadataChangeState::Idle,
                 store_state: HubStoreState::Initializing,
                 receipt_store_state: HubStoreState::Initializing,
                 receipt_records: Arc::new(Vec::new()),
@@ -445,6 +459,7 @@ impl ConnectionHubRuntime {
                     grant_review: GrantReviewState::None,
                     reviewed_grants: None,
                     metadata_change: HubMetadataChangeState::Idle,
+                    library_change: HubMetadataChangeState::Idle,
                     store_state: HubStoreState::Unavailable {
                         diagnostic_code: STORE_DIAGNOSTIC,
                     },
@@ -463,6 +478,7 @@ impl ConnectionHubRuntime {
         }
     }
 
+    #[cfg(test)]
     fn enqueue(&self, request: WorkRequest) -> Result<(), HubRuntimeErrorCode> {
         let sender = lock(&self.inner.sender)
             .as_ref()
@@ -474,45 +490,103 @@ impl ConnectionHubRuntime {
         })
     }
 
-    fn begin_request(&self) -> Result<u64, HubRuntimeErrorCode> {
+    /// Reserve queue capacity and publish the new state under the same lock.
+    /// The worker cannot observe a request before its state is published, and
+    /// a full queue must not cancel the operation that already owns that state.
+    fn submit_request(
+        &self,
+        wake: Option<CompletionWake>,
+        prepare: impl FnOnce(&RuntimeData) -> Result<Work, HubRuntimeErrorCode>,
+    ) -> Result<u64, HubRuntimeErrorCode> {
         if lock(&self.inner.handle)
             .as_ref()
             .is_none_or(JoinHandle::is_finished)
         {
             return Err(HubRuntimeErrorCode::WorkerUnavailable);
         }
+        let sender = lock(&self.inner.sender)
+            .as_ref()
+            .cloned()
+            .ok_or(HubRuntimeErrorCode::WorkerUnavailable)?;
         let mut data = lock(&self.inner.data);
         if data.shutdown {
             return Err(HubRuntimeErrorCode::WorkerUnavailable);
         }
+        // An accepted write owns its generation until persistence and cache
+        // publication finish. Read-only work may supersede other reads only.
+        if matches!(
+            data.metadata_change,
+            HubMetadataChangeState::Applying { .. }
+        ) || matches!(data.library_change, HubMetadataChangeState::Applying { .. })
+        {
+            return Err(HubRuntimeErrorCode::WorkerBusy);
+        }
+        let request = data
+            .requested
+            .checked_add(1)
+            .ok_or(HubRuntimeErrorCode::RequestIdExhausted)?;
+        let work = prepare(&data)?;
+        let cancellation = match &work {
+            Work::Scan { cancellation, .. } => Some(cancellation.clone()),
+            _ => None,
+        };
+        let reviewing = matches!(&work, Work::ReviewFiles { .. });
+        let applying = matches!(&work, Work::ApplyMetadata(_));
+        let applying_library = matches!(&work, Work::ApplyLibrary { .. });
+        sender
+            .try_send(WorkRequest {
+                request,
+                work,
+                wake,
+            })
+            .map_err(|error| match error {
+                mpsc::TrySendError::Full(_) => HubRuntimeErrorCode::WorkerBusy,
+                mpsc::TrySendError::Disconnected(_) => {
+                    HubRuntimeErrorCode::WorkerUnavailable
+                }
+            })?;
         if let Some(active) = data.active_cancellation.take() {
             active.cancel();
         }
-        data.requested = data.requested.saturating_add(1);
-        Ok(data.requested)
+        if let HubRuntimeState::Loading { request: cancelled } = data.state {
+            data.state = if data.catalog.is_empty() {
+                HubRuntimeState::InitialSetup
+            } else {
+                HubRuntimeState::Stale {
+                    generation: data.successful_generation,
+                    diagnostic_code: "ssh-inventory-refresh-cancelled",
+                    failed_request: cancelled,
+                }
+            };
+        }
+        data.requested = request;
+        data.reviewed_grants = None;
+        data.grant_review = if reviewing {
+            GrantReviewState::Reviewing { request }
+        } else {
+            GrantReviewState::None
+        };
+        if let Some(cancellation) = cancellation {
+            data.active_cancellation = Some(cancellation);
+            data.state = HubRuntimeState::Loading { request };
+        }
+        if applying {
+            data.metadata_change = HubMetadataChangeState::Applying { request };
+        }
+        if applying_library {
+            data.library_change = HubMetadataChangeState::Applying { request };
+        }
+        Ok(request)
     }
 
     pub fn request_explicit_scan(&self, grants: Vec<InventoryGrant>) -> u64 {
-        let Ok(request) = self.begin_request() else {
-            return 0;
-        };
-        let cancellation = ScanCancellation::default();
-        {
-            let mut data = lock(&self.inner.data);
-            data.active_cancellation = Some(cancellation.clone());
-            data.state = HubRuntimeState::Loading { request };
-        }
-        if let Err(error) = self.enqueue(WorkRequest {
-            request,
-            work: Work::Scan {
+        self.submit_request(None, |_| {
+            Ok(Work::Scan {
                 grants,
-                cancellation,
-            },
-            wake: None,
-        }) {
-            complete_scan_failure_with(&self.inner, request, error.diagnostic_code());
-        }
-        request
+                cancellation: ScanCancellation::default(),
+            })
+        })
+        .unwrap_or(0)
     }
 
     pub fn review_exact_files(
@@ -527,21 +601,7 @@ impl ConnectionHubRuntime {
         {
             return Err(HubRuntimeErrorCode::InvalidSelection);
         }
-        let request = self.begin_request()?;
-        {
-            let mut data = lock(&self.inner.data);
-            data.reviewed_grants = None;
-            data.grant_review = GrantReviewState::Reviewing { request };
-        }
-        if let Err(error) = self.enqueue(WorkRequest {
-            request,
-            work: Work::ReviewFiles { paths, kind },
-            wake: Some(wake),
-        }) {
-            complete_review_error(&self.inner, request, error.diagnostic_code());
-            return Err(error);
-        }
-        Ok(request)
+        self.submit_request(Some(wake), |_| Ok(Work::ReviewFiles { paths, kind }))
     }
 
     pub fn confirm_reviewed_scan(
@@ -549,39 +609,18 @@ impl ConnectionHubRuntime {
         reviewed_request: u64,
         wake: CompletionWake,
     ) -> Result<u64, HubRuntimeErrorCode> {
-        let grants = {
-            let mut data = lock(&self.inner.data);
-            match data.reviewed_grants.take() {
-                Some((request, grants)) if request == reviewed_request => {
-                    data.grant_review = GrantReviewState::None;
-                    grants
-                }
-                Some(reviewed) => {
-                    data.reviewed_grants = Some(reviewed);
-                    return Err(HubRuntimeErrorCode::StaleReview);
-                }
-                None => return Err(HubRuntimeErrorCode::StaleReview),
+        self.submit_request(Some(wake), |data| {
+            let Some((request, grants)) = &data.reviewed_grants else {
+                return Err(HubRuntimeErrorCode::StaleReview);
+            };
+            if *request != reviewed_request || *request != data.requested {
+                return Err(HubRuntimeErrorCode::StaleReview);
             }
-        };
-        let request = self.begin_request()?;
-        let cancellation = ScanCancellation::default();
-        {
-            let mut data = lock(&self.inner.data);
-            data.active_cancellation = Some(cancellation.clone());
-            data.state = HubRuntimeState::Loading { request };
-        }
-        if let Err(error) = self.enqueue(WorkRequest {
-            request,
-            work: Work::Scan {
-                grants,
-                cancellation,
-            },
-            wake: Some(wake),
-        }) {
-            complete_scan_failure_with(&self.inner, request, error.diagnostic_code());
-            return Err(error);
-        }
-        Ok(request)
+            Ok(Work::Scan {
+                grants: grants.clone(),
+                cancellation: ScanCancellation::default(),
+            })
+        })
     }
 
     pub fn discard_review(&self, reviewed_request: u64) -> bool {
@@ -596,7 +635,6 @@ impl ConnectionHubRuntime {
         if data.shutdown || !owns_review {
             return false;
         }
-        data.requested = data.requested.saturating_add(1);
         data.completed = data.requested;
         data.reviewed_grants = None;
         data.grant_review = GrantReviewState::None;
@@ -623,10 +661,7 @@ impl ConnectionHubRuntime {
             .connections
             .iter()
             .find(|item| item.connection_id == connection_id);
-        let before = HubMetadataValues {
-            favorite: current.is_some_and(|item| item.favorite),
-            tags: current.map_or_else(Vec::new, |item| item.tags.clone()),
-        };
+        let before = effective_metadata(&data, connection_id);
         let after = HubMetadataValues {
             favorite: favorite.unwrap_or(before.favorite),
             tags: tags.unwrap_or_else(|| before.tags.clone()),
@@ -654,36 +689,23 @@ impl ConnectionHubRuntime {
         review: MetadataChangeReview,
         wake: CompletionWake,
     ) -> Result<u64, HubRuntimeErrorCode> {
-        {
-            let data = lock(&self.inner.data);
+        self.submit_request(Some(wake), |data| {
+            if !data
+                .catalog
+                .iter()
+                .any(|entry| entry.summary.id == review.connection_id)
+            {
+                return Err(HubRuntimeErrorCode::UnknownConnection);
+            }
             if review.expected_revision != data.metadata.revision {
                 return Err(HubRuntimeErrorCode::StaleMetadata);
             }
-            let current = data
-                .metadata
-                .connections
-                .iter()
-                .find(|item| item.connection_id == review.connection_id);
-            let values = HubMetadataValues {
-                favorite: current.is_some_and(|item| item.favorite),
-                tags: current.map_or_else(Vec::new, |item| item.tags.clone()),
-            };
+            let values = effective_metadata(data, &review.connection_id);
             if values != review.before {
                 return Err(HubRuntimeErrorCode::StaleMetadata);
             }
-        }
-        let request = self.begin_request()?;
-        lock(&self.inner.data).metadata_change =
-            HubMetadataChangeState::Applying { request };
-        if let Err(error) = self.enqueue(WorkRequest {
-            request,
-            work: Work::ApplyMetadata(review),
-            wake: Some(wake),
-        }) {
-            complete_metadata_error(&self.inner, request, error.diagnostic_code());
-            return Err(error);
-        }
-        Ok(request)
+            Ok(Work::ApplyMetadata(review))
+        })
     }
 
     /// Compose one current inventory record into a pure pending F2 plan.
@@ -693,6 +715,51 @@ impl ConnectionHubRuntime {
         &self,
         connection_id: &str,
     ) -> Result<DirectOpenSshPreparation, HubRuntimeErrorCode> {
+        if connection_id.starts_with("saved-profile-") {
+            let profile = {
+                let data = lock(&self.inner.data);
+                if data.shutdown || !data.initialized {
+                    return Err(HubRuntimeErrorCode::ConnectionNotReady);
+                }
+                let profile = data
+                    .library
+                    .document
+                    .profiles
+                    .profiles
+                    .iter()
+                    .find(|profile| saved_profile_id(profile) == connection_id)
+                    .ok_or(HubRuntimeErrorCode::UnknownConnection)?;
+                // Never silently substitute the default identity for a source
+                // binding while the credential-aware launch adapter is gated.
+                if profile.identity.owner
+                    == super::library::CREDENTIAL_SOURCE_IDENTITY_OWNER
+                {
+                    return Err(HubRuntimeErrorCode::UnsupportedConnectionRoute);
+                }
+                let mut profile = profile.clone();
+                let metadata = effective_metadata(&data, connection_id);
+                profile.id = connection_id.to_owned();
+                profile.favorite = metadata.favorite;
+                profile.tags = metadata.tags;
+                if profile
+                    .tags
+                    .iter()
+                    .any(|tag| tag.eq_ignore_ascii_case("production"))
+                {
+                    profile.environment.kind =
+                        automexia_connectivity::connections::EnvironmentKind::Production;
+                    profile.environment.risk = EnvironmentRisk::Production;
+                    profile.environment.label = "Production".into();
+                }
+                profile.source.revision = format!(
+                    "library-{}-metadata-{}",
+                    data.library.revision, data.metadata.revision
+                );
+                profile
+            };
+            return automexia_connectivity::connections::prepare_direct_openssh(&profile)
+                .map_err(|_| HubRuntimeErrorCode::UnsupportedConnectionRoute);
+        }
         let (record, metadata, generation, metadata_revision) = {
             let data = lock(&self.inner.data);
             let generation = match data.state {
@@ -742,6 +809,13 @@ impl ConnectionHubRuntime {
         let (public_connection_id, source_revision) = receipt
             .reconnect_identity()
             .ok_or(HubRuntimeErrorCode::UnsupportedConnectionRoute)?;
+        if public_connection_id.starts_with("saved-profile-") {
+            let preparation = self.prepare_direct_openssh(public_connection_id)?;
+            if preparation.profile().source.revision != source_revision {
+                return Err(HubRuntimeErrorCode::StaleReconnect);
+            }
+            return Ok(preparation);
+        }
         let (record, metadata, generation, metadata_revision) = {
             let data = lock(&self.inner.data);
             let generation = match data.state {
@@ -856,6 +930,7 @@ impl ConnectionHubRuntime {
             catalog: Arc::clone(&data.catalog),
             grant_review: data.grant_review.clone(),
             metadata_change: data.metadata_change.clone(),
+            library_change: data.library_change.clone(),
             metadata_revision: data.metadata.revision,
             store_state: data.store_state,
             receipt_store_state: data.receipt_store_state,
@@ -975,6 +1050,12 @@ fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>)
             && !is_receipt_flush
             && !is_current_request(&runtime, request)
         {
+            if matches!(&work, Work::ApplyLibrary { .. }) {
+                library_worker::publish_cancelled(&runtime, request);
+                if let Some(wake) = wake {
+                    wake.wake();
+                }
+            }
             let _ = flush_pending_receipts(&runtime, stores.as_ref());
             if lock(&runtime.data).shutdown {
                 return;
@@ -995,6 +1076,16 @@ fn worker_loop(inner: Weak<RuntimeInner>, receiver: mpsc::Receiver<WorkRequest>)
             Work::ApplyMetadata(review) => {
                 complete_metadata_change(&runtime, request, review, stores.as_ref())
             }
+            Work::ApplyLibrary {
+                expected_revision,
+                edit,
+            } => library_worker::complete_edit(
+                &runtime,
+                request,
+                expected_revision,
+                *edit,
+                stores.as_ref(),
+            ),
             Work::FlushReceipts => flush_pending_receipts(&runtime, stores.as_ref()),
             #[cfg(test)]
             Work::TestBarrier { started, release } => {
@@ -1038,6 +1129,14 @@ fn complete_initialization(
     stores: &mut Option<WorkerStores>,
 ) -> bool {
     let initialized = initialize_stores(startup);
+    let initial_catalog =
+        initialized
+            .as_ref()
+            .ok()
+            .map(|(_, metadata, library, _, _, _)| {
+                let records = Arc::clone(&lock(&inner.data).records);
+                compose_hub_catalog(&records, metadata, library, request.max(1))
+            });
     let mut data = lock(&inner.data);
     data.initialized = true;
     data.completed = data.completed.max(request);
@@ -1052,6 +1151,7 @@ fn complete_initialization(
         )) => {
             data.metadata = metadata;
             data.library = library;
+            let catalog = initial_catalog.unwrap_or(Err(()));
             data.store_state = if recovered {
                 HubStoreState::Recovered
             } else {
@@ -1060,7 +1160,22 @@ fn complete_initialization(
             data.receipt_records = Arc::new(receipt_document.records);
             data.receipt_store_state = receipt_store_state;
             if matches!(data.state, HubRuntimeState::Initializing) {
-                data.state = HubRuntimeState::InitialSetup;
+                match catalog {
+                    Ok(catalog) if !catalog.is_empty() => {
+                        data.catalog = Arc::new(catalog);
+                        data.successful_generation = request.max(1);
+                        data.state = HubRuntimeState::Ready {
+                            generation: request.max(1),
+                        };
+                    }
+                    Ok(_) => data.state = HubRuntimeState::InitialSetup,
+                    Err(()) => {
+                        data.state = HubRuntimeState::Error {
+                            diagnostic_code: CATALOG_DIAGNOSTIC,
+                            failed_request: request,
+                        }
+                    }
+                }
             }
             *stores = Some(worker_stores);
         }
@@ -1104,7 +1219,7 @@ fn initialize_stores(
             Ok((
                 WorkerStores {
                     metadata: metadata_store,
-                    _library: None,
+                    library: None,
                     receipts: None,
                 },
                 metadata.document,
@@ -1169,7 +1284,7 @@ fn initialize_stores(
             Ok((
                 WorkerStores {
                     metadata: metadata_store,
-                    _library: Some(library_store),
+                    library: Some(library_store),
                     receipts: receipt_store,
                 },
                 metadata.document,
@@ -1230,7 +1345,10 @@ fn complete_file_review(
     match review_files(paths, kind) {
         Ok((grants, files)) => {
             let mut data = lock(&inner.data);
-            if data.shutdown || request != data.requested {
+            if data.shutdown
+                || request != data.requested
+                || !matches!(data.grant_review, GrantReviewState::Reviewing { request: active } if active == request)
+            {
                 return false;
             }
             data.reviewed_grants = Some((request, grants));
@@ -1309,21 +1427,16 @@ fn unsafe_format_character(character: char) -> bool {
         || codepoint == 0xfeff
 }
 
-fn complete_review_error(
-    inner: &RuntimeInner,
-    request: u64,
-    diagnostic_code: &'static str,
-) -> bool {
-    complete_review_failure(inner, request, diagnostic_code)
-}
-
 fn complete_review_failure(
     inner: &RuntimeInner,
     request: u64,
     diagnostic_code: &'static str,
 ) -> bool {
     let mut data = lock(&inner.data);
-    if data.shutdown || request != data.requested {
+    if data.shutdown
+        || request != data.requested
+        || !matches!(data.grant_review, GrantReviewState::Reviewing { request: active } if active == request)
+    {
         return false;
     }
     data.reviewed_grants = None;
@@ -1356,8 +1469,13 @@ fn complete_scan(
         return complete_scan_failure(inner, request);
     };
     let records = outcome.snapshot.records;
-    let metadata = lock(&inner.data).metadata.clone();
-    let catalog = compose_catalog(&records, &metadata, request);
+    let (metadata, library) = {
+        let data = lock(&inner.data);
+        (data.metadata.clone(), data.library.clone())
+    };
+    let Ok(catalog) = compose_hub_catalog(&records, &metadata, &library, request) else {
+        return complete_scan_failure_with(inner, request, CATALOG_DIAGNOSTIC);
+    };
     let mut data = lock(&inner.data);
     if data.shutdown || request != data.requested {
         return false;
@@ -1432,6 +1550,19 @@ fn complete_metadata_change(
     if candidate.validate().is_err() {
         return complete_metadata_failure(inner, request, METADATA_DIAGNOSTIC);
     }
+    let (records, library, generation) = {
+        let data = lock(&inner.data);
+        (
+            Arc::clone(&data.records),
+            data.library.clone(),
+            data.successful_generation,
+        )
+    };
+    let catalog_valid =
+        compose_hub_catalog(&records, &candidate, &library, generation).is_ok();
+    if !catalog_valid {
+        return complete_metadata_failure(inner, request, CATALOG_DIAGNOSTIC);
+    }
     match stores
         .metadata
         .compare_and_swap(review.expected_revision, &candidate)
@@ -1453,15 +1584,23 @@ fn complete_metadata_success(
     request: u64,
     metadata: MetadataDocument,
 ) -> bool {
+    let (records, library, generation) = {
+        let data = lock(&inner.data);
+        (
+            Arc::clone(&data.records),
+            data.library.clone(),
+            data.successful_generation,
+        )
+    };
+    let Ok(catalog) = compose_hub_catalog(&records, &metadata, &library, generation)
+    else {
+        return complete_metadata_failure(inner, request, CATALOG_DIAGNOSTIC);
+    };
     let mut data = lock(&inner.data);
     if data.shutdown || request != data.requested {
         return false;
     }
-    data.catalog = Arc::new(compose_catalog(
-        &data.records,
-        &metadata,
-        data.successful_generation,
-    ));
+    data.catalog = Arc::new(catalog);
     let revision = metadata.revision;
     data.metadata = metadata;
     data.metadata_change = HubMetadataChangeState::Applied { request, revision };
@@ -1475,15 +1614,23 @@ fn complete_metadata_conflict(
     request: u64,
     metadata: MetadataDocument,
 ) -> bool {
+    let (records, library, generation) = {
+        let data = lock(&inner.data);
+        (
+            Arc::clone(&data.records),
+            data.library.clone(),
+            data.successful_generation,
+        )
+    };
+    let Ok(catalog) = compose_hub_catalog(&records, &metadata, &library, generation)
+    else {
+        return complete_metadata_failure(inner, request, CATALOG_DIAGNOSTIC);
+    };
     let mut data = lock(&inner.data);
     if data.shutdown || request != data.requested {
         return false;
     }
-    data.catalog = Arc::new(compose_catalog(
-        &data.records,
-        &metadata,
-        data.successful_generation,
-    ));
+    data.catalog = Arc::new(catalog);
     let current_revision = metadata.revision;
     data.metadata = metadata;
     data.metadata_change = HubMetadataChangeState::Conflict {
@@ -1493,14 +1640,6 @@ fn complete_metadata_conflict(
     data.completed = data.completed.max(request);
     inner.settled.notify_all();
     true
-}
-
-fn complete_metadata_error(
-    inner: &RuntimeInner,
-    request: u64,
-    diagnostic_code: &'static str,
-) -> bool {
-    complete_metadata_failure(inner, request, diagnostic_code)
 }
 
 fn complete_metadata_failure(
@@ -1548,6 +1687,101 @@ fn metadata_with_change(
     next.connections
         .sort_by(|left, right| left.connection_id.cmp(&right.connection_id));
     next
+}
+
+fn saved_profile_id(profile: &ConnectionProfileV1) -> String {
+    // Separate persisted profiles from inventory aliases, including equal names.
+    format!(
+        "saved-profile-{}",
+        blake3::hash(profile.id.as_bytes()).to_hex()
+    )
+}
+
+fn effective_metadata(data: &RuntimeData, connection_id: &str) -> HubMetadataValues {
+    if let Some(item) = data
+        .metadata
+        .connections
+        .iter()
+        .find(|item| item.connection_id == connection_id)
+    {
+        return HubMetadataValues {
+            favorite: item.favorite,
+            tags: item.tags.clone(),
+        };
+    }
+    let profile = data
+        .library
+        .document
+        .profiles
+        .profiles
+        .iter()
+        .find(|profile| saved_profile_id(profile) == connection_id);
+    HubMetadataValues {
+        favorite: profile.is_some_and(|profile| profile.favorite),
+        tags: profile.map_or_else(Vec::new, |profile| profile.tags.clone()),
+    }
+}
+
+fn compose_hub_catalog(
+    records: &[ConnectionRecord],
+    metadata: &MetadataDocument,
+    library: &HubLibrarySnapshot,
+    generation: u64,
+) -> Result<Vec<ConnectionCatalogEntry>, ()> {
+    let mut catalog = compose_catalog(records, metadata, generation);
+    let metadata_by_id = metadata
+        .connections
+        .iter()
+        .map(|item| (item.connection_id.as_str(), item))
+        .collect::<BTreeMap<_, _>>();
+    for profile in &library.document.profiles.profiles {
+        let id = saved_profile_id(profile);
+        let item = metadata_by_id.get(id.as_str()).copied();
+        let tags = item.map_or_else(|| profile.tags.clone(), |item| item.tags.clone());
+        let production = tags
+            .iter()
+            .any(|tag| tag.eq_ignore_ascii_case("production"));
+        catalog.push(ConnectionCatalogEntry {
+            summary: ConnectionSummary {
+                id,
+                display_name: item
+                    .and_then(|item| item.display_name.clone())
+                    .unwrap_or_else(|| profile.display_name.clone()),
+                provider: profile.provider,
+                target: profile.public_target.clone(),
+                identity: profile.identity.public_label.clone(),
+                environment: if production {
+                    "Production".into()
+                } else {
+                    profile.environment.label.clone()
+                },
+                risk: if production {
+                    EnvironmentRisk::Production
+                } else {
+                    profile.environment.risk
+                },
+                auth_state: AuthState::Unknown,
+                favorite: item.map_or(profile.favorite, |item| item.favorite),
+            },
+            tags,
+            source: if profile.source.kind
+                == automexia_connectivity::connections::SourceKind::Imported
+            {
+                HubCatalogSource::ImportedProfile
+            } else {
+                HubCatalogSource::SavedProfile
+            },
+            source_revision: library.revision.max(metadata.revision),
+            last_used_at_ms: item
+                .and_then(|item| item.last_used_at_ms)
+                .or(profile.last_used_at_ms),
+        });
+    }
+    // Apply the existing resident-byte, entry and hostile-text limits to the
+    // combined sources. A rejected refresh preserves the last-known-good list.
+    project_connection_catalog(&catalog, &ConnectionCatalogQuery::default())
+        .map_err(|_| ())?;
+    Ok(catalog)
 }
 
 fn compose_catalog(
@@ -1637,6 +1871,266 @@ mod tests {
         ConnectionReceipt, OpaqueReference, OperationResultState,
         CONNECTION_SCHEMA_VERSION,
     };
+
+    struct PausedWorker(Arc<(Mutex<bool>, Condvar)>);
+
+    impl Drop for PausedWorker {
+        fn drop(&mut self) {
+            let (released, ready) = &*self.0;
+            *lock(released) = true;
+            ready.notify_all();
+        }
+    }
+
+    fn pause_worker(runtime: &ConnectionHubRuntime) -> PausedWorker {
+        let (started, observed) = mpsc::channel();
+        let release = Arc::new((Mutex::new(false), Condvar::new()));
+        let paused = PausedWorker(Arc::clone(&release));
+        let deadline = Instant::now() + Duration::from_secs(5);
+        loop {
+            let result = runtime.enqueue(WorkRequest {
+                request: lock(&runtime.inner.data).requested,
+                work: Work::TestBarrier {
+                    started: started.clone(),
+                    release: Arc::clone(&release),
+                },
+                wake: None,
+            });
+            if result.is_ok() {
+                break;
+            }
+            assert_eq!(result, Err(HubRuntimeErrorCode::WorkerBusy));
+            assert!(
+                Instant::now() < deadline,
+                "worker must drain cancelled reads"
+            );
+            thread::yield_now();
+        }
+        observed.recv_timeout(Duration::from_secs(5)).unwrap();
+        paused
+    }
+
+    fn test_inventory(root: &Path) -> (PathBuf, InventoryGrant) {
+        let source = root.join("config");
+        std::fs::write(&source, "Host example\n HostName example.test\n").unwrap();
+        let grant =
+            InventoryGrant::new("test", root, [&source], GrantKind::User).unwrap();
+        (source, grant)
+    }
+
+    #[test]
+    fn library_save_reserves_its_generation_until_disk_and_catalog_publication() {
+        use crate::automexia::connections::LibraryEdit;
+        use automexia_connectivity::connections::{
+            CredentialProvider, CredentialSourceV1, SshAgentEndpoint,
+        };
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let (source, grant) = test_inventory(temporary.path());
+        let paused = pause_worker(&runtime);
+        let edit = || LibraryEdit::PutCredentialSource {
+            expected_entity_revision: None,
+            source: CredentialSourceV1 {
+                schema_version: 1,
+                id: "agent".into(),
+                revision: 1,
+                display_name: "Agent".into(),
+                provider: CredentialProvider::SystemSshAgent,
+                endpoint: SshAgentEndpoint::System,
+            },
+        };
+        let request = runtime
+            .apply_library_edit(0, edit(), Box::new(|| {}))
+            .unwrap();
+        assert_eq!(runtime.request_explicit_scan(vec![grant]), 0);
+        assert_eq!(
+            runtime.review_exact_files(vec![source], GrantKind::User, Box::new(|| {})),
+            Err(HubRuntimeErrorCode::WorkerBusy)
+        );
+        assert_eq!(
+            runtime.apply_library_edit(0, edit(), Box::new(|| {})),
+            Err(HubRuntimeErrorCode::WorkerBusy)
+        );
+        assert_eq!(
+            runtime.snapshot().library_change,
+            HubMetadataChangeState::Applying { request }
+        );
+        drop(paused);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        assert_eq!(
+            runtime
+                .snapshot()
+                .library
+                .document
+                .credential_sources
+                .sources
+                .len(),
+            1
+        );
+        assert!(
+            matches!(runtime.snapshot().library_change, HubMetadataChangeState::Applied { request: completed, .. } if completed == request)
+        );
+        let persisted =
+            ConnectionLibraryStore::open(temporary.path().join("connections"))
+                .unwrap()
+                .load()
+                .unwrap();
+        assert_eq!(persisted.document, *runtime.snapshot().library.document);
+    }
+
+    #[test]
+    fn rejected_library_input_never_publishes_a_phantom_pending_write() {
+        use crate::automexia::connections::LibraryEdit;
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let before = lock(&runtime.inner.data).requested;
+        assert_eq!(
+            runtime.apply_library_edit(
+                0,
+                LibraryEdit::RemoveProfile {
+                    expected_entity_revision: 1,
+                    profile_id: "x".repeat(129)
+                },
+                Box::new(|| {})
+            ),
+            Err(HubRuntimeErrorCode::InvalidSelection)
+        );
+        assert_eq!(
+            runtime.snapshot().library_change,
+            HubMetadataChangeState::Idle
+        );
+        assert_eq!(lock(&runtime.inner.data).requested, before);
+        let paused = pause_worker(&runtime);
+        for _ in 0..WORK_QUEUE_CAPACITY {
+            runtime
+                .enqueue(WorkRequest {
+                    request: before,
+                    work: Work::FlushReceipts,
+                    wake: None,
+                })
+                .unwrap();
+        }
+        assert_eq!(
+            runtime.apply_library_edit(
+                0,
+                LibraryEdit::RemoveProfile {
+                    expected_entity_revision: 1,
+                    profile_id: "absent".into()
+                },
+                Box::new(|| {})
+            ),
+            Err(HubRuntimeErrorCode::WorkerBusy)
+        );
+        assert_eq!(
+            runtime.snapshot().library_change,
+            HubMetadataChangeState::Idle
+        );
+        assert_eq!(lock(&runtime.inner.data).requested, before);
+        drop(paused);
+    }
+
+    #[test]
+    fn cancelled_review_cannot_leave_superseded_scan_loading() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let (source, grant) = test_inventory(temporary.path());
+        let paused = pause_worker(&runtime);
+        assert_ne!(runtime.request_explicit_scan(vec![grant.clone()]), 0);
+        let review = runtime
+            .review_exact_files(vec![source], GrantKind::User, Box::new(|| {}))
+            .unwrap();
+        assert!(runtime.discard_review(review));
+        drop(paused);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        assert_eq!(runtime.state(), HubRuntimeState::InitialSetup);
+        assert_eq!(runtime.snapshot().grant_review, GrantReviewState::None);
+        // Cancellation is immediately visible; the bounded queue drains on
+        // the worker. Observe that drain before asserting a subsequent submit.
+        drop(pause_worker(&runtime));
+        assert_ne!(runtime.request_explicit_scan(vec![grant]), 0);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        assert_eq!(runtime.catalog().len(), 1);
+    }
+
+    #[test]
+    fn accepted_metadata_write_cannot_be_superseded_by_inventory_work() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let (source, grant) = test_inventory(temporary.path());
+        runtime.request_explicit_scan(vec![grant.clone()]);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let review = runtime
+            .review_metadata_change("openssh:example", Some(true), None)
+            .unwrap();
+        let paused = pause_worker(&runtime);
+        runtime
+            .apply_metadata_change(review, Box::new(|| {}))
+            .unwrap();
+        assert_eq!(
+            runtime.review_exact_files(vec![source], GrantKind::User, Box::new(|| {})),
+            Err(HubRuntimeErrorCode::WorkerBusy)
+        );
+        assert_eq!(runtime.request_explicit_scan(vec![grant]), 0);
+        drop(paused);
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        assert!(runtime.catalog()[0].summary.favorite);
+        let saved =
+            MetadataStore::new(temporary.path().join("extensions").join("devops-ssh"))
+                .unwrap()
+                .load_with_recovery()
+                .unwrap();
+        assert!(saved.document.connections[0].favorite);
+        assert_eq!(
+            runtime.snapshot().metadata_revision,
+            saved.document.revision
+        );
+    }
+
+    #[test]
+    fn full_queue_preserves_review_for_retry_and_never_reuses_generation() {
+        let temporary = tempfile::tempdir().unwrap();
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let (source, _) = test_inventory(temporary.path());
+        let reviewed = runtime
+            .review_exact_files(vec![source.clone()], GrantKind::User, Box::new(|| {}))
+            .unwrap();
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        let paused = pause_worker(&runtime);
+        for _ in 0..WORK_QUEUE_CAPACITY {
+            runtime
+                .enqueue(WorkRequest {
+                    request: reviewed,
+                    work: Work::FlushReceipts,
+                    wake: None,
+                })
+                .unwrap();
+        }
+        assert_eq!(
+            runtime.confirm_reviewed_scan(reviewed, Box::new(|| {})),
+            Err(HubRuntimeErrorCode::WorkerBusy)
+        );
+        assert!(
+            matches!(runtime.snapshot().grant_review, GrantReviewState::Ready { request, .. } if request == reviewed)
+        );
+        assert_eq!(lock(&runtime.inner.data).requested, reviewed);
+        assert!(runtime.discard_review(reviewed));
+        drop(paused);
+        runtime.shutdown();
+
+        let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+        assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+        lock(&runtime.inner.data).requested = u64::MAX;
+        assert_eq!(
+            runtime.review_exact_files(vec![source], GrantKind::User, Box::new(|| {})),
+            Err(HubRuntimeErrorCode::RequestIdExhausted)
+        );
+        assert_eq!(runtime.snapshot().grant_review, GrantReviewState::None);
+    }
 
     fn managed_receipt(index: usize) -> ManagedReceiptRecord {
         ManagedReceiptRecord::new(

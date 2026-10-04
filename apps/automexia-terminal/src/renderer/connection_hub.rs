@@ -15,6 +15,8 @@ use crate::renderer::responsive::Viewport;
 use crate::renderer::ui_theme::{color_u8, UiTheme, CARD_RADIUS, MODAL_SCRIM as SCRIM};
 
 const ORDER: u8 = 20;
+mod credentials;
+mod profiles;
 const SETUP_CARD_MAX_WIDTH: f32 = 840.0;
 const SETUP_CARD_MAX_HEIGHT: f32 = 500.0;
 const LITERAL_CARD_MAX_WIDTH: f32 = 840.0;
@@ -53,6 +55,10 @@ impl Rect {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ConnectionHubHit {
+    OpenCredentials,
+    OpenProfiles,
+    Profile(crate::automexia::connections::ProfileAction),
+    Credential(crate::automexia::connections::CredentialAction),
     Search,
     OpenConnections,
     OpenWorkspaces,
@@ -149,6 +155,20 @@ impl ConnectionHub {
         mouse_y: f32,
         dimensions: (f32, f32, f32),
     ) -> Option<ConnectionHubHit> {
+        if let Some(editor) = self
+            .presentation
+            .as_ref()
+            .and_then(|p| p.profile_editor.as_ref())
+        {
+            return Some(profiles::hit_test(editor, mouse_x, mouse_y, dimensions));
+        }
+        if let Some(editor) = self
+            .presentation
+            .as_ref()
+            .and_then(|p| p.credential_editor.as_ref())
+        {
+            return Some(credentials::hit_test(editor, mouse_x, mouse_y, dimensions));
+        }
         let presentation = self.presentation.as_ref()?;
         let layout = Self::layout(presentation, dimensions);
         if presentation.literal_destination.is_some() {
@@ -156,7 +176,13 @@ impl ConnectionHub {
                 return Some(ConnectionHubHit::CancelLiteralDestination);
             }
         } else {
-            let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
+            let (
+                connections_tab,
+                workspaces_tab,
+                providers_tab,
+                credentials_tab,
+                profiles_tab,
+            ) = hub_tabs(&layout);
             if connections_tab.contains(mouse_x, mouse_y) {
                 return Some(ConnectionHubHit::OpenConnections);
             }
@@ -165,6 +191,12 @@ impl ConnectionHub {
             }
             if providers_tab.contains(mouse_x, mouse_y) {
                 return Some(ConnectionHubHit::OpenProviders);
+            }
+            if profiles_tab.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::OpenProfiles);
+            }
+            if credentials_tab.contains(mouse_x, mouse_y) {
+                return Some(ConnectionHubHit::OpenCredentials);
             }
             if layout.close.contains(mouse_x, mouse_y) {
                 return Some(ConnectionHubHit::Close);
@@ -313,10 +345,9 @@ impl ConnectionHub {
         {
             return Some(ConnectionHubHit::ApproveSession);
         }
-        if approval_enabled
-            && layout
-                .connection_review_deny
-                .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
+        if layout
+            .connection_review_deny
+            .is_some_and(|rect| rect.contains(mouse_x, mouse_y))
         {
             return Some(ConnectionHubHit::DenyManagedLaunch);
         }
@@ -395,6 +426,26 @@ impl ConnectionHub {
         let Some(presentation) = self.presentation.as_ref() else {
             return;
         };
+        if let Some(editor) = &presentation.profile_editor {
+            profiles::render(
+                editor,
+                presentation.ime_preedit.as_deref(),
+                sugarloaf,
+                dimensions,
+                theme,
+            );
+            return;
+        }
+        if let Some(editor) = &presentation.credential_editor {
+            credentials::render(
+                editor,
+                presentation.ime_preedit.as_deref(),
+                sugarloaf,
+                dimensions,
+                theme,
+            );
+            return;
+        }
         let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = Self::layout(presentation, dimensions);
         sugarloaf.begin_modal_layer();
@@ -438,24 +489,39 @@ impl ConnectionHub {
             width: 32.0,
             height: 32.0,
         };
-        rounded(sugarloaf, brand, theme.raised, 9.0);
-        draw_hub_icon(
-            sugarloaf,
-            HubIcon::Connections,
-            brand.x + 5.0,
-            brand.y + 5.0,
-            theme.accent,
-            theme.raised,
-        );
-        let hub_title = if layout.compact && layout.card.width < 430.0 {
+        let header_end = if presentation.literal_destination.is_some() {
+            layout.close.x
+        } else {
+            hub_tabs(&layout).4.x
+        };
+        if header_end - left >= 36.0 {
+            rounded(sugarloaf, brand, theme.raised, 9.0);
+            draw_hub_icon(
+                sugarloaf,
+                HubIcon::Connections,
+                brand.x + 5.0,
+                brand.y + 5.0,
+                theme.accent,
+                theme.raised,
+            );
+        }
+        let hub_title = if header_end - left < 200.0 {
             "Hub"
         } else {
             "Connection Hub"
         };
-        sugarloaf
-            .text_mut()
-            .draw(left + 42.0, layout.card.y + 17.0, hub_title, &title);
-        if layout.card.width >= 650.0 && layout.setup_panel.is_none() {
+        if header_end - left >= 86.0 {
+            sugarloaf.text_mut().draw(
+                left + 42.0,
+                layout.card.y + 17.0,
+                hub_title,
+                &title,
+            );
+        }
+        if layout.card.width >= 650.0
+            && layout.setup_panel.is_none()
+            && header_end - left >= 220.0
+        {
             let subtitle = if presentation.view.route == HubRoute::Review {
                 "Connection review"
             } else if presentation.view.route == HubRoute::Workspaces {
@@ -480,7 +546,13 @@ impl ConnectionHub {
         }
 
         if presentation.literal_destination.is_none() {
-            let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
+            let (
+                connections_tab,
+                workspaces_tab,
+                providers_tab,
+                credentials_tab,
+                profiles_tab,
+            ) = hub_tabs(&layout);
             let connections_active = matches!(
                 presentation.view.route,
                 HubRoute::Results | HubRoute::Review | HubRoute::RecipePlanner
@@ -519,6 +591,24 @@ impl ConnectionHub {
                 theme,
             );
             close_button(sugarloaf, layout.close, &label, theme);
+            section_tab(
+                sugarloaf,
+                credentials_tab,
+                if layout.compact { "" } else { "Vaults" },
+                "K",
+                false,
+                &label,
+                theme,
+            );
+            section_tab(
+                sugarloaf,
+                profiles_tab,
+                if layout.compact { "" } else { "Saved" },
+                "N",
+                false,
+                &label,
+                theme,
+            );
         } else {
             close_button(sugarloaf, layout.close, &label, theme);
         }
@@ -943,6 +1033,7 @@ impl ConnectionHub {
                     panel,
                     value,
                     presentation.ime_preedit.as_deref(),
+                    presentation.view.live_announcement.as_deref(),
                     theme,
                 );
             } else if let Some(review) = presentation.metadata_review.as_ref() {
@@ -1371,8 +1462,15 @@ impl ConnectionHub {
                     panel,
                 )
             });
-        let mut rows = Vec::with_capacity(presentation.view.rows.len());
-        for index in 0..presentation.view.rows.len() {
+        // Text batches outlive background quads in the renderer. Omit covered
+        // catalog rows entirely so their glyphs cannot paint over an editor.
+        let visible_rows = if overlay_active {
+            0
+        } else {
+            presentation.view.rows.len()
+        };
+        let mut rows = Vec::with_capacity(visible_rows);
+        for index in 0..visible_rows {
             let y = rows_top + index as f32 * (row_height + 5.0);
             if y + row_height > rows_bottom {
                 break;
@@ -1542,15 +1640,22 @@ impl ConnectionHub {
     }
 }
 
-fn hub_tabs(layout: &Layout) -> (Rect, Rect, Rect) {
+fn hub_tabs(layout: &Layout) -> (Rect, Rect, Rect, Rect, Rect) {
     let gap = 6.0;
-    let width = if layout.compact { 40.0 } else { 108.0 };
-    let providers = bounded_to(
+    let width = if layout.compact { 34.0 } else { 92.0 };
+    let credentials = bounded_to(
         Rect {
             x: layout.close.x - gap - width,
             y: layout.close.y,
             width,
             height: layout.close.height,
+        },
+        layout.card,
+    );
+    let providers = bounded_to(
+        Rect {
+            x: credentials.x - gap - width,
+            ..credentials
         },
         layout.card,
     );
@@ -1572,7 +1677,14 @@ fn hub_tabs(layout: &Layout) -> (Rect, Rect, Rect) {
         },
         layout.card,
     );
-    (connections, workspaces, providers)
+    let profiles = bounded_to(
+        Rect {
+            x: connections.x - gap - width,
+            ..connections
+        },
+        layout.card,
+    );
+    (connections, workspaces, providers, credentials, profiles)
 }
 
 fn workspace_layout(
@@ -2292,7 +2404,9 @@ fn render_connection_review(
         }
     }
     if let Some(primary) = layout.connection_review_primary {
-        let caption = if primary.width < 220.0 {
+        let caption = if !approval_enabled {
+            "Unavailable"
+        } else if primary.width < 220.0 {
             "Allow once  A"
         } else {
             presentation
@@ -2313,7 +2427,9 @@ fn render_connection_review(
         button(
             sugarloaf,
             session,
-            if !allow_session_enabled {
+            if !approval_enabled {
+                "Session unavailable"
+            } else if !allow_session_enabled {
                 "Allow once required"
             } else if session.width < 130.0 {
                 "Session  S"
@@ -2326,12 +2442,28 @@ fn render_connection_review(
         );
     }
     if let Some(deny) = layout.connection_review_deny {
-        button(sugarloaf, deny, "Deny  D", !approval_enabled, &label, theme);
+        button(sugarloaf, deny, "Cancel  D", false, &label, theme);
     }
 }
 
 fn managed_launch_recovery(diagnostic: &str) -> &'static str {
     match diagnostic {
+        "connection-trust-command-copied" => {
+            "Command copied; paste and review it in your terminal"
+        }
+        "connection-trust-copy-failed" => "Clipboard unavailable; nothing was copied",
+        "connection-launch-review-checking" => {
+            "Checking the current connection; no connection has started"
+        }
+        "connection-launch-review-busy" => {
+            "A connection check is already running; try again when it finishes"
+        }
+        "connection-launch-review-unavailable" => {
+            "Connection checks are unavailable; reopen the review"
+        }
+        "connection-launch-pty-unavailable" => {
+            "The terminal session could not be created; try again"
+        }
         "connection-launch-protected-review-pending" => {
             "Protected security review is still pending"
         }
@@ -2994,6 +3126,7 @@ fn render_tag_editor(
     panel: Rect,
     value: &str,
     ime_preedit: Option<&str>,
+    diagnostic: Option<&str>,
     theme: &UiTheme,
 ) {
     rounded(sugarloaf, panel, theme.surface, 8.0);
@@ -3031,7 +3164,9 @@ fn render_tag_editor(
     sugarloaf.text_mut().draw(
         panel.x + 14.0,
         panel.y + 132.0,
-        "Enter reviews the diff; Escape cancels. No secret, recent, auth, or host data changes.",
+        diagnostic.unwrap_or(
+            "Enter reviews changes; Escape cancels. Keep credentials in your vault.",
+        ),
         &small,
     );
 }
@@ -3464,7 +3599,7 @@ mod tests {
         HubRoute, HubVisualPreferences, Viewport as ModelViewport,
     };
 
-    fn presentation() -> HubControllerPresentation {
+    pub(super) fn presentation() -> HubControllerPresentation {
         let view = project_connection_hub(HubProjectionRequest {
             viewport: ModelViewport::new(1280.0, 720.0, 1.0),
             preferences: HubVisualPreferences::default(),
@@ -3479,6 +3614,8 @@ mod tests {
             literal_destination_valid: false,
         });
         HubControllerPresentation {
+            profile_editor: None,
+            credential_editor: None,
             view,
             query: String::new(),
             catalog_query: Default::default(),
@@ -3552,6 +3689,49 @@ mod tests {
                 accessibility_tree: Vec::new(),
             });
         presentation
+    }
+
+    #[test]
+    fn populated_catalog_is_hidden_behind_editors_and_restored_after_cancel() {
+        let mut original = presentation();
+        original.view.content_state = HubContentState::Ready;
+        original
+            .view
+            .rows
+            .push(automexia_ui_model::connection_hub::ConnectionRowView {
+                id: "saved-shell".into(),
+                display_name: "Team shell".into(),
+                provider_label: "SSH",
+                target: "shell.example.test".into(),
+                identity: "System agent".into(),
+                environment: "Development".into(),
+                risk_label: "Low",
+                state_label: "Saved",
+                primary_action_label: "Review",
+                favorite: false,
+                selected: true,
+                accessibility_label: "Team shell".into(),
+            });
+        let dimensions = (1280.0, 720.0, 1.0);
+        assert_eq!(ConnectionHub::layout(&original, dimensions).rows.len(), 1);
+        for literal in [true, false] {
+            let mut covered = original.clone();
+            if literal {
+                covered.literal_destination = Some(String::new());
+            } else {
+                covered.tag_editor = Some("development".into());
+            }
+            let layout = ConnectionHub::layout(&covered, dimensions);
+            assert!(layout.overlay_panel.is_some());
+            assert!(
+                layout.rows.is_empty(),
+                "catalog glyphs must not bleed through an editor"
+            );
+            assert!(layout.inspector.is_none());
+            covered.literal_destination = None;
+            covered.tag_editor = None;
+            assert_eq!(ConnectionHub::layout(&covered, dimensions).rows.len(), 1);
+        }
     }
 
     #[test]
@@ -3764,6 +3944,36 @@ mod tests {
     }
 
     #[test]
+    fn unavailable_connection_still_allows_cancel_and_reports_copy_truthfully() {
+        let mut presentation = review_presentation();
+        let review = presentation.direct_openssh_review.as_mut().unwrap();
+        review.approval_action_enabled = false;
+        review.allow_session_enabled = false;
+        let dimensions = (1280.0, 720.0, 1.0);
+        let layout = ConnectionHub::layout(&presentation, dimensions);
+        let primary = layout.connection_review_primary.unwrap();
+        let deny = layout.connection_review_deny.unwrap();
+        let mut hub = ConnectionHub::default();
+        hub.set_presentation(Some(presentation));
+        assert_eq!(
+            hub.hit_test(primary.x + 1.0, primary.y + 1.0, dimensions),
+            Some(ConnectionHubHit::Inert)
+        );
+        assert_eq!(
+            hub.hit_test(deny.x + 1.0, deny.y + 1.0, dimensions),
+            Some(ConnectionHubHit::DenyManagedLaunch)
+        );
+        assert_eq!(
+            managed_launch_recovery("connection-trust-command-copied"),
+            "Command copied; paste and review it in your terminal"
+        );
+        assert_eq!(
+            managed_launch_recovery("connection-trust-copy-failed"),
+            "Clipboard unavailable; nothing was copied"
+        );
+    }
+
+    #[test]
     fn strong_tunnel_is_colored_and_session_approval_is_inert() {
         let mut presentation = review_presentation();
         {
@@ -3952,13 +4162,15 @@ mod tests {
         assert!(layout.review_host.height >= 44.0);
         assert_eq!(layout.review_host.width, layout.review_files.width);
         let tabs = hub_tabs(&layout);
-        for tab in [tabs.0, tabs.1, tabs.2] {
+        for tab in [tabs.0, tabs.1, tabs.2, tabs.3, tabs.4] {
             assert!(tab.width >= 40.0);
             assert!(tab.height >= 40.0);
         }
         assert!(tabs.0.x + tabs.0.width < tabs.1.x);
+        assert!(tabs.4.x + tabs.4.width < tabs.0.x);
         assert!(tabs.1.x + tabs.1.width < tabs.2.x);
-        assert!(tabs.2.x + tabs.2.width < layout.close.x);
+        assert!(tabs.2.x + tabs.2.width < tabs.3.x);
+        assert!(tabs.3.x + tabs.3.width < layout.close.x);
         let actions_center =
             (layout.review_host.x + layout.review_files.x + layout.review_files.width)
                 * 0.5;
@@ -4114,7 +4326,7 @@ mod tests {
         let presentation = workspace_presentation();
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
-        let (connections_tab, workspaces_tab, providers_tab) = hub_tabs(&layout);
+        let (connections_tab, workspaces_tab, providers_tab, _, _) = hub_tabs(&layout);
         let workspace = workspace_layout(&presentation, &layout);
         let mut hub = ConnectionHub::default();
         hub.set_presentation(Some(presentation));
@@ -4188,7 +4400,7 @@ mod tests {
             });
         let dimensions = (1280.0, 720.0, 1.0);
         let layout = ConnectionHub::layout(&presentation, dimensions);
-        let (_, _, providers_tab) = hub_tabs(&layout);
+        let (_, _, providers_tab, _, _) = hub_tabs(&layout);
         let provider = provider_layout(&presentation, &layout);
         let row = provider.rows[0];
         let primary = provider.primary.unwrap();

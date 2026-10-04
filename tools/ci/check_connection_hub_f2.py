@@ -81,6 +81,12 @@ FORBIDDEN_VALIDATION_BYPASSES = {
 }
 FORBIDDEN_PANIC_PRIMITIVES = {".expect(", ".unwrap("}
 REQUIRED_SOURCE_TOKENS = {
+    "automexia-connectivity/src/connections/credential_sources.rs": {
+        "CredentialSourceV1", "SshAgentEndpoint", "deny_unknown_fields",
+        "MAX_CREDENTIAL_SOURCES: usize = 64", "MAX_CREDENTIAL_SOURCES_BYTES: usize = 128 * 1024",
+        "validate_credential_sources", "validate_current", "plan_ssh_credentials",
+        "from_json_slice_without_duplicate_keys", "serde_json::to_vec(document)",
+    },
     "automexia-connectivity/src/connections/model.rs": {
         "ConnectionDefinition", "ConnectionObservation", "ConnectionIntent",
         "ConnectionReview", "ConnectionReceipt", "ConnectionProfileV1",
@@ -133,7 +139,10 @@ REQUIRED_SOURCE_TOKENS = {
 }
 REQUIRED_APPLICATION_TOKENS = {
     "apps/automexia-terminal/src/automexia/connections/library.rs": {
-        "CONNECTION_LIBRARY_SCHEMA: u16 = 2", "PrimaryMigrationPreview",
+        "CONNECTION_LIBRARY_SCHEMA: u16 = 3", "PrimaryMigrationPreview",
+        "CONNECTION_LIBRARY_TRANSFER_SCHEMA: u16 = 2",
+        "validate_credential_sources(&document.credential_sources)",
+        "invalidate_credential_bindings(&mut document, &source_id)?",
         "LibraryEditPreview", "preview_library_edit", "commit_edit",
         "preview_export_redacted", "preview_import_redacted", "commit_import",
         "PreviewMismatch", "validate_workspace_document",
@@ -141,6 +150,15 @@ REQUIRED_APPLICATION_TOKENS = {
     },
 }
 REQUIRED_TESTS = {
+    "automexia-connectivity/tests/credential_sources.rs": {
+        "supported_vaults_keep_private_keys_with_an_external_agent",
+        "unix_socket_is_a_single_environment_value_not_command_text",
+        "vault_records_reject_secrets_unknown_fields_duplicate_keys_and_wrong_versions",
+        "source_validation_rejects_ambiguous_or_hostile_agent_paths",
+        "source_document_bounds_and_ids_are_checked_before_planning",
+        "a_changed_source_invalidates_the_connection_binding",
+        "validated_documents_always_fit_the_serialized_read_budget",
+    },
     "automexia-connectivity/tests/connection_automation_m6.rs": {
         "reviewed_runs_preserve_exact_stage_order_and_no_hooks_keeps_only_planner_steps",
         "remote_initialization_is_typed_reviewed_and_never_contains_a_command_string",
@@ -162,6 +180,9 @@ REQUIRED_TESTS = {
         "broadcast_rejects_cross_review_substitution_and_unsafe_diagnostics",
     },
     "apps/automexia-terminal/tests/connection_library.rs": {
+        "external_credential_sources_round_trip_and_never_enter_exports",
+        "schema_two_library_migration_is_preview_only_and_adds_no_credentials",
+        "changing_an_agent_source_invalidates_bound_profile_approval_and_prevents_dangling_removal",
         "redacted_workspace_export_scopes_reused_pane_ids_per_window",
         "schema_one_library_loads_as_an_explicit_migration_preview_before_cas",
         "editor_preview_invalidates_recipe_profile_and_workspace_approvals_and_cas_conflicts",

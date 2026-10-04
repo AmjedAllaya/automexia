@@ -83,6 +83,8 @@ pub enum HubControllerEffect {
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct HubControllerPresentation {
+    pub profile_editor: Option<super::ProfileEditor>,
+    pub credential_editor: Option<super::CredentialEditor>,
     pub view: ConnectionHubView,
     pub query: String,
     pub catalog_query: ConnectionCatalogQuery,
@@ -112,6 +114,8 @@ pub struct HubControllerPresentation {
 }
 
 pub struct ConnectionHubController {
+    profile_editor: Option<super::ProfileEditor>,
+    credential_editor: Option<super::CredentialEditor>,
     runtime: ConnectionHubRuntime,
     runtime_snapshot: HubRuntimeSnapshot,
     query: ConnectionCatalogQuery,
@@ -124,6 +128,7 @@ pub struct ConnectionHubController {
     grant_review_request: Option<u64>,
     metadata_review: Option<MetadataChangeReview>,
     tag_editor: Option<String>,
+    tag_editor_connection: Option<(String, u64)>,
     projection: ConnectionCatalogProjection,
     projected_summaries: Vec<ConnectionSummary>,
     interaction: InteractionState,
@@ -159,6 +164,8 @@ impl ConnectionHubController {
             projected_summaries(&runtime_snapshot.catalog, &projection);
         let result_count = projection.indices.len();
         Self {
+            profile_editor: None,
+            credential_editor: None,
             runtime,
             runtime_snapshot,
             query,
@@ -171,6 +178,7 @@ impl ConnectionHubController {
             grant_review_request: None,
             metadata_review: None,
             tag_editor: None,
+            tag_editor_connection: None,
             projection,
             projected_summaries,
             interaction: InteractionState::new(
@@ -198,6 +206,7 @@ impl ConnectionHubController {
 
     pub fn open(&mut self, opener_id: impl Into<String>) {
         let opener_id = opener_id.into();
+        self.close();
         self.cancel_literal_destination_entry();
         self.clear_direct_openssh_preparation();
         self.workspace_restore = None;
@@ -217,6 +226,8 @@ impl ConnectionHubController {
 
     pub fn catalog_controls_visible(&self) -> bool {
         self.interaction.route == HubRoute::Results
+            && self.credential_editor.is_none()
+            && self.profile_editor.is_none()
             && hub_catalog_controls_visible(self.content_state())
             && self.owned_grant_review().is_none()
             && self.metadata_review.is_none()
@@ -225,12 +236,16 @@ impl ConnectionHubController {
     }
 
     pub fn close(&mut self) -> String {
+        self.profile_editor = None;
+        self.credential_editor = None;
         self.clear_direct_openssh_preparation();
         self.cancel_literal_destination_entry();
         self.discard_owned_review();
         self.metadata_review = None;
-        self.tag_editor = None;
+        self.cancel_tag_editor();
         self.workspace_restore = None;
+        self.provider_review = None;
+        self.ime_preedit = None;
         self.active = false;
         self.interaction.opener_id.clone()
     }
@@ -309,9 +324,10 @@ impl ConnectionHubController {
     }
 
     pub fn open_connections(&mut self) -> bool {
-        if !self.active {
+        if !self.can_change_section() {
             return false;
         }
+        self.clear_direct_openssh_preparation();
         self.workspace_restore = None;
         self.provider_review = None;
         self.interaction.route = HubRoute::Results;
@@ -320,11 +336,7 @@ impl ConnectionHubController {
     }
 
     pub fn open_workspaces(&mut self) -> bool {
-        if !self.active
-            || self.literal_destination.is_some()
-            || self.metadata_review.is_some()
-            || self.owned_grant_review().is_some()
-        {
+        if !self.can_change_section() {
             return false;
         }
         self.clear_direct_openssh_preparation();
@@ -399,11 +411,7 @@ impl ConnectionHubController {
             .len()
     }
     pub fn open_providers(&mut self) -> bool {
-        if !self.active
-            || self.literal_destination.is_some()
-            || self.metadata_review.is_some()
-            || self.owned_grant_review().is_some()
-        {
+        if !self.can_change_section() {
             return false;
         }
         self.clear_direct_openssh_preparation();
@@ -415,6 +423,85 @@ impl ConnectionHubController {
         self.interaction.route = HubRoute::Providers;
         self.interaction.focus = HubFocus::ProviderList;
         true
+    }
+
+    pub fn open_credentials(&mut self) -> bool {
+        if !self.can_change_section() {
+            return false;
+        }
+        self.ime_preedit = None;
+        self.credential_editor =
+            Some(super::CredentialEditor::new(&self.runtime_snapshot.library));
+        true
+    }
+
+    pub fn open_profiles(&mut self) -> bool {
+        if !self.can_change_section() {
+            return false;
+        }
+        self.ime_preedit = None;
+        self.profile_editor =
+            Some(super::ProfileEditor::new(&self.runtime_snapshot.library));
+        true
+    }
+
+    pub fn profile_editor(&self) -> Option<&super::ProfileEditor> {
+        self.profile_editor.as_ref()
+    }
+
+    pub fn profile_action(&mut self, action: super::ProfileAction, wake: CompletionWake) {
+        self.ime_preedit = None;
+        let Some(mut editor) = self.profile_editor.take() else {
+            return;
+        };
+        match editor.apply(action) {
+            super::ProfileEffect::Close => return,
+            super::ProfileEffect::None => {}
+            super::ProfileEffect::Save { revision, edit } => {
+                match self.runtime.apply_library_edit(revision, edit, wake) {
+                    Ok(request) => {
+                        editor.pending = Some(request);
+                        editor.notice = Some("Saving connection...");
+                    }
+                    Err(_) => {
+                        editor.notice = Some("Could not save. Cancel and reopen this edit to use the latest settings.");
+                    }
+                }
+            }
+        }
+        self.profile_editor = Some(editor);
+    }
+
+    pub fn credential_editor(&self) -> Option<&super::CredentialEditor> {
+        self.credential_editor.as_ref()
+    }
+
+    pub fn credential_action(
+        &mut self,
+        action: super::CredentialAction,
+        wake: CompletionWake,
+    ) {
+        self.ime_preedit = None;
+        let Some(mut editor) = self.credential_editor.take() else {
+            return;
+        };
+        match editor.apply(action) {
+            super::CredentialEffect::Close => return,
+            super::CredentialEffect::None => {}
+            super::CredentialEffect::Save { revision, edit } => {
+                match self.runtime.apply_library_edit(revision, edit, wake) {
+                    Ok(request) => {
+                        editor.pending = Some(request);
+                        editor.notice = Some("Saving credential source...");
+                    }
+                    Err(_) => {
+                        editor.notice =
+                            Some("Could not save. Refresh the source list and try again.")
+                    }
+                }
+            }
+        }
+        self.credential_editor = Some(editor);
     }
 
     pub fn provider_action_publication(&self) -> Option<ProviderProductPublication> {
@@ -467,11 +554,23 @@ impl ConnectionHubController {
 
     pub fn can_begin_literal_destination_entry(&self) -> bool {
         self.active
+            && self.profile_editor.is_none()
+            && self.credential_editor.is_none()
             && self.interaction.route == HubRoute::Results
             && self.literal_destination.is_none()
             && self.owned_grant_review().is_none()
             && self.metadata_review.is_none()
             && self.tag_editor.is_none()
+    }
+
+    fn can_change_section(&self) -> bool {
+        self.active
+            && self.profile_editor.is_none()
+            && self.credential_editor.is_none()
+            && self.literal_destination.is_none()
+            && self.metadata_review.is_none()
+            && self.tag_editor.is_none()
+            && self.owned_grant_review().is_none()
     }
 
     pub fn begin_literal_destination_entry(&mut self) -> bool {
@@ -690,7 +789,7 @@ impl ConnectionHubController {
     }
 
     pub fn select_projected_index(&mut self, index: usize) {
-        if index < self.projection.indices.len() {
+        if self.catalog_controls_visible() && index < self.projection.indices.len() {
             self.clear_direct_openssh_preparation();
             self.interaction.selected_index = index;
             self.interaction.focus = HubFocus::Results;
@@ -717,6 +816,27 @@ impl ConnectionHubController {
             self.ime_preedit = None;
             return true;
         };
+        if let Some(editor) = &self.profile_editor {
+            if !editor.text_focused()
+                || value.len() > 1024
+                || value.chars().any(unsafe_metadata_character)
+            {
+                return false;
+            }
+            self.ime_preedit = Some(value.to_owned());
+            return true;
+        }
+        if let Some(editor) = &self.credential_editor {
+            if editor.pending.is_some()
+                || !editor.text_focused()
+                || value.len() > 1024
+                || value.chars().any(unsafe_metadata_character)
+            {
+                return false;
+            }
+            self.ime_preedit = Some(value.to_owned());
+            return true;
+        }
         if let Some(destination) = self.literal_destination.as_ref() {
             let result = match self.interaction.focus {
                 HubFocus::LiteralDestination => {
@@ -776,6 +896,35 @@ impl ConnectionHubController {
     }
 
     pub fn commit_ime(&mut self, value: &str) -> bool {
+        if !self.active
+            || self.metadata_review.is_some()
+            || self.owned_grant_review().is_some()
+        {
+            return false;
+        }
+        if let Some(editor) = &mut self.profile_editor {
+            if !editor.text_focused()
+                || value.len() > 1024
+                || value.chars().any(unsafe_metadata_character)
+            {
+                return false;
+            }
+            editor.apply(super::ProfileAction::Append(value.to_owned()));
+            self.ime_preedit = None;
+            return true;
+        }
+        if let Some(editor) = &mut self.credential_editor {
+            if editor.pending.is_some()
+                || !editor.text_focused()
+                || value.len() > 1024
+                || value.chars().any(unsafe_metadata_character)
+            {
+                return false;
+            }
+            editor.apply(super::CredentialAction::Append(value.to_owned()));
+            self.ime_preedit = None;
+            return true;
+        }
         let accepted = if self.literal_destination.is_some() {
             self.append_literal_field(value)
         } else if self.tag_editor.is_some() {
@@ -791,6 +940,29 @@ impl ConnectionHubController {
             self.ime_preedit = None;
         }
         accepted
+    }
+
+    pub fn text_input_active(&self) -> bool {
+        self.active
+            && self.metadata_review.is_none()
+            && self.owned_grant_review().is_none()
+            && (self
+                .profile_editor
+                .as_ref()
+                .is_some_and(super::ProfileEditor::text_focused)
+                || self.credential_editor.as_ref().is_some_and(|editor| {
+                    editor.pending.is_none() && editor.text_focused()
+                })
+                || self.tag_editor.is_some()
+                || (self.literal_destination.is_some()
+                    && matches!(
+                        self.interaction.focus,
+                        HubFocus::LiteralDestination
+                            | HubFocus::LiteralUser
+                            | HubFocus::LiteralPort
+                    ))
+                || (self.catalog_controls_visible()
+                    && self.interaction.focus == HubFocus::Search))
     }
 
     pub fn append_search_text(&mut self, value: &str) -> bool {
@@ -889,6 +1061,12 @@ impl ConnectionHubController {
 
     pub fn sync(&mut self) {
         let next_snapshot = self.runtime.snapshot();
+        if let Some(editor) = &mut self.profile_editor {
+            editor.sync(&next_snapshot.library, &next_snapshot.library_change);
+        }
+        if let Some(editor) = &mut self.credential_editor {
+            editor.sync(&next_snapshot.library, &next_snapshot.library_change);
+        }
         let library_changed =
             self.runtime_snapshot.library.revision != next_snapshot.library.revision;
         let catalog_changed =
@@ -968,7 +1146,7 @@ impl ConnectionHubController {
         preferences: HubVisualPreferences,
     ) -> HubControllerPresentation {
         let content_state = self.content_state();
-        let view = project_connection_hub(HubProjectionRequest {
+        let mut view = project_connection_hub(HubProjectionRequest {
             viewport,
             preferences,
             content_state,
@@ -983,6 +1161,12 @@ impl ConnectionHubController {
             literal_destination_entry: self.literal_destination.is_some(),
             literal_destination_valid: self.literal_destination_is_valid(),
         });
+        if let Some(editor) = &self.credential_editor {
+            view.accessibility_tree = editor.accessibility_tree();
+        }
+        if let Some(editor) = &self.profile_editor {
+            view.accessibility_tree = editor.accessibility_tree();
+        }
         let row_group_labels = view
             .visible_range
             .clone()
@@ -1035,6 +1219,8 @@ impl ConnectionHubController {
             None
         };
         HubControllerPresentation {
+            profile_editor: self.profile_editor.clone(),
+            credential_editor: self.credential_editor.clone(),
             view,
             query: self.query.text.clone(),
             catalog_query: self.query.clone(),
@@ -1082,6 +1268,24 @@ impl ConnectionHubController {
     ) -> HubControllerEffect {
         if !self.active {
             return HubControllerEffect::None;
+        }
+        if self.profile_editor.is_some() {
+            self.profile_action(super::ProfileAction::Key(key), wake);
+            return HubControllerEffect::None;
+        }
+        if self.credential_editor.is_some() {
+            self.credential_action(super::CredentialAction::Key(key), wake);
+            return HubControllerEffect::None;
+        }
+        if self.tag_editor.is_some() {
+            return match key {
+                HubKey::Enter => self.finish_tag_editor(),
+                HubKey::Escape => {
+                    self.cancel_tag_editor();
+                    HubControllerEffect::None
+                }
+                _ => HubControllerEffect::None,
+            };
         }
         if self.interaction.route == HubRoute::Workspaces {
             match key {
@@ -1289,10 +1493,20 @@ impl ConnectionHubController {
     }
 
     pub fn begin_tag_editor_at(&mut self, projected_index: usize) -> HubControllerEffect {
+        if !self.catalog_controls_visible() {
+            return HubControllerEffect::None;
+        }
+        self.select_projected_index(projected_index);
         let Some(entry) = self.entry_at(projected_index) else {
             return HubControllerEffect::None;
         };
-        self.tag_editor = Some(entry.tags.join(", "));
+        let text = entry.tags.join(", ");
+        let binding = (
+            entry.summary.id.clone(),
+            self.runtime_snapshot.metadata_revision,
+        );
+        self.tag_editor_connection = Some(binding);
+        self.tag_editor = Some(text);
         self.ime_preedit = None;
         HubControllerEffect::None
     }
@@ -1326,6 +1540,7 @@ impl ConnectionHubController {
 
     pub fn cancel_tag_editor(&mut self) {
         self.tag_editor = None;
+        self.tag_editor_connection = None;
         self.ime_preedit = None;
     }
 
@@ -1334,9 +1549,13 @@ impl ConnectionHubController {
             return HubControllerEffect::None;
         };
         self.ime_preedit = None;
-        let Some(entry) = self.selected_entry() else {
+        let Some((connection_id, revision)) = self.tag_editor_connection.clone() else {
             return HubControllerEffect::None;
         };
+        if revision != self.runtime_snapshot.metadata_revision {
+            self.tag_editor = Some(value);
+            return HubControllerEffect::Error(HubRuntimeErrorCode::StaleMetadata);
+        }
         let mut folded = std::collections::BTreeSet::new();
         let tags = value
             .split(',')
@@ -1348,7 +1567,7 @@ impl ConnectionHubController {
         let review =
             match self
                 .runtime
-                .review_metadata_change(&entry.summary.id, None, Some(tags))
+                .review_metadata_change(&connection_id, None, Some(tags))
             {
                 Ok(review) => review,
                 Err(error) => {
@@ -1356,7 +1575,13 @@ impl ConnectionHubController {
                     return HubControllerEffect::Error(error);
                 }
             };
+        if review.expected_revision != revision {
+            self.tag_editor = Some(value);
+            self.sync();
+            return HubControllerEffect::Error(HubRuntimeErrorCode::StaleMetadata);
+        }
         self.metadata_review = Some(review);
+        self.tag_editor_connection = None;
         HubControllerEffect::MetadataReviewReady
     }
 
@@ -1502,6 +1727,20 @@ impl ConnectionHubController {
     }
 
     fn live_announcement(&self) -> Option<&'static str> {
+        if self
+            .tag_editor_connection
+            .as_ref()
+            .is_some_and(|(_, revision)| {
+                *revision != self.runtime_snapshot.metadata_revision
+            })
+        {
+            return Some(
+                "Tags changed elsewhere; Esc cancels this draft so you can reopen it",
+            );
+        }
+        if self.tag_editor.is_some() {
+            return None;
+        }
         match self.runtime_snapshot.metadata_change {
             HubMetadataChangeState::Applied { .. } => Some("Connection metadata saved"),
             HubMetadataChangeState::Conflict { .. } => {
@@ -1538,7 +1777,7 @@ fn projected_summaries(
         .collect()
 }
 
-fn unsafe_metadata_character(character: char) -> bool {
+pub(super) fn unsafe_metadata_character(character: char) -> bool {
     let codepoint = character as u32;
     character.is_control()
         || codepoint == 0x061c

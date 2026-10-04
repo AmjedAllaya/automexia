@@ -159,6 +159,7 @@ fn document() -> ConnectionLibraryDocument {
             workspaces: vec![workspace],
         },
         preferences: Default::default(),
+        credential_sources: Default::default(),
     }
 }
 

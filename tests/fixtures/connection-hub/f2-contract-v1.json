@@ -95,6 +95,7 @@
     "gpu": false
   },
   "model_files": [
+    "automexia-connectivity/src/connections/credential_sources.rs",
     "automexia-connectivity/src/connections/documents.rs",
     "automexia-connectivity/src/connections/automation.rs",
     "automexia-connectivity/src/connections/model.rs",
@@ -106,6 +107,7 @@
     "automexia-ui-model/src/connection_hub.rs"
   ],
   "test_files": [
+    "automexia-connectivity/tests/credential_sources.rs",
     "automexia-connectivity/tests/connection_automation_m6.rs",
     "automexia-connectivity/tests/workspace_automation_m6.rs",
     "apps/automexia-terminal/tests/connection_library.rs",

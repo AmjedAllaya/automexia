@@ -21,6 +21,116 @@ fn grant(root: &std::path::Path) -> InventoryGrant {
 }
 
 #[test]
+fn tag_draft_cannot_cross_sections_or_change_its_connection() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    runtime.request_explicit_scan(vec![grant(temporary.path())]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime);
+    controller.open("terminal-grid");
+    controller.begin_tag_editor_at(1);
+    assert!(controller.append_tag_editor("work"));
+    assert!(!controller.open_workspaces());
+    assert!(!controller.open_providers());
+    assert!(!controller.open_connections());
+    controller.select_projected_index(0);
+    assert!(matches!(
+        controller.finish_tag_editor(),
+        HubControllerEffect::MetadataReviewReady
+    ));
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert_eq!(view.metadata_review.unwrap().connection_id, "openssh:beta");
+}
+
+#[test]
+fn reopening_discards_unconfirmed_drafts_and_composition() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    runtime.request_explicit_scan(vec![grant(temporary.path())]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime);
+    controller.open("terminal-grid");
+    controller.begin_tag_editor_at(0);
+    controller.append_tag_editor("draft");
+    controller.set_ime_preedit(Some("pending"));
+    controller.open("new-opener");
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert!(view.tag_editor.is_none());
+    assert!(view.ime_preedit.is_none());
+    assert!(view.metadata_review.is_none());
+    assert_eq!(view.view.restore_focus_to, "new-opener");
+}
+
+#[test]
+fn text_paste_is_atomic_bounded_and_confined_to_the_active_field() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime);
+    controller.open("terminal-grid");
+    assert!(controller.begin_literal_destination_entry());
+    assert!(controller.text_input_active());
+    assert!(controller.commit_ime("example.test"));
+    assert!(!controller.commit_ime("\r\nssh another.example.test"));
+    assert!(!controller.commit_ime(&"x".repeat(65_536)));
+    assert_eq!(controller.literal_destination(), Some("example.test"));
+    controller.cycle_literal_destination_focus(false);
+    assert!(controller.commit_ime("operator"));
+    controller.cycle_literal_destination_focus(false);
+    assert!(controller.commit_ime("2222"));
+    controller.cycle_literal_destination_focus(false);
+    assert!(!controller.text_input_active());
+    assert!(!controller.commit_ime("unexpected"));
+    controller.close();
+    assert!(!controller.text_input_active());
+    assert!(!controller.commit_ime("unexpected"));
+    assert!(!controller.execution_requested());
+}
+
+#[test]
+fn draft_cannot_overwrite_a_change_before_the_next_controller_sync() {
+    let temporary = tempfile::tempdir().unwrap();
+    let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    runtime.request_explicit_scan(vec![grant(temporary.path())]);
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    let mut controller = ConnectionHubController::new(runtime.clone());
+    controller.open("terminal-grid");
+    controller.begin_tag_editor_at(0);
+    controller.append_tag_editor("draft");
+    let other = runtime
+        .review_metadata_change("openssh:alpha", None, Some(vec!["saved".into()]))
+        .unwrap();
+    runtime
+        .apply_metadata_change(other, Box::new(|| {}))
+        .unwrap();
+    assert!(runtime.wait_for_settled(Duration::from_secs(5)));
+    assert_eq!(
+        controller.finish_tag_editor(),
+        HubControllerEffect::Error(HubRuntimeErrorCode::StaleMetadata)
+    );
+    assert!(controller.tag_editor_is_active());
+    assert!(!controller.metadata_review_is_pending());
+    assert_eq!(runtime.catalog()[0].tags, vec!["saved"]);
+    let view = controller.presentation(
+        Viewport::new(1280.0, 800.0, 1.0),
+        HubVisualPreferences::default(),
+    );
+    assert_eq!(
+        view.view.live_announcement.as_deref(),
+        Some("Tags changed elsewhere; Esc cancels this draft so you can reopen it")
+    );
+}
+
+#[test]
 fn opening_the_controller_is_read_only_modal_and_preserves_terminal_authority() {
     let temporary = tempfile::tempdir().unwrap();
     let runtime = ConnectionHubRuntime::open_at_root(temporary.path());
