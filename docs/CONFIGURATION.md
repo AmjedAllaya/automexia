@@ -481,6 +481,11 @@ sample to edit its RGBA background, including opacity. The separate detected-log
 switch and style control log text and backgrounds. Completion labels and
 timestamps remain available when backgrounds are off.
 
+Detected-log highlighting also controls plain shell and CLI errors, including
+`Error from server (NotFound)` from kubectl. These diagnostics use the general
+error palette even when Kubernetes status colors are off. The Kubernetes
+palette continues to own resource readiness, status and condition rows.
+
 Open **Kubernetes status colors** for an independent switch, style and palette.
 Select a sample status to edit its text or background. An incomplete `0/1 Running`
 row remains a warning; `1/1 Running` is successful. Unknown recognized statuses

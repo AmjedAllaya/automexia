@@ -2,6 +2,35 @@ use super::*;
 use proptest::prelude::*;
 
 #[test]
+fn cli_diagnostics_use_log_colours_independently_of_resource_statuses() {
+    use rio_backend::config::presentation::Presentation;
+    for row in [
+        "Error from server (NotFound): pods fixture not found",
+        "Error from server (Forbidden): deployments.apps is forbidden",
+        "error: the server doesn't have a resource type fixture",
+        "fish: Unknown command: fixture",
+        "fixture: The term 'fixture' is not recognized as a name of a cmdlet",
+    ] {
+        let actual = classify_row(row).expect("recognized CLI diagnostic");
+        assert_eq!(actual.domain, OutputDomain::General, "{row}");
+        assert_eq!(actual.severity, Some(SemanticSeverity::Error), "{row}");
+        for logs in [false, true] {
+            for resources in [false, true] {
+                let presentation = Presentation {
+                    output_highlighting: logs,
+                    kubernetes_highlighting: resources,
+                    ..Presentation::default()
+                };
+                assert_eq!(
+                    appearance_for(&presentation, actual),
+                    logs.then_some(&presentation.highlight)
+                );
+            }
+        }
+    }
+}
+
+#[test]
 fn kubernetes_domain_survives_disabled_and_unknown_statuses() {
     use rio_backend::config::presentation::Presentation;
     for row in [

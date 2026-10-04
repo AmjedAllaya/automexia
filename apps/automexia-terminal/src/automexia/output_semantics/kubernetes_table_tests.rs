@@ -108,16 +108,12 @@ fn pending_storage_keeps_empty_columns_and_its_kubernetes_owner() {
 }
 
 #[test]
-fn kind_prefixed_resources_and_server_errors_work_without_a_visible_header() {
+fn kind_prefixed_resources_work_without_a_visible_header() {
     for (row, severity) in [
         ("deployment.apps/api  2/3  3  2  1d", Warning),
         ("demo  statefulset.apps/db  2/2  1d", Success),
         ("job.batch/backup  Complete  1/1  1m  1d", Info),
         ("namespace/demo  Terminating  1d", Warning),
-        (
-            "Error from server (Forbidden): deployments.apps is forbidden",
-            Error,
-        ),
     ] {
         let actual = classify_row(row).unwrap();
         assert_eq!(actual.domain, OutputDomain::Kubernetes, "{row}");

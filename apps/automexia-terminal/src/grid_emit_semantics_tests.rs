@@ -240,6 +240,71 @@ fn fixture_renderer(enabled: bool) -> Renderer {
 }
 
 #[test]
+fn plain_shell_errors_reach_glyphs_with_independent_domains() {
+    use crate::automexia::output_semantics::OutputDomain;
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let cases = [
+        ("Error from server (NotFound): pods fixture not found", OutputDomain::General),
+        ("pod/fixture 0/1 CrashLoopBackOff 0 1m", OutputDomain::Kubernetes),
+        ("bash: missing-fixture: command not found", OutputDomain::General),
+        ("zsh: command not found: missing-fixture", OutputDomain::General),
+        ("fish: Unknown command: missing-fixture", OutputDomain::General),
+        ("'missing-fixture' is not recognized as an internal or external command", OutputDomain::General),
+        ("missing-fixture : The term 'missing-fixture' is not recognized as the name of a cmdlet", OutputDomain::General),
+        ("missing-fixture : The term 'missing-fixture' is not recognized as a name of a cmdlet", OutputDomain::General),
+    ];
+    for (text, domain) in cases {
+        let mut term = terminal(&format!("\x1b]133;A;aid=1\x07> \x1b]133;B\x07run -a\r\n\x1b]133;C\x07{text}\r\n\x1b]133;D;1\x07"));
+        let (rows, styles, extras) = snapshot(&mut term);
+        let mut classified = Vec::new();
+        classify_visible_output(&rows, 80, false, &mut classified, &mut String::new());
+        assert_eq!(classified[1].unwrap().domain, domain, "{text}");
+        let mut renderer = fixture_renderer(true);
+        // Only the owning switch is on. Command result bands stay disabled.
+        renderer.presentation.output_highlighting = domain == OutputDomain::General;
+        renderer.presentation.kubernetes_highlighting =
+            domain == OutputDomain::Kubernetes;
+        renderer.presentation.command_output_highlighting = false;
+        let mut glyphs = Vec::new();
+        build_row_fg_classified(
+            &rows[1],
+            80,
+            1,
+            &styles,
+            &extras,
+            &renderer,
+            &TermColors::default(),
+            &mut GridGlyphRasterizer::new(),
+            &mut GridRenderer::Cpu(CpuGridRenderer::new(80, 12)),
+            16.0,
+            10.0,
+            24.0,
+            None,
+            &[],
+            &fonts,
+            0,
+            None,
+            &mut glyphs,
+            classified[1],
+            &[],
+        );
+        assert!(!glyphs.is_empty());
+        assert!(
+            glyphs.iter().all(|glyph| glyph.color == [255, 0, 0, 255]),
+            "{text}"
+        );
+        renderer.presentation.output_highlighting = domain != OutputDomain::General;
+        renderer.presentation.kubernetes_highlighting =
+            domain != OutputDomain::Kubernetes;
+        assert_eq!(semantic_classification_fg(classified[1], &renderer), None);
+    }
+}
+
+#[test]
 fn typed_input_accents_reach_glyphs_preserve_native_styles_and_selection() {
     use rio_backend::crosswords::grid::row::{PromptInputShell, SemanticInput};
     let mut terminal = terminal("> docker ps -a\r\n> \x1b[38;2;7;19;31mdocker\x1b[0m ps -a\r\n> \x1b[2mdocker\x1b[0m ps -a\r\n> \x1b[7mdocker\x1b[0m ps -a\r\n> \x1b[8mdocker\x1b[0m ps -a\r\ndocker ps -a");

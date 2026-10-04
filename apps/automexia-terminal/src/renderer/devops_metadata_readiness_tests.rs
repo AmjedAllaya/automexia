@@ -263,6 +263,50 @@ impl AidlessPromptFixture {
 }
 
 #[test]
+fn completed_input_stays_historical_until_the_next_prompt_rows_arrive() {
+    for completed in [false, true] {
+        for newline in [false, true] {
+            let mut fixture = AidlessPromptFixture::new();
+            // Exercise the lambda/path fallback too, using a real P/B redraw.
+            fixture.feed(b"\r\x1b]133;P;k=c\x07\xce\xbb \x1b]133;B\x07");
+            let previous = fixture.snapshot().live_anchor.unwrap();
+            fixture.feed(
+                b"wsl\x1b]1337;SetUserVar=automexia_prompt_active=MA==\x07\x1b]133;C\x07",
+            );
+            if newline {
+                fixture.feed(b"\r\n");
+            }
+            if completed {
+                fixture.feed(b"\x1b]133;D;0\x07");
+            }
+            assert!(fixture.snapshot().live_anchor.is_none());
+            // Metadata and the ready flag may be delivered before the new
+            // shell's A/P rows, including a split immediately after the flag.
+            let metadata = b"\x1b]1337;SetUserVar=automexia_env_pending=MQ==\x07\
+                \x1b]1337;SetUserVar=automexia_shell=MQ==\x07\
+                \x1b]1337;SetUserVar=automexia_shell_name=YmFzaA==\x07\
+                \x1b]1337;SetUserVar=automexia_distro=VWJ1bnR1\x07\
+                \x1b]1337;SetUserVar=automexia_env_pending=MA==\x07\
+                \x1b]1337;SetUserVar=automexia_prompt_active=MQ==\x07";
+            for byte in metadata {
+                fixture.feed(std::slice::from_ref(byte));
+                assert!(
+                    fixture.snapshot().live_anchor.is_none(),
+                    "completed={completed}, newline={newline}: metadata reactivated the historical prompt"
+                );
+            }
+            fixture.feed(b"\r\n\x1b]133;A;aid=1\x07 \r\n");
+            assert!(fixture.snapshot().live_anchor.is_none());
+            fixture.feed(b"\x1b]133;P;k=c;aid=1\x07/fixture/guest\r\n\x1b]133;P;k=c;aid=1\x07> \x1b]133;B\x07");
+            let next = fixture.snapshot();
+            let live = next.live_anchor.expect("new shell owns its prompt");
+            assert_ne!(live.key, previous.key);
+            assert_eq!(live.generation, Some(1));
+        }
+    }
+}
+
+#[test]
 fn fish_prompt_resource_sequence_publishes_a_live_tag_row_and_retires_it_on_command() {
     // A PTY can translate LF to CRLF. Exercise both byte streams; the Fish
     // resource emits the same OSC marks before its native editable prompt.
@@ -284,7 +328,9 @@ fn fish_prompt_resource_sequence_publishes_a_live_tag_row_and_retires_it_on_comm
         let active = fixture.snapshot();
         assert_eq!(active.metadata_readiness, MetadataReadiness::Complete);
         assert!(active.prompt_active);
-        let anchor = active.live_anchor.expect("Fish prompt has a live context row");
+        let anchor = active
+            .live_anchor
+            .expect("Fish prompt has a live context row");
         assert_eq!(anchor.generation, Some(7));
         assert_eq!(anchor.key, 0);
         assert_eq!(active.session.shell_name.as_deref(), Some("fish"));

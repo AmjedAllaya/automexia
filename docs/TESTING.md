@@ -343,6 +343,18 @@ returned to the original host identity and path. This is native ConPTY/parser
 evidence, not a GUI pixel or status-bar rendering check; missing installed WSL
 integration remains an environment prerequisite.
 
+The same integration binary has opt-in `native_wsl_plain_input_and_error_style_provenance`
+and `native_wsl_zsh_plain_input_and_error_style_provenance` tests. They launch
+Bash/Zsh through WSL with isolated startup files and disabled history, check
+owned input boundaries/default foreground and plain error-output provenance,
+and never change shell profiles. Set `AUTOMEXIA_TEST_NATIVE_WSL_ROUNDTRIP=1`.
+Normally they use repository resources; setting
+`AUTOMEXIA_TEST_INSTALLED_WSL_RESOURCE=1` checks the existing managed resources
+instead, exposing stale scripts that force white input. Run against both the
+system and packaged ConPTY runtime when validating Windows delivery. These
+process tests do not establish GUI pixels; the shared glyph and native rendering
+gates remain separate.
+
 ## Live resize preservation
 
 `cargo xtask test resize-stress` runs the library stress tests **and** the

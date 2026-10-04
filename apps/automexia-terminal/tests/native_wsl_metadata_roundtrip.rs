@@ -28,14 +28,14 @@ struct Identity {
 #[derive(Clone, Copy)]
 enum Phase {
     Host,
-    Guest,
+    Guest(&'static str),
 }
 
 impl Phase {
     fn label(self) -> &'static str {
         match self {
             Self::Host => "PowerShell",
-            Self::Guest => "WSL Bash",
+            Self::Guest(_) => "WSL shell",
         }
     }
 }
@@ -65,7 +65,7 @@ fn completed_identity(
     let distro = terminal.user_vars.get("automexia_distro")?;
     match phase {
         Phase::Host if shell != "PowerShell" || !distro.is_empty() => return None,
-        Phase::Guest if shell != "bash" || distro.is_empty() => return None,
+        Phase::Guest(expected) if shell != expected || distro.is_empty() => return None,
         _ => {}
     }
     let user = terminal.user_vars.get("automexia_shell_user")?;
@@ -76,7 +76,9 @@ fn completed_identity(
     }
     match phase {
         Phase::Host if directory.starts_with('/') => return None,
-        Phase::Guest if !directory.starts_with('/') || !shell_path.starts_with('/') => {
+        Phase::Guest(_)
+            if !directory.starts_with('/') || !shell_path.starts_with('/') =>
+        {
             return None;
         }
         _ => {}
@@ -195,7 +197,7 @@ fn native_powershell_wsl_powershell_metadata_roundtrip() {
         &mut pty,
         &mut terminal,
         &mut parser,
-        Phase::Guest,
+        Phase::Guest("bash"),
         host.frame,
         &mut total_bytes,
     );
@@ -222,4 +224,163 @@ fn native_powershell_wsl_powershell_metadata_roundtrip() {
 
     pty.writer().write_all(b"exit\r").expect("close host shell");
     // The managed ConPTY kill-on-close job owns cleanup if a shell ignores exit.
+}
+
+#[test]
+#[ignore = "requires a default WSL Bash distribution; uses isolated startup and history"]
+fn native_wsl_plain_input_and_error_style_provenance() {
+    native_wsl_colour_provenance("bash");
+}
+
+#[test]
+#[ignore = "requires Zsh in the default WSL distribution; uses isolated startup and history"]
+fn native_wsl_zsh_plain_input_and_error_style_provenance() {
+    native_wsl_colour_provenance("zsh");
+}
+
+fn native_wsl_colour_provenance(shell: &'static str) {
+    use rio_vt::crosswords::grid::row::PromptInputShell;
+    use rio_vt::crosswords::pos::Line;
+    assert_eq!(
+        std::env::var("AUTOMEXIA_TEST_NATIVE_WSL_ROUNDTRIP").as_deref(),
+        Ok("1")
+    );
+    let root = shell_integration::discover_root().expect("integration resources");
+    let fixture = tempfile::tempdir().expect("isolated shell resources");
+    let guest_path = |path: &std::path::Path| {
+        let output = std::process::Command::new("wsl.exe")
+            .args(["--exec", "wslpath", "-a"])
+            .arg(path)
+            .output()
+            .expect("WSL path translation");
+        assert!(output.status.success());
+        let value = String::from_utf8(output.stdout)
+            .expect("UTF-8 path")
+            .trim()
+            .to_owned();
+        assert!(value.starts_with('/') && !value.contains(['\'', '\n', '\r']));
+        value
+    };
+    let source =
+        if std::env::var("AUTOMEXIA_TEST_INSTALLED_WSL_RESOURCE").as_deref() == Ok("1") {
+            // Diagnostic comparison only; never source the user's interactive profile.
+            format!("\"$HOME/.config/automexia/shell-integration.{shell}\"")
+        } else {
+            format!(
+                "'{}'",
+                guest_path(&root.join(format!("{shell}/automexia.{shell}")))
+            )
+        };
+    let startup = fixture.path().join(if shell == "bash" {
+        "colors.bashrc"
+    } else {
+        ".zshrc"
+    });
+    std::fs::write(&startup, format!("HISTFILE=/dev/null\nsource {source}\n")).unwrap();
+    let mut arguments = vec![
+        "--exec".into(),
+        "env".into(),
+        "TERM_PROGRAM=Automexia".into(),
+        "AUTOMEXIA_SHELL_INTEGRATION=1".into(),
+        "HISTFILE=/dev/null".into(),
+        format!("XDG_CONFIG_HOME={}", guest_path(fixture.path())),
+        format!("ZDOTDIR={}", guest_path(fixture.path())),
+        shell.into(),
+    ];
+    if shell == "bash" {
+        arguments.extend([
+            "--noprofile".into(),
+            "--rcfile".into(),
+            guest_path(&startup),
+            "-i".into(),
+        ]);
+    } else {
+        arguments.extend(["-d".into(), "-i".into()]);
+    }
+    let mut pty =
+        teletypewriter::create_pty(Some("wsl.exe"), arguments, &None, None, 120, 30)
+            .expect("isolated WSL PTY");
+    let mut terminal = Crosswords::new(
+        CrosswordsSize::new(120, 30),
+        CursorShape::Block,
+        VoidListener,
+        WindowId::from(0),
+        0,
+        128,
+    );
+    terminal.set_resize_policy(ResizePolicy::Conpty);
+    let mut parser = Processor::default();
+    let mut total = 0;
+    await_identity(
+        &mut pty,
+        &mut terminal,
+        &mut parser,
+        Phase::Guest(shell),
+        0,
+        &mut total,
+    );
+    pty.writer()
+        .write_all(
+            b"printf '%s\\n' 'Error from server (NotFound): pods fixture not found'\r",
+        )
+        .unwrap();
+    let deadline = Instant::now() + PHASE_LIMIT;
+    let mut buffer = [0; 4096];
+    let mut observed = false;
+    while Instant::now() < deadline {
+        match pty.reader().read(&mut buffer) {
+            Ok(count) => {
+                total += count;
+                assert!(total <= OUTPUT_LIMIT);
+                parser.advance(&mut terminal, &buffer[..count]);
+            }
+            Err(error) if error.kind() == ErrorKind::WouldBlock => {}
+            Err(_) => panic!("native PTY read failed"),
+        }
+        for row in 0..30 {
+            let source = &terminal.grid[Line(row)];
+            let text: String = source.inner.iter().map(|s| s.c()).collect();
+            if text.starts_with("Error from server") {
+                let style = terminal.grid.style_of(&source.inner[0]);
+                eprintln!(
+                    "WSL error provenance: prompt={:?}, input={:?}, foreground={:?}",
+                    source.semantic_prompt, source.semantic_input, style.fg
+                );
+                assert_eq!(
+                    source.semantic_prompt,
+                    rio_vt::crosswords::grid::row::SemanticPrompt::None
+                );
+                assert!(source.semantic_input.is_none());
+                assert_eq!(
+                    style.fg,
+                    rio_vt::config::colors::AnsiColor::Named(
+                        rio_vt::config::colors::NamedColor::Foreground
+                    )
+                );
+                observed = true;
+                break;
+            }
+        }
+        if observed {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(2));
+    }
+    assert!(observed, "error output was not observed");
+    let command = (0..30)
+        .find_map(|row| {
+            let source = &terminal.grid[Line(row)];
+            let input = source.semantic_input?;
+            (input.shell == PromptInputShell::Posix && !input.continuation)
+                .then(|| terminal.grid.style_of(&source.inner[input.column]))
+        })
+        .expect("owned POSIX input boundary");
+    assert_eq!(
+        command.fg,
+        rio_vt::config::colors::AnsiColor::Named(
+            rio_vt::config::colors::NamedColor::Foreground
+        ),
+        "plain shell input must not force a white ANSI foreground over command accents"
+    );
+    pty.writer().write_all(b"exit\r").unwrap();
 }

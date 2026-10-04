@@ -2,6 +2,14 @@
 
 Status: Accepted
 
+Ownership update: the application now owns the bounded classifier in
+`automexia::output_semantics`. General logs/CLI diagnostics and Kubernetes
+resource statuses use the independent core controls documented in
+[Configuration](../CONFIGURATION.md). They do not require DevOps discovery.
+Kubectl server-error diagnostics belong to general errors; readiness, status
+and condition rows retain Kubernetes ownership. The extension placement below
+records the original decision, not a requirement to restore that dependency.
+
 ## Context
 
 The optional DevOps row classifier treated every `Completed` or `Succeeded`

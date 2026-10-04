@@ -16,6 +16,16 @@ state and skips route tracking. Terminal cells,
 selection and command input are unchanged. In narrow panes accepted badge labels
 wrap within the measured prompt width.
 
+Nested local shells, including PowerShell/WSL transitions, can restart their
+prompt counters. The existing pane-owned prompt identity mapper keeps those
+generations distinct, while redraws retain their current identity. Completed
+bars retain their captured context; only the live bar tracks discovery updates.
+An uncaptured or evicted historical context stays absent rather than borrowing
+the current shell's tags. This adds no discovery work or per-frame history scan.
+Fragmented ready metadata cannot reactivate completed input: the live-anchor
+search stops at executed input and completed results until new prompt rows
+establish their own location, including the lambda/path fallback.
+
 The distribution and validated shell username are projected immediately from
 shell metadata without waiting for discovery. Window-title changes no longer
 cancel valid discovery or discard its cache; directory, process, shell identity

@@ -448,13 +448,10 @@ impl DevOpsStatus {
                 &[]
             };
         }
-        self.cached_segments(session_id, anchor).unwrap_or_else(|| {
-            if self.metadata_complete() {
-                &self.live_segments
-            } else {
-                &[]
-            }
-        })
+        // An unseen/evicted historical prompt has no proven context. Borrowing
+        // live labels would rewrite old PowerShell rows as WSL (or vice versa).
+        // Only the active prompt may track current discovery revisions.
+        self.cached_segments(session_id, anchor).unwrap_or(&[])
     }
 
     pub(super) fn draw_prompt_fragment(
@@ -1599,6 +1596,31 @@ mod tests {
             .iter()
             .find(|segment| segment.role == SegmentRole::Kubernetes)
             .map(|segment| segment.value.as_str())
+    }
+
+    #[test]
+    fn uncaptured_history_never_borrows_the_current_shell_identity() {
+        let mut facts = session("", Some("Ubuntu"));
+        facts.session_id = 10;
+        let mut status = history_status(10, "historic", "live");
+        status.set_metadata_readiness(10, MetadataReadiness::Complete);
+        let current = PromptAnchor {
+            generation: Some(9),
+            key: 5,
+            ..history_anchor()
+        };
+        status.prepare_prompt_rows(&facts, true, &[history_anchor()], Some(current));
+        let uncaptured = PromptAnchor {
+            generation: Some(8),
+            key: 4,
+            ..history_anchor()
+        };
+        assert!(status.segments_for_prompt(10, &uncaptured).is_empty());
+        assert_eq!(historical_value(&status, 10), Some("historic"));
+        assert!(status
+            .segments_for_prompt(10, &current)
+            .iter()
+            .any(|segment| segment.role == SegmentRole::UbuntuWsl));
     }
 
     #[test]

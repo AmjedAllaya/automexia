@@ -35,6 +35,10 @@ Output and Kubernetes status palettes remain separate.
 
 There is no new persistent setting, protocol, dependency or public command.
 Bash and Zsh stop forcing a plain white foreground after the input marker.
+Previously installed copies must receive that correction too: rebuilding the
+terminal does not update persistent shell resources. Existing shells retain
+their loaded prompt until a new shell is opened. Do not compensate for stale
+resources by overriding arbitrary application ANSI colors in the renderer.
 Missing or disabled integration retains the shell's unmodified presentation.
 Removing the accent cache restores the previous appearance without migration.
 

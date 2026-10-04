@@ -20,10 +20,10 @@ pub(super) struct Scopes {
     frames: Vec<Frame>,
     quarantine: bool,
     revision: u64,
-    // After the first remote scope, every shell keeps its own current wire
-    // identity while rows receive a monotonic pane-owned identity. This avoids
-    // collisions when a remote shell and its parent both start at aid=1.
-    identity_high_water: u64,
+    // After a remote scope or a restarted local counter, shell wire identities
+    // map to monotonic pane-owned identities. WSL and nested local shells can
+    // restart at aid=1 just like SSH. Redraws retain the current mapping.
+    identity_high_water: Option<u64>,
     remap_identities: bool,
     wire_identity: Option<(u64, u64)>,
 }
@@ -73,14 +73,35 @@ fn decode_hex(value: &str) -> Option<[u8; 32]> {
 }
 
 impl<U: EventListener> Crosswords<U> {
-    pub(super) fn scope_prompt_identity(&mut self, wire: Option<u64>) -> Option<u64> {
+    pub(super) fn scope_prompt_identity(
+        &mut self,
+        wire: Option<u64>,
+        starts_prompt: bool,
+    ) -> Option<u64> {
         let Some(wire) = wire else {
             self.integration_scopes.wire_identity = None;
             return None;
         };
         let scopes = &mut self.integration_scopes;
+        if starts_prompt {
+            let redraw = scopes.wire_identity.is_some_and(|(previous, id)| {
+                previous == wire
+                    && self
+                        .active_semantic_prompt
+                        .as_ref()
+                        .is_some_and(|active| active.id == Some(id))
+            });
+            if !redraw && scopes.identity_high_water.is_some_and(|high| wire <= high) {
+                scopes.remap_identities = true;
+                scopes.wire_identity = None;
+            }
+        }
         if !scopes.remap_identities {
-            scopes.identity_high_water = scopes.identity_high_water.max(wire);
+            scopes.identity_high_water = Some(
+                scopes
+                    .identity_high_water
+                    .map_or(wire, |high| high.max(wire)),
+            );
             scopes.wire_identity = Some((wire, wire));
             return Some(wire);
         }
@@ -90,8 +111,10 @@ impl<U: EventListener> Crosswords<U> {
             }
         }
         // Exhaustion drops the optional identity instead of reusing a row id.
-        let id = scopes.identity_high_water.checked_add(1)?;
-        scopes.identity_high_water = id;
+        let id = scopes
+            .identity_high_water
+            .map_or(Some(1), |high| high.checked_add(1))?;
+        scopes.identity_high_water = Some(id);
         scopes.wire_identity = Some((wire, id));
         Some(id)
     }

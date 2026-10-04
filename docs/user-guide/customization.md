@@ -97,6 +97,9 @@ and independent custom-text tags remain. Turning it on restores your saved tag
 choices; real terminal tags still require detected context. **E** or the preview's **Edit** button enables stable selection through
 the same list, including **Add custom tag**. **Terminal output colors** controls
 ordinary command backgrounds and the separate detected-log highlighting.
+Detected-log highlighting includes plain command diagnostics such as Bash/Fish
+command-not-found messages and kubectl server errors. These follow the general
+error color, independently of the Kubernetes status switch.
 **Kubernetes status colors** controls Kubernetes readiness and status colors
 independently. Recognized tables include pods, deployments, StatefulSets,
 ReplicaSets, DaemonSets, jobs, CronJobs, nodes, volumes, namespaces, services,

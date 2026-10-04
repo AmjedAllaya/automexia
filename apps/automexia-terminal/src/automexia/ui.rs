@@ -14,7 +14,8 @@ pub mod command_info;
 /// inspect terminal-engine row/cell types directly.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PromptAnchor {
-    /// Stable identity published by the shell in `OSC 133;A;aid=<id>`.
+    /// Stable pane-owned identity derived from `OSC 133;A;aid=<id>`. Shell-local
+    /// counters are remapped when nested local/remote shells reuse them.
     /// Older integrations may omit it; `key` remains the compatibility
     /// fallback for those sessions.
     pub generation: Option<u64>,

@@ -718,6 +718,15 @@ Reinforce bounded route-scoped prompt metadata, directory and status updates,
 Git state, long and hostile labels, stale generation rejection, and redaction.
 Context rendering must never change commands or trigger network work.
 
+Parser-created nested local shells must not reuse historical prompt identities
+when their counters restart. Cover initial zero, repeated current-prompt redraws,
+fragmented continuations and returning to the parent shell. Uncaptured historical
+bars must not borrow live shell tags. Plain CLI server errors follow general log
+controls; resource statuses retain Kubernetes ownership. Assert independent
+switches and literal final glyph colors, including wrapped shell diagnostics.
+Deliver ready flags and A/P rows byte by byte: executed input must stay historical
+with or without a completed result, a newline, or the lambda/path fallback.
+
 The shared context wire boundary is covered by the extension-contract-runtime
 section below; count admission must reject before decoding an excess payload,
 without changing current prompt wrapping or native grid behavior.
@@ -881,6 +890,12 @@ Bash/Zsh/Fish; unavailable Linux/macOS GUI and shell combinations remain externa
 Use `tests/integration/command-input-colors-windows.ps1` through the existing
 Windows rendering gate; `AUTOMEXIA_NATIVE_WSL_DISTRO` selects optional WSL coverage.
 Retain the VT input-boundary, renderer cache and emitted-glyph regressions.
+
+The isolated native WSL Bash/Zsh provenance tests also compare current and
+installed integration resources. Obsolete prompts that force white ANSI after
+the input boundary must fail. Preserve explicit native styles, output boundaries,
+disabled history and PTY cleanup. Exercise system and bundled ConPTY separately;
+these process results do not replace desktop pixels or unavailable macOS evidence.
 
 Exercise the actual application bootstrap with the real PowerShell integration
 in repository and flattened resource layouts. Prompt, input, completion and CMD

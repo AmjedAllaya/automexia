@@ -825,22 +825,41 @@ fn semantic_snapshot(
     historical_anchors.sort_by(|left, right| left.y.total_cmp(&right.y));
 
     let cursor_row = rc.cursor.state.pos.row.0;
+    let cursor_on_completed_input = usize::try_from(cursor_row)
+        .ok()
+        .and_then(|index| rc.visible_rows.get(index))
+        .is_some_and(|row| {
+            row.semantic_command_result.is_some()
+                || row
+                    .semantic_input
+                    .is_some_and(|input| input.command_complete)
+        });
     let semantic_live_anchor = if cursor_row >= 0 {
         let cursor_index = cursor_row as usize;
         rc.visible_rows
             .iter()
             .enumerate()
             .rev()
+            .filter(|(row_index, _)| *row_index <= cursor_index)
+            // A ready flag can precede the next A/P rows in a fragmented PTY
+            // read. Never cross executed input to borrow an older prompt.
+            .take_while(|(_, row)| {
+                row.semantic_command_result.is_none()
+                    && row
+                        .semantic_input
+                        .is_none_or(|input| !input.command_complete)
+            })
             .find_map(|(row_index, row)| {
                 if row_index == 0
-                    || row_index > cursor_index
                     || row.semantic_prompt != SemanticPrompt::PromptContinuation
                 {
                     return None;
                 }
                 let prompt_index = row_index - 1;
                 let prompt_row = &rc.visible_rows[prompt_index];
-                if prompt_row.semantic_prompt != SemanticPrompt::Prompt {
+                if prompt_row.semantic_prompt != SemanticPrompt::Prompt
+                    || prompt_row.semantic_command_result.is_some()
+                {
                     return None;
                 }
                 let blank = terminal_row_is_blank(prompt_row);
@@ -862,6 +881,7 @@ fn semantic_snapshot(
     };
     let live_anchor = if rc.shell_integration
         && rc.shell_prompt_active
+        && !cursor_on_completed_input
         && (rc.display_offset == 0 || rc.active_prompt_follow)
     {
         semantic_live_anchor

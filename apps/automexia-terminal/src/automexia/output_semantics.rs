@@ -70,7 +70,10 @@ pub fn classify_row(text: &str) -> Option<OutputClassification> {
         )
     {
         return Some(OutputClassification {
-            domain: OutputDomain::Kubernetes,
+            // A CLI diagnostic describes the failed command, not a resource
+            // status. It follows ordinary error colours even when Kubernetes
+            // status decoration is disabled. Resource rows retain their domain.
+            domain: OutputDomain::General,
             severity: Some(SemanticSeverity::Error),
         });
     }
@@ -116,8 +119,10 @@ fn classify_general_text(text: &str) -> Option<SemanticSeverity> {
     const ERROR_TERMS: &[&str] = &[
         // Shell / process failures.
         "command not found",
+        "unknown command",
         "is not recognized as an internal or external command",
         "is not recognized as the name of a cmdlet",
+        "is not recognized as a name of a cmdlet",
         "cannot find path",
         "cannot find the path",
         "the system cannot find the file specified",

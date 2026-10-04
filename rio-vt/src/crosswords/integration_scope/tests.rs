@@ -44,6 +44,39 @@ fn end(secret: u8) -> Vec<u8> {
 }
 
 #[test]
+fn local_nested_shell_counters_have_distinct_prompt_identities() {
+    for fragment in [1, 7, 4096] {
+        let mut t = terminal();
+        let mut p = Processor::default();
+        let mut ids = Vec::new();
+        // Parent, new guest, another guest prompt, return to parent, and a
+        // second guest with its counter restarted. No SSH scope is involved.
+        for wire_id in [1, 1, 2, 2, 1] {
+            let stream = format!("\x1b]133;A;aid={wire_id}\x07 \r\n\x1b]133;P;k=c;aid={wire_id}\x07> \x1b]133;B\x07");
+            for bytes in stream.as_bytes().chunks(fragment) {
+                p.advance(&mut t, bytes);
+            }
+            let id = t.grid[t.cursor().pos.row].semantic_prompt_id.unwrap();
+            assert!(
+                !ids.contains(&id),
+                "a nested shell reused a historical identity"
+            );
+            ids.push(id);
+            assert_eq!(
+                t.grid[t.cursor().pos.row - 1i32].semantic_prompt_id,
+                Some(id)
+            );
+            // A repeated A while editing is a redraw, not a new command.
+            for bytes in stream.as_bytes().chunks(fragment) {
+                p.advance(&mut t, bytes);
+            }
+            assert_eq!(t.grid[t.cursor().pos.row].semantic_prompt_id, Some(id));
+            p.advance(&mut t, b"run\r\n\x1b]133;C\x07done\r\n\x1b]133;D;0\x07");
+        }
+    }
+}
+
+#[test]
 fn discovery_revocation_barrier_survives_replays_and_nested_scopes() {
     let mut t = terminal();
     let mut p = Processor::default();

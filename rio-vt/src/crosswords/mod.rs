@@ -4800,7 +4800,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
         self.title = String::from("");
         self.selection = None;
         self.semantic_prompt_id = None;
-        self.scope_prompt_identity(None);
+        self.scope_prompt_identity(None, false);
         self.active_semantic_prompt = None;
         self.shell_clear_deadline = None;
         self.shell_clear_rehome_deadline = None;
@@ -4934,7 +4934,10 @@ impl<U: EventListener> Handler for Crosswords<U> {
         mark: crate::crosswords::grid::row::SemanticPrompt,
         prompt_id: Option<u64>,
     ) {
-        let prompt_id = self.scope_prompt_identity(prompt_id);
+        let prompt_id = self.scope_prompt_identity(
+            prompt_id,
+            mark == crate::crosswords::grid::row::SemanticPrompt::Prompt,
+        );
         let redraws_live_prompt = mark
             == crate::crosswords::grid::row::SemanticPrompt::Prompt
             && prompt_id.is_some()

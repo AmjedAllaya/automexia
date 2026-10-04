@@ -174,8 +174,11 @@ does not include this decoration. Very small or invalid geometry omits the accen
 
 ## Operational status colours
 
-When Automexia DevOps is enabled, supported plain-text status rows use the
-active terminal palette. The original words and columns are not rewritten.
+Supported plain-text status rows use the configured output palettes. General
+logs and CLI errors are controlled in **Terminal output colors**; Kubernetes
+resource statuses have a separate **Kubernetes status colors** switch and palette.
+These display settings do not depend on DevOps context detection. The original
+words and columns are not rewritten.
 
 | Colour | Meaning | Examples |
 |---|---|---|
@@ -196,7 +199,10 @@ build/error summaries.
 Unknown/custom or wrapped fragments may remain unclassified. Applications with
 explicit colours keep them; Automexia does not override `kubecolor` or a tool's
 own ANSI palette. Bare zero-error counts are not treated as log-level prefixes.
-Disabling the DevOps extension leaves the original output.
+Plain CLI diagnostics, including kubectl `Error from server` messages, use the
+general error color. Turning off Kubernetes status colors does not disable
+those diagnostics. Turning off detected-log highlighting leaves them plain
+unless the command itself supplies ANSI colors.
 See the [colour decision](../adr/0052-truthful-operational-status-colours.md).
 
 ## Search, selection, and clipboard
