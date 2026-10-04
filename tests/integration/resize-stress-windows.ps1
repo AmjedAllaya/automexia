@@ -32,6 +32,7 @@ param(
     [switch]$CloseConfirmationOnly,
     [switch]$TagCustomizationOnly,
     [switch]$ThemeGalleryOnly,
+    [switch]$NamedProfilesOnly,
     [switch]$TagShapesOnly,
     [switch]$OutputColorsOnly,
     [switch]$CommandInputColorsOnly,
@@ -244,6 +245,10 @@ public static class AutomexiaResizeDriver {
             return false;
         }
         return true;
+    }
+
+    public static bool SendProfileFixtureText(IntPtr hWnd, string text) {
+        return text != null && text.Length <= 128 && SendActionText(hWnd, text, false);
     }
 
     public static bool ReplaceColorHex(IntPtr hWnd, string hex) {
@@ -1634,6 +1639,11 @@ $wallpaperConfig
         return
     }
 
+    if ($NamedProfilesOnly) {
+        . (Join-Path $PSScriptRoot 'named-profiles-windows.ps1')
+        Test-AutomexiaNamedProfiles
+        return
+    }
     if ($ThemeGalleryOnly) {
         . (Join-Path $PSScriptRoot 'theme-gallery-windows.ps1')
         Test-AutomexiaThemeGallery
@@ -2536,12 +2546,12 @@ $wallpaperConfig
     $selectionTyped = Read-AutomexiaSnapshot -AfterSequence ([int64]$initial.sequence)
     $selectionDeadline = [DateTime]::UtcNow.AddSeconds(5)
     while (([string]$selectionTyped.last_control -ne $selectionTypeControl -or
-            -not ([string](Get-ActiveAutomexiaPanel $selectionTyped).cursor_line_text).Contains($selectionToken)) -and
+            -not ([string](Get-ActiveAutomexiaPanel $selectionTyped).raw_cursor_logical_line_text).Contains($selectionToken)) -and
            [DateTime]::UtcNow -lt $selectionDeadline) {
         $selectionTyped = Read-AutomexiaSnapshot -AfterSequence ([int64]$selectionTyped.sequence)
     }
     if ([string]$selectionTyped.last_control -ne $selectionTypeControl -or
-        -not ([string](Get-ActiveAutomexiaPanel $selectionTyped).cursor_line_text).Contains($selectionToken)) {
+        -not ([string](Get-ActiveAutomexiaPanel $selectionTyped).raw_cursor_logical_line_text).Contains($selectionToken)) {
         Write-Host ($selectionTyped | ConvertTo-Json -Depth 10)
         throw 'PowerShell did not render the keyboard-selection probe'
     }
@@ -2619,7 +2629,7 @@ $wallpaperConfig
             -not [string]::IsNullOrEmpty(
                 [string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text) -or
             [bool](Get-ActiveAutomexiaPanel $selectionCleared).selection_rendered -or
-            -not ([string](Get-ActiveAutomexiaPanel $selectionCleared).cursor_line_text).Contains(
+            -not ([string](Get-ActiveAutomexiaPanel $selectionCleared).raw_cursor_logical_line_text).Contains(
                 $selectionInputSuffix)) -and
            [DateTime]::UtcNow -lt $selectionDeadline) {
         $selectionCleared =
@@ -2628,7 +2638,7 @@ $wallpaperConfig
     if (-not [string]::IsNullOrEmpty(
             [string](Get-ActiveAutomexiaPanel $selectionCleared).selection_text) -or
         [bool](Get-ActiveAutomexiaPanel $selectionCleared).selection_rendered -or
-        -not ([string](Get-ActiveAutomexiaPanel $selectionCleared).cursor_line_text).Contains(
+        -not ([string](Get-ActiveAutomexiaPanel $selectionCleared).raw_cursor_logical_line_text).Contains(
             $selectionInputSuffix)) {
         Write-Host ($selectionCleared | ConvertTo-Json -Depth 10)
         throw 'Text input did not exit selection mode and reach PowerShell'

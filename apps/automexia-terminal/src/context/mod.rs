@@ -172,6 +172,8 @@ pub struct Context<T: EventListener> {
     pub shell_pid: u32,
     /// Immutable launch intent used to create independent session clones.
     pub launch_descriptor: SessionLaunchDescriptor,
+    pub profile_colors: Option<rio_backend::config::colors::Colors>,
+    pub profile_icon: Option<String>,
     /// Typed recovery identity, separate from user-facing launch labels.
     recovery_profile: Option<crate::automexia::session_recovery::Profile>,
     /// Non-secret identity capsule owned by this route. Clones always receive
@@ -371,6 +373,8 @@ pub fn create_dead_context<T: rio_backend::event::EventListener>(
         main_fd: Arc::new(-1),
         shell_pid: 1,
         launch_descriptor,
+        profile_colors: None,
+        profile_icon: None,
         recovery_profile: None,
         environment_capsule,
         messenger: Messenger::new(sender),
@@ -545,6 +549,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             main_fd,
             shell_pid,
             launch_descriptor,
+            profile_colors: None,
+            profile_icon: None,
             recovery_profile: None,
             environment_capsule,
             messenger,
@@ -859,6 +865,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             main_fd,
             shell_pid,
             launch_descriptor,
+            profile_colors: None,
+            profile_icon: None,
             recovery_profile: None,
             environment_capsule,
             messenger,
@@ -1392,6 +1400,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             .send_event(RioEvent::RestorePreviousSession, self.window_id);
     }
 
+    pub fn open_profiles(&self) {
+        self.event_proxy
+            .send_event(RioEvent::OpenProfiles, self.window_id);
+    }
+
     pub fn open_theme_gallery(&self) {
         self.event_proxy
             .send_event(RioEvent::OpenThemeGallery, self.window_id);
@@ -1515,6 +1528,10 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn profile_icon(&self, index: usize) -> Option<&str> {
+        self.contexts.get(index)?.current().profile_icon.as_deref()
+    }
+
     pub fn custom_title(&self, index: usize) -> Option<&str> {
         self.contexts
             .get(index)
@@ -2020,6 +2037,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     .collect::<Vec<_>>();
                 let (
                     raw_cursor_line_text,
+                    raw_cursor_logical_line_text,
                     raw_cursor_prompt_id,
                     raw_damage,
                     selection_text,
@@ -2034,8 +2052,20 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                         .collect::<String>()
                         .trim_end_matches(['\0', ' '])
                         .to_string();
+                    let cursor = terminal.cursor().pos;
+                    // Test input may wrap during native resize/startup. Read the
+                    // existing grid owner without changing the user's selection.
+                    let raw_cursor_logical_line_text = terminal
+                        .bounds_to_string_bounded(
+                            terminal.line_search_left(cursor),
+                            terminal.line_search_right(cursor),
+                            8192,
+                        )
+                        .ok()
+                        .map(|text| text.trim_end_matches(['\0', ' ', '\n']).to_string());
                     (
                         raw_cursor_line_text,
+                        raw_cursor_logical_line_text,
                         terminal.grid[cursor_row].semantic_prompt_id,
                         format!("{:?}", terminal.peek_damage_event()),
                         terminal.selection_to_string(),
@@ -2117,6 +2147,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                     "cursor_row": cursor_row,
                     "cursor_line_text": cursor_line_text,
                     "raw_cursor_line_text": raw_cursor_line_text,
+                    "raw_cursor_logical_line_text": raw_cursor_logical_line_text,
                     "raw_cursor_prompt_id": raw_cursor_prompt_id,
                     "raw_damage": raw_damage,
                     "display_offset": display_offset,
@@ -2400,6 +2431,8 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             &cloned_config,
         )
         .map_err(|error| format!("Could not create the independent session: {error}"))?;
+        new_context.profile_colors = self.current().profile_colors;
+        new_context.profile_icon = self.current().profile_icon.clone();
         // Seed chrome only; the terminal grid, scrollback and input queue stay
         // empty and independent.
         new_context
@@ -2506,8 +2539,39 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
 
     #[inline]
     pub fn add_context(&mut self, redirect: bool, rich_text_id: usize) {
+        self.add_context_with_profile(redirect, rich_text_id, None);
+    }
+
+    pub fn restore_launch_defaults(&mut self, base: &ContextManagerConfig) {
+        self.config.shell = base.shell.clone();
+        self.config.environment = base.environment.clone();
+        self.config.working_dir = base.working_dir.clone();
+        self.config.cwd = base.cwd;
+        self.config.profile_identity = base.profile_identity.clone();
+        #[cfg(not(target_os = "windows"))]
+        {
+            self.config.use_fork = base.use_fork;
+        }
+    }
+
+    pub fn add_profile_context(
+        &mut self,
+        rich_text_id: usize,
+        config: &rio_backend::config::Config,
+    ) -> bool {
+        let count = self.len();
+        self.add_context_with_profile(true, rich_text_id, Some(config));
+        self.len() > count
+    }
+
+    fn add_context_with_profile(
+        &mut self,
+        redirect: bool,
+        rich_text_id: usize,
+        profile: Option<&rio_backend::config::Config>,
+    ) {
         let mut working_dir = self.config.working_dir.clone();
-        if self.config.cwd {
+        if profile.is_none() && self.config.cwd {
             #[cfg(not(target_os = "windows"))]
             {
                 let current_context = self.current();
@@ -2529,7 +2593,7 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             }
         }
 
-        if self.config.is_native {
+        if profile.is_none() && self.config.is_native {
             self.event_proxy
                 .send_event(RioEvent::CreateNativeTab(working_dir), self.window_id);
             return;
@@ -2552,6 +2616,20 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
                 cloned_config.working_dir = working_dir;
             }
 
+            if let Some(profile) = profile {
+                let Ok(environment) = launch::environment_overrides(&profile.env_vars)
+                else {
+                    return;
+                };
+                cloned_config.shell = profile.shell.clone();
+                cloned_config.environment = environment;
+                cloned_config.working_dir = profile.working_dir.clone();
+                cloned_config.profile_identity = profile.named_profile_identity.clone();
+                #[cfg(not(target_os = "windows"))]
+                {
+                    cloned_config.use_fork = false;
+                }
+            }
             let current = self.current();
             let cursor = current.cursor_from_ref();
             let mut dimension = current.dimension;
@@ -2689,6 +2767,50 @@ pub mod test {
     use super::*;
     use crate::event::VoidListener;
     use std::sync::Mutex;
+
+    #[cfg(feature = "native-gui-test-hooks")]
+    #[test]
+    fn native_snapshot_cursor_logical_line_preserves_wrap_and_hard_breaks() {
+        use rio_backend::crosswords::CrosswordsSize;
+        use rio_backend::performer::handler::Processor;
+        let manager =
+            ContextManager::start_with_capacity(1, VoidListener {}, WindowId::from(87))
+                .unwrap();
+        for (input, expected) in [
+            (
+                "Write-Output AMX_SELECTION_PROBE_74129",
+                "Write-Output AMX_SELECTION_PROBE_74129",
+            ),
+            (
+                "previous line\r\nAMX_SELECTION_PROBE_74129",
+                "AMX_SELECTION_PROBE_74129",
+            ),
+        ] {
+            {
+                let mut terminal = manager.current().terminal.lock();
+                *terminal = Crosswords::new(
+                    CrosswordsSize::new(20, 8),
+                    CursorShape::Block,
+                    VoidListener {},
+                    WindowId::from(87),
+                    0,
+                    128,
+                );
+                Processor::default().advance(&mut *terminal, input.as_bytes());
+                assert!(terminal.selection.is_none());
+            }
+            let snapshots = manager.native_test_panel_snapshots();
+            assert_eq!(
+                snapshots[0]["raw_cursor_logical_line_text"].as_str(),
+                Some(expected)
+            );
+            assert!(!snapshots[0]["raw_cursor_line_text"]
+                .as_str()
+                .unwrap()
+                .contains(expected));
+            assert!(manager.current().terminal.lock().selection.is_none());
+        }
+    }
 
     #[cfg(feature = "native-gui-test-hooks")]
     #[test]
@@ -3368,6 +3490,74 @@ pub mod test {
         assert_eq!(
             context_manager.tab_profile_identity(0).as_deref(),
             Some("Ubuntu-24.04")
+        );
+    }
+
+    #[test]
+    fn profile_window_restores_defaults_without_rewriting_its_first_session() {
+        let mut manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        let defaults = manager.config.clone();
+        manager.config.shell = Shell {
+            program: Some("profile-shell".into()),
+            args: vec!["--profile".into()],
+        };
+        manager.config.environment = vec![("PUBLIC_MODE".into(), "profile".into())];
+        manager.add_context(true, 2);
+        let first = manager.current().launch_descriptor.clone();
+        manager.restore_launch_defaults(&defaults);
+        assert_eq!(
+            manager.current().launch_descriptor.program(),
+            first.program()
+        );
+        manager.add_context(true, 3);
+        assert_eq!(
+            manager.current().launch_descriptor.environment(),
+            defaults.environment
+        );
+        assert_ne!(
+            manager.current().launch_descriptor.program(),
+            first.program()
+        );
+    }
+
+    #[test]
+    fn named_profile_uses_normal_descriptor_without_changing_new_tab_defaults() {
+        let mut manager =
+            ContextManager::start_with_capacity(4, VoidListener {}, WindowId::from(0))
+                .unwrap();
+        let original = manager.current().launch_descriptor.clone();
+        let profile = rio_backend::config::Config {
+            shell: Shell {
+                program: Some("profile-shell".into()),
+                args: vec!["a b".into(), "$literal".into(), String::new()],
+            },
+            env_vars: vec!["PUBLIC_MODE=work".into()],
+            named_profile_identity: Some("work".into()),
+            ..Default::default()
+        };
+        assert!(manager.add_profile_context(2, &profile));
+        assert_eq!(
+            manager.current().launch_descriptor.profile_identity(),
+            Some("work")
+        );
+        assert_eq!(
+            manager.current().launch_descriptor.args(),
+            ["a b", "$literal", ""]
+        );
+        assert_eq!(
+            manager.current().launch_descriptor.environment(),
+            [("PUBLIC_MODE".into(), "work".into())]
+        );
+        manager.add_context(true, 3);
+        assert_eq!(
+            manager.current().launch_descriptor.program(),
+            original.program()
+        );
+        assert_eq!(
+            manager.current().launch_descriptor.environment(),
+            original.environment()
         );
     }
 

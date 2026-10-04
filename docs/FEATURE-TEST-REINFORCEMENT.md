@@ -25,6 +25,14 @@ For every public behavior:
 
 ### identity-config-migration
 
+Named-profile assurance covers strict versioned TOML, exact arguments, configured
+versus saved precedence, platform mismatch and environment references without
+persisted values. Require private atomic writes, stale-writer rejection, import
+without launch, explicit launch through the ordinary PTY owner, and cancellation
+without stale-window publication. The native Windows profile fixture exercises
+both keyboard and pointer editing on CPU/WGPU; other native platforms remain
+external until exercised. See [profile tests](TESTING.md#named-profile-assurance).
+
 Environment tests reject a whole invalid batch before startup mutation or launch,
 including every platform override. Preserve empty values, Unicode, additional
 equals signs and duplicate ordering. Creation tests require exact complete bytes,

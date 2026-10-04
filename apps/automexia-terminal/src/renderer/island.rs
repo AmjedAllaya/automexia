@@ -1562,7 +1562,9 @@ impl Island {
             }
 
             if !hidden_by_drag && tab_width >= 42.0 {
-                let icon = profile_icon(&raw_title);
+                let icon = context_manager
+                    .profile_icon(tab_index)
+                    .unwrap_or_else(|| profile_icon(&raw_title));
                 let icon_opts = DrawOpts {
                     font_size: layout.profile_icon_size,
                     color: color_u8(tab_title_color(

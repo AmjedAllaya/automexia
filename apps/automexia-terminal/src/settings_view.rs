@@ -31,10 +31,15 @@ use rio_window::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+#[path = "settings_profiles.rs"]
+mod profiles;
 #[path = "settings_table_preview.rs"]
 mod table_preview;
 #[path = "settings_theme_gallery.rs"]
 mod theme_gallery;
+pub(crate) use profiles::settings_entry as profiles_settings_entry;
+pub(crate) use profiles::ProfileIntent;
+use profiles::{ProfileConfirmation, ProfilesView};
 #[path = "settings_timestamp_preview.rs"]
 mod timestamp_preview;
 #[path = "settings_window_controls_preview.rs"]
@@ -237,6 +242,7 @@ pub(crate) enum CustomizationIntent {
 }
 
 enum ConfirmedSettingsAction {
+    Profile(ProfileConfirmation),
     Customization(CustomizationIntent),
     Setting(Edit),
 }
@@ -315,6 +321,8 @@ impl Canvas for Sugarloaf<'_> {
 #[derive(Default)]
 pub(crate) struct SettingsView {
     gallery: Option<Gallery>,
+    profiles: Option<ProfilesView>,
+    profile_generation: u64,
     theme_context: Option<ThemeContext>,
     theme_generation: u64,
     pending_theme: Option<ThemeIntent>,
@@ -425,6 +433,17 @@ fn slot_id_from_page(key: &SettingId) -> Option<&str> {
 }
 impl SettingsView {
     fn title(&self) -> &str {
+        if let Some(profiles) = &self.profiles {
+            return profiles.draft.as_ref().map_or_else(
+                || {
+                    profiles
+                        .selected
+                        .as_ref()
+                        .map_or("Profiles", |p| p.name.as_str())
+                },
+                |_| "Edit profile",
+            );
+        }
         let Some(navigation) = &self.customizations else {
             return "Settings";
         };
@@ -583,6 +602,7 @@ impl SettingsView {
         self.reveal_focus = true;
     }
     pub(crate) fn close(&mut self) {
+        self.profiles = None;
         self.gallery = None;
         self.pending_theme = None;
         self.theme_editor_backup = None;
@@ -677,6 +697,7 @@ impl SettingsView {
         serde_json::json!({
             "open": self.is_open(), "ready": ready,
             "gallery": self.gallery_snapshot(),
+            "profiles": self.profiles.as_ref().map(|p| serde_json::json!({"busy":p.busy,"editing":p.draft.is_some(),"selected":p.selected.is_some()})),
             "active_slot": self.customizations.as_ref()
                 .and_then(|navigation| navigation.active_slot.as_ref()).map(SettingId::as_str),
             "active_category": self.customizations.as_ref()
@@ -742,6 +763,9 @@ impl SettingsView {
         packages: Option<PackageCustomizationPages>,
         slot_pages: Option<SlotPageSnapshot>,
     ) {
+        if self.profiles.is_some() {
+            return;
+        }
         if !self.is_open() {
             return;
         }
@@ -963,6 +987,16 @@ impl SettingsView {
         let Some(key) = self.view.as_ref().and_then(ViewState::focused).cloned() else {
             return;
         };
+        if key.as_str() == "profiles.open" {
+            if let Some(catalog) = &self.catalog {
+                self.pending = Some(Edit {
+                    revision: catalog.revision(),
+                    id: key,
+                    change: Change::Activate,
+                });
+            }
+            return;
+        }
         if key.as_str() == automexia_ui_model::settings::APPEARANCE_THEME {
             self.open_theme_gallery();
             return;
@@ -2060,6 +2094,16 @@ impl SettingsView {
                 text.push_str(reason);
             }
         }
+        if let Some(profiles) = &self.profiles {
+            text.push_str(if profiles.draft.is_some() {
+                " Tab: focus. Arrows: choose. Ctrl or Command S: save profile. Escape: back; unsaved changes require confirmation. Saving does not launch a terminal."
+            } else if profiles.selected.is_some() {
+                " Tab: focus. Arrows: choose. Enter: activate the selected action. E: edit profile. Escape: profile list."
+            } else {
+                " Tab: focus. Arrows: choose. Enter: open profile details. N: new profile. Escape: close."
+            });
+            return text;
+        }
         if self.is_category_root() {
             text.push_str(
                 " Tab: focus. Enter: open. R: confirm Reset all. S: confirm Restore saved when available. C or Esc: close.",
@@ -2112,6 +2156,9 @@ impl SettingsView {
         }
         if self.numeric_editor.is_some() {
             self.numeric_key(key, text, modifiers, repeat);
+            return;
+        }
+        if self.profiles.is_some() && self.profile_key(key, modifiers, repeat) {
             return;
         }
         if self.gallery.is_some() {
@@ -2419,6 +2466,10 @@ impl SettingsView {
         }
     }
     fn request_reset(&mut self) {
+        if self.profiles.is_some() {
+            self.profile_primary();
+            return;
+        }
         if self.customizations.is_some() {
             self.request_customization_reset();
             return;
@@ -2509,6 +2560,7 @@ impl SettingsView {
             return;
         }
         match confirmation.action {
+            ConfirmedSettingsAction::Profile(action) => self.confirm_profile(action),
             ConfirmedSettingsAction::Customization(CustomizationIntent::RestoreSaved)
                 if !self.temporary_customizations =>
             {
@@ -3576,7 +3628,11 @@ impl SettingsView {
             label(
                 canvas,
                 g.preview,
-                "Display text only · never evaluated",
+                if self.profiles.is_some() {
+                    "Saved text · no shell expansion"
+                } else {
+                    "Display text only · never evaluated"
+                },
                 font * 0.85,
                 theme.muted_text,
                 false,
@@ -3646,19 +3702,21 @@ impl SettingsView {
                 );
             }
         }
+        let text_help = editor.text_limits.map(|(max, allow_empty)| {
+            let prompt = if allow_empty {
+                "Optional text."
+            } else {
+                "Enter text."
+            };
+            format!("{prompt} Up to {max} UTF-8 bytes.")
+        });
         let help = if let Some(feedback) = editor.feedback.as_deref() {
             feedback
-        } else if let Some((max, allow_empty)) = editor.text_limits {
+        } else if let Some(text_help) = text_help.as_deref() {
             if draft.is_none() {
                 "Text is too long or contains a control character. Apply unavailable."
-            } else if allow_empty {
-                if max <= 24 {
-                    "Optional prefix or suffix. Up to 24 UTF-8 bytes."
-                } else {
-                    "Literal label. Up to 128 UTF-8 bytes."
-                }
             } else {
-                "Enter a visible label. Up to 128 UTF-8 bytes."
+                text_help
             }
         } else if draft.is_none() {
             if editor.alpha {
@@ -3947,6 +4005,10 @@ impl SettingsView {
                 Target::Confirmation(false) => self.dismiss_confirmation(),
                 _ => {}
             }
+            return;
+        }
+        if self.profiles.is_some() && matches!(target, Target::Close | Target::Back) {
+            self.profile_back();
             return;
         }
         // Clicking another control explicitly transfers focus out of preview
@@ -4601,6 +4663,8 @@ impl SettingsView {
                 "Search customizations".into()
             } else if self.is_category_detail() {
                 "Search this feature".into()
+            } else if self.profiles.is_some() {
+                "Search profiles and controls".into()
             } else {
                 "Search settings".into()
             }
@@ -4947,6 +5011,10 @@ impl SettingsView {
             );
         }
         self.paint_preview(canvas, theme);
+        if self.profiles.is_some() {
+            self.paint_profiles_footer(canvas, theme);
+            return;
+        }
         action_button(
             canvas,
             g.reset,
@@ -6754,6 +6822,16 @@ fn display_value(entry: &SettingDescriptor) -> String {
                 && entry.id.as_str().ends_with(".remove") =>
         {
             "Remove".into()
+        }
+        SettingValue::Action if entry.id.as_str() == "profiles.save" => "Save".into(),
+        SettingValue::Action if entry.id.as_str() == "profiles.delete" => "Delete".into(),
+        SettingValue::Action if entry.id.as_str() == "profiles.duplicate" => {
+            "Duplicate".into()
+        }
+        SettingValue::Action if entry.id.as_str() == "profiles.export" => "Export".into(),
+        SettingValue::Action if entry.id.as_str() == "profiles.import" => "Import".into(),
+        SettingValue::Action if entry.id.as_str() == "profiles.refresh" => {
+            "Refresh".into()
         }
         SettingValue::Action => "Open".into(),
     }

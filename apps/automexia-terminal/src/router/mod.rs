@@ -815,7 +815,7 @@ impl Router<'_> {
         config: &'a rio_backend::config::Config,
         open_url: Option<String>,
         app_id: Option<&str>,
-    ) {
+    ) -> WindowId {
         let tab_id = if config.navigation.is_native() {
             let id = self.current_tab_id;
             self.current_tab_id = self.current_tab_id.wrapping_add(1);
@@ -851,6 +851,7 @@ impl Router<'_> {
         }
 
         self.routes.insert(id, route);
+        id
     }
 
     /// Create the quake dropdown window: borderless, always on top,
@@ -894,7 +895,7 @@ impl Router<'_> {
         config: &'a rio_backend::config::Config,
         tab_id: Option<&str>,
         open_url: Option<String>,
-    ) {
+    ) -> WindowId {
         let window = RouteWindow::from_target(
             event_loop,
             event_proxy,
@@ -915,6 +916,7 @@ impl Router<'_> {
         route.window.screen.renderer.information_bar_recipe =
             self.information_bar_recipe.clone();
         self.routes.insert(id, route);
+        id
     }
 }
 

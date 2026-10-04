@@ -277,6 +277,15 @@ impl Application<'_> {
             .router
             .routes
             .get_mut(&window_id)
+            .and_then(|route| route.window.screen.settings_view.take_profile_intent())
+        {
+            self.handle_profile_intent(window_id, intent);
+            return;
+        }
+        if let Some(intent) = self
+            .router
+            .routes
+            .get_mut(&window_id)
             .and_then(|route| route.window.screen.settings_view.take_theme_intent())
         {
             self.apply_theme_intent(event_loop, window_id, intent);
@@ -309,6 +318,12 @@ impl Application<'_> {
         window_id: rio_backend::event::WindowId,
         edit: automexia_ui_model::settings::Edit,
     ) {
+        if edit.id.as_str() == "profiles.open"
+            && edit.change == automexia_ui_model::settings::Change::Activate
+        {
+            self.open_profiles(window_id);
+            return;
+        }
         if edit.id.as_str().starts_with("extension.pkg_") {
             let result = self
                 .package_pages()

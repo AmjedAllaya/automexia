@@ -36,6 +36,7 @@ use crate::automexia::preferences::{
 };
 
 mod fonts;
+mod profiles;
 mod recovery;
 mod settings;
 mod themes;
@@ -266,6 +267,8 @@ pub struct Application<'a> {
     font_preparation: crate::font_loading::FontPreparation,
     pending_font: Option<fonts::PendingFont>,
     theme_library: crate::automexia::theme_gallery_io::ThemeLibrary,
+    profile_library: crate::automexia::profiles::ProfileLibrary,
+    pending_profile: Option<profiles::PendingProfile>,
     pending_theme: Option<themes::PendingTheme>,
     theme_preview: Option<themes::ThemeTarget>,
     prepared_font: Option<(
@@ -362,6 +365,11 @@ impl Application<'_> {
                 Some(event_proxy.clone()),
             ),
             pending_theme: None,
+            profile_library: crate::automexia::profiles::ProfileLibrary::new(
+                rio_backend::config::config_dir_path(),
+                Some(event_proxy.clone()),
+            ),
+            pending_profile: None,
             theme_preview: None,
             prepared_font: None,
             base_config,
@@ -996,6 +1004,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         self.finish_configuration_creation();
         self.finish_font_preparation(event_loop);
         self.finish_theme_work(event_loop);
+        self.finish_profile_work(event_loop);
         let window_id = event.window_id;
         match event.payload {
             RioEventType::Rio(RioEvent::Render) => {
@@ -1760,6 +1769,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             RioEventType::Rio(RioEvent::RestorePreviousSession) => {
                 self.restore_previous_session();
             }
+            RioEventType::Rio(RioEvent::OpenProfiles) => self.open_profiles(window_id),
             RioEventType::Rio(RioEvent::OpenThemeGallery) => {
                 self.open_settings(window_id, true);
                 if let Some(route) = self.router.routes.get_mut(&window_id) {
@@ -3599,6 +3609,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
         self.poll_recovery(event_loop);
         self.finish_font_preparation(event_loop);
         self.finish_theme_work(event_loop);
+        self.finish_profile_work(event_loop);
         let scheduled = self.scheduler.update();
         let cleanup = self.router.workers.poll_cleanup();
         let next_wake = scheduled
@@ -3606,6 +3617,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             .chain(cleanup)
             .chain(self.font_preparation.deadline())
             .chain(self.theme_library.deadline())
+            .chain(self.profile_library.deadline())
             .chain(self.recovery.deadline())
             .min();
         let control_flow = match next_wake {

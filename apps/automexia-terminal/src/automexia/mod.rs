@@ -38,6 +38,7 @@ pub mod preferences;
 #[doc(hidden)]
 pub mod presentation;
 pub(crate) mod private_fs;
+pub mod profiles;
 #[cfg(target_os = "windows")]
 #[doc(hidden)]
 pub mod prompt_discovery;

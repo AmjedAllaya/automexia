@@ -914,6 +914,8 @@ pub struct Screen<'screen> {
     image_preview: crate::image_preview::ImagePreview,
     pub(crate) table_view: crate::table_view::TableView,
     pub(crate) settings_view: crate::settings_view::SettingsView,
+    profile_base_config: rio_backend::config::Config,
+    profile_theme_route: Option<usize>,
     overlay_key_releases: Vec<PhysicalKey>,
     action_surface: action_surface::Controller,
     suggestions: crate::automexia::suggestions::SuggestionUiController,
@@ -1104,7 +1106,10 @@ impl Screen<'_> {
             cwd: config.navigation.current_working_directory,
             shell,
             environment,
-            profile_identity: config.shell.program.clone(),
+            profile_identity: config
+                .named_profile_identity
+                .clone()
+                .or_else(|| config.shell.program.clone()),
             working_dir,
             spawn_performer: true,
             #[cfg(not(target_os = "windows"))]
@@ -1187,6 +1192,8 @@ impl Screen<'_> {
             image_preview: crate::image_preview::ImagePreview::default(),
             table_view: crate::table_view::TableView::default(),
             settings_view: crate::settings_view::SettingsView::default(),
+            profile_base_config: config.clone(),
+            profile_theme_route: None,
             overlay_key_releases: Vec::new(),
             action_surface,
             suggestions: crate::automexia::suggestions::SuggestionUiController::new(
@@ -1756,6 +1763,8 @@ impl Screen<'_> {
         binding_registry: Option<crate::bindings::registry::RegistrySnapshot>,
         should_update_bindings: bool,
     ) {
+        self.profile_base_config = config.clone();
+        self.profile_theme_route = None;
         let window_size = self.sugarloaf.window_size();
         let scale = self.sugarloaf.scale_factor();
         let padding_y_top = padding_top_from_config(
@@ -2701,6 +2710,7 @@ impl Screen<'_> {
                         self.context_manager.restore_previous_session()
                     }
                     Act::OpenThemeGallery => self.context_manager.open_theme_gallery(),
+                    Act::OpenProfiles => self.context_manager.open_profiles(),
                     Act::ConfigEditor => {
                         self.context_manager.switch_to_settings();
                         self.resize_top_or_bottom_line();
@@ -6245,6 +6255,7 @@ impl Screen<'_> {
                 self.context_manager.restore_previous_session()
             }
             PaletteAction::OpenThemeGallery => self.context_manager.open_theme_gallery(),
+            PaletteAction::OpenProfiles => self.context_manager.open_profiles(),
             PaletteAction::OpenCustomizations => {
                 self.context_manager.open_customizations()
             }
@@ -6487,6 +6498,7 @@ impl Screen<'_> {
     }
 
     pub(crate) fn render(&mut self) -> Option<crate::context::renderable::WindowUpdate> {
+        self.sync_profile_theme();
         self.validate_hint_snapshot();
         let (over_search, _) = self.update_search_hover(self.mouse.x, self.mouse.y);
         if over_search {

@@ -387,7 +387,7 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
             icon: CommandIcon::FocusDown,
             accent: UiAccent::Cyan,
         },
-        OpenSettings => RowPresentation {
+        OpenSettings | OpenProfiles => RowPresentation {
             icon: CommandIcon::Settings,
             accent: UiAccent::Warning,
         },
@@ -635,6 +635,11 @@ const COMMANDS: &[Command] = &[
         title: "Restore previous session",
         shortcut: "Enter",
         action: PaletteAction::RestorePreviousSession,
+    },
+    Command {
+        title: "New Terminal with Profile",
+        shortcut: "Enter",
+        action: PaletteAction::OpenProfiles,
     },
     Command {
         title: "Theme Gallery",
@@ -3599,7 +3604,7 @@ mod tests {
                 "missing palette shortcut for {}",
                 command.title
             );
-            // Gallery and Customizations are picker entries: Enter activates
+            // Gallery, Profiles and Customizations are picker entries: Enter activates
             // the selected row, rather than claiming a global key binding.
             if command.shortcut == "Enter" {
                 assert!(matches!(
@@ -3607,6 +3612,7 @@ mod tests {
                     PaletteAction::OpenCustomizations
                         | PaletteAction::OpenThemeGallery
                         | PaletteAction::RestorePreviousSession
+                        | PaletteAction::OpenProfiles
                 ));
                 continue;
             }

@@ -63,6 +63,7 @@ impl Category {
             | SelectPrevLocalTab
             | WindowCreateNew
             | RestorePreviousSession
+            | OpenProfiles
             | Quit => Self::Tabs,
             SplitRight
             | SplitDown

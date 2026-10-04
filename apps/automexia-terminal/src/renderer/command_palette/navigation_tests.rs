@@ -16,6 +16,7 @@ fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
                 PaletteAction::OpenCustomizations
                     | PaletteAction::OpenThemeGallery
                     | PaletteAction::RestorePreviousSession
+                    | PaletteAction::OpenProfiles
             ) {
                 assert_eq!(palette.command_shortcut(command), "Enter");
                 continue;
@@ -1093,4 +1094,20 @@ fn visual_preferences_have_no_duplicate_settings_category() {
             Some(PaletteAction::OpenCustomizations)
         );
     }
+}
+
+#[test]
+fn named_profiles_are_searchable_in_terminal_actions_without_launching_on_selection() {
+    let mut palette = CommandPalette::new();
+    palette.set_enabled(true);
+    palette.set_query("New Terminal with Profile".into());
+    assert_eq!(
+        palette.get_selected_action(),
+        Some(PaletteAction::OpenProfiles)
+    );
+    assert_eq!(
+        Category::for_action(PaletteAction::OpenProfiles),
+        Category::Tabs
+    );
+    assert!(palette.is_enabled());
 }

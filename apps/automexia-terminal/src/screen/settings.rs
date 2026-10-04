@@ -259,6 +259,17 @@ impl Screen<'_> {
         font_changed: bool,
         prepared: Option<&rio_backend::sugarloaf::font::FontLibrary>,
     ) {
+        self.profile_base_config = config.clone();
+        self.profile_theme_route = None;
+        self.apply_profile_preferences(config, font_changed, prepared);
+    }
+
+    fn apply_profile_preferences(
+        &mut self,
+        config: &rio_backend::config::Config,
+        font_changed: bool,
+        prepared: Option<&rio_backend::sugarloaf::font::FontLibrary>,
+    ) {
         if let Some(library) = prepared {
             self.sugarloaf.update_font(library);
         }
@@ -288,6 +299,90 @@ impl Screen<'_> {
         self.update_presentation(config.presentation);
         self.fit_settings_view();
         self.last_ime_cursor_pos = None;
+    }
+
+    pub(super) fn sync_profile_theme(&mut self) {
+        // Gallery previews temporarily own the window palette. Invalidate the
+        // route cache so closing or cancelling the gallery restores the profile.
+        if self.settings_view.theme_session().is_some() {
+            self.profile_theme_route = None;
+            return;
+        }
+        let current = self.context_manager.current();
+        if self.profile_theme_route == Some(current.route_id) {
+            return;
+        }
+        let route = current.route_id;
+        let mut config = self.profile_base_config.clone();
+        if let Some(colors) = current.profile_colors {
+            config.colors = colors;
+            config.adaptive_colors = None;
+        }
+        self.apply_profile_preferences(&config, false, None);
+        self.profile_theme_route = Some(route);
+    }
+
+    pub(crate) fn apply_profile_presentation(
+        &mut self,
+        profile: &rio_backend::config::profiles::NamedProfile,
+        config: &rio_backend::config::Config,
+    ) {
+        let current = self.context_manager.current_mut();
+        current.profile_colors = profile.theme.as_ref().map(|_| config.colors);
+        current.profile_icon = profile.icon.clone();
+        let index = self.context_manager.current_index();
+        self.context_manager
+            .set_custom_title(index, Some(profile.name.clone()));
+        let color = profile
+            .color
+            .as_deref()
+            .and_then(|hex| u32::from_str_radix(hex.trim_start_matches('#'), 16).ok())
+            .map(|v| {
+                [
+                    ((v >> 16) & 255) as f32 / 255.0,
+                    ((v >> 8) & 255) as f32 / 255.0,
+                    (v & 255) as f32 / 255.0,
+                    1.0,
+                ]
+            });
+        self.context_manager.set_custom_color(index, color);
+        self.profile_theme_route = None;
+        self.mark_dirty();
+    }
+
+    /// Restore ordinary new-tab defaults after creating the first profile terminal.
+    pub(crate) fn reset_profile_window_defaults(
+        &mut self,
+        base: &rio_backend::config::Config,
+        launch: &crate::context::ContextManagerConfig,
+    ) {
+        self.profile_base_config = base.clone();
+        self.profile_theme_route = None;
+        self.context_manager.restore_launch_defaults(launch);
+    }
+
+    pub(crate) fn create_profile_tab(
+        &mut self,
+        config: &rio_backend::config::Config,
+    ) -> bool {
+        let old = self.context_manager.current_index();
+        self.resize_top_or_bottom_line();
+        #[cfg(not(target_os = "macos"))]
+        self.context_manager.contexts_mut()[old].update_dimensions(&mut self.sugarloaf);
+        if !self
+            .context_manager
+            .add_profile_context(next_rich_text_id(), config)
+        {
+            return false;
+        }
+        self.context_manager.invalidate_topology_redo();
+        let new = self.context_manager.current_index();
+        self.context_manager
+            .switch_context_visibility(&mut self.sugarloaf, old, new);
+        self.resize_top_or_bottom_line();
+        self.clear_selection();
+        self.mark_dirty();
+        true
     }
 
     /// Publish a visual preference without reloading fonts, images, or PTYs.

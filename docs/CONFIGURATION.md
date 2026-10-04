@@ -738,3 +738,12 @@ installs a `rio` alias. Existing Automexia files win. See
 - [Shell integration](SHELL-INTEGRATION.md)
 - [Liquid Hacker UX](LIQUID-HACKER-UX.md)
 - [Architecture](ARCHITECTURE.md#configuration-transaction)
+
+## Named terminal profiles
+
+[Named Profiles](user-guide/profiles.md) layer typed launch and presentation
+settings over configuration. The optional `[profiles]` table has `version = 1`
+and `[[profiles.profiles]]` entries. Private visual overrides live separately in
+`profiles/profiles-v1.toml`; they replace matching configuration IDs. Environment
+entries are variable-name references and never contain saved values. See
+[ADR 0093](adr/0093-named-terminal-profiles.md) for ownership and compatibility.

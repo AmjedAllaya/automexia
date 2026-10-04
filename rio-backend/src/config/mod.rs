@@ -15,6 +15,7 @@ pub mod navigation;
 pub mod platform;
 pub mod presentation;
 pub mod product;
+pub mod profiles;
 pub mod renderer;
 pub mod theme;
 pub mod title;
@@ -150,6 +151,10 @@ impl Default for SessionRecovery {
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Config {
+    #[serde(default)]
+    pub profiles: profiles::ProfileDocument,
+    #[serde(skip)]
+    pub named_profile_identity: Option<String>,
     #[serde(default, rename = "session-recovery")]
     pub session_recovery: SessionRecovery,
     /// Application-owned startup placeholder; never serialized as configuration.
@@ -696,6 +701,8 @@ impl Default for Config {
             title: Title::default(),
             developer: Developer::default(),
             env_vars: vec![],
+            profiles: profiles::ProfileDocument::default(),
+            named_profile_identity: None,
             #[cfg(feature = "renderer")]
             fonts: SugarloafFonts::default(),
             line_height: default_line_height(),

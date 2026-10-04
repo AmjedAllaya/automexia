@@ -1804,3 +1804,14 @@ without rerunning. It checks consumed-copy cleanup, normal close, Escape/Start
 clean, quiet reopening and manual restoration into additional windows.
 Native Linux/macOS credential stores and desktops, WSL guest filesystem recovery and assistive-technology
 results remain external until separately exercised.
+
+## Named profile assurance
+
+Run `cargo test -p rio-backend --test named_profiles` for schema and resolution
+checks and `cargo test -p automexia-terminal --all-features profile` for storage,
+editor and ordinary-session descriptor checks. The Windows native resize driver
+accepts `-NamedProfilesOnly` (and `-UseCpuRenderer`) with a visual-test-hooks build.
+It owns a disposable configuration, edits with keyboard and pointer, checks exact
+saved TOML and verifies that saving does not launch before an explicit Open.
+The native UI scenario dispatcher includes the profile scenario. Native Linux/macOS and
+screen-reader delivery remain separate platform evidence.

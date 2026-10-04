@@ -769,6 +769,17 @@ pub(crate) fn customization_groups(catalog: &Catalog) -> Vec<CustomizationGroup>
             groups.push(group);
         }
     }
+    if let Some(group) = customization_group(
+        catalog,
+        "Profiles",
+        "Create, edit and open named terminals.",
+        "profiles.open",
+        None,
+        |id| id == "profiles.open",
+        &["shell executable arguments environment WSL SSH Work Personal"],
+    ) {
+        groups.push(group);
+    }
     for entry in catalog.entries() {
         let settings::SettingOwner::Extension(owner) = &entry.owner else {
             continue;
@@ -1108,6 +1119,7 @@ pub(crate) fn catalog_with_palette(
             };
         }
     }
+    entries.push(crate::settings_view::profiles_settings_entry()?);
     entries.extend(appearance);
     entries.extend(visual_descriptors(base, &effective, preferences, palette)?);
     entries.extend(
@@ -3451,7 +3463,10 @@ mod tests {
         let snapshot = catalog(7, &base, &preferences, &installed()).unwrap();
         assert!(snapshot.entries().len() <= settings::MAX_SETTINGS);
         let groups = customization_groups(&snapshot);
-        assert_eq!(groups.len(), 8);
+        assert_eq!(groups.len(), 9);
+        assert!(groups
+            .iter()
+            .any(|group| group.key.as_str() == "profiles.open"));
         let actions = tag_actions(&preferences, &base);
         assert_eq!(actions.len(), 13);
         assert!(actions
@@ -4392,7 +4407,10 @@ mod tests {
         );
         assert!(groups.iter().all(|group| group.label != "DevOps detection"));
         assert!(groups.iter().all(|group| group.label != "Git branch tag"));
-        assert_eq!(groups.len(), 8);
+        assert_eq!(groups.len(), 9);
+        assert!(groups
+            .iter()
+            .any(|group| group.key.as_str() == "profiles.open"));
         assert_eq!(tag_actions(&prefs, &base).len(), 13);
         assert_eq!(groups[0].members[0].as_str(), "tags.enabled");
         assert_eq!(
@@ -4529,7 +4547,10 @@ mod tests {
 
         let without_extension = catalog(8, &base, &prefs, &[]).unwrap();
         let groups = customization_groups(&without_extension);
-        assert_eq!(groups.len(), 8);
+        assert_eq!(groups.len(), 9);
+        assert!(groups
+            .iter()
+            .any(|group| group.key.as_str() == "profiles.open"));
         assert!(groups.iter().all(|group| {
             group.key.as_str() != settings_extensions::DEVOPS_CONTEXT_STATUS_ID
                 && group.key.as_str() != settings_extensions::DEVOPS_GIT_STATUS_ID
