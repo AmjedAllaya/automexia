@@ -24,10 +24,10 @@ tracing = { workspace = true }
 libc = { workspace = true }
 
 [target.'cfg(windows)'.dependencies]
-# miow exposes OVERLAPPED_ENTRY and OVERLAPPED from windows-sys 0.60.
-# Keep this exact and retain miow's 0.60.2 edge in Cargo.lock: resolving its
-# wider range to 0.61 makes corcovado's direct Win32 types incompatible.
-windows-sys = "=0.60.2"
+# miow accepts both 0.60 and 0.61. Use its latest compatible binding family
+# alongside the PTY adapter, so normal dependency resolution keeps the public
+# OVERLAPPED_ENTRY and OVERLAPPED types on the same crate instance.
+windows-sys = "=0.61.2"
 miow = "0.6.1"
 
 [dev-dependencies]

@@ -716,6 +716,8 @@ fn parse(content: &str) -> Option<Document> {
             max_events: 20_000,
             max_aliases: 64,
             max_anchors: 64,
+            max_recorded_anchor_events: 20_000,
+            max_recorded_anchor_bytes: MAX_BYTES,
             max_depth: 32,
             max_documents: 1,
             max_nodes: 8_192,
@@ -896,6 +898,56 @@ mod tests {
             documents[0] = valid;
             assert_eq!(from_documents(&documents).is_some(), count <= 16);
         }
+    }
+
+    #[test]
+    fn passive_yaml_rejects_recursive_aliases_tagged_merges_and_deep_input() {
+        let valid = "current-context: fixture\ncontexts: [{name: fixture}]\n";
+        for suffix in [
+            "extra: &recursive [*recursive]".to_owned(),
+            "defaults: &defaults {namespace: sandbox}\nextra: {!!merge '<<': *defaults}"
+                .to_owned(),
+            format!("extra: {}value{}", "[".repeat(40), "]".repeat(40)),
+            format!(
+                "extra: [ {} ]",
+                (0..65)
+                    .map(|i| format!("&a{i} value"))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+        ] {
+            assert!(parse(&format!("{valid}{suffix}")).is_none());
+        }
+    }
+
+    #[test]
+    fn passive_yaml_bounds_retained_anchor_copies_before_allocation() {
+        let mut content =
+            "current-context: fixture\ncontexts: [{name: fixture}]\nextra: ".to_owned();
+        for index in 0..28 {
+            content.push_str(&format!("&anchor{index} ["));
+        }
+        // Decoding escapes owns the scalar. Each open anchor retains a copy;
+        // the source, scalar, depth and event limits alone do not bound those copies.
+        content.push('"');
+        content.push_str(&"\\u0041".repeat(40_000));
+        content.push('"');
+        content.push_str(&"]".repeat(28));
+        assert!(content.len() < MAX_BYTES);
+        assert!(parse(&content).is_none());
+
+        // Borrowed scalars allocate no copied payload, but retained event storage
+        // must also be bounded independently from the number of input events.
+        let prefix = (0..28).map(|i| format!("&anchor{i} [")).collect::<String>();
+        let borrowed = format!(
+            "extra: {prefix}{}{}",
+            "value, ".repeat(1_000),
+            "]".repeat(28)
+        );
+        assert!(parse(&borrowed).is_none());
+
+        let normal = "current-context: &selected fixture\ncontexts: [{name: *selected, context: {namespace: sandbox}}]";
+        assert_eq!(from_documents(&[normal]).unwrap().namespace, "sandbox");
     }
 
     #[test]

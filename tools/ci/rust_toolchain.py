@@ -24,7 +24,7 @@ RUST_WORKFLOWS = ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.ym
 COMPILER_EXECUTABLE_ENV = ("RUSTC", "RUSTDOC", "CARGO_BUILD_RUSTC", "CARGO_BUILD_RUSTDOC")
 CACHE_DOCS = ("docs/CI-ASSURANCE.md", "docs/CI-BUILD-PERFORMANCE-PLAN.md", ".github/FREE-PRIVATE-PRODUCTION-SETUP.md")
 COMPILER_DOCS = (".github/TOOLCHAIN-POLICY.md", ".github/PATCH-REPORT.md")
-PYTHON_SETUP = "actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1"
+PYTHON_SETUP = "actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97"
 
 
 class ToolchainError(ValueError):

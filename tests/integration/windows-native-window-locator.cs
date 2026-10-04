@@ -18,6 +18,10 @@ public static class AutomexiaNativeWindowLocator
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsWindowVisible(IntPtr hWnd);
 
+    [DllImport("dwmapi.dll")]
+    private static extern int DwmGetWindowAttribute(
+        IntPtr hWnd, uint attribute, out uint value, uint size);
+
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetWindowText(IntPtr hWnd, StringBuilder text, int capacity);
 
@@ -50,6 +54,16 @@ public static class AutomexiaNativeWindowLocator
             uint processId;
             GetWindowThreadProcessId(hWnd, out processId);
             if (processId != (uint)expectedProcessId || !IsWindowVisible(hWnd))
+            {
+                return true;
+            }
+            // WS_VISIBLE also includes the still-cloaked startup surface.
+            // Automexia reveals it only after publishing its first complete
+            // frame. Native input/close timing must start at that same boundary.
+            uint cloaked;
+            const uint DwmwaCloaked = 14;
+            if (DwmGetWindowAttribute(hWnd, DwmwaCloaked, out cloaked, sizeof(uint)) != 0
+                || cloaked != 0)
             {
                 return true;
             }

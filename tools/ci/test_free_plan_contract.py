@@ -67,6 +67,31 @@ class FreePlanContractTests(unittest.TestCase):
         self.assertIn(("release.yml", "release-quality"), covered)
         self.assertIn(("linux-early-access.yml", "quality"), covered)
 
+    def test_fuzz_uses_the_same_reviewed_local_dependency_patches(self) -> None:
+        root = tomllib.loads((ROOT / "Cargo.toml").read_text(encoding="utf-8"))
+        fuzz = tomllib.loads((ROOT / "fuzz/Cargo.toml").read_text(encoding="utf-8"))
+        expected = root.get("patch", {}).get("crates-io", {})
+        actual = fuzz.get("patch", {}).get("crates-io", {})
+        self.assertTrue(expected)
+        self.assertEqual(set(actual), set(expected))
+        for name, entry in expected.items():
+            self.assertEqual(
+                (ROOT / entry["path"]).resolve(),
+                (ROOT / "fuzz" / actual[name]["path"]).resolve(),
+                name,
+            )
+
+    def test_windows_io_types_use_the_same_locked_bindings(self) -> None:
+        for manifest in ("Cargo.lock", "fuzz/Cargo.lock"):
+            with self.subTest(lockfile=manifest):
+                packages = tomllib.loads((ROOT / manifest).read_text(encoding="utf-8"))["package"]
+                bindings = []
+                for owner in ("corcovado", "miow"):
+                    package = next(package for package in packages if package["name"] == owner)
+                    bindings.append(next(dependency for dependency in package["dependencies"]
+                                         if dependency.startswith("windows-sys ")))
+                self.assertEqual(bindings[0], bindings[1], "OVERLAPPED types must share one binding crate")
+
     def test_cargo_updates_keep_shared_manifests_and_lockfiles_together(self) -> None:
         import yaml
 

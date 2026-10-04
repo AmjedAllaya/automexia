@@ -32,6 +32,8 @@ ALLOWED_ACTIONS = {
 REVIEWED_ACTION_PINS = {
     "actions/setup-python": {
         "ece7cb06caefa5fff74198d8649806c4678c61a1",
+        # v7: bounded manifest retries and ESM migration; repository inputs remain compatible.
+        "5fda3b95a4ea91299a34e894583c3862153e4b97",
     },
     "mozilla-actions/sccache-action": {
         "fc920bf0ec8de6ee65d409111f7ec508035751ba",

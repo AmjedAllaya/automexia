@@ -231,14 +231,17 @@ impl Store {
 }
 
 /// One disk owner and one admitted operation. A newer checkpoint replaces the
-/// pending checkpoint in memory; it never creates another worker or disk queue.
+/// pending checkpoint in memory. One explicit restore may wait behind those
+/// writes; it never creates another worker or admits duplicate restore requests.
 pub struct RecoveryService {
     worker: BoundedWorker<Request>,
     completed: mpsc::Receiver<Result<StoreOutcome, StoreError>>,
     pending: bool,
+    pending_save: bool,
     deadline: Option<Instant>,
     failed: bool,
     latest: Option<Checkpoint>,
+    prepare_after_save: Option<Snapshot>,
     retire_pending: bool,
 }
 impl RecoveryService {
@@ -313,9 +316,11 @@ impl RecoveryService {
             worker,
             completed,
             pending: false,
+            pending_save: false,
             deadline: None,
             failed: false,
             latest: None,
+            prepare_after_save: None,
             retire_pending: false,
         }
     }
@@ -323,11 +328,14 @@ impl RecoveryService {
         if self.failed || self.pending {
             return false;
         }
+        let saving = matches!(operation, Operation::Save { .. });
         if self.worker.try_submit(Request { operation }) != RefreshSubmission::Queued {
             self.failed = true;
+            self.prepare_after_save = None;
             return false;
         }
         self.pending = true;
+        self.pending_save = saving;
         self.deadline = Some(Instant::now() + Duration::from_secs(5));
         true
     }
@@ -335,6 +343,16 @@ impl RecoveryService {
         self.submit(Operation::Load)
     }
     pub fn prepare(&mut self, snapshot: Snapshot) -> bool {
+        if self.failed || self.retire_pending || self.prepare_after_save.is_some() {
+            return false;
+        }
+        if self.pending {
+            if !self.pending_save {
+                return false;
+            }
+            self.prepare_after_save = Some(snapshot);
+            return true;
+        }
         self.submit(Operation::Prepare(snapshot))
     }
     pub fn save(&mut self, snapshot: impl Into<Checkpoint>) {
@@ -364,10 +382,12 @@ impl RecoveryService {
         }
         if let Ok(result) = self.completed.try_recv() {
             self.pending = false;
+            self.pending_save = false;
             self.deadline = None;
             if result.as_ref().is_err_and(|e| *e != StoreError::Capture) {
                 self.failed = true;
                 self.latest = None;
+                self.prepare_after_save = None;
             } else {
                 if matches!(result, Ok(StoreOutcome::Saved { retired: true })) {
                     self.retire_pending = false;
@@ -379,6 +399,8 @@ impl RecoveryService {
                         checkpoint: snapshot,
                         retire: self.retire_pending,
                     });
+                } else if let Some(snapshot) = self.prepare_after_save.take() {
+                    self.submit(Operation::Prepare(snapshot));
                 }
             }
             return Some(result);
@@ -386,6 +408,7 @@ impl RecoveryService {
         if self.deadline.is_some_and(|time| now >= time) {
             self.failed = true;
             self.latest = None;
+            self.prepare_after_save = None;
             self.deadline = None;
             self.worker.request_shutdown();
             return Some(Err(StoreError::Timeout));
@@ -599,6 +622,79 @@ mod tests {
             std::thread::sleep(Duration::from_millis(2));
         }
     }
+    #[test]
+    fn manual_restore_waits_for_admitted_and_coalesced_saves_without_replay() {
+        let root = tempfile::tempdir().unwrap();
+        let mut service = RecoveryService::new(root.path().into(), Arc::new(|| {}));
+        assert!(service.load());
+        assert!(completion(&mut service).is_ok());
+        let mut first = super::super::tests::fixture();
+        first.windows[0].width = 400;
+        service.save(first.clone());
+        let mut latest = first.clone();
+        latest.windows[0].width = 600;
+        service.save(latest.clone());
+        let mut restored = first;
+        restored.windows[0].width = 900;
+        assert!(
+            service.prepare(restored.clone()),
+            "an admitted save must not lose the explicit restore request"
+        );
+        assert!(
+            !service.prepare(restored.clone()),
+            "duplicate requests must not queue"
+        );
+        assert!(matches!(
+            completion(&mut service),
+            Ok(StoreOutcome::Saved { .. })
+        ));
+        assert!(matches!(
+            completion(&mut service),
+            Ok(StoreOutcome::Saved { .. })
+        ));
+        assert!(
+            !service.prepare(restored.clone()),
+            "an active prepare must not queue again"
+        );
+        let StoreOutcome::Prepared { snapshot, .. } = completion(&mut service).unwrap()
+        else {
+            panic!("restore did not follow the admitted writes");
+        };
+        assert_eq!(snapshot.windows[0].width, restored.windows[0].width);
+        assert!(service.take(Instant::now()).is_none());
+        assert!(service.shutdown(Duration::from_secs(3)));
+        drop(service);
+        assert_eq!(
+            Store::open(root.path()).unwrap().load().unwrap().0.snapshot,
+            latest
+        );
+    }
+
+    #[test]
+    fn queued_restore_fails_closed_on_write_failure_and_during_load_or_retirement() {
+        let root = tempfile::tempdir().unwrap();
+        let mut service = RecoveryService::new(root.path().into(), Arc::new(|| {}));
+        let snapshot = super::super::tests::fixture();
+        assert!(service.load());
+        assert!(!service.prepare(snapshot.clone()));
+        assert!(completion(&mut service).is_ok());
+        service.save_and_retire(snapshot.clone().into());
+        assert!(!service.prepare(snapshot.clone()));
+        assert!(matches!(
+            completion(&mut service),
+            Ok(StoreOutcome::Saved { retired: true })
+        ));
+        let mut invalid = snapshot.clone();
+        invalid.version = 0;
+        service.save(invalid);
+        assert!(service.prepare(snapshot.clone()));
+        assert!(matches!(completion(&mut service), Err(StoreError::Invalid)));
+        assert!(service.prepare_after_save.is_none());
+        assert!(!service.prepare(snapshot));
+        assert!(service.take(Instant::now()).is_none());
+        assert!(service.shutdown(Duration::from_secs(3)));
+    }
+
     #[test]
     fn worker_coalesces_checkpoints_and_preserves_the_latest_on_shutdown() {
         let root = tempfile::tempdir().unwrap();

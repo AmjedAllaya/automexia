@@ -1,7 +1,104 @@
 #!/usr/bin/env python3
 """Mutation canaries for the recovery architecture contract."""
+import json
+import shutil
+import subprocess
+import sys
 import unittest
 import check_session_recovery as policy
+
+
+class RecoveryNativeOracleTests(unittest.TestCase):
+    @unittest.skipUnless(sys.platform == "win32", "Native DWM window ownership requires Windows")
+    def test_native_locator_waits_for_an_uncloaked_application_window(self):
+        script = r'''
+$ErrorActionPreference = 'Stop'
+Add-Type -AssemblyName System.Windows.Forms
+Add-Type -Path 'tests/integration/windows-native-window-locator.cs'
+Add-Type @'
+using System;
+using System.Runtime.InteropServices;
+public static class RecoveryLocatorFixture {
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmSetWindowAttribute(IntPtr window, uint attribute, ref int value, uint size);
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindowVisible(IntPtr window);
+}
+'@
+$form = [Windows.Forms.Form]::new()
+$form.Text = 'Recovery window locator fixture'
+$form.ClientSize = [Drawing.Size]::new(320, 200)
+$form.ShowInTaskbar = $false
+try {
+    $window = $form.Handle
+    $cloak = 1
+    if ([RecoveryLocatorFixture]::DwmSetWindowAttribute($window, 13, [ref]$cloak, 4) -ne 0) {
+        throw 'Could not cloak the owned fixture window'
+    }
+    $form.Show()
+    [Windows.Forms.Application]::DoEvents()
+    $styleVisible = [RecoveryLocatorFixture]::IsWindowVisible($window)
+    $duringStartup = @([AutomexiaNativeWindowLocator]::VisibleApplicationWindows($PID)) -contains $window
+    $cloak = 0
+    if ([RecoveryLocatorFixture]::DwmSetWindowAttribute($window, 13, [ref]$cloak, 4) -ne 0) {
+        throw 'Could not reveal the owned fixture window'
+    }
+    [Windows.Forms.Application]::DoEvents()
+    $presented = @([AutomexiaNativeWindowLocator]::VisibleApplicationWindows($PID)) -contains $window
+    @{ style_visible = $styleVisible; during_startup = $duringStartup; presented = $presented } | ConvertTo-Json -Compress
+} finally { $form.Close(); $form.Dispose() }
+'''
+        result = subprocess.run(
+            ["powershell.exe", "-NoLogo", "-NoProfile", "-NonInteractive", "-STA", "-Command", script],
+            cwd=policy.ROOT, capture_output=True, text=True, timeout=30, check=True,
+        )
+        self.assertEqual(json.loads(result.stdout), {
+            "style_visible": True, "during_startup": False, "presented": True,
+        })
+
+    def test_history_sentinel_respects_soft_wrap_and_session_boundaries(self):
+        shell = shutil.which("powershell.exe") or shutil.which("pwsh")
+        if not shell:
+            self.skipTest("PowerShell is required for the native recovery oracle")
+        script = r'''
+$ErrorActionPreference = 'Stop'
+$ast = [Management.Automation.Language.Parser]::ParseFile(
+    (Join-Path (Get-Location) 'tests/integration/session-recovery-windows.ps1'),
+    [ref]$null, [ref]$null)
+$function = $ast.Find({ param($node)
+    $node -is [Management.Automation.Language.FunctionDefinitionAst] -and
+    $node.Name -eq 'Get-RecoverySentinelCount'
+}, $true)
+. ([scriptblock]::Create($function.Extent.Text))
+function Row($text, $wrap) {
+    $bytes = [Collections.Generic.List[byte]]::new()
+    foreach ($character in $text.ToCharArray()) {
+        $bytes.AddRange([BitConverter]::GetBytes([uint64][char]$character))
+    }
+    return @{ cells = [Convert]::ToBase64String($bytes.ToArray()); wrap = $wrap }
+}
+function Session($rows) { return @{ history = @{ rows = @($rows) } } }
+function Count($sessions) {
+    return Get-RecoverySentinelCount @{ windows = @(@{ tabs = @(@{
+        nodes = @(@{ sessions = @($sessions) })
+    }) }) }
+}
+@{
+    wrapped = Count @((Session @((Row 'RECOVERY_HISTORY_' $true), (Row 'SENTINEL' $false))))
+    hard_break = Count @((Session @((Row 'RECOVERY_HISTORY_' $false), (Row 'SENTINEL' $false))))
+    separate_sessions = Count @((Session @((Row 'RECOVERY_HISTORY_' $true))), (Session @((Row 'SENTINEL' $false))))
+    command_and_output = Count @((Session @((Row 'Write-Output RECOVERY_HISTORY_' $true), (Row 'SENTINEL' $false), (Row 'RECOVERY_HISTORY_SENTINEL' $false))))
+} | ConvertTo-Json -Compress
+'''
+        result = subprocess.run(
+            [shell, "-NoLogo", "-NoProfile", "-NonInteractive", "-Command", script],
+            cwd=policy.ROOT, capture_output=True, text=True, timeout=30, check=True,
+        )
+        self.assertEqual(json.loads(result.stdout), {
+            "wrapped": 1, "hard_break": 0, "separate_sessions": 0,
+            "command_and_output": 2,
+        })
 
 
 class RecoveryArchitectureTests(unittest.TestCase):

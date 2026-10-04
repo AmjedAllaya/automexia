@@ -22,16 +22,22 @@ function Get-RecoverySentinelCount {
     param($Snapshot)
     $matches = 0
     foreach ($session in @($Snapshot.windows.tabs.nodes.sessions)) {
+        $text = [Text.StringBuilder]::new()
         foreach ($row in @($session.history.rows)) {
             if ($null -eq $row.cells) { continue }
             $bytes = [Convert]::FromBase64String($row.cells)
-            $text = [Text.StringBuilder]::new()
             for ($cell=0; $cell -lt $bytes.Length; $cell+=8) {
                 $codepoint = [BitConverter]::ToUInt64($bytes, $cell) -band 0x1fffff
                 if ($codepoint -gt 0) { [void]$text.Append([char]::ConvertFromUtf32([int]$codepoint)) }
             }
-            if ($text.ToString().Contains('RECOVERY_HISTORY_SENTINEL')) { $matches++ }
+            # A narrow pane may split the command or output token across physical
+            # rows. Only soft wraps join; hard breaks and sessions stay separate.
+            if (-not $row.wrap) {
+                $matches += [regex]::Matches($text.ToString(), 'RECOVERY_HISTORY_SENTINEL').Count
+                [void]$text.Clear()
+            }
         }
+        $matches += [regex]::Matches($text.ToString(), 'RECOVERY_HISTORY_SENTINEL').Count
     }
     return $matches
 }
@@ -108,13 +114,15 @@ do {
     Start-Sleep -Milliseconds 100
     $saved = Read-RecoveryCheckpoint
     $savedSessions = @($saved.windows.tabs.nodes | Where-Object { $_.kind -eq 'pane' } | ForEach-Object { $_.sessions })
-    $foldersReady = @($savedSessions | Where-Object { -not [string]::IsNullOrWhiteSpace($_.cwd) }).Count -eq 6 -and (Get-RecoverySentinelCount $saved) -ge 2
+    $folderCount = @($savedSessions | Where-Object { -not [string]::IsNullOrWhiteSpace($_.cwd) }).Count
+    $sentinelCount = Get-RecoverySentinelCount $saved
+    $foldersReady = $folderCount -eq 6 -and $sentinelCount -ge 2
 } while (($savedSessions.Count -ne 6 -or -not $foldersReady) -and [DateTime]::UtcNow -lt $until)
 if ($savedSessions.Count -ne 6 -or -not $foldersReady) {
     if (-not [string]::IsNullOrWhiteSpace($ResultCapture)) {
         [IO.File]::WriteAllText("$ResultCapture.initial.json", ($saved | ConvertTo-Json -Depth 20))
     }
-    throw 'The real workspace and all inactive working folders were not checkpointed'
+    throw "Workspace checkpoint incomplete: sessions=$($savedSessions.Count)/6 folders=$folderCount/6 command/output=$sentinelCount/2"
 }
 $expectedTopology = Get-RecoveryTopology $saved
 $expectedSentinelCount = Get-RecoverySentinelCount $saved
@@ -204,7 +212,14 @@ do {
     Start-Sleep -Milliseconds 100
     $handles = @([AutomexiaNativeWindowLocator]::VisibleApplicationWindows($process.Id))
 } while ($handles.Count -lt 2 -and [DateTime]::UtcNow -lt $until)
-if ($handles.Count -ne 2 -or $originalWindow -notin $handles) { throw 'Manual restore replaced the current window' }
+if ($handles.Count -ne 2 -or $originalWindow -notin $handles) {
+    if (-not [string]::IsNullOrWhiteSpace($ResultCapture)) {
+        $observed = Read-AutomexiaSnapshot
+        [IO.File]::WriteAllText("$ResultCapture.manual.json", ($observed | ConvertTo-Json -Depth 20))
+        [void][AutomexiaResizeDriver]::CaptureClientFrame($originalWindow, "$ResultCapture.manual.png")
+    }
+    throw "Manual restore window mismatch: displayed=$($handles.Count)/2 original-preserved=$($originalWindow -in $handles)"
+}
 $frame = Wait-RecoveryFrame { param($f) -not [bool]$f.recovery_active -and [int]$f.owned_route_count -eq 6 }
 foreach ($childId in $originalShells) { if ($null -eq (Get-Process -Id $childId -ErrorAction SilentlyContinue)) { throw 'Manual restore terminated current work' } }
 Send-AutomexiaTestControl 'restore-previous:duplicate-restore'

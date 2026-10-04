@@ -38,7 +38,7 @@ class RustToolchainTests(unittest.TestCase):
                     with self.subTest(workflow=name, job=index):
                         # Ubuntu 22.04 ships Python 3.10, without stdlib tomllib.
                         self.assertTrue(any(
-                            previous.get('uses') == 'actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1'
+                            previous.get('uses') == 'actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97'
                             and previous.get('with', {}).get('python-version') == '3.12'
                             for previous in steps[:position]
                         ))

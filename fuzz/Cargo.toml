@@ -66,6 +66,10 @@ semantic-classification = ["dep:automexia-terminal"]
 [workspace]
 members = ["."]
 
+# Exercise the same reviewed recovery dependency as the application workspace.
+[patch.crates-io]
+inout = { path = "../third-party/inout" }
+
 [[bin]]
 name = "vt_parser"
 path = "fuzz_targets/vt_parser.rs"

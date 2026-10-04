@@ -17,6 +17,14 @@ notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed software and accelerated backends, dispatch, block bounds and unsafe intrinsics. Constant-time claims remain dependent on supported hardware and compiler behavior.
 """
 
+[[audits.bitflags]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "2.13.1 -> 2.13.2"
+notes = """
+Automated source delta review: generated public flag constants move outside the anonymous const block, with localized lint allowances; no runtime bit operations or dependencies change. Manifest version and documentation changes inspected. Used by the fuzz workspace.
+"""
+
 [[audits.block-padding]]
 who = "Automexia automated source review"
 criteria = "safe-to-deploy"
@@ -57,6 +65,14 @@ notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed assembly constraints, pointer lifetime/extent assumptions, fallback operations and selection masks. Timing properties depend on supported targets and generated code; no timing experiment is claimed.
 """
 
+[[audits.configparser]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "3.2.0 -> 3.3.0"
+notes = """
+Automated source delta review: inspected INI section/key invariants, Unicode delimiter slicing, multiline indentation and section resets, lazy section creation, case folding, default initialization and typed accessors. File APIs retain caller-supplied paths and propagate errors; no command or authentication execution added. Fuzz workspace input bounds remain necessary. Async I/O remains optional and unused by this consumer.
+"""
+
 [[audits.cpubits]]
 who = "Automexia automated source review"
 criteria = "safe-to-deploy"
@@ -71,6 +87,14 @@ criteria = "safe-to-deploy"
 version = "0.4.2"
 notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed choice normalization, constant-time comparisons/selections and wrapper contracts. Arithmetic and formatting behavior remain distinct from constant-time operations.
+"""
+
+[[audits.granit-parser]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "1.1.0 -> 1.3.0"
+notes = """
+Automated review of the checksummed crates.io source delta, manifests and relevant tests. Reviewed UTF-8 scalar chunk boundaries, directive byte/parameter budgets, block depth accounting, simple-key index invariants and document-stack termination. No build script or unsafe code. Automexia's caller separately bounds input, events, nesting and aliases. This records automated source review, not an independent human audit.
 """
 
 [[audits.hkdf]]
@@ -159,6 +183,22 @@ criteria = "safe-to-deploy"
 version = "2.17.0"
 notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed Apple FFI declarations, platform gates, constants, framework links and pointer/ABI shapes. These are unsafe bindings, not a safe credential abstraction; callers must uphold native ownership, type, buffer, ACL and interaction contracts. No native macOS runtime validation is claimed.
+"""
+
+[[audits.serde-saphyr]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "1.1.0 -> 1.3.0"
+notes = """
+Automated review of the checksummed crates.io delta for Automexia's deserialize-only feature set, manifests and relevant tests. Reviewed alias replay/recursion, retained event and owned-payload charging before clones, tag/null/merge-key handling, mapping completion, numeric key normalization and diagnostic escaping. Include, filesystem resolver, properties, serialization, CLI and validation integrations remain disabled and are outside this review. No build script or production unsafe code in the selected configuration. The caller explicitly caps retained copies and drops diagnostics that might contain credentials. This is an automated, feature-scoped review, not an independent human audit; enabling other features requires a new review.
+"""
+
+[[audits.smallvec]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "1.16.0 -> 1.16.2"
+notes = """
+Automated source delta review: inspected ownership PhantomData, inline/spilled push transitions and retain's panic guard. The read/write positions remain within the original initialized range; removed elements are marked consumed before dropping, retained values move only into earlier holes, and the guard restores the unprocessed tail on unwind. Zero-sized types and predicate/destructor panic regressions are covered by upstream tests. Used by the fuzz workspace. This is not a formal unsafe-code proof.
 """
 
 [[audits.universal-hash]]
