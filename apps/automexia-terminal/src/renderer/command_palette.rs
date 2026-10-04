@@ -784,6 +784,13 @@ const COMMANDS: &[Command] = &[
 /// The list is owned so the filter pass doesn't keep a borrow on the
 /// sugarloaf FontLibrary.
 enum PaletteMode {
+    QuickActionPage {
+        title: String,
+        controls: Vec<automexia_ui_model::quick_actions::QuickActionControl>,
+    },
+    QuickActionText {
+        prompt: String,
+    },
     Commands,
     LastCommandActions {
         target: Option<CommandTarget>,
@@ -811,6 +818,11 @@ pub enum QuickActionReviewChoice {
 /// data the render pass needs — no `&'static Command` vs `&str`
 /// lifetime mixing.
 enum PaletteRow<'a> {
+    ActionControl {
+        id: &'a str,
+        title: &'a str,
+        detail: &'a str,
+    },
     LastCommand(LastCommandAction),
     Navigation(Option<Category>),
     Command {
@@ -849,6 +861,7 @@ enum PaletteRow<'a> {
 impl<'a> PaletteRow<'a> {
     fn title(&self) -> &'a str {
         match *self {
+            PaletteRow::ActionControl { title, .. } => title,
             PaletteRow::Navigation(Some(category)) => category.title(),
             PaletteRow::Navigation(None) => "Back to categories",
             PaletteRow::Command { title, .. } => title,
@@ -866,6 +879,7 @@ impl<'a> PaletteRow<'a> {
 
     fn shortcut(&self) -> &'a str {
         match *self {
+            PaletteRow::ActionControl { detail, .. } => detail,
             PaletteRow::Navigation(Some(_)) => "Enter ›",
             PaletteRow::Navigation(None) => "Alt+Left",
             PaletteRow::Command { shortcut, .. } => shortcut,
@@ -889,6 +903,7 @@ impl<'a> PaletteRow<'a> {
 
     fn action(&self) -> Option<PaletteAction> {
         match *self {
+            PaletteRow::ActionControl { .. } => None,
             PaletteRow::Navigation(_) => None,
             PaletteRow::Command { action, .. } => Some(action),
             PaletteRow::Font { .. }
@@ -905,6 +920,10 @@ impl<'a> PaletteRow<'a> {
 
     fn presentation(&self) -> RowPresentation {
         match *self {
+            PaletteRow::ActionControl { .. } => RowPresentation {
+                icon: CommandIcon::Code,
+                accent: UiAccent::Cyan,
+            },
             PaletteRow::Navigation(Some(category)) => category.presentation(),
             PaletteRow::Navigation(None) => RowPresentation {
                 icon: CommandIcon::Back,
@@ -1555,6 +1574,7 @@ fn fuzzy_score_lowered(query_lower: &str, target: &str) -> Option<i32> {
 pub struct CommandPalette {
     enabled: bool,
     pub query: String,
+    query_selected: bool,
     pub selected_index: usize,
     scroll_offset: usize,
     pub has_adaptive_theme: bool,
@@ -1587,6 +1607,7 @@ impl Default for CommandPalette {
         Self {
             enabled: false,
             query: String::new(),
+            query_selected: false,
             selected_index: 0,
             scroll_offset: 0,
             has_adaptive_theme: false,
@@ -1805,6 +1826,38 @@ impl CommandPalette {
         self.wheel_accumulated_y = 0.0;
     }
 
+    pub fn enter_action_page(
+        &mut self,
+        title: String,
+        controls: Vec<automexia_ui_model::quick_actions::QuickActionControl>,
+    ) {
+        self.set_enabled(true);
+        self.mode = PaletteMode::QuickActionPage { title, controls };
+        self.set_query(String::new());
+    }
+
+    pub fn enter_action_text(&mut self, prompt: String, value: String) {
+        self.mode = PaletteMode::QuickActionText { prompt };
+        self.set_query(value);
+    }
+
+    pub fn is_action_page(&self) -> bool {
+        matches!(self.mode, PaletteMode::QuickActionPage { .. })
+    }
+    pub fn is_action_text(&self) -> bool {
+        matches!(self.mode, PaletteMode::QuickActionText { .. })
+    }
+    pub fn selected_action_control(&self) -> Option<String> {
+        self.filtered_rows()
+            .get(self.selected_index)
+            .and_then(|(_, row)| match row {
+                PaletteRow::ActionControl { id, .. } if !id.is_empty() => {
+                    Some((*id).to_owned())
+                }
+                _ => None,
+            })
+    }
+
     pub fn update_action_items(
         &mut self,
         items: Vec<QuickActionListItem>,
@@ -1861,6 +1914,7 @@ impl CommandPalette {
             return;
         }
         self.query = query;
+        self.query_selected = false;
         self.selected_index = 0;
         self.scroll_offset = 0;
         self.caret_blink_start = Instant::now();
@@ -1868,6 +1922,22 @@ impl CommandPalette {
         // fade state so the next scroll starts with a clean timer.
         self.last_scroll_time = None;
         self.wheel_accumulated_y = 0.0;
+    }
+
+    pub fn action_query_prefix(&self) -> String {
+        if self.is_action_text() && self.query_selected {
+            String::new()
+        } else {
+            self.query.clone()
+        }
+    }
+    pub fn select_action_query(&mut self) {
+        if self.is_action_text() {
+            self.query_selected = true;
+        }
+    }
+    pub fn action_query_selected(&self) -> bool {
+        self.is_action_text() && self.query_selected
     }
 
     /// Reset fractional motion at native gesture boundaries. This never
@@ -1967,8 +2037,9 @@ impl CommandPalette {
         )
     }
 
-    /// Public catalog semantics only; never export a user's query or font,
-    /// extension, provider, or command-preview content through native evidence.
+    /// Opt-in native fixture semantics. Quick Action pages include selected
+    /// labels/details (possibly command text); keep this evidence private.
+    /// Queries and unrelated font/extension/provider rows are not exported.
     #[cfg(any(test, feature = "native-gui-test-hooks"))]
     pub fn accessibility_summary(&self) -> Option<String> {
         self.enabled.then(|| {
@@ -1978,9 +2049,19 @@ impl CommandPalette {
             let scope = if matches!(self.mode, PaletteMode::Commands) {
                 if !self.query.is_empty() { "All commands" }
                 else { self.category.map_or("Command categories", Category::title) }
-            } else { "Items" };
+            } else { match &self.mode {
+                PaletteMode::QuickActionPage { title, .. } => title.as_str(),
+                PaletteMode::QuickActionText { prompt } => prompt.as_str(),
+                PaletteMode::QuickActions { .. } => "Quick Actions",
+                PaletteMode::QuickActionReview(_) => "Review Quick Action",
+                PaletteMode::QuickActionPlaceholder { prompt } => prompt.as_str(),
+                _ => "Items",
+            } };
             let count = self.filtered_rows().len();
-            format!("{scope}; {count} results; selected {}; query focused; Enter opens; Alt+Left back; Escape closes", if count == 0 { 0 } else { self.selected_index.min(count - 1) + 1 })
+            let selected = if matches!(self.mode, PaletteMode::Commands | PaletteMode::QuickActions { .. } | PaletteMode::QuickActionPage { .. }) {
+                self.filtered_rows().get(self.selected_index).map(|(_, row)| format!("{}; {}", row.title(), row.shortcut())).unwrap_or_default()
+            } else { String::new() };
+            format!("{scope}; {count} results; selected {}; {selected}; query focused; Enter opens; Alt+Left back; Escape closes", if count == 0 { 0 } else { self.selected_index.min(count - 1) + 1 })
         })
     }
 
@@ -2214,6 +2295,7 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Font { family } => Some((*family).to_owned()),
+                PaletteRow::ActionControl { .. } => None,
                 PaletteRow::Navigation(_) => None,
                 PaletteRow::Command { .. }
                 | PaletteRow::Market { .. }
@@ -2232,6 +2314,7 @@ impl CommandPalette {
             .get(self.selected_index)
             .and_then(|(_, row)| match row {
                 PaletteRow::Market { id, .. } => Some((*id).to_owned()),
+                PaletteRow::ActionControl { .. } => None,
                 PaletteRow::Navigation(_) => None,
                 PaletteRow::Command { .. }
                 | PaletteRow::Font { .. }
@@ -2271,6 +2354,22 @@ impl CommandPalette {
         let query = self.query.to_lowercase();
         let score = |target: &str| fuzzy_score_lowered(&query, target);
         let mut results: Vec<(i32, PaletteRow<'_>)> = match &self.mode {
+            PaletteMode::QuickActionPage { controls, .. } => controls
+                .iter()
+                .filter_map(|control| {
+                    Some((
+                        score(&control.label)?,
+                        PaletteRow::ActionControl {
+                            id: &control.id,
+                            title: &control.label,
+                            detail: &control.detail,
+                        },
+                    ))
+                })
+                .collect(),
+            PaletteMode::QuickActionText { .. } => {
+                vec![(1, PaletteRow::PlaceholderContinue)]
+            }
             PaletteMode::Commands => {
                 if self.query.is_empty() && self.category.is_none() {
                     return Category::ALL
@@ -2359,7 +2458,7 @@ impl CommandPalette {
                 rows
             }
             PaletteMode::QuickActions { items, notice } => {
-                if items.is_empty() {
+                let mut rows: Vec<_> = if items.is_empty() {
                     vec![(1, PaletteRow::QuickActionNotice { message: notice })]
                 } else {
                     items
@@ -2373,7 +2472,52 @@ impl CommandPalette {
                             )
                         })
                         .collect()
+                };
+                let controls = [
+                    (
+                        0,
+                        PaletteRow::ActionControl {
+                            id: "new-action",
+                            title: "New Quick Action",
+                            detail: "Ctrl+N",
+                        },
+                    ),
+                    (
+                        0,
+                        PaletteRow::ActionControl {
+                            id: "new-workflow",
+                            title: "New workflow",
+                            detail: "Ctrl+Shift+N",
+                        },
+                    ),
+                    (
+                        0,
+                        PaletteRow::ActionControl {
+                            id: "manage",
+                            title: "Manage saved actions",
+                            detail: "Edit · Duplicate · Delete",
+                        },
+                    ),
+                    (
+                        0,
+                        PaletteRow::ActionControl {
+                            id: "progress",
+                            title: "Workflow progress",
+                            detail: "Pause · Resume · Cancel",
+                        },
+                    ),
+                ];
+                let matching: Vec<_> = controls
+                    .into_iter()
+                    .filter(|(_, row)| score(row.title()).is_some())
+                    .collect();
+                if !query.is_empty() && !matching.is_empty() {
+                    rows.retain(|(_, row)| {
+                        !matches!(row, PaletteRow::QuickActionNotice { .. })
+                    });
                 }
+                rows.extend(matching);
+                rows
             }
             PaletteMode::QuickActionPlaceholder { .. } => {
                 vec![(1, PaletteRow::PlaceholderContinue)]
@@ -2688,6 +2832,8 @@ impl CommandPalette {
             .draw(esc_x + 9.0, input_y + 18.0, "ESC", &esc_opts);
 
         let placeholder = match self.mode {
+            PaletteMode::QuickActionPage { ref title, .. } => title,
+            PaletteMode::QuickActionText { ref prompt } => prompt,
             PaletteMode::Commands => self
                 .category
                 .map_or("Search all commands…", Category::title),
@@ -2704,7 +2850,9 @@ impl CommandPalette {
             - ESC_BADGE_WIDTH
             - 18.0)
             .max(0.0);
-        let text_color = if self.query.is_empty() {
+        let text_color = if self.action_query_selected() {
+            theme.accent
+        } else if self.query.is_empty() {
             theme.muted_text
         } else {
             theme.text
@@ -3928,6 +4076,23 @@ mod tests {
             palette.get_selected_action_item_id().as_deref(),
             Some("cluster.delete")
         );
+    }
+
+    #[test]
+    fn quick_action_management_and_progress_are_searchable_without_a_saved_match() {
+        let mut palette = CommandPalette::new();
+        palette.enter_action_search(Vec::new(), String::new());
+        palette.set_query("Workflow progress".into());
+        palette.update_action_items(Vec::new(), "No matching Quick Actions".into());
+        assert_eq!(
+            palette.selected_action_control().as_deref(),
+            Some("progress")
+        );
+        palette.enter_action_text("Name".into(), "Previous".into());
+        palette.select_action_query();
+        assert_eq!(palette.action_query_prefix(), "");
+        palette.set_query("New value".into());
+        assert_eq!(palette.action_query_prefix(), "New value");
     }
 
     #[test]

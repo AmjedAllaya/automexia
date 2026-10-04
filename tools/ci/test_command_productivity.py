@@ -74,7 +74,7 @@ class CommandProductivityPolicyTests(unittest.TestCase):
         self.assertEqual(counts["providers"], 11)
         self.assertEqual(counts["threats"], 16)
         self.assertGreater(counts["runtime_files"], 100)
-        self.assertEqual(counts["cp2_pure_action_files"], 7)
+        self.assertEqual(counts["cp2_pure_action_files"], 8)
         self.assertEqual(counts["cp4_pure_action_files"], 1)
         self.assertEqual(counts["cp4_provider_action_files"], 6)
         self.assertEqual(counts["cp5_suggestion_source_files"], 10)
@@ -229,6 +229,17 @@ class CommandProductivityPolicyTests(unittest.TestCase):
             with self.assertRaisesRegex(POLICY.CommandProductivityError, "grid inference"):
                 POLICY.validate_pre_activation(root)
 
+    def test_palette_dispatch_is_checked_without_exempting_the_screen_owner(self) -> None:
+        path = "apps/automexia-terminal/src/screen/mod.rs"
+        safe = "pub fn activate_palette_selection() { self.quick_action_control(&control); } fn render() { terminal.grid; }"
+        POLICY.validate_interactive_grid_boundary(path, safe)
+        for unsafe in (
+            safe.replace("self.quick_action_control(&control);", "self.quick_action_control(&control); terminal.grid;"),
+            safe + " fn infer() { QuickAction; terminal.grid; }",
+        ):
+            with self.assertRaisesRegex(POLICY.CommandProductivityError, "grid inference"):
+                POLICY.validate_interactive_grid_boundary(path, unsafe)
+
     def test_runtime_productivity_activation_outside_ui_is_rejected(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -265,6 +276,27 @@ class CommandProductivityPolicyTests(unittest.TestCase):
                 "non-runtime CP0",
             ):
                 POLICY.validate_pre_activation(root)
+
+    def test_workflow_regression_exclusions_require_exact_test_only_owners(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            for relative in ("rio-vt/src/crosswords/mod.rs", "rio-vt/src/performer/mod.rs",
+                             "rio-vt/src/crosswords/command_actions_tests.rs", "rio-vt/src/performer/tests/resize_worker.rs"):
+                destination = root / relative
+                destination.parent.mkdir(parents=True, exist_ok=True)
+                destination.write_text((ROOT / relative).read_text(encoding="utf-8"), encoding="utf-8")
+            self.assertEqual(len(POLICY.validate_workflow_test_owners(root)), 2)
+            for relative, before, after in (
+                ("rio-vt/src/crosswords/mod.rs", "#[cfg(test)]\nmod command_actions_tests;", "mod command_actions_tests;"),
+                ("rio-vt/src/performer/mod.rs", '#[cfg(all(test, feature = "pty"))]\nmod tests', "mod tests"),
+            ):
+                path = root / relative
+                source = path.read_text(encoding="utf-8")
+                self.assertIn(before, source)
+                path.write_text(source.replace(before, after), encoding="utf-8")
+                with self.assertRaisesRegex(POLICY.CommandProductivityError, "test-only"):
+                    POLICY.validate_workflow_test_owners(root)
+                path.write_text(source, encoding="utf-8")
 
     def test_pure_action_model_rejects_capability_bearing_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:

@@ -16,6 +16,35 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import check_command_productivity_cp22 as policy  # noqa: E402
 
 
+class WorkflowBoundaryTests(unittest.TestCase):
+    def test_reviewed_workflow_boundary_passes(self) -> None:
+        policy.validate_workflow_boundary()
+
+    def test_workflow_protection_mutations_fail_closed(self) -> None:
+        cases = [
+            ("automexia-command-productivity/src/actions/workflow.rs", "if status != 0", "if false"),
+            ("automexia-command-productivity/src/actions/workflow.rs", "observed.input_revision != self.baseline.input_revision", "false"),
+            ("automexia-command-productivity/src/actions/workflow.rs", "MAX_WORKFLOW_STEPS: usize = 32", "MAX_WORKFLOW_STEPS: usize = 320"),
+            ("apps/automexia-terminal/src/screen/action_surface/workflow.rs", "if !unchanged", "if false"),
+            ("apps/automexia-terminal/src/screen/action_surface/workflow.rs", "self.invalidate_workflow_submission();", "/* no cancellation */"),
+            ("rio-vt/src/crosswords/command_actions.rs", "self.workflow_input.submitted == Some(receipt)", "false"),
+            ("rio-vt/src/performer/mod.rs", "terminal.accept_workflow_submission(receipt)", "true"),
+            ("rio-vt/src/event/mod.rs", "reviewed_command: false", "reviewed_command: true"),
+            (policy.QUICK_ACTION_WORKER, "pending.mutations.len() >= 8", "false"),
+            (policy.QUICK_ACTION_WORKER, "let mutations = std::mem::take(&mut lock(&self.pending.0).mutations);", "let mutations = ();"),
+        ]
+        original = policy.bounded_text
+        for relative, before, after in cases:
+            target = policy.ROOT / relative
+            self.assertIn(before, original(target))
+            def mutated(path, *args, **kwargs):
+                source = original(path, *args, **kwargs)
+                return source.replace(before, after) if path == target else source
+            with self.subTest(relative=relative, before=before), mock.patch.object(policy, "bounded_text", side_effect=mutated):
+                with self.assertRaises(policy.Cp22Error):
+                    policy.validate_workflow_boundary()
+
+
 class Cp22ContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:

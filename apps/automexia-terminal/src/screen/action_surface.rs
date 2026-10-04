@@ -1,9 +1,9 @@
 //! Narrow screen-side adapter for reviewed Quick Action interaction.
 //!
-//! This module receives validated search results and writes only through the
-//! existing clipboard or bracketed-paste paths after explicit review. It never
-//! reads terminal cells, launches a process, accesses the network, or presses
-//! Enter.
+//! Ordinary actions use the existing clipboard or paste paths after explicit
+//! review, without Enter. The workflow adapter separately submits approved
+//! steps through the same route-owned input writer. Neither path launches a
+//! process or accesses the network; terminal readiness belongs to the VT owner.
 
 use std::sync::Arc;
 
@@ -19,11 +19,15 @@ use automexia_ui_model::quick_actions::{
 use rio_backend::clipboard::{Clipboard, ClipboardType};
 
 use super::Screen;
+mod editor;
+mod workflow;
 
 pub(crate) struct Controller {
     runtime: crate::automexia::quick_actions::QuickActionRuntime,
     provider_publisher: crate::automexia::quick_actions::ProviderActionPublisher,
     state: State,
+    editor: editor::Editor,
+    workflow: Option<workflow::ActiveWorkflow>,
 }
 
 impl Controller {
@@ -37,6 +41,8 @@ impl Controller {
                 ),
             runtime,
             state: State::default(),
+            editor: editor::Editor::default(),
+            workflow: None,
         }
     }
 }
@@ -66,10 +72,24 @@ struct State {
     confirmation_armed: bool,
     runtime_status: Option<crate::automexia::quick_actions::QuickActionRuntimeStatus>,
     provider_publication_notice: Option<String>,
+    inspecting_workflow: bool,
 }
 
 impl Screen<'_> {
     pub fn open_action_center(&mut self) {
+        self.close_settings_view();
+        self.search_state.dfas = None;
+        self.exit_search();
+        self.stop_hint_mode_if_active();
+        self.dismiss_image_preview();
+        self.table_view.close();
+        if self.reopen_action_editor() {
+            self.mark_dirty();
+            return;
+        }
+        if let Some(workflow) = self.action_surface.workflow.as_mut() {
+            workflow.panel_open = false;
+        }
         self.dismiss_suggestions(
             crate::automexia::suggestions::SuggestionInvalidation::ModalOpened,
         );
@@ -95,6 +115,9 @@ impl Screen<'_> {
     }
 
     pub fn leave_action_detail(&mut self) -> bool {
+        if self.leave_action_editor() {
+            return true;
+        }
         if !self.renderer.command_palette.is_action_placeholder()
             && !self.renderer.command_palette.is_action_review()
         {
@@ -178,6 +201,7 @@ impl Screen<'_> {
         if !self.ensure_action_scope_authorized()
             || !self.ensure_selected_provider_action_authorized()
             || !self.ensure_selected_workspace_action_authorized()
+            || !self.ensure_saved_action_unchanged()
         {
             return;
         }
@@ -201,25 +225,51 @@ impl Screen<'_> {
             self.renderer.command_palette.enter_action_review(view);
             return;
         }
-        match choice {
+        let result = match choice {
             crate::renderer::command_palette::QuickActionReviewChoice::Insert => {
                 match expanded.mode {
-                    ExecutionMode::Insert => self.paste(&expanded.command, true),
-                    ExecutionMode::Copy => {
-                        clipboard.set(ClipboardType::Clipboard, expanded.command)
+                    ExecutionMode::Insert => {
+                        // The review is still a modal here. Screen::paste correctly
+                        // rejects modal input, so use the route-owned delivery
+                        // boundary after the authorization checks above.
+                        let target = self.context_manager.current().paste_target();
+                        self.context_manager
+                            .deliver_action_insert(target, &expanded.command)
+                            .map(|_| ())
+                            .map_err(|_| "The terminal is no longer available. Nothing was inserted.")
                     }
-                    ExecutionMode::ExactLaunch => return,
+                    ExecutionMode::Copy => clipboard
+                        .try_set(ClipboardType::Clipboard, expanded.command)
+                        .map_err(|_| "Clipboard unavailable. Nothing was copied."),
+                    ExecutionMode::ExactLaunch | ExecutionMode::RunWorkflow => return,
                 }
             }
-            crate::renderer::command_palette::QuickActionReviewChoice::Copy => {
-                clipboard.set(ClipboardType::Clipboard, expanded.command);
+            crate::renderer::command_palette::QuickActionReviewChoice::Copy => clipboard
+                .try_set(ClipboardType::Clipboard, expanded.command)
+                .map_err(|_| "Clipboard unavailable. Nothing was copied."),
+        };
+        if let Err(message) = result {
+            let action = self.action_surface.state.selected.as_ref();
+            if let Some(action) = action {
+                self.renderer.command_palette.enter_action_review(
+                    QuickActionReviewView::new(
+                        action.id.clone(),
+                        action.display_name.clone(),
+                        message.into(),
+                        risk(action.risk),
+                        QuickActionMode::Unavailable,
+                    ),
+                );
             }
+            return;
         }
         self.renderer.command_palette.set_enabled(false);
         self.action_surface.state = State::default();
     }
 
     pub(super) fn sync_action_surface(&mut self) {
+        self.sync_action_editor();
+        self.sync_action_workflow();
         if !self.renderer.command_palette.is_action_search() {
             return;
         }
@@ -326,6 +376,13 @@ impl Screen<'_> {
         let Some(action) = self.action_surface.state.selected.as_ref() else {
             return;
         };
+        if matches!(
+            action.template,
+            automexia_command_productivity::actions::ActionTemplate::Workflow { .. }
+        ) {
+            self.review_action_workflow();
+            return;
+        }
         if let Some(reason) = unavailable_before_placeholder(action) {
             let view = QuickActionReviewView::new(
                 action.id.clone(),
@@ -457,6 +514,32 @@ impl Screen<'_> {
                 review.requires_production_confirmation(),
             ));
         false
+    }
+    fn ensure_saved_action_unchanged(&mut self) -> bool {
+        let Some(action) = self.action_surface.state.selected.as_ref() else {
+            return false;
+        };
+        let snapshot = self.action_surface.runtime.service().map(|s| s.snapshot());
+        let unchanged = saved_action_is_current(
+            action,
+            snapshot
+                .as_ref()
+                .map(|s| s.actions().document().actions.as_slice()),
+        );
+        if !unchanged {
+            self.action_surface.state.expanded = None;
+            self.action_surface.state.confirmation_armed = false;
+            self.renderer.command_palette.enter_action_review(
+                QuickActionReviewView::new(
+                    action.id.clone(),
+                    action.display_name.clone(),
+                    "Saved action changed. Reopen and review it again.".into(),
+                    risk(action.risk),
+                    QuickActionMode::Unavailable,
+                ),
+            );
+        }
+        unchanged
     }
     fn ensure_selected_workspace_action_authorized(&mut self) -> bool {
         let Some(action) = self.action_surface.state.selected.clone() else {
@@ -636,7 +719,23 @@ fn list_items(
         .collect()
 }
 
+fn saved_action_is_current(action: &QuickAction, saved: Option<&[QuickAction]>) -> bool {
+    use automexia_command_productivity::actions::ActionScope;
+    // Provider and workspace actions have their own live authorization above;
+    // they are not records in the user actions store.
+    !matches!(
+        action.scope,
+        ActionScope::GlobalUser | ActionScope::ShellUser
+    ) || saved
+        .is_some_and(|items| items.iter().any(|item| item == action && item.enabled))
+}
+
 fn unavailable_before_placeholder(action: &QuickAction) -> Option<&'static str> {
+    if action.working_directory_policy
+        != automexia_command_productivity::actions::WorkingDirectoryPolicy::Inherit
+    {
+        return Some("This action requires another directory. Change directory in the shell or use an action that inherits the current directory.");
+    }
     if action.execution == ExecutionMode::ExactLaunch {
         return Some("Exact launch remains disabled until the D3 broker is accepted");
     }
@@ -728,7 +827,9 @@ fn review_view(
     let mode = match expanded.mode {
         ExecutionMode::Insert => QuickActionMode::Insert,
         ExecutionMode::Copy => QuickActionMode::Copy,
-        ExecutionMode::ExactLaunch => QuickActionMode::Unavailable,
+        ExecutionMode::ExactLaunch | ExecutionMode::RunWorkflow => {
+            QuickActionMode::Unavailable
+        }
     };
     let view = QuickActionReviewView::new(
         expanded.action_id.clone(),
@@ -880,6 +981,33 @@ mod tests {
             provenance: ActionProvenance::User,
             enabled: true,
             alias_projection: None,
+        }
+    }
+
+    #[test]
+    fn quick_action_freshness_distinguishes_saved_records_from_provider_actions() {
+        let mut action = action_for_preflight();
+        for scope in [ActionScope::GlobalUser, ActionScope::ShellUser] {
+            action.scope = scope;
+            let stored = [action.clone()];
+            assert!(saved_action_is_current(&action, Some(&stored)));
+            assert!(!saved_action_is_current(&action, None));
+            assert!(!saved_action_is_current(&action, Some(&[])));
+            let mut changed = action.clone();
+            changed.display_name = "Changed action".into();
+            assert!(!saved_action_is_current(&action, Some(&[changed])));
+            let mut disabled = action.clone();
+            disabled.enabled = false;
+            assert!(!saved_action_is_current(&action, Some(&[disabled])));
+        }
+        // These sources are revalidated by their live provider/workspace owners,
+        // even though provider templates have Imported provenance.
+        action.provenance = ActionProvenance::Imported {
+            source_digest: "fixture-provider".into(),
+        };
+        for scope in [ActionScope::Capsule, ActionScope::TrustedWorkspace] {
+            action.scope = scope;
+            assert!(saved_action_is_current(&action, None));
         }
     }
 

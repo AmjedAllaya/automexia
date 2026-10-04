@@ -474,6 +474,7 @@ pub struct ExpandedAction {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ExpansionError {
+    WorkflowNeedsReview,
     Disabled,
     UnsupportedShell,
     ExactLaunchDisabled,
@@ -486,6 +487,7 @@ pub enum ExpansionError {
 impl fmt::Display for ExpansionError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::WorkflowNeedsReview => formatter.write_str("Review the workflow and choose Run; workflows cannot be inserted as a single command"),
             Self::Disabled => formatter.write_str("Quick Action is disabled"),
             Self::UnsupportedShell => {
                 formatter.write_str("Quick Action does not support the active shell")
@@ -536,6 +538,9 @@ pub fn expand_for_shell(
     }
 
     let command = match &action.template {
+        ActionTemplate::Workflow { .. } => {
+            return Err(ExpansionError::WorkflowNeedsReview)
+        }
         ActionTemplate::RawInsertOnly {
             shell: expected,
             text,

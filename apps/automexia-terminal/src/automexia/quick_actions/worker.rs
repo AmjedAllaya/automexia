@@ -148,7 +148,31 @@ struct RouteWorkspaceAuthorization {
 #[derive(Default)]
 struct PendingState {
     latest_by_route: BTreeMap<usize, SearchRequest>,
+    mutations: std::collections::VecDeque<MutationRequest>,
+    mutation_routes: BTreeMap<usize, u64>,
+    mutation_results: BTreeMap<usize, MutationResult>,
     shutdown: bool,
+}
+
+#[derive(Clone, Debug)]
+pub enum ActionMutation {
+    Create(QuickAction),
+    Update(QuickAction),
+    Delete(String),
+}
+
+struct MutationRequest {
+    route_id: usize,
+    request_id: u64,
+    revision: u64,
+    operation: ActionMutation,
+    wake: CompletionWake,
+}
+
+#[derive(Clone, Debug)]
+pub struct MutationResult {
+    pub request_id: u64,
+    pub result: Result<u64, StoreErrorCode>,
 }
 
 struct WorkerShared {
@@ -177,6 +201,8 @@ impl Drop for PendingCleanup {
     fn drop(&mut self) {
         let queued = std::mem::take(&mut lock(&self.pending.0).latest_by_route);
         drop(queued);
+        let mutations = std::mem::take(&mut lock(&self.pending.0).mutations);
+        drop(mutations);
     }
 }
 
@@ -199,6 +225,8 @@ impl RuntimeInner {
             // result or authorization can appear after cancellation clears it.
             let mut state = lock(&self.pending.0);
             state.shutdown = true;
+            state.mutation_routes.clear();
+            state.mutation_results.clear();
             lock(&self.latest_requested).clear();
             lock(&self.results).clear();
             lock(&self.workspace_authorizations).clear();
@@ -236,6 +264,54 @@ impl fmt::Debug for QuickActionRuntime {
 }
 
 impl QuickActionRuntime {
+    /// Queue one explicit edit per route. Filesystem writes remain with the
+    /// existing worker and revision-checked store; admission never blocks.
+    pub fn submit_mutation(
+        &self,
+        route_id: usize,
+        revision: u64,
+        operation: ActionMutation,
+        wake: CompletionWake,
+    ) -> Result<u64, &'static str> {
+        let mut pending = lock(&self.0.pending.0);
+        if pending.shutdown || !self.0.worker_running() {
+            return Err("Quick Actions is unavailable.");
+        }
+        if pending.mutation_routes.contains_key(&route_id) {
+            return Err("Wait for the previous save.");
+        }
+        if pending.mutation_routes.len() >= MAX_RESULT_ROUTES
+            || pending.mutations.len() >= 8
+        {
+            return Err("Quick Actions is busy. Try again shortly.");
+        }
+        let request_id = self.0.next_request.fetch_add(1, Ordering::Relaxed);
+        pending.mutation_routes.insert(route_id, request_id);
+        pending.mutations.push_back(MutationRequest {
+            route_id,
+            request_id,
+            revision,
+            operation,
+            wake,
+        });
+        drop(pending);
+        self.0.pending.1.notify_all();
+        Ok(request_id)
+    }
+
+    pub fn take_mutation_result(
+        &self,
+        route_id: usize,
+        request_id: u64,
+    ) -> Option<MutationResult> {
+        let mut pending = lock(&self.0.pending.0);
+        if pending.mutation_results.get(&route_id)?.request_id != request_id {
+            return None;
+        }
+        pending.mutation_routes.remove(&route_id);
+        pending.mutation_results.remove(&route_id)
+    }
+
     pub fn open_default() -> Self {
         let root = rio_backend::config::config_dir_path().join("actions");
         Self::open(root).unwrap_or_else(Self::disabled)
@@ -539,6 +615,8 @@ impl QuickActionRuntime {
         let (pending, _) = &*self.0.pending;
         let mut state = lock(pending);
         let removed = state.latest_by_route.remove(&route_id);
+        state.mutation_routes.remove(&route_id);
+        state.mutation_results.remove(&route_id);
         lock(&self.0.latest_requested).remove(&route_id);
         lock(&self.0.results).remove(&route_id);
         lock(&self.0.workspace_authorizations).remove(&route_id);
@@ -696,6 +774,40 @@ fn run_worker(run: WorkerRun) {
         if lock(&pending.0).shutdown {
             break;
         }
+        let mutation = lock(&pending.0).mutations.pop_front();
+        if let Some(request) = mutation {
+            let service = monitor.service();
+            let saved = match request.operation {
+                ActionMutation::Create(action) => {
+                    service.create(request.revision, action)
+                }
+                ActionMutation::Update(action) => {
+                    service.update(request.revision, &action.id.clone(), action)
+                }
+                ActionMutation::Delete(id) => service.delete(request.revision, &id),
+            };
+            let result = saved
+                .map(|snapshot| snapshot.revision())
+                .map_err(|error| error.code());
+            if let Ok(candidate) = index_for_service(service) {
+                index = candidate;
+            }
+            let mut state = lock(&pending.0);
+            if !state.shutdown
+                && state.mutation_routes.get(&request.route_id)
+                    == Some(&request.request_id)
+            {
+                state.mutation_results.insert(
+                    request.route_id,
+                    MutationResult {
+                        request_id: request.request_id,
+                        result,
+                    },
+                );
+                drop(state);
+                request.wake.wake();
+            }
+        }
         // Rebuild after every exact-source reconciliation outcome. A
         // mutation performed through this process's shared service is
         // already published before the watcher sees it, so its subsequent
@@ -711,7 +823,9 @@ fn run_worker(run: WorkerRun) {
             let state = lock(slot);
             let (mut state, _) = condition
                 .wait_timeout_while(state, SEARCH_POLL_INTERVAL, |state| {
-                    !state.shutdown && state.latest_by_route.is_empty()
+                    !state.shutdown
+                        && state.latest_by_route.is_empty()
+                        && state.mutations.is_empty()
                 })
                 .unwrap_or_else(|poisoned| poisoned.into_inner());
             if state.shutdown {
@@ -1122,6 +1236,80 @@ mod tests {
         assert_eq!(woke, 499);
         let result = runtime.take_result(8, 1).unwrap();
         assert_eq!(result.query, "action 499");
+    }
+
+    #[test]
+    fn quick_action_editor_mutations_publish_off_thread_and_reject_conflicts() {
+        let root = tempfile::tempdir().unwrap();
+        let runtime = QuickActionRuntime::open(root.path().join("actions")).unwrap();
+        let (sender, receiver) = mpsc::channel();
+        let id = runtime
+            .submit_mutation(
+                8,
+                0,
+                ActionMutation::Create(action(0)),
+                Box::new(move || {
+                    let _ = sender.send(());
+                }),
+            )
+            .unwrap();
+        assert!(runtime
+            .submit_mutation(8, 0, ActionMutation::Create(action(1)), Box::new(|| {}))
+            .is_err());
+        receiver.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(runtime.take_mutation_result(8, id).unwrap().result, Ok(1));
+        let (sender, receiver) = mpsc::channel();
+        let id = runtime
+            .submit_mutation(
+                8,
+                0,
+                ActionMutation::Create(action(1)),
+                Box::new(move || {
+                    let _ = sender.send(());
+                }),
+            )
+            .unwrap();
+        receiver.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(
+            runtime.take_mutation_result(8, id).unwrap().result,
+            Err(StoreErrorCode::StaleRevision)
+        );
+        assert_eq!(
+            runtime
+                .service()
+                .unwrap()
+                .snapshot()
+                .actions()
+                .document()
+                .actions
+                .len(),
+            1
+        );
+        let (sender, receiver) = mpsc::channel();
+        let id = runtime
+            .submit_mutation(
+                8,
+                1,
+                ActionMutation::Delete(action(0).id),
+                Box::new(move || {
+                    let _ = sender.send(());
+                }),
+            )
+            .unwrap();
+        receiver.recv_timeout(Duration::from_secs(3)).unwrap();
+        assert_eq!(runtime.take_mutation_result(8, id).unwrap().result, Ok(2));
+        assert!(runtime
+            .service()
+            .unwrap()
+            .snapshot()
+            .actions()
+            .document()
+            .actions
+            .is_empty());
+        runtime.request_shutdown();
+        assert!(runtime
+            .submit_mutation(8, 2, ActionMutation::Create(action(0)), Box::new(|| {}))
+            .is_err());
     }
 
     #[test]

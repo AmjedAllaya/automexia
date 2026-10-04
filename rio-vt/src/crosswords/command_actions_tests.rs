@@ -18,6 +18,50 @@ fn feed(t: &mut Crosswords<VoidListener>, text: &str) {
 fn completed(t: &mut Crosswords<VoidListener>) {
     feed(t, "\x1b]133;A;aid=1\x07prefix> \x1b]133;B\x07echo hello\r\n\x1b]133;C\x07hello\r\n\x1b]133;D;0\x07\x1b]133;A;aid=2\x07prefix> \x1b]133;B\x07");
 }
+
+#[test]
+fn quick_action_workflow_receipts_reject_replay_input_reset_and_alternate_screen() {
+    for change in 0..5 {
+        let mut t = terminal();
+        completed(&mut t);
+        let receipt = t.workflow_prompt().unwrap();
+        match change {
+            0 => {
+                assert!(t.accept_workflow_submission(receipt));
+            }
+            1 => t.note_interactive_input(),
+            2 => t.clear_screen_and_history(),
+            3 => feed(&mut t, "\x1b[?1049h"),
+            _ => feed(&mut t, "pending input"),
+        }
+        assert!(!t.accept_workflow_submission(receipt));
+    }
+}
+
+#[test]
+fn quick_action_workflow_receipts_wait_for_complete_empty_prompt_and_own_result() {
+    let mut t = terminal();
+    assert!(t.workflow_prompt().is_none());
+    feed(&mut t, "\x1b]133;A;aid=1\x07> ");
+    assert!(t.workflow_prompt().is_none());
+    feed(&mut t, "\x1b]133;B\x07");
+    let receipt = t.workflow_prompt().unwrap();
+    assert!(t.accept_workflow_submission(receipt));
+    feed(&mut t, "false\r\n\x1b]133;C\x07\x1b]133;D;1\x07");
+    assert!(t.workflow_prompt().is_none());
+    assert_eq!(t.workflow_completed(), Some((1, 1)));
+    feed(&mut t, "\x1b]133;A;aid=2\x07> \x1b]133;B\x07");
+    assert_eq!(t.workflow_prompt().unwrap().prompt, 2);
+    assert_eq!(t.workflow_completed(), Some((1, 1)));
+}
+#[test]
+fn quick_action_workflow_requires_identity_but_legacy_reinsert_does_not() {
+    let mut t = terminal();
+    run_command(&mut t, "echo hello", "hello\r\n", "");
+    assert!(t.workflow_prompt().is_none());
+    let handle = t.last_command_handle().unwrap();
+    assert_eq!(t.command_text_for_reinsert(handle).unwrap(), "echo hello");
+}
 fn run_command(t: &mut Crosswords<VoidListener>, command: &str, output: &str, aid: &str) {
     feed(t, &format!("\x1b]133;A{aid}\x07> \x1b]133;B\x07{command}\r\n\x1b]133;C\x07{output}\x1b]133;D;0\x07\x1b]133;A\x07> \x1b]133;B\x07"));
 }

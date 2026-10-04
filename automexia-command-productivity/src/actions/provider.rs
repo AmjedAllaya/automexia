@@ -774,9 +774,9 @@ fn decision_for(binding: &ProviderActionBinding, now_ms: u64) -> ProviderActionD
     match binding.freshness {
         ProviderContextFreshness::Current => match binding.execution {
             ExecutionMode::Insert => ProviderActionDecision::InsertWithoutEnter,
-            ExecutionMode::ExactLaunch | ExecutionMode::Copy => {
-                ProviderActionDecision::BrokerRequired
-            }
+            ExecutionMode::ExactLaunch
+            | ExecutionMode::Copy
+            | ExecutionMode::RunWorkflow => ProviderActionDecision::BrokerRequired,
         },
         ProviderContextFreshness::Refreshing => ProviderActionDecision::Refreshing,
         ProviderContextFreshness::Stale => ProviderActionDecision::Stale,
@@ -1028,6 +1028,7 @@ const fn execution_label(execution: ExecutionMode) -> &'static str {
         ExecutionMode::Insert => "insert",
         ExecutionMode::Copy => "copy",
         ExecutionMode::ExactLaunch => "exact-launch",
+        ExecutionMode::RunWorkflow => "run-workflow",
     }
 }
 

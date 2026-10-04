@@ -8,7 +8,11 @@ from pathlib import Path
 import sys
 from typing import Any
 
-from check_command_productivity import rust_code_without_comments_and_literals
+from check_command_productivity import (
+    rust_code_without_comments_and_literals,
+    validate_interactive_grid_boundary,
+    CommandProductivityError,
+)
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -239,6 +243,7 @@ def validate_worker_lifecycle(root: Path | None = None) -> None:
     _lifecycle_body(cancelled, """
         { let mut state = lock(&self.pending.0);
           state.shutdown = true;
+          state.mutation_routes.clear(); state.mutation_results.clear();
           lock(&self.latest_requested).clear(); lock(&self.results).clear();
           lock(&self.workspace_authorizations).clear(); lock(&self.provider_snapshots).clear(); }
         self.pending.1.notify_all();
@@ -299,6 +304,55 @@ def validate_worker_lifecycle(root: Path | None = None) -> None:
         "self.quick_actions.request_shutdown();", "application shutdown cancellation",
     )
 
+def validate_workflow_boundary(root: Path | None = None) -> None:
+    root = ROOT if root is None else root
+    def code(path: str) -> str:
+        return rust_code_without_comments_and_literals(bounded_text(root / path))
+    model_path = "automexia-command-productivity/src/actions/workflow.rs"
+    model = code(model_path)
+    for marker in MODEL_FORBIDDEN:
+        if marker in model.casefold():
+            raise Cp22Error(f"workflow model acquired a capability: {marker}")
+    for fragment in ("MAX_WORKFLOW_STEPS: usize = 32;", "!(1..=3600).contains(&step.timeout_seconds)"):
+        _lifecycle_fragment(model, fragment, "bounded workflow model")
+    poll = _rust_item(model, "pub fn poll(")
+    for fragment in ("observed.generation != self.baseline.generation", "observed.input_revision != self.baseline.input_revision",
+                     "let Some((source, status)) = observed.completed else", "if status != 0", "Some(source) != self.baseline.prompt"):
+        _lifecycle_fragment(poll, fragment, "verified workflow progression")
+    surface = code("apps/automexia-terminal/src/screen/action_surface/workflow.rs")
+    start = _rust_item(surface, "pub(super) fn workflow_control(")
+    for fragment in ("if !self.ensure_action_scope_authorized()", "if !unchanged", "a == action.as_ref() && a.enabled",
+                     "self.invalidate_workflow_submission();", "workflow.finished = true"):
+        _lifecycle_fragment(start, fragment, "review, cancellation and source validity")
+    synchronize = _rust_item(surface, "pub(super) fn sync_action_workflow(")
+    for fragment in ("context.route_id != workflow.route", "context.rich_text_id != workflow.rich_text", "deliver_workflow_command(target, &step.command, receipt)"):
+        _lifecycle_fragment(synchronize, fragment, "route-owned submission")
+    terminal = code("rio-vt/src/crosswords/command_actions.rs")
+    accept = _rust_item(terminal, "pub fn accept_workflow_submission(")
+    for fragment in ("self.workflow_prompt() != Some(receipt)", "self.workflow_input.submitted == Some(receipt)", "self.workflow_input.submitted = Some(receipt)"):
+        _lifecycle_fragment(accept, fragment, "one-use prompt receipt")
+    performer = code("rio-vt/src/performer/mod.rs")
+    resolve = _rust_item(performer, "fn resolve_pending_paste(")
+    for fragment in ("accept_workflow_submission(receipt)", "encode_paste(paste, terminal.mode())"):
+        _lifecycle_fragment(resolve, fragment, "PTY writer revalidation")
+    # Keep the revalidation after the bounded drain; comments/dead helpers do
+    # not count as evidence of the live submission path.
+    if resolve.find("drain") > resolve.find("accept_workflow_submission") or "drain" not in resolve:
+        raise Cp22Error("workflow submission must follow output drain")
+    request = code("rio-vt/src/event/mod.rs")
+    normal = _rust_item(_rust_item(request, "impl PasteRequest"), "pub fn new(")
+    _lifecycle_fragment(normal, "reviewed_submission: None", "ordinary paste cannot execute")
+    _lifecycle_fragment(normal, "reviewed_command: false", "ordinary paste encoding unchanged")
+    insert = _rust_item(request, "pub fn reviewed_action_insert(")
+    _lifecycle_fragment(insert, "reviewed_submission: None", "ordinary action cannot execute")
+    worker = code(QUICK_ACTION_WORKER)
+    submit = _rust_item(worker, "pub fn submit_mutation(")
+    for fragment in ("pending.shutdown", "pending.mutation_routes.contains_key(&route_id)", "pending.mutation_routes.len() >= MAX_RESULT_ROUTES", "pending.mutations.len() >= 8"):
+        _lifecycle_fragment(submit, fragment, "bounded editor admission")
+    cleanup = _rust_item(_rust_item(worker, "impl Drop for PendingCleanup"), "fn drop(")
+    _lifecycle_fragment(cleanup, "let mutations = std::mem::take(&mut lock(&self.pending.0).mutations); drop(mutations);", "worker-owned mutation cleanup")
+
+
 def validate_sources(document: dict[str, Any]) -> dict[str, int]:
     for relative in document["model_files"]:
         source = bounded_text(ROOT / relative).casefold()
@@ -307,6 +361,7 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
             raise Cp22Error(f"{relative} crosses the capability-free model boundary: {marker}")
 
     validate_worker_lifecycle()
+    validate_workflow_boundary()
     worker = require_tokens(
         "apps/automexia-terminal/src/automexia/quick_actions/worker.rs",
         {
@@ -349,7 +404,7 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
     surface = require_tokens(
         "apps/automexia-terminal/src/screen/action_surface.rs",
         {
-            "self.paste(&expanded.command, true)",
+            ".deliver_action_insert(target, &expanded.command)",
             "requires_second_confirmation",
             "submit_action_placeholder",
             "unavailable_before_placeholder",
@@ -388,6 +443,15 @@ def validate_sources(document: dict[str, Any]) -> dict[str, int]:
     grid_owner = bounded_text(
         ROOT / "apps/automexia-terminal/src/screen/mod.rs", MAX_GRID_OWNER_BYTES
     ).casefold()
+    try:
+        validate_interactive_grid_boundary("apps/automexia-terminal/src/screen/mod.rs", grid_owner)
+    except CommandProductivityError as error:
+        raise Cp22Error(str(error)) from error
+    grid_owner = rust_code_without_comments_and_literals(grid_owner)
+    dispatch = _rust_item(grid_owner, "pub fn activate_palette_selection(")
+    # Only the reviewed composition-root dispatcher may delegate to the owner.
+    # Its body was checked above for grid inference; domain logic stays separate.
+    grid_owner = grid_owner.replace(dispatch, "", 1)
     if "quickaction" in grid_owner or "quick_action" in grid_owner or "quick action" in grid_owner:
         raise Cp22Error("grid-owning screen module must not contain Quick Action domain logic")
     return {

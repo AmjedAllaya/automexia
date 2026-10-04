@@ -81,3 +81,9 @@ terminal sessions and system OpenSSH-owned network and credential authority.
 [ADR 0086](adr/0086-nonexecuting-ssh-planning-boundary.md) records the current
 non-executing implementation and is proposed for review. It does not approve
 managed SSH activation or change structured-action execution policy.
+
+## Reviewed shell-input workflows
+
+[ADR 0091](adr/0091-reviewed-quick-action-workflows.md) extends the existing
+Quick Action store and palette with visual editing and explicit Run. Ordinary
+copy/insertion, exact-launch and connection-hook authority remain separate.

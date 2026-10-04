@@ -695,6 +695,17 @@ fn estimated_resident_bytes(document: &QuickActionDocument) -> usize {
                 .saturating_add(placeholder.default.as_ref().map_or(0, String::capacity));
         }
         match &action.template {
+            ActionTemplate::Workflow { steps, .. } => {
+                bytes = bytes.saturating_add(
+                    steps.capacity()
+                        * mem::size_of::<
+                            automexia_command_productivity::actions::WorkflowStep,
+                        >(),
+                );
+                for step in steps {
+                    bytes = bytes.saturating_add(step.command.capacity());
+                }
+            }
             ActionTemplate::TypedArgv {
                 executable_id,
                 arguments,

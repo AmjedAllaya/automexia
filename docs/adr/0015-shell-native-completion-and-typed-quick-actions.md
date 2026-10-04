@@ -37,7 +37,9 @@ configuration while keeping terminal input ownership simple. It limits
 Automexia-specific behavior but provides a dependable fallback on every
 supported shell.
 
-Unreleased assistants, provider-specific actions, workflow products, and
+Explicitly reviewed user workflows are extended by
+[ADR 0091](0091-reviewed-quick-action-workflows.md). The insert/copy boundary above
+remains unchanged. Unreleased assistants, provider-specific actions and
 commercial packages are outside this public ADR.
 
 Alias projection and verification details are in [DEVOPS-ALIASES.md](../DEVOPS-ALIASES.md).

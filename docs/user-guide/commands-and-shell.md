@@ -247,6 +247,9 @@ commands and platform limitations.
 4. For a frequent stable shell command, use a native alias.
 5. For Automexia development, use the repository contributor commands.
 
+For saved commands and explicitly approved multi-step execution, see
+[Quick Actions and reviewed workflows](quick-actions.md).
+
 Advanced unreleased command products, integrations, and commercial workflows
 are private and are not described by this guide.
 

@@ -5,6 +5,64 @@ use super::style::StyleFlags;
 use super::{ActivePromptPhase, Column, Crosswords, EventListener, Line, Mode, Pos};
 
 const MAX_ROWS: usize = 16_384;
+
+/// A one-use, pane-local input receipt for an explicitly approved workflow.
+/// It contains no command text or credential and never authenticates a peer.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct WorkflowPrompt {
+    pub generation: u64,
+    pub scope: u64,
+    pub input_revision: u64,
+    pub prompt: u64,
+}
+
+#[derive(Debug, Default)]
+pub(super) struct WorkflowInputState {
+    pub input_revision: u64,
+    pub completed: Option<(u64, i32)>,
+    submitted: Option<WorkflowPrompt>,
+}
+
+impl<U: EventListener> Crosswords<U> {
+    pub fn workflow_input_revision(&self) -> u64 {
+        self.workflow_input.input_revision
+    }
+    pub fn workflow_completed(&self) -> Option<(u64, i32)> {
+        self.workflow_input.completed
+    }
+    pub fn workflow_generation(&self) -> u64 {
+        self.command_action_generation
+    }
+    pub fn note_interactive_input(&mut self) {
+        self.workflow_input.input_revision =
+            self.workflow_input.input_revision.saturating_add(1);
+    }
+    pub fn workflow_prompt(&self) -> Option<WorkflowPrompt> {
+        if self.workflow_input.input_revision == u64::MAX
+            || self.mode.intersects(Mode::ALT_SCREEN | Mode::VI)
+        {
+            return None;
+        }
+        Some(WorkflowPrompt {
+            generation: self.command_action_generation,
+            scope: self.integration_scope_revision(),
+            input_revision: self.workflow_input.input_revision,
+            prompt: self.empty_integrated_prompt().ok()??,
+        })
+    }
+    /// Called by the sole PTY writer after draining pending output. A changed
+    /// prompt, intervening input or replay consumes no bytes and fails closed.
+    pub fn accept_workflow_submission(&mut self, receipt: WorkflowPrompt) -> bool {
+        if self.workflow_prompt() != Some(receipt)
+            || self.workflow_input.submitted == Some(receipt)
+        {
+            self.note_interactive_input();
+            return false;
+        }
+        self.workflow_input.submitted = Some(receipt);
+        true
+    }
+}
 const MAX_CELLS: usize = 1_048_576;
 const MAX_OUTPUT_BYTES: usize = 4 * 1024 * 1024;
 const MAX_COMMAND_BYTES: usize = 16 * 1024;
@@ -279,6 +337,11 @@ impl<U: EventListener> Crosswords<U> {
             || matches!(c, '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')) {
             return Err(CommandActionError::UnsafeInput);
         }
+        self.empty_integrated_prompt()?;
+        Ok(text)
+    }
+
+    fn empty_integrated_prompt(&self) -> Result<Option<u64>, CommandActionError> {
         let active = self
             .active_semantic_prompt
             .as_ref()
@@ -314,6 +377,6 @@ impl<U: EventListener> Crosswords<U> {
         {
             return Err(CommandActionError::Busy);
         }
-        Ok(text)
+        Ok(active.id)
     }
 }

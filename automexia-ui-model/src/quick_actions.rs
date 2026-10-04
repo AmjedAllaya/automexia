@@ -4,6 +4,28 @@ pub const MIN_ACTION_SURFACE_WIDTH: f32 = 280.0;
 pub const COMPACT_ACTION_SURFACE_BREAKPOINT: f32 = 700.0;
 pub const MAX_ACTION_ROWS: usize = 10;
 
+/// A native palette control. An empty ID denotes explanatory, non-actionable text.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct QuickActionControl {
+    pub id: String,
+    pub label: String,
+    pub detail: String,
+}
+
+impl QuickActionControl {
+    pub fn new(
+        id: impl Into<String>,
+        label: impl Into<String>,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            id: id.into(),
+            label: label.into(),
+            detail: detail.into(),
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ActionSurfaceLayout {
     Compact,

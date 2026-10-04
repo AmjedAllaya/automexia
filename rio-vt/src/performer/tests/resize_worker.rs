@@ -181,6 +181,70 @@ fn machine() -> Machine<BoundaryPty, VoidListener> {
 }
 
 #[test]
+fn quick_action_workflow_submission_is_atomic_and_revalidated_after_output_drain() {
+    for changed in [false, true] {
+        let mut machine = machine();
+        crate::performer::handler::Processor::default().advance(
+            &mut *machine.terminal.lock(),
+            b"\x1b]133;A;aid=1\x07> \x1b]133;B\x07\x1b[?2004h",
+        );
+        let receipt = machine.terminal.lock().workflow_prompt().unwrap();
+        if changed {
+            machine.pty.reader.final_bytes =
+                Some(b"\x1b]133;C\x07untrusted output".to_vec());
+        }
+        machine.pty.writable_bytes = 128;
+        machine
+            .channel()
+            .send(Msg::Paste(
+                PasteRequest::reviewed_workflow_command("echo ready", receipt).unwrap(),
+            ))
+            .unwrap();
+        let mut state = State::default();
+        assert!(machine.drain_recv_channel(&mut state));
+        machine
+            .resolve_pending_paste(&mut state, &mut [0; 128])
+            .unwrap();
+        machine.pty_write(&mut state).unwrap();
+        assert_eq!(
+            machine.pty.output,
+            if changed {
+                b"".as_slice()
+            } else {
+                b"\x1b[200~echo ready\x1b[201~\r".as_slice()
+            }
+        );
+    }
+}
+
+#[test]
+fn quick_action_workflow_requests_reject_multiline_escape_and_ordinary_paste_never_submits(
+) {
+    let receipt = crate::crosswords::command_actions::WorkflowPrompt {
+        generation: 1,
+        scope: 0,
+        input_revision: 0,
+        prompt: 1,
+    };
+    for text in [
+        "",
+        "echo a\necho b",
+        "echo \u{1b}[201~",
+        "echo \u{202e}hidden",
+    ] {
+        assert!(PasteRequest::reviewed_workflow_command(text, receipt).is_none());
+    }
+    assert_eq!(
+        encode_paste(
+            PasteRequest::new("echo ready", true).unwrap(),
+            Mode::BRACKETED_PASTE
+        )
+        .as_ref(),
+        b"\x1b[200~echo ready\x1b[201~"
+    );
+}
+
+#[test]
 fn queued_fragmented_bracketed_mode_is_applied_before_paste_encoding() {
     for (fragments, expected) in [
         (
@@ -209,6 +273,38 @@ fn queued_fragmented_bracketed_mode_is_applied_before_paste_encoding() {
         assert_eq!(machine.pty.output, expected);
         assert!(state.pending_paste.is_none());
     }
+}
+
+#[cfg(windows)]
+#[test]
+fn quick_action_windows_commands_use_key_records_and_only_run_adds_enter() {
+    let text = "echo 日本語 🦀";
+    let inserted = encode_paste(
+        PasteRequest::reviewed_action_insert(text).unwrap(),
+        Mode::WIN32_INPUT,
+    );
+    let expected = crate::event::win32_text_input(text);
+    assert_eq!(inserted.as_ref(), expected);
+    assert!(!inserted.windows(6).any(|w| w == b"[13;28"));
+    let receipt = crate::crosswords::command_actions::WorkflowPrompt {
+        generation: 1,
+        scope: 0,
+        input_revision: 0,
+        prompt: 1,
+    };
+    let submitted = encode_paste(
+        PasteRequest::reviewed_workflow_command(text, receipt).unwrap(),
+        Mode::WIN32_INPUT,
+    );
+    let mut expected_run = expected;
+    expected_run.extend_from_slice(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_");
+    assert_eq!(submitted.as_ref(), expected_run);
+    assert_eq!(
+        encode_paste(PasteRequest::new(text, true).unwrap(), Mode::WIN32_INPUT).as_ref(),
+        text.as_bytes(),
+        "ordinary paste encoding stays unchanged"
+    );
+    assert!(PasteRequest::reviewed_action_insert("echo a\necho b").is_none());
 }
 
 #[test]

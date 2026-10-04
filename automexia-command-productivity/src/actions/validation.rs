@@ -316,7 +316,46 @@ fn validate_action(action: &QuickAction) -> Result<(), ValidationError> {
         ActionProvenance::User => {}
     }
 
+    if action.execution == ExecutionMode::RunWorkflow
+        && !matches!(action.template, ActionTemplate::Workflow { .. })
+    {
+        return Err(ValidationError::action(
+            action,
+            ValidationCode::UnsafeText,
+            "execution",
+            "workflow execution requires a workflow template",
+        ));
+    }
     match &action.template {
+        ActionTemplate::Workflow { version, steps } => {
+            let invalid = *version != super::WORKFLOW_VERSION
+                || action.execution != ExecutionMode::RunWorkflow
+                || action.alias_projection.is_some()
+                || !action.placeholders.is_empty()
+                || action.working_directory_policy != WorkingDirectoryPolicy::Inherit
+                || !matches!(
+                    action.scope,
+                    ActionScope::GlobalUser | ActionScope::ShellUser
+                )
+                || !matches!(
+                    action.provenance,
+                    ActionProvenance::User | ActionProvenance::Imported { .. }
+                )
+                || steps
+                    .first()
+                    .is_none_or(|step| action.shells.as_slice() != [step.shell]);
+            if invalid {
+                return Err(ValidationError::action(action, ValidationCode::UnsafeText, "template", "workflow needs version 1, run-workflow mode, a user scope, its initial shell and inherited directory; aliases and stored parameters are unavailable"));
+            }
+            super::validate_workflow_steps(steps).map_err(|message| {
+                ValidationError::action(
+                    action,
+                    ValidationCode::UnsafeText,
+                    "template.steps",
+                    message,
+                )
+            })?;
+        }
         ActionTemplate::TypedArgv {
             executable_id,
             arguments,

@@ -1,5 +1,50 @@
 pub mod sync;
 
+/// Encode literal input with the active Windows keyboard layout. Reused by
+/// reviewed command input and native fixtures; ordinary paste is unchanged.
+/// https://github.com/microsoft/terminal/blob/main/src/terminal/input/terminalInput.cpp
+#[cfg(windows)]
+pub fn win32_text_input(text: &str) -> Vec<u8> {
+    use std::fmt::Write;
+    use windows_sys::Win32::System::Console::{
+        LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, SHIFT_PRESSED,
+    };
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        MapVirtualKeyW, VkKeyScanW, MAPVK_VK_TO_VSC,
+    };
+    let mut bytes = String::with_capacity(text.len().saturating_mul(36));
+    for unicode in text.encode_utf16() {
+        // SAFETY: Scalar layout lookup; no pointers or retained resources.
+        // Unmappable Unicode (including surrogate halves) uses VK=0.
+        let mapped = unsafe { VkKeyScanW(unicode) };
+        let (key, state) = if mapped == -1 {
+            (0_u16, 0_u32)
+        } else {
+            let mapped = mapped as u16;
+            let modifiers = (mapped >> 8) as u8;
+            let state = if modifiers & 1 != 0 { SHIFT_PRESSED } else { 0 }
+                | if modifiers & 2 != 0 {
+                    LEFT_CTRL_PRESSED
+                } else {
+                    0
+                }
+                | if modifiers & 4 != 0 {
+                    LEFT_ALT_PRESSED
+                } else {
+                    0
+                };
+            (mapped & 0xff, state)
+        };
+        // SAFETY: Scalar virtual-key lookup; no memory or handle ownership.
+        let scan = unsafe { MapVirtualKeyW(u32::from(key), MAPVK_VK_TO_VSC) } & 0xff;
+        let _ = write!(
+            bytes,
+            "\x1b[{key};{scan};{unicode};1;{state};1_\x1b[{key};{scan};0;0;{state};1_"
+        );
+    }
+    bytes.into_bytes()
+}
+
 use crate::ansi::graphics::UpdateQueues;
 use crate::clipboard::ClipboardType;
 use crate::config::colors::ColorRgb;
@@ -102,6 +147,10 @@ pub enum Msg {
 pub struct PasteRequest {
     pub(crate) text: String,
     pub(crate) bracketed: bool,
+    #[cfg_attr(not(windows), allow(dead_code))]
+    pub(crate) reviewed_command: bool,
+    pub(crate) reviewed_submission:
+        Option<crate::crosswords::command_actions::WorkflowPrompt>,
 }
 
 impl PasteRequest {
@@ -111,6 +160,39 @@ impl PasteRequest {
         (text.len() <= Self::MAX_BYTES).then(|| Self {
             text: text.to_owned(),
             bracketed,
+            reviewed_command: false,
+            reviewed_submission: None,
+        })
+    }
+
+    /// Reviewed one-line command insertion, without Enter. Unlike clipboard
+    /// paste, this command may be encoded as literal Windows key records.
+    pub fn reviewed_action_insert(text: &str) -> Option<Self> {
+        if text.len() > 65_536 || text.chars().any(|c| c.is_control()
+            || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')) { return None; }
+        Some(Self {
+            text: text.to_owned(),
+            bracketed: true,
+            reviewed_command: true,
+            reviewed_submission: None,
+        })
+    }
+
+    /// Explicit Run only. Ordinary paste and insertion can never acquire this
+    /// submission flag. The PTY worker revalidates the one-use input receipt.
+    pub fn reviewed_workflow_command(
+        text: &str,
+        prompt: crate::crosswords::command_actions::WorkflowPrompt,
+    ) -> Option<Self> {
+        if text.trim().is_empty() || text.len() > 4096 || text.chars().any(|c| c.is_control()
+            || matches!(c, '\u{061c}' | '\u{200e}' | '\u{200f}' | '\u{2028}' | '\u{2029}' | '\u{202a}'..='\u{202e}' | '\u{2066}'..='\u{2069}')) {
+            return None;
+        }
+        Some(Self {
+            text: text.to_owned(),
+            bracketed: true,
+            reviewed_command: true,
+            reviewed_submission: Some(prompt),
         })
     }
 

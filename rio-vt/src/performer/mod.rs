@@ -94,15 +94,31 @@ const MAX_PASTE_DRAIN_ROUNDS: u8 = 8;
 
 #[cfg(feature = "pty")]
 fn encode_paste(paste: PasteRequest, mode: Mode) -> Cow<'static, [u8]> {
+    let submit = paste.reviewed_submission.is_some();
+    #[cfg(windows)]
+    if paste.reviewed_command && mode.contains(Mode::WIN32_INPUT) {
+        let mut payload = crate::event::win32_text_input(&paste.text);
+        if submit {
+            payload.extend_from_slice(b"\x1b[13;28;13;1;0;1_\x1b[13;28;0;0;0;1_");
+        }
+        return Cow::Owned(payload);
+    }
     let text = paste.text;
     if paste.bracketed && mode.contains(Mode::BRACKETED_PASTE) {
         let mut payload = Vec::with_capacity(text.len() + 12);
         payload.extend_from_slice(b"\x1b[200~");
         payload.extend(text.bytes().filter(|byte| !matches!(byte, 0x1b | 0x03)));
         payload.extend_from_slice(b"\x1b[201~");
+        if submit {
+            payload.push(b'\r');
+        }
         Cow::Owned(payload)
     } else if paste.bracketed {
-        Cow::Owned(text.replace("\r\n", "\r").replace('\n', "\r").into_bytes())
+        let mut payload = text.replace("\r\n", "\r").replace('\n', "\r").into_bytes();
+        if submit {
+            payload.push(b'\r');
+        }
+        Cow::Owned(payload)
     } else {
         Cow::Owned(text.into_bytes())
     }
@@ -223,11 +239,15 @@ impl<T: teletypewriter::EventedPty, U: EventListener> PtyMessageSink
 
     fn input(&mut self, input: Cow<'static, [u8]>) {
         if !input.is_empty() {
+            self.terminal.lock().note_interactive_input();
             self.write_list.push_back(input);
         }
     }
 
     fn paste(&mut self, paste: PasteRequest) {
+        if paste.reviewed_submission.is_none() {
+            self.terminal.lock().note_interactive_input();
+        }
         *self.pending_paste = Some(paste);
     }
 
@@ -597,8 +617,19 @@ where
         state.paste_drain_rounds += 1;
         if drained || state.paste_drain_rounds >= MAX_PASTE_DRAIN_ROUNDS {
             if let Some(paste) = state.pending_paste.take() {
-                let mode = self.terminal.lock().mode();
-                state.write_list.push_back(encode_paste(paste, mode));
+                let mut terminal = self.terminal.lock();
+                let accepted = paste.reviewed_submission.is_none_or(|receipt| {
+                    if !drained {
+                        terminal.note_interactive_input();
+                        return false;
+                    }
+                    terminal.accept_workflow_submission(receipt)
+                });
+                if accepted {
+                    state
+                        .write_list
+                        .push_back(encode_paste(paste, terminal.mode()));
+                }
             }
             state.paste_drain_rounds = 0;
         }

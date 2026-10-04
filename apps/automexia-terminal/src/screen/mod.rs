@@ -298,48 +298,7 @@ fn decode_native_test_hex(value: &str) -> Option<Vec<u8>> {
 fn native_test_text_input(text: &str, win32_input: bool) -> Vec<u8> {
     #[cfg(windows)]
     if win32_input {
-        use windows_sys::Win32::System::Console::{
-            LEFT_ALT_PRESSED, LEFT_CTRL_PRESSED, SHIFT_PRESSED,
-        };
-        use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-            MapVirtualKeyW, VkKeyScanW, MAPVK_VK_TO_VSC,
-        };
-
-        let mut bytes = Vec::with_capacity(text.len().saturating_mul(36));
-        for unicode in text.encode_utf16() {
-            // Use the active Windows keyboard layout so the test hook produces
-            // the same Vk/scan/modifier record as physical typing. Raw UTF-8
-            // mixed with DECSET 9001 records is not a valid ConsoleHost event
-            // stream and can leave PSReadLine waiting indefinitely.
-            let mapped = unsafe { VkKeyScanW(unicode) };
-            let (virtual_key, control_state) = if mapped == -1 {
-                (0_u16, 0_u32)
-            } else {
-                let mapped = mapped as u16;
-                let modifiers = (mapped >> 8) as u8;
-                let mut state = 0_u32;
-                if modifiers & 1 != 0 {
-                    state |= SHIFT_PRESSED;
-                }
-                if modifiers & 2 != 0 {
-                    state |= LEFT_CTRL_PRESSED;
-                }
-                if modifiers & 4 != 0 {
-                    state |= LEFT_ALT_PRESSED;
-                }
-                (mapped & 0xff, state)
-            };
-            let scan =
-                unsafe { MapVirtualKeyW(virtual_key as u32, MAPVK_VK_TO_VSC) } & 0xff;
-            bytes.extend_from_slice(
-                format!(
-                    "\x1b[{virtual_key};{scan};{unicode};1;{control_state};1_\
-                     \x1b[{virtual_key};{scan};0;0;{control_state};1_"
-                )
-                .as_bytes(),
-            );
-        }
-        return bytes;
+        return rio_backend::event::win32_text_input(text);
     }
 
     let _ = win32_input;
@@ -4206,6 +4165,14 @@ impl Screen<'_> {
         if self.renderer.command_palette.activate_navigation() {
             return;
         }
+        if self.renderer.command_palette.is_action_text() {
+            self.submit_action_field(self.renderer.command_palette.query.clone());
+            return;
+        }
+        if let Some(control) = self.renderer.command_palette.selected_action_control() {
+            self.quick_action_control(&control);
+            return;
+        }
         if let Some((target, action)) =
             self.renderer.command_palette.selected_last_command_action()
         {
@@ -7679,6 +7646,10 @@ impl Screen<'_> {
         let _sequence = fields.next();
         match action {
             "open-customizations" => self.context_manager.open_customizations(),
+            "open-quick-actions" => {
+                self.renderer.confirm_quit.set_active(false);
+                self.open_action_center();
+            }
             "open-themes" => self.context_manager.open_theme_gallery(),
             "restore-previous" => self.context_manager.restore_previous_session(),
             "open-palette" => {

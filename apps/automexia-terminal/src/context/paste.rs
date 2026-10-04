@@ -30,11 +30,41 @@ impl<T: EventListener> Context<T> {
 }
 
 impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
+    pub(crate) fn deliver_action_insert(
+        &mut self,
+        target: PasteTarget,
+        text: &str,
+    ) -> Result<bool, PasteError> {
+        let paste =
+            PasteRequest::reviewed_action_insert(text).ok_or(PasteError::TooLarge)?;
+        self.deliver_paste_request(target, paste, None)
+    }
+    pub(crate) fn deliver_workflow_command(
+        &mut self,
+        target: PasteTarget,
+        text: &str,
+        receipt: rio_backend::crosswords::command_actions::WorkflowPrompt,
+    ) -> Result<bool, PasteError> {
+        let paste = PasteRequest::reviewed_workflow_command(text, receipt)
+            .ok_or(PasteError::TooLarge)?;
+        self.deliver_paste_request(target, paste, Some(receipt))
+    }
+
     pub(crate) fn deliver_paste(
         &mut self,
         target: PasteTarget,
         text: &str,
         bracketed: bool,
+    ) -> Result<bool, PasteError> {
+        let paste = PasteRequest::new(text, bracketed).ok_or(PasteError::TooLarge)?;
+        self.deliver_paste_request(target, paste, None)
+    }
+
+    fn deliver_paste_request(
+        &mut self,
+        target: PasteTarget,
+        paste: PasteRequest,
+        receipt: Option<rio_backend::crosswords::command_actions::WorkflowPrompt>,
     ) -> Result<bool, PasteError> {
         let context = self
             .get_by_route_id(target.route_id)
@@ -43,11 +73,13 @@ impl<T: EventListener + Clone + Send + 'static> ContextManager<T> {
         if context.shutdown_requested.load(Ordering::Acquire) {
             return Err(PasteError::Closed);
         }
-        let paste = PasteRequest::new(text, bracketed).ok_or(PasteError::TooLarge)?;
         if paste.text().is_empty() {
             return Ok(false);
         }
         let mut terminal = context.terminal.lock();
+        if receipt.is_some_and(|receipt| terminal.workflow_prompt() != Some(receipt)) {
+            return Err(PasteError::StaleTarget);
+        }
         // One queue message prevents resize/keyboard producers from entering
         // between bracket delimiters. A disconnected receiver changes no UI state.
         context

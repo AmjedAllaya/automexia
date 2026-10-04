@@ -3251,8 +3251,12 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             .command_palette
                             .interrupt_shortcut_capture();
                     } else if let Ime::Commit(text) = ime {
-                        let mut query =
-                            route.window.screen.renderer.command_palette.query.clone();
+                        let mut query = route
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .action_query_prefix();
                         if text.len() <= 4096 {
                             query.push_str(&text);
                         }

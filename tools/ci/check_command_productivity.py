@@ -184,6 +184,7 @@ CP2_PURE_ACTION_FILES = {
     "automexia-command-productivity/src/actions/packs.rs",
     "automexia-command-productivity/src/actions/projection.rs",
     "automexia-command-productivity/src/actions/validation.rs",
+    "automexia-command-productivity/src/actions/workflow.rs",
 }
 CP4_PURE_ACTION_FILES = {
     "automexia-command-productivity/src/actions/provider.rs",
@@ -257,6 +258,8 @@ CP2_ACTIVATION_WIRING_FILES = {
     "apps/automexia-terminal/src/router/mod.rs",
     "apps/automexia-terminal/src/screen/mod.rs",
     "apps/automexia-terminal/src/screen/action_surface.rs",
+    "apps/automexia-terminal/src/screen/action_surface/editor.rs",
+    "apps/automexia-terminal/src/screen/action_surface/workflow.rs",
     "automexia-ui-model/src/lib.rs",
     "automexia-ui-model/src/quick_actions.rs",
 }
@@ -660,6 +663,8 @@ def read_lower(path: Path) -> str:
 
 
 def rust_code_without_comments_and_literals(source: str) -> str:
+    raw_pattern = re.compile(r'(?:b|c)?r(#{0,255})"')
+    character_pattern = re.compile(r"'(?:\\.|[^\\'\r\n])'")
     output: list[str] = []
     index = 0
     block_depth = 0
@@ -730,7 +735,7 @@ def rust_code_without_comments_and_literals(source: str) -> str:
             block_depth = 1
             state = "block-comment"
             continue
-        raw = re.match(r'(?:b|c)?r(#{0,255})"', source[index:])
+        raw = raw_pattern.match(source, index)
         if raw is not None:
             prefix = raw.group(0)
             raw_closer = '"' + raw.group(1)
@@ -743,7 +748,7 @@ def rust_code_without_comments_and_literals(source: str) -> str:
             index += 1
             state = "string"
             continue
-        character = re.match(r"'(?:\\.|[^\\'\r\n])'", source[index:])
+        character = character_pattern.match(source, index)
         if character is not None:
             output.append(" ")
             index += 1
@@ -1018,8 +1023,57 @@ def validate_shell_pre_activation(root: Path = ROOT) -> int:
     return len(shell_files)
 
 
+def validate_interactive_grid_boundary(relative: str, content: str) -> None:
+    # Validate the composition root's dispatch body separately; it may delegate
+    # reviewed actions but cannot read the grid. Keep the original whole-source
+    # restriction for everything outside that body and for every other owner.
+    if relative == "apps/automexia-terminal/src/screen/mod.rs":
+        code = rust_code_without_comments_and_literals(content)
+        declaration = "pub fn activate_palette_selection("
+        if code.count(declaration) == 1:
+            start = code.index(declaration)
+            opening = code.index("{", start)
+            depth, end = 1, opening + 1
+            while end < len(code) and depth:
+                depth += (code[end] == "{") - (code[end] == "}")
+                end += 1
+            body = code[start:end].casefold()
+            if depth or any(marker in body for marker in GRID_INFERENCE_MARKERS):
+                raise CommandProductivityError(f"{relative} couples palette dispatch to terminal-grid inference")
+            content = code[:start] + code[end:]
+    content = content.casefold()
+    if any(marker in content for marker in PRODUCTIVITY_MARKERS) and any(marker in content for marker in GRID_INFERENCE_MARKERS):
+        raise CommandProductivityError(f"{relative} couples command productivity to terminal-grid inference")
+
+
+def validate_workflow_test_owners(root: Path) -> set[str]:
+    # These two exact regression owners intentionally exercise terminal state.
+    # Reject loss of their compiler test-only boundary; no production exclusion.
+    test_files = {"rio-vt/src/crosswords/command_actions_tests.rs", "rio-vt/src/performer/tests/resize_worker.rs"}
+    if not any((root / path).is_file() for path in test_files):
+        return set()
+    crosswords = (root / "rio-vt/src/crosswords/mod.rs").read_text(encoding="utf-8")
+    performer = (root / "rio-vt/src/performer/mod.rs").read_text(encoding="utf-8")
+    if crosswords.count("mod command_actions_tests;") != 1 or not re.search(
+        r"#\[cfg\(test\)\]\s*mod command_actions_tests;", crosswords
+    ):
+        raise CommandProductivityError("command action regression owner must remain test-only")
+    declaration = re.search(r'#\[cfg\(all\(test, feature = "pty"\)\)\]\s*mod tests\s*\{', performer)
+    if declaration is None or performer.count("mod resize_worker;") != 1:
+        raise CommandProductivityError("PTY workflow regression owner must remain test-only")
+    code = rust_code_without_comments_and_literals(performer)
+    depth, end = 1, declaration.end()
+    while end < len(code) and depth:
+        depth += (code[end] == "{") - (code[end] == "}")
+        end += 1
+    if depth or "mod resize_worker;" not in code[declaration.end():end]:
+        raise CommandProductivityError("PTY regression escaped the test-only module")
+    return test_files
+
+
 def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
     shell_file_count = validate_shell_pre_activation(root)
+    test_files = validate_workflow_test_owners(root)
 
     interactive_roots = [
         "apps/automexia-terminal/src/renderer",
@@ -1042,12 +1096,8 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
                 raise CommandProductivityError(
                     f"{path.relative_to(root).as_posix()} invokes completion/provider work on an interactive path: {hook!r}"
                 )
-        if any(marker in content for marker in PRODUCTIVITY_MARKERS) and any(
-            marker in content for marker in GRID_INFERENCE_MARKERS
-        ):
-            raise CommandProductivityError(
-                f"{path.relative_to(root).as_posix()} couples command productivity to terminal-grid inference"
-            )
+        if path.relative_to(root).as_posix() not in test_files:
+            validate_interactive_grid_boundary(path.relative_to(root).as_posix(), content)
 
     runtime_files = workspace_runtime_files(root)
     pure_action_files = validate_pure_action_sources(root, runtime_files)
@@ -1061,6 +1111,7 @@ def validate_pre_activation(root: Path = ROOT) -> dict[str, int]:
         | CP4_PROVIDER_ACTION_FILES
         | CP5_SUGGESTION_SOURCE_FILES
         | D7_ACTION_PACK_SOURCE_FILES
+        | test_files
     )
     for path in runtime_files:
         content = read_lower(path)

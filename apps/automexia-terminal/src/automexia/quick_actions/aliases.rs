@@ -1650,7 +1650,9 @@ pub fn collect_local_alias_observations(
             ActionTemplate::TypedArgv { executable_id, .. } => {
                 Some(executable_id.clone())
             }
-            ActionTemplate::RawInsertOnly { .. } => None,
+            ActionTemplate::RawInsertOnly { .. } | ActionTemplate::Workflow { .. } => {
+                None
+            }
         })
         .collect::<BTreeSet<_>>();
     let alias_names = actions
@@ -1723,7 +1725,8 @@ pub fn collect_local_alias_observations(
                         ActionTemplate::TypedArgv { executable_id, .. } => {
                             Some(executable_id.as_str())
                         }
-                        ActionTemplate::RawInsertOnly { .. } => None,
+                        ActionTemplate::RawInsertOnly { .. }
+                        | ActionTemplate::Workflow { .. } => None,
                     };
                     if let Some(executable_id) = executable_id {
                         completion_cache

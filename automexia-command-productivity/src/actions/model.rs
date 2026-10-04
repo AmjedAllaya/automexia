@@ -68,6 +68,10 @@ pub enum ShellKind {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ActionTemplate {
+    Workflow {
+        version: u8,
+        steps: Vec<super::workflow::WorkflowStep>,
+    },
     TypedArgv {
         executable_id: String,
         arguments: Vec<ArgumentToken>,
@@ -133,6 +137,7 @@ pub enum ExecutionMode {
     Insert,
     Copy,
     ExactLaunch,
+    RunWorkflow,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]

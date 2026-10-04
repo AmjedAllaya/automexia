@@ -775,6 +775,7 @@ where
     semantic_command_result_sequence: u64,
     command_action_generation: u64,
     command_action_last: Option<command_actions::CommandHandle>,
+    workflow_input: command_actions::WorkflowInputState,
     session_started: std::time::Instant,
     session_activity: SessionActivity,
     /// Output boundary awaiting the next semantic prompt. This is populated
@@ -874,6 +875,7 @@ impl<U: EventListener> Crosswords<U> {
             semantic_command_result_sequence: 0,
             command_action_generation: 0,
             command_action_last: None,
+            workflow_input: command_actions::WorkflowInputState::default(),
             session_started: std::time::Instant::now(),
             session_activity: SessionActivity::default(),
             pending_semantic_command_boundary: None,
@@ -5138,6 +5140,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
             completed_at: semantic_command_timestamp_now(),
         };
         self.record_command_action_result(result.id);
+        self.workflow_input.completed = prompt_id.zip(exit_code);
         let mut discovered_output = false;
         for line in (-history..screen_lines).rev().map(Line) {
             if newest_nonempty_line.is_none() && !self.grid[line].is_clear() {

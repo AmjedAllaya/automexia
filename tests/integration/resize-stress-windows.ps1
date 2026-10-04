@@ -40,7 +40,8 @@ param(
     [switch]$CommandInputPowerShell7,
     [switch]$ConnectionHubOnly,
     [switch]$UseCpuRenderer,
-    [switch]$SessionRecoveryOnly
+    [switch]$SessionRecoveryOnly,
+    [switch]$QuickActionsOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -211,10 +212,16 @@ public static class AutomexiaResizeDriver {
     }
 
     public static bool SendRecoverySentinel(IntPtr hWnd) {
+        return SendActionText(hWnd, "Write-Output RECOVERY_HISTORY_SENTINEL", true);
+    }
+
+    public static bool SendActionText(IntPtr hWnd, string text, bool enter) {
+        if (text == null || text.Length > 4096) return false;
         if (!ActivateWindow(hWnd)) return false;
         IntPtr layout = GetKeyboardLayout(GetWindowThreadProcessId(hWnd, IntPtr.Zero));
         var inputs = new List<NativeInput>();
-        foreach (char character in "Write-Output RECOVERY_HISTORY_SENTINEL") {
+        foreach (char character in text) {
+            if (char.IsControl(character)) return false;
             short mapped = VkKeyScanEx(character, layout);
             if (mapped == -1 || (mapped & 0x0600) != 0) return false;
             ushort key = (ushort)(mapped & 0xFF);
@@ -224,8 +231,10 @@ public static class AutomexiaResizeDriver {
             inputs.Add(KeyboardInput(key, true));
             if (shift) inputs.Add(KeyboardInput(0x10, true));
         }
-        inputs.Add(KeyboardInput(0x0D, false));
-        inputs.Add(KeyboardInput(0x0D, true));
+        if (enter) {
+            inputs.Add(KeyboardInput(0x0D, false));
+            inputs.Add(KeyboardInput(0x0D, true));
+        }
         if (GetForegroundWindow() != hWnd) return false;
         uint sent = SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(NativeInput)));
         if (sent != inputs.Count) {
@@ -1576,6 +1585,10 @@ $wallpaperConfig
     }
     if ($SessionRecoveryOnly) {
         . (Join-Path $PSScriptRoot 'session-recovery-windows.ps1')
+        return
+    }
+    if ($QuickActionsOnly) {
+        . (Join-Path $PSScriptRoot 'quick-actions-windows.ps1')
         return
     }
     $expectedRendererBackend = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }

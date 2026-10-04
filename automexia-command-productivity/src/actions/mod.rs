@@ -11,6 +11,11 @@ mod packs;
 mod projection;
 mod provider;
 mod validation;
+mod workflow;
+pub use workflow::{
+    validate_workflow_steps, WorkflowCompletion, WorkflowEffect, WorkflowObservation,
+    WorkflowRun, WorkflowStep, MAX_WORKFLOW_STEPS, WORKFLOW_VERSION,
+};
 
 use std::fmt;
 

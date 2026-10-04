@@ -66,8 +66,8 @@ pub use transfer::{
     QUICK_ACTION_TRANSFER_SCHEMA,
 };
 pub use worker::{
-    QuickActionRuntime, QuickActionRuntimeErrorCode, QuickActionRuntimeStatus,
-    QuickActionSearchResult, SearchSubmission,
+    ActionMutation, MutationResult, QuickActionRuntime, QuickActionRuntimeErrorCode,
+    QuickActionRuntimeStatus, QuickActionSearchResult, SearchSubmission,
 };
 pub use workspace::{
     WorkspaceActionSnapshot, WorkspaceActionStore, WorkspaceError, WorkspaceErrorCode,

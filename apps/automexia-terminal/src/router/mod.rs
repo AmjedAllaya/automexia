@@ -303,6 +303,58 @@ impl Route<'_> {
         // Handle command palette input when it is the top modal in any route.
         if modal_target == ModalKeyTarget::CommandPalette {
             if key_event.state == ElementState::Pressed {
+                if self.window.screen.action_palette_shortcut(
+                    &key_event.logical_key,
+                    self.window.screen.modifiers.state(),
+                    key_event.repeat,
+                ) {
+                    self.request_overlay_redraw();
+                    return RouteKeyIntent::Consumed;
+                }
+                if self
+                    .window
+                    .screen
+                    .renderer
+                    .command_palette
+                    .action_query_selected()
+                    && matches!(
+                        &key_event.logical_key,
+                        Key::Named(NamedKey::Backspace | NamedKey::Delete)
+                    )
+                {
+                    self.window
+                        .screen
+                        .renderer
+                        .command_palette
+                        .set_query(String::new());
+                    self.request_overlay_redraw();
+                    return RouteKeyIntent::Consumed;
+                }
+                if self.window.screen.renderer.command_palette.is_action_text()
+                    && self.window.screen.modifiers.state().intersects(
+                        rio_window::keyboard::ModifiersState::CONTROL
+                            | rio_window::keyboard::ModifiersState::SUPER,
+                    )
+                    && matches!(&key_event.logical_key, Key::Character(value) if value.eq_ignore_ascii_case("v"))
+                {
+                    let text =
+                        clipboard.get(rio_backend::clipboard::ClipboardType::Clipboard);
+                    let prefix = self
+                        .window
+                        .screen
+                        .renderer
+                        .command_palette
+                        .action_query_prefix();
+                    if text.len().saturating_add(prefix.len()) <= 4096 {
+                        self.window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .set_query(format!("{prefix}{text}"));
+                    }
+                    self.request_overlay_redraw();
+                    return RouteKeyIntent::Consumed;
+                }
                 if self
                     .window
                     .screen
@@ -370,8 +422,12 @@ impl Route<'_> {
                         }
                     }
                     Key::Named(NamedKey::Backspace) => {
-                        let current_query =
-                            self.window.screen.renderer.command_palette.query.clone();
+                        let current_query = self
+                            .window
+                            .screen
+                            .renderer
+                            .command_palette
+                            .action_query_prefix();
                         if !current_query.is_empty() {
                             let mut chars = current_query.chars().collect::<Vec<_>>();
                             chars.pop();
@@ -406,8 +462,7 @@ impl Route<'_> {
                                     .screen
                                     .renderer
                                     .command_palette
-                                    .query
-                                    .clone();
+                                    .action_query_prefix();
                                 let next = format!("{}{}", current_query, text_str);
                                 if self
                                     .window

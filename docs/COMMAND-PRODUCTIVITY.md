@@ -2,8 +2,8 @@
 
 This public guide covers ordinary free terminal productivity: native shell
 completion, command history, search, aliases, command navigation, and
-insert-without-execute actions. It is not a roadmap and does not describe
-unreleased assistants, provider products, workflow products, or commercial
+insert-without-execute actions and explicitly reviewed user workflows. It is not a roadmap and does not describe
+unreleased assistants, provider products, or commercial
 features.
 
 ## Ownership principle
@@ -17,6 +17,7 @@ Terminal-owned behavior is limited to:
 - forwarding input to the focused shell;
 - showing bounded metadata and public actions;
 - inserting or copying text only after an explicit user action;
+- submitting reviewed workflow steps only after explicit Run;
 - navigating visible completed commands; and
 - preserving fallback to the shell's normal behavior.
 
@@ -63,7 +64,7 @@ A public action may offer static text for copy or insertion. The review surface
 shows the exact resulting text and any unresolved placeholder. Insert and copy
 are separate from execution.
 
-Actions cannot:
+Insert/copy actions cannot:
 
 - press Enter;
 - evaluate a shell command internally;
@@ -74,6 +75,12 @@ Actions cannot:
 
 The shell remains responsible for parsing and executing any text the user later
 submits.
+
+**Quick Actions** also provides a visual editor and a separately reviewed
+**Run workflow** operation. It submits approved steps only to their original
+integrated shell and stops on failed or unverified completion. See the
+[Quick Actions guide](user-guide/quick-actions.md) for keyboard controls,
+SSH transitions, pause/resume/cancel, limits and file compatibility.
 
 ## Search and command palette
 
