@@ -15,6 +15,7 @@
 */
 
 pub mod attr;
+pub mod command_actions;
 pub mod formatter;
 pub mod grid;
 pub mod pos;
@@ -759,6 +760,8 @@ where
     /// Pane-local identity for completed commands. It is independent from
     /// physical rows so renderer pulses remain stable through reflow.
     semantic_command_result_sequence: u64,
+    command_action_generation: u64,
+    command_action_last: Option<command_actions::CommandHandle>,
     /// Output boundary awaiting the next semantic prompt. This is populated
     /// only for a proven nonempty output region.
     pending_semantic_command_boundary:
@@ -842,6 +845,8 @@ impl<U: EventListener> Crosswords<U> {
             semantic_command_started: None,
             semantic_command_output_observed: false,
             semantic_command_result_sequence: 0,
+            command_action_generation: 0,
+            command_action_last: None,
             pending_semantic_command_boundary: None,
             damage_event_in_flight: false,
             modify_other_keys: 0,
@@ -2927,6 +2932,7 @@ impl<U: EventListener> Crosswords<U> {
     }
 
     pub fn swap_alt(&mut self) {
+        self.invalidate_command_actions();
         self.suspend_active_prompt_follow();
         self.shell_clear_deadline = None;
         self.shell_clear_rehome_deadline = None;
@@ -4743,6 +4749,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
 
     #[inline]
     fn reset_state(&mut self) {
+        self.invalidate_command_actions();
         self.active_prompt_follow = false;
         if self.mode.contains(Mode::ALT_SCREEN) {
             std::mem::swap(&mut self.grid, &mut self.inactive_grid);
@@ -5008,14 +5015,29 @@ impl<U: EventListener> Handler for Crosswords<U> {
         } else {
             None
         };
+        // Fish's B freezes our context spacer before its native prompt is
+        // painted. It is not an exact command-text boundary. Retain native
+        // prompt/highlighter ownership and do not reconstruct that prefix.
+        let precise_input = if self.integration_scope_active() {
+            self.integration_scope().is_some_and(|scope| {
+                matches!(scope.shell.as_str(), "bash" | "zsh" | "powershell" | "pwsh")
+            })
+        } else {
+            self.user_vars
+                .get("automexia_shell_name")
+                .map(String::as_str)
+                != Some("fish")
+        };
         let row = self.grid.cursor.pos.row;
-        if self.active_semantic_prompt.is_some()
+        if precise_input
+            && self.active_semantic_prompt.is_some()
             && !self.mode.contains(Mode::ALT_SCREEN)
             && self.grid[row].semantic_prompt != SemanticPrompt::None
         {
-            self.grid[row].semantic_input = shell.map(|shell| SemanticInput {
+            self.grid[row].semantic_input = Some(SemanticInput {
                 column: self.grid.cursor.pos.col.0,
-                shell,
+                shell: shell.unwrap_or(PromptInputShell::Native),
+                command_complete: false,
                 continuation: false,
             });
         }
@@ -5024,6 +5046,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
     }
 
     fn semantic_command_start(&mut self) {
+        self.complete_command_input_boundary();
         self.release_active_prompt_follow();
         self.active_semantic_prompt = None;
         self.shell_clear_deadline = None;
@@ -5078,6 +5101,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
             elapsed_ms,
             completed_at: semantic_command_timestamp_now(),
         };
+        self.record_command_action_result(result.id);
         let mut discovered_output = false;
         for line in (-history..screen_lines).rev().map(Line) {
             if newest_nonempty_line.is_none() && !self.grid[line].is_clear() {
@@ -5782,6 +5806,7 @@ impl<U: EventListener> Handler for Crosswords<U> {
     #[inline]
     fn clear_screen(&mut self, mode: ClearMode) {
         if matches!(mode, ClearMode::All | ClearMode::Saved) {
+            self.invalidate_command_actions();
             self.suspend_active_prompt_follow();
         }
         let now = std::time::Instant::now();
@@ -7602,6 +7627,9 @@ impl<U: EventListener> Crosswords<U> {
 
 #[cfg(test)]
 mod input_color_tests;
+
+#[cfg(test)]
+mod command_actions_tests;
 
 #[cfg(test)]
 mod tests {

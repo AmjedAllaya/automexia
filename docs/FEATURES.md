@@ -15,6 +15,7 @@ unlisted product capability is available.
 | Native shell sessions | Unix PTY and Windows ConPTY launch, resize, ordered input, exit reporting, and cleanup | [Platforms](PLATFORMS.md), [troubleshooting](TROUBLESHOOTING.md) |
 | Windows, tabs, and panes | Independent windows, tabs, pane-local tabs, mnemonic fresh/cloned splits, focus movement, divider resizing and grouped discovery with left-arrow Back; current-source shortcut labels follow effective configuration | [Keyboard](KEYBOARD.md), [terminal guide](guide/terminal-experience.md) |
 | Search and selection | Scoped search, keyboard and pointer selection, copy, paste, and command navigation | [Keyboard](KEYBOARD.md), [productivity guide](user-guide/productivity.md) |
+| Last-command actions | Copy command/output, select output, reinsert without Enter, and jump to a retained shell-integrated command | [Commands and shell workflows](user-guide/commands-and-shell.md#last-command-actions) |
 | Appearance | Fonts, themes, opacity, cursor choices, line spacing, and saved appearance preferences | [Configuration](CONFIGURATION.md), [customization](user-guide/customization.md) |
 | Shell integration | Session-local integration for supported shells, prompt metadata, and object-preserving listings | [Shell integration](SHELL-INTEGRATION.md) |
 | Explicit web search | `amx google`, `amx search` and `amx docs` use encoded queries, default-browser handoff and offline URL preview | [Browser search](user-guide/google-search.md) |

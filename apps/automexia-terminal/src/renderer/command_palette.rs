@@ -19,7 +19,10 @@ use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 use std::time::Instant;
 
+mod last_command;
 mod navigation;
+use crate::context::command_actions::CommandTarget;
+pub(crate) use last_command::LastCommandAction;
 mod shortcut_editor;
 pub(crate) use shortcut_editor::ShortcutChange;
 use shortcut_editor::ShortcutEditor;
@@ -288,6 +291,7 @@ enum CommandIcon {
     Image,
     History,
     HistoryNext,
+    CommandActions,
     ClearScreen,
     Table,
     QuickActions,
@@ -461,6 +465,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         SearchGlobalBackward => RowPresentation {
             icon: CommandIcon::SearchGlobalBackward,
             accent: UiAccent::Purple,
+        },
+        LastCommandActions => RowPresentation {
+            icon: CommandIcon::CommandActions,
+            accent: UiAccent::Cyan,
         },
         ViewTableOutput => RowPresentation {
             icon: CommandIcon::Table,
@@ -719,6 +727,11 @@ const COMMANDS: &[Command] = &[
         action: PaletteAction::ViewTableOutput,
     },
     Command {
+        title: "Last-command actions",
+        shortcut: "Ctrl+Shift+F8",
+        action: PaletteAction::LastCommandActions,
+    },
+    Command {
         title: "Clear Screen and History",
         shortcut: SHORTCUT_CLEAR_SCREEN,
         action: PaletteAction::ClearScreen,
@@ -762,6 +775,10 @@ const COMMANDS: &[Command] = &[
 /// sugarloaf FontLibrary.
 enum PaletteMode {
     Commands,
+    LastCommandActions {
+        target: Option<CommandTarget>,
+        notice: &'static str,
+    },
     Fonts(Vec<String>),
     Market(Vec<MarketItem>),
     QuickActions {
@@ -784,6 +801,7 @@ pub enum QuickActionReviewChoice {
 /// data the render pass needs — no `&'static Command` vs `&str`
 /// lifetime mixing.
 enum PaletteRow<'a> {
+    LastCommand(LastCommandAction),
     Navigation(Option<Category>),
     Command {
         title: &'a str,
@@ -828,6 +846,7 @@ impl<'a> PaletteRow<'a> {
             PaletteRow::Market { name, .. } => name,
             PaletteRow::QuickAction { item } => &item.name,
             PaletteRow::QuickActionNotice { message } => message,
+            PaletteRow::LastCommand(action) => action.label(),
             PaletteRow::PlaceholderContinue => "Continue to review",
             PaletteRow::ReviewCommand { command, .. } => command,
             PaletteRow::ReviewInsert { label, .. } => label,
@@ -849,6 +868,7 @@ impl<'a> PaletteRow<'a> {
             } => "Install",
             PaletteRow::QuickAction { item } => item.metadata_label.as_str(),
             PaletteRow::QuickActionNotice { .. } => "",
+            PaletteRow::LastCommand(_) => "Enter",
             PaletteRow::PlaceholderContinue => "Enter",
             PaletteRow::ReviewCommand { context, .. } => context,
             PaletteRow::ReviewInsert { risk, .. } | PaletteRow::ReviewCopy { risk } => {
@@ -868,6 +888,7 @@ impl<'a> PaletteRow<'a> {
             | PaletteRow::PlaceholderContinue
             | PaletteRow::ReviewCommand { .. }
             | PaletteRow::ReviewInsert { .. }
+            | PaletteRow::LastCommand(_)
             | PaletteRow::ReviewCopy { .. } => None,
         }
     }
@@ -914,6 +935,7 @@ impl<'a> PaletteRow<'a> {
                 icon: CommandIcon::TabNext,
                 accent: UiAccent::Cyan,
             },
+            PaletteRow::LastCommand(action) => action.presentation(),
             PaletteRow::ReviewCommand { .. } => RowPresentation {
                 icon: CommandIcon::Code,
                 accent: UiAccent::Blue,
@@ -1388,6 +1410,13 @@ fn draw_command_icon(
             canvas.line(11.0, 6.0, 11.0, 11.0);
             canvas.line(11.0, 11.0, 15.0, 13.5);
             canvas.chevron_left(2.5, 6.0, 2.0);
+        }
+        CommandIcon::CommandActions => {
+            canvas.outline(2.0, 2.0, 18.0, 18.0, 2.0);
+            canvas.chevron_right(6.0, 7.0, 2.5);
+            canvas.line(11.0, 9.5, 16.0, 9.5);
+            canvas.line(6.0, 14.0, 16.0, 14.0);
+            canvas.line(6.0, 17.0, 12.0, 17.0);
         }
         CommandIcon::HistoryNext => {
             canvas.outline(2.0, 2.0, 18.0, 18.0, 9.0);
@@ -2002,6 +2031,9 @@ impl CommandPalette {
 
     pub fn go_back(&mut self) -> bool {
         let child_action = match self.mode {
+            PaletteMode::LastCommandActions { .. } => {
+                Some(PaletteAction::LastCommandActions)
+            }
             PaletteMode::Fonts(_) => Some(PaletteAction::ListFonts),
             PaletteMode::Market(_) => Some(PaletteAction::OpenMarket),
             _ => None,
@@ -2041,7 +2073,9 @@ impl CommandPalette {
         self.enabled
             && match self.mode {
                 PaletteMode::Commands => self.category.is_some(),
-                PaletteMode::Fonts(_) | PaletteMode::Market(_) => true,
+                PaletteMode::LastCommandActions { .. }
+                | PaletteMode::Fonts(_)
+                | PaletteMode::Market(_) => true,
                 _ => false,
             }
     }
@@ -2171,6 +2205,7 @@ impl CommandPalette {
                 | PaletteRow::PlaceholderContinue
                 | PaletteRow::ReviewCommand { .. }
                 | PaletteRow::ReviewInsert { .. }
+                | PaletteRow::LastCommand(_)
                 | PaletteRow::ReviewCopy { .. } => None,
             })
     }
@@ -2188,6 +2223,7 @@ impl CommandPalette {
                 | PaletteRow::PlaceholderContinue
                 | PaletteRow::ReviewCommand { .. }
                 | PaletteRow::ReviewInsert { .. }
+                | PaletteRow::LastCommand(_)
                 | PaletteRow::ReviewCopy { .. } => None,
             })
     }
@@ -2285,6 +2321,26 @@ impl CommandPalette {
                     ))
                 })
                 .collect(),
+            PaletteMode::LastCommandActions { target, notice } => {
+                let mut rows = Vec::new();
+                if query.is_empty() || target.is_none() {
+                    rows.push((
+                        i32::MAX,
+                        PaletteRow::QuickActionNotice { message: notice },
+                    ));
+                }
+                if target.is_some() {
+                    rows.extend(LastCommandAction::ALL.into_iter().filter_map(
+                        |action| {
+                            Some((
+                                score(action.label())?,
+                                PaletteRow::LastCommand(action),
+                            ))
+                        },
+                    ));
+                }
+                rows
+            }
             PaletteMode::QuickActions { items, notice } => {
                 if items.is_empty() {
                     vec![(1, PaletteRow::QuickActionNotice { message: notice })]
@@ -2618,6 +2674,7 @@ impl CommandPalette {
             PaletteMode::Commands => self
                 .category
                 .map_or("Search all commands…", Category::title),
+            PaletteMode::LastCommandActions { .. } => "Last-command actions",
             PaletteMode::Fonts(_) => "Type a font name...",
             PaletteMode::Market(_) => "Search extensions...",
             PaletteMode::QuickActions { .. } => "Search Quick Actions...",

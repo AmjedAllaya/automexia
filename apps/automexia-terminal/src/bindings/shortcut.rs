@@ -44,6 +44,7 @@ pub(crate) fn palette_binding_target(
         | ToggleAppearanceTheme
         | PreviewSelectedImage
         | ViewTableOutput
+        | LastCommandActions
         | OpenSettings
         | OpenCustomizations
         | OpenThemeGallery
@@ -100,6 +101,7 @@ pub(crate) fn legacy_binding_target(action: PaletteAction) -> crate::bindings::A
         SearchGlobalBackward => Action::SearchGlobalBackward,
         PreviewSelectedImage => Action::PreviewSelectedImage,
         ViewTableOutput => Action::ViewTableOutput,
+        LastCommandActions => Action::LastCommandActions,
         ClearScreen => Action::ClearScreen,
         OpenMarket => Action::OpenExtensionMarketplace,
         OpenConnections => Action::OpenConnectionHub,

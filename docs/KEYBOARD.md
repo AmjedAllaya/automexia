@@ -179,6 +179,14 @@ forwarded to the shell. Search and Vi mode retain their own input ownership.
 
 ## Command palette
 
+**Last-command actions** is under **Search & History** and global palette search.
+Arrow keys choose Copy command, Copy output, Select output, Reinsert command, or
+Jump to start; Enter activates only that choice. Reinsertion leaves execution to
+a separate Enter in the shell. `Ctrl+Shift+F8` opens the submenu directly in
+the Automexia binding profile; its configurable action is `LastCommandActions`.
+Use the palette's shortcut editor to change it. See the
+[command action guide](user-guide/commands-and-shell.md#last-command-actions).
+
 `Ctrl+Shift+P` (`Cmd+Shift+P` on macOS) opens seven categories: Tabs & Windows,
 Panes & Sessions, Search & History, Clipboard & Input, Appearance,
 Customizations, and Tools. Customizations opens the feature list in the native

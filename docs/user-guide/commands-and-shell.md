@@ -12,9 +12,10 @@ terminal around it.
 | Command palette | Automexia | Discoverable terminal, window, tab, pane, search, and appearance actions |
 | Repository commands | Cargo and repository tools | Building, testing, packaging, and contributing to Automexia |
 
-Automexia does not reconstruct shell commands from rendered cells. The shell
-owns quoting, history, cursor movement, expansion, pipelines, completion, and
-execution.
+The shell owns quoting, history, cursor movement, expansion, pipelines,
+completion, and execution. Last-command actions can explicitly read retained
+text between precise shell-integration markers; they do not infer commands
+from prompt-looking output or execute copied text.
 
 Opening or closing a split must leave editable text beside its prompt. On
 Windows, the first input immediately after a pane/window size change may wait
@@ -96,6 +97,55 @@ This is viewport navigation, not shell history. It does not alter the editable
 line, submit input, rerun a command, or move another pane. A shell that emits no
 supported prompt markers remains unchanged rather than being parsed
 heuristically.
+
+## Last-command actions
+
+Open the command palette with `Ctrl+Shift+P` on Windows/Linux or
+`Cmd+Shift+P` on macOS. Search for **Last-command actions**, or browse
+**Search & History**, then press Enter. `Ctrl+Shift+F8` also opens the submenu
+in the Automexia binding profile (customizable in the palette). Choose an action with the arrows and
+Enter, type its name, or click it. Escape closes the palette; its Back button
+or Alt+Left returns to Search & History. No permanent cards or gutter are added.
+
+| Action | Result |
+|---|---|
+| Copy command | Copies the retained command text without the prompt or output. |
+| Copy output | Copies the complete retained output as plain text, without ANSI escapes or the next prompt. |
+| Select output | Selects that output in the terminal and scrolls its start into view. |
+| Reinsert command | Pastes a single logical command into an empty integrated prompt; review it, then press Enter separately to run it. |
+| Jump to start | Scrolls to the command's prompt without changing shell input. |
+
+These actions target the latest completed command in the selected pane, captured
+when the submenu opens. They read the live terminal history when activated;
+opening the menu does not copy, store, or log command/output contents. A later
+command cannot silently replace the captured target. Tab/pane changes, terminal
+replacement, clearing, reset, alternate-screen transitions, or SSH integration
+scope changes make a captured target unavailable. Reopen the submenu to target
+the current terminal again.
+
+Shell integration must supply complete boundaries. Commands without precise
+input markers cannot be copied or reinserted. Soft-wrapped single-line commands
+and output are read as logical lines after resize, including Unicode. Ambiguous
+multiline commands and secondary prompts are refused instead of guessed.
+Fish's current native prompt boundary does not identify the exact typed text,
+so command copying/reinsertion is unavailable there; complete output ranges
+remain usable. Shells without integration retain ordinary selection and copy.
+
+Reinsertion requires an empty prompt, including any continuation rows, and is
+unavailable while a program is running or Vi navigation is active. Control
+characters and unsafe multiline separators are refused. It never adds Enter,
+reconnects SSH, or launches a process. You decide whether to execute the inserted
+text in the current shell and working directory. Holding the palette's Enter
+key cannot submit it: release the key and press Enter again.
+
+Expired, incomplete, oversized, and concealed-text ranges fail with a quiet
+message. Output actions do not silently copy a truncated tail; empty output
+leaves the clipboard unchanged. Ordinary selection remains available for a
+smaller range. Inline table decoration and status colours are presentation only:
+copying uses the underlying terminal text. Visibly printed secrets cannot be
+identified reliably; review sensitive output before explicitly copying it to
+the operating-system clipboard. No recovery history or new output buffer is
+created by this feature.
 
 ## Readable output rows
 

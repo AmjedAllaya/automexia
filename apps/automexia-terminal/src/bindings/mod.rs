@@ -314,6 +314,7 @@ impl From<String> for Action {
             "openfontbrowser" => Some(Action::OpenFontBrowser),
             "previewselectedimage" => Some(Action::PreviewSelectedImage),
             "viewtableoutput" => Some(Action::ViewTableOutput),
+            "lastcommandactions" => Some(Action::LastCommandActions),
             "none" => Some(Action::None),
             _ => None,
         };
@@ -631,6 +632,7 @@ pub enum Action {
     /// Preview the selected or pointer-targeted local raster image.
     PreviewSelectedImage,
     ViewTableOutput,
+    LastCommandActions,
 
     /// Toggle the command palette overlay.
     OpenCommandPalette,
@@ -777,6 +779,7 @@ fn key_bindings_with_platform(
         KeyBinding;
         Key::Named(Copy);  Action::Copy;
         Key::Named(F7), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::ViewTableOutput;
+        Key::Named(F8), ModifiersState::CONTROL | ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; Action::LastCommandActions;
         Key::Named(Copy),  +BindingMode::VI; Action::ClearSelection;
         Key::Named(Paste), ~BindingMode::VI; Action::Paste;
         Key::Named(ArrowLeft),  ModifiersState::SHIFT, ~BindingMode::VI, ~BindingMode::SEARCH; SelectionMotion::Left;

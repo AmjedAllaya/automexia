@@ -33,6 +33,11 @@ The existing configuration-editor shortcut remains unchanged.
 with the Automexia profile on all platforms, including macOS. Its configurable
 action is `ViewTableOutput`; Escape returns to the terminal.
 
+**Ctrl+Shift+F8** opens Last-command actions with the Automexia profile on all
+platforms. The configurable action is `LastCommandActions`, outside Search and
+Vi modes. Choose an action with arrows and Enter or the mouse; Reinsert command
+pastes text without Enter. See [last-command actions](../user-guide/commands-and-shell.md#last-command-actions).
+
 ### Windows, tabs, and panes
 
 | Shortcut | Action |

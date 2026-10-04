@@ -7,6 +7,7 @@
 // which is licensed under Apache 2.0 license.
 
 pub(crate) mod action_surface;
+mod command_actions;
 mod compatibility;
 mod connection_hub;
 mod grid_lifecycle;
@@ -2923,6 +2924,7 @@ impl Screen<'_> {
                     }
                     Act::OpenConnectionHub => self.open_connection_hub(),
                     Act::ViewTableOutput => self.open_table_view(),
+                    Act::LastCommandActions => self.open_last_command_actions(),
                     Act::OpenActionCenter => self.open_action_center(),
                     Act::OpenExtensionMarketplace => self.open_extension_marketplace(),
                     Act::OpenFontBrowser => self.open_font_browser(),
@@ -4201,7 +4203,11 @@ impl Screen<'_> {
         if self.renderer.command_palette.activate_navigation() {
             return;
         }
-        if self.renderer.command_palette.is_action_placeholder() {
+        if let Some((target, action)) =
+            self.renderer.command_palette.selected_last_command_action()
+        {
+            self.apply_last_command_action(target, action, clipboard);
+        } else if self.renderer.command_palette.is_action_placeholder() {
             self.submit_action_placeholder(self.renderer.command_palette.query.clone());
         } else if let Some(id) =
             self.renderer.command_palette.get_selected_action_item_id()
@@ -6311,6 +6317,7 @@ impl Screen<'_> {
                 self.preview_selected_image();
             }
             PaletteAction::ViewTableOutput => self.open_table_view(),
+            PaletteAction::LastCommandActions => self.open_last_command_actions(),
             PaletteAction::ClearScreen => {
                 let mut terminal = self.context_manager.current_mut().terminal.lock();
                 terminal.clear_screen_and_history();

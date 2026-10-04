@@ -67,7 +67,8 @@ impl Category {
             | SelectPaneUp
             | SelectPaneDown
             | CloseCurrentSplitOrTab => Self::Panes,
-            ScrollToPreviousCommand
+            LastCommandActions
+            | ScrollToPreviousCommand
             | ScrollToNextCommand
             | SearchForward
             | SearchBackward

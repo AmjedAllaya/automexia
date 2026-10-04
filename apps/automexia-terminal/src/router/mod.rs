@@ -95,11 +95,22 @@ fn welcome_key_intent(
     }
 }
 
+// Palette activation and welcome completion share the route's held-Enter
+// ownership. Closing either surface cannot turn the same key into shell input.
+fn palette_enter_key_intent(repeat: bool, enter_held: &mut bool) -> bool {
+    if repeat || *enter_held {
+        false
+    } else {
+        *enter_held = true;
+        true
+    }
+}
+
 pub struct Route<'a> {
     pub assistant: assistant::Assistant,
     pub path: RoutePath,
     pub(crate) welcome_identity: Arc<()>,
-    welcome_enter_held: bool,
+    overlay_enter_held: bool,
     pub window: RouteWindow<'a>,
 }
 
@@ -115,7 +126,7 @@ impl Route<'_> {
             assistant,
             path,
             welcome_identity: Arc::new(()),
-            welcome_enter_held: false,
+            overlay_enter_held: false,
             window,
         }
     }
@@ -242,14 +253,14 @@ impl Route<'_> {
 
         // Completion can switch to Terminal before Enter is released. Retain
         // that key's ownership until release, so it cannot leak to the PTY.
-        if self.welcome_enter_held && key_event.logical_key == Key::Named(NamedKey::Enter)
+        if self.overlay_enter_held && key_event.logical_key == Key::Named(NamedKey::Enter)
         {
             return welcome_key_intent(
                 false,
                 &key_event.logical_key,
                 key_event.state,
                 key_event.repeat,
-                &mut self.welcome_enter_held,
+                &mut self.overlay_enter_held,
             );
         }
 
@@ -350,8 +361,13 @@ impl Route<'_> {
                         self.request_overlay_redraw();
                     }
                     Key::Named(NamedKey::Enter) => {
-                        self.window.screen.activate_palette_selection(clipboard);
-                        self.request_overlay_redraw();
+                        if palette_enter_key_intent(
+                            key_event.repeat,
+                            &mut self.overlay_enter_held,
+                        ) {
+                            self.window.screen.activate_palette_selection(clipboard);
+                            self.request_overlay_redraw();
+                        }
                     }
                     Key::Named(NamedKey::Backspace) => {
                         let current_query =
@@ -506,7 +522,7 @@ impl Route<'_> {
                 &key_event.logical_key,
                 key_event.state,
                 key_event.repeat,
-                &mut self.welcome_enter_held,
+                &mut self.overlay_enter_held,
             );
         }
 
@@ -1378,6 +1394,36 @@ mod welcome_input_tests {
         assert_eq!(
             welcome_key_intent(true, &enter, ElementState::Pressed, true, &mut held),
             RouteKeyIntent::Consumed
+        );
+    }
+
+    #[test]
+    fn command_actions_palette_enter_requires_release_before_shell_submission() {
+        let enter = Key::Named(NamedKey::Enter);
+        let mut held = false;
+        assert!(!super::palette_enter_key_intent(true, &mut held));
+        assert!(super::palette_enter_key_intent(false, &mut held));
+        // The action inserts once, closes the palette, and leaves this latch.
+        assert!(!super::palette_enter_key_intent(false, &mut held));
+        for repeat in [true, true, false] {
+            assert_eq!(
+                welcome_key_intent(
+                    false,
+                    &enter,
+                    ElementState::Pressed,
+                    repeat,
+                    &mut held
+                ),
+                RouteKeyIntent::Consumed
+            );
+        }
+        assert_eq!(
+            welcome_key_intent(false, &enter, ElementState::Released, false, &mut held),
+            RouteKeyIntent::Consumed
+        );
+        assert_eq!(
+            welcome_key_intent(false, &enter, ElementState::Pressed, false, &mut held),
+            RouteKeyIntent::PassThrough
         );
     }
 

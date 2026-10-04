@@ -300,6 +300,7 @@ impl<U: EventListener> Crosswords<U> {
     }
 
     fn scope_changed(&mut self) {
+        self.invalidate_command_actions();
         match self.integration_scopes.revision.checked_add(1) {
             Some(revision) => self.integration_scopes.revision = revision,
             None => self.integration_scopes.quarantine = true,

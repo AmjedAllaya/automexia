@@ -43,7 +43,10 @@ impl InputAccents {
                 if scanned > MAX_CELLS {
                     break;
                 }
-                let Some(input) = row.semantic_input else {
+                let Some(input) = row
+                    .semantic_input
+                    .filter(|input| input.shell != PromptInputShell::Native)
+                else {
                     self.text.clear();
                     self.cells.clear();
                     shell = None;
@@ -298,6 +301,7 @@ mod tests {
         row.semantic_input = Some(rio_backend::crosswords::grid::row::SemanticInput {
             column: start,
             shell: PromptInputShell::Posix,
+            command_complete: false,
             continuation,
         });
         row.inner[width - 1].set_wrapline(wrapped);

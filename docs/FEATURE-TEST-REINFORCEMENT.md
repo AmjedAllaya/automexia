@@ -582,6 +582,15 @@ masquerade as a renderer difference.
 
 ### windows-tabs-sessions-input
 
+Last-command actions must use existing completion identities and live grid
+ranges. Parser regressions cover fragmented markers, native input boundaries,
+Unicode soft-wrap/reflow, missing boundaries, concealed text, limits, expired
+history, clear/reset, alternate screens, and SSH scope changes. Palette and
+context tests require exact choice labels, searchable/back/empty/error states,
+route replacement and focus rejection, an empty prompt, and one paste message
+with no Enter. Native clipboard, desktop input and assistive-technology results
+remain external until exercised on the claimed platform.
+
 Rapid tab startup must resolve the default title before any shell output,
 exhaust unavailable fields and preserve literal OSC title data. Queue native
 Ctrl+T and Ctrl+F4 bursts without startup waits; compare all displayed titles

@@ -1,4 +1,5 @@
 mod closing_routes;
+pub(crate) mod command_actions;
 pub mod external_tool_runner;
 pub mod launch;
 pub mod launch_broker;

@@ -77,6 +77,8 @@ pub struct SemanticCommandBoundary {
 /// This is display metadata, never authority to parse or execute a command.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum PromptInputShell {
+    /// Exact input boundary with coloring owned by the native shell/editor.
+    Native,
     Posix,
     Cmd,
 }
@@ -87,6 +89,9 @@ pub struct SemanticInput {
     pub shell: PromptInputShell,
     /// A soft-wrapped tail cannot independently identify command/quote state.
     pub continuation: bool,
+    /// OSC C proved the complete single logical input line before execution.
+    /// Carried with the row through reflow; never inferred from output text.
+    pub command_complete: bool,
 }
 
 impl SemanticInput {

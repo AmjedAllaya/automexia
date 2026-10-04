@@ -248,6 +248,7 @@ fn typed_input_accents_reach_glyphs_preserve_native_styles_and_selection() {
         row.semantic_input = Some(SemanticInput {
             column: 2,
             shell: PromptInputShell::Cmd,
+            command_complete: false,
             continuation: false,
         });
     }

@@ -37,7 +37,13 @@ fn input_color_boundary_requires_owned_prompt_and_supported_ready_shell() {
         assert!(term.grid[Line(0)].semantic_input.is_none());
         parser.advance(&mut term, b"\x1b]133;A\x07prompt> \x1b]133;B\x07docker -a");
         let input = term.grid[Line(1)].semantic_input;
-        assert_eq!(input.map(|input| input.shell), expected, "{shell}");
+        assert_eq!(
+            input
+                .map(|input| input.shell)
+                .filter(|shell| *shell != PromptInputShell::Native),
+            expected,
+            "{shell}"
+        );
         if let Some(input) = input {
             assert_eq!(input.column, 8);
             assert!(!input.continuation);
@@ -50,11 +56,25 @@ fn input_color_boundary_requires_owned_prompt_and_supported_ready_shell() {
         term.user_vars
             .insert("automexia_env_pending".into(), "1".into());
         parser.advance(&mut term, b"\x1b]133;A\x07> \x1b]133;B\x07docker");
-        assert!(term.grid[Line(3)].semantic_input.is_none());
+        assert_eq!(
+            term.grid[Line(3)].semantic_input.map(|input| input.shell),
+            if shell == "fish" {
+                None
+            } else {
+                Some(PromptInputShell::Native)
+            }
+        );
         term.user_vars.remove("automexia_env_pending");
         term.user_vars.remove("automexia_shell");
         parser.advance(&mut term, b"\r\n\x1b]133;A\x07> \x1b]133;B\x07docker");
-        assert!(term.grid[Line(4)].semantic_input.is_none());
+        assert_eq!(
+            term.grid[Line(4)].semantic_input.map(|input| input.shell),
+            if shell == "fish" {
+                None
+            } else {
+                Some(PromptInputShell::Native)
+            }
+        );
     }
 }
 
