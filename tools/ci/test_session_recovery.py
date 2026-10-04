@@ -40,6 +40,55 @@ class RecoveryArchitectureTests(unittest.TestCase):
         with self.assertRaises(AssertionError):
             policy.validate(self.sources)
 
+    def test_serializable_live_capture_is_rejected(self):
+        path = policy.FILES[0]
+        self.sources[path] = self.sources[path].replace("#[serde(skip)]", "")
+        with self.assertRaises(AssertionError):
+            policy.validate(self.sources)
+
+    def test_plaintext_storage_is_rejected(self):
+        path = policy.FILES[1]
+        self.sources[path] = self.sources[path].replace("protection.borrow_mut().seal", "plaintext")
+        with self.assertRaises(AssertionError):
+            policy.validate(self.sources)
+
+    def test_machine_wide_key_scope_is_rejected(self):
+        self.sources[policy.FILES[7]] += "\nCRYPTPROTECT_LOCAL_MACHINE"
+        with self.assertRaises(AssertionError):
+            policy.validate(self.sources)
+
+    def test_macos_dialog_policy_cannot_be_removed(self):
+        path = policy.FILES[9]
+        self.sources[path] = self.sources[path].replace("allowed == 0", "true")
+        with self.assertRaises(AssertionError):
+            policy.validate(self.sources)
+
+    def test_macos_key_overwrite_is_rejected(self):
+        self.sources[policy.FILES[9]] += "\nSecItemUpdate"
+        with self.assertRaises(AssertionError):
+            policy.validate(self.sources)
+
+    def test_current_reviewed_dependency(self):
+        policy.validate_vendor(*policy.vendor_inputs())
+
+    def test_unreviewed_dependency_edits_are_rejected(self):
+        files, *inputs = policy.vendor_inputs()
+        files["src/reserved.rs"] += "\n// unreviewed change\n"
+        with self.assertRaises(AssertionError):
+            policy.validate_vendor(files, *inputs)
+
+    def test_extra_dependency_file_is_rejected(self):
+        files, *inputs = policy.vendor_inputs()
+        files["build.rs"] = "fn main() {}"
+        with self.assertRaises(AssertionError):
+            policy.validate_vendor(files, *inputs)
+
+    def test_registry_dependency_substitution_is_rejected(self):
+        files, manifest, lock, config = policy.vendor_inputs()
+        manifest = manifest.replace('inout = { path = "third-party/inout" }', '')
+        with self.assertRaises((AssertionError, KeyError)):
+            policy.validate_vendor(files, manifest, lock, config)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -14,6 +14,7 @@
 // which is licensed under Apache 2.0 license.
 */
 
+pub mod archive;
 pub mod attr;
 pub mod command_actions;
 pub mod formatter;
@@ -686,6 +687,18 @@ struct UserVarWriteRecord {
     previous_was_one: bool,
 }
 
+/// Content-free terminal-lifetime counters. No command text, output or remote
+/// identity is retained. Consumers decide how to use this bounded evidence.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct SessionActivity {
+    pub age_ms: u64,
+    pub completed_commands: u64,
+    pub execution_ms: u64,
+    pub longest_command_ms: u64,
+    pub running_ms: u64,
+    pub remote_used: bool,
+}
+
 #[derive(Debug)]
 pub struct Crosswords<U>
 where
@@ -762,6 +775,8 @@ where
     semantic_command_result_sequence: u64,
     command_action_generation: u64,
     command_action_last: Option<command_actions::CommandHandle>,
+    session_started: std::time::Instant,
+    session_activity: SessionActivity,
     /// Output boundary awaiting the next semantic prompt. This is populated
     /// only for a proven nonempty output region.
     pending_semantic_command_boundary:
@@ -780,6 +795,18 @@ where
 }
 
 impl<U: EventListener> Crosswords<U> {
+    pub fn session_activity(&self) -> SessionActivity {
+        let millis = |elapsed: std::time::Duration| {
+            elapsed.as_millis().min(u64::MAX as u128) as u64
+        };
+        SessionActivity {
+            age_ms: millis(self.session_started.elapsed()),
+            running_ms: self
+                .semantic_command_started
+                .map_or(0, |(_, started)| millis(started.elapsed())),
+            ..self.session_activity
+        }
+    }
     pub fn new<D: Dimensions>(
         dimensions: D,
         cursor_shape: CursorShape,
@@ -847,6 +874,8 @@ impl<U: EventListener> Crosswords<U> {
             semantic_command_result_sequence: 0,
             command_action_generation: 0,
             command_action_last: None,
+            session_started: std::time::Instant::now(),
+            session_activity: SessionActivity::default(),
             pending_semantic_command_boundary: None,
             damage_event_in_flight: false,
             modify_other_keys: 0,
@@ -5095,6 +5124,13 @@ impl<U: EventListener> Handler for Crosswords<U> {
         let mut newest_nonempty_line = None;
         self.semantic_command_result_sequence =
             self.semantic_command_result_sequence.wrapping_add(1).max(1);
+        let duration = elapsed_ms.unwrap_or(0);
+        self.session_activity.completed_commands =
+            self.session_activity.completed_commands.saturating_add(1);
+        self.session_activity.execution_ms =
+            self.session_activity.execution_ms.saturating_add(duration);
+        self.session_activity.longest_command_ms =
+            self.session_activity.longest_command_ms.max(duration);
         let result = crate::crosswords::grid::row::SemanticCommandResult {
             id: self.semantic_command_result_sequence,
             exit_code,
@@ -7655,6 +7691,33 @@ mod tests {
             0,
             20_000,
         )
+    }
+
+    #[test]
+    fn recovery_activity_counts_owned_commands_once_and_survives_clear() {
+        let mut terminal = make_prompt_crosswords(80, 24);
+        let mut parser = crate::performer::handler::Processor::default();
+        parser.advance(
+            &mut terminal,
+            b"\x1b]133;A;aid=11\x07\x1b]133;B\x07example\r\n\x1b]133;C\x07",
+        );
+        assert!(terminal.semantic_command_started.is_some());
+        terminal.semantic_command_started = Some((
+            Some(11),
+            std::time::Instant::now() - std::time::Duration::from_secs(61),
+        ));
+        assert!(terminal.session_activity().running_ms >= 61_000);
+        parser.advance(&mut terminal, b"done\r\n\x1b]133;D;0\x07");
+        let activity = terminal.session_activity();
+        assert_eq!(activity.completed_commands, 1);
+        assert!(activity.longest_command_ms >= 61_000);
+        parser.advance(&mut terminal, b"\x1b]133;D;0\x07\x1b[2J\x1b[3J");
+        assert_eq!(terminal.session_activity().completed_commands, 1);
+        assert_eq!(terminal.session_activity().running_ms, 0);
+        assert_eq!(
+            terminal.session_activity().execution_ms,
+            activity.execution_ms
+        );
     }
 
     #[test]

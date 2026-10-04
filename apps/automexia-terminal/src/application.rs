@@ -1356,6 +1356,7 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 }
             }
             RioEventType::Rio(RioEvent::ChildExited(route_id, raw_status)) => {
+                self.recovery_child_exited(window_id);
                 let notification =
                     self.router.routes.get_mut(&window_id).and_then(|route| {
                         route
@@ -1755,6 +1756,9 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                 // Retain existing shortcuts and custom bindings while using the
                 // one feature-organized preference editor.
                 self.open_settings(window_id, true)
+            }
+            RioEventType::Rio(RioEvent::RestorePreviousSession) => {
+                self.restore_previous_session();
             }
             RioEventType::Rio(RioEvent::OpenThemeGallery) => {
                 self.open_settings(window_id, true);

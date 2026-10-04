@@ -9,6 +9,12 @@ The inherited Rio, Sugarloaf, Corcovado, Teletypewriter, and related engine
 sources retain their upstream MIT notices. See `LICENSE`, `NOTICE.md`, and the
 crate-local license files.
 
+## RustCrypto InOut
+
+`third-party/inout/` contains a modified copy of InOut 0.2.2, licensed under
+MIT OR Apache-2.0. Both original licenses are included in that directory;
+`UPSTREAM.md` records source provenance, the local correction and review policy.
+
 ## Cascadia Code Nerd Font
 
 `sugarloaf/src/font/resources/CascadiaCode/*.ttf` is distributed under the

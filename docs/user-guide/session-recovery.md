@@ -1,58 +1,73 @@
 # Restore a workspace
 
-Automexia periodically saves the layout of its active workspace. After an app or
-machine crash, or after closing the last window, the next launch offers:
+Automexia saves active tabs, splits, pane-local tabs, selection, window geometry,
+working folders and custom tab titles/colors. By default it asks to restore useful
+workspaces: multiple terminals, integrated SSH activity, long-running commands or
+sustained command activity. An idle window or a few quick commands do not qualify.
 
-- **Restore** (`R`): reopen the saved tabs, splits and pane-local tabs in fresh terminals.
-- **Start clean** (`Esc` or `S`): replace the previous workspace with a new terminal.
+Choose **Restore** (`R`) or **Start clean** (`Esc` or `S`). Tab and arrows select a
+button; Enter activates it. Closing this choice preserves the saved session.
+**Menu > Tabs & Windows > Restore previous session** is also available when startup
+opens quietly. Manual restore opens additional windows and keeps current work.
+Repeated activation cannot duplicate an in-progress or consumed recovery.
 
-Tab and the arrow keys select a button; Enter activates it. Start clean is the
-initial selection. Closing this choice leaves the saved workspace available for
-the next launch. No restored terminal starts before your choice.
+Recovery saves up to the latest **10,000 physical lines per terminal**, including
+commands and output, with text styles, Unicode, soft wraps and completed-command
+metadata. Recovered history is scrollable above a clearly marked fresh shell.
+Saved commands are never rerun. Running jobs, editors, environment variables,
+images and active hyperlinks are not resumed. Remote connections reopen locally;
+reconnect explicitly using the normal SSH authentication and host-key workflow.
+An editor's alternate screen is excluded; its ordinary terminal history remains.
 
-Recovery restores layout and selection, window size/position, shell identity,
-working folders and custom tab titles/colors. It does **not** resume commands,
-running jobs, shell variables, terminal output or scrollback. SSH connections
-reopen as local shells: reconnect explicitly, using your normal SSH command.
-Authentication, host keys and optional helper upload still follow the ordinary
-SSH workflow. No credentials or remote destination is saved by recovery.
+Output can include sensitive information. Checkpoints are encrypted for the local
+user: Windows uses DPAPI; Linux/BSD use an unlocked Secret Service and macOS uses
+Keychain for an encryption key. Missing protection leaves the last valid checkpoint
+untouched and shows an unavailable notice. There is no plaintext fallback. Keep
+recovery files private even when encrypted; they are not portable backups.
 
-Custom titles longer than 128 bytes or containing control characters, invalid
-colors, and unusable window positions are omitted without dropping their terminals.
+Linux/BSD credential services may ask for authorization when first creating the
+recovery key. Automexia does not request unlocking an existing locked key or
+collection. Credential work runs in the background; a refused or unavailable
+service cannot cause plaintext history to be saved.
 
-Missing local folders fall back to the profile's starting folder. Unsupported or
-failed profiles do not block other terminals; close any blank failed entries and
-open the intended shell. WSL distribution names and guest paths are passed as
-literal arguments without probing the guest; an unavailable distribution or
-guest directory can fail to open. macOS native tab groups reopen as separate
-windows. Window placement adjusts to the current display.
-
-## Control what is saved
-
-In `config.toml`:
+## Control recovery
 
 ```toml
 [session-recovery]
 enabled = true
+startup-prompt = "smart" # "always" or "never" also supported
+save-history = true
 excluded-profiles = ["cmd", "wsl:Example"]
 ```
 
-Supported exclusion keys are `configured`, `powershell`, `pwsh`, `cmd`, `bash`,
-`zsh`, `fish`, `sh`, `nu`, `wsl`, and `wsl:<distribution>`. Matching ignores case;
-`wsl` excludes every distribution. The configured startup shell uses `configured`;
-other recognized shells use their shell key. Set `enabled = false` to stop saving and offering recovery.
-The exclusion list accepts up to 128 names of at most 132 bytes each.
-Existing checkpoints remain on disk, but exclusions also apply when restoring
-older checkpoints. Arbitrary executables are excluded; commands and scripts are never replayed.
+`never` skips automatic prompts while preserving manual restore. `save-history =
+false` saves only layout; existing saved history remains until its candidate is
+consumed or replaced. `enabled = false` stops saving and offering recovery without
+deleting existing files. Exclusions apply to capture and restoring older sessions.
+Keys are `configured`, `powershell`, `pwsh`, `cmd`, `bash`, `zsh`, `fish`, `sh`, `nu`,
+`wsl`, and `wsl:<distribution>`, ignoring case. The configured startup shell uses
+`configured`. Up to 128 exclusion names of 132 bytes are allowed.
 
-Private snapshots live under the configuration directory in `state/session-v1`,
-separately from preferences. They contain local paths and custom labels, so treat
-them as private files. Only one Automexia process owns recovery at a time; another
-instance opens normally without replacing its checkpoint. A previous valid copy
-can recover an interrupted write. Newer unsupported formats remain untouched.
+## Retention and failures
 
-Recovery is bounded to eight windows and 64 terminals, with up to 28 top-level
-tabs per window. Explicitly closed tabs and the Undo Close history are excluded.
-The last periodic checkpoint may precede a sudden crash by a few seconds; app
-close requests also submit a final checkpoint. Disk failures cannot guarantee a
-new checkpoint, and leave the existing valid copy available.
+After successful recovery and publication of the new workspace checkpoint,
+Automexia removes the consumed manual candidate and obsolete backup. Failed or
+cancelled recovery retains retry data. Useful new work, or a session used for
+at least 30 minutes and then closed, replaces the older candidate. Short accidental
+visits preserve useful previous work. Storage retains at most one current checkpoint,
+one write-recovery backup and one manual candidate; abandoned private staging files
+are cleaned under the store's exclusive lock.
+
+Snapshots live separately from preferences in `state/session-v1`. Version-1 layouts
+migrate to an encrypted version-2 envelope; unsupported newer versions are preserved.
+Only one Automexia process owns this store. Saves coalesce and occur at most every
+10 seconds, plus a final close checkpoint. A sudden crash may lose the latest interval.
+Disk or protection failures preserve prior data rather than promising a new save.
+
+Bounds are eight windows, 64 terminals, 28 top-level tabs per window, 1,024 columns,
+two million cells per terminal and four million across the workspace. Wide or very
+large workspaces may retain fewer than 10,000 lines per terminal. Serialized and
+compressed records are bounded. Explicitly closed tabs and Undo Close history are
+excluded. Missing local folders fall back to the current profile's starting folder;
+failed profiles do not block the others. Unavailable WSL distributions or guest
+folders can fail to open. macOS native tab groups reopen as separate windows.

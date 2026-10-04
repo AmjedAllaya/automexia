@@ -13,7 +13,9 @@ fn every_classic_palette_action_has_a_real_shortcut_without_source_badges() {
         for command in COMMANDS {
             if matches!(
                 command.action,
-                PaletteAction::OpenCustomizations | PaletteAction::OpenThemeGallery
+                PaletteAction::OpenCustomizations
+                    | PaletteAction::OpenThemeGallery
+                    | PaletteAction::RestorePreviousSession
             ) {
                 assert_eq!(palette.command_shortcut(command), "Enter");
                 continue;

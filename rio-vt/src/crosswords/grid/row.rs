@@ -13,7 +13,9 @@ use std::{ptr, slice};
 /// An index for prompt navigation, following the same model other
 /// terminals use: a run of `Prompt`/`PromptContinuation` rows is one
 /// prompt; everything else is `None`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize,
+)]
 pub enum SemanticPrompt {
     #[default]
     None,
@@ -28,7 +30,7 @@ pub enum SemanticPrompt {
 /// local fields preserve what the user saw at execution time even if the
 /// machine's timezone changes later in the session. No shell-provided text is
 /// stored or trusted.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticCommandTimestamp {
     pub unix_ms: u64,
     pub year: u16,
@@ -44,7 +46,7 @@ pub struct SemanticCommandTimestamp {
 /// The data is renderer-neutral and travels with the row through scrollback
 /// and reflow.  This lets application chrome draw a durable right-aligned
 /// status/duration badge without writing decoration bytes into the PTY.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticCommandResult {
     /// Pane-local monotonic completion identity. Unlike a physical row key,
     /// this remains stable when the grid reflows.
@@ -67,7 +69,7 @@ pub struct SemanticCommandResult {
 /// and following prompt remain visible. Carrying this small projection on the
 /// following prompt preserves result ownership without scanning scrollback on
 /// the renderer hot path.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticCommandBoundary {
     pub source_prompt_id: Option<u64>,
     pub result: SemanticCommandResult,
@@ -75,7 +77,7 @@ pub struct SemanticCommandBoundary {
 
 /// Shell dialect published at an explicit integrated prompt input boundary.
 /// This is display metadata, never authority to parse or execute a command.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum PromptInputShell {
     /// Exact input boundary with coloring owned by the native shell/editor.
     Native,
@@ -83,7 +85,7 @@ pub enum PromptInputShell {
     Cmd,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct SemanticInput {
     pub column: usize,
     pub shell: PromptInputShell,

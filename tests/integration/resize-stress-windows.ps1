@@ -210,6 +210,33 @@ public static class AutomexiaResizeDriver {
         return true;
     }
 
+    public static bool SendRecoverySentinel(IntPtr hWnd) {
+        if (!ActivateWindow(hWnd)) return false;
+        IntPtr layout = GetKeyboardLayout(GetWindowThreadProcessId(hWnd, IntPtr.Zero));
+        var inputs = new List<NativeInput>();
+        foreach (char character in "Write-Output RECOVERY_HISTORY_SENTINEL") {
+            short mapped = VkKeyScanEx(character, layout);
+            if (mapped == -1 || (mapped & 0x0600) != 0) return false;
+            ushort key = (ushort)(mapped & 0xFF);
+            bool shift = (mapped & 0x0100) != 0;
+            if (shift) inputs.Add(KeyboardInput(0x10, false));
+            inputs.Add(KeyboardInput(key, false));
+            inputs.Add(KeyboardInput(key, true));
+            if (shift) inputs.Add(KeyboardInput(0x10, true));
+        }
+        inputs.Add(KeyboardInput(0x0D, false));
+        inputs.Add(KeyboardInput(0x0D, true));
+        if (GetForegroundWindow() != hWnd) return false;
+        uint sent = SendInput((uint)inputs.Count, inputs.ToArray(), Marshal.SizeOf(typeof(NativeInput)));
+        if (sent != inputs.Count) {
+            var releases = new List<NativeInput>();
+            foreach (NativeInput input in inputs) releases.Add(KeyboardInput(input.Data.Keyboard.VirtualKey, true));
+            SendInput((uint)releases.Count, releases.ToArray(), Marshal.SizeOf(typeof(NativeInput)));
+            return false;
+        }
+        return true;
+    }
+
     public static bool ReplaceColorHex(IntPtr hWnd, string hex) {
         // Queue one real, ordered Ctrl+A and typed batch. Re-activating the
         // foreground window for every key attaches input threads, which resets

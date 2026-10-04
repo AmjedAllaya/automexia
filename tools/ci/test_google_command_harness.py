@@ -7,6 +7,16 @@ import check_google_command_native as native
 
 
 class GoogleCommandHarnessTests(unittest.TestCase):
+    def test_verbatim_fixture_accepts_normal_and_already_canonical_paths(self):
+        for source, expected in (
+            (r"C:\fixture & Unicode-é\automexia.exe", r"\\?\C:\fixture & Unicode-é\automexia.exe"),
+            (r"\\?\C:\fixture & Unicode-é\automexia.exe", r"\\?\C:\fixture & Unicode-é\automexia.exe"),
+            (r"\\example.invalid\fixture share\automexia.exe", r"\\?\UNC\example.invalid\fixture share\automexia.exe"),
+            (r"\\?\UNC\example.invalid\fixture share\automexia.exe", r"\\?\UNC\example.invalid\fixture share\automexia.exe"),
+        ):
+            with self.subTest(source=source):
+                self.assertEqual(native.windows_verbatim_path(source), expected)
+
     def test_exact_arguments_environment_deadline_and_exit_are_preserved(self):
         command = ["fixture-executable", "google", "--print-url", "a & b"]
         environment = {"USER": "alice"}

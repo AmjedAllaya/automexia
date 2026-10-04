@@ -1,7 +1,7 @@
 //! The application coordinates user decisions; ContextManager alone launches PTYs.
 use super::*;
 use crate::automexia::session_recovery::{
-    self as model, Profile, RecoveryService, Session, Snapshot, StoreOutcome,
+    self as model, Checkpoint, Profile, RecoveryService, Session, Snapshot, StoreOutcome,
 };
 use rio_backend::event::WindowId as RouteId;
 use std::collections::VecDeque;
@@ -24,7 +24,14 @@ pub(super) struct Recovery {
     pub window: Option<RouteId>,
     jobs: VecDeque<Job>,
     next: Option<Instant>,
-    last: Option<Snapshot>,
+    last: Option<Checkpoint>,
+    archive: Snapshot,
+    manual: bool,
+    retire_on_save: bool,
+    started: Instant,
+    captured: Option<Instant>,
+    restored_windows: Vec<RouteId>,
+    settle_until: Option<Instant>,
     failures: usize,
     folders: usize,
     remote: usize,
@@ -59,6 +66,13 @@ impl Recovery {
             jobs: VecDeque::new(),
             next: None,
             last: None,
+            archive: Snapshot::default(),
+            manual: false,
+            retire_on_save: false,
+            started: Instant::now(),
+            captured: None,
+            restored_windows: Vec::new(),
+            settle_until: None,
             failures: 0,
             folders: 0,
             remote: 0,
@@ -75,6 +89,13 @@ impl Recovery {
         }
         self.closed = false;
         self.last = None;
+        self.manual = false;
+        self.retire_on_save = false;
+        self.captured = None;
+        self.restored_windows.clear();
+        self.settle_until = None;
+        self.archive = Snapshot::default();
+        self.started = Instant::now();
         self.failures = 0;
         self.folders = 0;
         self.remote = 0;
@@ -109,8 +130,78 @@ impl Recovery {
 }
 
 impl Application<'_> {
+    pub(super) fn recovery_child_exited(&mut self, window: RouteId) {
+        if matches!(self.recovery.phase, Phase::Restoring)
+            && self.recovery.restored_windows.contains(&window)
+        {
+            self.recovery.failures += 1;
+        }
+    }
+
+    pub(super) fn restore_previous_session(&mut self) {
+        if !matches!(self.recovery.phase, Phase::Running)
+            || !self.config.session_recovery.enabled
+            || self.recovery.service.retiring()
+        {
+            self.recovery_notice("Recovery is unavailable or already in progress.");
+            return;
+        }
+        let snapshot = self
+            .recovery
+            .archive
+            .clone()
+            .excluding(&self.config.session_recovery.excluded_profiles);
+        if snapshot.windows.is_empty() {
+            self.recovery_notice("No previous session is available to restore.");
+            return;
+        }
+        let sessions: usize = self
+            .router
+            .routes
+            .values()
+            .map(|route| {
+                let remaining = std::cell::Cell::new(model::MAX_SESSIONS);
+                let (tabs, _) = route.window.screen.context_manager.recovery_tabs(
+                    &[],
+                    &remaining,
+                    &std::cell::Cell::new(false),
+                );
+                Snapshot {
+                    version: 1,
+                    windows: vec![model::Window {
+                        width: 800,
+                        height: 600,
+                        position: None,
+                        active: 0,
+                        tabs,
+                    }],
+                }
+                .session_count()
+            })
+            .sum();
+        if self.router.routes.len() + snapshot.windows.len() > model::MAX_WINDOWS
+            || sessions + snapshot.session_count() > model::MAX_SESSIONS
+        {
+            self.recovery_notice("Close some terminals before restoring this workspace.");
+            return;
+        }
+        if self.recovery.service.prepare(snapshot) {
+            self.recovery.window = None;
+            self.recovery.manual = true;
+            self.recovery.failures = 0;
+            self.recovery.folders = 0;
+            self.recovery.remote = 0;
+            self.recovery.phase = Phase::Preparing;
+        } else {
+            self.recovery_notice("Recovery is saving your workspace. Try again shortly.");
+        }
+    }
+
     pub(super) fn recovery_window_closed(&mut self, window: RouteId) {
-        if matches!(self.recovery.phase, Phase::Restoring) {
+        if matches!(self.recovery.phase, Phase::Restoring)
+            && self.recovery.restored_windows.contains(&window)
+        {
+            self.recovery.failures += 1;
             self.recovery.jobs.retain(
                 |job| !matches!(job, Job::Session(owner, ..) if *owner == window),
             );
@@ -147,6 +238,8 @@ impl Application<'_> {
             screen.renderer.confirm_quit.finish_recovery();
             let placeholder = screen.context_manager.current_route();
             let saved = Session {
+                history: None,
+                source: None,
                 profile: Profile::Configured,
                 cwd: None,
                 disconnected: false,
@@ -196,15 +289,33 @@ impl Application<'_> {
         if let Some(result) = self.recovery.service.take(Instant::now()) {
             match result {
                 Ok(StoreOutcome::Loaded {
-                    snapshot,
+                    checkpoint,
+                    restore,
                     recovered,
                 }) => {
                     if !matches!(self.recovery.phase, Phase::Loading) {
                         return;
                     }
-                    let snapshot = snapshot
+                    self.recovery.archive = restore;
+                    let candidate = if checkpoint.incomplete_restore {
+                        &self.recovery.archive
+                    } else {
+                        &checkpoint.snapshot
+                    };
+                    let snapshot = candidate
+                        .clone()
                         .excluding(&self.config.session_recovery.excluded_profiles);
-                    if snapshot.windows.is_empty() {
+                    let noteworthy = Checkpoint {
+                        snapshot: snapshot.clone(),
+                        ..checkpoint
+                    }
+                    .noteworthy();
+                    let prompt = match self.config.session_recovery.startup_prompt {
+                        rio_backend::config::RecoveryPrompt::Smart => noteworthy,
+                        rio_backend::config::RecoveryPrompt::Always => true,
+                        rio_backend::config::RecoveryPrompt::Never => false,
+                    };
+                    if snapshot.windows.is_empty() || !prompt {
                         self.recovery_normal_start(true);
                     } else {
                         self.recovery.phase = Phase::Choice(snapshot);
@@ -235,22 +346,30 @@ impl Application<'_> {
                     if !matches!(self.recovery.phase, Phase::Preparing) {
                         return;
                     }
+                    self.recovery.restored_windows.clear();
+                    self.recovery.settle_until = None;
                     self.recovery.folders = missing_folders;
                     self.recovery.jobs =
                         snapshot.windows.into_iter().map(Job::Window).collect();
                     self.recovery.phase = Phase::Restoring;
                     self.recovery.next = Some(Instant::now());
                 }
-                Ok(StoreOutcome::Saved) => {}
+                Ok(StoreOutcome::Saved { retired: true }) => {
+                    self.recovery.archive = Snapshot::default();
+                }
+                Ok(StoreOutcome::Saved { retired: false }) => {}
+                Err(model::StoreError::Capture) => {}
                 Err(error) => {
                     let initial =
                         matches!(self.recovery.phase, Phase::Loading | Phase::Preparing);
-                    if initial {
+                    if initial && !self.recovery.manual {
                         self.recovery_normal_start(false);
                     } else {
                         self.recovery.phase = Phase::Disabled;
                     }
-                    let message = if error == model::StoreError::Busy {
+                    let message = if error == model::StoreError::Protection {
+                        "Encrypted recovery storage is unavailable. Unlock your system key store to save or restore history."
+                    } else if error == model::StoreError::Busy {
                         "Workspace recovery is owned by another Automexia window."
                     } else {
                         "Workspace recovery is unavailable. Your previous checkpoint is preserved."
@@ -326,6 +445,7 @@ impl Application<'_> {
                         .get_mut(&window)
                         .map(|route| (window, route))
                 }) {
+                    self.recovery.restored_windows.push(window);
                     let native = &route.window.winit_window;
                     let scale = native.scale_factor().max(0.1);
                     let monitor = native.current_monitor();
@@ -397,16 +517,27 @@ impl Application<'_> {
                         self.recovery.failures += 1;
                     }
                     route.request_redraw();
+                } else {
+                    self.recovery.failures += 1;
                 }
             }
             None => {
+                let until = *self
+                    .recovery
+                    .settle_until
+                    .get_or_insert_with(|| Instant::now() + Duration::from_secs(2));
+                if Instant::now() < until {
+                    self.recovery.next =
+                        Some(Instant::now() + Duration::from_millis(100));
+                    return;
+                }
                 self.recovery.phase = Phase::Running;
                 for route in self.router.routes.values_mut() {
                     route.window.screen.renderer.confirm_quit.finish_recovery();
                     route.request_redraw();
                 }
                 let message = if self.recovery.failures > 0 {
-                    "Some terminals could not restore. Close blank tabs and reopen their profiles."
+                    "Some terminals could not restore. The saved session is kept for retry."
                 } else if self.recovery.remote > 0 {
                     "Workspace restored. Reconnect SSH sessions explicitly from their local shells."
                 } else if self.recovery.folders > 0 {
@@ -415,6 +546,9 @@ impl Application<'_> {
                     "Workspace restored in fresh terminals. Previous commands were not resumed."
                 };
                 self.recovery_notice(message);
+                if self.recovery.failures == 0 {
+                    self.recovery.retire_on_save = true;
+                }
                 self.checkpoint_recovery(false);
                 return;
             }
@@ -428,8 +562,19 @@ impl Application<'_> {
         {
             return;
         }
+        if !closing
+            && !self.recovery.retire_on_save
+            && self
+                .recovery
+                .captured
+                .is_some_and(|at| at.elapsed() < Duration::from_secs(10))
+        {
+            return;
+        }
+        self.recovery.captured = Some(Instant::now());
         let mut windows = Vec::new();
         let remaining = std::cell::Cell::new(model::MAX_SESSIONS);
+        let significant = std::cell::Cell::new(false);
         let mut routes: Vec<_> = self.router.routes.iter().collect();
         routes.sort_by_key(|(id, _)| **id);
         for (_, route) in routes.into_iter().take(model::MAX_WINDOWS) {
@@ -439,6 +584,7 @@ impl Application<'_> {
             let (tabs, active) = route.window.screen.context_manager.recovery_tabs(
                 &self.config.session_recovery.excluded_profiles,
                 &remaining,
+                &significant,
             );
             if tabs.is_empty() {
                 continue;
@@ -459,13 +605,51 @@ impl Application<'_> {
                 tabs,
             });
         }
-        let snapshot = Snapshot {
+        let mut snapshot = Snapshot {
             version: 1,
             windows,
         };
-        if snapshot.validate() && self.recovery.last.as_ref() != Some(&snapshot) {
-            self.recovery.service.save(snapshot.clone());
-            self.recovery.last = Some(snapshot);
+        if !self.config.session_recovery.save_history {
+            for session in snapshot
+                .windows
+                .iter_mut()
+                .flat_map(|w| &mut w.tabs)
+                .flat_map(|t| &mut t.nodes)
+                .filter_map(|n| match n {
+                    model::Node::Pane { sessions, .. } => Some(sessions),
+                    _ => None,
+                })
+                .flatten()
+            {
+                session.history = None;
+                session.source = None;
+            }
+        }
+        let checkpoint = Checkpoint {
+            version: 2,
+            snapshot,
+            significant_activity: significant.get(),
+            incomplete_restore: self.recovery.failures > 0,
+        };
+        let supersede = self.recovery.retire_on_save
+            || (closing
+                && self.recovery.failures == 0
+                && (checkpoint.noteworthy()
+                    || (self.recovery.started.elapsed()
+                        >= Duration::from_secs(30 * 60)
+                        && self.router.routes.values().any(|route| {
+                            route.window.screen.context_manager.recovery_was_used()
+                        }))));
+        if checkpoint.snapshot.validate()
+            && (self.recovery.last.as_ref() != Some(&checkpoint) || supersede)
+        {
+            if supersede {
+                self.recovery.service.save_and_retire(checkpoint.clone());
+                self.recovery.retire_on_save = false;
+            } else {
+                self.recovery.service.save(checkpoint.clone());
+            }
+            self.recovery.last = Some(checkpoint);
         }
         if closing {
             self.recovery.closed = true;
@@ -498,13 +682,22 @@ mod tests {
                     RouteId::from(1),
                     2,
                     Session {
+                        history: None,
+                        source: None,
                         profile: Profile::Configured,
                         cwd: None,
                         disconnected: false,
                     },
                 )]),
                 next: Some(Instant::now()),
-                last: Some(Snapshot::default()),
+                last: Some(Snapshot::default().into()),
+                archive: Snapshot::default(),
+                manual: false,
+                retire_on_save: false,
+                started: Instant::now(),
+                captured: None,
+                restored_windows: Vec::new(),
+                settle_until: None,
                 failures: 1,
                 folders: 1,
                 remote: 1,

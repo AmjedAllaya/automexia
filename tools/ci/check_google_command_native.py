@@ -15,6 +15,16 @@ BINARY = None
 SHELLS = []
 
 
+def windows_verbatim_path(path):
+    """Keep canonical Windows paths valid when exercising provider isolation."""
+    value = str(path)
+    if value.startswith("\\\\?\\"):
+        return value
+    if value.startswith("\\\\"):
+        return "\\\\?\\UNC\\" + value[2:]
+    return "\\\\?\\" + value
+
+
 def run(command, environment, cwd=ROOT):
     chunks = bytearray()
     def consume(chunk):
@@ -321,7 +331,7 @@ class GoogleCommandTests(unittest.TestCase):
                     suffix = {"powershell": "ps1", "bash": "bash", "zsh": "zsh", "fish": "fish"}[adapter]
                     env.update(AMX_TEST_SOURCE=str(ROOT / f"shell-integration/{adapter}/automexia.{suffix}"), AMX_TEST_CASE=case)
                     if case == "verbatim":
-                        env["AUTOMEXIA_CLI"] = "\\\\?\\" + str(BINARY)
+                        env["AUTOMEXIA_CLI"] = windows_verbatim_path(BINARY)
                     if case == "local":
                         (Path(temporary) / ".git").mkdir()
                         (Path(temporary) / "Dockerfile").write_text("fixture\n")

@@ -250,6 +250,8 @@ mod tests {
     }
     fn session() -> Session {
         Session {
+            history: None,
+            source: None,
             profile: Profile::Configured,
             cwd: None,
             disconnected: false,

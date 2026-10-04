@@ -700,7 +700,8 @@ shared. Navigation safety clamps run after the platform merge.
 
 ## Session recovery
 
-`[session-recovery]` accepts `enabled` (default `true`) and
+`[session-recovery]` accepts `enabled` (default `true`), `startup-prompt`
+(`smart`, `always`, or `never`; default `smart`), `save-history` (default `true`), and
 `excluded-profiles` (default `[]`). Workspace snapshots use a separate private
 versioned store, not the preferences file. See [session recovery](user-guide/session-recovery.md)
 for profile keys, startup choices, limits and SSH behavior.

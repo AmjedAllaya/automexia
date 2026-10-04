@@ -668,6 +668,26 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
         dimension: ContextDimension,
         config: &ContextManagerConfig,
     ) -> Result<Context<T>, Box<dyn Error>> {
+        Self::create_context_with_history(
+            cursor_state,
+            event_proxy,
+            window_id,
+            rich_text_id,
+            dimension,
+            config,
+            None,
+        )
+    }
+
+    fn create_context_with_history(
+        cursor_state: (&Cursor, bool),
+        event_proxy: T,
+        window_id: WindowId,
+        rich_text_id: usize,
+        dimension: ContextDimension,
+        config: &ContextManagerConfig,
+        history: Option<&rio_backend::crosswords::archive::DisplayArchive>,
+    ) -> Result<Context<T>, Box<dyn Error>> {
         let route_id = ROUTE_ID_COUNTER.fetch_add(1, Ordering::SeqCst);
 
         #[cfg(target_os = "windows")]
@@ -711,6 +731,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             );
             context.launch_descriptor = launch_descriptor;
             context.environment_capsule = environment_capsule;
+            if history
+                .is_some_and(|history| !context.terminal.lock().restore_display(history))
+            {
+                return Err("Invalid recovered display history".into());
+            }
             return Ok(context);
         }
 
@@ -735,6 +760,9 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
             config.scrollback_history_limit,
         );
         terminal.blinking_cursor = cursor_state.1;
+        if history.is_some_and(|history| !terminal.restore_display(history)) {
+            return Err("Invalid recovered display history".into());
+        }
         let terminal: Arc<FairMutex<Crosswords<T>>> = Arc::new(FairMutex::new(terminal));
 
         let pty;
@@ -1359,6 +1387,11 @@ impl<T: EventListener + Clone + std::marker::Send + 'static> ContextManager<T> {
     }
 
     #[inline]
+    pub fn restore_previous_session(&self) {
+        self.event_proxy
+            .send_event(RioEvent::RestorePreviousSession, self.window_id);
+    }
+
     pub fn open_theme_gallery(&self) {
         self.event_proxy
             .send_event(RioEvent::OpenThemeGallery, self.window_id);

@@ -13,7 +13,7 @@ pub type ColorWGPU = rio_graphics::Color;
 pub type ColorArray = [f32; 4];
 pub type ColorComposition = (ColorArray, ColorWGPU);
 
-#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Default, Copy, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct ColorRgb {
     pub r: u8,
     pub g: u8,
@@ -84,7 +84,7 @@ pub enum Format {
     SRGB0_1,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum AnsiColor {
     Named(NamedColor),
     Spec(ColorRgb),
@@ -450,7 +450,9 @@ pub fn hex_to_color_wgpu(s: &str) -> ColorWGPU {
         .to_wgpu()
 }
 
-#[derive(Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Copy, Clone, Eq, PartialEq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum NamedColor {
     /// Black.
     Black = 0,

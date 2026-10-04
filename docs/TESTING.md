@@ -1780,15 +1780,27 @@ forced theme after Reset.
 
 `cargo test -p automexia-terminal --lib session_recovery` checks hostile/oversized
 snapshots, private ownership, interrupted primary recovery, future schemas,
-coalescing, missing local directories and Start clean. Binary `recovery` tests
+coalescing, missing local directories, smart prompting and candidate consumption.
+The VT archive target checks 10,000-line retention, workspace cell budgets, Unicode,
+styles, inert controls and resize reflow. Protection tests reject tampered history;
+Unix unit tests use the real cipher with an in-memory key store. Binary `recovery` tests
 exercise actual layout conversion, nested ratios, pane-local tabs, opt-outs and
 fresh route identities. `tools/ci/check_session_recovery.py` and its mutation
 tests protect schema/launch/storage boundaries without replacing runtime tests.
+
+`cargo test -p inout --all-features --locked` exercises the reviewed local buffer
+adapter. Run `cargo +nightly miri test -p inout --all-features --locked` under
+both default Stacked Borrows and `MIRIFLAGS=-Zmiri-tree-borrows` after modifying it.
+The recovery checker pins its reviewed source and rejects missing overrides or
+unreviewed files. Miri is dynamic evidence for these cases, not a proof of all
+targets. Archive tests also reject stale last-command handles after restoration.
 
 The Windows native renderer gate includes `resize-stress-windows.ps1
 -SessionRecoveryOnly` on CPU and WGPU. It checkpoints real shells, force-closes
 the app, verifies zero child processes before consent, dismisses without altering
 the checkpoint, restores six independent shells, compares topology and fresh
-checkpoint publication, then verifies normal close and Escape/Start clean.
-Native Linux/macOS, WSL guest filesystem recovery and assistive-technology
+checkpoint publication, and verifies a typed command/output sentinel survives
+without rerunning. It checks consumed-copy cleanup, normal close, Escape/Start
+clean, quiet reopening and manual restoration into additional windows.
+Native Linux/macOS credential stores and desktops, WSL guest filesystem recovery and assistive-technology
 results remain external until separately exercised.

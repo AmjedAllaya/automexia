@@ -27,6 +27,7 @@ pub enum PaletteAction {
     OpenSettings,
     OpenCustomizations,
     OpenThemeGallery,
+    RestorePreviousSession,
     WindowCreateNew,
     IncreaseFontSize,
     DecreaseFontSize,

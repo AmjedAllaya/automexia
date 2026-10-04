@@ -139,11 +139,13 @@
     },
     {
       "id": "workspace-session-recovery",
-      "title": "Topology-only workspace save and crash recovery",
+      "title": "Workspace and encrypted display-history recovery",
       "components": [
         "apps/automexia-terminal",
         "rio-backend",
-        "automexia-extension-runtime"
+        "automexia-extension-runtime",
+        "rio-vt",
+        "third-party/inout"
       ],
       "documentation": {
         "guide": [

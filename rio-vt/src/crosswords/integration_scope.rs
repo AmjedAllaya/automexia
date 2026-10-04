@@ -253,6 +253,7 @@ impl<U: EventListener> Crosswords<U> {
                     return;
                 }
                 let saved = self.take_scope_state();
+                self.session_activity.remote_used = true;
                 self.integration_scopes.remap_identities = true;
                 self.integration_scopes.frames.push(Frame {
                     info,

@@ -53,9 +53,17 @@ impl Category {
     pub(super) fn for_action(action: PaletteAction) -> Self {
         use PaletteAction::*;
         match action {
-            TabCreate | LocalTabCreate | TabClose | TabCloseUnfocused | SelectNextTab
-            | SelectPrevTab | SelectNextLocalTab | SelectPrevLocalTab
-            | WindowCreateNew | Quit => Self::Tabs,
+            TabCreate
+            | LocalTabCreate
+            | TabClose
+            | TabCloseUnfocused
+            | SelectNextTab
+            | SelectPrevTab
+            | SelectNextLocalTab
+            | SelectPrevLocalTab
+            | WindowCreateNew
+            | RestorePreviousSession
+            | Quit => Self::Tabs,
             SplitRight
             | SplitDown
             | CloneSplitRight

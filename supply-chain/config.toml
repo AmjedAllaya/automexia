@@ -454,6 +454,10 @@ exclude = [
 [policy.corcovado]
 audit-as-crates-io = true
 
+[policy.inout]
+audit-as-crates-io = false
+notes = "Modified local source is reviewed and pinned in check_session_recovery.py, with workspace regression tests. This is not an audit of the unmodified crates.io package. All transitive registry dependencies remain audited. See third-party/inout/UPSTREAM.md."
+
 [policy.rio-backend]
 audit-as-crates-io = true
 

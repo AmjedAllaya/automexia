@@ -98,6 +98,9 @@ impl ConfirmQuit {
         self.choice.take()
     }
     pub(crate) fn finish_recovery(&mut self) {
+        if !self.recovery {
+            return;
+        }
         self.active = false;
         self.recovery = false;
         self.loading = false;
@@ -412,7 +415,7 @@ impl ConfirmQuit {
                 text_x,
                 title_y + 37.0,
                 if self.recovery {
-                    "Reopen your tabs and splits in fresh terminals."
+                    "Reopen your workspace and saved history."
                 } else {
                     "All running sessions in this window will be closed."
                 },
@@ -564,6 +567,14 @@ mod tests {
         keyboard::{Key, NamedKey},
     };
 
+    #[test]
+    fn finishing_manual_recovery_does_not_dismiss_an_unrelated_quit_dialog() {
+        let mut dialog = ConfirmQuit::default();
+        dialog.set_active(true);
+        dialog.finish_recovery();
+        assert!(dialog.active);
+        assert!(!dialog.is_recovery());
+    }
     #[test]
     fn recovery_completion_restores_normal_quit_buttons() {
         let mut dialog = ConfirmQuit::default();

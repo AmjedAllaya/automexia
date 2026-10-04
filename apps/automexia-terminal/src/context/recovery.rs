@@ -4,10 +4,24 @@ use crate::automexia::session_recovery::{
 };
 
 impl<T: rio_backend::event::EventListener + Clone + Send + 'static> ContextManager<T> {
+    pub(crate) fn recovery_was_used(&self) -> bool {
+        self.contexts
+            .iter()
+            .flat_map(|grid| grid.contexts().values())
+            .flat_map(|item| item.contexts())
+            .any(|context| {
+                let activity = context.terminal.lock().session_activity();
+                activity.completed_commands > 0
+                    || activity.running_ms > 0
+                    || activity.remote_used
+            })
+    }
+
     pub(crate) fn recovery_tabs(
         &self,
         excluded: &[String],
         remaining: &std::cell::Cell<usize>,
+        significant: &std::cell::Cell<bool>,
     ) -> (Vec<Tab>, usize) {
         let mut active = 0;
         let tabs = self
@@ -20,6 +34,12 @@ impl<T: rio_backend::event::EventListener + Clone + Send + 'static> ContextManag
                         return None;
                     }
                     let saved = self.recovery_session(context, excluded)?;
+                    significant.set(
+                        significant.get()
+                            || recovery::significant_activity(
+                                context.terminal.lock().session_activity(),
+                            ),
+                    );
                     remaining.set(remaining.get() - 1);
                     Some(saved)
                 })
@@ -118,6 +138,8 @@ impl<T: rio_backend::event::EventListener + Clone + Send + 'static> ContextManag
                 .map(str::to_owned)
         };
         Some(Session {
+            history: None,
+            source: Some(recovery::HistorySource::new(context.terminal.clone())),
             profile,
             cwd,
             disconnected: remote,
@@ -260,13 +282,14 @@ impl<T: rio_backend::event::EventListener + Clone + Send + 'static> ContextManag
             }
         };
         let cursor = Cursor::from_cursor_config(&current_config.cursor);
-        let Ok(mut context) = Self::create_context(
+        let Ok(mut context) = Self::create_context_with_history(
             (&cursor, current_config.cursor.blinking),
             self.event_proxy.clone(),
             self.window_id,
             rich_text_id,
             dimension,
             &config,
+            saved.history.as_deref(),
         ) else {
             return false;
         };
@@ -390,13 +413,21 @@ mod tests {
             None,
             None,
         );
-        let (tabs, _) = manager.recovery_tabs(&[], &std::cell::Cell::new(64));
+        let (tabs, _) = manager.recovery_tabs(
+            &[],
+            &std::cell::Cell::new(64),
+            &std::cell::Cell::new(false),
+        );
         let text = serde_json::to_string(&tabs).unwrap();
         assert!(!text.contains("SENTINEL"));
         assert!(!text.contains("-Command"));
         assert_eq!(tabs.len(), 1);
         assert!(manager
-            .recovery_tabs(&["powershell".into()], &std::cell::Cell::new(64))
+            .recovery_tabs(
+                &["powershell".into()],
+                &std::cell::Cell::new(64),
+                &std::cell::Cell::new(false)
+            )
             .0
             .is_empty());
     }
@@ -412,7 +443,11 @@ mod tests {
             None,
             None,
         );
-        let (tabs, _) = manager.recovery_tabs(&[], &std::cell::Cell::new(64));
+        let (tabs, _) = manager.recovery_tabs(
+            &[],
+            &std::cell::Cell::new(64),
+            &std::cell::Cell::new(false),
+        );
         let text = serde_json::to_string(&tabs).unwrap();
         assert!(!text.contains("private-destination"));
         assert!(text.contains("\"disconnected\":true"));

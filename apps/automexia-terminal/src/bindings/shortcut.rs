@@ -47,6 +47,7 @@ pub(crate) fn palette_binding_target(
         | LastCommandActions
         | OpenSettings
         | OpenCustomizations
+        | RestorePreviousSession
         | OpenThemeGallery
         | OpenMarket
         | OpenConnections
@@ -84,6 +85,7 @@ pub(crate) fn legacy_binding_target(action: PaletteAction) -> crate::bindings::A
         OpenSettings => Action::OpenSettings,
         OpenCustomizations => Action::OpenCustomizations,
         OpenThemeGallery => Action::OpenThemeGallery,
+        RestorePreviousSession => Action::RestorePreviousSession,
         WindowCreateNew => Action::WindowCreateNew,
         IncreaseFontSize => Action::IncreaseFontSize,
         DecreaseFontSize => Action::DecreaseFontSize,

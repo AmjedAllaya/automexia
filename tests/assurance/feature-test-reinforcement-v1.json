@@ -129,10 +129,10 @@
         "identity-config-migration"
       ],
       "needed_tests": [
-        "Boundary topology-only schema: reject credentials, environment, commands, future versions, oversized files, cycles, unreachable nodes, invalid selection and geometry.",
-        "Private storage: exclusive process ownership, interrupted primary recovery, corrupt or unsafe targets, coalesced checkpoints, final flush and Start clean without backup resurrection.",
+        "Boundary descriptor/inert-history schema: reject execution arguments, credentials, environment, executable control replay, future versions, oversized files, cycles, unreachable nodes, invalid selection and geometry.",
+        "Private storage: exclusive process ownership, interrupted primary recovery, corrupt or unsafe targets, coalesced checkpoints, final flush, encrypted migration, authenticated tamper rejection, candidate consumption only after durable replacement, capture retry, partial-restore retention and bounded staging cleanup.",
         "Real layout: nested split direction and ratios, pane-local tabs, active selection, fresh IDs, excluded profiles and empty-branch collapse. Inactive terminal metadata and stable restored profile identity remain independent of redraw and display labels.",
-        "Native startup: crash/restart, zero children before explicit choice, close-choice preservation, independent live PTYs, fresh checkpoint publication, normal close and Escape input isolation.",
+        "Native startup: crash/restart, zero children before explicit choice, close-choice preservation, independent live PTYs, fresh checkpoint publication, normal close, Escape input isolation, smart quiet startup, manual restore in additional windows and command/output sentinel preservation without rerunning.",
         "SSH stays disconnected without persisted destinations or automatic network/authentication/helper effects; local missing folders fall back, unavailable profiles remain isolated.",
         "Cancellation, changed configuration, stale results, multiple instances, bounded windows/sessions, DPI/monitor changes and small themed dialog behavior; unexecuted platform and screen-reader cases remain external.",
         "Controlled dialog pixels and keyboard focus require exact raster comparison; native accessibility tree events and cross-platform startup latency need separate evidence before completion claims."
@@ -156,8 +156,8 @@
         "tests/integration/session-recovery-windows.ps1",
         "tools/ci/check_session_recovery.py",
         "tools/ci/test_session_recovery.py",
-        "apps/automexia-terminal/src/automexia/private_fs.rs",
-        "apps/automexia-terminal/src/renderer/session_metadata.rs",
+        "apps/automexia-terminal/src/automexia/session_recovery/protection.rs",
+        "rio-vt/src/crosswords/archive.rs",
         "rio-backend/src/config/mod.rs"
       ],
       "exit_criteria": [

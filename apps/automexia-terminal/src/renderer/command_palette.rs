@@ -290,6 +290,7 @@ enum CommandIcon {
     SearchGlobalBackward,
     Image,
     History,
+    WorkspaceRestore,
     HistoryNext,
     CommandActions,
     ClearScreen,
@@ -397,6 +398,10 @@ fn command_presentation(action: PaletteAction) -> RowPresentation {
         ConfigEditor => RowPresentation {
             icon: CommandIcon::ConfigFile,
             accent: UiAccent::Warning,
+        },
+        RestorePreviousSession => RowPresentation {
+            icon: CommandIcon::WorkspaceRestore,
+            accent: UiAccent::Cyan,
         },
         WindowCreateNew => RowPresentation {
             icon: CommandIcon::WindowAdd,
@@ -625,6 +630,11 @@ const COMMANDS: &[Command] = &[
         title: "Close Split or Tab",
         shortcut: SHORTCUT_CLOSE_SURFACE,
         action: PaletteAction::CloseCurrentSplitOrTab,
+    },
+    Command {
+        title: "Restore previous session",
+        shortcut: "Enter",
+        action: PaletteAction::RestorePreviousSession,
     },
     Command {
         title: "Theme Gallery",
@@ -1423,6 +1433,13 @@ fn draw_command_icon(
             canvas.line(11.0, 6.0, 11.0, 11.0);
             canvas.line(11.0, 11.0, 15.0, 13.5);
             canvas.chevron_right(19.5, 6.0, 2.0);
+        }
+        CommandIcon::WorkspaceRestore => {
+            canvas.outline(3.0, 3.0, 16.0, 16.0, 2.5);
+            canvas.line(3.5, 8.0, 18.5, 8.0);
+            canvas.line(11.0, 8.0, 11.0, 18.5);
+            canvas.line(1.0, 12.0, 7.0, 12.0);
+            canvas.chevron_left(1.0, 12.0, 2.0);
         }
         CommandIcon::ClearScreen => {
             canvas.outline(2.0, 3.0, 18.0, 14.0, 2.5);
@@ -3439,7 +3456,9 @@ mod tests {
             if command.shortcut == "Enter" {
                 assert!(matches!(
                     command.action,
-                    PaletteAction::OpenCustomizations | PaletteAction::OpenThemeGallery
+                    PaletteAction::OpenCustomizations
+                        | PaletteAction::OpenThemeGallery
+                        | PaletteAction::RestorePreviousSession
                 ));
                 continue;
             }

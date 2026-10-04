@@ -106,8 +106,19 @@ impl Default for Developer {
 #[serde(rename_all = "kebab-case", default, deny_unknown_fields)]
 pub struct SessionRecovery {
     pub enabled: bool,
+    pub startup_prompt: RecoveryPrompt,
+    pub save_history: bool,
     #[serde(deserialize_with = "deserialize_recovery_exclusions")]
     pub excluded_profiles: Vec<String>,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum RecoveryPrompt {
+    #[default]
+    Smart,
+    Always,
+    Never,
 }
 
 fn deserialize_recovery_exclusions<'de, D>(
@@ -130,6 +141,8 @@ impl Default for SessionRecovery {
     fn default() -> Self {
         Self {
             enabled: true,
+            startup_prompt: RecoveryPrompt::Smart,
+            save_history: true,
             excluded_profiles: Vec::new(),
         }
     }
@@ -776,6 +789,28 @@ mod tests {
             "[session-recovery]\nexcluded-profiles = ['']\n"
         )
         .is_err());
+    }
+
+    #[test]
+    fn recovery_prompt_and_history_policy_roundtrip_and_reject_unknown_modes() {
+        let default: SessionRecovery = toml::from_str("").unwrap();
+        assert_eq!(default.startup_prompt, RecoveryPrompt::Smart);
+        assert!(default.save_history);
+        for (mode, expected) in [
+            ("smart", RecoveryPrompt::Smart),
+            ("always", RecoveryPrompt::Always),
+            ("never", RecoveryPrompt::Never),
+        ] {
+            let policy: SessionRecovery = toml::from_str(&format!(
+                "startup-prompt = '{mode}'\nsave-history = false"
+            ))
+            .unwrap();
+            assert_eq!(policy.startup_prompt, expected);
+            assert!(!policy.save_history);
+            let encoded = toml::to_string(&policy).unwrap();
+            assert_eq!(toml::from_str::<SessionRecovery>(&encoded).unwrap(), policy);
+        }
+        assert!(toml::from_str::<SessionRecovery>("startup-prompt = 'guess'").is_err());
     }
 
     fn tmp_dir() -> tempfile::TempDir {

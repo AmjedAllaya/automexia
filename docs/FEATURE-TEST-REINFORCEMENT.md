@@ -1468,11 +1468,15 @@ fixture merely to satisfy a checker.
 
 ### workspace-session-recovery
 
-Workspace recovery requires bounded topology-only serialization, unknown-field
+Workspace recovery requires bounded descriptor and encrypted inert-history serialization, unknown-field
 and future-schema rejection, private exclusive ownership, interrupted-write
 recovery, coalesced saves, opt-out pruning and fresh PTY identities. Compare actual
 nested split/local-tab topology through crash/restart, prove no process before
 consent, preserve checkpoints when closing the choice, and consume activation
-keys. Inactive sessions use admitted terminal metadata; restored profile types
+keys. Smart prompting must not use idle time alone; manual restore preserves current
+work. Successful consumption follows a durable replacement, while failed partial
+restores remain retryable across restart. Verify 10,000-line retention, Unicode,
+wrapping, authenticated storage, coalescing and orphan staging cleanup.
+Inactive sessions use admitted terminal metadata; restored profile types
 remain stable across executable normalization. SSH metadata cannot become launch authority. Native desktop/guest/AT gaps
 remain explicit. Architecture mutation checks complement storage/layout/native tests.

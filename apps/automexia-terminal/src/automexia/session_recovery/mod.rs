@@ -1,15 +1,115 @@
-//! Workspace topology only. This boundary never owns a PTY or a connection.
+//! Workspace descriptors and inert display history; never live PTYs or connections.
+mod history;
+mod protection;
 mod store;
+pub use history::HistorySource;
 pub use store::{RecoveryService, StoreError, StoreOutcome};
 
 use serde::{Deserialize, Serialize};
 
-pub const MAX_BYTES: usize = 256 * 1024;
+pub const MAX_BYTES: usize = 96 * 1024 * 1024;
+pub const MAX_PLAIN_BYTES: usize = 64 * 1024 * 1024;
 pub const MAX_WINDOWS: usize = 8;
 pub const MAX_SESSIONS: usize = 64;
 pub const MAX_TABS: usize = 28;
 pub const MAX_NODES: usize = 127;
 pub const MAX_DEPTH: usize = 16;
+
+#[derive(Deserialize)]
+struct SchemaVersion {
+    version: u32,
+}
+fn encode_bounded(value: &impl Serialize) -> Result<Vec<u8>, StoreError> {
+    struct Output(Vec<u8>);
+    impl std::io::Write for Output {
+        fn write(&mut self, bytes: &[u8]) -> std::io::Result<usize> {
+            if self.0.len().saturating_add(bytes.len()) > MAX_PLAIN_BYTES {
+                return Err(std::io::Error::other("Recovery byte limit"));
+            }
+            self.0.extend_from_slice(bytes);
+            Ok(bytes.len())
+        }
+        fn flush(&mut self) -> std::io::Result<()> {
+            Ok(())
+        }
+    }
+    let mut output = Output(Vec::new());
+    serde_json::to_writer(&mut output, value).map_err(|_| StoreError::Invalid)?;
+    Ok(output.0)
+}
+
+/// Encrypted storage v2 adds bounded display history and lifecycle decisions.
+/// Raw activity counters and capture capabilities stay in the running process.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(deny_unknown_fields)]
+pub struct Checkpoint {
+    pub version: u32,
+    pub snapshot: Snapshot,
+    pub significant_activity: bool,
+    #[serde(default)]
+    pub incomplete_restore: bool,
+}
+
+impl From<Snapshot> for Checkpoint {
+    fn from(snapshot: Snapshot) -> Self {
+        Self {
+            version: 2,
+            snapshot,
+            significant_activity: false,
+            incomplete_restore: false,
+        }
+    }
+}
+
+impl Checkpoint {
+    pub fn noteworthy(&self) -> bool {
+        !self.snapshot.windows.is_empty() && (self.significant_activity
+            || self.snapshot.session_count() > 1
+            || self.snapshot.windows.iter().flat_map(|w| &w.tabs)
+                .flat_map(|t| &t.nodes).any(|n| matches!(n,
+                    Node::Pane { sessions, .. } if sessions.iter().any(|s| s.disconnected))))
+    }
+    pub fn decode(bytes: &[u8]) -> Result<Self, StoreError> {
+        if bytes.len() > MAX_PLAIN_BYTES {
+            return Err(StoreError::Invalid);
+        }
+        let version: SchemaVersion =
+            serde_json::from_slice(bytes).map_err(|_| StoreError::Invalid)?;
+        match version.version {
+            1 => Snapshot::decode(bytes).map(Into::into),
+            2 => {
+                let checkpoint: Self =
+                    serde_json::from_slice(bytes).map_err(|_| StoreError::Invalid)?;
+                if !checkpoint.snapshot.validate() {
+                    return Err(StoreError::Invalid);
+                }
+                Ok(checkpoint)
+            }
+            _ => Err(StoreError::Version),
+        }
+    }
+    pub fn encode(&self) -> Result<Vec<u8>, StoreError> {
+        if self.version != 2 || !self.snapshot.validate() {
+            return Err(StoreError::Invalid);
+        }
+        let bytes = encode_bounded(self)?;
+        if bytes.len() > MAX_PLAIN_BYTES {
+            return Err(StoreError::Invalid);
+        }
+        Ok(bytes)
+    }
+}
+
+/// Time alone is never evidence of meaningful work. This policy reads only
+/// aggregates produced by the terminal's existing command lifecycle owner.
+pub fn significant_activity(activity: rio_backend::crosswords::SessionActivity) -> bool {
+    activity.remote_used
+        || activity.running_ms >= 60_000
+        || activity.longest_command_ms >= 60_000
+        || (activity.age_ms >= 15 * 60_000
+            && activity.completed_commands >= 10
+            && activity.execution_ms >= 120_000)
+}
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -61,6 +161,14 @@ pub enum Node {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
 pub struct Session {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        with = "history::serialized"
+    )]
+    pub history: Option<std::sync::Arc<rio_backend::crosswords::archive::DisplayArchive>>,
+    #[serde(skip)]
+    pub source: Option<HistorySource>,
     pub profile: Profile,
     pub cwd: Option<String>,
     /// Informational only. Never supplies SSH launch arguments.
@@ -289,6 +397,20 @@ impl Snapshot {
                     .is_none_or(|p| p.into_iter().all(|v| v.unsigned_abs() <= 65536))
                 && window.tabs.iter().all(|tab| tab.validate(&mut sessions))
         }) && sessions <= MAX_SESSIONS
+            && self
+                .windows
+                .iter()
+                .flat_map(|w| &w.tabs)
+                .flat_map(|t| &t.nodes)
+                .filter_map(|n| match n {
+                    Node::Pane { sessions, .. } => Some(sessions),
+                    _ => None,
+                })
+                .flatten()
+                .filter_map(|s| s.history.as_ref())
+                .map(|h| h.cell_count())
+                .sum::<usize>()
+                <= 4_000_000
     }
     pub fn session_count(&self) -> usize {
         self.windows
@@ -302,7 +424,7 @@ impl Snapshot {
             .sum()
     }
     pub fn decode(bytes: &[u8]) -> Result<Self, StoreError> {
-        if bytes.len() > MAX_BYTES {
+        if bytes.len() > MAX_PLAIN_BYTES {
             return Err(StoreError::Invalid);
         }
         // Distinguish future schemas before attempting the current strict model.
@@ -315,6 +437,35 @@ impl Snapshot {
         {
             return Err(StoreError::Version);
         }
+        // Only topology was supported by the unencrypted v1 format. Do not
+        // allow newer content fields to bypass the encrypted v2 envelope.
+        let has_history = value
+            .get("windows")
+            .and_then(|v| v.as_array())
+            .into_iter()
+            .flatten()
+            .flat_map(|w| {
+                w.get("tabs")
+                    .and_then(|v| v.as_array())
+                    .into_iter()
+                    .flatten()
+            })
+            .flat_map(|t| {
+                t.get("nodes")
+                    .and_then(|v| v.as_array())
+                    .into_iter()
+                    .flatten()
+            })
+            .flat_map(|n| {
+                n.get("sessions")
+                    .and_then(|v| v.as_array())
+                    .into_iter()
+                    .flatten()
+            })
+            .any(|s| s.get("history").is_some());
+        if has_history {
+            return Err(StoreError::Invalid);
+        }
         let snapshot: Self =
             serde_json::from_value(value).map_err(|_| StoreError::Invalid)?;
         if !snapshot.validate() {
@@ -326,8 +477,8 @@ impl Snapshot {
         if !self.validate() {
             return Err(StoreError::Invalid);
         }
-        let bytes = serde_json::to_vec(self).map_err(|_| StoreError::Invalid)?;
-        if bytes.len() > MAX_BYTES {
+        let bytes = encode_bounded(self)?;
+        if bytes.len() > MAX_PLAIN_BYTES {
             return Err(StoreError::Invalid);
         }
         Ok(bytes)
@@ -385,6 +536,9 @@ impl Tab {
 }
 impl Session {
     fn validate(&self) -> bool {
+        if self.history.as_ref().is_some_and(|h| !h.validate()) {
+            return false;
+        }
         match &self.profile {
             Profile::Wsl { distribution } => {
                 distribution

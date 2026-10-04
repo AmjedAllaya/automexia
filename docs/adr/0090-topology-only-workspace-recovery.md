@@ -1,63 +1,111 @@
-# ADR 0090: Topology-only workspace recovery
+# ADR 0090: Bounded workspace and display recovery
 
-- Status: accepted
+- Status: accepted; extended 2026-10-04
 - Date: 2026-10-03
 - Owners: Automexia maintainers
 
 ## Decision
 
-The application coordinates an explicit startup recovery choice. ContextManager
-remains the only terminal launch owner; ContextGrid converts its layout to and
-from a bounded topology model. Restored sessions receive independent PTYs and
-new runtime identities. Initial recovery UI uses a process-free placeholder.
+The application coordinates startup and manual recovery. ContextManager remains
+the launch owner; ContextGrid converts layout descriptors. Every restored terminal
+gets an independent PTY and new runtime identities. Startup consent uses a
+process-free placeholder. Manual recovery opens additional windows.
 
-`automexia::session_recovery` owns a separate version-1 snapshot under
-`state/session-v1`. It contains window geometry, tab/split/local-tab topology,
-selection, safe profile identities, working directories and explicit tab styling.
-It contains no executable arguments, environment, terminal output, scrollback,
-credentials, SSH destinations or live process state. UserPreferences is unchanged.
+`automexia::session_recovery` owns version-2 encrypted checkpoints beneath the
+existing `state/session-v1` directory. Version-1 topology records migrate without
+adding authority. Preferences remain separate. Descriptors retain window geometry,
+tab/split/local-tab topology, selection, validated profile identities, working
+folders and explicit tab styling. They never contain executable arguments,
+environment capsules, credentials, remote destinations or process handles.
 
-One existing BoundedWorker handles private storage and local directory checks.
-The private_fs adapter supplies bounded no-follow reads, private permissions,
-locking and durable temporary-file replacement. Preference and recovery schemas
-and backup policies remain separate while sharing that replacement primitive.
-An exclusive lifetime lock prevents competing application instances from restoring
-or overwriting the same workspace. Future schemas remain untouched. A valid
-previous snapshot can recover an interrupted primary write.
+At the user's request, the terminal grid owner also exports an inert display
+archive of up to 10,000 physical lines per terminal. Unicode, cell styles, wraps
+and display-only command metadata survive; OSC commands, hyperlinks, images and
+alternate-screen application state do not. Restore installs cells directly before
+the new PTY reader starts, without replaying terminal escape sequences or stdin.
+Recovered history stays above the new live viewport. This is historical output,
+not resumed jobs or a saved running editor.
 
-## Lifecycle and trust
+## Ownership, protection and bounds
 
-The event loop captures bounded in-memory topology on its existing timer and
-before final-window/application teardown. Saves coalesce; no disk or discovery
-operation occurs during capture. Closing a recovery prompt preserves the previous
-snapshot. Start clean replaces the previous topology. Restoring launches one
-terminal per scheduled step and preserves the saved checkpoint until completion.
-Late results cannot launch after cancellation or timeout. Shutdown hides windows
-before its bounded disk flush; the shared worker retains retirement ownership.
+One BoundedWorker owns capture, private storage, protection and local directory
+checks. The event loop captures only descriptors and runtime-only terminal
+references. The worker copies bounded grid data under a short lock, then releases
+the lock before conversion, compression, encryption and serialization. Saves
+coalesce at ten-second intervals with a final close checkpoint. Unchanged encoded
+content avoids another write. The existing private_fs adapter supplies no-follow
+reads, private permissions, exclusive locking and durable atomic replacement.
 
-Configured profiles resolve against current local configuration, including its
-trusted interactive shell startup. Snapshots cannot supply those arguments.
-Known shell identities use normal launch adapters. Remote scope metadata cannot
-become a host, command, credential or automatic connection. SSH sessions reopen
-locally with a reconnect notice; OpenSSH remains responsible for any subsequent
-explicit connection and host-key/authentication interaction.
+Windows uses current-user DPAPI with UI disabled. Unix uses authenticated
+XChaCha20-Poly1305 with a random nonce and a per-store key in Secret Service or
+macOS Keychain. Missing or locked protection fails closed; decrypt never invents
+a replacement key. Platform adapters stay on the worker. Tests on Unix substitute
+only key storage, retaining the real authenticated encryption implementation.
+Unsupported platforms preserve existing files and report unavailable protection.
 
-The model caps bytes, windows, terminals, nodes and depth and rejects unknown
-fields, cycles and invalid selection/geometry. Per-profile exclusions prune both
-capture and older snapshots. Native local CWDs are checked off-thread. Guest WSL
-paths are structurally checked and passed as literal launch arguments; recovery
-does not probe guests or remote filesystems. Native tab groups are restored as
-independent windows. Offscreen geometry is clamped to the current display.
+The macOS adapter uses narrowly scoped Security framework bindings and retained
+Core Foundation values. It disables native credential dialogs once per process,
+checks that policy, and never unlocks, updates or deletes existing keys.
+Only a missing entry permits creation; ACL, locked-store and type errors fail
+closed. Native macOS credential-store behavior remains unverified.
+
+The RustCrypto InOut adapter uses a reviewed local source correction. Its exact
+files are pinned by the recovery architecture checker and its regression tests
+run with the workspace. This modified source is distinguished from registry
+certification; transitive registry dependencies retain their normal audit gate.
+The correction preserves pointer provenance without adding a cryptographic
+implementation. See [source provenance](../../third-party/inout/UPSTREAM.md).
+
+The Secret Service adapter searches unlocked items and checks the default
+collection before creating a key; it never calls unlock. The adopted provider's
+create operation may still request authorization, including if the collection
+locks after that check. Its interaction stays on the single recovery worker;
+bounded shutdown retains worker ownership rather than blocking the event loop.
+No claim of race-proof prompt suppression is made for that provider.
+
+Bounds cover encoded/decoded bytes, windows, terminals, tree depth, dimensions,
+styles and history cells. A workspace cell budget can reduce the retained line
+count for very large terminals. Deserialization rejects invalid data and future
+schemas; decompression is bounded. Raw command activity counters remain live;
+only the significance and incomplete-recovery decisions are persisted.
+
+## Lifecycle and retention
+
+Smart prompting uses multiple terminals or admitted command/SSH activity. Idle
+age alone is insufficient. The menu retains manual recovery after quiet startup;
+configuration can request always/never prompting and exclude individual profiles.
+A short trivial visit cannot replace useful previous work.
+
+Successful recovery saves the new workspace before tombstoning and removing the
+consumed candidate and obsolete backup. Capture failure preserves the candidate
+and retries with the newest coalesced capture. Failed partial restoration is
+marked so restarting cannot replace the complete retry candidate. Cancellation
+never consumes it. Closing a meaningful new workspace, or one used for at least
+30 minutes, retires stale previous data. Current, transactional backup and manual
+candidate have separate bounded roles; no historical journal grows without limit.
+Orphaned private staging files are removed only under the exclusive store lock.
+
+Restoration is paced, late results cannot launch after cancellation, and shutdown
+retains worker ownership through a bounded flush. SSH stays disconnected; the
+normal connection flow still owns authentication and host-key checks. Guest CWDs
+are structurally validated without network probes. Missing local folders fall
+back to current configuration; unavailable profiles fail independently. Geometry
+is clamped to the current monitor; native macOS tab groups reopen as windows.
 
 ## Alternatives and evidence
 
-Serializing a launch descriptor would preserve secrets and command authority.
-Reviving live processes or restoring terminal cells would misrepresent running
-state. Storing workspace data in UserPreferences would couple unrelated schemas
-and write lifetimes. A second PTY/process owner is unnecessary.
+Persisting process descriptors or feeding saved commands back into a shell would
+restore execution authority. Raw VT replay would revive control-sequence effects.
+Unbounded transcripts would grow indefinitely. Those approaches are rejected.
+The existing grid, PTY, worker and private-file owners are reused instead.
 
-Model, worker, storage and layout tests cover bounds, private ownership, backup
-recovery, safe profiles, pruning, ratios and fresh identities. The Windows native
-fixture exercises actual crash/restart, no child before consent, fresh shell
-processes, normal close and input isolation. Linux/macOS desktop and native
-screen-reader delivery require separate evidence.
+Replacing a grid with recovered history invalidates live command-action handles.
+Historical input retains display metadata without a completed-input capability;
+last-command actions become available only for commands in the new session.
+
+Model, parser, archive, worker and layout tests cover limits, Unicode/reflow,
+protection, corruption, migration, fresh identities, coalescing and consumption.
+The Windows native fixture exercises crash/restart, no child before consent,
+history sentinels without rerun, fresh shells, quiet startup, manual recovery and
+old-copy cleanup on both renderers. Native Unix credential stores, desktops and
+screen-reader delivery require separate evidence; cross-compilation is not proof.

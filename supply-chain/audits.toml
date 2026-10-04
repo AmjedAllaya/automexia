@@ -1,4 +1,170 @@
 
 # cargo-vet audits file
 
-[audits]
+[[audits.aead]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.6.1"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed buffer contracts and allocation/error paths. Consumers must bound allocations; arbitrary custom Buffer implementations are caller code, not untrusted data.
+"""
+
+[[audits.aes]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.9.3"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed software and accelerated backends, dispatch, block bounds and unsafe intrinsics. Constant-time claims remain dependent on supported hardware and compiler behavior.
+"""
+
+[[audits.block-padding]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.4.2"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed padding length checks, detached padding and invalid-padding failures. No ambient capabilities or production unsafe blocks were found.
+"""
+
+[[audits.cbc]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.2.1"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed block chaining, buffer lengths and delegation to cipher traits. CBC is not authenticated encryption; its use here is the established credential-service protocol.
+"""
+
+[[audits.chacha20poly1305]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.11.0"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed authentication-before-decryption, tag comparison, counter separation and XChaCha key derivation. Caller must ensure nonce uniqueness, bound allocation and stream length, and discard failed mutable-buffer operations. This is not a panic-free API certification. Zeroization of Poly1305 requires its separate feature.
+"""
+
+[[audits.cipher]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.5.2"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed stream/block traits, buffer adapters, unsafe contracts and counter checks. Callers must validate stream positions and arithmetic domains; invalid positions may panic. No serious production vulnerability was established in this version.
+"""
+
+[[audits.cmov]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.5.4"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed assembly constraints, pointer lifetime/extent assumptions, fallback operations and selection masks. Timing properties depend on supported targets and generated code; no timing experiment is claimed.
+"""
+
+[[audits.cpubits]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.1.1"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed compile-time branch selection and macro expansion. No runtime probing, process execution, network access or filesystem capability.
+"""
+
+[[audits.ctutils]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.4.2"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed choice normalization, constant-time comparisons/selections and wrapper contracts. Arithmetic and formatting behavior remain distinct from constant-time operations.
+"""
+
+[[audits.hkdf]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed extract/expand length checks, maximum output, PRK validation and HMAC delegation. No ambient capabilities or custom cryptographic backend introduced.
+"""
+
+[[audits.hmac]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed key normalization, inner/outer pads, state reset/finalization and digest contracts. Constant-time verification uses the shared reviewed utilities.
+"""
+
+[[audits.num]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.4.3"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed numeric reexports and feature/manifest boundaries. Numeric sizes and work budgets remain caller obligations; this is not a cryptographic constant-time arithmetic library.
+"""
+
+[[audits.num-bigint]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.4.8"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed arithmetic, conversion, iteration, serialization and unsafe buffer accesses. Inputs require caller allocation/work bounds; exponentiation is variable-time and is not certified for secret-dependent constant-time uses.
+"""
+
+[[audits.num-complex]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.4.6"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed representation, conversion, parsing, optional unsafe traits and numerical operations. Invalid arithmetic domains and caller-selected sizes can fail or panic; numerical casts are not security validation.
+"""
+
+[[audits.num-integer]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.1.47"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed integer algorithms, roots, bounds and supporting tests. Primitive overflow and invalid numerical domains retain normal caller contracts.
+"""
+
+[[audits.num-iter]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.1.46"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed iterator progress, bounds, size hints and arithmetic. Caller-chosen unbounded iteration is not a resource limit.
+"""
+
+[[audits.num-rational]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.4.2"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed normalization, arithmetic, comparisons, hashing and parsing. Caller must bound integer size and recursion/work for adversarial values; this is not constant-time arithmetic.
+"""
+
+[[audits.poly1305]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.9.1"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed portable/accelerated backends, dispatch, reduction, tag generation and zeroization. Requires one-time keys and supported constant-time-multiplication hardware. No independent timing proof; enable the explicit zeroize feature where key erasure is required.
+"""
+
+[[audits.secret-service]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "5.2.0"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed async/blocking D-Bus paths, encrypted-session negotiation, secret encoding, locks/prompts and powerful imports. The session bus and selected credential provider are trusted; DH is not provider authentication. Callers own deadlines, lock verification and prompt policy. Protocol arithmetic is variable-time and provider outputs are not an arbitrary untrusted cryptographic peer boundary. Source review does not establish native provider behavior.
+"""
+
+[[audits.security-framework-sys]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "2.17.0"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed Apple FFI declarations, platform gates, constants, framework links and pointer/ABI shapes. These are unsafe bindings, not a safe credential abstraction; callers must uphold native ownership, type, buffer, ACL and interaction contracts. No native macOS runtime validation is claimed.
+"""
+
+[[audits.universal-hash]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.6.1"
+notes = """
+Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed block iteration, length handling, trait contracts and fixed-length constant-time tag comparison. One-time-key and backend timing obligations remain with the chosen implementation.
+"""

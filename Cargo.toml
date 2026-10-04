@@ -34,8 +34,12 @@ members = [
     "librio-wasm",
     "tools/xtask",
     "tools/renderer-benchmarks",
+    "third-party/inout",
 ]
 resolver = "2"
+
+[patch.crates-io]
+inout = { path = "third-party/inout" }
 
 [workspace.package]
 version = "0.4.0"

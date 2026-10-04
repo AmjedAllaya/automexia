@@ -34,6 +34,8 @@ pub(super) fn fixture() -> Snapshot {
                 focused: 0,
                 nodes: vec![Node::Pane {
                     sessions: vec![Session {
+                        history: None,
+                        source: None,
                         profile: Profile::Configured,
                         cwd: None,
                         disconnected: false,
@@ -82,6 +84,15 @@ fn hostile_fields_versions_cycles_and_extents_are_rejected() {
     snapshot.windows[0].tabs[0].root = 1;
     assert!(!snapshot.validate());
 }
+
+#[test]
+fn legacy_plaintext_migration_rejects_history_fields() {
+    let mut legacy = serde_json::to_value(fixture()).unwrap();
+    legacy["windows"][0]["tabs"][0]["nodes"][0]["sessions"][0]["history"] =
+        serde_json::Value::Null;
+    let bytes = serde_json::to_vec(&legacy).unwrap();
+    assert_eq!(Checkpoint::decode(&bytes), Err(StoreError::Invalid));
+}
 #[test]
 fn profiles_and_directories_cannot_be_commands_or_network_paths() {
     assert!(!interactive_args(&["-Command".into(), "anything".into()]));
@@ -102,6 +113,8 @@ fn changed_opt_out_policy_prunes_old_snapshots_without_orphan_indexes() {
     let mut snapshot = fixture();
     snapshot.windows[0].tabs[0].nodes.push(Node::Pane {
         sessions: vec![Session {
+            history: None,
+            source: None,
             profile: Profile::Shell { shell: Shell::Bash },
             cwd: None,
             disconnected: true,
@@ -119,4 +132,62 @@ fn changed_opt_out_policy_prunes_old_snapshots_without_orphan_indexes() {
     assert_eq!(filtered.session_count(), 1);
     assert_eq!(filtered.windows[0].tabs[0].nodes.len(), 1);
     assert!(filtered.excluding(&["bash".into()]).windows.is_empty());
+}
+
+#[test]
+fn smart_prompt_distinguishes_idle_time_from_real_activity() {
+    use rio_backend::crosswords::SessionActivity as Activity;
+    assert!(!Checkpoint::from(fixture()).noteworthy());
+    let mut many = fixture();
+    let tab = many.windows[0].tabs[0].clone();
+    many.windows[0].tabs.push(tab);
+    assert!(Checkpoint::from(many).noteworthy());
+    assert!(!significant_activity(Activity {
+        age_ms: 86_400_000,
+        ..Activity::default()
+    }));
+    assert!(!significant_activity(Activity {
+        longest_command_ms: 59_999,
+        ..Activity::default()
+    }));
+    assert!(significant_activity(Activity {
+        longest_command_ms: 60_000,
+        ..Activity::default()
+    }));
+    assert!(significant_activity(Activity {
+        running_ms: 60_000,
+        ..Activity::default()
+    }));
+    assert!(significant_activity(Activity {
+        remote_used: true,
+        ..Activity::default()
+    }));
+    assert!(significant_activity(Activity {
+        age_ms: 900_000,
+        completed_commands: 10,
+        execution_ms: 120_000,
+        ..Activity::default()
+    }));
+    assert!(!significant_activity(Activity {
+        age_ms: 900_000,
+        completed_commands: 10,
+        execution_ms: 119_999,
+        ..Activity::default()
+    }));
+}
+
+#[test]
+fn checkpoint_migrates_topology_without_accepting_future_envelopes() {
+    let legacy = fixture();
+    let checkpoint = Checkpoint::decode(&legacy.encode().unwrap()).unwrap();
+    assert_eq!(checkpoint.snapshot, legacy);
+    assert_eq!(checkpoint.version, 2);
+    assert_eq!(
+        Checkpoint::decode(&checkpoint.encode().unwrap()).unwrap(),
+        checkpoint
+    );
+    assert_eq!(
+        Checkpoint::decode(br#"{"version":999}"#),
+        Err(StoreError::Version)
+    );
 }
