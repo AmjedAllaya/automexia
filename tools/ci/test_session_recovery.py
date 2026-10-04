@@ -11,6 +11,21 @@ class RecoveryArchitectureTests(unittest.TestCase):
     def test_current_contract(self):
         policy.validate(self.sources)
 
+    def test_shared_protection_dependencies_are_available_without_test_or_windows_cfg(self):
+        manifest = (policy.ROOT / "apps/automexia-terminal/Cargo.toml").read_text(encoding="utf-8")
+        policy.validate_dependencies(manifest)
+
+    def test_target_only_or_optional_shared_dependencies_are_rejected(self):
+        manifest = (policy.ROOT / "apps/automexia-terminal/Cargo.toml").read_text(encoding="utf-8")
+        declaration = 'base64 = { workspace = true }'
+        for section in ("[dev-dependencies]", "[target.'cfg(windows)'.dependencies]"):
+            moved = manifest.replace(declaration, "").replace(section, section + "\n" + declaration)
+            with self.subTest(section=section), self.assertRaisesRegex(AssertionError, "Shared recovery dependency base64"):
+                policy.validate_dependencies(moved)
+        optional = manifest.replace(declaration, 'base64 = { workspace = true, optional = true }')
+        with self.assertRaisesRegex(AssertionError, "must not be optional"):
+            policy.validate_dependencies(optional)
+
     def test_persisted_environment_is_rejected(self):
         path = policy.FILES[0]
         self.sources[path] = self.sources[path].replace("pub struct Session {", "pub struct Session {\n    pub environment: Vec<String>,")

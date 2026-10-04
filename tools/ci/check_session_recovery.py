@@ -52,6 +52,16 @@ def vendor_inputs(root: Path = ROOT) -> tuple[dict[str, str], str, str, str]:
     return (files, *( (root / p).read_text(encoding="utf-8") for p in ("Cargo.toml", "Cargo.lock", "supply-chain/config.toml") ))
 
 
+def validate_dependencies(manifest: str) -> None:
+    cargo = tomllib.loads(manifest)
+    native = dict(cargo.get("dependencies", {}))
+    native.update(cargo.get("target", {}).get('cfg(not(target_arch = "wasm32"))', {}).get("dependencies", {}))
+    for name in ("base64", "flate2", "serde", "serde_json", "sha2", "zeroize"):
+        assert name in native, f"Shared recovery dependency {name} must be available in native production builds"
+        dependency = native[name]
+        assert not isinstance(dependency, dict) or not dependency.get("optional", False), f"Shared recovery dependency {name} must not be optional"
+
+
 def validate(sources: dict[str, str]) -> None:
     model = sources[FILES[0]]
     for name, expected in {
@@ -104,6 +114,7 @@ def validate(sources: dict[str, str]) -> None:
 def main() -> None:
     validate({path: (ROOT / path).read_text(encoding="utf-8") for path in FILES})
     validate_vendor(*vendor_inputs())
+    validate_dependencies((ROOT / "apps/automexia-terminal/Cargo.toml").read_text(encoding="utf-8"))
     print("PASS: bounded encrypted display recovery ownership and consent boundaries")
 
 

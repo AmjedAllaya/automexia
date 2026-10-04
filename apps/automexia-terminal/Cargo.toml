@@ -60,6 +60,7 @@ name = "automexia-ssh-helper"
 path = "src/bin/automexia-ssh-helper.rs"
 
 [dependencies]
+base64 = { workspace = true }
 automexia-keybindings = { workspace = true }
 automexia-extension-api = { workspace = true }
 automexia-extension-runtime = { workspace = true }
@@ -77,7 +78,6 @@ rio-backend = { workspace = true }
 time = { workspace = true }
 
 [dev-dependencies]
-base64 = { workspace = true }
 pretty_assertions = "1.4.1"
 criterion = { workspace = true }
 image_rs = { workspace = true }
@@ -142,7 +142,6 @@ poly1305 = { version = "0.9.1", features = ["zeroize"] }
 
 [target.'cfg(windows)'.dependencies]
 ahash = { version = "0.8.12", default-features = false, features = ["std"] }
-base64 = { workspace = true }
 dunce = "1.0.5"
 tinyvec = { version = "1.8.1", features = ["alloc"] }
 windows-sys = { version = "0.61.2", features = [
