@@ -57,6 +57,70 @@ pub struct ConfirmQuit {
 }
 
 impl ConfirmQuit {
+    pub(crate) fn accessibility_surface(
+        &self,
+        dimensions: (f32, f32, f32),
+    ) -> automexia_ui_model::accessibility::Surface {
+        use accesskit::{Node, Role};
+        use automexia_ui_model::accessibility::{physical_bounds, Surface};
+        let viewport =
+            accesskit::Rect::new(0.0, 0.0, dimensions.0 as f64, dimensions.1 as f64);
+        let layout = Self::layout(dimensions);
+        let rect = |r: Rect| {
+            physical_bounds([r.x, r.y, r.width, r.height], dimensions.2, viewport)
+        };
+        let mut surface = Surface::dialog(
+            u64::MAX - 2,
+            if self.recovery {
+                "Restore previous session"
+            } else {
+                "Quit Automexia?"
+            },
+            rect(layout.card).unwrap_or(viewport),
+        );
+        let mut explanation = Node::new(Role::Label);
+        explanation.set_label(self.accessibility_summary());
+        surface.push(1, explanation, self.loading);
+        for (id, label, bounds, focused) in [
+            (
+                2,
+                if self.recovery {
+                    "Start clean"
+                } else {
+                    "Cancel"
+                },
+                layout.cancel,
+                self.recovery && !self.selected_restore,
+            ),
+            (
+                3,
+                if self.recovery { "Restore" } else { "Quit" },
+                layout.quit,
+                !self.recovery || self.selected_restore,
+            ),
+        ] {
+            let mut node = Node::new(Role::Button);
+            node.set_label(label);
+            if let Some(bounds) = rect(bounds) {
+                node.set_bounds(bounds);
+            }
+            if self.loading {
+                node.set_disabled();
+            }
+            surface.push(id, node, focused && !self.loading);
+        }
+        surface
+    }
+
+    pub(crate) fn accessibility_summary(&self) -> String {
+        if self.recovery {
+            format!("Restore previous session. {}. Tab chooses; Enter confirms; Escape starts clean.",
+                if self.loading { "Loading recovery" } else if self.selected_restore { "Restore selected" } else { "Start clean selected" })
+        } else {
+            "Quit Automexia? This closes the terminal window. Escape cancels; Enter confirms.".into()
+        }
+    }
+
     pub fn is_active(&self) -> bool {
         self.active
     }

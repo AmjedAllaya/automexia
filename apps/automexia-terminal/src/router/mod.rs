@@ -973,6 +973,8 @@ impl Router<'_> {
 }
 
 pub struct RouteWindow<'a> {
+    // Native subclass adapters must be dropped before their window.
+    pub(crate) accessibility: Option<crate::accessibility::WindowAdapter>,
     pub is_focused: bool,
     pub is_occluded: bool,
     pub needs_render_after_occlusion: bool,
@@ -1113,7 +1115,12 @@ impl<'a> RouteWindow<'a> {
             startup_notify::reset_activation_token_env();
         }
 
-        let winit_window = event_loop.create_window(window_builder).unwrap();
+        let initially_visible = window_builder.visible;
+        let winit_window = event_loop
+            .create_window(window_builder.with_visible(false))
+            .unwrap();
+        let accessibility =
+            crate::accessibility::WindowAdapter::new(&winit_window, event_proxy.clone());
         configure_window(&winit_window, config);
 
         let properties = ScreenWindowProperties {
@@ -1189,7 +1196,9 @@ impl<'a> RouteWindow<'a> {
             Duration::from_micros(frame_time_us)
         };
 
+        winit_window.set_visible(initially_visible);
         Self {
+            accessibility,
             vblank_interval: monitor_vblank_interval,
             render_timestamp: Instant::now(),
             is_focused: true,

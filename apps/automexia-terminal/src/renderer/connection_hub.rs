@@ -141,6 +141,86 @@ pub struct ConnectionHub {
 }
 
 impl ConnectionHub {
+    pub(crate) fn accessibility_summary(&self) -> String {
+        let Some(presentation) = &self.presentation else {
+            return String::new();
+        };
+        let mut text = String::from("Connections. ");
+        for node in presentation.view.accessibility_tree.iter().take(48) {
+            if text.len() + node.name.len() > 7000 {
+                break;
+            }
+            text.push_str(&node.name);
+            text.push_str(". ");
+        }
+        text
+    }
+
+    pub(crate) fn accessibility_surface(
+        &self,
+        dimensions: (f32, f32, f32),
+    ) -> automexia_ui_model::accessibility::Surface {
+        use automexia_ui_model::accessibility::{hub_node, physical_bounds, Surface};
+        let viewport =
+            accesskit::Rect::new(0.0, 0.0, dimensions.0 as f64, dimensions.1 as f64);
+        let Some(p) = &self.presentation else {
+            return Surface::dialog(u64::MAX - 5, "Connections", viewport);
+        };
+        let layout = Self::layout(p, dimensions);
+        let bounds = physical_bounds(
+            [
+                layout.card.x,
+                layout.card.y,
+                layout.card.width,
+                layout.card.height,
+            ],
+            dimensions.2,
+            viewport,
+        )
+        .unwrap_or(viewport);
+        // Match paint's topmost editor/review. Covered catalogs are not part of
+        // the native tree and cannot leak behind a credential/review dialog.
+        let owned;
+        let nodes = if let Some(editor) = &p.profile_editor {
+            owned = editor.accessibility_tree();
+            &owned
+        } else if let Some(editor) = &p.credential_editor {
+            owned = editor.accessibility_tree();
+            &owned
+        } else if let Some(review) = &p.provider_review {
+            &review.accessibility_tree
+        } else if let Some(review) = &p.workspace_restore {
+            &review.accessibility_tree
+        } else if let Some(review) = &p.direct_openssh_review {
+            &review.accessibility_tree
+        } else if let Some(catalog) = &p.provider_catalog {
+            &catalog.accessibility_tree
+        } else if let Some(catalog) = &p.workspace_catalog {
+            &catalog.accessibility_tree
+        } else {
+            &p.view.accessibility_tree
+        };
+        let title = nodes
+            .first()
+            .map_or("Connections", |node| node.name.as_str());
+        let mut surface = Surface::dialog(u64::MAX - 5, title, bounds);
+        let mut focus_assigned = false;
+        for (index, source) in nodes.iter().take(256).enumerate() {
+            if source.role
+                == automexia_ui_model::connection_hub::AccessibilityRole::Dialog
+            {
+                continue;
+            }
+            let focused = !focus_assigned
+                && source.selected
+                && source.focusable
+                && !source.disabled;
+            focus_assigned |= focused;
+            surface.push(index as u64 + 1, hub_node(source), focused);
+        }
+        surface
+    }
+
     pub fn is_active(&self) -> bool {
         self.presentation.is_some()
     }

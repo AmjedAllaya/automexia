@@ -331,6 +331,10 @@ fn unicode_fixture_cursor_widths_are_stable() {
         // does not widen the preceding text-default heart cell.
         ("variation_selector", 1),
         ("wide", 2),
+        ("arabic", 5),
+        ("hebrew", 4),
+        ("mixed_bidi", 12),
+        ("cjk_combining", 6),
     ]);
 
     assert_eq!(
@@ -339,11 +343,29 @@ fn unicode_fixture_cursor_widths_are_stable() {
         "every Unicode fixture needs an assertion"
     );
     for (name, text) in cases {
-        let terminal = parse_chunks(text.as_bytes(), text.len());
-        assert_eq!(
-            terminal.grid.cursor.pos.col.0,
-            expected[name.as_str()],
-            "unexpected terminal width for {name:?}"
-        );
+        for chunk in [1, 2, 3, text.len()] {
+            let terminal = parse_chunks(text.as_bytes(), chunk);
+            assert_eq!(
+                terminal.grid.cursor.pos.col.0,
+                expected[name.as_str()],
+                "unexpected terminal width for {name:?}, chunk {chunk}"
+            );
+        }
+    }
+}
+
+#[test]
+fn bidirectional_terminal_text_keeps_logical_cell_order() {
+    // Reordering the grid would move cursors/selections away from the cells
+    // targeted by applications. Script shaping is the renderer's concern.
+    for text in ["مرحبا", "שלום", "abc שלום 123"] {
+        let terminal = parse_chunks(text.as_bytes(), 1);
+        let cells: String = terminal.grid[Line(0)]
+            .inner
+            .iter()
+            .take(text.chars().count())
+            .map(|cell| cell.c())
+            .collect();
+        assert_eq!(cells, text);
     }
 }

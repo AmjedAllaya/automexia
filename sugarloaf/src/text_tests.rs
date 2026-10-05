@@ -9,6 +9,89 @@ fn fixture_fonts() -> FontLibrary {
 }
 
 #[test]
+fn mixed_unicode_labels_select_fallback_for_each_grapheme_run() {
+    let fonts = fixture_fonts();
+    fonts.inner.write().insert(
+        FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF_ITALIC).unwrap(),
+    );
+    let mut text = Text::new(&fonts);
+    text.init_cpu();
+    text.font_resolve.insert(('A', 0), (0, false));
+    text.font_resolve.insert(('Ω', 0), (4, false));
+    let opts = DrawOpts::default();
+    let measured = text.measure("AΩΩA", &opts);
+    let painted = text.draw(0.0, 0.0, "AΩΩA", &opts);
+    assert_eq!(measured, painted);
+    assert!(
+        text.shape_cache
+            .get(
+                ShapeKey {
+                    font_id: 4,
+                    size: 14,
+                    style_flags: 0
+                },
+                "ΩΩ"
+            )
+            .is_some(),
+        "a label must not shape later scripts with the first character's font"
+    );
+}
+
+#[test]
+fn ascii_label_fast_path_preserves_symbol_maps_and_font_replacement() {
+    let fonts = fixture_fonts();
+    let mut text = Text::new(&fonts);
+    let opts = DrawOpts::default();
+    assert_eq!(text.shape_label("AB", &opts).len(), 1);
+    assert_eq!(text.ascii_faces[0], Some(Some(0)));
+    let replacement = fixture_fonts();
+    {
+        let mut library = replacement.inner.write();
+        library.insert(
+            FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF_ITALIC).unwrap(),
+        );
+        library.symbol_maps = Some(vec![crate::font::SymbolMap {
+            font_index: 4,
+            range: 'B'..'C',
+        }]);
+    }
+    text.update_font(&replacement);
+    let runs = text.shape_label("AB", &opts);
+    assert_eq!(
+        runs.iter().map(|run| run.font_id).collect::<Vec<_>>(),
+        [0, 4]
+    );
+    assert_eq!(text.ascii_faces[0], Some(None));
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn native_mixed_label_uses_color_emoji_and_keeps_zwj_cluster_intact() {
+    let mut text = Text::new(&fixture_fonts());
+    text.init_cpu();
+    let opts = DrawOpts {
+        font_size: 24.0,
+        ..Default::default()
+    };
+    let sample = "A 👩\u{200d}💻";
+    text.draw(0.0, 0.0, sample, &opts);
+    assert!(
+        text.instances.iter().any(|instance| instance.atlas == 1),
+        "native installed emoji must reach the color atlas in a mixed label"
+    );
+    let emoji = text.shape_for("👩\u{200d}💻", &opts).unwrap();
+    assert_eq!(
+        emoji
+            .glyphs
+            .iter()
+            .filter(|glyph| glyph.advance > 0.0)
+            .count(),
+        1,
+        "the platform font must shape the ZWJ sequence as one visible glyph"
+    );
+}
+
+#[test]
 fn fixed_cell_baseline_preserves_descenders_styles_and_fractional_scale() {
     let sample = "Hjpqy";
     let anchors: Vec<_> = (0..sample.len())
@@ -905,5 +988,61 @@ fn assert_same_instances(actual: &[TextInstance], expected: &[TextInstance]) {
             ),
             "instance {index}"
         );
+    }
+}
+
+#[test]
+fn stacked_combining_marks_keep_font_vertical_offsets_in_labels_and_cells() {
+    let opts = DrawOpts {
+        font_size: 32.0,
+        ..DrawOpts::default()
+    };
+    let sample = "a\u{301}\u{301}";
+    for fixed in [false, true] {
+        let mut text = Text::new(&fixture_fonts());
+        text.init_cpu();
+        let shaped = text.shape_for(sample, &opts).unwrap();
+        assert!(
+            shaped.glyphs.iter().any(|g| g.y > 1.0),
+            "bundled font fixture must exercise above-baseline mark positioning"
+        );
+        if fixed {
+            let anchors = [TextCellAnchor {
+                byte_offset: 0,
+                column: 0,
+            }];
+            text.draw_cells_clipped(
+                20.0,
+                30.0,
+                sample,
+                &opts,
+                TextCellLayout {
+                    cell_width: 20.0,
+                    anchors: &anchors,
+                },
+                [0.0, 0.0, 128.0, 128.0],
+            );
+        } else {
+            text.draw(20.0, 30.0, sample, &opts);
+        }
+        assert_eq!(text.instances.len(), shaped.glyphs.len());
+        let bearings: Vec<_> = shaped
+            .glyphs
+            .iter()
+            .map(|glyph| text.rasterize_slot(&shaped, glyph.id).unwrap().0.bearing_y)
+            .collect();
+        for ((instance, glyph), bearing) in
+            text.instances.iter().zip(&shaped.glyphs).zip(bearings)
+        {
+            // Font coordinates are y-up; the UI surface is y-down. Compare
+            // ink origins: clipping folds the atlas bearing into the position.
+            // A stacked accent must move above the base letter in both paths.
+            let expected = 30.0 - glyph.y + f32::from(bearing);
+            let actual = instance.pos[1] + f32::from(instance.bearings[1]);
+            assert!(
+                (actual - expected).abs() < 0.01,
+                "fixed={fixed}: {actual} != {expected}"
+            );
+        }
     }
 }

@@ -6,9 +6,15 @@
 use crate::font::FontLibrary;
 use rustc_hash::FxHashMap;
 use std::sync::Arc;
+use swash::text::{Codepoint, Script};
+use unicode_segmentation::UnicodeSegmentation;
 
 mod shape_cache;
 use shape_cache::{ShapeCache, ShapeKey};
+
+fn strong_script(script: Script) -> bool {
+    !matches!(script, Script::Common | Script::Inherited | Script::Unknown)
+}
 
 #[cfg(test)]
 #[path = "text_tests.rs"]
@@ -170,6 +176,9 @@ pub struct Text {
     scale_factor: f32,
     font_library: FontLibrary,
     font_resolve: FxHashMap<(char, u8), (u32, bool)>,
+    // At most four style results, invalidated with the font library. ASCII
+    // labels can use the existing shape cache without segmenting every redraw.
+    ascii_faces: [Option<Option<u32>>; 4],
     synthesis_cache: FxHashMap<u32, (bool, bool, bool)>,
     #[cfg(not(target_os = "macos"))]
     wght_variation_cache: FxHashMap<u32, Option<f32>>,
@@ -204,6 +213,7 @@ impl Text {
             scale_factor: 1.0,
             font_library: font_library.clone(),
             font_resolve: FxHashMap::default(),
+            ascii_faces: [None; 4],
             synthesis_cache: FxHashMap::default(),
             #[cfg(not(target_os = "macos"))]
             wght_variation_cache: FxHashMap::default(),
@@ -234,6 +244,7 @@ impl Text {
         self.clear();
         self.font_library = font_library.clone();
         self.font_resolve.clear();
+        self.ascii_faces = [None; 4];
         self.synthesis_cache.clear();
         self.ascent_cache.clear();
         self.shape_cache = ShapeCache::default();
@@ -352,15 +363,22 @@ impl Text {
     /// Draw `text` at logical top-left `(x, y)` with `opts`. Returns
     /// rendered width in **logical** pixels.
     pub fn draw(&mut self, x: f32, y: f32, text: &str, opts: &DrawOpts) -> f32 {
-        if text.is_empty() {
-            return 0.0;
+        let runs = self.shape_label(text, opts);
+        let mut advance = 0.0;
+        // Fallback faces share the primary run's baseline, not their tops.
+        let ascent = runs
+            .first()
+            .map_or(0.0, |run| f32::from(run.ascent_px) / self.scale_factor);
+        for shaped in runs {
+            self.emit_instances(
+                x + advance,
+                y + ascent - f32::from(shaped.ascent_px) / self.scale_factor,
+                &shaped,
+                opts,
+            );
+            advance += shaped_width(&shaped) / self.scale_factor;
         }
-        let Some(shaped) = self.shape_for(text, opts) else {
-            return 0.0;
-        };
-        let width_px = shaped_width(&shaped);
-        self.emit_instances(x, y, &shaped, opts);
-        width_px / self.scale_factor
+        advance
     }
 
     /// Draw a label within logical-pixel cell bounds. Atlas ownership and
@@ -452,13 +470,21 @@ impl Text {
                 break;
             };
             let font_id = self.resolve_font_id(ch, opts);
+            let mut script = ch.script();
             let mut end = first + 1;
             while end < anchors.len() {
                 let Some(ch) = text[anchors[end].byte_offset..].chars().next() else {
                     break;
                 };
-                if self.resolve_font_id(ch, opts) != font_id {
+                if self.resolve_font_id(ch, opts) != font_id
+                    || (strong_script(script)
+                        && strong_script(ch.script())
+                        && ch.script() != script)
+                {
                     break;
+                }
+                if strong_script(ch.script()) {
+                    script = ch.script();
                 }
                 end += 1;
             }
@@ -572,12 +598,123 @@ impl Text {
     /// Measure `text` under `opts` without recording a draw. Returns
     /// logical-pixel width.
     pub fn measure(&mut self, text: &str, opts: &DrawOpts) -> f32 {
+        self.shape_label(text, opts)
+            .iter()
+            .map(|run| shaped_width(run) / self.scale_factor)
+            .sum()
+    }
+
+    /// Free-flowing labels need the same fallback policy as terminal cells.
+    /// Keep combining and ZWJ sequences together while grouping adjacent
+    /// graphemes with the same face/script for contextual shaping.
+    fn shape_label(
+        &mut self,
+        text: &str,
+        opts: &DrawOpts,
+    ) -> smallvec::SmallVec<[Arc<ShapedRun>; 4]> {
+        let mut result = smallvec::SmallVec::new();
         if text.is_empty() {
-            return 0.0;
+            return result;
         }
-        self.shape_for(text, opts)
-            .map(|r| shaped_width(&r) / self.scale_factor)
-            .unwrap_or(0.0)
+        if text.bytes().all(|byte| (0x20..=0x7e).contains(&byte)) {
+            if let Some(font) = opts
+                .font_id
+                .map(|id| id as u32)
+                .or_else(|| self.homogeneous_ascii_face(opts))
+            {
+                let run_opts = DrawOpts {
+                    font_id: Some(font as usize),
+                    ..*opts
+                };
+                if let Some(run) = self.shape_for(text, &run_opts) {
+                    result.push(run);
+                }
+                return result;
+            }
+        }
+        let mut start = 0;
+        let mut current: Option<(u32, Script)> = None;
+        for (offset, cluster) in text.grapheme_indices(true) {
+            let Some(first) = cluster.chars().next() else {
+                continue;
+            };
+            let font = self.resolve_font_id(first, opts);
+            let script = cluster
+                .chars()
+                .map(Codepoint::script)
+                .find(|script| strong_script(*script))
+                .unwrap_or(Script::Common);
+            if let Some((prior_font, prior_script)) = current {
+                if font != prior_font
+                    || (strong_script(script)
+                        && strong_script(prior_script)
+                        && script != prior_script)
+                {
+                    let run_opts = DrawOpts {
+                        font_id: Some(prior_font as usize),
+                        ..*opts
+                    };
+                    if let Some(run) = self.shape_for(&text[start..offset], &run_opts) {
+                        result.push(run);
+                    }
+                    start = offset;
+                    current = Some((font, script));
+                } else if strong_script(script) {
+                    current = Some((font, script));
+                }
+            } else {
+                current = Some((font, script));
+            }
+        }
+        if let Some((font, _)) = current {
+            let run_opts = DrawOpts {
+                font_id: Some(font as usize),
+                ..*opts
+            };
+            if let Some(run) = self.shape_for(&text[start..], &run_opts) {
+                result.push(run);
+            }
+        }
+        result
+    }
+
+    fn homogeneous_ascii_face(&mut self, opts: &DrawOpts) -> Option<u32> {
+        use crate::{Attributes, SpanStyle, Stretch, Style as FontStyle, Weight};
+        let style = usize::from(opts.bold) | (usize::from(opts.italic) << 1);
+        if let Some(face) = self.ascii_faces[style] {
+            return face;
+        }
+        let attrs = SpanStyle {
+            font_attrs: Attributes::new(
+                Stretch::NORMAL,
+                if opts.bold {
+                    Weight::BOLD
+                } else {
+                    Weight::NORMAL
+                },
+                if opts.italic {
+                    FontStyle::Italic
+                } else {
+                    FontStyle::Normal
+                },
+            ),
+            ..SpanStyle::default()
+        };
+        // Strict lookup only inspects prepared fonts and symbol maps. Missing
+        // coverage falls back to normal segmentation, without OS font discovery.
+        let library = self.font_library.inner.read();
+        let first = library
+            .find_best_font_match_strict(' ', &attrs, None)
+            .map(|(id, _)| id as u32);
+        let face = first.filter(|first| {
+            (0x21u8..=0x7e).all(|byte| {
+                library
+                    .find_best_font_match_strict(char::from(byte), &attrs, None)
+                    .is_some_and(|(id, _)| id as u32 == *first)
+            })
+        });
+        self.ascii_faces[style] = Some(face);
+        face
     }
 
     fn resolve_font_id(&mut self, first_ch: char, opts: &DrawOpts) -> u32 {
@@ -732,6 +869,12 @@ impl Text {
             let mut shaper = self
                 .shape_ctx
                 .builder(font_ref)
+                .script(
+                    text.chars()
+                        .map(Codepoint::script)
+                        .find(|script| strong_script(*script))
+                        .unwrap_or(Script::Common),
+                )
                 .size(size_u16 as f32)
                 .variations(var_slice.iter().copied())
                 .build();
@@ -774,12 +917,8 @@ impl Text {
         let mut pen_x = x * scale;
         let py = y * scale;
         for glyph in &run.glyphs {
-            if self.emit_glyph(
-                run,
-                glyph.id,
-                [pen_x + glyph.x, py + glyph.y.max(0.0)],
-                opts.color,
-            ) {
+            if self.emit_glyph(run, glyph.id, [pen_x + glyph.x, py - glyph.y], opts.color)
+            {
                 pen_x += glyph.advance;
             }
         }
@@ -817,7 +956,7 @@ impl Text {
                 (origin[0] + anchor.column as f32 * cell_width) * scale
                     + local_pen
                     + glyph.x,
-                origin[1] * scale + glyph.y.max(0.0),
+                origin[1] * scale - glyph.y,
             ];
             if self.emit_glyph(run, glyph.id, pos, opts.color) {
                 local_pen += glyph.advance;

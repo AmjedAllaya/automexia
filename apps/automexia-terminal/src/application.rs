@@ -1,5 +1,4 @@
 use crate::event::{ClickState, EventPayload, EventProxy, RioEvent, RioEventType};
-use crate::ime::Preedit;
 use crate::renderer::utils::update_colors_based_on_theme;
 use crate::router::{routes::RoutePath, Router};
 use crate::scheduler::{Scheduler, TimerId, Topic};
@@ -1921,6 +1920,11 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
             return;
         }
 
+        if route.window.screen.reject_stale_terminal_ime(&event) {
+            route.request_redraw();
+            return;
+        }
+
         if route
             .window
             .screen
@@ -3334,50 +3338,8 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                     return;
                 }
 
-                match ime {
-                    Ime::Commit(text) => {
-                        // Don't use bracketed paste for single char input.
-                        route.window.screen.paste(&text, text.chars().count() > 1);
-                    }
-                    Ime::Preedit(text, cursor_offset) => {
-                        let preedit = if text.is_empty() {
-                            None
-                        } else {
-                            Some(Preedit::new(text, cursor_offset.map(|offset| offset.0)))
-                        };
-
-                        if route.window.screen.context_manager.current().ime.preedit()
-                            != preedit.as_ref()
-                        {
-                            route
-                                .window
-                                .screen
-                                .context_manager
-                                .current_mut()
-                                .ime
-                                .set_preedit(preedit);
-                            route.request_redraw();
-                        }
-                    }
-                    Ime::Enabled => {
-                        route
-                            .window
-                            .screen
-                            .context_manager
-                            .current_mut()
-                            .ime
-                            .set_enabled(true);
-                    }
-                    Ime::Disabled => {
-                        route
-                            .window
-                            .screen
-                            .context_manager
-                            .current_mut()
-                            .ime
-                            .set_enabled(false);
-                    }
-                }
+                route.window.screen.terminal_ime(ime);
+                route.request_redraw();
             }
             WindowEvent::Touch(touch) => {
                 if route.window.screen.connection_hub_is_active() {
@@ -3567,6 +3529,19 @@ impl ApplicationHandler<EventPayload> for Application<'_> {
                             &route.window.winit_window,
                         );
                     }
+                }
+
+                if let Some(adapter) = &mut route.window.accessibility {
+                    adapter.publish(
+                        &route.window.winit_window,
+                        route.window.is_focused,
+                        || {
+                            route.window.screen.accessibility_frame(matches!(
+                                route.path,
+                                RoutePath::Welcome
+                            ))
+                        },
+                    );
                 }
 
                 #[cfg(target_os = "windows")]

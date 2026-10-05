@@ -116,11 +116,27 @@ class FreePlanContractTests(unittest.TestCase):
         import yaml
 
         pin = tomllib.loads((ROOT / "rust-toolchain.toml").read_text())["toolchain"]["channel"]
-        for name in ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml"):
+        for name in ("ci.yml", "release.yml", "nightly.yml", "linux-early-access.yml", "accessibility-native.yml"):
             with self.subTest(workflow=name):
                 workflow = yaml.safe_load((ROOT / ".github/workflows" / name).read_text(encoding="utf-8"))
                 # A global default cannot override the checkout's toolchain file.
                 self.assertEqual(workflow["env"].get("RUSTUP_TOOLCHAIN"), pin)
+
+    def test_native_accessibility_remains_manual_and_fails_closed(self) -> None:
+        mutations = (
+            ("  workflow_dispatch:", "  push:"),
+            ("runner: [macos-26, macos-26-intel]", "runner: [macos-26]"),
+            ("    timeout-minutes: 15", "    timeout-minutes: 15\n    continue-on-error: true"),
+            ("  contents: read", "  contents: write"),
+            ("persist-credentials: false", "persist-credentials: true"),
+            ("cargo test -p accesskit_macos --lib --locked", "echo skipped"),
+            ("cargo run -p accesskit_macos --example native-accessibility-smoke --locked", "echo skipped"),
+        )
+        for old, new in mutations:
+            with self.subTest(mutation=old):
+                result = self.run_checker_with_replacement(old, new, "accessibility-native.yml")
+                self.assertNotEqual(result.returncode, 0, result.stdout + result.stderr)
+                self.assertIn("native accessibility assurance", result.stdout + result.stderr)
 
     @staticmethod
     def populate_contract_root(root: Path) -> None:

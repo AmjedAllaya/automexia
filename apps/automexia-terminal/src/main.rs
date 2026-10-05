@@ -4,6 +4,7 @@
 // See https://msdn.microsoft.com/en-us/library/4cc7ya5b.aspx for more details.
 #![windows_subsystem = "windows"]
 
+mod accessibility;
 mod application;
 pub use automexia_terminal::automexia;
 use automexia_terminal::cli;

@@ -45,7 +45,8 @@ param(
     [switch]$ConnectionHubOnly,
     [switch]$UseCpuRenderer,
     [switch]$SessionRecoveryOnly,
-    [switch]$QuickActionsOnly
+    [switch]$QuickActionsOnly,
+    [switch]$AccessibilityOnly
 )
 
 $ErrorActionPreference = 'Stop'
@@ -1643,6 +1644,10 @@ $wallpaperConfig
     }
     if ($QuickActionsOnly) {
         . (Join-Path $PSScriptRoot 'quick-actions-windows.ps1')
+        return
+    }
+    if ($AccessibilityOnly) {
+        . (Join-Path $PSScriptRoot 'accessibility-windows.ps1')
         return
     }
     $expectedRendererBackend = if ($UseCpuRenderer) { 'cpu' } else { 'wgpu' }

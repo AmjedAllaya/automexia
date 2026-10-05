@@ -50,7 +50,7 @@ except (OSError, ValueError, KeyError, TypeError):
     minimum = None
     errors.append('MSRV authority must be a regular bounded Cargo.toml with an exact version')
 
-compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml')
+compiler_workflows = ('ci.yml', 'linux-early-access.yml', 'release.yml', 'nightly.yml', 'accessibility-native.yml')
 for workflow_name in compiler_workflows:
     workflow_text = (wf / workflow_name).read_text(encoding='utf-8')
     selectors = re.findall(r'(?m)^[ \t]*RUSTUP_TOOLCHAIN:[^\n]*$', workflow_text)
@@ -80,6 +80,7 @@ for workflow_name in ('ci.yml', 'linux-early-access.yml'):
         errors.append(f'{workflow_name} compiler cache must initialize its selected-toolchain generation before startup')
 
 EXPECTED_WORKFLOWS = {
+    'accessibility-native.yml',
     'ci.yml',
     'f5-openssh-assurance.yml',
     'linux-early-access.yml',
@@ -367,6 +368,23 @@ for job_name, body in ci_jobs.items():
 nightly = (wf/'nightly.yml').read_text(encoding='utf-8')
 if re.search(r'^\s*schedule:\s*$', nightly, re.MULTILINE):
     errors.append('deep/nightly assurance must be manual-only on the Free/private edition')
+
+native_accessibility = (wf/'accessibility-native.yml').read_text(encoding='utf-8')
+trigger = re.search(r'(?ms)^on:\n(?P<body>.*?)(?=^\S|\Z)', native_accessibility)
+if not trigger or trigger.group('body').strip() != 'workflow_dispatch:':
+    errors.append('native accessibility assurance must remain manual-only')
+for required in (
+    '  contents: read', '    timeout-minutes: 15',
+    '        runner: [macos-26, macos-26-intel]',
+    '          persist-credentials: false',
+    'cargo test -p accesskit_macos --lib --locked',
+    'cargo run -p accesskit_macos --example native-accessibility-smoke --locked',
+    'python tools/ci/check_accessibility_contract.py',
+):
+    if required not in native_accessibility:
+        errors.append('native accessibility assurance missing required boundary: ' + required.strip())
+if re.search(r'(?m)^\s*(?:continue-on-error|secrets|environment):|\b(?:contents|id-token|packages):\s*write|\bsecrets\.', native_accessibility):
+    errors.append('native accessibility assurance must not bypass failures or use publishing credentials')
 
 contract = json.loads((root/'repository-protection.json').read_text(encoding='utf-8'))
 if contract.get('mode') != 'github-free-private':

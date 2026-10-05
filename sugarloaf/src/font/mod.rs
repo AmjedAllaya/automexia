@@ -653,7 +653,9 @@ impl FontLibraryData {
         if let Some(symbol_maps) = &self.symbol_maps {
             for symbol_map in symbol_maps {
                 if symbol_map.range.contains(&ch) {
-                    return Some((symbol_map.font_index, false));
+                    if let Some(font) = self.try_get(&symbol_map.font_index) {
+                        return Some((symbol_map.font_index, font.is_emoji));
+                    }
                 }
             }
         }
@@ -716,7 +718,9 @@ impl FontLibraryData {
         if let Some(symbol_maps) = &self.symbol_maps {
             for symbol_map in symbol_maps {
                 if symbol_map.range.contains(&ch) {
-                    return Some((symbol_map.font_index, false));
+                    if let Some(font) = self.try_get(&symbol_map.font_index) {
+                        return Some((symbol_map.font_index, font.is_emoji));
+                    }
                 }
             }
         }
@@ -976,6 +980,26 @@ impl FontLibraryData {
                         );
                         self.insert_alias(regular_index);
                     }
+                }
+            }
+        }
+
+        // Register the bounded, shared emoji chain during font loading (the
+        // application's font worker), not by scanning families for each glyph.
+        // Missing optional families are ordinary fallback, not user errors.
+        for family in rio_fonts::fallback::color_emoji_families(
+            rio_fonts::fallback::native_platform(),
+        ) {
+            if let FindResult::Found(data) = resolve(
+                SugarloafFont {
+                    family: (*family).into(),
+                    ..SugarloafFont::default()
+                },
+                Slot::Regular,
+                true,
+            ) {
+                if data.is_emoji {
+                    self.insert(data);
                 }
             }
         }
@@ -2321,6 +2345,44 @@ fn load_fallback_from_memory(slot: Slot) -> FontData {
 #[cfg(test)]
 mod alias_tests {
     use super::*;
+
+    #[test]
+    fn symbol_override_preserves_color_classification_and_missing_slots_fall_back() {
+        let mut library = FontLibraryData::default();
+        library.insert(
+            FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap(),
+        );
+        for _ in 0..3 {
+            library.insert_alias(0);
+        }
+        let mut mapped =
+            FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap();
+        // This tests routing of the font loader's classification, not color
+        // glyph rasterization (which requires a real platform emoji face).
+        mapped.is_emoji = true;
+        library.insert(mapped);
+        library.symbol_maps = Some(vec![SymbolMap {
+            font_index: 4,
+            range: 'a'..'b',
+        }]);
+        let style = SpanStyle::default();
+        assert_eq!(
+            library.find_best_font_match('a', &style, None),
+            Some((4, true))
+        );
+        assert_eq!(
+            library.find_best_font_match_strict('a', &style, None),
+            Some((4, true))
+        );
+        library.symbol_maps = Some(vec![SymbolMap {
+            font_index: 999,
+            range: 'a'..'b',
+        }]);
+        assert_eq!(
+            library.find_best_font_match_strict('a', &style, None),
+            Some((0, false))
+        );
+    }
 
     /// `insert_alias` registers a new id that resolves back to the
     /// target's `FontData` through `get`/`try_get`. Slot 0 is owned;

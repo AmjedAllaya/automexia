@@ -66,9 +66,12 @@ semantic-classification = ["dep:automexia-terminal"]
 [workspace]
 members = ["."]
 
-# Exercise the same reviewed recovery dependency as the application workspace.
+# Exercise the same reviewed local dependencies as the application workspace.
 [patch.crates-io]
 inout = { path = "../third-party/inout" }
+accesskit_windows = { path = "../third-party/accesskit-windows" }
+accesskit_unix = { path = "../third-party/accesskit-unix" }
+accesskit_macos = { path = "../third-party/accesskit-macos" }
 
 [[bin]]
 name = "vt_parser"

@@ -10,6 +10,110 @@ use rio_backend::sugarloaf::grid::{cpu::CpuGridRenderer, GridUniforms};
 use std::sync::Arc;
 
 #[test]
+fn parsed_combining_marks_shape_without_moving_following_cells() {
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let mut rasterizer = GridGlyphRasterizer::new();
+    let mut grid = GridRenderer::Cpu(CpuGridRenderer::new(80, 12));
+    let renderer = fixture_renderer(false);
+    let mut emitted = Vec::new();
+    for source in ["e\u{301}X", "éX"] {
+        let (rows, styles, extras) = snapshot(&mut terminal(source));
+        let mut glyphs = Vec::new();
+        build_row_fg_classified(
+            &rows[0],
+            80,
+            0,
+            &styles,
+            &extras,
+            &renderer,
+            &TermColors::default(),
+            &mut rasterizer,
+            &mut grid,
+            24.0,
+            14.0,
+            32.0,
+            None,
+            &[],
+            &fonts,
+            0,
+            None,
+            &mut glyphs,
+            None,
+            &[],
+        );
+        emitted.push(
+            glyphs
+                .iter()
+                .map(|g| (g.grid_pos, g.glyph_pos, g.glyph_size, g.bearings))
+                .collect::<Vec<_>>(),
+        );
+    }
+    assert_eq!(
+        emitted[0], emitted[1],
+        "combining input must paint the same glyphs and cells as its composed form"
+    );
+    assert_eq!(emitted[0].last().unwrap().0, [1, 0]);
+}
+
+#[cfg(any(windows, target_os = "macos"))]
+#[test]
+fn parsed_emoji_zwj_reaches_one_native_color_glyph() {
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let mut term = terminal("👩\u{200d}💻X");
+    assert_eq!(
+        term.cursor().pos.col.0,
+        5,
+        "rendering must preserve legacy PTY cell widths"
+    );
+    let (rows, styles, extras) = snapshot(&mut term);
+    let mut glyphs = Vec::new();
+    build_row_fg_classified(
+        &rows[0],
+        80,
+        0,
+        &styles,
+        &extras,
+        &fixture_renderer(false),
+        &TermColors::default(),
+        &mut GridGlyphRasterizer::new(),
+        &mut GridRenderer::Cpu(CpuGridRenderer::new(80, 12)),
+        24.0,
+        14.0,
+        32.0,
+        None,
+        &[],
+        &fonts,
+        0,
+        None,
+        &mut glyphs,
+        None,
+        &[],
+    );
+    let emoji: Vec<_> = glyphs
+        .iter()
+        .filter(|g| g.atlas == CellText::ATLAS_COLOR)
+        .collect();
+    assert_eq!(
+        emoji.len(),
+        1,
+        "a ZWJ cluster must reach the native shaper intact"
+    );
+    assert_eq!(emoji[0].grid_pos, [0, 0]);
+    assert!(
+        glyphs.iter().any(|g| g.grid_pos == [4, 0]),
+        "following text must retain its PTY column"
+    );
+}
+
+#[test]
 fn non_pod_kubernetes_colors_survive_raw_soft_wrapping() {
     use crate::automexia::api::SemanticSeverity::{Error, Info, Success, Warning};
     use crate::automexia::output_semantics::{OutputClassification, OutputDomain};
@@ -1505,5 +1609,76 @@ fn settings_output_highlighting_switch_gates_live_error_and_success_rendering() 
     renderer.presentation = restored.apply_to(&base).presentation;
     for row in rows.iter().take(2) {
         assert!(semantic_row_fg(row, 80, &renderer, &mut String::new()).is_some());
+    }
+}
+
+#[test]
+fn parsed_stacked_marks_keep_the_same_ink_placement_as_ui_text() {
+    use rio_backend::sugarloaf::text::{DrawOpts, Text};
+    let mut data = FontLibraryData::default();
+    data.insert(FontData::from_static_slice(constants::FONT_CASCADIA_CODE_NF).unwrap());
+    let fonts = FontLibrary {
+        inner: Arc::new(parking_lot::RwLock::new(data)),
+    };
+    let sample = "a\u{301}\u{301}";
+    let (rows, styles, extras) = snapshot(&mut terminal(sample));
+    let mut glyphs = Vec::new();
+    build_row_fg_classified(
+        &rows[0],
+        80,
+        0,
+        &styles,
+        &extras,
+        &fixture_renderer(false),
+        &TermColors::default(),
+        &mut GridGlyphRasterizer::new(),
+        &mut GridRenderer::Cpu(CpuGridRenderer::new(80, 12)),
+        32.0,
+        20.0,
+        48.0,
+        None,
+        &[],
+        &fonts,
+        0,
+        None,
+        &mut glyphs,
+        None,
+        &[],
+    );
+    let mut text = Text::new(&fonts);
+    text.init_cpu();
+    text.draw(
+        0.0,
+        0.0,
+        sample,
+        &DrawOpts {
+            font_size: 32.0,
+            ..DrawOpts::default()
+        },
+    );
+    let ui = text.instances();
+    assert!(
+        ui.len() >= 2,
+        "fixture must keep a separately positioned mark"
+    );
+    assert_eq!(glyphs.len(), ui.len());
+    for (grid, ui) in glyphs.iter().zip(ui) {
+        assert_eq!(
+            grid.grid_pos,
+            [0, 0],
+            "marks stay anchored to the base cell"
+        );
+        assert_eq!(grid.glyph_size, ui.glyph_size);
+        let grid_ink = [grid.bearings[0] as f32, 48.0 - grid.bearings[1] as f32];
+        let ui_ink = [
+            ui.pos[0] + ui.bearings[0] as f32,
+            ui.pos[1] + ui.bearings[1] as f32,
+        ];
+        for axis in 0..2 {
+            assert!(
+                (grid_ink[axis] - ui_ink[axis]).abs() <= 0.51,
+                "grid and UI disagree about mark placement: {grid_ink:?} vs {ui_ink:?}"
+            );
+        }
     }
 }

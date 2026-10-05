@@ -15,6 +15,19 @@ crate-local license files.
 MIT OR Apache-2.0. Both original licenses are included in that directory;
 `UPSTREAM.md` records source provenance, the local correction and review policy.
 
+## AccessKit native adapters
+
+`third-party/accesskit-windows/` contains a modified AccessKit Windows 0.35.1,
+licensed under MIT OR Apache-2.0, with Chromium-derived code under its included
+BSD license. The directory preserves all three license texts and source notices.
+`UPSTREAM.md` records the exact origin and local boundary corrections.
+
+`third-party/accesskit-macos/` contains a modified AccessKit macOS 0.27.1 under
+the same MIT OR Apache-2.0 terms and included Chromium BSD notice.
+`third-party/accesskit-unix/` contains a modified AccessKit Unix 0.24.0 under
+MIT OR Apache-2.0. Both directories retain their exact-source license texts and
+document local changes in their own `UPSTREAM.md` files.
+
 ## Cascadia Code Nerd Font
 
 `sugarloaf/src/font/resources/CascadiaCode/*.ttf` is distributed under the

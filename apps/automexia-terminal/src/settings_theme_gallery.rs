@@ -59,6 +59,122 @@ const ACTIONS: [GalleryTarget; 7] = [
     GalleryTarget::Refresh,
     GalleryTarget::Back,
 ];
+
+impl SettingsView {
+    pub(super) fn gallery_accessibility_surface(
+        &self,
+        scale: f32,
+        viewport: accesskit::Rect,
+    ) -> Option<automexia_ui_model::accessibility::Surface> {
+        use accesskit::{Node, Role};
+        use automexia_ui_model::accessibility::{
+            physical_bounds, sanitize_accessible_text, Surface,
+        };
+        let gallery = self.gallery.as_ref()?;
+        let mut surface = Surface::dialog(
+            u64::MAX - 16,
+            "Themes",
+            physical_bounds(self.geometry.card.array(), scale, viewport)
+                .unwrap_or(viewport),
+        );
+        for (target, rect) in gallery.targets.iter().take(256) {
+            let Some(bounds) = physical_bounds(rect.array(), scale, viewport) else {
+                continue;
+            };
+            let (id, role, label, focused) = match *target {
+                GalleryTarget::Row(index) => {
+                    let label = if let Some(draft) = &gallery.draft {
+                        if index == 0 {
+                            format!("Name: {}", draft.name)
+                        } else if let Some((name, color)) = gallery.fields.get(index - 1)
+                        {
+                            format!(
+                                "{}: #{:02x}{:02x}{:02x}{:02x}",
+                                name.replace('-', " "),
+                                color[0],
+                                color[1],
+                                color[2],
+                                color[3]
+                            )
+                        } else {
+                            continue;
+                        }
+                    } else if let Some(entry) = gallery.entries.get(index) {
+                        format!(
+                            "{}. {}. {}",
+                            entry.name,
+                            entry.source.label(),
+                            match entry.validation {
+                                ValidationStatus::Valid => "Valid",
+                                ValidationStatus::LowContrast => "Low contrast",
+                                ValidationStatus::Invalid(_) => "Invalid file",
+                            }
+                        )
+                    } else {
+                        continue;
+                    };
+                    (
+                        100 + index as u64,
+                        Role::ListBoxOption,
+                        label,
+                        gallery.focus == 0 && index == gallery.selected,
+                    )
+                }
+                action => {
+                    let index = gallery
+                        .actions()
+                        .iter()
+                        .position(|candidate| *candidate == action)?;
+                    let label = match action {
+                        GalleryTarget::Apply if gallery.draft.is_some() => "Save copy",
+                        GalleryTarget::Apply => "Apply",
+                        GalleryTarget::Customize => "Customize",
+                        GalleryTarget::Import => "Import",
+                        GalleryTarget::Export => "Export",
+                        GalleryTarget::Configuration => "Use configuration",
+                        GalleryTarget::Refresh => "Refresh",
+                        GalleryTarget::Back => "Back",
+                        GalleryTarget::Row(_) => unreachable!(),
+                    };
+                    (
+                        index as u64 + 1,
+                        Role::Button,
+                        label.into(),
+                        gallery.focus == index + 1,
+                    )
+                }
+            };
+            let mut node = Node::new(role);
+            if let GalleryTarget::Row(index) = target {
+                if gallery.draft.is_none() {
+                    if let Some(entry) = gallery.entries.get(*index) {
+                        node.set_author_id(format!("theme:{}", entry.id));
+                    }
+                } else if *index == 0 {
+                    node.set_author_id("draft:name");
+                } else if let Some((name, _)) = gallery.fields.get(index - 1) {
+                    node.set_author_id(format!("draft:{name}"));
+                }
+            } else {
+                node.set_author_id(format!("action:{target:?}"));
+            }
+            node.set_label(sanitize_accessible_text(&label));
+            node.set_bounds(bounds);
+            if let Some(reason) =
+                gallery.unavailable(*target, self.temporary_customizations)
+            {
+                node.set_disabled();
+                node.set_description(reason);
+            }
+            if let GalleryTarget::Row(index) = target {
+                node.set_selected(*index == gallery.selected);
+            }
+            surface.push(id, node, focused);
+        }
+        Some(surface)
+    }
+}
+
 impl Gallery {
     fn actions(&self) -> &'static [GalleryTarget] {
         if self.draft.is_some() {
@@ -123,7 +239,6 @@ impl SettingsView {
             "preview":g.preview.array(),
         }))
     }
-    #[cfg(test)]
     pub(super) fn gallery_summary(&self) -> Option<String> {
         let g = self.gallery.as_ref()?;
         let entry = g.entries.get(g.selected);

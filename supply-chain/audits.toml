@@ -1,6 +1,30 @@
 
 # cargo-vet audits file
 
+[[audits.accesskit]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.25.1"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed the role/action schema, property indexing and replacement, node relationships, text metadata and geometry operations. This is an in-memory model with no process/provider I/O. The application constructs nodes through its bounded, acyclic semantic projection; it does not deserialize foreign trees. Finite geometry, text budgets and valid character-byte ranges remain caller invariants.
+"""
+
+[[audits.accesskit_atspi_common]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.21.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed weak-context lifetime, node lookups, role/state and interface mapping, cache/event construction, text positions and action forwarding; compared the disabled-state fixes with 0.20.0. Automexia bounds trees and adapter queues. The local Unix boundary additionally rejects disabled/read-only or oversized text replacements before this crate copies them. Application action dispatch accepts only its declared current-focus action; arbitrary provider actions do not become terminal input.
+"""
+
+[[audits.accesskit_consumer]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.39.1"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed tree updates/grafting, duplicate and focus invariants, change notifications, node filters, text-range positions and Unicode offset conversion. Malformed host-authored trees may assert; Automexia validates parent-first acyclic trees, unique identities, finite bounds and bounded text before publication. Native node references are generation/lifetime checked. No foreign tree payload is accepted into this consumer.
+"""
+
 [[audits.aead]]
 who = "Automexia automated source review"
 criteria = "safe-to-deploy"
@@ -15,6 +39,30 @@ criteria = "safe-to-deploy"
 version = "0.9.3"
 notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed software and accelerated backends, dispatch, block bounds and unsafe intrinsics. Constant-time claims remain dependent on supported hardware and compiler behavior.
+"""
+
+[[audits.atspi]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.29.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed the reexports and feature/dependency boundary. Automexia selects proxies without the default connection or p2p feature; the local adapter owns the existing asynchronous D-Bus connection. This facade adds no independent authentication, filesystem or process execution.
+"""
+
+[[audits.atspi-common]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed typed roles/states/interfaces, cache and event wire models, object references and serialization/error paths. Found an assertion when decoding a non-null ObjectRef with an empty bus name. Automexia avoids that deserializer for its sole incoming reference (Socket.Embed), validates OwnedUniqueName/OwnedObjectPath through zbus, and tests malformed and valid encoded replies. Other ObjectRef values are application-authored outbound data. Generic event clone/allocation APIs still require caller resource bounds; this record does not endorse unrestricted decoding of arbitrary peer event trees.
+"""
+
+[[audits.atspi-proxies]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.13.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed generated proxy traits, interface/destination declarations, typed argument/reply contracts and ProxyExt connection/path reuse. Automexia uses system accessibility bus/status/socket operations, not a new authentication owner. The local adapter bypasses the Socket.Embed ObjectRef reply decoder with checked zbus wire fields because the transitive decoder asserts on malformed input. Bus/provider work stays on the bounded adapter worker.
 """
 
 [[audits.bitflags]]
@@ -161,6 +209,38 @@ notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed normalization, arithmetic, comparisons, hashing and parsing. Caller must bound integer size and recursion/work for adversarial values; this is not constant-time arithmetic.
 """
 
+[[audits.phf]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.14.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed map/ordered-map/set lookup and indexing, empty-table handling, key verification and iterator ownership. Production tables are generated constants; untrusted query keys cannot replace displacement or entry arrays. Manually malformed public table fields can panic and are not accepted from terminal/provider input. No filesystem, process or network work is performed by lookup.
+"""
+
+[[audits.phf_generator]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.14.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed deterministic seeded table generation, collision detection, displacement construction and the optional ptrhash implementation. The search may retry indefinitely on invalid/custom duplicate key input; this application uses it only at compile time on fixed source tables, with macro duplicate checks. No runtime provider data, process execution or network input reaches generation.
+"""
+
+[[audits.phf_macros]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.14.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed accepted Syn literal/tuple keys, type and duplicate validation, cfg handling, hash generation and emitted Rust tables. Unsupported expressions return compile errors; malformed numeric source literals can fail compilation. Inputs are trusted package source, not runtime terminal strings. Expansion does not execute shell commands or perform provider I/O.
+"""
+
+[[audits.phf_shared]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.14.0"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed portable keyed hashing, displacement/index arithmetic and supported primitive encodings. The shared-byte slice reinterpretation is limited to initialized one-byte u8/i8/bool elements with identical alignment; no lifetime extension or mutation is introduced. Callers provide valid generated table dimensions; hashing is not a cryptographic authentication primitive.
+"""
+
 [[audits.poly1305]]
 who = "Automexia automated source review"
 criteria = "safe-to-deploy"
@@ -207,4 +287,52 @@ criteria = "safe-to-deploy"
 version = "0.6.1"
 notes = """
 Automated source review of the exact checksummed crates.io archive, including production Rust, manifests and relevant tests/native/build inputs. This is not a human or formal cryptographic audit. Reviewed block iteration, length handling, trait contracts and fixed-length constant-time tag comparison. One-time-key and backend timing obligations remain with the chosen implementation.
+"""
+
+[[audits.zbus-lockstep]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.5.2"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed compile/test-time XML interface lookup and method/signal/property signature comparisons. XML paths come from explicit source arguments, trusted build environment or the package manifest directory. Operations read files and return parsed signatures; there is no command, network or file-write capability. Callers bound source inventories; malformed build inputs may fail compilation.
+"""
+
+[[audits.zbus-lockstep-macros]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "0.5.2"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed attribute parsing, manifest-relative XML discovery, interface validation and emitted cfg(test) comparisons. Macro expansion reads pinned source XML and returns the original Rust item plus tests. Directory/file size and parse failures are build-time concerns, not runtime provider input. No unsafe code, external command execution or network access was introduced.
+"""
+
+[[audits.zbus_xml]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+version = "5.2.1"
+notes = """
+Automated source review of the exact Cargo.lock-checksummed crates.io archive and manifest; extracted source bytes were also verified. This is not an independent human audit or native accessibility certification. Reviewed the winnow node/interface parser, explicit nesting stack and depth limit, attribute/entity decoding, typed signatures, serialization and escaping. Entity handling accepts built-ins and valid numeric references without external entity resolution. from_reader reads the supplied stream fully, so callers must bound it; Automexia uses pinned compile-time interface XML. No parser-driven filesystem/network resolution or unsafe block was found.
+"""
+
+[[audits.zvariant]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "5.14.0 -> 5.15.0"
+notes = """
+Automated review of exact checksummed source/manifests and the delta from the existing 5.14.0 baseline. DBus serialization/deserialization now rejects static, nested and dynamic Maybe signatures through typed errors; optional GVariant APIs are deprecated with compatibility preserved and feature-unification wildcard failures handled explicitly. Reviewed associated regression cases. No new unsafe operation or ambient I/O in this delta. This is source review, not a general unbounded-message or native-platform certification.
+"""
+
+[[audits.zvariant_derive]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "5.14.0 -> 5.15.0"
+notes = """
+Automated review of exact checksummed source/manifests and the delta, including direct comparison of code moved to zvariant_utils. Reviewed crate-path/namespace resolution, combined attribute lists, duplicate rejection and propagation of invalid field attributes; generation remains compile-time Syn/quote processing. Cargo metadata lookup remains the existing proc-macro-crate responsibility. No new runtime I/O or unsafe operation in the delta.
+"""
+
+[[audits.zvariant_utils]]
+who = "Automexia automated source review"
+criteria = "safe-to-deploy"
+delta = "4.0.0 -> 4.2.0"
+notes = """
+Automated review of exact checksummed source/manifests and the delta, including dict/signature/type/value helpers moved from zvariant_derive. Reviewed default/explicit crate paths, parsed attribute validation, finite syntax traversal and recursive Maybe detection over parsed signatures. No new provider I/O, command execution or unsafe operation in the delta. Caller message and signature budgets remain required.
 """

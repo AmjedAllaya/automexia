@@ -1442,9 +1442,8 @@ const RUN_BUCKET_COUNT: usize = 256;
 const RUN_BUCKET_SIZE: usize = 8;
 
 /// One shaped glyph. Same shape from both CoreText (macOS) and swash
-/// (non-macOS). `cluster` is a UTF-8 byte offset into the run string.
+/// (non-macOS). Clusters use UTF-16 units on macOS, UTF-8 bytes elsewhere.
 #[derive(Clone, Copy, Debug)]
-#[allow(dead_code)] // `x` / `y` / `advance` kept for future kerning-aware layout
 struct ShapedGlyph {
     id: u16,
     x: f32,
@@ -1497,11 +1496,9 @@ pub struct GridGlyphRasterizer {
     // cell mapping.
     #[cfg(target_os = "macos")]
     run_utf16_scratch: Vec<u16>,
-    /// On macOS, `run_cell_starts[i]` is the offset (in UTF-16 code
-    /// units) where cell `i` of the run begins inside
-    /// `run_utf16_scratch`. Length = cells in the run. Used to walk
-    /// shaped glyphs back to the cell they belong to.
-    #[cfg(target_os = "macos")]
+    /// Source offset where each appended cell begins: UTF-16 units on
+    /// macOS, UTF-8 bytes elsewhere. Combining marks are part of their
+    /// base cell and must never advance this mapping.
     run_cell_starts: Vec<u32>,
     /// `run_cell_columns[i]` is the absolute grid column for the
     /// `i`-th appended cell in the run. Decouples the cell-index-
@@ -1564,7 +1561,6 @@ impl GridGlyphRasterizer {
             run_hasher: rapidhash::fast::RapidHasher::default(),
             #[cfg(target_os = "macos")]
             run_utf16_scratch: Vec::new(),
-            #[cfg(target_os = "macos")]
             run_cell_starts: Vec::new(),
             run_cell_columns: Vec::new(),
             #[cfg(test)]
@@ -1691,13 +1687,10 @@ fn span_style_for_flags(style_flags: u8) -> rio_backend::sugarloaf::SpanStyle {
     s
 }
 
-/// Hash the cell's zero-width combining codepoints into the per-run
-/// hasher. Each combining codepoint is stamped as `(cp, cluster)` with
-/// the same cluster as the base cell. Variation Selectors (VS-15 /
-/// VS-16) only steer presentation form, not glyph identity, so they're
-/// skipped to keep the cache key stable across presentation toggles.
+/// Append the cell's complete Unicode sequence to the shaper and cache key.
+/// Variation selectors affect glyph substitution, so they are retained too.
 #[inline]
-fn hash_combining(
+fn append_combining(
     rasterizer: &mut GridGlyphRasterizer,
     extras_table: &ExtrasMap,
     sq: Square,
@@ -1713,11 +1706,22 @@ fn hash_combining(
         return;
     };
     for &cp in &extras.zerowidth {
-        if cp == '\u{FE0E}' || cp == '\u{FE0F}' {
-            continue;
-        }
+        #[cfg(target_os = "macos")]
+        rasterizer
+            .run_utf16_scratch
+            .extend_from_slice(cp.encode_utf16(&mut [0; 2]));
+        #[cfg(not(target_os = "macos"))]
+        rasterizer.run_str_scratch.push(cp);
         rasterizer.run_hasher.write_u32(cp as u32);
         rasterizer.run_hasher.write_u32(cluster);
+    }
+}
+
+fn shaping_script(ch: char) -> Option<rio_backend::sugarloaf::swash::text::Script> {
+    use rio_backend::sugarloaf::swash::text::{Codepoint, Script};
+    match ch.script() {
+        Script::Common | Script::Inherited | Script::Unknown => None,
+        script => Some(script),
     }
 }
 
@@ -1891,6 +1895,13 @@ fn shape_run_swash(
     let mut shaper = rasterizer
         .shape_ctx
         .builder(font_ref)
+        .script(
+            rasterizer
+                .run_str_scratch
+                .chars()
+                .find_map(shaping_script)
+                .unwrap_or(rio_backend::sugarloaf::swash::text::Script::Common),
+        )
         .size(size_u16 as f32)
         .features(features.iter().copied())
         .variations(wght_var.iter().copied())
@@ -2246,6 +2257,7 @@ pub fn build_row_fg_classified(
         // + bits/mask/compare. Mirrors ghostty `font/shaper/run.zig:140`
         // (`if (prev_cell.style_id == cell.style_id) break :style;`).
         let mut prev_style_id = run_start_style_id;
+        let mut run_script = shaping_script(ch);
 
         // Kitty Unicode placeholder shapes as a space — the cell
         // joins the run, the shaper emits an invisible space glyph
@@ -2258,13 +2270,11 @@ pub fn build_row_fg_classified(
             ch
         };
 
+        rasterizer.run_cell_starts.clear();
+        rasterizer.run_cell_starts.push(0);
         #[cfg(target_os = "macos")]
         {
             rasterizer.run_utf16_scratch.clear();
-            rasterizer.run_cell_starts.clear();
-            rasterizer
-                .run_cell_starts
-                .push(rasterizer.run_utf16_scratch.len() as u32);
             let mut buf = [0u16; 2];
             rasterizer
                 .run_utf16_scratch
@@ -2285,9 +2295,8 @@ pub fn build_row_fg_classified(
         rasterizer.run_hasher.write_u32(0);
         // Hash the cell's zero-width combining codepoints too — without
         // this, `(e, U+0301)` and `(e, U+0302)` would alias in the run
-        // cache. Variation Selectors (VS-15 / VS-16) don't change the
-        // glyph identity, so skip them.
-        hash_combining(rasterizer, extras_table, sq, 0);
+        // cache or disappear from the text passed to the shaper.
+        append_combining(rasterizer, extras_table, sq, 0);
 
         // Extend the run while (font_id, style_flags) match.
         let mut end = x + 1;
@@ -2368,6 +2377,12 @@ pub fn build_row_fg_classified(
                 prev_style_id = style2_id;
             }
             let ch2 = sq2.c();
+            if let Some(script) = shaping_script(ch2) {
+                if run_script.is_some_and(|prior| prior != script) {
+                    break;
+                }
+                run_script = Some(script);
+            }
             let (font_id2, _) =
                 rasterizer.resolve_font(ch2, run_style_flags, font_library, route_id);
             if font_id2 != font_id {
@@ -2392,6 +2407,9 @@ pub fn build_row_fg_classified(
             }
             #[cfg(not(target_os = "macos"))]
             {
+                rasterizer
+                    .run_cell_starts
+                    .push(rasterizer.run_str_scratch.len() as u32);
                 rasterizer.run_str_scratch.push(shape_ch2);
             }
             // Stamp the cell into the per-run hasher with its relative
@@ -2400,7 +2418,7 @@ pub fn build_row_fg_classified(
             let cluster = (end - run_start) as u32;
             rasterizer.run_hasher.write_u32(shape_ch2 as u32);
             rasterizer.run_hasher.write_u32(cluster);
-            hash_combining(rasterizer, extras_table, sq2, cluster);
+            append_combining(rasterizer, extras_table, sq2, cluster);
             rasterizer.run_cell_columns.push(end as u16);
             end += 1;
         }
@@ -2442,8 +2460,8 @@ pub fn build_row_fg_classified(
         let (synthetic_bold, synthetic_italic) =
             rasterizer.get_synthesis(font_id, font_library);
 
-        // Collect (glyph_id, cell_offset) pairs by walking the shape
-        // result alongside a monotonic cluster → cell-offset cursor.
+        // Map shaped clusters to their fixed source cells, retaining the
+        // shaper's intra-cell pen and mark offsets.
         // Done up-front so we can release borrows on `rasterizer`
         // before the emit loop (which takes `&mut rasterizer` for the
         // rasterize + atlas-insert step).
@@ -2456,41 +2474,32 @@ pub fn build_row_fg_classified(
         // (ASCII identifiers, short bursts of non-ligature text)
         // entirely on the stack — no heap touch. Ligature-heavy or
         // shaped emoji runs that outgrow 64 slots spill to heap once.
-        let mut glyph_emits: SmallVec<[(u16, u16); 64]> = SmallVec::new();
+        let mut glyph_emits: SmallVec<[(u16, u16, [f32; 2]); 64]> = SmallVec::new();
         {
+            let mut previous_cell = None;
+            let mut local_pen = 0.0;
             let glyphs =
                 run_cache_get(&mut rasterizer.run_cache, hash).expect("just inserted");
-            let mut cell_idx_in_run: u16 = 0;
-            #[cfg(target_os = "macos")]
-            {
-                let cell_starts = &rasterizer.run_cell_starts;
-                for g in glyphs {
-                    while (cell_idx_in_run as usize + 1) < cell_starts.len()
-                        && cell_starts[cell_idx_in_run as usize + 1] <= g.cluster
-                    {
-                        cell_idx_in_run = cell_idx_in_run.saturating_add(1);
-                    }
-                    glyph_emits.push((g.id, cell_idx_in_run));
+            for g in glyphs {
+                // Native shapers may reorder glyphs. Each cluster maps directly
+                // to a source cell, never through a count of Unicode scalars.
+                let cell = rasterizer
+                    .run_cell_starts
+                    .partition_point(|start| *start <= g.cluster)
+                    .saturating_sub(1);
+                if previous_cell != Some(cell) {
+                    local_pen = 0.0;
+                    previous_cell = Some(cell);
                 }
-            }
-            #[cfg(not(target_os = "macos"))]
-            {
-                let mut char_cursor =
-                    rasterizer.run_str_scratch.char_indices().peekable();
-                for g in glyphs {
-                    while let Some(&(byte_offset, _)) = char_cursor.peek() {
-                        if (byte_offset as u32) >= g.cluster {
-                            break;
-                        }
-                        char_cursor.next();
-                        cell_idx_in_run = cell_idx_in_run.saturating_add(1);
-                    }
-                    glyph_emits.push((g.id, cell_idx_in_run));
+                let offset = [local_pen + g.x, g.y];
+                local_pen += g.advance;
+                if offset.into_iter().all(f32::is_finite) {
+                    glyph_emits.push((g.id, cell as u16, offset));
                 }
             }
         }
 
-        for &(glyph_id, cell_idx_in_run) in &glyph_emits {
+        for &(glyph_id, cell_idx_in_run, offset) in &glyph_emits {
             // Map the appended-cell index back to its actual grid
             // column. Spacer cells were skipped from the run text so
             // `cell_idx_in_run` no longer equals `column - run_start`;
@@ -2599,7 +2608,18 @@ pub fn build_row_fg_classified(
                     has_trailing_space,
                 )
             } else {
-                [slot.bearing_x, slot.bearing_y]
+                // Grid bearings are x-right/y-up. Font mark offsets share
+                // those axes; preserve them without moving subsequent cells.
+                [
+                    (f32::from(slot.bearing_x) + offset[0])
+                        .round()
+                        .clamp(i16::MIN as f32, i16::MAX as f32)
+                        as i16,
+                    (f32::from(slot.bearing_y) + offset[1])
+                        .round()
+                        .clamp(i16::MIN as f32, i16::MAX as f32)
+                        as i16,
+                ]
             };
 
             fg_scratch.push(CellText {

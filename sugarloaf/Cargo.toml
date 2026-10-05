@@ -55,6 +55,7 @@ image_rs = { workspace = true }
 rio-graphics = { workspace = true, features = ["glyph"] }
 rio-fonts = { workspace = true }
 unicode-width = { workspace = true }
+unicode-segmentation = { workspace = true }
 guillotiere = "0.7.0"
 rustc-hash = { workspace = true }
 raw-window-handle = { workspace = true }

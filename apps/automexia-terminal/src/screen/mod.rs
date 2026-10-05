@@ -6,12 +6,14 @@
 // were retired from https://github.com/alacritty/alacritty/blob/c39c3c97f1a1213418c3629cc59a1d46e34070e0/alacritty/src/input.rs
 // which is licensed under Apache 2.0 license.
 
+mod accessibility;
 pub(crate) mod action_surface;
 mod command_actions;
 mod compatibility;
 mod connection_hub;
 mod grid_lifecycle;
 pub mod hint;
+mod ime;
 mod settings;
 pub(crate) mod suggestions;
 pub mod touch;
@@ -945,6 +947,8 @@ pub struct Screen<'screen> {
     pub sugarloaf: Sugarloaf<'screen>,
     pub context_manager: context::ContextManager<EventProxy>,
     last_ime_cursor_pos: Option<(f32, f32)>,
+    composition_owner: crate::ime::CompositionOwner,
+    composition_caret: Option<(f32, f32, f32)>,
     hints_config: Vec<std::rc::Rc<rio_backend::config::hints::Hint>>,
     pub resize_state: Option<crate::layout::ResizeState>,
     #[cfg(target_os = "macos")]
@@ -1242,6 +1246,8 @@ impl Screen<'_> {
             binding_states: rustc_hash::FxHashMap::default(),
             last_compatibility_bindings: rustc_hash::FxHashMap::default(),
             last_ime_cursor_pos: None,
+            composition_owner: crate::ime::CompositionOwner::default(),
+            composition_caret: None,
             resize_state: None,
             #[cfg(target_os = "macos")]
             allow_manual_dragging: config.navigation.is_enabled(),
@@ -6001,6 +6007,7 @@ impl Screen<'_> {
             self.mark_dirty();
         }
         if !is_focused {
+            self.cancel_terminal_composition();
             self.dismiss_suggestions(
                 crate::automexia::suggestions::SuggestionInvalidation::FocusLost,
             );
@@ -6915,6 +6922,7 @@ impl Screen<'_> {
                 self.context_manager.schedule_render_on_route(10);
             }
         }
+        self.draw_terminal_composition();
         let preview_panel = {
             let current_grid = self.context_manager.current_grid();
             current_grid.current_item().map(|item| {
@@ -7996,6 +8004,25 @@ impl Screen<'_> {
                 };
                 self.paste(text, false);
             }
+            "ime-preedit-hex" => {
+                let Some(encoded) = fields.next().filter(|value| value.len() <= 8192)
+                else {
+                    return;
+                };
+                let Some(bytes) = decode_native_test_hex(encoded) else {
+                    return;
+                };
+                let Ok(text) = String::from_utf8(bytes) else {
+                    return;
+                };
+                let end = text.len();
+                self.terminal_ime(rio_window::event::Ime::Enabled);
+                self.terminal_ime(rio_window::event::Ime::Preedit(
+                    text,
+                    Some((end, end)),
+                ));
+            }
+            "ime-cancel" => self.terminal_ime(rio_window::event::Ime::Disabled),
             "write-hex" => {
                 let Some(encoded) = fields.next() else {
                     return;
@@ -8026,6 +8053,19 @@ impl Screen<'_> {
             return;
         }
         if !self.context_manager.config.keyboard.ime_cursor_positioning {
+            return;
+        }
+
+        if let Some((x, y, height)) = self.composition_caret.filter(|_| {
+            self.composition_owner.route() == Some(self.context_manager.current_route())
+        }) {
+            if self.last_ime_cursor_pos != Some((x, y)) {
+                window.set_ime_cursor_area(
+                    rio_window::dpi::PhysicalPosition::new(f64::from(x), f64::from(y)),
+                    rio_window::dpi::PhysicalSize::new(1.0, f64::from(height)),
+                );
+                self.last_ime_cursor_pos = Some((x, y));
+            }
             return;
         }
 

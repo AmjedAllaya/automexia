@@ -451,6 +451,18 @@ exclude = [
     "zstd-safe",
 ]
 
+[policy.accesskit_macos]
+audit-as-crates-io = false
+notes = "Modified local adapter source is pinned by check_accessibility_contract.py; native and boundary evidence remain distinct. This is not a registry audit. Transitive registry dependencies retain normal review requirements. See third-party/accesskit-macos/UPSTREAM.md."
+
+[policy.accesskit_unix]
+audit-as-crates-io = false
+notes = "Modified local adapter source is pinned by check_accessibility_contract.py; native and boundary evidence remain distinct. This is not a registry audit. Transitive registry dependencies retain normal review requirements. See third-party/accesskit-unix/UPSTREAM.md."
+
+[policy.accesskit_windows]
+audit-as-crates-io = false
+notes = "Modified local source is pinned by check_accessibility_contract.py and tested with native/boundary regressions. This is not an audit of the registry package. Transitive registry dependencies retain normal review requirements. See third-party/accesskit-windows/UPSTREAM.md."
+
 [policy.corcovado]
 audit-as-crates-io = true
 

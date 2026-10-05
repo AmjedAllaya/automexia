@@ -1,6 +1,6 @@
 # ADR 0013: Renderer-independent accessibility model
 
-- Status: Accepted boundary; implementation partial; native evidence external
+- Status: Accepted boundary; implementation partial; assistive-technology evidence external
 - Date: 2026-08-14
 - Owners: frontend, platform, and accessibility maintainers
 
@@ -20,10 +20,28 @@ GPU drawing and privileged terminal/provider work. Current source contains
 bounded UI semantics, including the nodes in
 `automexia-ui-model/src/connection_hub.rs`.
 
-This is partial implementation, not a complete native accessibility tree.
-The workspace does not currently integrate AccessKit. Native screen-reader
-coverage and complete platform adapter evidence remain unverified; this
-document does not announce an implementation date or a future design.
+This is partial implementation, not a certified native accessibility tree.
+`automexia-ui-model::accessibility` projects bounded nodes into AccessKit.
+The frontend wraps AccessKit's UIA, AX and AT-SPI platform adapters because
+the repository's windowing fork cannot use its upstream winit adapter directly.
+Callbacks request a frame or queue bounded focus requests; they never read a
+PTY, execute input, or obtain provider credentials. The native adapter is owned
+by the window and is dropped before that window.
+
+The active terminal supplies its current visible snapshot. Covered and inactive
+terminals are omitted. Settings and palette controls use their existing painted
+rectangles and focus; Connection Hub adopts its existing semantic projections.
+Some secondary surfaces still expose descriptive summaries; header/tab-rail/
+footer controls and native editing/activation remain incomplete. Native UIA and
+AT-SPI fixtures exercise the application; the manual macOS workflow exercises
+AppKit adapter APIs. These API checks are distinct from screen-reader usability,
+real OS input methods and physical display scaling, which remain unverified.
+
+Local platform adaptations retain upstream protocol implementations and licenses.
+Source digests pin the reviewed boundaries: native range/value validation, stale
+window/view handling, and bounded Unix worker events and registry replies. They
+are not registry-package audits. Transitive dependencies keep their normal review
+requirements. Ordinary keyboard behavior retains its existing input owner.
 
 The verification requirements below remain mandatory. Model tests and visual
 appearance do not substitute for native accessibility evidence.
@@ -49,6 +67,6 @@ Implementation is accepted only when:
 ## Consequences
 
 This adds a deliberate adapter boundary and test surface, but avoids separate
-semantic implementations in each renderer. v0.4 remains truthful: it ships the
-keyboard/focus/contrast/scaling baseline and documents limitations without
-claiming a complete accessibility tree.
+semantic implementations in each renderer. Model, Unicode parser, IME and
+concurrency tests are separate from native API and assistive-technology evidence.
+An available adapter or a passing compile does not certify its operating system.

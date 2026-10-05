@@ -18,7 +18,8 @@
 // To refresh the tables for a newer Unicode revision, regenerate them
 // against upstream wezterm-char-props' `codegen/` crate (which parses
 // `emoji-variation-sequences.txt` and `DerivedCoreProperties.txt`) and
-// drop the generated files in.
+// update the entry data. Keep emoji_variation entries in phf_map! so the
+// compile-time generator and lookup runtime always use matching hash layouts.
 
 #![cfg_attr(not(feature = "std"), no_std)]
 

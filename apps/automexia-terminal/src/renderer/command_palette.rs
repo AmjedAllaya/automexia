@@ -2121,7 +2121,6 @@ impl CommandPalette {
     /// Opt-in native fixture semantics. Quick Action pages include selected
     /// labels/details (possibly command text); keep this evidence private.
     /// Queries and unrelated font/extension/provider rows are not exported.
-    #[cfg(any(test, feature = "native-gui-test-hooks"))]
     pub fn accessibility_summary(&self) -> Option<String> {
         self.enabled.then(|| {
             if let Some(editor) = &self.shortcut_editor {
@@ -2144,6 +2143,97 @@ impl CommandPalette {
             } else { String::new() };
             format!("{scope}; {count} results; selected {}; {selected}; query focused; Enter opens; Alt+Left or empty-query Backspace back; Escape back or closes root", if count == 0 { 0 } else { self.selected_index.min(count - 1) + 1 })
         })
+    }
+
+    pub(crate) fn accessibility_surface(
+        &self,
+        dimensions: (f32, f32, f32),
+    ) -> automexia_ui_model::accessibility::Surface {
+        use accesskit::{Node, Rect, Role};
+        use automexia_ui_model::accessibility::{
+            physical_bounds, sanitize_accessible_text, Surface,
+        };
+        let (width, height, scale) = dimensions;
+        let viewport = Rect::new(0.0, 0.0, width as f64, height as f64);
+        let rows = self.filtered_rows();
+        let (x, y, w, h, count) =
+            self.palette_rect_for_count(width, height, scale, rows.len());
+        let mut surface = Surface::dialog(
+            u64::MAX - 7,
+            "Command palette",
+            physical_bounds([x, y, w, h], scale, viewport).unwrap_or(viewport),
+        );
+        if self.shortcut_editor.is_some() {
+            let mut node = Node::new(Role::Label);
+            node.set_label(sanitize_accessible_text(
+                &self.accessibility_summary().unwrap_or_default(),
+            ));
+            surface.push(1, node, true);
+            return surface;
+        }
+        let mut input = Node::new(Role::SearchInput);
+        input.set_label("Search commands");
+        input.set_value(sanitize_accessible_text(&self.query));
+        input.set_description(
+            "Type to search. Arrows choose; Enter opens; Escape goes back.",
+        );
+        if let Some(bounds) = physical_bounds(
+            [
+                x + PALETTE_PADDING,
+                y + PALETTE_PADDING,
+                w - 2.0 * PALETTE_PADDING,
+                INPUT_HEIGHT,
+            ],
+            scale,
+            viewport,
+        ) {
+            input.set_bounds(bounds);
+        }
+        surface.push(1, input, rows.is_empty());
+        let start = bounded_scroll_offset(rows.len(), count, self.scroll_offset);
+        let results_y =
+            y + PALETTE_PADDING + INPUT_HEIGHT + SEPARATOR_HEIGHT + RESULTS_MARGIN_TOP;
+        for (display, (_, row)) in rows.iter().skip(start).take(count).enumerate() {
+            let index = start + display;
+            let Some(bounds) = physical_bounds(
+                [
+                    x + PALETTE_PADDING,
+                    results_y + display as f32 * RESULT_ITEM_HEIGHT,
+                    w - 2.0 * PALETTE_PADDING,
+                    RESULT_ITEM_HEIGHT - 2.0,
+                ],
+                scale,
+                viewport,
+            ) else {
+                continue;
+            };
+            let mut node = Node::new(Role::ListBoxOption);
+            let identity = match row {
+                PaletteRow::ActionControl { id, .. } => Some(format!("control:{id}")),
+                PaletteRow::Command { title, .. } => Some(format!("command:{title}")),
+                PaletteRow::Navigation(category) => {
+                    Some(format!("navigation:{category:?}"))
+                }
+                PaletteRow::Font { family } => Some(format!("font:{family}")),
+                PaletteRow::Market { id, .. } => Some(format!("extension:{id}")),
+                PaletteRow::QuickAction { item } => {
+                    Some(format!("quick-action:{}", item.id))
+                }
+                PaletteRow::LastCommand(action) => {
+                    Some(format!("last-command:{}", action.label()))
+                }
+                _ => None,
+            };
+            if let Some(identity) = identity {
+                node.set_author_id(identity);
+            }
+            node.set_label(sanitize_accessible_text(row.title()));
+            node.set_description(sanitize_accessible_text(row.shortcut()));
+            node.set_bounds(bounds);
+            node.set_selected(index == self.selected_index);
+            surface.push(100 + index as u64, node, index == self.selected_index);
+        }
+        surface
     }
 
     pub fn move_selection_up(&mut self) {
@@ -3257,6 +3347,61 @@ impl CommandPalette {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_semantics_track_palette_navigation_and_physical_row_bounds() {
+        let mut palette = CommandPalette::new();
+        palette.set_enabled(true);
+        for scale in [1.0, 1.25, 1.5, 2.0] {
+            let dimensions = (1280.0 * scale, 800.0 * scale, scale);
+            let before = palette.accessibility_surface(dimensions);
+            assert!(before
+                .elements
+                .iter()
+                .any(|item| item.node.role() == accesskit::Role::SearchInput));
+            let selected = before
+                .elements
+                .iter()
+                .find(|item| item.key == before.focus)
+                .unwrap();
+            assert_eq!(selected.node.is_selected(), Some(true));
+            let bounds = selected.node.bounds().unwrap();
+            let hit = palette
+                .hit_test(
+                    ((bounds.x0 + bounds.x1) / (2.0 * scale as f64)) as f32,
+                    ((bounds.y0 + bounds.y1) / (2.0 * scale as f64)) as f32,
+                    dimensions.0,
+                    dimensions.1,
+                    scale,
+                )
+                .unwrap();
+            assert_eq!(hit, Some(palette.selected_index));
+            palette.move_selection_down();
+            let after = palette.accessibility_surface(dimensions);
+            assert_ne!(before.focus, after.focus);
+            assert_eq!(
+                after
+                    .elements
+                    .iter()
+                    .filter(|item| item.node.is_selected() == Some(true))
+                    .count(),
+                1
+            );
+            palette.move_selection_up();
+        }
+        palette.set_query("no_matching_command_123456789".into());
+        let surface = palette.accessibility_surface((1280.0, 800.0, 1.0));
+        assert_eq!(
+            surface
+                .elements
+                .iter()
+                .find(|item| item.key == surface.focus)
+                .unwrap()
+                .node
+                .role(),
+            accesskit::Role::SearchInput
+        );
+    }
 
     #[test]
     fn test_set_enabled_resets_state() {

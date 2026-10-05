@@ -189,7 +189,6 @@ impl CompatibilityInspector {
         self.clear_confirmation
     }
 
-    #[cfg(any(test, feature = "native-gui-test-hooks"))]
     pub fn accessibility_summary(&self) -> String {
         let parked = self.snapshot.parked_topologies.len();
         format!(

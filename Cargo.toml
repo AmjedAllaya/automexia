@@ -35,11 +35,17 @@ members = [
     "tools/xtask",
     "tools/renderer-benchmarks",
     "third-party/inout",
+    "third-party/accesskit-windows",
+    "third-party/accesskit-unix",
+    "third-party/accesskit-macos",
 ]
 resolver = "2"
 
 [patch.crates-io]
 inout = { path = "third-party/inout" }
+accesskit_windows = { path = "third-party/accesskit-windows" }
+accesskit_unix = { path = "third-party/accesskit-unix" }
+accesskit_macos = { path = "third-party/accesskit-macos" }
 
 [workspace.package]
 version = "0.4.0"
@@ -70,6 +76,7 @@ log-level-environment = "AUTOMEXIA_LOG_LEVEL"
 shell-integration-environment = "AUTOMEXIA_SHELL_INTEGRATION"
 
 [workspace.dependencies]
+accesskit = "=0.25.1"
 automexia-keybindings = { path = "automexia-keybindings", version = "0.4.0" }
 automexia-extension-api = { path = "automexia-extension-api", version = "0.4.0" }
 automexia-extension-runtime = { path = "automexia-extension-runtime", version = "0.4.0" }

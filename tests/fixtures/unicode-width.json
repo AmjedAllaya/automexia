@@ -4,5 +4,9 @@
   "emoji_zwj": "\ud83d\udc69\u200d\ud83d\udcbb",
   "flag": "\ud83c\uddeb\ud83c\uddf7",
   "wide": "\u754c",
-  "variation_selector": "\u2764\ufe0f"
+  "variation_selector": "\u2764\ufe0f",
+  "arabic": "\u0645\u0631\u062d\u0628\u0627",
+  "hebrew": "\u05e9\u05dc\u05d5\u05dd",
+  "mixed_bidi": "abc \u05e9\u05dc\u05d5\u05dd 123",
+  "cjk_combining": "\u65e5\u672c e\u0301"
 }

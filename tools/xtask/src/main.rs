@@ -2905,6 +2905,8 @@ fn verify_architecture() -> TaskResult {
     run_python("tools/ci/check_session_launch_d0.py")?;
     run_python("tools/ci/check_session_recovery.py")?;
     run_python("tools/ci/test_session_recovery.py")?;
+    run_python("tools/ci/check_accessibility_contract.py")?;
+    run_python("tools/ci/test_accessibility_contract.py")?;
     run_python("tools/ci/check_runtime_trust.py")?;
     run_python("tools/ci/check_ecosystem_d7_cp6.py")?;
     run_python("tools/ci/check_ghostty_compatibility.py")?;
@@ -3117,6 +3119,9 @@ fn verify_architecture() -> TaskResult {
         (
             "automexia-ui-model",
             &[
+                "accesskit",
+                "loom",
+                "proptest",
                 "automexia-command-productivity",
                 "automexia-connectivity",
                 "automexia-extension-api",

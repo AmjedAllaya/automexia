@@ -72,6 +72,79 @@ after route replacement or closure.
 
 ## Testing
 
+### Current implementation and limits
+
+Native adapters use AccessKit for Windows UI Automation, macOS accessibility and
+Linux AT-SPI. Projection activates when accessibility is requested; ordinary
+terminal rendering does not build the semantic tree. Only the active visible
+terminal is included, with explicit successful/failed command-result labels.
+Covered terminal content is omitted while a modal is open. Accessibility clients
+can request focus on the current control; terminal commands and settings changes
+continue through the existing keyboard handlers.
+
+Settings and command-palette controls have individual roles, labels, values,
+states and painted bounds. Connection Hub reuses its renderer-neutral models.
+Some secondary dialogs still expose summaries. Header/tab-rail/footer controls,
+full document selection/caret operations and complete native control activation
+are not yet projected. Ordinary keyboard navigation remains authoritative. Terminal
+cells remain in application order, including mixed Arabic/Hebrew text; this does
+not promise paragraph bidi reordering of terminal applications.
+
+`rio-fonts::fallback` defines the font chain: session glyphs, user symbol maps,
+configured style and regular faces, installed color emoji, then the native script
+cascade. Missing fonts are optional and no font is downloaded. Windows tries
+Segoe UI Emoji, macOS Apple Color Emoji, and Linux Noto Color Emoji first.
+Explicit user faces take precedence. Color glyphs retain their font palette;
+fallback never changes the terminal's cell dimensions.
+
+IME preedit is transient and bounded. Its caret follows grapheme boundaries and
+the complete composition is painted separately from terminal history. Pane or
+overlay changes cancel terminal composition so a delayed commit cannot type
+into the replacement input target.
+
+The Windows native API fixture runs through the existing isolated GUI harness:
+
+```powershell
+powershell -NoProfile -File tests/integration/resize-stress-windows.ps1 -Binary target/debug/automexia.exe -AccessibilityOnly
+```
+
+It requires a binary built with `visual-test-hooks`. It reads the owned
+window's UIA tree and text ranges, checks Unicode, modal isolation, control bounds
+and resize. A feature-gated preedit event checks composition projection and
+cancellation; it does not originate in the OS input service. It does not record
+terminal text in its success report. This fixture
+does not substitute for Narrator/NVDA review, native IME-service input, VoiceOver
+or Orca validation. Their certification remains pending native evidence.
+
+The Linux native API fixture uses an isolated session bus and X11 display. On a
+Linux development machine with Xvfb, xauth, xdotool, PyAT-SPI and libxkbcommon-x11:
+
+```sh
+cargo build -p automexia-terminal --bin automexia --features visual-test-hooks --locked
+GSETTINGS_BACKEND=memory timeout --signal=TERM --kill-after=8s 180s dbus-run-session -- xvfb-run -a -s '-screen 0 1280x800x24 -nolisten tcp' python3 tests/integration/accessibility-linux.py --binary target/debug/automexia
+```
+
+The fixture checks native text queries, concealed text, injected preedit,
+individual modal controls, disabled states, bounds and owned-process teardown.
+It rejects native client warnings. It does not modify the desktop's persistent
+accessibility setting. Ubuntu 24.04 X11 API coverage does not establish Orca,
+Wayland, other distribution or physical display coverage.
+
+The manually dispatched **Native accessibility API assurance** GitHub workflow
+runs the macOS adapter's tests and AppKit example on the existing Intel and
+Apple Silicon macOS runner types. It requires no signing credentials and does
+not publish a release. The example checks real AX text/value/geometry queries,
+malformed ranges, read-only and oversized editing requests, and detached-view
+lifetime handling. Its result must be checked on the exact requested commit;
+a cross-compile or a workflow definition is not native runtime evidence.
+
+All three local adapter adaptations have checked source inventories and retain
+upstream licenses. Dependency audits remain separate from that inventory.
+Adapter regression tests cover malformed native requests and bounded cleanup;
+Linux additionally checks D-Bus cache signatures and invalid registry replies.
+
+### Evidence requirements
+
 Visible changes require:
 
 1. renderer-neutral geometry, hierarchy, focus, semantic, clipping, contrast,

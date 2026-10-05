@@ -31,6 +31,9 @@ use rio_window::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+#[path = "settings_accessibility.rs"]
+mod accessibility;
+
 #[path = "settings_profiles.rs"]
 mod profiles;
 #[path = "settings_table_preview.rs"]
@@ -485,7 +488,6 @@ impl SettingsView {
         })
     }
 
-    #[cfg(test)]
     fn back_destination(&self) -> &'static str {
         if self
             .customizations
@@ -2005,7 +2007,6 @@ impl SettingsView {
         let selected = value.get(caret.min(anchor)..caret.max(anchor))?.to_owned();
         Some(selected)
     }
-    #[cfg(test)]
     pub(crate) fn accessibility_summary(&self) -> String {
         if let Some(summary) = self.gallery_summary() {
             return summary;
@@ -2033,7 +2034,6 @@ impl SettingsView {
         summary
     }
 
-    #[cfg(test)]
     fn accessibility_summary_without_package_notice(&self) -> String {
         if !self.is_open() {
             return String::new();

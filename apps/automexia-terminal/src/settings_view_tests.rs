@@ -28,6 +28,59 @@ fn opened() -> SettingsView {
 }
 
 #[test]
+fn native_semantics_use_painted_settings_bounds_focus_and_modal_isolation() {
+    use accesskit::Role;
+    for scale in [1.0, 1.25, 1.5, 2.0] {
+        let mut view = opened();
+        let mut raster = Raster::new(scale);
+        let theme = theme();
+        view.paint(&mut raster, theme);
+        let viewport =
+            accesskit::Rect::new(0.0, 0.0, 720.0 * scale as f64, 560.0 * scale as f64);
+        let surface = view.accessibility_surface(scale, viewport);
+        let focus = surface
+            .elements
+            .iter()
+            .find(|element| element.key == surface.focus)
+            .unwrap();
+        assert_eq!(focus.node.role(), Role::SearchInput);
+        let bounds = focus.node.bounds().unwrap();
+        assert_eq!(
+            bounds.x0,
+            f64::from(view.geometry.search.x) * f64::from(scale)
+        );
+        assert!(surface
+            .elements
+            .iter()
+            .any(|item| item.node.role() == Role::CheckBox));
+        named(&mut view, NamedKey::Tab);
+        view.paint(&mut raster, theme);
+        let surface = view.accessibility_surface(scale, viewport);
+        assert_ne!(
+            surface
+                .elements
+                .iter()
+                .find(|element| element.key == surface.focus)
+                .unwrap()
+                .node
+                .role(),
+            Role::SearchInput
+        );
+        view.request_reset();
+        view.paint(&mut raster, theme);
+        let surface = view.accessibility_surface(scale, viewport);
+        assert!(!surface
+            .elements
+            .iter()
+            .any(|item| item.node.role() == Role::SearchInput));
+        assert!(surface
+            .elements
+            .iter()
+            .any(|item| item.node.label() == Some("Cancel")));
+    }
+}
+
+#[test]
 fn menu_back_walks_outward_without_reopening_or_repeating_pages() {
     for (key, modifiers) in [
         (NamedKey::ArrowLeft, ModifiersState::ALT),

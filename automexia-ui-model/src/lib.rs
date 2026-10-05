@@ -11,6 +11,7 @@ use automexia_extension_api::{
 };
 use unicode_segmentation::UnicodeSegmentation;
 
+pub mod accessibility;
 pub mod connection_hub;
 pub mod information_bar;
 pub mod quick_actions;

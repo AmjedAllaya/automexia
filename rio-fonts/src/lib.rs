@@ -16,6 +16,7 @@
 
 #![forbid(unsafe_code)]
 
+pub mod fallback;
 pub mod nerd_font;
 
 /// Symbols-only Nerd Font as raw TTF bytes.

@@ -30,6 +30,7 @@ CODEOWNER_LOGIN = re.compile(
 )
 EXPECTED_REPOSITORY = "AmjedAllaya/automexia-terminal"
 EXPECTED_WORKFLOWS = {
+    "accessibility-native.yml": "Native accessibility API assurance",
     "ci.yml": "CI",
     "f5-openssh-assurance.yml": "F5 controlled native OpenSSH assurance",
     "linux-early-access.yml": "Linux Early Access release",
