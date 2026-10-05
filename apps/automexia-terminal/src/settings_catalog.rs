@@ -9,8 +9,11 @@ mod fonts;
 mod tables;
 #[path = "settings_timestamp_catalog.rs"]
 mod timestamps;
+#[path = "settings_visibility.rs"]
+mod visibility;
 #[path = "settings_window_controls_catalog.rs"]
 mod window_controls;
+pub(crate) use visibility::visible_controls;
 pub(crate) const WINDOW_CONTROLS: &str = "window-controls.style";
 
 use automexia_ui_model::settings::{

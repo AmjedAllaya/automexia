@@ -54,6 +54,12 @@ without covering or dimming the rest of the window. Runtime appearance changes
 preview immediately in the visible terminal. Keyboard and pointer input still
 belong to the open dialog; close it to interact with the terminal again.
 
+Controls appear only while their options can affect the result. Turning a feature
+off hides its dependent controls and preview editing targets. Turn it back on to
+restore them with their saved values and value sources unchanged. The enabling
+switch remains reachable. Search, keyboard focus and accessibility follow the
+visible controls; hiding a control also closes an unfinished editor for it.
+
 ## 1. Create a starter config
 
 Run:
@@ -153,14 +159,19 @@ live sample. **Use status colors** follows success/failure accents unless an
 individual color overrides it. These settings do not alter output highlighting.
 Turning **Show date and time** off keeps your choices and leaves the result controls
 active. Reset and Restore saved require confirmation, as on the other pages.
+Choosing **Hidden** for date or time hides its formatting, position and color
+controls. Named-month dates do not offer a numeric separator. Order and joining
+separators appear only when visible parts share a position. Duration formatting
+appears only while duration is shown.
 
-Each page keeps shared switches and styles in the list; its
-interactive preview opens the selected sample's colors. Disabling either feature
+Each page keeps shared switches in the list; enabled features also show their
+styles and interactive preview controls. The preview opens the selected sample's
+colors, showing only the foreground or background controls used by its style. Disabling either feature
 keeps its saved colors. Command backgrounds preserve ANSI text, explicit source
 backgrounds and selections, and tint ordinary table data without changing headers
 or borders. Kubernetes rows always keep their separate color ownership; recognized
 logs use their own colors while log highlighting is on. Blank rows are not tinted.
-The footer shows **E: edit preview**, including after saving and inside an
+When preview editing is available, the footer shows **E: edit preview**, including after saving and inside an
 element's controls. Cyan keys distinguish shortcuts from actions; the compact
 preview header turns green while editing. Press **E** outside a text
 field or click **Edit** to select preview elements. **Tab / Shift+Tab**

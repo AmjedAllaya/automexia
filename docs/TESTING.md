@@ -286,6 +286,21 @@ Run the production settings draw-emission microbenchmark explicitly with
 It reports p50/p95 over 200 warmed samples at two viewports. Preserve the build
 profile and host when comparing results; GPU work and presentation are excluded.
 
+Dependent settings are covered by the `dependent_` application tests: timestamp
+visibility and placement, table borders/banding, output styles, tag sources,
+font weight and extension options. They exercise the real settings catalog and
+view refresh, including search, focus, accessibility, same-revision editor
+cancellation and saved-value restoration. The native Windows harness mode
+`resize-stress-windows.ps1 -DependentControlsOnly` repeats physical off/on clicks
+for timestamps, tables and tags. Run both WGPU and `-UseCpuRenderer` builds with
+`visual-test-hooks,wgpu`; `-ModalCaptureDirectory` retains private screenshots.
+
+Run dependency benchmarks with
+`cargo test -p automexia-terminal --bin automexia --locked dependent_ -- --ignored --show-output`.
+Two tests emit JSON p50/p95 samples: catalog projection and production
+refresh/layout/paint at two viewports. These are same-host diagnostics with no
+GPU or presentation timing; they are not cross-machine latency claims.
+
 Close confirmation replaces both pending modal geometry and labels after all
 other overlay producers. Covered editors keep their state until cancellation.
 The focused native `resize-stress-windows.ps1` modes `-TagCustomizationOnly` and

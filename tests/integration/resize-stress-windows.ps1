@@ -47,6 +47,7 @@ param(
     [switch]$SessionRecoveryOnly,
     [switch]$QuickActionsOnly,
     [switch]$LiveBackdropOnly,
+    [switch]$DependentControlsOnly,
     [switch]$AccessibilityOnly
 )
 
@@ -1707,6 +1708,11 @@ $wallpaperConfig
     if ($LiveBackdropOnly) {
         . (Join-Path $PSScriptRoot 'live-backdrop-windows.ps1')
         Test-AutomexiaLiveBackdrop
+        return
+    }
+    if ($DependentControlsOnly) {
+        . (Join-Path $PSScriptRoot 'dependent-controls-windows.ps1')
+        Test-AutomexiaDependentControls
         return
     }
     if ($TagCustomizationOnly) {

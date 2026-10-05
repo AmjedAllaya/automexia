@@ -596,6 +596,12 @@ impl SettingsView {
             self.status = "Customizations are temporarily unavailable.".into();
             return;
         }
+        let Ok(catalog) =
+            crate::settings_catalog::visible_controls(catalog.clone(), &catalog)
+        else {
+            self.status = "Settings are temporarily unavailable.".into();
+            return;
+        };
         let mut view = ViewState::new(&catalog, 6);
         view.set_section(section, &catalog);
         self.view = Some(view);
@@ -791,6 +797,13 @@ impl SettingsView {
             self.refresh_customizations(catalog, packages, slot_pages);
             return;
         }
+        let Ok(catalog) =
+            crate::settings_catalog::visible_controls(catalog.clone(), &catalog)
+        else {
+            self.close();
+            self.status = "Settings are temporarily unavailable.".into();
+            return;
+        };
         if self
             .catalog
             .as_ref()
@@ -922,6 +935,13 @@ impl SettingsView {
                         .as_ref()
                         .and_then(|pages| pages.feature_catalog(&package.key))
                 };
+                let current = current.and_then(|page| {
+                    crate::settings_catalog::visible_controls(
+                        page,
+                        &navigation.full_catalog,
+                    )
+                    .ok()
+                });
                 if let Some(current) = current {
                     if let Some(view) = &mut self.view {
                         view.refresh(&current);
@@ -987,6 +1007,41 @@ impl SettingsView {
         if return_to_root {
             self.back_to_categories();
         }
+        // A live/configuration preview can change applicability without changing
+        // the preferences revision. Never keep an editor or pointer capture for
+        // a control that disappeared from the projected page.
+        if self.color_editor.as_ref().is_some_and(|editor| {
+            self.catalog
+                .as_ref()
+                .and_then(|page| page.get(&editor.id))
+                .is_none()
+        }) {
+            self.cancel_color();
+        }
+        if self.numeric_editor.as_ref().is_some_and(|editor| {
+            self.catalog
+                .as_ref()
+                .and_then(|page| page.get(&editor.id))
+                .is_none()
+        }) {
+            self.cancel_numeric();
+        }
+        if self.pending.as_ref().is_some_and(|edit| {
+            self.catalog
+                .as_ref()
+                .and_then(|page| page.get(&edit.id))
+                .is_none()
+        }) {
+            self.pending = None;
+        }
+        self.pressed = None;
+        if !self.preview_selector_available() {
+            self.preview_edit_mode = false;
+            self.preview_selected = None;
+            if matches!(self.focus, Focus::Preview | Focus::PreviewButton) {
+                self.focus = Focus::List;
+            }
+        }
         if unavailable {
             self.status = "Customizations are temporarily unavailable.".into();
         }
@@ -1023,7 +1078,14 @@ impl SettingsView {
                 return;
             };
             let Some(detail) = navigation.slot_pages.as_ref().and_then(|snapshot| {
-                selected_tag_catalog(&navigation.full_catalog, snapshot, slot_id).ok()
+                selected_tag_catalog(&navigation.full_catalog, snapshot, slot_id)
+                    .and_then(|page| {
+                        crate::settings_catalog::visible_controls(
+                            page,
+                            &navigation.full_catalog,
+                        )
+                    })
+                    .ok()
             }) else {
                 return;
             };
@@ -1052,6 +1114,13 @@ impl SettingsView {
                 .package_pages
                 .as_ref()
                 .and_then(|pages| pages.detail_catalog(&key))
+                .and_then(|page| {
+                    crate::settings_catalog::visible_controls(
+                        page,
+                        &navigation.full_catalog,
+                    )
+                    .ok()
+                })
             else {
                 return;
             };
@@ -1181,13 +1250,18 @@ impl SettingsView {
         self.customizations
             .as_ref()
             .and_then(|navigation| navigation.active_key.as_ref())
-            .is_some_and(|key| {
-                matches!(
-                    key.as_str(),
-                    crate::automexia::presentation::TAG_ENABLED
-                        | automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING
-                        | automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING
-                )
+            .is_some_and(|key| match key.as_str() {
+                crate::automexia::presentation::TAG_ENABLED
+                | automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING => {
+                    self.preview_controls_enabled(key.as_str())
+                }
+                automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING => {
+                    self.preview_controls_enabled(key.as_str())
+                        || self.preview_controls_enabled(
+                            automexia_ui_model::settings::OUTPUT_HIGHLIGHTING,
+                        )
+                }
+                _ => false,
             })
     }
 
@@ -5187,6 +5261,13 @@ impl SettingsView {
         )
     }
 
+    fn preview_controls_enabled(&self, id: &str) -> bool {
+        self.preview_bool(id)
+            && self
+                .preview_entry(id)
+                .is_some_and(|entry| entry.availability.reason().is_none())
+    }
+
     fn preview_color(&self, id: &str, fallback: [u8; 4]) -> [f32; 4] {
         let bytes = match self.preview_entry(id).map(|entry| &entry.value) {
             Some(SettingValue::Color(bytes)) => *bytes,
@@ -5379,9 +5460,28 @@ impl SettingsView {
             _ => self.paint_generic_preview(canvas, sample, theme),
         }
         self.preview_targets = interactive;
-        if self.is_tag_preview() {
+        if self.is_tag_preview() && self.preview_controls_enabled("tags.enabled") {
             self.paint_tag_roster(canvas, theme);
         }
+        let tags = self.preview_controls_enabled("tags.enabled");
+        let commands = self.preview_controls_enabled(
+            automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING,
+        );
+        let output = self
+            .preview_controls_enabled(automexia_ui_model::settings::OUTPUT_HIGHLIGHTING);
+        let kubernetes = self.preview_controls_enabled(
+            automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING,
+        );
+        let active = |id: &SettingId| {
+            let id = id.as_str();
+            (tags && id.starts_with("tags."))
+                || (commands && id.starts_with("command_output.band."))
+                || (output && id.starts_with("output.severity."))
+                || (kubernetes && id.starts_with("kubernetes.severity."))
+        };
+        self.preview_targets.retain(|(id, _)| active(id));
+        self.preview_order.retain(&active);
+        self.preview_item_rows.retain(|(id, _)| active(id));
         if self.preview_edit_mode
             && self
                 .preview_selected
@@ -6709,73 +6809,101 @@ fn detail_catalog(full: &Catalog, group: &CustomizationGroup) -> Option<Catalog>
         .iter()
         .map(|id| full.get(id).cloned())
         .collect::<Option<Vec<_>>>()?;
-    Catalog::new(full.revision(), entries).ok()
+    Catalog::new(full.revision(), entries)
+        .and_then(|page| crate::settings_catalog::visible_controls(page, full))
+        .ok()
 }
 fn detail_catalog_with_slots(
     full: &Catalog,
     group: &CustomizationGroup,
     snapshot: Option<&SlotPageSnapshot>,
 ) -> Option<Catalog> {
-    if group.key.as_str() == crate::settings_catalog::WINDOW_CONTROLS {
-        if let Some(snapshot) = snapshot {
-            return crate::settings_catalog::window_controls_page_catalog(full, snapshot)
-                .ok();
+    let Some(snapshot) = snapshot else {
+        return detail_catalog(full, group);
+    };
+    let page = match group.key.as_str() {
+        crate::settings_catalog::WINDOW_CONTROLS => {
+            crate::settings_catalog::window_controls_page_catalog(full, snapshot)
         }
-    }
-    if group.key.as_str() == automexia_ui_model::settings::FONT_SIZE {
-        if let Some(snapshot) = snapshot {
-            return crate::settings_catalog::font_page_catalog(full, snapshot).ok();
+        automexia_ui_model::settings::FONT_SIZE => {
+            crate::settings_catalog::font_page_catalog(full, snapshot)
         }
-    }
-    if group.key.as_str() == automexia_ui_model::settings::FONT_SIZE {
-        if let Some(snapshot) = snapshot {
-            return crate::settings_catalog::font_page_catalog(full, snapshot).ok();
+        automexia_ui_model::settings::INLINE_TABLES => {
+            crate::settings_catalog::table_page_catalog(full, snapshot)
         }
-    }
-    if group.key.as_str() == automexia_ui_model::settings::INLINE_TABLES {
-        if let Some(snapshot) = snapshot {
-            return crate::settings_catalog::table_page_catalog(full, snapshot).ok();
+        automexia_ui_model::settings::COMMAND_TIMESTAMPS => {
+            crate::settings_catalog::timestamp_page_catalog(full, snapshot)
         }
-    }
-    if group.key.as_str() == automexia_ui_model::settings::COMMAND_TIMESTAMPS {
-        if let Some(snapshot) = snapshot {
-            return crate::settings_catalog::timestamp_page_catalog(full, snapshot).ok();
-        }
-    }
-    detail_catalog(full, group)
+        _ => return detail_catalog(full, group),
+    };
+    page.and_then(|page| crate::settings_catalog::visible_controls(page, full))
+        .ok()
 }
 fn preview_detail_catalog(
     navigation: &CustomizationNavigation,
     key: &SettingId,
 ) -> Option<Catalog> {
-    if let Some(slot_id) = slot_id_from_page(key) {
-        return selected_tag_catalog(
+    if !preview_page_still_available(navigation, key) {
+        return None;
+    }
+    let page = if let Some(slot_id) = slot_id_from_page(key) {
+        selected_tag_catalog(
             &navigation.full_catalog,
             navigation.slot_pages.as_ref()?,
             slot_id,
         )
-        .ok();
-    }
-    if let Some(role_id) = key.as_str().strip_prefix("tags.colors.") {
-        return tag_role_color_catalog(&navigation.full_catalog, role_id).ok();
-    }
-    if let Some(severity) = key.as_str().strip_prefix("output.severity.") {
-        return output_severity_catalog(&navigation.full_catalog, severity).ok();
-    }
-    if let Some(kind) = key.as_str().strip_prefix("command_output.band.") {
-        return command_output_band_catalog(&navigation.full_catalog, kind).ok();
-    }
-    if let Some(severity) = key.as_str().strip_prefix("kubernetes.severity.") {
-        return kubernetes_severity_catalog(&navigation.full_catalog, severity).ok();
-    }
-    None
+    } else if let Some(role_id) = key.as_str().strip_prefix("tags.colors.") {
+        tag_role_color_catalog(&navigation.full_catalog, role_id)
+    } else if let Some(severity) = key.as_str().strip_prefix("output.severity.") {
+        output_severity_catalog(&navigation.full_catalog, severity)
+    } else if let Some(kind) = key.as_str().strip_prefix("command_output.band.") {
+        command_output_band_catalog(&navigation.full_catalog, kind)
+    } else if let Some(severity) = key.as_str().strip_prefix("kubernetes.severity.") {
+        kubernetes_severity_catalog(&navigation.full_catalog, severity)
+    } else {
+        return None;
+    };
+    page.and_then(|page| {
+        crate::settings_catalog::visible_controls(page, &navigation.full_catalog)
+    })
+    .ok()
+    .filter(|page| !page.entries().is_empty())
 }
 
 fn preview_page_still_available(
     navigation: &CustomizationNavigation,
     key: &SettingId,
 ) -> bool {
+    let enabled = |id: &str| {
+        navigation
+            .full_catalog
+            .entries()
+            .iter()
+            .find(|row| row.id.as_str() == id)
+            .is_some_and(|row| {
+                row.value == SettingValue::Boolean(true)
+                    && row.availability.reason().is_none()
+            })
+    };
+    let id = key.as_str();
+    if (id.starts_with("tags.") && !enabled("tags.enabled"))
+        || (id.starts_with("output.")
+            && !enabled(automexia_ui_model::settings::OUTPUT_HIGHLIGHTING))
+        || (id.starts_with("command_output.")
+            && !enabled(automexia_ui_model::settings::COMMAND_OUTPUT_HIGHLIGHTING))
+        || (id.starts_with("kubernetes.")
+            && !enabled(automexia_ui_model::settings::KUBERNETES_HIGHLIGHTING))
+    {
+        return false;
+    }
     if let Some(slot_id) = slot_id_from_page(key) {
+        if navigation.slot_pages.as_ref().is_some_and(|snapshot| {
+            !snapshot
+                .preview_recipe()
+                .slot_visible_with_devops(slot_id, snapshot.preview_devops_enabled())
+        }) {
+            return false;
+        }
         if automexia_ui_model::information_bar::role_from_id(slot_id).is_some() {
             return true;
         }

@@ -1518,6 +1518,34 @@ fn live_preview_lists_all_tags_and_selects_disabled_tags() {
             .as_ref()
             .unwrap()
             .get(&SettingId::new("tags.colors.windows").unwrap())
+            .is_none());
+        assert!(view
+            .view
+            .as_mut()
+            .unwrap()
+            .focus(&SettingId::new("tags.slot.windows.enabled").unwrap()));
+        named(&mut view, NamedKey::Enter);
+        let enabled = crate::settings_catalog::apply_edit(
+            1,
+            &base,
+            &preferences,
+            &[],
+            &view.take_edit().unwrap(),
+        )
+        .unwrap();
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(2, &base, &enabled, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot(
+                &enabled,
+                &enabled.apply_to(&base),
+            )),
+        );
+        assert!(view
+            .catalog
+            .as_ref()
+            .unwrap()
+            .get(&SettingId::new("tags.colors.windows").unwrap())
             .is_some());
         assert!(view
             .catalog
@@ -3243,7 +3271,20 @@ fn timestamp_menu_edits_refresh_preview_keep_focus_and_confirm_resets() {
         view.focus = Focus::List;
         named(&mut view, NamedKey::Enter);
         assert_eq!(view.title(), "Command timestamps");
-        assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 26);
+        assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 23);
+        // All three parts occupy different rows: joining controls have no effect.
+        for hidden in [
+            "timestamps.order",
+            "timestamps.separator",
+            "timestamps.date-time-separator",
+        ] {
+            assert!(view
+                .catalog
+                .as_ref()
+                .unwrap()
+                .get(&SettingId::new(hidden).unwrap())
+                .is_none());
+        }
         let id = SettingId::new("timestamps.time-format").unwrap();
         assert!(view.view.as_mut().unwrap().focus(&id));
         view.focus = Focus::List;
@@ -4646,11 +4687,25 @@ fn information_bar_text_editor_keeps_unicode_graphemes_and_mouse_selection_on_bo
 #[test]
 fn narrow_information_tag_slot_page_opens_by_keyboard_and_edits_text_by_mouse() {
     let base = rio_backend::config::Config::default();
-    let snapshot =
-        crate::settings_catalog::catalog(1, &base, &Default::default(), &[]).unwrap();
+    let preferences = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &Default::default(),
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.slot.windows.text").unwrap(),
+            change: Change::Set(SettingValue::Choice("literal".into())),
+        },
+    )
+    .unwrap();
+    let snapshot = crate::settings_catalog::catalog(1, &base, &preferences, &[]).unwrap();
     let mut view = SettingsView::default();
     view.fit(320.0, 360.0, 18.0);
-    let pages = crate::settings_catalog::slot_page_snapshot(&Default::default(), &base);
+    let pages = crate::settings_catalog::slot_page_snapshot(
+        &preferences,
+        &preferences.apply_to(&base),
+    );
     view.open_customizations_with_slots(snapshot, None, Some(pages));
     let category = SettingId::new("tags.enabled").unwrap();
     assert!(view.view.as_mut().unwrap().focus(&category));
@@ -4668,7 +4723,13 @@ fn narrow_information_tag_slot_page_opens_by_keyboard_and_edits_text_by_mouse() 
     view.preview_selected = Some(page.clone());
     named(&mut view, NamedKey::Enter);
     assert_eq!(view.title(), "Tag slot: Windows");
-    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 12);
+    assert_eq!(view.catalog.as_ref().unwrap().entries().len(), 9);
+    assert!(view
+        .catalog
+        .as_ref()
+        .unwrap()
+        .get(&SettingId::new("tags.slot.windows.literal").unwrap())
+        .is_some());
     assert!(view.take_edit().is_none());
     view.back_to_categories();
     assert_eq!(view.title(), "Information tags");
@@ -5484,6 +5545,27 @@ fn preview_keyboard_e_respects_text_drafts_modifiers_composition_and_repeats() {
     assert!(view.preedit.is_empty());
     assert_eq!(view.title(), "Information tags");
     view.enter_preview_item(SettingId::new("tags.slot.windows.page").unwrap());
+    let base = rio_backend::config::Config::default();
+    let preferences = crate::settings_catalog::apply_edit(
+        1,
+        &base,
+        &Default::default(),
+        &[],
+        &Edit {
+            revision: 1,
+            id: SettingId::new("tags.slot.windows.text").unwrap(),
+            change: Change::Set(SettingValue::Choice("literal".into())),
+        },
+    )
+    .unwrap();
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(2, &base, &preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot(
+            &preferences,
+            &preferences.apply_to(&base),
+        )),
+    );
     view.view
         .as_mut()
         .unwrap()
@@ -6980,4 +7062,256 @@ fn settings_confirmation_is_opaque_bounded_and_pointer_confirmation_is_one_shot(
         pointer_event(&mut view, bounds, scale, ElementState::Released);
         assert!(view.take_customization_intent().is_none());
     }
+}
+
+fn dependent_settings_view(
+    base: &rio_backend::config::Config,
+    preferences: &crate::automexia::preferences::UserPreferences,
+    category: &str,
+) -> SettingsView {
+    let mut view = SettingsView::default();
+    view.fit(960.0, 740.0, 16.0);
+    view.open_customizations_with_slots(
+        crate::settings_catalog::catalog(1, base, preferences, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot_with_config(
+            preferences,
+            &preferences.apply_to(base),
+            base,
+        )),
+    );
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new(category).unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    view
+}
+
+#[test]
+fn dependent_settings_hidden_date_and_time_remove_only_ineffective_controls() {
+    use rio_backend::config::presentation::{TimestampDateFormat, TimestampTimeFormat};
+    let mut base = rio_backend::config::Config::default();
+    base.presentation.timestamps.date_format = Some(TimestampDateFormat::Hidden);
+    base.presentation.timestamps.time_format = Some(TimestampTimeFormat::Hidden);
+    let mut view =
+        dependent_settings_view(&base, &Default::default(), COMMAND_TIMESTAMPS);
+    view.paint(&mut Raster::new(1.0), theme());
+    let page = view.catalog.as_ref().unwrap();
+    for id in [
+        "timestamps.date-separator",
+        "timestamps.date-position",
+        "timestamps.weekday",
+        "timestamps.colors.date",
+        "timestamps.precision",
+        "timestamps.time-position",
+        "timestamps.colors.time",
+        "timestamps.timezone",
+        "timestamps.zone-label",
+        "timestamps.date-time-separator",
+        "timestamps.separator",
+        "timestamps.order",
+    ] {
+        assert!(
+            page.get(&SettingId::new(id).unwrap()).is_none(),
+            "ineffective control {id}"
+        );
+        assert!(!view.rows.iter().any(|row| row.id.as_str() == id));
+    }
+    for id in [
+        COMMAND_TIMESTAMPS,
+        "timestamps.date-format",
+        "timestamps.time-format",
+        "timestamps.show-status",
+        "timestamps.show-duration",
+        "timestamps.duration-format",
+        "timestamps.result-position",
+        "timestamps.colors.result",
+    ] {
+        assert!(
+            page.get(&SettingId::new(id).unwrap()).is_some(),
+            "lost independent control {id}"
+        );
+    }
+}
+
+#[test]
+fn dependent_settings_refresh_preserves_choices_and_removes_stale_focus_and_search() {
+    use crate::automexia::preferences::UserPreferences;
+    use rio_backend::config::presentation::{
+        TimestampDateFormat, TimestampDateSeparator,
+    };
+    let base = rio_backend::config::Config::default();
+    let mut prefs = UserPreferences::default();
+    prefs.visual.timestamps.date_separator = Some(TimestampDateSeparator::Slash);
+    let mut view = dependent_settings_view(&base, &prefs, COMMAND_TIMESTAMPS);
+    let id = SettingId::new("timestamps.date-separator").unwrap();
+    assert!(view.view.as_mut().unwrap().focus(&id));
+    prefs.visual.timestamps.date_format = Some(TimestampDateFormat::Hidden);
+    let refresh = |view: &mut SettingsView, prefs: &UserPreferences, revision| {
+        view.refresh_with_resources(
+            crate::settings_catalog::catalog(revision, &base, prefs, &[]).unwrap(),
+            None,
+            Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                prefs,
+                &prefs.apply_to(&base),
+                &base,
+            )),
+        );
+    };
+    refresh(&mut view, &prefs, 2);
+    assert_ne!(view.view.as_ref().unwrap().focused(), Some(&id));
+    assert!(!view.view.as_mut().unwrap().focus(&id));
+    view.view
+        .as_mut()
+        .unwrap()
+        .set_query(id.as_str(), view.catalog.as_ref().unwrap())
+        .unwrap();
+    assert!(view.view.as_ref().unwrap().filtered_ids().is_empty());
+    view.paint(&mut Raster::new(1.5), theme());
+    assert!(!view.rows.iter().any(|row| row.id == id));
+    assert!(view.take_edit().is_none());
+    prefs.visual.timestamps.date_format = Some(TimestampDateFormat::YearMonthDay);
+    refresh(&mut view, &prefs, 3);
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&id).unwrap().value,
+        SettingValue::Choice("slash".into())
+    );
+    assert_eq!(
+        view.catalog.as_ref().unwrap().get(&id).unwrap().origin,
+        ValueOrigin::User
+    );
+    assert_eq!(view.view.as_ref().unwrap().filtered_ids(), &[id]);
+}
+
+#[test]
+fn dependent_settings_same_revision_refresh_cancels_newly_hidden_editor() {
+    use rio_backend::config::presentation::TimestampDateFormat;
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    let mut view = dependent_settings_view(&base, &prefs, COMMAND_TIMESTAMPS);
+    assert!(view
+        .view
+        .as_mut()
+        .unwrap()
+        .focus(&SettingId::new("timestamps.colors.date").unwrap()));
+    view.focus = Focus::List;
+    named(&mut view, NamedKey::Enter);
+    assert!(view.color_editor.is_some());
+    prefs.visual.timestamps.date_format = Some(TimestampDateFormat::Hidden);
+    view.refresh_with_resources(
+        crate::settings_catalog::catalog(1, &base, &prefs, &[]).unwrap(),
+        None,
+        Some(crate::settings_catalog::slot_page_snapshot_with_config(
+            &prefs,
+            &prefs.apply_to(&base),
+            &base,
+        )),
+    );
+    assert!(view.color_editor.is_none());
+    assert!(view.take_edit().is_none());
+    view.paint(&mut Raster::new(1.0), theme());
+    let surface =
+        view.accessibility_surface(1.0, accesskit::Rect::new(0.0, 0.0, 960.0, 740.0));
+    assert!(!surface
+        .elements
+        .iter()
+        .any(|element| element.node.author_id() == Some("timestamps.colors.date")));
+}
+
+#[test]
+fn dependent_settings_disabled_highlights_have_no_preview_editor_targets() {
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    prefs.presentation.command_output_highlighting = Some(false);
+    prefs.presentation.output_highlighting = Some(false);
+    prefs.presentation.kubernetes_highlighting = Some(false);
+    prefs.visual.tags.enabled = Some(false);
+    for category in [
+        "terminal.command_output_highlighting",
+        "terminal.kubernetes_highlighting",
+        "tags.enabled",
+    ] {
+        let mut view = dependent_settings_view(&base, &prefs, category);
+        view.paint(&mut Raster::new(1.0), theme());
+        assert!(!view.preview_selector_available(), "{category}");
+        assert!(view.preview_targets.is_empty(), "{category}");
+        assert!(view.preview_order.is_empty(), "{category}");
+        view.start_preview_edit();
+        assert!(!view.preview_edit_mode, "{category}");
+        assert!(
+            view.catalog
+                .as_ref()
+                .unwrap()
+                .entries()
+                .iter()
+                .all(|row| row.kind == SettingKind::Boolean),
+            "only enabling switches should remain in {category}"
+        );
+    }
+    prefs.presentation.output_highlighting = Some(true);
+    let mut view =
+        dependent_settings_view(&base, &prefs, "terminal.command_output_highlighting");
+    view.paint(&mut Raster::new(1.0), theme());
+    assert!(view.preview_selector_available());
+    assert!(!view.preview_order.is_empty());
+    assert!(view
+        .preview_order
+        .iter()
+        .all(|id| id.as_str().starts_with("output.severity.")));
+}
+
+#[test]
+#[ignore = "same-host settings refresh/paint benchmark; run explicitly with --ignored"]
+fn dependent_settings_refresh_paint_benchmark() {
+    use rio_backend::config::presentation::TimestampDateFormat;
+    let base = rio_backend::config::Config::default();
+    let mut prefs = crate::automexia::preferences::UserPreferences::default();
+    let mut view = dependent_settings_view(&base, &prefs, COMMAND_TIMESTAMPS);
+    let mut raster = Raster::new(1.0);
+    let mut reports = Vec::new();
+    for (width, height) in [(720.0, 560.0), (1920.0, 1080.0)] {
+        view.fit(width, height, 16.0);
+        let mut samples = Vec::new();
+        for iteration in 0..220 {
+            prefs.visual.timestamps.date_format = Some(if iteration % 2 == 0 {
+                TimestampDateFormat::Hidden
+            } else {
+                TimestampDateFormat::YearMonthDay
+            });
+            raster.rects.clear();
+            raster.shapes.clear();
+            raster.text.clear();
+            let start = std::time::Instant::now();
+            view.refresh_with_resources(
+                crate::settings_catalog::catalog(iteration + 2, &base, &prefs, &[])
+                    .unwrap(),
+                None,
+                Some(crate::settings_catalog::slot_page_snapshot_with_config(
+                    &prefs,
+                    &prefs.apply_to(&base),
+                    &base,
+                )),
+            );
+            view.paint(std::hint::black_box(&mut raster), theme());
+            let elapsed = start.elapsed().as_nanos();
+            assert_eq!(
+                view.catalog
+                    .as_ref()
+                    .unwrap()
+                    .entries()
+                    .iter()
+                    .any(|row| row.id.as_str() == "timestamps.date-separator"),
+                iteration % 2 != 0
+            );
+            if iteration >= 20 {
+                samples.push(elapsed);
+            }
+        }
+        samples.sort_unstable();
+        reports.push(serde_json::json!({"viewport": [width, height], "samples": samples.len(), "warmup": 20, "refresh_and_paint_ns": {"p50": samples[99], "p95": samples[189]}, "scope": "production catalog, dependency projection, focus/layout/shaping/draw emission; excludes GPU/present"}));
+    }
+    println!("{}", serde_json::json!({"dependent_settings": reports}));
 }
