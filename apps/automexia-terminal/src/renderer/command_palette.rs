@@ -10,7 +10,7 @@ use crate::renderer::responsive::{elide_end, elide_start, Viewport};
 use crate::renderer::scrollbar;
 use crate::renderer::ui_theme::{
     color_u8, UiAccent, UiTheme, CARD_RADIUS, CONTROL_RADIUS, KEYCAP_RADIUS,
-    MODAL_SCRIM as BACKDROP_COLOR, MODAL_SHADOW as SHADOW_COLOR,
+    MODAL_SHADOW as SHADOW_COLOR,
 };
 use automexia_ui_model::quick_actions::{
     QuickActionListItem, QuickActionReviewView, QuickActionRisk,
@@ -81,7 +81,6 @@ fn bounded_scroll_offset(total: usize, visible: usize, requested: usize) -> usiz
 }
 
 // Depth / order
-const DEPTH_BACKDROP: f32 = 0.0;
 const DEPTH_BG: f32 = 0.1;
 const DEPTH_ELEMENT: f32 = 0.2;
 const ORDER: u8 = 20;
@@ -2893,17 +2892,6 @@ impl CommandPalette {
             self.scroll_offset
         };
 
-        sugarloaf.rect(
-            None,
-            0.0,
-            0.0,
-            window_width / scale_factor,
-            window_height / scale_factor,
-            BACKDROP_COLOR,
-            DEPTH_BACKDROP,
-            ORDER,
-        );
-
         // Quiet card edges separate the overlay; cyan belongs to input/selection.
         sugarloaf.rounded_rect(
             None,
@@ -3305,7 +3293,7 @@ impl CommandPalette {
             let bar_x = input_x + input_width
                 - scrollbar::SCROLLBAR_WIDTH
                 - scrollbar::SCROLLBAR_MARGIN;
-            // Palette backdrop + bg rects use ORDER=20; the terminal
+            // Palette card rects use ORDER=20; the terminal
             // scrollbar's default ORDER=5 would land *under* them and
             // be invisible. Piggy-back on the palette's own order, at
             // a depth slightly above the selection highlight so a

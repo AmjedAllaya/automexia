@@ -12,7 +12,8 @@ pub(crate) const BRAND_LIME: [f32; 4] = [0.52, 0.94, 0.36, 1.0];
 pub(crate) const BRAND_AMBER: [f32; 4] = [1.0, 0.69, 0.18, 1.0];
 pub(crate) const BRAND_CORAL: [f32; 4] = [1.0, 0.36, 0.48, 1.0];
 
-pub(crate) const MODAL_SCRIM: [f32; 4] = [0.0, 0.012, 0.028, 0.82];
+// Overlays paint only their opaque cards and local shadows. Keep the live
+// terminal visible outside those bounds; there is no viewport scrim.
 pub(crate) const MODAL_SHADOW: [f32; 4] = [0.0, 0.0, 0.0, 0.52];
 #[cfg(test)]
 pub(crate) const CARD: [f32; 4] = [0.027, 0.047, 0.067, 1.0];

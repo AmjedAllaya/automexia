@@ -701,10 +701,11 @@ impl SettingsView {
         };
         let f = self.font.max(10.0);
         let pad = 16.0;
+        let width = (viewport.width - pad * 2.0).clamp(0.0, 1200.0);
         let card = Rect {
-            x: pad,
+            x: (viewport.width - width) * 0.5,
             y: pad,
-            width: (viewport.width - pad * 2.0).max(0.0),
+            width,
             height: (viewport.height - pad * 2.0).max(0.0),
         };
         self.geometry = Geometry {
@@ -817,7 +818,6 @@ impl SettingsView {
         };
         let g = self.geometry;
         let f = self.font.max(10.0);
-        rect(canvas, g.viewport, theme.background, g.viewport);
         rounded_surface(canvas, g.card, theme.surface, g.viewport);
         shortcut_hint(canvas, g.status,
             "Arrows: preview | Tab: focus | Enter: select | Esc / Backspace / Alt+Left: back",
@@ -1231,6 +1231,7 @@ mod tests {
     #[test]
     fn gallery_layout_and_scrolling_keep_targets_within_viewport() {
         for (w, h, f) in [
+            (1920.0, 1080.0, 16.0),
             (1000.0, 800.0, 16.0),
             (500.0, 700.0, 16.0),
             (900.0, 640.0, 24.0),
@@ -1245,6 +1246,10 @@ mod tests {
             });
             let gallery = view.gallery.as_ref().unwrap();
             assert!(gallery.visible > 0);
+            assert!(view.geometry.card.width <= 1200.0);
+            if w > 1200.0 {
+                assert!(view.geometry.card.x >= (w - 1200.0) * 0.5);
+            }
             for (_, r) in &gallery.targets {
                 assert!(
                     r.x >= 0.0 && r.y >= 0.0 && r.x + r.width <= w && r.y + r.height <= h,

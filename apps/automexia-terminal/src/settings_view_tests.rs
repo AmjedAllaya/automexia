@@ -28,6 +28,107 @@ fn opened() -> SettingsView {
 }
 
 #[test]
+fn live_terminal_backdrop_settings_paint_only_opaque_cards() {
+    // Exercise actual paint dispatch, including routes that used to draw their
+    // own whole-window fill. The terminal owns all pixels outside the card.
+    for entry in crate::automexia::theme_gallery::builtins() {
+        let theme = UiTheme::from_colors(&entry.theme.unwrap().colors);
+        for (width, height, scale) in [
+            (320.0, 420.0, 1.0),
+            (960.0, 620.0, 1.5),
+            (1920.0, 1080.0, 2.0),
+        ] {
+            for page in [
+                "settings",
+                "customizations",
+                "detail",
+                "color",
+                "reset",
+                "gallery",
+            ] {
+                let mut view = match page {
+                    "settings" => opened(),
+                    "color" => opened_color(true),
+                    _ => workflow_tag_view(),
+                };
+                if page == "customizations" {
+                    named(&mut view, NamedKey::Escape);
+                } else if page == "reset" {
+                    view.request_reset();
+                } else if page == "gallery" {
+                    let base = rio_backend::config::Config::default();
+                    view.set_theme_context(ThemeContext {
+                        configured: rio_backend::config::theme::Theme {
+                            colors: base.colors,
+                        },
+                        saved: None,
+                        font_colors: false,
+                    });
+                    view.open_theme_gallery();
+                    view.theme_inventory(
+                        crate::automexia::theme_gallery::builtins(),
+                        false,
+                    );
+                    assert!(view.gallery.is_some());
+                }
+                view.fit(width, height, 16.0);
+                let mut raster = Raster::new(scale);
+                view.paint(&mut raster, theme);
+                let card = if view.confirmation.is_some() {
+                    view.confirmation_geometry.card
+                } else if view.color_editor.is_some() {
+                    view.color_geometry.card
+                } else {
+                    view.geometry.card
+                };
+                assert!(card.x > 0.0 && card.y > 0.0, "{page}: terminal margin");
+                assert!(raster.rects.iter().any(|(bounds, color)|
+                    *bounds == card.array() && color[3] == 1.0),
+                    "{page}: opaque card must remain");
+                for ([x, y, w, h], _) in raster.rects {
+                    assert!(x >= card.x - 0.01 && y >= card.y - 0.01
+                        && x + w <= card.x + card.width + 0.01
+                        && y + h <= card.y + card.height + 0.01,
+                        "{page}: paint {x},{y},{w},{h} covers the live terminal outside {card:?}");
+                }
+            }
+        }
+    }
+}
+
+#[test]
+#[ignore = "same-host paint microbenchmark; run explicitly with --ignored"]
+fn live_terminal_backdrop_paint_benchmark() {
+    let mut reports = Vec::new();
+    for (width, height) in [(960.0, 620.0), (1920.0, 1080.0)] {
+        let mut view = workflow_tag_view();
+        view.fit(width, height, 16.0);
+        let mut raster = Raster::new(1.0);
+        let mut samples = Vec::new();
+        for iteration in 0..220 {
+            raster.rects.clear();
+            raster.shapes.clear();
+            raster.text.clear();
+            let start = std::time::Instant::now();
+            view.paint(std::hint::black_box(&mut raster), theme());
+            let elapsed = start.elapsed().as_nanos();
+            std::hint::black_box(&raster.rects);
+            if iteration >= 20 {
+                samples.push(elapsed);
+            }
+        }
+        samples.sort_unstable();
+        reports.push(serde_json::json!({
+            "viewport": [width, height], "warmup": 20, "samples": samples.len(),
+            "paint_ns": {"p50": samples[99], "p95": samples[189]},
+            "rectangles": raster.rects.len(),
+            "scope": "production settings layout/shaping/draw emission; excludes GPU/present"
+        }));
+    }
+    println!("{}", serde_json::json!({"live_terminal_backdrop": reports}));
+}
+
+#[test]
 fn native_semantics_use_painted_settings_bounds_focus_and_modal_isolation() {
     use accesskit::Role;
     for scale in [1.0, 1.25, 1.5, 2.0] {

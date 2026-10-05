@@ -12,7 +12,7 @@ use crate::automexia::connections::{
     MetadataChangeReview, ReviewedGrantFile,
 };
 use crate::renderer::responsive::Viewport;
-use crate::renderer::ui_theme::{color_u8, UiTheme, CARD_RADIUS, MODAL_SCRIM as SCRIM};
+use crate::renderer::ui_theme::{color_u8, UiTheme, CARD_RADIUS};
 
 const ORDER: u8 = 20;
 mod credentials;
@@ -526,19 +526,8 @@ impl ConnectionHub {
             );
             return;
         }
-        let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = Self::layout(presentation, dimensions);
         sugarloaf.begin_modal_layer();
-        sugarloaf.rect(
-            None,
-            0.0,
-            0.0,
-            viewport.width,
-            viewport.height,
-            SCRIM,
-            0.0,
-            ORDER,
-        );
         rounded(sugarloaf, layout.card, theme.border, CARD_RADIUS);
         rounded(
             sugarloaf,

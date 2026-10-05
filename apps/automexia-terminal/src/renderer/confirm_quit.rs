@@ -4,9 +4,7 @@
 // LICENSE file in the root directory of this source tree.
 
 use crate::renderer::responsive::Viewport;
-use crate::renderer::ui_theme::{
-    color_u8, UiTheme, MODAL_SCRIM as SCRIM, MODAL_SHADOW as SHADOW,
-};
+use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SHADOW as SHADOW};
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
 
@@ -381,21 +379,10 @@ impl ConfirmQuit {
             }
             return;
         }
-        let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = Self::layout(dimensions);
         let card = layout.card;
         sugarloaf.replace_modal_layer();
 
-        sugarloaf.rect(
-            None,
-            0.0,
-            0.0,
-            viewport.width,
-            viewport.height,
-            SCRIM,
-            0.0,
-            ORDER,
-        );
         rounded(
             sugarloaf,
             card.x + 7.0,
@@ -741,7 +728,7 @@ mod tests {
     }
 
     #[test]
-    fn modal_surfaces_are_opaque_and_scrim_is_strong() {
+    fn modal_surfaces_remain_opaque_over_live_terminal() {
         for entry in crate::automexia::theme_gallery::builtins() {
             let theme = UiTheme::from_colors(&entry.theme.unwrap().colors);
             for surface in [theme.background, theme.surface, theme.raised] {
@@ -749,7 +736,5 @@ mod tests {
                 assert!(automexia_ui_model::contrast_ratio(theme.text, surface) >= 4.5);
             }
         }
-        let [_, _, _, scrim_alpha] = SCRIM;
-        assert!(scrim_alpha >= 0.75);
     }
 }

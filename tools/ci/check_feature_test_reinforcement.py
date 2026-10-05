@@ -654,7 +654,7 @@ def _validate_table_sources(sources: dict[str, str]) -> None:
         "table_model": ("MAX_TABLE_BYTES: usize = 256 * 1024", "MAX_TABLE_ROWS: usize = 256", "row.graphemes(true)", "source: Vec<String>"),
         "table_capture": (".bounds_to_display_string_bounded(", "Mode::ALT_SCREEN | Mode::MOUSE_MODE", "fn core_table_capture_uses_real_tab_stops_and_retains_cursor_history_and_copy()"),
         "table_view": ("self.close();", "WindowEvent::Ime(_)", "WindowEvent::DroppedFile(_)", "self.viewport.horizontal_thumb(", "table.visible_range(", "Effect::Consumed"),
-        "table_pixels": ("fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()", "assert_eq!(pixels, after.pixels(760, 260));", "line.0.y += 1.0;", "assert_eq!(row_lines, [77.0, 99.0, 121.0, 143.0]);"),
+        "table_pixels": ("fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()", "assert_eq!(pixels, after.pixels(760, 260));", "line.0.y += 1.0;", "assert_eq!(row_lines, [93.0, 115.0, 137.0, 159.0]);", "fn live_terminal_backdrop_table_view_preserves_exterior_and_opaque_content()"),
         "application": (".handle_table_window_event(&event, &mut self.router.clipboard)",),
         "screen": ("Act::ViewTableOutput => self.open_table_view()", "PaletteAction::ViewTableOutput => self.open_table_view()", "self.consume_overlay_key_release(event)", "self.handle_settings_key(key, clipboard)", "self.table_view.draw("),
         "screen_settings": ("self.consume_overlay_key_release(key)", "self.dispatch_settings_key(key, clipboard, true)"),

@@ -5,7 +5,7 @@
 //! never takes PTY, filesystem, process, or configuration authority.
 
 use crate::renderer::responsive::{elide_end, Viewport};
-use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SCRIM, MODAL_SHADOW};
+use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SHADOW};
 use rio_backend::config::colors::Colors;
 use rio_backend::sugarloaf::text::DrawOpts;
 use rio_backend::sugarloaf::Sugarloaf;
@@ -351,22 +351,11 @@ impl CompatibilityInspector {
         if !self.active {
             return;
         }
-        let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = self.layout(dimensions);
         let card = layout.card;
         let theme = UiTheme::from_colors(colors);
 
         sugarloaf.begin_modal_layer();
-        sugarloaf.rect(
-            None,
-            0.0,
-            0.0,
-            viewport.width,
-            viewport.height,
-            MODAL_SCRIM,
-            0.0,
-            ORDER,
-        );
         rounded(
             sugarloaf,
             card.x + 7.0,

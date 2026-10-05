@@ -237,19 +237,8 @@ pub(super) fn render(
     dimensions: (f32, f32, f32),
     theme: &UiTheme,
 ) {
-    let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
     let layout = layout(editor, dimensions);
     sugarloaf.begin_modal_layer();
-    sugarloaf.rect(
-        None,
-        0.0,
-        0.0,
-        viewport.width,
-        viewport.height,
-        SCRIM,
-        0.0,
-        ORDER,
-    );
     rounded(sugarloaf, layout.card, theme.border, CARD_RADIUS);
     rounded(
         sugarloaf,

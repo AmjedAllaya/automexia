@@ -35,6 +35,7 @@ Select a complete table first to choose exactly which output to view. Without
 a selection, Automexia looks for the most recent supported header table at or
 above the current scroll position. This is a focused, read-only snapshot; the shell keeps
 running underneath. Close and reopen the view to capture newer output.
+The viewer uses an inset opaque panel, leaving the live terminal visible around it.
 
 | Control | Action |
 |---|---|

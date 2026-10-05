@@ -2721,7 +2721,6 @@ impl SettingsView {
         let card = self.confirmation_geometry.card;
         // Render only this dialog on the Settings modal pass. Underlying labels
         // must not be drawn above an opaque confirmation surface.
-        rect(canvas, viewport, theme.background, viewport);
         rounded_surface(canvas, card, theme.surface, viewport);
         self.layout_dirty = false;
         self.caret_rect = Rect::default();
@@ -3556,7 +3555,6 @@ impl SettingsView {
         let viewport = self.geometry.viewport;
         let font = self.font.max(10.0);
         let line = font * 1.45;
-        rect(canvas, viewport, theme.background, viewport);
         rounded_surface(canvas, g.card, theme.surface, viewport);
         label(
             canvas,
@@ -4634,7 +4632,6 @@ impl SettingsView {
             return;
         }
         let g = self.geometry;
-        rect(canvas, g.viewport, theme.background, g.viewport);
         rounded_surface(canvas, g.card, theme.surface, g.viewport);
         let font = self.font.max(10.0);
         let line = font * 1.45;

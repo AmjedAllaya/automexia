@@ -581,7 +581,7 @@ impl Route<'_> {
         }
 
         // Diagnostic dialogs are modal in every route. Consume all keyboard
-        // input so no key can reach a terminal hidden behind the scrim.
+        // input so no key can reach the terminal visible behind the dialog.
         if self.window.screen.renderer.assistant.is_active() {
             if key_event.state == rio_window::event::ElementState::Pressed {
                 match &key_event.logical_key {

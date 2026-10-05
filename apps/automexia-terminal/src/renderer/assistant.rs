@@ -9,7 +9,7 @@
 //! keyboard, IME, wheel, and dropped-file events while it is active.
 
 use crate::renderer::responsive::{elide_end, Viewport};
-use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SCRIM, MODAL_SHADOW};
+use crate::renderer::ui_theme::{color_u8, UiTheme, MODAL_SHADOW};
 use rio_backend::config::colors::Colors;
 use rio_backend::error::{RioError, RioErrorLevel};
 use rio_backend::sugarloaf::text::DrawOpts;
@@ -209,7 +209,6 @@ impl AssistantOverlay {
         let Some(error) = self.error.clone() else {
             return;
         };
-        let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let layout = self.layout(dimensions);
         let card = layout.card;
         let theme = UiTheme::from_colors(colors);
@@ -225,16 +224,6 @@ impl AssistantOverlay {
         };
 
         sugarloaf.begin_modal_layer();
-        sugarloaf.rect(
-            None,
-            0.0,
-            0.0,
-            viewport.width,
-            viewport.height,
-            MODAL_SCRIM,
-            0.0,
-            ORDER,
-        );
         rounded(
             sugarloaf,
             card.x + 7.0,
@@ -447,7 +436,7 @@ mod tests {
     }
 
     #[test]
-    fn hit_test_distinguishes_controls_card_and_scrim() {
+    fn hit_test_distinguishes_controls_card_and_terminal_exterior() {
         let overlay = active_overlay();
         let dimensions = (800.0, 600.0, 1.0);
         let layout = overlay.layout(dimensions);

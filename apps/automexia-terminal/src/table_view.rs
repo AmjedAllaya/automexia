@@ -23,8 +23,7 @@ impl Rect {
 
 #[derive(Clone, Copy, Debug, Default)]
 struct Layout {
-    width: f32,
-    height: f32,
+    card: Rect,
     body: Rect,
     track: Rect,
     back: Rect,
@@ -48,14 +47,25 @@ impl Layout {
         let font = finite(font).clamp(10.0, 24.0);
         let cell = finite(cell).max(1.0);
         let line = (font * 1.55).ceil();
-        let padding = 16.0_f32.min(width / 4.0);
-        let toolbar = 56.0_f32.min(height);
-        let footer = 48.0_f32.min((height - toolbar).max(0.0));
+        let margin = 16.0_f32.min(width / 8.0).min(height / 8.0);
+        let card = Rect {
+            w: (width - margin * 2.0).min(1200.0),
+            h: height - margin * 2.0,
+            ..Rect::default()
+        };
+        let card = Rect {
+            x: (width - card.w) * 0.5,
+            y: margin,
+            ..card
+        };
+        let padding = 16.0_f32.min(card.w / 4.0);
+        let toolbar = 56.0_f32.min(card.h);
+        let footer = 48.0_f32.min((card.h - toolbar).max(0.0));
         let body = Rect {
-            x: padding,
-            y: toolbar,
-            w: (width - padding * 2.0).max(0.0),
-            h: (height - toolbar - footer).max(0.0),
+            x: card.x + padding,
+            y: card.y + toolbar,
+            w: (card.w - padding * 2.0).max(0.0),
+            h: (card.h - toolbar - footer).max(0.0),
         };
         let track = Rect {
             x: body.x,
@@ -64,22 +74,21 @@ impl Layout {
             h: 8.0_f32.min((footer - 6.0).max(0.0)),
         };
         let back = Rect {
-            x: padding,
-            y: 10.0_f32.min(height),
+            x: card.x + padding,
+            y: card.y + 10.0_f32.min(card.h),
             w: 100.0_f32.min(body.w),
-            h: 40.0_f32.min((height - 10.0).max(0.0)),
+            h: 40.0_f32.min((card.h - 10.0).max(0.0)),
         };
-        let copy = if width >= 240.0 {
+        let copy = if card.w >= 240.0 {
             Rect {
-                x: width - padding - 100.0,
+                x: card.x + card.w - padding - 100.0,
                 ..back
             }
         } else {
             Rect::default()
         };
         Self {
-            width,
-            height,
+            card,
             body,
             track,
             back,
@@ -358,15 +367,7 @@ impl TableView {
                 TableCanvas::paint_rect(s, r, color);
             }
         };
-        paint(
-            sugarloaf,
-            Rect {
-                w: l.width,
-                h: l.height,
-                ..Rect::default()
-            },
-            theme.background,
-        );
+        paint(sugarloaf, l.card, theme.background);
         for (rect, label, focused) in [
             (l.back, "← Back", !self.copy_focused),
             (
@@ -397,13 +398,13 @@ impl TableView {
             }
             draw_label(sugarloaf, rect, label, l.font.min(14.0), theme.text);
         }
-        if l.width >= 450.0 {
+        if l.card.w >= 450.0 {
             draw_label(
                 sugarloaf,
                 Rect {
-                    x: 132.0,
-                    y: 10.0,
-                    w: l.width - 260.0,
+                    x: l.card.x + 132.0,
+                    y: l.card.y + 10.0,
+                    w: l.card.w - 260.0,
                     h: 32.0,
                 },
                 "Table · read-only snapshot",
@@ -505,11 +506,11 @@ impl TableView {
                     theme.outline,
                 );
             }
-            if l.width >= 300.0 && l.height >= 140.0 {
+            if l.card.w >= 300.0 && l.card.h >= 140.0 {
                 crate::renderer::ui_theme::draw_shortcut_hint(
                     sugarloaf.text_mut(),
-                    [l.body.x, l.height - 27.0, l.body.w, 24.0],
-                    if l.width >= 620.0 {
+                    [l.body.x, l.card.y + l.card.h - 27.0, l.body.w, 24.0],
+                    if l.card.w >= 620.0 {
                         "Arrows: pan | Ctrl+C: copy | Esc / Backspace / Alt+Left: back"
                     } else {
                         "Esc / Backspace / Alt+Left: back"

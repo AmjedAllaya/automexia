@@ -264,10 +264,27 @@ through the controlled native suite before making a release claim.
 The existing private renderer benchmark measures bounded fitting and real-font
 CPU text drawing. Token consolidation adds no runtime dependency or background
 work; a fitting microbenchmark is not proof of interactive frame latency.
-The xtask modal ownership guard checks the shared scrim import and finite opaque
-surface literals; mutations reject removed imports, competing declarations,
-transparent, malformed, duplicate and nonfinite tokens. It complements, rather
-than replaces, runtime drawing and input/compositor tests.
+The xtask modal ownership guard checks shared card/shadow ownership and finite
+opaque surfaces. Mutations reject competing declarations, transparent panels,
+malformed, duplicate and nonfinite tokens, and reintroduced viewport fills.
+Overlays must preserve the live terminal exterior. This source guard complements
+runtime drawing and input/compositor tests.
+
+The `live_terminal_backdrop` application tests inspect actual settings and table
+paint calls across narrow/wide layouts, dark/light themes and scale factors.
+They reject exterior paint while requiring an opaque card. The native Windows
+`resize-stress-windows.ps1 -LiveBackdropOnly` mode compares exact exterior pixels,
+tests live output and theme preview/cancellation, and verifies modal input.
+Run a `visual-test-hooks,wgpu` build with both WGPU and `-UseCpuRenderer`;
+`-ModalCaptureDirectory` keeps private frames and `-ResourceReport` stores timing
+and resource samples. Twelve open/close cycles check the existing resource bounds
+and a 2.5-second observed-open budget. This includes automation polling and is
+not an input-to-present benchmark or a cross-machine performance claim.
+
+Run the production settings draw-emission microbenchmark explicitly with
+`cargo test -p automexia-terminal --bin automexia live_terminal_backdrop_paint_benchmark --locked -- --ignored --show-output`.
+It reports p50/p95 over 200 warmed samples at two viewports. Preserve the build
+profile and host when comparing results; GPU work and presentation are excluded.
 
 Close confirmation replaces both pending modal geometry and labels after all
 other overlay producers. Covered editors keep their state until cancellation.

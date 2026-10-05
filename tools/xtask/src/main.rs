@@ -3635,6 +3635,27 @@ fn verify_architecture() -> TaskResult {
     let modal_renderer = read(&root().join("sugarloaf/src/renderer/mod.rs"))?;
     let modal_sugarloaf = read(&root().join("sugarloaf/src/sugarloaf.rs"))?;
     let modal_text = read(&root().join("sugarloaf/src/text.rs"))?;
+    for relative in [
+        "settings_view.rs",
+        "settings_theme_gallery.rs",
+        "renderer/command_palette.rs",
+        "renderer/command_palette/shortcut_editor.rs",
+        "renderer/confirm_quit.rs",
+        "renderer/connection_hub.rs",
+        "renderer/connection_hub/profiles.rs",
+        "renderer/connection_hub/credentials.rs",
+        "renderer/assistant.rs",
+        "renderer/compatibility_inspector.rs",
+    ] {
+        require(
+            chrome_contract::live_terminal_exterior(&read(
+                &app.join("src").join(relative),
+            )?),
+            &format!(
+                "{relative} must retain the live terminal outside opaque modal cards"
+            ),
+        )?;
+    }
     require(
         palette.contains("sugarloaf.begin_modal_layer()")
             && palette.contains("sugarloaf.end_modal_layer()")

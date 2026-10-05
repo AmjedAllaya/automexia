@@ -120,14 +120,35 @@ fn table_view_tiny_to_8k_layouts_never_overlap_or_escape() {
             let l = view.layout;
             for r in [l.body, l.track, l.back, l.copy] {
                 assert!(r.w >= 0.0 && r.h >= 0.0);
-                assert!(r.x + r.w <= l.width + 0.01);
-                assert!(r.y + r.h <= l.height + 0.01);
+                assert!(r.x + r.w <= w / scale + 0.01);
+                assert!(r.y + r.h <= h / scale + 0.01);
             }
             if l.copy.w > 0.0 {
                 assert!(l.back.x + l.back.w <= l.copy.x);
             }
             view.key(&Key::Named(NamedKey::End), ModifiersState::CONTROL, true);
             assert_eq!(view.copy_text().unwrap(), source);
+        }
+    }
+}
+
+#[test]
+fn live_terminal_backdrop_table_view_preserves_exterior_and_opaque_content() {
+    let mut view = view();
+    let theme = UiTheme::from_colors(&rio_backend::config::colors::Colors::default());
+    for (width, height) in [(320.0, 420.0), (960.0, 620.0), (1920.0, 1080.0)] {
+        view.fit(width, height, 14.0, 9.0);
+        let mut canvas = Canvas::new();
+        view.draw(&mut canvas, theme);
+        let card = view.layout.card;
+        assert!(card.x > 0.0 && card.y > 0.0);
+        assert!(card.w < width && card.h < height);
+        assert_eq!(canvas.rects[0], (card, theme.background));
+        assert_eq!(theme.background[3], 1.0);
+        for (rect, _) in canvas.rects {
+            assert!(rect.x >= card.x && rect.y >= card.y);
+            assert!(rect.x + rect.w <= card.x + card.w + 0.01);
+            assert!(rect.y + rect.h <= card.y + card.h + 0.01);
         }
     }
 }
@@ -300,14 +321,15 @@ fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()
     view.fit(760.0, 260.0, 14.0, 9.0);
     let mut before = Canvas::new();
     view.draw(&mut before, theme);
-    // Independent fixture geometry: 16px margin, 56px toolbar, 22px rows.
+    // Independent fixture geometry: 16px outer margin and inner padding,
+    // 56px toolbar, 22px rows. The terminal remains visible outside the card.
     let row_lines: Vec<_> = before
         .rects
         .iter()
-        .filter(|(r, _)| r.h == 1.0 && r.w == 728.0)
+        .filter(|(r, _)| r.h == 1.0 && r.w == 696.0)
         .map(|(r, _)| r.y)
         .collect();
-    assert_eq!(row_lines, [77.0, 99.0, 121.0, 143.0]);
+    assert_eq!(row_lines, [93.0, 115.0, 137.0, 159.0]);
     let pixels = before.pixels(760, 260);
     for (w, h) in [(1.0, 1.0), (130.0, 180.0), (7680.0, 4320.0), (320.0, 180.0)] {
         view.fit(w, h, 14.0, 9.0);
@@ -322,7 +344,7 @@ fn table_view_parser_to_pixels_restores_exact_columns_after_extreme_navigation()
     let line = after
         .rects
         .iter_mut()
-        .find(|(r, _)| r.y == 77.0 && r.h == 1.0)
+        .find(|(r, _)| r.y == 93.0 && r.h == 1.0)
         .unwrap();
     line.0.y += 1.0;
     assert_ne!(

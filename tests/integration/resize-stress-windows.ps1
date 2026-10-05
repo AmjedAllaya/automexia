@@ -46,6 +46,7 @@ param(
     [switch]$UseCpuRenderer,
     [switch]$SessionRecoveryOnly,
     [switch]$QuickActionsOnly,
+    [switch]$LiveBackdropOnly,
     [switch]$AccessibilityOnly
 )
 
@@ -1701,6 +1702,11 @@ $wallpaperConfig
     if ($ThemeGalleryOnly) {
         . (Join-Path $PSScriptRoot 'theme-gallery-windows.ps1')
         Test-AutomexiaThemeGallery
+        return
+    }
+    if ($LiveBackdropOnly) {
+        . (Join-Path $PSScriptRoot 'live-backdrop-windows.ps1')
+        Test-AutomexiaLiveBackdrop
         return
     }
     if ($TagCustomizationOnly) {

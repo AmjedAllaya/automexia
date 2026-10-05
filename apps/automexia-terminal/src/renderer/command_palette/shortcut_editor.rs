@@ -374,19 +374,8 @@ impl CommandPalette {
         let Some(editor) = &self.shortcut_editor else {
             return;
         };
-        let viewport = Viewport::from_physical(dimensions.0, dimensions.1, dimensions.2);
         let ([x, y, w, h], buttons) = Self::shortcut_editor_geometry(dimensions);
         sugarloaf.begin_modal_layer();
-        sugarloaf.rect(
-            None,
-            0.0,
-            0.0,
-            viewport.width,
-            viewport.height,
-            BACKDROP_COLOR,
-            DEPTH_BACKDROP,
-            ORDER,
-        );
         sugarloaf.rounded_rect(
             None,
             x,

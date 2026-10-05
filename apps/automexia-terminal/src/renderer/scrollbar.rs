@@ -93,7 +93,7 @@ pub fn compute_thumb(
 /// background layers: the terminal uses `TERMINAL_DEPTH` /
 /// `TERMINAL_ORDER` so the bar lives on top of the cell content, the
 /// command palette uses a higher order so the bar isn't swallowed by
-/// the palette's backdrop/bg rects.
+/// the palette's card rects.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_thumb(
     sugarloaf: &mut Sugarloaf,

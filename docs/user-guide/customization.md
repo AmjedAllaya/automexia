@@ -48,6 +48,12 @@ clearer label hierarchy; palette shortcut badges are visually shortened when
 space is limited. This does not change a binding or your terminal font, ANSI
 colours, tab colour, line height or saved settings. No reset or migration is needed.
 
+The terminal stays visible and continues updating around every dialog. Settings,
+customization pages and the theme gallery keep their panels opaque for readability,
+without covering or dimming the rest of the window. Runtime appearance changes
+preview immediately in the visible terminal. Keyboard and pointer input still
+belong to the open dialog; close it to interact with the terminal again.
+
 ## 1. Create a starter config
 
 Run:

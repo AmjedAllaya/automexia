@@ -5,16 +5,34 @@ pub(super) fn shared_modal_tokens(
     confirmation: &str,
     theme: &str,
 ) -> bool {
-    palette.contains("MODAL_SCRIM as BACKDROP_COLOR")
+    palette.contains("MODAL_SHADOW as SHADOW_COLOR")
         && themed_consumer(palette)
-        && confirmation.contains("MODAL_SCRIM as SCRIM")
+        && confirmation.contains("MODAL_SHADOW as SHADOW")
         && confirmation.contains("crate::renderer::ui_theme::{")
         && themed_consumer(confirmation)
         && !palette.contains("const BG_COLOR:")
         && !confirmation.contains("const CARD:")
         && !confirmation.contains("const SCRIM:")
-        && rgba(theme, "MODAL_SCRIM").is_some_and(|value| value[3] > 0.0)
+        && rgba(theme, "MODAL_SHADOW").is_some_and(|value| value[3] > 0.0)
+        && live_terminal_exterior(palette)
+        && live_terminal_exterior(confirmation)
+        && !theme.contains("const MODAL_SCRIM:")
         && opaque_projection(theme)
+}
+
+pub(super) fn live_terminal_exterior(source: &str) -> bool {
+    // Supplement real paint/pixel assertions with a guard for the historical
+    // full-viewport producers. Card-local shadows remain allowed.
+    let compact: String = source.chars().filter(|c| !c.is_whitespace()).collect();
+    ![
+        "MODAL_SCRIM",
+        "BACKDROP_COLOR",
+        "rect(canvas,viewport,",
+        "rect(canvas,g.viewport,",
+        "sugarloaf.rect(None,0.0,0.0,",
+    ]
+    .iter()
+    .any(|token| compact.contains(token))
 }
 
 fn themed_consumer(source: &str) -> bool {
@@ -95,8 +113,8 @@ mod tests {
     fn shared_modal_guard_rejects_missing_and_competing_owners() {
         for palette in [
             PALETTE.replace(
-                "MODAL_SCRIM as BACKDROP_COLOR",
-                "MODAL_SHADOW as BACKDROP_COLOR",
+                "MODAL_SHADOW as SHADOW_COLOR",
+                "OTHER_SHADOW as SHADOW_COLOR",
             ),
             PALETTE.replace("theme: &UiTheme", "legacy: &UiTheme"),
             PALETTE.replace("theme.background", "CARD"),
@@ -105,7 +123,7 @@ mod tests {
             assert!(!shared_modal_tokens(&palette, CONFIRMATION, THEME));
         }
         for confirmation in [
-            CONFIRMATION.replace("MODAL_SCRIM as SCRIM", "MODAL_SHADOW as SCRIM"),
+            CONFIRMATION.replace("MODAL_SHADOW as SHADOW", "OTHER_SHADOW as SHADOW"),
             CONFIRMATION.replace("theme.surface", "SURFACE"),
             CONFIRMATION.replace("theme.raised", "SURFACE_RAISED"),
             format!("{CONFIRMATION}\nconst SCRIM: [f32; 4] = [0.0; 4];"),
@@ -117,7 +135,7 @@ mod tests {
 
     #[test]
     fn shared_modal_guard_rejects_transparency_nonfinite_and_duplicate_tokens() {
-        for name in ["MODAL_SCRIM"] {
+        for name in ["MODAL_SHADOW"] {
             let prefix = format!("pub(crate) const {name}: [f32; 4] = [");
             let start = THEME.find(&prefix).unwrap();
             let end = start + THEME[start..].find("];").unwrap() + 2;
@@ -137,6 +155,21 @@ mod tests {
             let duplicate = format!("{THEME}\n{}", &THEME[start..end]);
             assert!(!shared_modal_tokens(PALETTE, CONFIRMATION, &duplicate));
         }
+    }
+
+    #[test]
+    fn live_terminal_guard_rejects_reintroduced_exterior_fills() {
+        for fill in [
+            "rect(canvas, viewport, theme.background, viewport);",
+            "rect(canvas, g.viewport, theme.background, g.viewport);",
+            "sugarloaf.rect(None, 0.0, 0.0, width, height, black, 0.0, 20);",
+            "use crate::renderer::ui_theme::MODAL_SCRIM;",
+        ] {
+            assert!(!live_terminal_exterior(&format!("{PALETTE}\n{fill}")));
+        }
+        assert!(live_terminal_exterior(
+            "rounded_surface(canvas, card, theme.surface, viewport);"
+        ));
     }
 
     #[test]
